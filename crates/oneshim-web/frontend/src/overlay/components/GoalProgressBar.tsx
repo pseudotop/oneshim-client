@@ -8,7 +8,7 @@ interface GoalProgressBarProps {
 
 export default memo(function GoalProgressBar({ goals }: GoalProgressBarProps) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40">
+    <div className="fixed inset-x-0 bottom-0 z-dropdown">
       {/* No per-element cursor passthrough — overlay interactivity is toggled
           globally via Cmd+Shift+O hotkey */}
       <div className="mx-auto max-w-3xl rounded-t-lg border border-content-inverse/10 border-b-0 bg-surface-sunken/80 px-4 py-2 backdrop-blur-md">

@@ -131,10 +131,10 @@ export const motion = {
 } as const
 
 export const elevation = {
-  dropdown: 'shadow-lg z-40',
-  dialog: 'shadow-xl z-50',
-  overlay: 'shadow-2xl z-50',
-  tooltip: 'shadow-md z-[60]',
+  dropdown: 'shadow-lg z-dropdown',
+  dialog: 'shadow-xl z-dialog',
+  overlay: 'shadow-2xl z-overlay',
+  tooltip: 'shadow-md z-tooltip',
 } as const
 
 export const iconSize = {

@@ -57,7 +57,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay — Escape handled via global keyboard shortcut handler
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key closes via global keyboard shortcut handler
     <div
-      className={cn('fixed inset-0 z-50 flex items-center justify-center', layout.commandPalette.overlay)}
+      className={cn('fixed inset-0 z-dialog flex items-center justify-center', layout.commandPalette.overlay)}
       onClick={onClose}
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: onClick only prevents bubble to backdrop, not interactive */}

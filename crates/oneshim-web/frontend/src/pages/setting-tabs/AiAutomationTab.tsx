@@ -30,9 +30,6 @@ import {
   surfaceSupportsModelSelection,
 } from '../../features/providerSurfaces'
 import { form, typography } from '../../styles/tokens'
-import OAuthConnectionPanel from './OAuthConnectionPanel'
-import { isProviderOAuthAccessMode } from './oauth-panel-support'
-import ToggleRow from './ToggleRow'
 import {
   apiKeyPlaceholder,
   credentialBackendLabel,
@@ -46,6 +43,9 @@ import {
   toDateTimeLocalValue,
   toRfc3339OrNull,
 } from './ai-automation-utils'
+import OAuthConnectionPanel from './OAuthConnectionPanel'
+import { isProviderOAuthAccessMode } from './oauth-panel-support'
+import ToggleRow from './ToggleRow'
 import type { SettingsFormTabProps } from './types'
 
 interface AiAutomationTabProps extends SettingsFormTabProps {

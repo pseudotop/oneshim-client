@@ -128,6 +128,9 @@ export function surfaceAuthScheme(
   return transport?.auth_scheme ?? null
 }
 
-export function surfaceUsesNoAuth(surface: ProviderSurfaceSpec | undefined, endpointKind: EndpointSurfaceKind): boolean {
+export function surfaceUsesNoAuth(
+  surface: ProviderSurfaceSpec | undefined,
+  endpointKind: EndpointSurfaceKind,
+): boolean {
   return surfaceAuthScheme(surface, endpointKind) === 'none'
 }

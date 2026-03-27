@@ -112,7 +112,9 @@ export function DevToolbar() {
                 try {
                   const { invoke } = await import('@tauri-apps/api/core')
                   await invoke('open_devtools')
-                } catch { /* fallback */ }
+                } catch {
+                  /* fallback */
+                }
               }}
               className="flex-1 rounded bg-purple-800 px-2 py-1 text-xs hover:bg-purple-700"
             >
@@ -124,7 +126,9 @@ export function DevToolbar() {
                 try {
                   const { invoke } = await import('@tauri-apps/api/core')
                   await invoke('open_devtools', { label: 'tracking-panel' })
-                } catch { /* fallback */ }
+                } catch {
+                  /* fallback */
+                }
               }}
               className="flex-1 rounded bg-indigo-800 px-2 py-1 text-xs hover:bg-indigo-700"
             >

@@ -86,7 +86,7 @@ export default function SegmentContextMenu({
       ref={menuRef}
       role="menu"
       aria-label={t('recalibration.changeRegimeTo')}
-      className="absolute top-full right-0 z-50 mt-1 min-w-48 rounded-lg border border-DEFAULT bg-surface-elevated shadow-lg"
+      className="absolute top-full right-0 z-dropdown mt-1 min-w-48 rounded-lg border border-DEFAULT bg-surface-elevated shadow-lg"
       onKeyDown={handleMenuKeyDown}
     >
       <div className="py-1">

@@ -7,7 +7,12 @@ set -euo pipefail
 
 FRONTEND_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC_DIRS=("$FRONTEND_DIR/src/components" "$FRONTEND_DIR/src/pages" "$FRONTEND_DIR/src/overlay")
-EXCLUDE="--exclude=*.test.tsx --exclude=*.stories.tsx --exclude=DevToolbar.tsx"
+# Exclusions:
+#   *.test.tsx / *.stories.tsx — test/story files
+#   DevToolbar.tsx — dev-only toolbar
+#   DetectionHeader.tsx / DetectionOverlay.tsx — overlay Tauri windows with own CSS (no design tokens)
+#   tracking-panel/ — separate Tauri panel window with own CSS (no design tokens)
+EXCLUDE="--exclude=*.test.tsx --exclude=*.stories.tsx --exclude=DevToolbar.tsx --exclude=DetectionHeader.tsx --exclude=DetectionOverlay.tsx --exclude-dir=tracking-panel"
 
 ERRORS=0
 

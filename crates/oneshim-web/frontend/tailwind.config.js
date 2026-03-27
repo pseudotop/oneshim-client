@@ -86,6 +86,17 @@ export default {
           '50%': { opacity: '1' },
         },
       },
+      zIndex: {
+        dropdown: '40',
+        panel: '45',
+        dialog: '50',
+        overlay: '50',
+        tooltip: '60',
+        toast: '70',
+        detection: '10000',
+        'detection-inspector': '10002',
+        'detection-header': '10003',
+      },
       borderColor: {
         DEFAULT: withAlpha('--border'),
         muted: withAlpha('--border-muted'),

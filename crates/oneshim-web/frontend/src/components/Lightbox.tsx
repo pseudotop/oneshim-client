@@ -56,7 +56,7 @@ export default function Lightbox({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay — keyboard Escape handled via global keydown listener
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handling via global keydown listener (Escape, ArrowLeft, ArrowRight)
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay/90" onClick={onClose}>
+    <div className="fixed inset-0 z-overlay flex items-center justify-center bg-surface-overlay/90" onClick={onClose}>
       {/* UI note */}
       <button
         type="button"

@@ -13,7 +13,7 @@ export default memo(function DetectionHeader({ elementCount, onRefresh, onClose 
 
   return (
     <div
-      className="fixed top-0 right-0 left-0 z-[10003] flex items-center justify-between px-4 text-[11px] text-white backdrop-blur-md"
+      className="fixed top-0 right-0 left-0 z-detection-header flex items-center justify-between px-4 text-[11px] text-white backdrop-blur-md"
       style={{ height: 28, backgroundColor: 'rgba(0, 0, 0, 0.75)' }}
     >
       <div className="flex items-center gap-3">

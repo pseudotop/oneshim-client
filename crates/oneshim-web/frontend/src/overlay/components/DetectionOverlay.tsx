@@ -137,8 +137,8 @@ const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Inspector(
   return (
     <div
       ref={resolvedRef}
-      className="fixed rounded-lg border border-white/20 bg-black/85 p-3 text-white text-xs shadow-2xl backdrop-blur-sm"
-      style={{ left, top, width: 260, zIndex: 10002 }}
+      className="fixed z-detection-inspector rounded-lg border border-white/20 bg-black/85 p-3 text-white text-xs shadow-2xl backdrop-blur-sm"
+      style={{ left, top, width: 260 }}
     >
       <div className="mb-1.5 flex items-center justify-between">
         <span className="rounded px-1.5 py-0.5 font-semibold text-[10px]" style={{ backgroundColor: `${color}CC` }}>

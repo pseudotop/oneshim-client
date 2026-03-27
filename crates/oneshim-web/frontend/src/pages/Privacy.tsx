@@ -95,7 +95,7 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDangerous, onConf
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay/50">
+    <div className="fixed inset-0 z-dialog flex items-center justify-center bg-surface-overlay/50">
       <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-describedby={descriptionId}>
         <Card variant="default" padding="lg" className={cn('mx-4 w-full max-w-md', elevation.dialog)}>
           <CardTitle className={`mb-2 ${isDangerous ? 'text-semantic-error' : ''}`}>{title}</CardTitle>

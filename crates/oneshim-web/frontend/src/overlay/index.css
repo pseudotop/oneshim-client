@@ -11,8 +11,13 @@
 
 /* TrackingBorder blink animation — inline styles reference this keyframe */
 @keyframes tracking-blink {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Overlay-specific: transparent background, no scrollbars */
