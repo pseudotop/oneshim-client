@@ -8,6 +8,7 @@ const config: StorybookConfig = {
   addons: [
     '@storybook/addon-a11y',
     '@storybook/addon-themes',
+    '@storybook/addon-docs',
   ],
   framework: {
     name: '@storybook/react-vite',

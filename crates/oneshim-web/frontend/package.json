@@ -53,6 +53,7 @@
     "@playwright/cli": "^0.1.1",
     "@playwright/test": "^1.58.1",
     "@storybook/addon-a11y": "^10.2.15",
+    "@storybook/addon-docs": "^10.3.3",
     "@storybook/addon-themes": "^10.2.15",
     "@storybook/react-vite": "^10.2.15",
     "@testing-library/jest-dom": "^6.6.3",
