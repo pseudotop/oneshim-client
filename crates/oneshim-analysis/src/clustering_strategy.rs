@@ -3,6 +3,20 @@
 //! Both `HdbscanDetector` and `KmeansDetector` implement this trait,
 //! allowing the regime detection pipeline to be algorithm-agnostic.
 //!
+//! ## Algorithm Selection Guide
+//!
+//! | Criterion | k-means (`KmeansDetector`) | HDBSCAN (`HdbscanDetector`) |
+//! |-----------|--------------------------|----------------------------|
+//! | Cluster count | Fixed range [2, max_k=7] | Auto-discovered |
+//! | Noise handling | None (all points assigned) | Noise label (-1) for outliers |
+//! | Best for | Bounded feature set, real-time detection | High-noise data, variable cluster counts |
+//! | Performance | O(n*k*iter) + O(n^2) silhouette | O(n^2) core distance + dendrogram |
+//! | Default | Yes (fallback in `regime.rs`) | Opt-in via `ClusteringStrategy` |
+//!
+//! **Default behavior**: The regime detection pipeline uses k-means (`RegimeDetector`)
+//! when no `ClusteringStrategy` is configured. HDBSCAN is used when explicitly set via
+//! `AdaptiveTriggerState.clustering_strategy`.
+//!
 //! Shared constraint preprocessing helpers are provided so that each
 //! detector does not duplicate the NoiseLabel / ForceCluster / MustLink /
 //! CannotLink logic.
