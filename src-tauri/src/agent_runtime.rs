@@ -283,6 +283,14 @@ impl AgentRuntimeBundle {
                 let tm_config = &self.config.analysis.tiered_memory;
                 let llm_work_type_refiner = llm_refiner_provider
                     .map(|provider| Arc::new(oneshim_analysis::LlmWorkTypeRefiner::new(provider)));
+                if llm_work_type_refiner.is_none() {
+                    info!(
+                        "LLM WorkType refiner disabled — requires: \
+                         analysis.embedding.enabled=true, \
+                         analysis.embedding.llm_summary_enabled=true, \
+                         and a configured ai_provider.llm_api"
+                    );
+                }
                 let state = AdaptiveTriggerState {
                     trigger: oneshim_analysis::AdaptiveTrigger::new(),
                     segment_buffer: oneshim_analysis::SegmentBuffer::new(buf_cap),
