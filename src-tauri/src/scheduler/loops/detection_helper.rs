@@ -11,10 +11,19 @@ use crate::magic_overlay::MagicOverlayHandle;
 
 // ── Focus highlight state carried across ticks ──────────────────────
 
+/// Debounce threshold: element must remain stable for this many consecutive
+/// ticks before the highlight overlay is updated.
+const DEBOUNCE_TICKS: u32 = 2;
+
 /// Mutable state for focus-highlight debouncing.
 pub(super) struct FocusHighlightState {
+    /// Currently displayed element key (role, label).
     pub prev_key: Option<(String, String)>,
     pub last_handle_id: Option<String>,
+    /// Candidate element key waiting to stabilize.
+    pending_key: Option<(String, String)>,
+    /// How many consecutive ticks the pending_key has been the same.
+    stable_ticks: u32,
 }
 
 impl FocusHighlightState {
@@ -22,6 +31,8 @@ impl FocusHighlightState {
         Self {
             prev_key: None,
             last_handle_id: None,
+            pending_key: None,
+            stable_ticks: 0,
         }
     }
 }
@@ -40,49 +51,70 @@ pub(super) async fn update_focus_highlight(
         Some((fe.role.clone(), fe.label.clone().unwrap_or_default()))
     });
 
-    if current_key != state.prev_key {
-        if let Some(ref driver) = overlay_driver {
-            // Clear previous highlight first
-            if let Some(ref prev_id) = state.last_handle_id {
-                if let Err(e) = driver.clear_highlights(prev_id).await {
-                    debug!("focus highlight clear failed: {e}");
-                }
-                state.last_handle_id = None;
-            }
+    // Debounce: require element to be stable for DEBOUNCE_TICKS before updating overlay
+    if current_key == state.prev_key {
+        // Already displaying this element — reset pending
+        state.pending_key = None;
+        state.stable_ticks = 0;
+        return info;
+    }
 
-            // Show new highlight if element has valid bounds
-            if let Some(ref fe) = info {
-                if let Some(ref pos) = fe.position {
-                    if pos.width > 0.0 && pos.height > 0.0 {
-                        let req = HighlightRequest {
-                            session_id: String::new(),
-                            scene_id: String::new(),
-                            targets: vec![HighlightTarget {
-                                candidate_id: "ax-focus".to_string(),
-                                bbox_abs: ElementBounds {
-                                    x: pos.x as i32,
-                                    y: pos.y as i32,
-                                    width: pos.width as u32,
-                                    height: pos.height as u32,
-                                },
-                                color: "#0d9488".to_string(),
-                                label: fe.label.clone(),
-                            }],
-                        };
-                        match driver.show_highlights(req).await {
-                            Ok(handle) => {
-                                state.last_handle_id = Some(handle.handle_id);
-                            }
-                            Err(e) => {
-                                debug!("focus highlight show failed: {e}");
-                            }
+    if current_key == state.pending_key {
+        state.stable_ticks += 1;
+    } else {
+        state.pending_key = current_key.clone();
+        state.stable_ticks = 1;
+    }
+
+    if state.stable_ticks < DEBOUNCE_TICKS {
+        // Not yet stable — don't update overlay
+        return info;
+    }
+
+    // Element has been stable for enough ticks — update overlay
+    if let Some(ref driver) = overlay_driver {
+        // Clear previous highlight first
+        if let Some(ref prev_id) = state.last_handle_id {
+            if let Err(e) = driver.clear_highlights(prev_id).await {
+                debug!("focus highlight clear failed: {e}");
+            }
+            state.last_handle_id = None;
+        }
+
+        // Show new highlight if element has valid bounds
+        if let Some(ref fe) = info {
+            if let Some(ref pos) = fe.position {
+                if pos.width > 0.0 && pos.height > 0.0 {
+                    let req = HighlightRequest {
+                        session_id: String::new(),
+                        scene_id: String::new(),
+                        targets: vec![HighlightTarget {
+                            candidate_id: "ax-focus".to_string(),
+                            bbox_abs: ElementBounds {
+                                x: pos.x as i32,
+                                y: pos.y as i32,
+                                width: pos.width as u32,
+                                height: pos.height as u32,
+                            },
+                            color: "#0d9488".to_string(),
+                            label: fe.label.clone(),
+                        }],
+                    };
+                    match driver.show_highlights(req).await {
+                        Ok(handle) => {
+                            state.last_handle_id = Some(handle.handle_id);
+                        }
+                        Err(e) => {
+                            debug!("focus highlight show failed: {e}");
                         }
                     }
                 }
             }
         }
-        state.prev_key = current_key;
     }
+    state.prev_key = current_key;
+    state.pending_key = None;
+    state.stable_ticks = 0;
 
     info
 }
