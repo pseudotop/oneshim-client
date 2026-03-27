@@ -56,8 +56,8 @@ mod inner {
     /// Consecutive COM/UIA failures before the circuit breaker opens.
     static CONSECUTIVE_FAILURES: AtomicU32 = AtomicU32::new(0);
     const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
-    /// After threshold is hit, retry once every N calls.
-    const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 60;
+    /// After threshold is hit, retry once every N calls (~30s at 3s poll).
+    const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 10;
 
     // ── UIA ControlTypeId → role string mapping ──────────────────────
 
@@ -657,7 +657,10 @@ mod inner {
         }
 
         fn record_failure() {
-            CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
+            let prev = CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
+            if prev + 1 == CIRCUIT_BREAKER_THRESHOLD {
+                warn!("WindowsUiaAccessibility: circuit breaker tripped after {CIRCUIT_BREAKER_THRESHOLD} consecutive failures");
+            }
         }
 
         // ── PII level gating (mirrors macOS) ─────────────────────────
