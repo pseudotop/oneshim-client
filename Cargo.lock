@@ -5143,6 +5143,7 @@ dependencies = [
  "chrono",
  "criterion",
  "hdbscan",
+ "lru",
  "oneshim-core",
  "rand 0.10.0",
  "serde",
