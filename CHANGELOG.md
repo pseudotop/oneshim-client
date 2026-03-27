@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5-rc.2] - 2026-03-27
+### Added
+
+- Storybook design system + full component coverage (76 stories) ([#206](https://github.com/pseudotop/oneshim-client/pull/206))
+  * docs: add Storybook & design system completeness spec
+
+  Phase 1 plan: DESIGN.md + TOKENS.md documentation, z-index token
+  scale, expand 5 primitive stories, add 5 domain component stories.
+  Based on design system audit (7.5/10 maturity score).
+
+
+### Changed
+
+- P1 architecture cleanup
+  - Rename settingSections/ → setting-tabs/ (kebab-case consistency)
+  - Rename 3 test files: *_test.rs → remove suffix (Rust convention)
+  - Extract Settings.tsx utils to settings-utils.ts (-57 lines)
+  - Extract AiAutomationTab.tsx utils to ai-automation-utils.ts (-147 lines)
+
+- P2 architecture — split gui_interaction/service.rs + docs README
+  - Extract confirm/prepare/complete execution methods (349 lines)
+    from service.rs into service_execution.rs
+    service.rs: 796 → 438 lines, service_execution.rs: 374 lines
+  - Add docs/superpowers/README.md with spec lifecycle conventions
+  - integration.rs (798 lines) found to be 134 handler + 663 test —
+    no split needed (Rust convention)
+
+- React.memo overlay components, URL logging, dep policy
+
+
+## [Unreleased]
+
 ## [0.4.5-rc.1] - 2026-03-27
 ### Fixed
 
