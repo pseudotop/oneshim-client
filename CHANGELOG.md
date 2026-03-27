@@ -7,6 +7,149 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-03-27
+### Added
+
+- Extend OverlayDriver port with detection methods
+  Add show_detection/clear_detection to OverlayDriver trait and all 7
+  implementations (MagicOverlayDriver, PlatformOverlayDriver,
+  NoOpOverlayDriver, and 4 test mocks).
+
+- Add Rust infrastructure for detection overlay
+  - AutomationController: add scene_finder() public accessor
+  - AppState + Scheduler: add detection_active Arc<AtomicBool> flag
+  - MagicOverlayHandle: add emit_detection_scene/clear_detection_scene
+    with DetectionScenePayload/DetectionElementPayload types
+  - Wire detection_active through AgentRuntime builder
+
+- Add IPC commands, shortcuts, and monitor re-analysis
+  - commands/detection.rs: toggle_detection_overlay, refresh_detection_overlay
+  - setup.rs: Cmd+Shift+D (toggle) and Cmd+Shift+R (refresh) shortcuts
+  - monitor.rs: re-analyze scene on window change when detection active
+  - Extract detection + focus highlight logic into detection_helper.rs
+    (monitor.rs 580→495 lines, under 500-line guardrail)
+
+- Add detection overlay components
+  - types.ts: DetectionScenePayload, DetectionElementPayload types
+  - useOverlayEvents.ts: detection-update/clear/select events + reducer
+    with FocusHighlight mutual exclusion
+  - DetectionOverlay.tsx: role-colored element boxes + inspector tooltip
+  - DetectionHeader.tsx: top header bar with element count + controls
+  - App.tsx: wire detection components into overlay
+
+- Add LLM-based WorkType classification refinement
+  - Add Hash derive to WorkType for cache key usage
+  - Add lru dependency to oneshim-analysis
+  - LlmWorkTypeRefiner: async AnalysisProvider-backed classifier with
+    LRU cache (64 entries, 5min TTL), 0.7 confidence threshold,
+    background prefetch for zero-latency critical path
+  - Wire into analysis pipeline as step 4d after accessibility refinement
+  - Falls back to rule-based when LLM unavailable or low confidence
+
+- Integrate rectangle detection into element finder pipeline
+  - Enable native-vision feature by default in oneshim-vision
+  - OcrElementFinder: add optional RectangleDetector field + builder
+  - analyze_scene_from_image_data: run rectangle detection in
+    spawn_blocking, merge non-overlapping results (IoU < 0.2) as
+    "region" elements into UiScene
+  - Wire LatestFrameOcrElementFinder with platform detector
+  - Forward native-vision feature from src-tauri to oneshim-vision
+
+- Add message search, file attachments, tool use cards
+  - Message search: inline search bar with match highlighting + dimming
+    of non-matching messages, Escape to close, match count display
+  - File attachments: paperclip button + HTML file input, FileReader
+    base64 encoding, attachment chips with image thumbnails, markdown
+    embedding on send
+  - Tool use cards: expandable Card with JSON input details + result
+    output, Loader2 spinner during execution, status color coding
+
+- Wire native OCR into provider pipeline
+  Replace all LocalOcrProvider (Tesseract) usage with best_local_ocr_provider()
+  that prefers macOS Vision.framework / Windows WinRT native OCR when
+  native-vision feature is enabled, falling back to Tesseract.
+
+  - ocr_resolver.rs: add best_local_ocr_provider() priority selector
+  - mod.rs, surface.rs: use new selector instead of hardcoded Tesseract
+
+  Rectangle detector was already wired from PR #192.
+
+
+### Changed
+
+- Add native detection overlay spec
+  Design document for WebView-based GUI element detection visualization
+  on the MagicOverlay. Covers: on-demand activation (Cmd+Shift+D),
+  UiScene rendering with role-colored bounding boxes, click-to-inspect
+  tooltips, async analysis pipeline, and FocusHighlight mutual exclusion.
+
+- Add native detection overlay implementation plan
+  12-task plan covering: port extension, state wiring, IPC commands,
+  global shortcuts, monitor loop re-analysis, frontend types/events,
+  DetectionOverlay + DetectionHeader components, and App integration.
+
+- Add LLM WorkType classifier spec
+
+- Add LLM WorkType classifier implementation plan
+  7-task plan: Hash derive, lru dep, LlmWorkTypeRefiner struct with
+  cache + background prefetch, lib.rs export, AdaptiveTriggerState
+  field, pipeline step 4d, agent_runtime wiring.
+
+- Add Core ML segmentation spec
+  Infrastructure + Apple Vision VNDetectRectanglesRequest for rectangle
+  detection. RectangleDetector port trait, macOS FFI adapter, merge
+  strategy with existing OCR elements (IoU-based), native-vision feature
+  flag. Custom model training deferred — trait system supports plug-in.
+
+- Add Core ML segmentation implementation plan
+  5-task plan: RectangleDetector port, native-vision feature flag,
+  macOS VNDetectRectanglesRequest FFI, IoU-based merge into ElementFinder,
+  automation_runtime wiring.
+
+- Add chat improvements spec
+  Three features: message search (filter+highlight), file attachments
+  (HTML file input + base64 + markdown embedding), interactive tool use
+  cards (expandable input/result). All frontend-only changes to Chat.tsx.
+
+- Add SSE reconnection, Tauri capabilities, and bounded collections guides
+  Close integration review gaps C-3, I-3, I-4:
+  - SSE reconnection strategy: connection lifecycle, retry behavior, debugging
+  - Tauri capability permissions: per-window allowlists and security model
+  - Bounded collection policy: added to CONTRIBUTING.md with 11 codebase examples
+
+
+### Fixed
+
+- Log when LLM WorkType refiner is disabled
+  Add info-level log message listing required config conditions
+  when llm_work_type_refiner is None, aiding debugging of silent
+  classification fallback.
+
+- Improve ARIA accessibility and IPC error logging
+
+- Address review — orphaned <li>, missed catches, aria-valuemin
+  - SuggestionsPanel: wrap suggestion items in <ul> for valid HTML
+  - Chat.tsx: add logging to 2 remaining silent list_ai_sessions catches
+  - DetectionOverlay: add .catch() to Escape key handler promise chain
+  - GoalProgressBar: add aria-valuemin={0} for ARIA completeness
+
+- Replace all remaining silent catch blocks with logging
+  17 silent catch blocks across 7 files:
+  - tracking-panel: 6 (startDragging, capture/connection status, position)
+  - SuggestionBanner: 4 (fetch + feedback calls)
+  - PomodoroTimer: 2 (complete + fetch)
+  - CoachingPopup: 5 (dismiss/feedback call sites)
+  - api-base.ts: 2 (web_port fallback)
+  - useKeyboardShortcuts: 1 (window.hide)
+  - App.tsx: 1 (onboarding status)
+
+  Non-critical calls use console.debug, others use console.warn.
+  Zero remaining silent catches in frontend (api/client.ts has proper
+  JSON parse fallbacks with return values — not silent).
+
+- Config fallback, chat message cap, scheduler startup logging
+
+
 ## [0.4.4-rc.5] - 2026-03-27
 ### Added
 
