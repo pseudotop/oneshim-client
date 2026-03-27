@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5-rc.3] - 2026-03-27
+### Added
+
+- E2E pipeline resilience — 4 high-priority gap fixes ([#208](https://github.com/pseudotop/oneshim-client/pull/208))
+  * docs: add Storybook & design system completeness spec
+
+  Phase 1 plan: DESIGN.md + TOKENS.md documentation, z-index token
+  scale, expand 5 primitive stories, add 5 domain component stories.
+  Based on design system audit (7.5/10 maturity score).
+
+
+## [Unreleased]
+
 ## [0.4.5-rc.2] - 2026-03-27
 ### Added
 
