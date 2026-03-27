@@ -12,7 +12,7 @@ use oneshim_core::provider_surface::ProviderSurfaceTransport;
 #[cfg(feature = "server")]
 use oneshim_network::ai_ocr_client::RemoteOcrProvider;
 use oneshim_vision::local_ocr_provider::LocalOcrProvider;
-use tracing::warn;
+use tracing::{info, warn};
 
 use oneshim_api_contracts::provider_specs::SurfaceCapabilityKind;
 
@@ -32,6 +32,25 @@ use crate::subprocess_provider::{
     cli_id_for_surface_id, probe_for_surface_id, select_cli_surface_for_capability,
     ProbedSubprocessCli, SubprocessCliAuthStatus, SubprocessOcrProvider,
 };
+
+/// Create the best available local OCR provider.
+///
+/// When the `native-vision` feature is enabled, attempts to use platform-native
+/// OCR (macOS Vision.framework / Windows WinRT Media.Ocr) first. Falls back to
+/// Tesseract-based `LocalOcrProvider` when native OCR is unavailable.
+pub(super) fn best_local_ocr_provider() -> Arc<dyn OcrProvider> {
+    #[cfg(feature = "native-vision")]
+    {
+        if let Some(native) = oneshim_vision::native_ocr::create_native_ocr() {
+            info!(
+                provider = native.provider_name(),
+                "Using platform-native OCR provider"
+            );
+            return native;
+        }
+    }
+    Arc::new(LocalOcrProvider::new())
+}
 
 pub(super) fn resolve_cli_subscription_ocr_provider(
     config: &AiProviderConfig,
@@ -72,7 +91,7 @@ pub(super) fn resolve_cli_subscription_ocr_provider(
                         "CLI OCR runtime unavailable, falling back to local OCR"
                     );
                     return Ok((
-                        Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+                        best_local_ocr_provider(),
                         ProviderSource::LocalFallback,
                         Some(reason),
                     ));
@@ -85,11 +104,7 @@ pub(super) fn resolve_cli_subscription_ocr_provider(
     }
 
     match config.ocr_provider {
-        OcrProviderType::Local => Ok((
-            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
-            ProviderSource::Local,
-            None,
-        )),
+        OcrProviderType::Local => Ok((best_local_ocr_provider(), ProviderSource::Local, None)),
         OcrProviderType::Remote => resolve_ocr_provider(
             config,
             pii_filter_level,
@@ -107,11 +122,7 @@ pub(super) fn resolve_ocr_provider(
     secret_stores: Option<SecretStoreSet>,
 ) -> OcrProviderResolution {
     match config.ocr_provider {
-        OcrProviderType::Local => Ok((
-            Arc::new(LocalOcrProvider::new()),
-            ProviderSource::Local,
-            None,
-        )),
+        OcrProviderType::Local => Ok((best_local_ocr_provider(), ProviderSource::Local, None)),
         OcrProviderType::Remote => {
             if let Some((surface_id, transport)) = configured_ocr_surface_transport(config) {
                 if transport != ProviderSurfaceTransport::DirectApi {
@@ -151,7 +162,7 @@ pub(super) fn resolve_ocr_provider(
                             config.ocr_validation.clone(),
                         )) as Arc<dyn OcrProvider>)
                     },
-                    || Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+                    || best_local_ocr_provider(),
                 )
             }
             #[cfg(not(feature = "server"))]

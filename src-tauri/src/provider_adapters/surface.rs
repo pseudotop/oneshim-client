@@ -1,16 +1,12 @@
-use std::sync::Arc;
-
 #[cfg(feature = "server")]
 use oneshim_core::config::LlmProviderType;
 use oneshim_core::config::{AiProviderConfig, PiiFilterLevel};
 use oneshim_core::error::CoreError;
-use oneshim_core::ports::ocr_provider::OcrProvider;
 use oneshim_core::ports::secret_store::SecretStoreSet;
 use oneshim_core::provider_surface::{provider_surface_spec, ProviderSurfaceTransport};
-use oneshim_vision::local_ocr_provider::LocalOcrProvider;
 use tracing::warn;
 
-use super::ocr_resolver::resolve_ocr_provider;
+use super::ocr_resolver::{best_local_ocr_provider, resolve_ocr_provider};
 use super::types::{
     AiProviderAdapters, ExternalOcrPrivacyGuard, OcrProviderResolution, ProviderSource,
 };
@@ -98,7 +94,7 @@ pub(super) fn unsupported_ocr_surface_runtime(
             "OCR runtime unavailable for selected provider surface, falling back to local OCR"
         );
         return Ok((
-            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+            best_local_ocr_provider(),
             ProviderSource::LocalFallback,
             Some(reason),
         ));
