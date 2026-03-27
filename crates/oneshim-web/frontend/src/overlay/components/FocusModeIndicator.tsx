@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -5,7 +6,7 @@ interface FocusModeIndicatorProps {
   active: boolean
 }
 
-export function FocusModeIndicator({ active }: FocusModeIndicatorProps) {
+export const FocusModeIndicator = memo(function FocusModeIndicator({ active }: FocusModeIndicatorProps) {
   if (!active) return null
 
   return (
@@ -21,4 +22,4 @@ export function FocusModeIndicator({ active }: FocusModeIndicatorProps) {
       </div>
     </div>
   )
-}
+})

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from '../../styles/tokens'
 import type { GoalProgressItem } from '../types'
 
@@ -5,7 +6,7 @@ interface GoalProgressBarProps {
   goals: GoalProgressItem[]
 }
 
-export default function GoalProgressBar({ goals }: GoalProgressBarProps) {
+export default memo(function GoalProgressBar({ goals }: GoalProgressBarProps) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40">
       {/* No per-element cursor passthrough — overlay interactivity is toggled
@@ -40,4 +41,4 @@ export default function GoalProgressBar({ goals }: GoalProgressBarProps) {
       </div>
     </div>
   )
-}
+})

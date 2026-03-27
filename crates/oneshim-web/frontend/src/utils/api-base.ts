@@ -56,7 +56,10 @@ export async function resolveWebPort(): Promise<number> {
   if (!webPortPromise) {
     webPortPromise = import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke<number>('get_web_port'))
-      .then(setResolvedPort)
+      .then((port) => {
+        console.debug(`web port resolved: ${port}`)
+        return setResolvedPort(port)
+      })
       .catch((e) => {
         console.debug('get_web_port failed, using fallback port:', e)
         webPortPromise = null
