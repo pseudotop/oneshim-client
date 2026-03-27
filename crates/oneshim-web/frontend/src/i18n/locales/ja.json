@@ -397,7 +397,15 @@
     "low": "低",
     "high": "高",
     "loadError": "データの読み込みに失敗しました",
-    "days": ["月", "火", "水", "木", "金", "土", "日"],
+    "days": [
+      "月",
+      "火",
+      "水",
+      "木",
+      "金",
+      "土",
+      "日"
+    ],
     "activity": "アクティビティ"
   },
   "dateRange": {
@@ -1012,5 +1020,39 @@
       "ContextRestore": "コンテキスト復元",
       "GoalTracker": "目標トラッカー"
     }
+  },
+  "onboarding": {
+    "step1Title": "ONESHIMへようこそ",
+    "step1Desc": "ONESHIMはデスクトップのアクティビティを監視し、生産性向上のためのインテリジェントな提案を提供します。",
+    "step2Title": "権限",
+    "step2Desc": "ONESHIMが正しく動作するにはいくつかの権限が必要です。",
+    "step2Accessibility": "アクセシビリティ",
+    "step2ScreenCapture": "スクリーンキャプチャ",
+    "step2Notifications": "通知",
+    "step3Title": "機能",
+    "step3Desc": "ONESHIMでできることをご紹介します。",
+    "step3Capture": "リアルタイムコンテキストキャプチャ",
+    "step3Analysis": "AI駆動の分析",
+    "step3Suggestions": "スマートな提案",
+    "step4Title": "準備完了",
+    "step4Desc": "設定が完了しました。今すぐONESHIMを使い始めましょう。",
+    "next": "次へ",
+    "back": "戻る",
+    "skip": "スキップ",
+    "complete": "始める"
+  },
+  "chat": {
+    "title": "AIセッション",
+    "no_sessions": "セッションなし",
+    "create_hint": "トランスポートを選択し、サイドバーの + を押してください。",
+    "create_session": "チャットを開始するにはセッションを作成してください",
+    "input_placeholder": "メッセージを入力...",
+    "thinking": "考え中...",
+    "retry": "再試行",
+    "turns": "ターン",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "advanced": "詳細設定",
+    "system_prompt_placeholder": "システムプロンプト（任意）"
   }
 }

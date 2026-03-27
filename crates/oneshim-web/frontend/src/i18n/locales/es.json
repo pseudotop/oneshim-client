@@ -397,7 +397,15 @@
     "low": "Bajo",
     "high": "Alto",
     "loadError": "Error al cargar los datos",
-    "days": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+    "days": [
+      "Lun",
+      "Mar",
+      "Mié",
+      "Jue",
+      "Vie",
+      "Sáb",
+      "Dom"
+    ],
     "activity": "Actividad"
   },
   "dateRange": {
@@ -1012,5 +1020,39 @@
       "ContextRestore": "Restauración de contexto",
       "GoalTracker": "Seguimiento de objetivos"
     }
+  },
+  "onboarding": {
+    "step1Title": "Bienvenido a ONESHIM",
+    "step1Desc": "ONESHIM monitorea la actividad de su escritorio y ofrece sugerencias inteligentes para aumentar la productividad.",
+    "step2Title": "Permisos",
+    "step2Desc": "ONESHIM necesita algunos permisos para funcionar correctamente.",
+    "step2Accessibility": "Accesibilidad",
+    "step2ScreenCapture": "Captura de pantalla",
+    "step2Notifications": "Notificaciones",
+    "step3Title": "Funciones",
+    "step3Desc": "Esto es lo que ONESHIM puede hacer por usted.",
+    "step3Capture": "Captura de contexto en tiempo real",
+    "step3Analysis": "Analisis impulsado por IA",
+    "step3Suggestions": "Sugerencias inteligentes",
+    "step4Title": "Listo para empezar",
+    "step4Desc": "Todo esta configurado. Comience a usar ONESHIM ahora.",
+    "next": "Siguiente",
+    "back": "Atras",
+    "skip": "Omitir",
+    "complete": "Comenzar"
+  },
+  "chat": {
+    "title": "Sesiones de IA",
+    "no_sessions": "Sin sesiones",
+    "create_hint": "Seleccione un transporte y presione + en la barra lateral.",
+    "create_session": "Cree una sesion para comenzar a chatear",
+    "input_placeholder": "Escriba un mensaje...",
+    "thinking": "Pensando...",
+    "retry": "Reintentar",
+    "turns": "turnos",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "advanced": "Avanzado",
+    "system_prompt_placeholder": "Indicacion del sistema (opcional)"
   }
 }
