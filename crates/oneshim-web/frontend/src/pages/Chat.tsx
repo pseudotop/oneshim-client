@@ -6,12 +6,15 @@ import {
   Copy,
   Loader2,
   MessageSquarePlus,
+  Paperclip,
   Plus,
   RefreshCw,
+  Search,
   Send,
   Trash2,
   User,
   Wrench,
+  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -96,7 +99,7 @@ interface ChatMessage {
   content: string
   timestamp: string
   streaming?: boolean
-  tool_use?: { tool: string; status: string }
+  tool_use?: { tool: string; status: string; input?: Record<string, unknown>; result?: string }
   usage?: { input_tokens: number; output_tokens: number }
   error?: { code: string; message: string; retryable: boolean }
 }
@@ -146,6 +149,28 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+/* ---- Highlight helper ---- */
+
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  const parts = text.split(regex)
+  let offset = 0
+  return parts.map((part) => {
+    const key = `hl-${offset}`
+    offset += part.length
+    if (regex.test(part)) {
+      return (
+        <mark key={key} className="rounded bg-yellow-300/40">
+          {part}
+        </mark>
+      )
+    }
+    return <span key={key}>{part}</span>
+  })
+}
+
 /* ---- Chat page ---- */
 
 export default function Chat() {
@@ -159,9 +184,13 @@ export default function Chat() {
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const isNearBottom = useRef(true)
   const messagesCache = useRef<Map<string, ChatMessage[]>>(new Map())
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Smart auto-scroll: only scroll when user is near bottom
   const handleScroll = useCallback(() => {
@@ -204,7 +233,12 @@ export default function Chat() {
                 role: 'system',
                 content: `Tool: ${p.tool} [${p.status}]`,
                 timestamp: now(),
-                tool_use: { tool: p.tool, status: p.status },
+                tool_use: {
+                  tool: p.tool,
+                  status: p.status,
+                  input: p.input as Record<string, unknown> | undefined,
+                  result: p.result,
+                },
               },
             ]
           if (p.type === 'error')
@@ -284,10 +318,37 @@ export default function Chat() {
     [activeId],
   )
 
+  const searchMatchCount = useMemo(() => {
+    if (!searchQuery) return 0
+    const q = searchQuery.toLowerCase()
+    return messages.filter((m) => m.content.toLowerCase().includes(q)).length
+  }, [messages, searchQuery])
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+    for (const file of Array.from(files)) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        setAttachments((prev) => [...prev, { name: file.name, type: file.type, data: reader.result as string }])
+      }
+      reader.readAsDataURL(file)
+    }
+    e.target.value = ''
+  }, [])
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || !activeId || sending) return
-    const text = input.trim()
+    let text = input.trim()
+    // Prepend attachments as markdown
+    if (attachments.length > 0) {
+      const parts = attachments.map((a) =>
+        a.type.startsWith('image/') ? `![${a.name}](${a.data})` : `[Attachment: ${a.name}]`,
+      )
+      text = `${parts.join('\n')}\n${text}`
+    }
     setInput('')
+    setAttachments([])
     // Reset textarea height after clearing input
     const ta = document.querySelector<HTMLTextAreaElement>('form textarea')
     if (ta) ta.style.height = 'auto'
@@ -298,7 +359,7 @@ export default function Chat() {
     } catch {
       setSending(false)
     }
-  }, [input, activeId, sending])
+  }, [input, activeId, sending, attachments])
 
   const handleRetry = useCallback(async () => {
     if (!activeId) return
@@ -434,29 +495,108 @@ export default function Chat() {
                 {active?.model || active?.provider_name || 'Session'}
               </span>
               <span className={cn('text-[10px]', colors.text.secondary)}>({active?.transport})</span>
-              {active?.state === 'failed' && (
-                <Button variant="ghost" size="sm" onClick={handleRetry} className="ml-auto text-xs">
-                  <RefreshCw className={iconSize.xs} /> {t('chat.retry')}
+              <div className="ml-auto flex items-center gap-1">
+                {searchOpen && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setSearchQuery('')
+                          setSearchOpen(false)
+                        }
+                      }}
+                      placeholder="Search messages..."
+                      className={cn(
+                        'w-40 border bg-surface-base px-2 py-1 text-xs placeholder-content-tertiary',
+                        radius.md,
+                        interaction.focusRing,
+                        colors.text.primary,
+                        'border-DEFAULT focus:border-brand-signal',
+                      )}
+                    />
+                    {searchQuery && (
+                      <span className={cn('whitespace-nowrap text-[10px]', colors.text.secondary)}>
+                        {searchMatchCount} {searchMatchCount === 1 ? 'match' : 'matches'}
+                      </span>
+                    )}
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearchOpen((p) => !p)
+                    if (searchOpen) setSearchQuery('')
+                  }}
+                >
+                  <Search className={iconSize.xs} />
                 </Button>
-              )}
+                {active?.state === 'failed' && (
+                  <Button variant="ghost" size="sm" onClick={handleRetry} className="text-xs">
+                    <RefreshCw className={iconSize.xs} /> {t('chat.retry')}
+                  </Button>
+                )}
+              </div>
             </div>
             <div ref={scrollRef} onScroll={handleScroll} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-              {messages.map((msg) => (
-                <Bubble key={`${msg.timestamp}-${msg.role}`} msg={msg} onRetry={handleRetry} />
-              ))}
+              {messages.map((msg) => {
+                const matches = searchQuery && msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+                const dimmed = searchQuery && !matches
+                return (
+                  <div
+                    key={`${msg.timestamp}-${msg.role}`}
+                    className={cn(dimmed && 'opacity-30', 'transition-opacity')}
+                  >
+                    <Bubble msg={msg} onRetry={handleRetry} highlight={matches ? searchQuery : undefined} />
+                  </div>
+                )
+              })}
               {sending && messages[messages.length - 1]?.role !== 'assistant' && (
                 <div className="flex items-center gap-2 text-content-secondary text-xs">
                   <Loader2 className={cn(iconSize.sm, 'animate-spin')} /> {t('chat.thinking')}
                 </div>
               )}
             </div>
+            {/* Attachment chips */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 border-muted border-t bg-surface-base px-4 pt-2">
+                {attachments.map((a) => (
+                  <div
+                    key={`${a.name}-${a.data.slice(-16)}`}
+                    className="flex items-center gap-1 rounded-full bg-surface-elevated px-2 py-0.5"
+                  >
+                    {a.type.startsWith('image/') && (
+                      <img src={a.data} alt={a.name} className="h-5 w-5 rounded object-cover" />
+                    )}
+                    <span className={cn('max-w-[120px] truncate text-[10px]', colors.text.primary)}>{a.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachments((prev) => prev.filter((x) => x !== a))}
+                      className="text-content-muted hover:text-semantic-error"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault()
                 handleSend()
               }}
-              className="flex items-end gap-2 border-muted border-t bg-surface-base px-4 py-3"
+              className={cn(
+                'flex items-end gap-2 border-muted border-t bg-surface-base px-4 py-3',
+                attachments.length > 0 && 'border-t-0 pt-1.5',
+              )}
             >
+              <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
+              <Button variant="ghost" size="sm" type="button" onClick={() => fileInputRef.current?.click()}>
+                <Paperclip className={iconSize.sm} />
+              </Button>
               <textarea
                 value={input}
                 onChange={handleInputChange}
@@ -491,7 +631,7 @@ export default function Chat() {
 
 /* ---- Message bubble ---- */
 
-function Bubble({ msg, onRetry }: { msg: ChatMessage; onRetry: () => void }) {
+function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => void; highlight?: string }) {
   const { t } = useTranslation()
 
   // Memoize markdown components to capture msg.streaming in closure
@@ -588,11 +728,35 @@ function Bubble({ msg, onRetry }: { msg: ChatMessage; onRetry: () => void }) {
           ? 'bg-semantic-error/20 text-semantic-error'
           : 'bg-surface-elevated text-content-secondary'
     return (
-      <div className="flex items-center gap-2 px-2 text-content-secondary text-xs">
-        <Wrench className={iconSize.xs} />
-        <span>{msg.tool_use.tool}</span>
-        <span className={cn('rounded px-1.5 py-0.5 text-[10px]', statusCls)}>{msg.tool_use.status}</span>
-      </div>
+      <Card variant="default" padding="sm" className="border-border/50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {msg.tool_use.status === 'started' ? (
+              <Loader2 className={cn(iconSize.xs, 'animate-spin text-content-secondary')} />
+            ) : (
+              <Wrench className={iconSize.xs} />
+            )}
+            <span className="font-medium text-xs">{msg.tool_use.tool}</span>
+          </div>
+          <span className={cn('rounded px-1.5 py-0.5 text-[10px]', statusCls)}>{msg.tool_use.status}</span>
+        </div>
+        {msg.tool_use.input && (
+          <details className="mt-1">
+            <summary className="cursor-pointer text-content-secondary text-xs">Input</summary>
+            <pre className="mt-1 overflow-x-auto rounded bg-surface-sunken p-2 text-[10px]">
+              {JSON.stringify(msg.tool_use.input, null, 2)}
+            </pre>
+          </details>
+        )}
+        {msg.tool_use.result && (
+          <details open className="mt-1">
+            <summary className="cursor-pointer text-content-secondary text-xs">Result</summary>
+            <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 text-[10px]">
+              {msg.tool_use.result}
+            </pre>
+          </details>
+        )}
+      </Card>
     )
   }
 
@@ -612,7 +776,9 @@ function Bubble({ msg, onRetry }: { msg: ChatMessage; onRetry: () => void }) {
         )}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+          <p className="whitespace-pre-wrap break-words">
+            {highlight ? highlightText(msg.content, highlight) : msg.content}
+          </p>
         ) : (
           <div className="prose-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
