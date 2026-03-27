@@ -492,6 +492,45 @@ When proposing a feature, explain it from the Hexagonal Architecture perspective
 - Which crate the adapter should live in
 - Impact on existing cross-crate dependency relationships
 
+### Bounded Collection Policy
+
+All runtime-growing collections MUST have a bounded capacity. Unbounded
+collections that grow proportionally to user activity will eventually
+exhaust memory in a long-running desktop agent.
+
+**Required patterns:**
+
+| Collection type | Bounded pattern | When to use |
+|-----------------|----------------|-------------|
+| `LruCache` | Explicit `NonZeroUsize` capacity | Caches with key-based eviction |
+| `VecDeque` | `with_capacity(N)` + pop on overflow | FIFO buffers, ring buffers |
+| `BTreeSet` | Check `len() >= max_size` before insert | Priority queues with eviction |
+| `Map` (frontend) | Check `.size > MAX` and delete oldest | Session caches in React refs |
+
+**Never** use unbounded `Vec`, `HashMap`, or `Map` that grows with user
+activity without a capacity check.
+
+**Examples from the codebase:**
+
+| Location | Type | Capacity | Eviction |
+|----------|------|----------|----------|
+| `LlmWorkTypeRefiner` (oneshim-analysis) | `LruCache` | 64 entries | LRU + 5min TTL |
+| `SuggestionQueue` (oneshim-suggestion) | `BTreeSet` | `max_size` param (default 50) | Lowest-priority evicted |
+| `CaptureRingBuffer` (oneshim-vision) | `VecDeque` | 6 slots | Circular overwrite |
+| `AuditLogger` (oneshim-automation) | `VecDeque` | `max_buffer_size` param | `pop_front` on overflow |
+| `InputActivityCollector` (oneshim-monitor) | `VecDeque` | 16 shortcuts | Capacity-bounded |
+| `SegmentBuffer` (oneshim-analysis) | `VecDeque` | Constructor `capacity` param | `pop_front` on overflow |
+| `ThumbnailCache` (oneshim-vision) | `LruCache` | 100 entries | LRU eviction |
+| `SuggestionManager` (src-tauri) | `LruCache` | 512 read IDs | LRU eviction |
+| `messagesCache` (frontend Chat) | `Map` | 20 sessions | Delete oldest key |
+| `metricsHistory` (frontend useSSE) | Array | 60 entries | `slice(1)` shift |
+| `BatchUploader` (oneshim-network) | `SegQueue` | 10,000 items | Reject on overflow |
+
+**Code review checklist item:** Any new `Vec::new()`, `HashMap::new()`,
+`BTreeMap::new()`, or `new Map()` in a path that executes repeatedly (loop,
+event handler, periodic task) must have a documented capacity bound or an
+explanation of why it is safe (e.g., bounded by a fixed enum variant count).
+
 ## License
 
 By contributing to this project, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE).
