@@ -22,7 +22,7 @@ use super::lan_discovery::{LanDiscovery, LanPeerInfo};
 use super::lan_server::LanPeerServer;
 use super::sync_crypto;
 
-pub(super) use auth::TokenCache;
+use auth::TokenCache;
 
 const PEER_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 

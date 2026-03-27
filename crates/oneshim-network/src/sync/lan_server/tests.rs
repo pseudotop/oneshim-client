@@ -1,7 +1,8 @@
 use super::*;
-
-use super::*;
 use oneshim_core::models::sync::ChangeSetKind;
+use oneshim_core::sync::Hlc;
+
+use crate::sync::{lan_crypto, sync_crypto};
 
 fn test_changeset() -> ChangeSet {
     ChangeSet {
@@ -491,6 +492,180 @@ fn session_store_basics() {
     let token = store.create_session("peer-1");
     assert!(store.validate_token(&token));
     assert!(!store.validate_token("invalid"));
+}
+
+#[tokio::test]
+async fn pull_watermark_filtering() {
+    let passphrase = "wm-filter-pass";
+    let server_id = "dev-wm";
+
+    let mut server = LanPeerServer::new(
+        server_id.to_string(),
+        "WM Filter".to_string(),
+        passphrase.to_string(),
+        "fp".to_string(),
+    );
+    let port = server.start(b"", b"", 0).await.unwrap();
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+
+    let token = authenticate(&client, &base, passphrase, "client-wm", server_id).await;
+
+    // Enqueue 3 changesets with watermarks 100, 200, 300
+    for wm in [100u64, 200, 300] {
+        server.enqueue_outbound(ChangeSet {
+            origin_device_id: server_id.to_string(),
+            origin_device_name: "WM Filter".to_string(),
+            watermark: Hlc {
+                wall_ms: wm,
+                counter: 1,
+                device_id: server_id.to_string(),
+            },
+            segments: vec![serde_json::json!({"wm": wm})],
+            ..Default::default()
+        });
+    }
+
+    // Pull with since_wall_ms=200, since_counter=1 -> only wm=300 returned
+    // (wm=200,counter=1 does NOT pass because counter is not > 1)
+    let resp = client
+        .get(format!(
+            "{base}/sync/pull?since_wall_ms=200&since_counter=1"
+        ))
+        .header("authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let bytes = resp.bytes().await.unwrap();
+    let decrypted = sync_crypto::decrypt(passphrase, &bytes).unwrap();
+    let pulled: Vec<ChangeSet> = serde_json::from_slice(&decrypted).unwrap();
+    assert_eq!(pulled.len(), 1);
+    assert_eq!(pulled[0].watermark.wall_ms, 300);
+
+    // Pull with since_wall_ms=0 -> all 3 returned
+    let resp = client
+        .get(format!("{base}/sync/pull?since_wall_ms=0&since_counter=0"))
+        .header("authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let bytes = resp.bytes().await.unwrap();
+    let decrypted = sync_crypto::decrypt(passphrase, &bytes).unwrap();
+    let pulled: Vec<ChangeSet> = serde_json::from_slice(&decrypted).unwrap();
+    assert_eq!(pulled.len(), 3);
+
+    // Pull with since_wall_ms=300, since_counter=1 -> nothing newer -> 204
+    let resp = client
+        .get(format!(
+            "{base}/sync/pull?since_wall_ms=300&since_counter=1"
+        ))
+        .header("authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    server.stop();
+}
+
+#[tokio::test]
+async fn multiple_changesets_ordering() {
+    let passphrase = "ordering-pass";
+    let server_id = "dev-order";
+
+    let mut server = LanPeerServer::new(
+        server_id.to_string(),
+        "Ordering".to_string(),
+        passphrase.to_string(),
+        "fp".to_string(),
+    );
+    let port = server.start(b"", b"", 0).await.unwrap();
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+
+    let token = authenticate(&client, &base, passphrase, "client-ord", server_id).await;
+
+    // Enqueue 5 changesets with increasing watermarks
+    for wm in [10u64, 20, 30, 40, 50] {
+        server.enqueue_outbound(ChangeSet {
+            origin_device_id: server_id.to_string(),
+            origin_device_name: "Ordering".to_string(),
+            watermark: Hlc {
+                wall_ms: wm,
+                counter: 1,
+                device_id: server_id.to_string(),
+            },
+            segments: vec![serde_json::json!({"wm": wm})],
+            ..Default::default()
+        });
+    }
+
+    // Pull all (since_wall_ms=0)
+    let resp = client
+        .get(format!("{base}/sync/pull?since_wall_ms=0&since_counter=0"))
+        .header("authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let bytes = resp.bytes().await.unwrap();
+    let decrypted = sync_crypto::decrypt(passphrase, &bytes).unwrap();
+    let pulled: Vec<ChangeSet> = serde_json::from_slice(&decrypted).unwrap();
+
+    assert_eq!(pulled.len(), 5);
+    // Verify watermark ascending order
+    let watermarks: Vec<u64> = pulled.iter().map(|cs| cs.watermark.wall_ms).collect();
+    assert_eq!(watermarks, vec![10, 20, 30, 40, 50]);
+}
+
+#[tokio::test]
+async fn server_restart_same_port() {
+    let mut server = LanPeerServer::new(
+        "dev-restart".to_string(),
+        "Restart".to_string(),
+        "pass".to_string(),
+        "fp-restart".to_string(),
+    );
+
+    // Start and record the port
+    let port = server.start(b"", b"", 0).await.unwrap();
+    assert!(server.is_running());
+
+    let client = reqwest::Client::new();
+
+    // Verify it responds
+    let resp = client
+        .get(format!("http://127.0.0.1:{port}/sync/info"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Stop the server
+    server.stop();
+    assert!(!server.is_running());
+
+    // Wait for the port to be released
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Restart on the same port
+    let port2 = server.start(b"", b"", port).await.unwrap();
+    assert_eq!(port2, port);
+    assert!(server.is_running());
+
+    // Verify the restarted server responds
+    let resp = client
+        .get(format!("http://127.0.0.1:{port2}/sync/info"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let info: DeviceInfoResponse = resp.json().await.unwrap();
+    assert_eq!(info.device_id, "dev-restart");
+
+    server.stop();
 }
 
 #[tokio::test]

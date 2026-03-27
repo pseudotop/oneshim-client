@@ -23,18 +23,18 @@ struct CachedToken {
 
 /// Thread-safe cache of per-peer session tokens.
 #[derive(Clone, Default)]
-struct TokenCache {
+pub(super) struct TokenCache {
     /// peer_device_id -> CachedToken
     tokens: Arc<RwLock<HashMap<String, CachedToken>>>,
 }
 
 impl TokenCache {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::default()
     }
 
     /// Get a cached token for a peer, if still valid.
-    fn get(&self, peer_id: &str) -> Option<String> {
+    pub(super) fn get(&self, peer_id: &str) -> Option<String> {
         let tokens = self.tokens.read();
         let entry = tokens.get(peer_id)?;
         if Instant::now().duration_since(entry.obtained_at) < TOKEN_CACHE_TTL {
@@ -45,7 +45,7 @@ impl TokenCache {
     }
 
     /// Store a session token for a peer.
-    fn put(&self, peer_id: &str, token: String) {
+    pub(super) fn put(&self, peer_id: &str, token: String) {
         self.tokens.write().insert(
             peer_id.to_string(),
             CachedToken {
@@ -56,7 +56,7 @@ impl TokenCache {
     }
 
     /// Invalidate a cached token for a peer (e.g., after a 401 response).
-    fn invalidate(&self, peer_id: &str) {
+    pub(super) fn invalidate(&self, peer_id: &str) {
         self.tokens.write().remove(peer_id);
     }
 }
@@ -65,7 +65,7 @@ impl LanSyncTransport {
     /// Authenticate with a peer server via HMAC challenge-response.
     ///
     /// Returns a session token on success.
-    async fn authenticate_with_peer(
+    pub(super) async fn authenticate_with_peer(
         &self,
         peer_id: &str,
         peer: &LanPeerInfo,
@@ -142,7 +142,7 @@ impl LanSyncTransport {
 
     /// Get a valid session token for a peer, using the cache or
     /// performing a fresh challenge-response handshake.
-    async fn get_session_token(
+    pub(super) async fn get_session_token(
         &self,
         peer_id: &str,
         peer: &LanPeerInfo,
@@ -160,7 +160,7 @@ impl LanSyncTransport {
 
     /// Get a session token, with one retry on 401 (token may have expired
     /// on the server side even though our cache thinks it's valid).
-    async fn get_session_token_with_retry(
+    pub(super) async fn get_session_token_with_retry(
         &self,
         peer_id: &str,
         peer: &LanPeerInfo,

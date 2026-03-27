@@ -1,7 +1,8 @@
 use super::*;
-
-use super::*;
 use oneshim_core::models::sync::ChangeSetKind;
+use oneshim_core::sync::Hlc;
+
+use super::super::lan_discovery::LanPeerInfo;
 
 fn test_changeset() -> ChangeSet {
     ChangeSet {
@@ -329,4 +330,79 @@ async fn token_cache_is_used() {
 
     sender.stop();
     receiver.stop();
+}
+
+#[tokio::test]
+async fn push_to_offline_peer_is_graceful() {
+    let transport = LanSyncTransport::start(
+        "dev-offline-push".to_string(),
+        "Offline Push".to_string(),
+        "pass".to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // Inject a ghost peer at a port where nobody is listening
+    transport.verified_peers.write().insert(
+        "ghost".to_string(),
+        LanPeerInfo {
+            device_id: "ghost".to_string(),
+            device_name: "Ghost".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 19999,
+            fingerprint: "fp-ghost".to_string(),
+            version: "1".to_string(),
+        },
+    );
+
+    // Push should succeed (best-effort fanout, does not fail overall)
+    let cs = test_changeset();
+    let result = transport.push(&cs).await;
+    assert!(result.is_ok());
+
+    transport.stop();
+}
+
+#[tokio::test]
+async fn pull_from_offline_peer_returns_none() {
+    let transport = LanSyncTransport::start(
+        "dev-offline-pull".to_string(),
+        "Offline Pull".to_string(),
+        "pass".to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // Inject a ghost peer at a port where nobody is listening
+    transport.verified_peers.write().insert(
+        "ghost".to_string(),
+        LanPeerInfo {
+            device_id: "ghost".to_string(),
+            device_name: "Ghost".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 19999,
+            fingerprint: "fp-ghost".to_string(),
+            version: "1".to_string(),
+        },
+    );
+
+    // Pull from offline peer: Ok(None) or Err are both acceptable
+    let result = transport.pull(&Hlc::default()).await;
+    match result {
+        Ok(None) => {} // graceful: no data from unreachable peer
+        Err(_) => {}   // also acceptable: connection failed
+        Ok(Some(_)) => panic!("should not get data from offline peer"),
+    }
+
+    transport.stop();
 }

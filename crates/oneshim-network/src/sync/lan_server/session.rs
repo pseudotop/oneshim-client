@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use parking_lot::RwLock;
 use rand::Rng;
 
-const NONCE_TTL: Duration = Duration::from_secs(60);
-const MAX_SESSIONS: usize = 100;
-const MAX_PENDING_NONCES: usize = 200;
+use super::{MAX_PENDING_NONCES, MAX_SESSIONS, NONCE_TTL, SESSION_TTL};
 
 struct PendingNonce {
     nonce_bytes: Vec<u8>,
@@ -24,7 +22,7 @@ struct Session {
 
 /// Thread-safe session store for HMAC challenge-response authentication.
 #[derive(Clone)]
-struct SessionStore {
+pub(super) struct SessionStore {
     /// Pending nonces: nonce_hex -> PendingNonce
     pending: Arc<RwLock<HashMap<String, PendingNonce>>>,
     /// Active sessions: token_hex -> Session
@@ -32,7 +30,7 @@ struct SessionStore {
 }
 
 impl SessionStore {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             pending: Arc::new(RwLock::new(HashMap::new())),
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -40,7 +38,7 @@ impl SessionStore {
     }
 
     /// Generate a random nonce and store it as pending.
-    fn create_nonce(&self, peer_device_id: &str) -> Vec<u8> {
+    pub(super) fn create_nonce(&self, peer_device_id: &str) -> Vec<u8> {
         let mut nonce = vec![0u8; 32];
         rand::rng().fill_bytes(&mut nonce);
         let hex_key = hex::encode(&nonce);
@@ -71,7 +69,7 @@ impl SessionStore {
     }
 
     /// Consume a pending nonce (one-time use). Returns (nonce_bytes, peer_device_id).
-    fn take_nonce(&self, nonce_hex: &str) -> Option<(Vec<u8>, String)> {
+    pub(super) fn take_nonce(&self, nonce_hex: &str) -> Option<(Vec<u8>, String)> {
         let mut pending = self.pending.write();
         let entry = pending.remove(nonce_hex)?;
         // Check expiry
@@ -82,7 +80,7 @@ impl SessionStore {
     }
 
     /// Create a session token for an authenticated peer.
-    fn create_session(&self, peer_device_id: &str) -> String {
+    pub(super) fn create_session(&self, peer_device_id: &str) -> String {
         let mut token = vec![0u8; 32];
         rand::rng().fill_bytes(&mut token);
         let token_hex = hex::encode(&token);
@@ -112,7 +110,7 @@ impl SessionStore {
     }
 
     /// Validate a session token. Returns true if valid and not expired.
-    fn validate_token(&self, token: &str) -> bool {
+    pub(super) fn validate_token(&self, token: &str) -> bool {
         let sessions = self.sessions.read();
         match sessions.get(token) {
             Some(session) => Instant::now().duration_since(session.created_at) < SESSION_TTL,
