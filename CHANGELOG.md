@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6-rc.2] - 2026-03-28
+### Fixed
+
+- UI/UX audit — normalize tokens, optimize perf, harden a11y ([#230](https://github.com/pseudotop/oneshim-client/pull/230))
+  * fix(frontend): normalize design tokens, optimize chart perf, harden a11y
+
+  Replace hardcoded hex colors in 10+ components with design token imports
+  (chart.tooltipStyle, dataViz, palette). Add chart token to tokens.ts for
+  Recharts tooltip/axis/grid theming via CSS custom properties. Remove
+  manual theme branching from MetricsChart, StatisticsPanel, Focus, Reports.
+
+
+## [Unreleased]
+
 ## [0.4.6-rc.1] - 2026-03-28
 ### Changed
 
