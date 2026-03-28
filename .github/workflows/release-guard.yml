@@ -21,13 +21,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          RELEASE_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}")"
+          export RELEASE_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}")"
 
-          python3 - <<'PY' <<<"${RELEASE_JSON}"
+          python3 - <<'PY' > release_guard.out
           import json
           import os
 
-          release = json.load(__import__("sys").stdin)
+          release = json.loads(os.environ["RELEASE_JSON"])
           tag = os.environ["TAG_NAME"]
           author = (release.get("author") or {}).get("login")
           expected_prerelease = "-" in tag
@@ -54,7 +54,7 @@ jobs:
           print(f"asset_count={asset_count}")
           for reason in reasons:
               print(reason)
-          PY > release_guard.out
+          PY
 
           cat release_guard.out
           awk -F= '/^valid=/{print "valid="$2}' release_guard.out >> "$GITHUB_OUTPUT"

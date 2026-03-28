@@ -117,7 +117,7 @@ mod inner {
         ///
         /// The listener connects to AT-SPI, registers for `ObjectEvents`,
         /// and filters the event stream for `StateChangedEvent` with
-        /// state == "focused" and enabled == 1. Each matching event
+        /// state == Focused and enabled == true. Each matching event
         /// updates the shared `last_focused` cache.
         ///
         /// The task runs until the returned handle (and all its clones) are
@@ -145,6 +145,7 @@ mod inner {
 
             tokio::spawn(async move {
                 use atspi::events::object::StateChangedEvent;
+                use atspi_common::State;
                 use futures::StreamExt;
 
                 let stream = conn.event_stream();
@@ -168,13 +169,13 @@ mod inner {
                                 Some(Ok(event)) => {
                                     // Try to convert to StateChangedEvent
                                     if let Ok(state_change) = StateChangedEvent::try_from(event) {
-                                        if state_change.state() == "focused"
-                                            && state_change.enabled() == 1
+                                        if state_change.state == State::Focused
+                                            && state_change.enabled
                                         {
-                                            let item = state_change.item();
+                                            let item = &state_change.item;
                                             let info = FocusedObjectInfo {
-                                                bus_name: item.name.to_string(),
-                                                object_path: item.path.to_string(),
+                                                bus_name: item.name_as_str().unwrap_or("").to_string(),
+                                                object_path: item.path_as_str().to_string(),
                                             };
                                             debug!(
                                                 bus = %info.bus_name,
@@ -370,18 +371,22 @@ mod inner {
                     // child_ref has .name() (bus destination) and .path()
                     // (D-Bus object path). Use .ok() chaining since we
                     // are not in a Result-returning fn.
-                    let child_proxy =
-                        match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
-                            .destination(child_ref.name())
-                            .ok()
-                            .and_then(|b| b.path(child_ref.path()).ok())
-                        {
-                            Some(builder) => match builder.build().await {
-                                Ok(p) => p,
-                                Err(_) => continue, // Skip inaccessible children
-                            },
-                            None => continue, // Skip if dest/path invalid
-                        };
+                    let child_proxy = match child_ref
+                        .name()
+                        .cloned()
+                        .and_then(|n| {
+                            atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                                .destination(n)
+                                .ok()
+                        })
+                        .and_then(|b| b.path(child_ref.path()).ok())
+                    {
+                        Some(builder) => match builder.build().await {
+                            Ok(p) => p,
+                            Err(_) => continue, // Skip inaccessible children
+                        },
+                        None => continue, // Skip if dest/path invalid
+                    };
 
                     let child_elements = Box::pin(Self::traverse_tree(
                         conn,
@@ -459,15 +464,22 @@ mod inner {
 
             for app_ref in &apps {
                 // Build AccessibleProxy for the application
-                let app_proxy =
-                    atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
-                        .destination(app_ref.name())
-                        .ok()?
-                        .path(app_ref.path())
-                        .ok()?
-                        .build()
-                        .await
-                        .ok()?;
+                let app_proxy = app_ref
+                    .name()
+                    .cloned()
+                    .and_then(|n| {
+                        atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                            .destination(n)
+                            .ok()
+                    })
+                    .and_then(|b| b.path(app_ref.path()).ok());
+                let app_proxy = match app_proxy {
+                    Some(b) => match b.build().await {
+                        Ok(p) => p,
+                        Err(_) => continue,
+                    },
+                    None => continue,
+                };
 
                 let children = match app_proxy.get_children().await {
                     Ok(c) => c,
@@ -476,18 +488,22 @@ mod inner {
 
                 for child_ref in &children {
                     // Build AccessibleProxy for each child (potential frame)
-                    let child_proxy =
-                        match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
-                            .destination(child_ref.name())
-                            .ok()
-                            .and_then(|b| b.path(child_ref.path()).ok())
-                        {
-                            Some(builder) => match builder.build().await {
-                                Ok(p) => p,
-                                Err(_) => continue,
-                            },
-                            None => continue,
-                        };
+                    let child_proxy = match child_ref
+                        .name()
+                        .cloned()
+                        .and_then(|n| {
+                            atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                                .destination(n)
+                                .ok()
+                        })
+                        .and_then(|b| b.path(child_ref.path()).ok())
+                    {
+                        Some(builder) => match builder.build().await {
+                            Ok(p) => p,
+                            Err(_) => continue,
+                        },
+                        None => continue,
+                    };
 
                     // Check if this is a frame/window with Active state
                     let role = match child_proxy.get_role().await {
@@ -536,18 +552,22 @@ mod inner {
             // Walk immediate children (shallow -- O(children) not O(tree))
             let children = window.get_children().await.ok()?;
             for child_ref in &children {
-                let child_proxy =
-                    match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
-                        .destination(child_ref.name())
-                        .ok()
-                        .and_then(|b| b.path(child_ref.path()).ok())
-                    {
-                        Some(builder) => match builder.build().await {
-                            Ok(p) => p,
-                            Err(_) => continue,
-                        },
-                        None => continue,
-                    };
+                let child_proxy = match child_ref
+                    .name()
+                    .cloned()
+                    .and_then(|n| {
+                        atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                            .destination(n)
+                            .ok()
+                    })
+                    .and_then(|b| b.path(child_ref.path()).ok())
+                {
+                    Some(builder) => match builder.build().await {
+                        Ok(p) => p,
+                        Err(_) => continue,
+                    },
+                    None => continue,
+                };
 
                 if let Ok(states) = child_proxy.get_state().await {
                     if states.contains(State::Focused) {
@@ -741,14 +761,6 @@ mod inner {
 #[cfg(target_os = "linux")]
 pub use inner::LinuxAccessibility;
 
-#[cfg(target_os = "linux")]
-#[cfg(feature = "linux-atspi")]
-pub use inner::FocusEventListenerHandle;
-
-#[cfg(target_os = "linux")]
-#[cfg(feature = "linux-atspi")]
-pub use inner::FocusedObjectInfo;
-
 #[cfg(test)]
 #[cfg(target_os = "linux")]
 mod tests {
@@ -757,9 +769,17 @@ mod tests {
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
 
     #[test]
-    fn has_permission_true() {
+    fn has_permission_reflects_dbus_availability() {
         let extractor = LinuxAccessibility::new();
-        assert!(extractor.has_permission());
+        let dbus_available = std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok()
+            || std::env::var("ATSPI_BUS_ADDRESS").is_ok();
+        // With linux-atspi, permission requires D-Bus session.
+        // Without the feature (stub mode), always returns true.
+        if cfg!(feature = "linux-atspi") {
+            assert_eq!(extractor.has_permission(), dbus_available);
+        } else {
+            assert!(extractor.has_permission());
+        }
     }
 
     #[test]
