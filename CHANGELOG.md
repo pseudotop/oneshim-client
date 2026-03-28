@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.7-rc.2] - 2026-03-28
+## [0.4.7] - 2026-03-28
 ### Added
 
 - Add Storybook & Design System completion
