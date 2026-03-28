@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { iconSize, motion } from '../styles/tokens'
 
 interface LightboxProps {
@@ -20,6 +21,7 @@ export default function Lightbox({
   hasPrev = false,
   hasNext = false,
 }: LightboxProps) {
+  const { t } = useTranslation()
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       switch (event.key) {
@@ -62,7 +64,7 @@ export default function Lightbox({
         type="button"
         onClick={onClose}
         className={`absolute top-4 right-4 z-10 p-2 text-content-inverse/70 ${motion.colors} hover:text-content-inverse`}
-        aria-label="닫기"
+        aria-label={t('common.close', 'Close')}
       >
         <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -78,7 +80,7 @@ export default function Lightbox({
             onPrev()
           }}
           className={`absolute top-1/2 left-4 z-10 -translate-y-1/2 rounded-full bg-surface-overlay/30 p-3 text-content-inverse/70 ${motion.all} hover:bg-surface-overlay/50 hover:text-content-inverse`}
-          aria-label="이전"
+          aria-label={t('common.previous', 'Previous')}
         >
           <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -104,7 +106,7 @@ export default function Lightbox({
             onNext()
           }}
           className={`absolute top-1/2 right-4 z-10 -translate-y-1/2 rounded-full bg-surface-overlay/30 p-3 text-content-inverse/70 ${motion.all} hover:bg-surface-overlay/50 hover:text-content-inverse`}
-          aria-label="next"
+          aria-label={t('common.next', 'Next')}
         >
           <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -114,8 +116,8 @@ export default function Lightbox({
 
       {/* UI note */}
       <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 text-content-inverse/50 text-sm">
-        <span>ESC 닫기</span>
-        {(hasPrev || hasNext) && <span>← → 이동</span>}
+        <span>ESC {t('common.close', 'Close')}</span>
+        {(hasPrev || hasNext) && <span>← → {t('common.navigate', 'Navigate')}</span>}
       </div>
     </div>
   )

@@ -706,7 +706,7 @@ export default function SessionReplay() {
                 </CardContent>
               </Card>
 
-              <div id="section-events" className="h-[500px]">
+              <div id="section-events" className="min-h-[300px] flex-1">
                 <EventLog items={timeline.items} currentTime={currentTime} onItemClick={handleTimeChange} />
               </div>
             </div>

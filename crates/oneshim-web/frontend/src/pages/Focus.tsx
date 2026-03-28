@@ -20,8 +20,7 @@ import { EmptyState } from '../components/ui'
 import { Badge } from '../components/ui/Badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
-import { useTheme } from '../contexts/ThemeContext'
-import { colors, iconSize, motion, typography } from '../styles/tokens'
+import { chart, colors, dataViz, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
@@ -54,9 +53,9 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
   const strokeDashoffset = circumference * (1 - percentage)
 
   const getColor = (score: number) => {
-    if (score >= 70) return '#10b981' // green
-    if (score >= 40) return '#f59e0b' // amber
-    return '#ef4444' // red
+    if (score >= 70) return dataViz.stroke.good
+    if (score >= 40) return dataViz.stroke.warning
+    return dataViz.stroke.critical
   }
 
   const color = getColor(value)
@@ -95,8 +94,6 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
 
 export default function Focus() {
   const { t } = useTranslation()
-  const { theme } = useTheme()
-  const isDark = theme === 'dark'
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>(() => createInitialWeekRange())
   const [sessionLimit, setSessionLimit] = useState(10)
   const [interruptionLimit, setInterruptionLimit] = useState(10)
@@ -233,22 +230,14 @@ export default function Focus() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border-muted" />
                   <XAxis dataKey="date" className="text-xs" />
                   <YAxis domain={[0, 100]} className="text-xs" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: isDark ? '#1e293b' : '#ffffff',
-                      border: isDark ? 'none' : '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      color: isDark ? '#e2e8f0' : '#334155',
-                    }}
-                    labelStyle={{ color: isDark ? '#94a3b8' : '#64748b' }}
-                  />
+                  <Tooltip contentStyle={chart.tooltipStyle} labelStyle={chart.labelStyle} />
                   <Line
                     type="monotone"
                     dataKey="score"
                     name={t('focus.score')}
-                    stroke="#10b981"
+                    stroke={dataViz.stroke.good}
                     strokeWidth={2}
-                    dot={{ fill: '#10b981', r: 4 }}
+                    dot={{ fill: dataViz.stroke.good, r: 4 }}
                     activeDot={{ r: 6 }}
                   />
                 </LineChart>

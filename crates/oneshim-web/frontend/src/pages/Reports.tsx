@@ -4,7 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { BarChart3 } from 'lucide-react'
-import { type CSSProperties, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bar,
@@ -31,12 +31,11 @@ import {
   Skeleton,
   StatCardsSkeleton,
 } from '../components/ui'
-import { useTheme } from '../contexts/ThemeContext'
-import { colors, iconSize, typography } from '../styles/tokens'
+import { chart, chartPalette, colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
-const COLORS = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899']
+const COLORS = chartPalette
 
 function getScoreColor(score: number): string {
   if (score >= 80) return 'text-semantic-success'
@@ -57,17 +56,9 @@ function TrendIndicator({ trend }: { trend: number }) {
 
 export default function Reports() {
   const { t } = useTranslation()
-  const { theme } = useTheme()
   const [period, setPeriod] = useState<ReportPeriod>('week')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
-
-  const tooltipStyle = {
-    backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-    border: theme === 'dark' ? 'none' : '1px solid #e2e8f0',
-    borderRadius: '0.5rem',
-    color: theme === 'dark' ? '#e2e8f0' : '#334155',
-  }
 
   const {
     data: report,
@@ -183,7 +174,7 @@ export default function Reports() {
         />
       )}
 
-      {report && <ReportContent report={report} t={t} tooltipStyle={tooltipStyle} theme={theme} />}
+      {report && <ReportContent report={report} t={t} />}
     </div>
   )
 }
@@ -191,8 +182,6 @@ export default function Reports() {
 interface ReportContentProps {
   report: ReportResponse
   t: (key: string) => string
-  tooltipStyle: CSSProperties
-  theme: string
 }
 
 const MAX_PIE_SLICES = 5
@@ -218,7 +207,7 @@ function consolidateAppStats(stats: ReportResponse['app_stats']): ReportResponse
   ]
 }
 
-function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
+function ReportContent({ report, t }: ReportContentProps) {
   return (
     <>
       {/* UI note */}
@@ -307,8 +296,8 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
               <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: '#94a3b8', fontSize: 12 }} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
               <Tooltip
-                contentStyle={tooltipStyle}
-                labelStyle={{ color: theme === 'dark' ? '#e2e8f0' : '#334155' }}
+                contentStyle={chart.tooltipStyle}
+                labelStyle={chart.labelStyle}
                 formatter={(value: number) => [value.toLocaleString(), '']}
               />
               <Bar dataKey="events" name={t('reports.events')} fill="#14b8a6" />
@@ -326,7 +315,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
             <LineChart data={report.hourly_activity}>
               <XAxis dataKey="hour" tickFormatter={(h) => `${h}:00`} tick={{ fill: '#94a3b8', fontSize: 12 }} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip contentStyle={tooltipStyle} labelFormatter={(h) => `${h}:00`} />
+              <Tooltip contentStyle={chart.tooltipStyle} labelFormatter={(h) => `${h}:00`} />
               <Line type="monotone" dataKey="activity" stroke="#14b8a6" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -392,7 +381,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
                         ))}
                       </Pie>
                       <Tooltip
-                        contentStyle={tooltipStyle}
+                        contentStyle={chart.tooltipStyle}
                         formatter={(value: number, _name: string, props: { payload?: { percentage?: number } }) => {
                           const pct = props.payload?.percentage
                           return [`${formatDuration(value)}${pct != null ? ` (${pct.toFixed(1)}%)` : ''}`, '']
@@ -418,8 +407,8 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
               <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: '#94a3b8', fontSize: 12 }} />
               <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 12 }} />
               <Tooltip
-                contentStyle={tooltipStyle}
-                labelStyle={{ color: theme === 'dark' ? '#e2e8f0' : '#334155' }}
+                contentStyle={chart.tooltipStyle}
+                labelStyle={chart.labelStyle}
                 formatter={(value: number) => [`${value.toFixed(1)}%`, '']}
               />
               <Line type="monotone" dataKey="cpu_avg" name="CPU" stroke="#f59e0b" strokeWidth={2} dot={false} />

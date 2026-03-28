@@ -216,10 +216,10 @@ export function App() {
         className="flex cursor-move items-center gap-2 px-3 py-2"
       >
         <span
-          className={`h-2 w-2 shrink-0 rounded-full ${state.paused ? 'bg-yellow-400' : 'animate-pulse bg-green-400'}`}
+          className={`h-2 w-2 shrink-0 rounded-full ${state.paused ? 'bg-status-connecting' : 'bg-status-connected'}`}
         />
         {!allConnected && (
-          <span className="h-2 w-2 shrink-0 rounded-full bg-red-400" title={`${connCount}/3 connected`} />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-status-error" title={`${connCount}/3 connected`} />
         )}
         <span data-tauri-drag-region className="flex-1 truncate">
           {state.paused ? 'Paused' : (feedback ?? 'Capturing')}

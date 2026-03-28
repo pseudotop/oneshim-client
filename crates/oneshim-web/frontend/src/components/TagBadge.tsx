@@ -75,17 +75,19 @@ export function TagBadge({ name, color, onRemove, onClick, selected = false, siz
   )
 }
 
+import { palette } from '../styles/tokens'
+
 export const TAG_COLORS = [
-  '#3b82f6', // blue
-  '#ef4444', // red
-  '#22c55e', // green
-  '#f59e0b', // amber
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#14b8a6', // teal
-  '#f97316', // orange
-  '#6366f1', // indigo
-  '#84cc16', // lime
+  palette.blue500,
+  palette.red500,
+  palette.green500,
+  palette.amber500,
+  palette.violet500,
+  palette.pink500,
+  palette.teal500,
+  palette.orange500,
+  palette.indigo500,
+  palette.lime500,
 ]
 
 export function getRandomTagColor(): string {

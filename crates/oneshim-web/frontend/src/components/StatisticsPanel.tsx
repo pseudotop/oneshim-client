@@ -2,8 +2,7 @@
  * StatisticsPanel — KPI cards, regime distribution bar, and longest focus highlight.
  */
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { useTheme } from '../contexts/ThemeContext'
-import { chartPalette, colors, iconSize, typography } from '../styles/tokens'
+import { chart, chartPalette, colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { Card, CardTitle } from './ui'
 
@@ -62,15 +61,6 @@ function ContextSwitchDelta({ delta }: { delta: number }) {
 // Deterministic palette for regime bars — reuse shared chartPalette from tokens
 
 export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
-  const { theme } = useTheme()
-
-  const tooltipStyle = {
-    backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-    border: theme === 'dark' ? 'none' : '1px solid #e2e8f0',
-    borderRadius: '0.5rem',
-    color: theme === 'dark' ? '#e2e8f0' : '#334155',
-  }
-
   const regimeData = Object.entries(statistics.regime_distribution).map(([label, percentage], idx) => ({
     label,
     percentage,
@@ -112,10 +102,10 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={regimeData} layout="vertical" barCategoryGap="20%">
-                <XAxis type="number" domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 12 }} unit="%" />
-                <YAxis type="category" dataKey="label" width={120} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <XAxis type="number" domain={[0, 100]} tick={chart.axis.tick} unit="%" />
+                <YAxis type="category" dataKey="label" width={120} tick={chart.axis.tick} />
                 <Tooltip
-                  contentStyle={tooltipStyle}
+                  contentStyle={chart.tooltipStyle}
                   formatter={(value: number) => [`${Math.round(value)}%`, 'Share']}
                 />
                 <Bar dataKey="percentage" radius={[0, 4, 4, 0]}>

@@ -24,7 +24,7 @@ function highlightText(text: string, query: string): JSX.Element {
     const key = `${offset}-${part.length}`
     if (part.toLowerCase() === query.toLowerCase()) {
       elements.push(
-        <mark key={key} className="rounded bg-yellow-500/30 px-0.5 text-yellow-200">
+        <mark key={key} className="rounded bg-semantic-warning/25 px-0.5">
           {part}
         </mark>,
       )
