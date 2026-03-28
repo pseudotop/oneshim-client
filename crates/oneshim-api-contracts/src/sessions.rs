@@ -1,4 +1,16 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// Path parameter for AI conversation session endpoints.
+#[derive(Debug, Deserialize)]
+pub struct AiSessionPath {
+    pub id: String,
+}
+
+/// Request body for sending a message to an AI conversation session.
+#[derive(Debug, Deserialize)]
+pub struct AiSendMessageRequest {
+    pub content: String,
+}
 
 #[derive(Debug, Serialize)]
 pub struct SessionResponse {

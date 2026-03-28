@@ -5,26 +5,16 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
 use futures::stream::Stream;
 use futures::StreamExt;
-use serde::Deserialize;
 use std::convert::Infallible;
 use std::time::Duration;
 
+use oneshim_api_contracts::sessions::{AiSendMessageRequest, AiSessionPath};
 use oneshim_core::models::ai_session::{
     ConversationSessionInfo, MessageRole, OutboundMessage, SessionConfig, SessionMessage,
 };
 
 use crate::error::ApiError;
 use crate::services::web_contexts::AiSessionWebContext;
-
-#[derive(Debug, Deserialize)]
-pub struct SessionPath {
-    pub id: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SendMessageRequest {
-    pub content: String,
-}
 
 /// POST /api/ai/sessions — create a new AI conversation session.
 pub async fn create_session(
@@ -54,7 +44,7 @@ pub async fn list_sessions(
 /// GET /api/ai/sessions/{id} — get a single session by ID.
 pub async fn get_session(
     State(context): State<AiSessionWebContext>,
-    Path(path): Path<SessionPath>,
+    Path(path): Path<AiSessionPath>,
 ) -> Result<Json<ConversationSessionInfo>, ApiError> {
     let session_manager = context.session_manager.as_ref().ok_or_else(|| {
         ApiError::ServiceUnavailable("AI session manager is not configured".to_string())
@@ -67,7 +57,7 @@ pub async fn get_session(
 /// DELETE /api/ai/sessions/{id} — terminate and remove a session.
 pub async fn delete_session(
     State(context): State<AiSessionWebContext>,
-    Path(path): Path<SessionPath>,
+    Path(path): Path<AiSessionPath>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let session_manager = context.session_manager.as_ref().ok_or_else(|| {
         ApiError::ServiceUnavailable("AI session manager is not configured".to_string())
@@ -80,8 +70,8 @@ pub async fn delete_session(
 /// POST /api/ai/sessions/{id}/messages — send a message and stream the response via SSE.
 pub async fn send_message(
     State(context): State<AiSessionWebContext>,
-    Path(path): Path<SessionPath>,
-    Json(req): Json<SendMessageRequest>,
+    Path(path): Path<AiSessionPath>,
+    Json(req): Json<AiSendMessageRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
     let session_manager = context.session_manager.as_ref().ok_or_else(|| {
         ApiError::ServiceUnavailable("AI session manager is not configured".to_string())
