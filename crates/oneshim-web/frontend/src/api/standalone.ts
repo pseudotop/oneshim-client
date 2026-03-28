@@ -1,4 +1,5 @@
 import { DEFAULT_WEB_PORT } from '../constants'
+import { palette } from '../styles/tokens'
 import type {
   AppSettings,
   AutomationSettings,
@@ -656,7 +657,7 @@ export async function handleStandaloneRequest(
     const newTag: Tag = {
       id: state.nextTagId++,
       name: payload?.name?.trim() || `Tag ${state.nextTagId}`,
-      color: payload?.color || '#10b981',
+      color: payload?.color || palette.emerald500,
       created_at: new Date().toISOString(),
     }
     state.tags = [newTag, ...state.tags]
