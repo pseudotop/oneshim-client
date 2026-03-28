@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-03-28
+### Fixed
+
+- Resolve Linux atspi 0.29 API split + Windows windows-future conflict ([#232](https://github.com/pseudotop/oneshim-client/pull/232))
+  * fix: resolve Linux atspi 0.29 API split + Windows windows-future conflict
+
+
 ## [0.4.6-rc.3] - 2026-03-28
 ### Fixed
 
