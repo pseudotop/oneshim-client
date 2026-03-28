@@ -37,7 +37,7 @@
 
   /* Semantic */
   --semantic-success: 22 163 74; /* green-600 */
-  --semantic-warning: 202 138 4; /* yellow-600 */
+  --semantic-warning: 180 83 9; /* amber-700 — WCAG AA 5.0:1 on white */
   --semantic-error: 220 38 38; /* red-600 */
   --semantic-info: 37 99 235; /* blue-600 */
   --semantic-error-hover: 185 28 28;
