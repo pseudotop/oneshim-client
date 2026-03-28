@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-03-28
+### Fixed
+
+- Remove stale [0.4.7] CHANGELOG section from failed promotion ([#241](https://github.com/pseudotop/oneshim-client/pull/241))
+  The previous stable promotion attempt left a [0.4.7] section with
+  different content than the current [0.4.7-rc.3]. Remove it so
+  promote-stable.sh can create a fresh one.
+
+
 ## [0.4.7-rc.4] - 2026-03-29
 ### Fixed
 
