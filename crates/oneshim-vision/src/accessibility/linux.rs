@@ -241,6 +241,7 @@ mod inner {
 
         // ── Circuit breaker ──────────────────────────────────────────
 
+        #[cfg(feature = "linux-atspi")]
         fn circuit_allows() -> bool {
             let failures = CONSECUTIVE_FAILURES.load(Ordering::Relaxed);
             if failures >= CIRCUIT_BREAKER_THRESHOLD {
@@ -256,10 +257,12 @@ mod inner {
             true
         }
 
+        #[cfg(feature = "linux-atspi")]
         fn record_success() {
             CONSECUTIVE_FAILURES.store(0, Ordering::Relaxed);
         }
 
+        #[cfg(feature = "linux-atspi")]
         fn record_failure() {
             let prev = CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
             if prev + 1 == CIRCUIT_BREAKER_THRESHOLD {
