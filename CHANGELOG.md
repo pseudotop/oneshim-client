@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7-rc.1] - 2026-03-28
+### Fixed
+
+- Replace last 2 hardcoded hex colors with palette tokens ([#234](https://github.com/pseudotop/oneshim-client/pull/234))
+  - standalone.ts: fallback tag color #10b981 → palette.emerald500
+  - DetectionOverlay.tsx: AXTabGroup #06B6D4 → palette.cyan500 (new)
+  - tokens.ts: add cyan500 to palette
+
+  Production code now has zero hardcoded hex colors.
+
+
+## [Unreleased]
+
 ## [0.4.6] - 2026-03-28
 ### Fixed
 
