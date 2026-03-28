@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getShortcutsList } from '../../hooks/useKeyboardShortcuts'
-import { elevation, iconSize, interaction, layout, typography } from '../../styles/tokens'
+import { iconSize, interaction, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { Dialog, DialogContent } from '../ui'
 
 interface ShortcutsHelpProps {
   onClose: () => void
@@ -11,69 +11,10 @@ interface ShortcutsHelpProps {
 export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
   const { t } = useTranslation()
   const shortcuts = getShortcutsList()
-  const dialogRef = useRef<HTMLDivElement>(null)
-  const previousFocusRef = useRef<Element | null>(null)
-
-  // Save previous focus + auto-focus dialog on open
-  useEffect(() => {
-    previousFocusRef.current = document.activeElement
-    const timer = setTimeout(() => {
-      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>('button')
-      firstFocusable?.focus()
-    }, 50)
-    return () => {
-      clearTimeout(timer)
-      if (previousFocusRef.current instanceof HTMLElement) {
-        previousFocusRef.current.focus()
-      }
-    }
-  }, [])
-
-  // Focus trap
-  useEffect(() => {
-    const handleFocusTrap = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || !dialogRef.current) return
-
-      const focusable = dialogRef.current.querySelectorAll<HTMLElement>('button, [tabindex]:not([tabindex="-1"])')
-      if (focusable.length === 0) return
-
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', handleFocusTrap)
-    return () => document.removeEventListener('keydown', handleFocusTrap)
-  }, [])
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay — Escape handled via global keyboard shortcut handler
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key closes via global keyboard shortcut handler
-    <div
-      className={cn('fixed inset-0 z-dialog flex items-center justify-center', layout.commandPalette.overlay)}
-      onClick={onClose}
-    >
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: onClick only prevents bubble to backdrop, not interactive */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="shortcuts-help-title"
-        className={cn(
-          layout.commandPalette.bg,
-          layout.commandPalette.border,
-          elevation.dialog,
-          'mx-4 w-full max-w-md rounded-lg',
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog open onClose={onClose}>
+      <DialogContent size="sm" aria-labelledby="shortcuts-help-title" className="mx-4">
         <div className="flex items-center justify-between border-muted border-b p-4">
           <h2 id="shortcuts-help-title" className={cn(typography.h3, 'text-content')}>
             {t('shortcuts.title')}
@@ -109,8 +50,8 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
         <div className="rounded-b-lg bg-surface-muted px-4 py-3 text-center">
           <span className="text-content-secondary text-sm">{t('shortcuts.closeHint')}</span>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

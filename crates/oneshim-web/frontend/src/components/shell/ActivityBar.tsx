@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { interaction, layout, motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { Divider } from '../ui'
 
 interface NavItem {
   id: string
@@ -145,16 +146,16 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
       aria-label={t('nav.mainNavLabel', 'Main Navigation')}
     >
       {groups.monitor.map(renderItem)}
-      <hr className="my-1 w-6 border-muted border-t" />
+      <Divider className="my-1 w-6 border-muted" />
 
       {groups.data.map(renderItem)}
-      <hr className="my-1 w-6 border-muted border-t" />
+      <Divider className="my-1 w-6 border-muted" />
 
       {groups.manage.map(renderItem)}
 
       <div className="flex-1" />
 
-      <hr className="my-1 w-6 border-muted border-t" />
+      <Divider className="my-1 w-6 border-muted" />
       {bottomItems.map(renderItem)}
 
       {tooltip && (

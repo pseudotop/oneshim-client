@@ -9,7 +9,7 @@ import { createTag, fetchTags, type Tag } from '../api/client'
 import { elevation, iconSize, motion } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { getRandomTagColor, TAG_COLORS, TagBadge } from './TagBadge'
-import { Input } from './ui'
+import { Divider, Input } from './ui'
 
 interface TagInputProps {
   selectedTags: Tag[]
@@ -161,7 +161,7 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
             {/* UI note */}
             {canCreateNew && (
               <>
-                {filteredTags.length > 0 && <div className="border-muted border-t" />}
+                {filteredTags.length > 0 && <Divider className="border-muted" />}
                 <div className="p-2">
                   <div className="mb-2 px-1 text-content-secondary text-xs">{t('timeline.createNewTag')}</div>
                   <div className="mb-2 flex items-center gap-2">

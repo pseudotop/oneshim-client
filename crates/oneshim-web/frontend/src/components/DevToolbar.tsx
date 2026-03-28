@@ -6,6 +6,7 @@
  * It is dev-only and not part of the shipped UI.
  */
 import { useState } from 'react'
+import { Divider } from './ui'
 
 const STANDALONE_KEY = 'oneshim-web-standalone-mode'
 
@@ -85,7 +86,7 @@ export function DevToolbar() {
           <span className="text-gray-400">{window.__ONESHIM_WEB_PORT__ ?? 'default'}</span>
         </div>
 
-        <hr className="border-gray-700" />
+        <Divider className="border-gray-700" />
 
         <div className="flex gap-2">
           <button

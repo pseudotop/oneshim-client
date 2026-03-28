@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { colors, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
+import { Divider } from './ui'
 
 interface RegimeOption {
   id: string
@@ -108,7 +109,7 @@ export default function SegmentContextMenu({
         </button>
 
         {/* Separator */}
-        {filteredRegimes.length > 0 && <hr className="my-1 border-DEFAULT border-t" />}
+        {filteredRegimes.length > 0 && <Divider className="my-1" />}
 
         {/* Change regime sub-items */}
         {filteredRegimes.length > 0 && (
