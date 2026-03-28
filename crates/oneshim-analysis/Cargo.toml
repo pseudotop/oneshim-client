@@ -13,7 +13,7 @@ authors.workspace = true
 oneshim-core = { path = "../oneshim-core" }
 async-trait.workspace = true
 chrono = { workspace = true, features = ["serde"] }
-hdbscan = { version = "0.10", optional = true }
+hdbscan = { version = "0.12", optional = true }
 serde = { workspace = true, features = ["derive"] }
 usearch = { version = "2", optional = true }
 serde_json.workspace = true
