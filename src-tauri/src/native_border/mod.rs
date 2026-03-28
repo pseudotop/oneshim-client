@@ -55,28 +55,26 @@ impl NativeBorderIndicator {
 
     /// Show border on all screens. No-op if already visible.
     pub fn show(&self) {
-        if self.visible.swap(true, Ordering::Relaxed) {
-            return;
+        if !self.visible.swap(true, Ordering::Relaxed) {
+            #[cfg(target_os = "macos")]
+            self.inner.get_on_main(|cell| {
+                for border in cell.borrow().iter() {
+                    border.window.orderFront(None);
+                }
+            });
         }
-        #[cfg(target_os = "macos")]
-        self.inner.get_on_main(|cell| {
-            for border in cell.borrow().iter() {
-                border.window.orderFront(None);
-            }
-        });
     }
 
     /// Hide border on all screens. No-op if already hidden.
     pub fn hide(&self) {
-        if !self.visible.swap(false, Ordering::Relaxed) {
-            return;
+        if self.visible.swap(false, Ordering::Relaxed) {
+            #[cfg(target_os = "macos")]
+            self.inner.get_on_main(|cell| {
+                for border in cell.borrow().iter() {
+                    border.window.orderOut(None);
+                }
+            });
         }
-        #[cfg(target_os = "macos")]
-        self.inner.get_on_main(|cell| {
-            for border in cell.borrow().iter() {
-                border.window.orderOut(None);
-            }
-        });
     }
 
     /// Update paused state on all screens.
