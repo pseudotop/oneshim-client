@@ -292,9 +292,89 @@ function DesignTokensPage() {
   )
 }
 
+const surfaceTokens = ['surface-base', 'surface-elevated', 'surface-muted', 'surface-inset', 'surface-sunken'] as const
+const contentTokens = ['content', 'content-secondary', 'content-tertiary', 'content-muted', 'content-strong'] as const
+const brandTokens = ['brand', 'brand-hover', 'brand-signal'] as const
+const semanticTokens = ['semantic-success', 'semantic-warning', 'semantic-error', 'semantic-info'] as const
+
+function ThemeComparisonPage() {
+  return (
+    <div className="min-h-screen bg-surface-base p-6">
+      <h1 className="mb-8 text-2xl text-content" style={{ fontWeight: 700 }}>
+        Light / Dark Theme Comparison
+      </h1>
+
+      <div className="grid grid-cols-2 gap-8">
+        <div className="light rounded-lg border border-DEFAULT bg-surface-base p-4">
+          <h2 className="mb-4 text-content" style={{ fontWeight: 600 }}>
+            Light Mode
+          </h2>
+          <div className="space-y-2">
+            {surfaceTokens.map((t) => (
+              <div key={t} className="flex items-center gap-3">
+                <div className={`h-8 w-8 rounded border border-DEFAULT bg-${t}`} />
+                <code className="text-content-secondary text-xs">{t}</code>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 space-y-1">
+            {contentTokens.map((t) => (
+              <p key={t} className={`text-${t} text-sm`}>
+                {t}
+              </p>
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            {brandTokens.map((t) => (
+              <div key={t} className={`h-8 w-8 rounded bg-${t}`} />
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            {semanticTokens.map((t) => (
+              <div key={t} className={`h-8 w-8 rounded bg-${t}`} />
+            ))}
+          </div>
+        </div>
+
+        <div className="dark rounded-lg border border-DEFAULT bg-surface-base p-4">
+          <h2 className="mb-4 text-content" style={{ fontWeight: 600 }}>
+            Dark Mode
+          </h2>
+          <div className="space-y-2">
+            {surfaceTokens.map((t) => (
+              <div key={t} className="flex items-center gap-3">
+                <div className={`h-8 w-8 rounded border border-DEFAULT bg-${t}`} />
+                <code className="text-content-secondary text-xs">{t}</code>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 space-y-1">
+            {contentTokens.map((t) => (
+              <p key={t} className={`text-${t} text-sm`}>
+                {t}
+              </p>
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            {brandTokens.map((t) => (
+              <div key={t} className={`h-8 w-8 rounded bg-${t}`} />
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            {semanticTokens.map((t) => (
+              <div key={t} className={`h-8 w-8 rounded bg-${t}`} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const meta = {
   title: 'Design System/Design Tokens',
   component: DesignTokensPage,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },
@@ -304,3 +384,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const AllTokens: Story = {}
+
+export const ThemeComparison: Story = {
+  render: () => <ThemeComparisonPage />,
+}

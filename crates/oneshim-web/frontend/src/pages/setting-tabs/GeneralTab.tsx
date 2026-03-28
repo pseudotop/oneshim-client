@@ -8,9 +8,9 @@ import type {
   UpdateStatus,
 } from '../../api/client'
 import LanguageSelector from '../../components/LanguageSelector'
-import { Button, Card, CardTitle, Input } from '../../components/ui'
+import { Alert, Button, Card, CardTitle, Input } from '../../components/ui'
 import { DEFAULT_WEB_PORT } from '../../constants'
-import { form, typography } from '../../styles/tokens'
+import { form } from '../../styles/tokens'
 import { IS_TAURI } from '../../utils/platform'
 import NotificationSettings from './NotificationSettings'
 import ScheduleSettings from './ScheduleSettings'
@@ -138,10 +138,7 @@ export default function GeneralTab({
             </div>
           </div>
 
-          <div className="mt-2 rounded-lg border border-muted bg-surface-inset p-4">
-            <div className={`${typography.weight.medium} text-content text-sm`}>
-              {t('settings.updateRuntimeStatus')}
-            </div>
+          <Alert variant="info" title={t('settings.updateRuntimeStatus')} className="mt-2">
             <div className="mt-1 text-content-strong text-sm">
               {updateStatus?.message ?? t('settings.updateStatusUnavailable')}
             </div>
@@ -192,7 +189,7 @@ export default function GeneralTab({
                 {t('settings.updateDefer')}
               </Button>
             </div>
-          </div>
+          </Alert>
         </div>
       </Card>
 

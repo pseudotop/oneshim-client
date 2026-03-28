@@ -4,6 +4,7 @@ import ScheduleSettings from './ScheduleSettings'
 const meta = {
   title: 'Settings/ScheduleSettings',
   component: ScheduleSettings,
+  tags: ['autodocs'],
 } satisfies Meta<typeof ScheduleSettings>
 
 export default meta

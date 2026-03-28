@@ -6,6 +6,7 @@ import StatCard from './StatCard'
 const meta = {
   title: 'Domain Components/StatCard',
   component: StatCard,
+  tags: ['autodocs'],
 } satisfies Meta<typeof StatCard>
 
 export default meta

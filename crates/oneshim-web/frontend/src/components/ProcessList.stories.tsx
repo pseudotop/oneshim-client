@@ -19,6 +19,7 @@ const mockSnapshot: ProcessSnapshot = {
 const meta = {
   title: 'Domain Components/ProcessList',
   component: ProcessList,
+  tags: ['autodocs'],
 } satisfies Meta<typeof ProcessList>
 
 export default meta

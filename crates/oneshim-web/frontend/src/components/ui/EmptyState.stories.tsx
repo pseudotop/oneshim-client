@@ -5,6 +5,7 @@ import { EmptyState } from './EmptyState'
 const meta = {
   title: 'UI Primitives/EmptyState',
   component: EmptyState,
+  tags: ['autodocs'],
 } satisfies Meta<typeof EmptyState>
 
 export default meta

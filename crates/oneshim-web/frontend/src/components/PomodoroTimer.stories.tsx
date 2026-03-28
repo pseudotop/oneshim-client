@@ -4,6 +4,7 @@ import PomodoroTimer from './PomodoroTimer'
 const meta = {
   title: 'Domain Components/PomodoroTimer',
   component: PomodoroTimer,
+  tags: ['autodocs'],
 } satisfies Meta<typeof PomodoroTimer>
 
 export default meta

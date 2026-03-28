@@ -14,6 +14,7 @@ const mockRegimeOptions = [
 const meta = {
   title: 'Domain Components/SegmentContextMenu',
   component: SegmentContextMenu,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <div className="relative" style={{ minHeight: 300, paddingTop: 20 }}>

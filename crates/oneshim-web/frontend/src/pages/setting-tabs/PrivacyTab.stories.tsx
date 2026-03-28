@@ -6,6 +6,7 @@ import { makeDefaultFormData } from './stories-utils'
 const meta = {
   title: 'Settings/PrivacyTab',
   component: PrivacyTab,
+  tags: ['autodocs'],
 } satisfies Meta<typeof PrivacyTab>
 
 export default meta

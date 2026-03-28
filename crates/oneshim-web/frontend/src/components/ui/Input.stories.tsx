@@ -4,6 +4,7 @@ import { Input } from './Input'
 const meta = {
   title: 'UI Primitives/Input',
   component: Input,
+  tags: ['autodocs'],
   argTypes: {
     inputSize: {
       control: 'select',

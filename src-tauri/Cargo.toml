@@ -70,9 +70,7 @@ lru = { workspace = true }
 raw-window-handle = "0.6"
 
 [features]
-default = ["custom-protocol", "analysis", "native-vision"]
-# linux-atspi: disabled by default — atspi 0.29 crate has breaking API changes
-# Enable manually for Linux builds once atspi ecosystem stabilizes
+default = ["custom-protocol", "analysis", "native-vision", "linux-atspi"]
 custom-protocol = ["tauri/custom-protocol"]
 analysis = ["dep:oneshim-network"]
 server = ["analysis"]

@@ -5,6 +5,7 @@ import CoachingPopup from './CoachingPopup'
 const meta = {
   title: 'Overlay/CoachingPopup',
   component: CoachingPopup,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

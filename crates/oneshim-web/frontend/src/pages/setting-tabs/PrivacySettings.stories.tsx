@@ -4,6 +4,7 @@ import PrivacySettings from './PrivacySettings'
 const meta = {
   title: 'Settings/PrivacySettings',
   component: PrivacySettings,
+  tags: ['autodocs'],
 } satisfies Meta<typeof PrivacySettings>
 
 export default meta

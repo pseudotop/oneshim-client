@@ -48,6 +48,7 @@ function TabsDemo({ tabs }: { tabs: Tab[] }) {
 const meta = {
   title: 'UI Primitives/Tabs',
   component: Tabs,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

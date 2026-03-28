@@ -72,3 +72,28 @@ export const selectVariants = {
     md: 'px-4 py-2 text-sm',
   },
 } as const
+
+export const alertVariants = {
+  variant: {
+    default: 'bg-surface-muted border border-DEFAULT text-content',
+    info: 'bg-semantic-info/10 border border-semantic-info/30 text-content',
+    success: 'bg-semantic-success/10 border border-semantic-success/30 text-content',
+    warning: 'bg-semantic-warning/10 border border-semantic-warning/30 text-content',
+    error: 'bg-semantic-error/10 border border-semantic-error/30 text-content',
+  },
+  iconColor: {
+    default: 'text-content-secondary',
+    info: 'text-semantic-info',
+    success: 'text-semantic-success',
+    warning: 'text-semantic-warning',
+    error: 'text-semantic-error',
+  },
+} as const
+
+export const dialogVariants = {
+  size: {
+    sm: 'max-w-sm',
+    md: 'max-w-lg',
+    lg: 'max-w-xl',
+  },
+} as const

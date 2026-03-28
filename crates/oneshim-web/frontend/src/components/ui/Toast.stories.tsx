@@ -52,6 +52,7 @@ function ToastDemo() {
 const meta = {
   title: 'UI Primitives/Toast',
   component: ToastContainer,
+  tags: ['autodocs'],
   render: () => <ToastDemo />,
   parameters: {
     layout: 'fullscreen',

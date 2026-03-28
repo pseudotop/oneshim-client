@@ -19,7 +19,7 @@ import {
   type RestoreResult,
   restoreBackup,
 } from '../api/client'
-import { Button, Card, CardTitle, Input, Spinner } from '../components/ui'
+import { Alert, Button, Card, CardTitle, Input, Spinner } from '../components/ui'
 import { addToast } from '../hooks/useToast'
 import { colors, elevation, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
@@ -284,8 +284,7 @@ export default function Privacy() {
 
       {/* UI note */}
       {deleteResult && (
-        <div className="rounded-lg border border-status-connected bg-semantic-success/20 p-4 text-semantic-success">
-          <div className={`${typography.weight.medium}`}>{deleteResult.message}</div>
+        <Alert variant="success" title={deleteResult.message}>
           <div className="mt-2 space-y-1 text-sm">
             {deleteResult.events_deleted > 0 && (
               <div>{t('privacy.deleteResult.events', { count: deleteResult.events_deleted })}</div>
@@ -312,7 +311,7 @@ export default function Privacy() {
           >
             {t('privacy.close')}
           </button>
-        </div>
+        </Alert>
       )}
 
       {/* UI note */}
@@ -432,15 +431,11 @@ export default function Privacy() {
 
         {/* UI note */}
         {restoreError && (
-          <div
-            role="alert"
-            className="mb-4 rounded-lg border border-status-error bg-semantic-error/20 p-4 text-semantic-error"
-          >
-            <div className={`${typography.weight.medium}`}>{restoreError}</div>
+          <Alert variant="error" title={restoreError} className="mb-4">
             <button type="button" className="mt-2 text-sm underline" onClick={() => setRestoreError(null)}>
               {t('common.dismiss', 'Dismiss')}
             </button>
-          </div>
+          </Alert>
         )}
 
         {restoreResult && (

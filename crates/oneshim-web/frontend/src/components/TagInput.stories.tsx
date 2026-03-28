@@ -31,6 +31,7 @@ const noop = () => {}
 const meta = {
   title: 'Domain Components/TagInput',
   component: TagInput,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <WithQueryClient>

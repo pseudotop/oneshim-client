@@ -4,6 +4,7 @@ import SuggestionBanner from './SuggestionBanner'
 const meta = {
   title: 'Domain Components/SuggestionBanner',
   component: SuggestionBanner,
+  tags: ['autodocs'],
 } satisfies Meta<typeof SuggestionBanner>
 
 export default meta

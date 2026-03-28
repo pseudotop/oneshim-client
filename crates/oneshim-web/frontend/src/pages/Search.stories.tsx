@@ -10,6 +10,7 @@ const queryClient = new QueryClient({
 const meta = {
   title: 'Pages/Search',
   component: Search,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>

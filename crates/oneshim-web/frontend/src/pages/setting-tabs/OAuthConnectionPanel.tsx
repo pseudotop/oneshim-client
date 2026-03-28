@@ -8,7 +8,7 @@ import type {
   SecretBackendCapabilities,
 } from '../../api/client'
 import { oauthCancelFlow, oauthConnectionStatus, oauthFlowStatus, oauthRevoke, oauthStartFlow } from '../../api/client'
-import { Badge, Button, Card } from '../../components/ui'
+import { Alert, Badge, Button, Card } from '../../components/ui'
 import {
   findFeatureCapability,
   maturityBadgeColor,
@@ -240,7 +240,7 @@ export default function OAuthConnectionPanel({
       </div>
 
       {preferredCliFeature?.preferred && preferredCliMessage && (
-        <div className="space-y-1 rounded-lg border border-muted bg-surface-muted p-3">
+        <Alert variant="info">
           <div className="flex items-center gap-2">
             <Badge color="info" size="sm">
               {t('featureCapability.preferredPath')}
@@ -249,18 +249,17 @@ export default function OAuthConnectionPanel({
               {t(`featureCapability.availability.${preferredCliFeature.availability}`)}
             </span>
           </div>
-          <p className="text-content-secondary text-xs">{preferredCliMessage}</p>
+          <p className="mt-1 text-content-secondary text-xs">{preferredCliMessage}</p>
           {onUsePreferredCli && preferredCliSurface && (
-            <Button type="button" variant="secondary" size="sm" onClick={onUsePreferredCli}>
+            <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={onUsePreferredCli}>
               {t('settingsOAuth.switchToCli', { surface: preferredCliSurface.display_name })}
             </Button>
           )}
-        </div>
+        </Alert>
       )}
 
       {setupMessage && (
-        <div className="space-y-2 rounded-lg border border-muted bg-surface-muted p-3">
-          <p className="text-content-muted text-xs">{t('featureCapability.setupTitle')}</p>
+        <Alert variant="default" title={t('featureCapability.setupTitle')}>
           <p className="text-content-secondary text-xs">{setupMessage}</p>
           {oauthFeature?.configuration_env_vars && oauthFeature.configuration_env_vars.length > 0 && (
             <div className="space-y-1">
@@ -284,7 +283,7 @@ export default function OAuthConnectionPanel({
               {t('featureCapability.openSetupDocs')}
             </a>
           )}
-        </div>
+        </Alert>
       )}
 
       {state.phase === 'loading' && <p className="text-content-secondary text-sm">{t('settingsOAuth.loading')}</p>}

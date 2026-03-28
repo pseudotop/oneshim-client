@@ -39,6 +39,7 @@ const nodesWithCounts: TreeNode[] = [
 const meta = {
   title: 'Shell/TreeView',
   component: TreeView,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <div style={{ width: 240 }} className="bg-surface p-2">

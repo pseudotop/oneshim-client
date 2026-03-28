@@ -4,6 +4,7 @@ import InsightCard from './InsightCard'
 const meta = {
   title: 'Domain Components/InsightCard',
   component: InsightCard,
+  tags: ['autodocs'],
 } satisfies Meta<typeof InsightCard>
 
 export default meta

@@ -5,6 +5,7 @@ import FocusWidget from './FocusWidget'
 const meta = {
   title: 'Domain Components/FocusWidget',
   component: FocusWidget,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <MemoryRouter>

@@ -5,6 +5,7 @@ import Onboarding from './Onboarding'
 const meta = {
   title: 'Pages/Onboarding',
   component: Onboarding,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <MemoryRouter>

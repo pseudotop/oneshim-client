@@ -5,6 +5,7 @@ import GoalProgressBar from './GoalProgressBar'
 const meta = {
   title: 'Overlay/GoalProgressBar',
   component: GoalProgressBar,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

@@ -4,6 +4,7 @@ import HeatmapGhost from './HeatmapGhost'
 const meta = {
   title: 'Overlay/HeatmapGhost',
   component: HeatmapGhost,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

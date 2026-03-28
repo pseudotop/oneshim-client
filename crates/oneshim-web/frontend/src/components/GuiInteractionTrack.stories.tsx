@@ -26,6 +26,7 @@ function WithQueryClient({ children, cells }: { children: ReactNode; cells: GuiH
 const meta = {
   title: 'Domain Components/GuiInteractionTrack',
   component: GuiInteractionTrack,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <WithQueryClient cells={mockCells}>

@@ -6,6 +6,7 @@ const noop = () => {}
 const meta = {
   title: 'Domain Components/DateRangePicker',
   component: DateRangePicker,
+  tags: ['autodocs'],
   args: {
     onRangeChange: noop,
   },

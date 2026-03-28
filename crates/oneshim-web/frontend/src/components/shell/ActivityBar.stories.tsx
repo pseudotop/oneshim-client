@@ -5,6 +5,7 @@ import ActivityBar from './ActivityBar'
 const meta = {
   title: 'Shell/ActivityBar',
   component: ActivityBar,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <MemoryRouter initialEntries={['/']}>

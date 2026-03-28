@@ -5,6 +5,7 @@ import { makeDefaultFormData } from './stories-utils'
 const meta = {
   title: 'Settings/DataStorageTab',
   component: DataStorageTab,
+  tags: ['autodocs'],
 } satisfies Meta<typeof DataStorageTab>
 
 export default meta

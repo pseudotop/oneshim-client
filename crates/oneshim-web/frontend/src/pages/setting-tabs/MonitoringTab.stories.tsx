@@ -5,6 +5,7 @@ import { makeDefaultFormData } from './stories-utils'
 const meta = {
   title: 'Settings/MonitoringTab',
   component: MonitoringTab,
+  tags: ['autodocs'],
 } satisfies Meta<typeof MonitoringTab>
 
 export default meta

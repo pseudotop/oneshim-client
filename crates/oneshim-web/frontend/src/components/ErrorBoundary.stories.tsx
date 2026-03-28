@@ -4,6 +4,7 @@ import ErrorBoundary from './ErrorBoundary'
 const meta = {
   title: 'Domain Components/ErrorBoundary',
   component: ErrorBoundary,
+  tags: ['autodocs'],
 } satisfies Meta<typeof ErrorBoundary>
 
 export default meta

@@ -4,6 +4,7 @@ import NotificationSettings from './NotificationSettings'
 const meta = {
   title: 'Settings/NotificationSettings',
   component: NotificationSettings,
+  tags: ['autodocs'],
 } satisfies Meta<typeof NotificationSettings>
 
 export default meta

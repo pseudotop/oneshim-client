@@ -14,6 +14,7 @@ const mockApps: AppUsage[] = [
 const meta = {
   title: 'Domain Components/AppUsageChart',
   component: AppUsageChart,
+  tags: ['autodocs'],
 } satisfies Meta<typeof AppUsageChart>
 
 export default meta

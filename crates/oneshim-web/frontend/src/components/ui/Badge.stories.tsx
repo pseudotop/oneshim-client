@@ -4,6 +4,7 @@ import { Badge } from './Badge'
 const meta = {
   title: 'UI Primitives/Badge',
   component: Badge,
+  tags: ['autodocs'],
   argTypes: {
     color: {
       control: 'select',
