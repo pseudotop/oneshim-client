@@ -11,13 +11,17 @@ interface SuggestionsPanelProps {
   onRefresh: () => void
 }
 
+/**
+ * Focus management: Overlay panels run in compact Tauri WebView windows.
+ * - Escape key dismisses the panel (global keydown listener).
+ * - No focus trap needed — the panel IS the entire window content.
+ * - Interactive elements use standard tab order within the panel.
+ */
 export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: SuggestionsPanelProps) {
-  // Fetch when panel opens
   useEffect(() => {
     if (open) onRefresh()
   }, [open, onRefresh])
 
-  // Escape key closes panel
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape' && open) onClose()
