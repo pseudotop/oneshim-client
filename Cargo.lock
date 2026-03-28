@@ -513,33 +513,10 @@ dependencies = [
  "enumflags2",
  "serde",
  "static_assertions",
- "zbus",
  "zbus-lockstep",
  "zbus-lockstep-macros",
  "zbus_names",
  "zvariant",
-]
-
-[[package]]
-name = "atspi-connection"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43b28a59b7c709ce0f1196405e6eacee35424dad07b4b005c0f9e417d8c2116f"
-dependencies = [
- "atspi-common",
- "atspi-proxies",
- "zbus",
-]
-
-[[package]]
-name = "atspi-proxies"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2230e48787ed3eb4088996eab66a32ca20c0b67bbd4fd6cdfe79f04f1f04c9fc"
-dependencies = [
- "atspi-common",
- "serde",
- "zbus",
 ]
 
 [[package]]
@@ -5427,8 +5404,6 @@ dependencies = [
  "async-trait",
  "atspi",
  "atspi-common",
- "atspi-connection",
- "atspi-proxies",
  "base64 0.22.1",
  "chrono",
  "core-foundation 0.10.1",

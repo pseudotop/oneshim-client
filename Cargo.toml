@@ -123,11 +123,8 @@ rustls-pemfile = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 
 # Linux AT-SPI2 accessibility (D-Bus based)
-# atspi 0.29 split connection/proxy into atspi-connection crate
 atspi = { version = "0.29", default-features = false, features = ["tokio"] }
 atspi-common = { version = "0.13", default-features = false }
-atspi-connection = { version = "0.13", default-features = false }
-atspi-proxies = { version = "0.13", default-features = false }
 
 # 성능 최적화 (Phase 31-33)
 lru = "0.16"
