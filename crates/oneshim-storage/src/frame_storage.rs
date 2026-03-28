@@ -45,6 +45,7 @@ impl DiskSpaceCache {
     }
 }
 
+#[allow(clippy::unnecessary_cast)] // statvfs field types vary by platform
 fn query_disk_free_mb(path: &Path) -> u64 {
     #[cfg(unix)]
     {
