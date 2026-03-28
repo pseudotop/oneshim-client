@@ -108,7 +108,7 @@ export default function DetectionOverlay({ scene, selectedId, onSelect }: Detect
               className="absolute top-0.5 left-0.5 rounded px-0.5 font-medium text-[8px] leading-3"
               style={{
                 backgroundColor: `${color}CC`,
-                color: '#fff',
+                color: 'rgb(var(--content-inverse))',
                 whiteSpace: 'nowrap',
               }}
             >
