@@ -761,14 +761,6 @@ mod inner {
 #[cfg(target_os = "linux")]
 pub use inner::LinuxAccessibility;
 
-#[cfg(target_os = "linux")]
-#[cfg(feature = "linux-atspi")]
-pub use inner::FocusEventListenerHandle;
-
-#[cfg(target_os = "linux")]
-#[cfg(feature = "linux-atspi")]
-pub use inner::FocusedObjectInfo;
-
 #[cfg(test)]
 #[cfg(target_os = "linux")]
 mod tests {
