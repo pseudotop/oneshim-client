@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6-rc.1] - 2026-03-28
+### Changed
+
+- Add clustering strategy selection guide and ticket TTL documentation ([#223](https://github.com/pseudotop/oneshim-client/pull/223))
+  - clustering_strategy.rs: added algorithm selection table (k-means vs HDBSCAN)
+  - token.rs: added module doc explaining TTL, grace window, and signing
+
+
+### Fixed
+
+- Offload WebP encoding to spawn_blocking to prevent monitor loop stall ([#221](https://github.com/pseudotop/oneshim-client/pull/221))
+  All 5 encoding paths in capture_and_process() and capture_thumbnail()
+  now use tokio::spawn_blocking, preventing 100-200ms blocking of the
+  monitor loop during high-quality frame encoding.
+
+- Add 2-tick debounce to focus highlight to prevent thrashing ([#222](https://github.com/pseudotop/oneshim-client/pull/222))
+  Previously, the focus highlight overlay updated on every tick when the
+  element changed, causing visual flicker during rapid navigation. Now
+  requires the element to remain stable for 2 consecutive ticks (~2s)
+  before updating the overlay.
+
+
+## [Unreleased]
+
 ## [0.4.5] - 2026-03-28
 ### Fixed
 
