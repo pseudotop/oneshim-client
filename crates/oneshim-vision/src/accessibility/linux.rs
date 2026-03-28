@@ -48,6 +48,7 @@ mod inner {
     use tracing::debug;
     #[cfg(feature = "linux-atspi")]
     use tracing::info;
+    #[cfg(feature = "linux-atspi")]
     use tracing::warn;
 
     use oneshim_core::config::PiiFilterLevel;
