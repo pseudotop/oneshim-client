@@ -100,7 +100,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 futures = "0.3"
 semver = { version = "1", features = ["serde"] }
-sha2 = "0.11"
+sha2 = "0.10"
 hmac = "0.12"
 rand = "0.10"
 url = "2"
@@ -123,7 +123,7 @@ rustls-pemfile = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 
 # Linux AT-SPI2 accessibility (D-Bus based)
-atspi = { version = "0.29", default-features = false, features = ["tokio"] }
+atspi = { version = "0.29", default-features = false, features = ["tokio", "connection", "proxies"] }
 atspi-common = { version = "0.13", default-features = false }
 
 # 성능 최적화 (Phase 31-33)
