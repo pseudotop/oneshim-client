@@ -12,10 +12,10 @@ const iconByType: Record<ToastType, typeof CheckCircle2> = {
 }
 
 const iconToneByType: Record<ToastType, string> = {
-  success: 'text-semantic-success bg-semantic-success/12',
-  error: 'text-semantic-error bg-semantic-error/12',
-  info: 'text-semantic-info bg-semantic-info/12',
-  warning: 'text-semantic-warning bg-semantic-warning/12',
+  success: 'text-semantic-success bg-semantic-success/20',
+  error: 'text-semantic-error bg-semantic-error/20',
+  info: 'text-semantic-info bg-semantic-info/20',
+  warning: 'text-semantic-warning bg-semantic-warning/20',
 }
 
 function ToastItem({ toast }: { toast: ToastRecord }) {
@@ -25,7 +25,7 @@ function ToastItem({ toast }: { toast: ToastRecord }) {
   return (
     <div
       className={cn(
-        'pointer-events-auto flex w-full items-start gap-3 border border-border/70 bg-surface-overlay/95 px-4 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.16)] backdrop-blur-sm',
+        'pointer-events-auto flex w-full items-start gap-3 border border-border/70 bg-surface-overlay/95 px-4 py-3 shadow-[0_14px_36px_rgb(var(--content)/0.16)] backdrop-blur-sm',
         radius.lg,
         'animate-toast-in',
       )}

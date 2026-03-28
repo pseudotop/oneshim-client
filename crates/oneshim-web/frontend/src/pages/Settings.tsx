@@ -55,7 +55,6 @@ import {
   sortProviderSurfaces,
   surfaceCompatibleWithAccessMode,
   surfaceKnownModel,
-  surfaceOcrRequiresStructuredOutputModel,
   surfaceSupportsModelSelection,
   surfaceUnknownModelPolicy,
 } from '../features/providerSurfaces'
@@ -74,8 +73,14 @@ import {
 import {
   backendAllowsSecretEditing,
   cloneAiProviderProfileConfig,
+  isLlmModelCompatibilityUnknown,
+  isLlmModelExplicitlyUnsupported,
+  isOcrModelCompatibilityUnknown,
+  isOcrModelExplicitlyUnsupported,
   isSettingsTabId,
   modelDiscoverySensitiveField,
+  modelDiscoverySignature,
+  normalizeModelId,
   normalizeSavedProfileName,
   type SettingsTabId,
   slugifySavedProfileId,
@@ -870,33 +875,7 @@ export default function Settings() {
     return which === 'ocr_api' ? (surface.default_models.ocr_models ?? []) : (surface.default_models.llm_models ?? [])
   }
 
-  const isOcrModelExplicitlyUnsupported = (detail: ProviderDiscoveredModel | undefined): boolean =>
-    Boolean(
-      detail &&
-        (detail.supports_ocr === false ||
-          detail.ocr_support === 'unsupported' ||
-          detail.image_input_support === 'unsupported' ||
-          (surfaceOcrRequiresStructuredOutputModel(resolveEndpointSurface('ocr_api')) &&
-            detail.structured_output_support === 'unsupported')),
-    )
-
-  const isLlmModelExplicitlyUnsupported = (detail: ProviderDiscoveredModel | undefined): boolean =>
-    Boolean(detail && detail.llm_support === 'unsupported')
-
-  const isOcrModelCompatibilityUnknown = (detail: ProviderDiscoveredModel | undefined): boolean =>
-    Boolean(
-      detail &&
-        (detail.ocr_support === 'unknown' ||
-          detail.image_input_support === 'unknown' ||
-          (surfaceOcrRequiresStructuredOutputModel(resolveEndpointSurface('ocr_api')) &&
-            detail.structured_output_support === 'unknown') ||
-          detail.supports_ocr == null),
-    )
-
-  const isLlmModelCompatibilityUnknown = (detail: ProviderDiscoveredModel | undefined): boolean =>
-    Boolean(detail && detail.llm_support === 'unknown')
-
-  const normalizeModelId = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase()
+  const ocrSurface = resolveEndpointSurface('ocr_api')
 
   const findModelDetail = (
     which: 'ocr_api' | 'llm_api',
@@ -913,10 +892,10 @@ export default function Settings() {
     const unknownPolicy = surfaceUnknownModelPolicy(surface, which)
     const isAllowedDiscoveredModel = (detail: ProviderDiscoveredModel): boolean => {
       if (which === 'ocr_api') {
-        if (isOcrModelExplicitlyUnsupported(detail)) {
+        if (isOcrModelExplicitlyUnsupported(detail, ocrSurface)) {
           return false
         }
-        return !(unknownPolicy === 'reject' && isOcrModelCompatibilityUnknown(detail))
+        return !(unknownPolicy === 'reject' && isOcrModelCompatibilityUnknown(detail, ocrSurface))
       }
 
       if (isLlmModelExplicitlyUnsupported(detail)) {
@@ -961,12 +940,12 @@ export default function Settings() {
       }
       return null
     }
-    if (which === 'ocr_api' && isOcrModelExplicitlyUnsupported(detail)) {
+    if (which === 'ocr_api' && isOcrModelExplicitlyUnsupported(detail, ocrSurface)) {
       return t('settingsAutomation.ocrModelUnsupported', {
         model: detail.display_name ?? detail.id,
       })
     }
-    if (which === 'ocr_api' && isOcrModelCompatibilityUnknown(detail)) {
+    if (which === 'ocr_api' && isOcrModelCompatibilityUnknown(detail, ocrSurface)) {
       if (unknownPolicy === 'reject') {
         return t('settingsAutomation.ocrModelCompatibilityUnknownRejected', {
           model: detail.display_name ?? detail.id,
@@ -1164,8 +1143,8 @@ export default function Settings() {
       which === 'ocr_api'
         ? (result.model_details ?? []).find(
             (detail) =>
-              !isOcrModelExplicitlyUnsupported(detail) &&
-              !(unknownPolicy === 'reject' && isOcrModelCompatibilityUnknown(detail)),
+              !isOcrModelExplicitlyUnsupported(detail, ocrSurface) &&
+              !(unknownPolicy === 'reject' && isOcrModelCompatibilityUnknown(detail, ocrSurface)),
           )?.id
         : (result.model_details ?? []).find(
             (detail) =>
@@ -1236,17 +1215,6 @@ export default function Settings() {
       setModelCatalogLoading(null)
     }
   }
-
-  const modelDiscoverySignature = (endpoint: ExternalApiSettings | null | undefined): string =>
-    JSON.stringify({
-      provider_type: endpoint?.provider_type ?? '',
-      surface_id: endpoint?.surface_id ?? '',
-      endpoint: endpoint?.endpoint?.trim() ?? '',
-      auth_mode: endpoint?.auth_mode ?? '',
-      backend_kind: endpoint?.backend_kind ?? '',
-      api_key_masked: endpoint?.api_key_masked ?? '',
-      has_secret: Boolean(endpoint?.has_secret),
-    })
 
   const handleExport = async (dataType: ExportDataType) => {
     setExportLoading(dataType)

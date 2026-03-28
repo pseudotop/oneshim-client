@@ -1,5 +1,5 @@
 import { AppWindow, ArrowRightLeft, Camera, Monitor, Moon } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TimelineItem } from '../api/client'
 import { iconSize, motion, typography } from '../styles/tokens'
@@ -47,7 +47,7 @@ function getItemTime(item: TimelineItem): Date {
   return new Date(item.timestamp)
 }
 
-export default function EventLog({ items, currentTime, onItemClick }: EventLogProps) {
+export default memo(function EventLog({ items, currentTime, onItemClick }: EventLogProps) {
   const { t } = useTranslation()
   const listRef = useRef<HTMLDivElement>(null)
   const activeItemRef = useRef<HTMLButtonElement>(null)
@@ -76,6 +76,7 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
     return closestIndex
   }, [items, currentTime])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeIndex change updates activeItemRef via render
   useEffect(() => {
     if (activeItemRef.current && listRef.current) {
       const container = listRef.current
@@ -87,7 +88,7 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
         item.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
     }
-  }, [])
+  }, [activeIndex])
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-muted bg-surface-overlay shadow">
@@ -216,4 +217,4 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
       </div>
     </div>
   )
-}
+})

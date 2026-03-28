@@ -139,7 +139,11 @@ export default function DateRangePicker({
       {/* UI note */}
       {preset === 'custom' && (
         <div className="flex items-center space-x-2">
+          <label className="sr-only" htmlFor="date-from">
+            {t('dateRange.from', 'From')}
+          </label>
           <input
+            id="date-from"
             type="date"
             value={customFrom}
             onChange={(e) => setCustomFrom(e.target.value)}
@@ -148,8 +152,14 @@ export default function DateRangePicker({
               interaction.focusRing,
             )}
           />
-          <span className="text-content-muted">~</span>
+          <span className="text-content-muted" aria-hidden="true">
+            ~
+          </span>
+          <label className="sr-only" htmlFor="date-to">
+            {t('dateRange.to', 'To')}
+          </label>
           <input
+            id="date-to"
             type="date"
             value={customTo}
             onChange={(e) => setCustomTo(e.target.value)}

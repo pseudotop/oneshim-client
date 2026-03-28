@@ -115,7 +115,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
               onClick={() =>
                 void feedback(true).catch((e) => console.warn('submit_coaching_feedback(positive) failed:', e))
               }
-              className={`rounded p-1 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-success hover:opacity-100`.trim()}
+              className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-success hover:opacity-100`.trim()}
               aria-label="Helpful"
             >
               <ThumbsUpIcon />
@@ -125,7 +125,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
               onClick={() =>
                 void feedback(false).catch((e) => console.warn('submit_coaching_feedback(negative) failed:', e))
               }
-              className={`rounded p-1 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-error hover:opacity-100`.trim()}
+              className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-error hover:opacity-100`.trim()}
               aria-label="Not helpful"
             >
               <ThumbsDownIcon />

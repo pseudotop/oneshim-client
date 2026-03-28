@@ -142,7 +142,7 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       onClick={handleCopy}
       className={cn(
-        'absolute top-2 right-2 rounded bg-surface-elevated/40 p-1 text-content-inverse/60 opacity-0 hover:bg-surface-elevated/60 group-hover:opacity-100',
+        'absolute top-2 right-2 rounded bg-surface-elevated/40 p-1.5 text-content-inverse/60 opacity-0 hover:bg-surface-elevated/60 group-hover:opacity-100',
         motion.opacity,
       )}
       title="Copy"
@@ -165,7 +165,7 @@ function highlightText(text: string, query: string): React.ReactNode {
     offset += part.length
     if (regex.test(part)) {
       return (
-        <mark key={key} className="rounded bg-yellow-300/40">
+        <mark key={key} className="rounded bg-semantic-warning/25 px-0.5">
           {part}
         </mark>
       )

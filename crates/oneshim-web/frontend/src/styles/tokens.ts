@@ -165,6 +165,24 @@ export const dataViz = {
   },
 } as const
 
+/* ── Chart tokens — inline style objects for Recharts (CSS vars for theme switching) ── */
+export const chart = {
+  tooltipStyle: {
+    backgroundColor: 'rgb(var(--surface-overlay))',
+    border: '1px solid rgb(var(--border-muted))',
+    borderRadius: '0.5rem',
+    color: 'rgb(var(--content))',
+  },
+  labelStyle: {
+    color: 'rgb(var(--content))',
+  },
+  gridStroke: 'rgb(var(--border-muted))',
+  axis: {
+    stroke: palette.gray500,
+    tick: { fill: palette.gray500, fontSize: 12 } as const,
+  },
+} as const
+
 export const layout = {
   titleBar: {
     height: 'h-8',

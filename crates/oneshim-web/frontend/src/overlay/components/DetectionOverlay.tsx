@@ -1,33 +1,34 @@
 import { forwardRef, useCallback, useEffect, useRef } from 'react'
+import { palette } from '../../styles/tokens'
 import type { DetectionElementPayload, DetectionScenePayload } from '../types'
 
 const ROLE_COLORS: Record<string, string> = {
-  AXButton: '#3B82F6',
-  button: '#3B82F6',
-  Button: '#3B82F6',
-  AXTextField: '#22C55E',
-  AXTextArea: '#22C55E',
-  edit: '#22C55E',
-  Edit: '#22C55E',
-  TextInput: '#22C55E',
-  AXLink: '#A855F7',
-  link: '#A855F7',
-  Link: '#A855F7',
-  AXMenuItem: '#F97316',
-  menuitem: '#F97316',
-  MenuItem: '#F97316',
+  AXButton: palette.blue500,
+  button: palette.blue500,
+  Button: palette.blue500,
+  AXTextField: palette.green500,
+  AXTextArea: palette.green500,
+  edit: palette.green500,
+  Edit: palette.green500,
+  TextInput: palette.green500,
+  AXLink: palette.violet500,
+  link: palette.violet500,
+  Link: palette.violet500,
+  AXMenuItem: palette.orange500,
+  menuitem: palette.orange500,
+  MenuItem: palette.orange500,
   AXTabGroup: '#06B6D4',
   tab: '#06B6D4',
   TabLabel: '#06B6D4',
-  AXOutlineRow: '#F59E0B',
-  treeitem: '#F59E0B',
-  TreeItem: '#F59E0B',
-  AXImage: '#EC4899',
-  image: '#EC4899',
-  Image: '#EC4899',
+  AXOutlineRow: palette.amber500,
+  treeitem: palette.amber500,
+  TreeItem: palette.amber500,
+  AXImage: palette.pink500,
+  image: palette.pink500,
+  Image: palette.pink500,
 }
 
-const DEFAULT_COLOR = '#6B7280'
+const DEFAULT_COLOR = palette.gray500
 
 function getRoleColor(role: string | null): string {
   if (!role) return DEFAULT_COLOR
@@ -107,7 +108,7 @@ export default function DetectionOverlay({ scene, selectedId, onSelect }: Detect
               className="absolute top-0.5 left-0.5 rounded px-0.5 font-medium text-[8px] leading-3"
               style={{
                 backgroundColor: `${color}CC`,
-                color: '#fff',
+                color: 'rgb(var(--content-inverse))',
                 whiteSpace: 'nowrap',
               }}
             >

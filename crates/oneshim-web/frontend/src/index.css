@@ -37,7 +37,7 @@
 
   /* Semantic */
   --semantic-success: 22 163 74; /* green-600 */
-  --semantic-warning: 202 138 4; /* yellow-600 */
+  --semantic-warning: 180 83 9; /* amber-700 — WCAG AA 5.0:1 on white */
   --semantic-error: 220 38 38; /* red-600 */
   --semantic-info: 37 99 235; /* blue-600 */
   --semantic-error-hover: 185 28 28;
@@ -197,16 +197,16 @@ body {
 @keyframes panel-glow {
   0%,
   100% {
-    box-shadow: inset 0 0 20px 5px rgba(20, 184, 166, 0.45);
-    border-color: rgba(20, 184, 166, 0.5);
+    box-shadow: inset 0 0 20px 5px rgb(var(--brand-signal) / 0.45);
+    border-color: rgb(var(--brand-signal) / 0.5);
   }
   50% {
-    box-shadow: inset 0 0 8px 2px rgba(20, 184, 166, 0.12);
-    border-color: rgba(20, 184, 166, 0.2);
+    box-shadow: inset 0 0 8px 2px rgb(var(--brand-signal) / 0.12);
+    border-color: rgb(var(--brand-signal) / 0.2);
   }
 }
 
 .animate-panel-glow {
   animation: panel-glow 2s ease-in-out infinite;
-  border: 1.5px solid rgba(20, 184, 166, 0.5);
+  border: 1.5px solid rgb(var(--brand-signal) / 0.5);
 }

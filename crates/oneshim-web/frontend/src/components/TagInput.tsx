@@ -128,6 +128,8 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
         {isOpen && (inputValue || filteredTags.length > 0) && (
           <div
             ref={dropdownRef}
+            role="listbox"
+            aria-label={t('timeline.tagSuggestions', 'Tag suggestions')}
             className={cn(
               'absolute mt-1 w-full rounded-lg',
               elevation.dropdown,
@@ -142,6 +144,7 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
                   <button
                     key={tag.id}
                     type="button"
+                    role="option"
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left',
                       `${motion.colors} hover:bg-hover`,

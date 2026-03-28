@@ -2,7 +2,7 @@ import { Moon, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AppSegment, TimelineItem } from '../api/client'
-import { iconSize, motion, typography } from '../styles/tokens'
+import { iconSize, motion, palette, typography } from '../styles/tokens'
 import { formatTime } from '../utils/formatters'
 import { Select } from './ui'
 
@@ -198,7 +198,7 @@ export default function TimelineScrubber({
                 left: `${left}%`,
                 width: `${Math.max(width, 0.5)}%`,
                 background:
-                  'repeating-linear-gradient(45deg, rgba(100,116,139,0.3), rgba(100,116,139,0.3) 2px, transparent 2px, transparent 4px)',
+                  'repeating-linear-gradient(45deg, rgb(var(--content-muted) / 0.3), rgb(var(--content-muted) / 0.3) 2px, transparent 2px, transparent 4px)',
               }}
               title={t('replay.idle', 'idle')}
             >
@@ -237,7 +237,7 @@ export default function TimelineScrubber({
                 <div key={appName} className="flex items-center space-x-1">
                   <div
                     className={`${iconSize.xs} rounded-sm`}
-                    style={{ backgroundColor: segment?.color || '#6B7280' }}
+                    style={{ backgroundColor: segment?.color || palette.gray500 }}
                   />
                   <span className="max-w-[80px] truncate text-content-secondary text-xs">{appName}</span>
                 </div>
@@ -250,7 +250,7 @@ export default function TimelineScrubber({
                 className={`${iconSize.xs} rounded-sm`}
                 style={{
                   background:
-                    'repeating-linear-gradient(45deg, rgba(100,116,139,0.5), rgba(100,116,139,0.5) 1px, transparent 1px, transparent 2px)',
+                    'repeating-linear-gradient(45deg, rgb(var(--content-muted) / 0.5), rgb(var(--content-muted) / 0.5) 1px, transparent 1px, transparent 2px)',
                 }}
               />
               <span className="text-content-secondary text-xs">{t('replay.idle', 'idle')}</span>

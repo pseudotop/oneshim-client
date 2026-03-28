@@ -204,7 +204,10 @@ export function App() {
       className={`flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs backdrop-blur-md ${state.paused ? '' : 'animate-panel-glow'}`}
       style={
         state.paused
-          ? { boxShadow: 'inset 0 0 12px 3px rgba(156,163,175,0.25)', border: '1.5px solid rgba(156,163,175,0.3)' }
+          ? {
+              boxShadow: 'inset 0 0 12px 3px rgb(var(--content-muted) / 0.25)',
+              border: '1.5px solid rgb(var(--content-muted) / 0.3)',
+            }
           : undefined
       }
     >
@@ -216,10 +219,10 @@ export function App() {
         className="flex cursor-move items-center gap-2 px-3 py-2"
       >
         <span
-          className={`h-2 w-2 shrink-0 rounded-full ${state.paused ? 'bg-yellow-400' : 'animate-pulse bg-green-400'}`}
+          className={`h-2 w-2 shrink-0 rounded-full ${state.paused ? 'bg-status-connecting' : 'bg-status-connected'}`}
         />
         {!allConnected && (
-          <span className="h-2 w-2 shrink-0 rounded-full bg-red-400" title={`${connCount}/3 connected`} />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-status-error" title={`${connCount}/3 connected`} />
         )}
         <span data-tauri-drag-region className="flex-1 truncate">
           {state.paused ? 'Paused' : (feedback ?? 'Capturing')}

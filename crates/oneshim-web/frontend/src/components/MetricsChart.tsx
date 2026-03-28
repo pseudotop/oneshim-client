@@ -1,8 +1,8 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { HourlyMetrics } from '../api/client'
-import { useTheme } from '../contexts/ThemeContext'
-import { chartPalette, palette } from '../styles/tokens'
+import { chart, chartPalette } from '../styles/tokens'
 
 interface MetricsChartProps {
   data: HourlyMetrics[]
@@ -19,52 +19,44 @@ function formatHour(hourStr: string): string {
 
 export default function MetricsChart({ data }: MetricsChartProps) {
   const { t } = useTranslation()
-  const { theme } = useTheme()
-  const isDark = theme === 'dark'
+
+  const chartData = useMemo(
+    () =>
+      (data ?? []).map((m) => ({
+        hour: formatHour(m.hour),
+        cpu: m.cpu_avg,
+        cpuMax: m.cpu_max,
+        memory: m.memory_avg / (1024 * 1024 * 1024), // GB
+        memoryMax: m.memory_max / (1024 * 1024 * 1024),
+      })),
+    [data],
+  )
 
   if (!data || data.length === 0) {
     return <div className="flex h-64 items-center justify-center text-content-muted">{t('common.noData')}</div>
   }
 
-  const chartData = data.map((m) => ({
-    hour: formatHour(m.hour),
-    cpu: m.cpu_avg,
-    cpuMax: m.cpu_max,
-    memory: m.memory_avg / (1024 * 1024 * 1024), // GB
-    memoryMax: m.memory_max / (1024 * 1024 * 1024),
-  }))
-
-  const axisStroke = palette.gray500
-  const tickFill = palette.gray500
-
   return (
     <div className="h-64">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} />
-          <XAxis dataKey="hour" stroke={axisStroke} tick={{ fill: tickFill, fontSize: 12 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chart.gridStroke} />
+          <XAxis dataKey="hour" stroke={chart.axis.stroke} tick={chart.axis.tick} />
           <YAxis
             yAxisId="cpu"
             domain={[0, 100]}
-            stroke={axisStroke}
-            tick={{ fill: tickFill, fontSize: 12 }}
+            stroke={chart.axis.stroke}
+            tick={chart.axis.tick}
             tickFormatter={(v) => `${v}%`}
           />
           <YAxis
             yAxisId="memory"
             orientation="right"
-            stroke={axisStroke}
-            tick={{ fill: tickFill, fontSize: 12 }}
+            stroke={chart.axis.stroke}
+            tick={chart.axis.tick}
             tickFormatter={(v) => `${v.toFixed(0)}GB`}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: isDark ? '#1e293b' : '#ffffff',
-              border: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
-              borderRadius: '8px',
-            }}
-            labelStyle={{ color: isDark ? '#f8fafc' : '#334155' }}
-          />
+          <Tooltip contentStyle={chart.tooltipStyle} labelStyle={chart.labelStyle} />
           <Legend />
           <Line
             yAxisId="cpu"

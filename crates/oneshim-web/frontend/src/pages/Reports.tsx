@@ -4,7 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { BarChart3 } from 'lucide-react'
-import { type CSSProperties, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bar,
@@ -31,12 +31,11 @@ import {
   Skeleton,
   StatCardsSkeleton,
 } from '../components/ui'
-import { useTheme } from '../contexts/ThemeContext'
-import { colors, iconSize, typography } from '../styles/tokens'
+import { chart, chartPalette, colors, iconSize, palette, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
-const COLORS = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899']
+const COLORS = chartPalette
 
 function getScoreColor(score: number): string {
   if (score >= 80) return 'text-semantic-success'
@@ -57,17 +56,9 @@ function TrendIndicator({ trend }: { trend: number }) {
 
 export default function Reports() {
   const { t } = useTranslation()
-  const { theme } = useTheme()
   const [period, setPeriod] = useState<ReportPeriod>('week')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
-
-  const tooltipStyle = {
-    backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-    border: theme === 'dark' ? 'none' : '1px solid #e2e8f0',
-    borderRadius: '0.5rem',
-    color: theme === 'dark' ? '#e2e8f0' : '#334155',
-  }
 
   const {
     data: report,
@@ -183,7 +174,7 @@ export default function Reports() {
         />
       )}
 
-      {report && <ReportContent report={report} t={t} tooltipStyle={tooltipStyle} theme={theme} />}
+      {report && <ReportContent report={report} t={t} />}
     </div>
   )
 }
@@ -191,8 +182,6 @@ export default function Reports() {
 interface ReportContentProps {
   report: ReportResponse
   t: (key: string) => string
-  tooltipStyle: CSSProperties
-  theme: string
 }
 
 const MAX_PIE_SLICES = 5
@@ -218,7 +207,42 @@ function consolidateAppStats(stats: ReportResponse['app_stats']): ReportResponse
   ]
 }
 
-function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
+function AppDistributionPie({ appStats }: { appStats: ReportResponse['app_stats'] }) {
+  const pieData = useMemo(() => consolidateAppStats(appStats), [appStats])
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <PieChart>
+        <Pie
+          data={pieData}
+          dataKey="duration_secs"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          outerRadius={80}
+          label={({ name, percentage }) =>
+            percentage >= 5 ? `${name.length > 8 ? `${name.slice(0, 8)}..` : name} ${percentage.toFixed(0)}%` : ''
+          }
+          labelLine={false}
+          style={{ fontSize: 11 }}
+        >
+          {pieData.map((stat, index) => (
+            <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={chart.tooltipStyle}
+          formatter={(value: number, _name: string, props: { payload?: { percentage?: number } }) => {
+            const pct = props.payload?.percentage
+            return [`${formatDuration(value)}${pct != null ? ` (${pct.toFixed(1)}%)` : ''}`, '']
+          }}
+        />
+      </PieChart>
+    </ResponsiveContainer>
+  )
+}
+
+function ReportContent({ report, t }: ReportContentProps) {
   return (
     <>
       {/* UI note */}
@@ -304,15 +328,15 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         <div className="mt-4 h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={report.daily_stats}>
-              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
+              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={chart.axis.tick} />
+              <YAxis tick={chart.axis.tick} />
               <Tooltip
-                contentStyle={tooltipStyle}
-                labelStyle={{ color: theme === 'dark' ? '#e2e8f0' : '#334155' }}
+                contentStyle={chart.tooltipStyle}
+                labelStyle={chart.labelStyle}
                 formatter={(value: number) => [value.toLocaleString(), '']}
               />
-              <Bar dataKey="events" name={t('reports.events')} fill="#14b8a6" />
-              <Bar dataKey="captures" name={t('reports.captures')} fill="#3b82f6" />
+              <Bar dataKey="events" name={t('reports.events')} fill={palette.teal500} />
+              <Bar dataKey="captures" name={t('reports.captures')} fill={palette.blue500} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -324,10 +348,10 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         <div className="mt-4 h-48">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={report.hourly_activity}>
-              <XAxis dataKey="hour" tickFormatter={(h) => `${h}:00`} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip contentStyle={tooltipStyle} labelFormatter={(h) => `${h}:00`} />
-              <Line type="monotone" dataKey="activity" stroke="#14b8a6" strokeWidth={2} dot={false} />
+              <XAxis dataKey="hour" tickFormatter={(h) => `${h}:00`} tick={chart.axis.tick} />
+              <YAxis tick={chart.axis.tick} />
+              <Tooltip contentStyle={chart.tooltipStyle} labelFormatter={(h) => `${h}:00`} />
+              <Line type="monotone" dataKey="activity" stroke={palette.teal500} strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -367,41 +391,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
           <CardTitle>{t('reports.appDistribution')}</CardTitle>
           <div className="mt-4 h-64">
             {report.app_stats.length > 0 ? (
-              (() => {
-                const pieData = consolidateAppStats(report.app_stats)
-                return (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        dataKey="duration_secs"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        label={({ name, percentage }) =>
-                          percentage >= 5
-                            ? `${name.length > 8 ? `${name.slice(0, 8)}..` : name} ${percentage.toFixed(0)}%`
-                            : ''
-                        }
-                        labelLine={false}
-                        style={{ fontSize: 11 }}
-                      >
-                        {pieData.map((stat, index) => (
-                          <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        formatter={(value: number, _name: string, props: { payload?: { percentage?: number } }) => {
-                          const pct = props.payload?.percentage
-                          return [`${formatDuration(value)}${pct != null ? ` (${pct.toFixed(1)}%)` : ''}`, '']
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )
-              })()
+              <AppDistributionPie appStats={report.app_stats} />
             ) : (
               <div className="flex h-full items-center justify-center text-content-secondary">{t('common.noData')}</div>
             )}
@@ -415,19 +405,26 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         <div className="mt-4 h-48">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={report.daily_stats}>
-              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={chart.axis.tick} />
+              <YAxis domain={[0, 100]} tick={chart.axis.tick} />
               <Tooltip
-                contentStyle={tooltipStyle}
-                labelStyle={{ color: theme === 'dark' ? '#e2e8f0' : '#334155' }}
+                contentStyle={chart.tooltipStyle}
+                labelStyle={chart.labelStyle}
                 formatter={(value: number) => [`${value.toFixed(1)}%`, '']}
               />
-              <Line type="monotone" dataKey="cpu_avg" name="CPU" stroke="#f59e0b" strokeWidth={2} dot={false} />
+              <Line
+                type="monotone"
+                dataKey="cpu_avg"
+                name="CPU"
+                stroke={palette.amber500}
+                strokeWidth={2}
+                dot={false}
+              />
               <Line
                 type="monotone"
                 dataKey="memory_avg"
                 name={t('reports.memory')}
-                stroke="#8b5cf6"
+                stroke={palette.violet500}
                 strokeWidth={2}
                 dot={false}
               />
