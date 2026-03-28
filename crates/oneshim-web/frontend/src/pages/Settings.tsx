@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import {
@@ -62,14 +62,14 @@ import { useToast } from '../hooks/useToast'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { IS_TAURI } from '../utils/platform'
-import {
-  AiAutomationTab,
-  CoachingGoalsTab,
-  DataStorageTab,
-  GeneralTab,
-  MonitoringTab,
-  PrivacyTab,
-} from './setting-tabs'
+
+const GeneralTab = lazy(() => import('./setting-tabs/GeneralTab'))
+const PrivacyTab = lazy(() => import('./setting-tabs/PrivacyTab'))
+const MonitoringTab = lazy(() => import('./setting-tabs/MonitoringTab'))
+const AiAutomationTab = lazy(() => import('./setting-tabs/AiAutomationTab'))
+const DataStorageTab = lazy(() => import('./setting-tabs/DataStorageTab'))
+const CoachingGoalsTab = lazy(() => import('./setting-tabs/CoachingGoalsTab'))
+
 import {
   backendAllowsSecretEditing,
   cloneAiProviderProfileConfig,
@@ -1339,138 +1339,110 @@ export default function Settings() {
       )}
 
       <form id="settings-form" className="space-y-6" onSubmit={handleSubmit}>
-        <div
-          id="settings-panel-general"
-          role="tabpanel"
-          aria-labelledby="settings-tab-general"
-          hidden={activeTab !== 'general'}
-          aria-hidden={activeTab !== 'general'}
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-12">
+              <Spinner />
+            </div>
+          }
         >
-          <fieldset disabled={activeTab !== 'general'} className="m-0 min-w-0 border-0 p-0">
-            <GeneralTab
-              formData={formData}
-              updateStatus={updateStatus}
-              updateActionPending={updateActionMutation.isPending}
-              onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
-              onNotificationChange={handleNotificationChange}
-              onScheduleChange={handleScheduleChange}
-              onUpdateChange={handleUpdateChange}
-              onUpdateAction={(action) => updateActionMutation.mutate(action)}
-            />
-          </fieldset>
-        </div>
+          {activeTab === 'general' && (
+            <div id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general">
+              <GeneralTab
+                formData={formData}
+                updateStatus={updateStatus}
+                updateActionPending={updateActionMutation.isPending}
+                onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
+                onNotificationChange={handleNotificationChange}
+                onScheduleChange={handleScheduleChange}
+                onUpdateChange={handleUpdateChange}
+                onUpdateAction={(action) => updateActionMutation.mutate(action)}
+              />
+            </div>
+          )}
 
-        <div
-          id="settings-panel-privacy"
-          role="tabpanel"
-          aria-labelledby="settings-tab-privacy"
-          hidden={activeTab !== 'privacy'}
-          aria-hidden={activeTab !== 'privacy'}
-        >
-          <fieldset disabled={activeTab !== 'privacy'} className="m-0 min-w-0 border-0 p-0">
-            <PrivacyTab formData={formData} onPrivacyChange={handlePrivacyChange} />
-          </fieldset>
-        </div>
+          {activeTab === 'privacy' && (
+            <div id="settings-panel-privacy" role="tabpanel" aria-labelledby="settings-tab-privacy">
+              <PrivacyTab formData={formData} onPrivacyChange={handlePrivacyChange} />
+            </div>
+          )}
 
-        <div
-          id="settings-panel-monitoring"
-          role="tabpanel"
-          aria-labelledby="settings-tab-monitoring"
-          hidden={activeTab !== 'monitoring'}
-          aria-hidden={activeTab !== 'monitoring'}
-        >
-          <fieldset disabled={activeTab !== 'monitoring'} className="m-0 min-w-0 border-0 p-0">
-            <MonitoringTab
-              formData={formData}
-              onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
-              onMonitorChange={handleMonitorChange}
-            />
-          </fieldset>
-        </div>
+          {activeTab === 'monitoring' && (
+            <div id="settings-panel-monitoring" role="tabpanel" aria-labelledby="settings-tab-monitoring">
+              <MonitoringTab
+                formData={formData}
+                onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
+                onMonitorChange={handleMonitorChange}
+              />
+            </div>
+          )}
 
-        <div
-          id="settings-panel-ai-automation"
-          role="tabpanel"
-          aria-labelledby="settings-tab-ai-automation"
-          hidden={activeTab !== 'ai-automation'}
-          aria-hidden={activeTab !== 'ai-automation'}
-        >
-          <fieldset disabled={activeTab !== 'ai-automation'} className="m-0 min-w-0 border-0 p-0">
-            <AiAutomationTab
-              formData={formData}
-              allProviderSurfaces={providerCatalog.surfaces}
-              providerSurfaceOptions={{
-                ocr_api: getCompatibleSurfaceOptions('ocr_api'),
-                llm_api: getCompatibleSurfaceOptions('llm_api'),
-              }}
-              featureCapabilities={featureCapabilities}
-              secretBackendCapabilities={secretBackendCapabilities}
-              modelCatalogNotice={modelCatalogNotice}
-              modelCompatibilityNotice={{
-                ocr_api: getModelCompatibilityNotice('ocr_api'),
-                llm_api: getModelCompatibilityNotice('llm_api'),
-              }}
-              modelCatalogLoading={modelCatalogLoading}
-              endpointProbeResult={{
-                ocr_api: ocrEndpointProbe ?? null,
-                llm_api: llmEndpointProbe ?? null,
-              }}
-              endpointProbeLoading={{
-                ocr_api: ocrEndpointProbeLoading,
-                llm_api: llmEndpointProbeLoading,
-              }}
-              onAutomationChange={handleAutomationChange}
-              onSandboxChange={handleSandboxChange}
-              onAiProviderChange={handleAiProviderChange}
-              onOcrValidationChange={handleOcrValidationChange}
-              onSceneActionOverrideChange={handleSceneActionOverrideChange}
-              onSceneIntelligenceChange={handleSceneIntelligenceChange}
-              onExternalApiChange={handleExternalApiChange}
-              resolveProviderSurface={resolveEndpointSurface}
-              onProviderSurfaceChange={handleProviderSurfaceChange}
-              onSelectAiProviderProfile={handleSelectAiProviderProfile}
-              onSaveAiProviderProfile={handleSaveAiProviderProfile}
-              onDeleteAiProviderProfile={handleDeleteAiProviderProfile}
-              onDiscoverModels={(which) => void discoverModels(which)}
-              getModelOptions={getModelOptions}
-              canDiscoverModels={canDiscoverModels}
-            />
-          </fieldset>
-        </div>
+          {activeTab === 'ai-automation' && (
+            <div id="settings-panel-ai-automation" role="tabpanel" aria-labelledby="settings-tab-ai-automation">
+              <AiAutomationTab
+                formData={formData}
+                allProviderSurfaces={providerCatalog.surfaces}
+                providerSurfaceOptions={{
+                  ocr_api: getCompatibleSurfaceOptions('ocr_api'),
+                  llm_api: getCompatibleSurfaceOptions('llm_api'),
+                }}
+                featureCapabilities={featureCapabilities}
+                secretBackendCapabilities={secretBackendCapabilities}
+                modelCatalogNotice={modelCatalogNotice}
+                modelCompatibilityNotice={{
+                  ocr_api: getModelCompatibilityNotice('ocr_api'),
+                  llm_api: getModelCompatibilityNotice('llm_api'),
+                }}
+                modelCatalogLoading={modelCatalogLoading}
+                endpointProbeResult={{
+                  ocr_api: ocrEndpointProbe ?? null,
+                  llm_api: llmEndpointProbe ?? null,
+                }}
+                endpointProbeLoading={{
+                  ocr_api: ocrEndpointProbeLoading,
+                  llm_api: llmEndpointProbeLoading,
+                }}
+                onAutomationChange={handleAutomationChange}
+                onSandboxChange={handleSandboxChange}
+                onAiProviderChange={handleAiProviderChange}
+                onOcrValidationChange={handleOcrValidationChange}
+                onSceneActionOverrideChange={handleSceneActionOverrideChange}
+                onSceneIntelligenceChange={handleSceneIntelligenceChange}
+                onExternalApiChange={handleExternalApiChange}
+                resolveProviderSurface={resolveEndpointSurface}
+                onProviderSurfaceChange={handleProviderSurfaceChange}
+                onSelectAiProviderProfile={handleSelectAiProviderProfile}
+                onSaveAiProviderProfile={handleSaveAiProviderProfile}
+                onDeleteAiProviderProfile={handleDeleteAiProviderProfile}
+                onDiscoverModels={(which) => void discoverModels(which)}
+                getModelOptions={getModelOptions}
+                canDiscoverModels={canDiscoverModels}
+              />
+            </div>
+          )}
 
-        <div
-          id="settings-panel-data"
-          role="tabpanel"
-          aria-labelledby="settings-tab-data"
-          hidden={activeTab !== 'data'}
-          aria-hidden={activeTab !== 'data'}
-        >
-          <fieldset disabled={activeTab !== 'data'} className="m-0 min-w-0 border-0 p-0">
-            <DataStorageTab
-              formData={formData}
-              storageStats={storageStats}
-              storageLoading={storageLoading}
-              exportFormat={exportFormat}
-              exportLoading={exportLoading}
-              onExportFormatChange={setExportFormat}
-              onExport={(dataType) => void handleExport(dataType)}
-              onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
-              onTelemetryChange={handleTelemetryChange}
-            />
-          </fieldset>
-        </div>
+          {activeTab === 'data' && (
+            <div id="settings-panel-data" role="tabpanel" aria-labelledby="settings-tab-data">
+              <DataStorageTab
+                formData={formData}
+                storageStats={storageStats}
+                storageLoading={storageLoading}
+                exportFormat={exportFormat}
+                exportLoading={exportLoading}
+                onExportFormatChange={setExportFormat}
+                onExport={(dataType) => void handleExport(dataType)}
+                onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
+                onTelemetryChange={handleTelemetryChange}
+              />
+            </div>
+          )}
 
-        <div
-          id="settings-panel-coaching"
-          role="tabpanel"
-          aria-labelledby="settings-tab-coaching"
-          hidden={activeTab !== 'coaching'}
-          aria-hidden={activeTab !== 'coaching'}
-        >
-          <fieldset disabled={activeTab !== 'coaching'} className="m-0 min-w-0 border-0 p-0">
-            <CoachingGoalsTab />
-          </fieldset>
-        </div>
+          {activeTab === 'coaching' && (
+            <div id="settings-panel-coaching" role="tabpanel" aria-labelledby="settings-tab-coaching">
+              <CoachingGoalsTab />
+            </div>
+          )}
+        </Suspense>
 
         <div className="flex justify-end">
           <Button
