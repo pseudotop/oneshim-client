@@ -119,8 +119,8 @@ mod inner {
         /// The task runs until the returned handle (and all its clones) are
         /// dropped, which triggers the shutdown watch channel.
         async fn spawn() -> Result<FocusEventListenerHandle, CoreError> {
-            use atspi::connection::AccessibilityConnection;
             use atspi::events::ObjectEvents;
+            use atspi_connection::AccessibilityConnection;
 
             let conn = AccessibilityConnection::new().await.map_err(|e| {
                 CoreError::Internal(format!(
@@ -307,7 +307,7 @@ mod inner {
         #[cfg(feature = "linux-atspi")]
         async fn traverse_tree(
             conn: &atspi::connection::AccessibilityConnection,
-            proxy: &atspi::proxy::accessible::AccessibleProxy<'_>,
+            proxy: &atspi_proxies::accessible::AccessibleProxy<'_>,
             depth: u32,
             max_depth: u32,
             remaining: &mut usize,
@@ -360,18 +360,19 @@ mod inner {
                     // child_ref has .name() (bus destination) and .path()
                     // (D-Bus object path). Use .ok() chaining since we
                     // are not in a Result-returning fn.
-                    let child_proxy =
-                        match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
-                            .destination(child_ref.name())
-                            .ok()
-                            .and_then(|b| b.path(child_ref.path()).ok())
-                        {
-                            Some(builder) => match builder.build().await {
-                                Ok(p) => p,
-                                Err(_) => continue, // Skip inaccessible children
-                            },
-                            None => continue, // Skip if dest/path invalid
-                        };
+                    let child_proxy = match atspi_proxies::accessible::AccessibleProxy::builder(
+                        conn.connection(),
+                    )
+                    .destination(child_ref.name())
+                    .ok()
+                    .and_then(|b| b.path(child_ref.path()).ok())
+                    {
+                        Some(builder) => match builder.build().await {
+                            Ok(p) => p,
+                            Err(_) => continue, // Skip inaccessible children
+                        },
+                        None => continue, // Skip if dest/path invalid
+                    };
 
                     let child_elements = Box::pin(Self::traverse_tree(
                         conn,
@@ -396,7 +397,7 @@ mod inner {
         #[cfg(feature = "linux-atspi")]
         async fn get_element_bounds(
             conn: &atspi::connection::AccessibilityConnection,
-            proxy: &atspi::proxy::accessible::AccessibleProxy<'_>,
+            proxy: &atspi_proxies::accessible::AccessibleProxy<'_>,
         ) -> Option<ElementRect> {
             use atspi_common::CoordType;
 
@@ -408,7 +409,7 @@ mod inner {
             let dest = inner_proxy.destination().to_string();
             let path = inner_proxy.path().to_string();
 
-            let component = atspi::proxy::component::ComponentProxy::builder(conn.connection())
+            let component = atspi_proxies::component::ComponentProxy::builder(conn.connection())
                 .destination(dest.as_str())
                 .ok()?
                 .path(path.as_str())
@@ -440,7 +441,7 @@ mod inner {
         #[cfg(feature = "linux-atspi")]
         async fn find_active_window<'a>(
             conn: &'a atspi::connection::AccessibilityConnection,
-        ) -> Option<atspi::proxy::accessible::AccessibleProxy<'a>> {
+        ) -> Option<atspi_proxies::accessible::AccessibleProxy<'a>> {
             use atspi_common::Role;
             use atspi_common::State;
 
@@ -450,7 +451,7 @@ mod inner {
             for app_ref in &apps {
                 // Build AccessibleProxy for the application
                 let app_proxy =
-                    atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                    atspi_proxies::accessible::AccessibleProxy::builder(conn.connection())
                         .destination(app_ref.name())
                         .ok()?
                         .path(app_ref.path())
@@ -466,18 +467,19 @@ mod inner {
 
                 for child_ref in &children {
                     // Build AccessibleProxy for each child (potential frame)
-                    let child_proxy =
-                        match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
-                            .destination(child_ref.name())
-                            .ok()
-                            .and_then(|b| b.path(child_ref.path()).ok())
-                        {
-                            Some(builder) => match builder.build().await {
-                                Ok(p) => p,
-                                Err(_) => continue,
-                            },
-                            None => continue,
-                        };
+                    let child_proxy = match atspi_proxies::accessible::AccessibleProxy::builder(
+                        conn.connection(),
+                    )
+                    .destination(child_ref.name())
+                    .ok()
+                    .and_then(|b| b.path(child_ref.path()).ok())
+                    {
+                        Some(builder) => match builder.build().await {
+                            Ok(p) => p,
+                            Err(_) => continue,
+                        },
+                        None => continue,
+                    };
 
                     // Check if this is a frame/window with Active state
                     let role = match child_proxy.get_role().await {
@@ -511,7 +513,7 @@ mod inner {
         #[cfg(feature = "linux-atspi")]
         async fn find_focused_in_window(
             conn: &atspi::connection::AccessibilityConnection,
-            window: &atspi::proxy::accessible::AccessibleProxy<'_>,
+            window: &atspi_proxies::accessible::AccessibleProxy<'_>,
             pii_level: PiiFilterLevel,
         ) -> Option<FocusedElementInfo> {
             use atspi_common::State;
@@ -527,7 +529,7 @@ mod inner {
             let children = window.get_children().await.ok()?;
             for child_ref in &children {
                 let child_proxy =
-                    match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                    match atspi_proxies::accessible::AccessibleProxy::builder(conn.connection())
                         .destination(child_ref.name())
                         .ok()
                         .and_then(|b| b.path(child_ref.path()).ok())
@@ -556,7 +558,7 @@ mod inner {
         #[cfg(feature = "linux-atspi")]
         async fn proxy_to_focused_info(
             conn: &atspi::connection::AccessibilityConnection,
-            proxy: &atspi::proxy::accessible::AccessibleProxy<'_>,
+            proxy: &atspi_proxies::accessible::AccessibleProxy<'_>,
             pii_level: PiiFilterLevel,
         ) -> Option<FocusedElementInfo> {
             use atspi_common::Role;
@@ -594,7 +596,7 @@ mod inner {
             pii_level: PiiFilterLevel,
             has_full_text_consent: bool,
         ) -> Result<Option<FocusedElementInfo>, CoreError> {
-            use atspi::connection::AccessibilityConnection;
+            use atspi_connection::AccessibilityConnection;
 
             if !Self::circuit_allows() {
                 debug!("LinuxAccessibility: circuit breaker open");
@@ -661,7 +663,7 @@ mod inner {
             pii_level: PiiFilterLevel,
             has_full_text_consent: bool,
         ) -> Result<Vec<AccessibilityElement>, CoreError> {
-            use atspi::connection::AccessibilityConnection;
+            use atspi_connection::AccessibilityConnection;
 
             if !Self::circuit_allows() {
                 return Ok(Vec::new());

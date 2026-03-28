@@ -123,8 +123,11 @@ rustls-pemfile = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 
 # Linux AT-SPI2 accessibility (D-Bus based)
+# atspi 0.29 split connection/proxy into atspi-connection crate
 atspi = { version = "0.29", default-features = false, features = ["tokio"] }
 atspi-common = { version = "0.13", default-features = false }
+atspi-connection = { version = "0.13", default-features = false }
+atspi-proxies = { version = "0.13", default-features = false }
 
 # 성능 최적화 (Phase 31-33)
 lru = "0.16"
@@ -180,7 +183,7 @@ objc2-quartz-core = { version = "0.3", features = [
 
 # Windows 플랫폼 API
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_Foundation", "Win32_System_Threading", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Diagnostics_Debug", "Win32_Storage_FileSystem"] }
-windows = { version = "0.62", features = ["Win32_UI_Accessibility", "Win32_System_Com", "Win32_Foundation", "Win32_System_Variant", "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation"] }
+windows = { version = "0.61", features = ["Win32_UI_Accessibility", "Win32_System_Com", "Win32_Foundation", "Win32_System_Variant", "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation"] }
 
 # 내부 크레이트
 oneshim-core = { path = "crates/oneshim-core" }

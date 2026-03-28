@@ -12,7 +12,7 @@ authors.workspace = true
 [features]
 default = ["native-vision"]
 ocr = ["leptess"]
-linux-atspi = ["atspi", "atspi-common", "futures"]
+linux-atspi = ["atspi", "atspi-common", "atspi-connection", "atspi-proxies", "futures"]
 native-vision = []
 
 [dependencies]
@@ -51,6 +51,8 @@ windows = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 atspi = { workspace = true, optional = true }
 atspi-common = { workspace = true, optional = true }
+atspi-connection = { workspace = true, optional = true }
+atspi-proxies = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 
 [dev-dependencies]
