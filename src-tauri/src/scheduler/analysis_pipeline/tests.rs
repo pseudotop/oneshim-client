@@ -119,6 +119,7 @@ fn make_trigger_state() -> AdaptiveTriggerState {
         embedding_pipeline: None,
         gui_pipeline_state: None,
         gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
+        llm_work_type_refiner: None,
         app_registry: Arc::new(oneshim_core::app_registry::AppRegistry::new()),
         heatmap_aggregator: crate::scheduler::heatmap::HeatmapAggregator::new(),
     }
