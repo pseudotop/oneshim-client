@@ -769,9 +769,17 @@ mod tests {
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
 
     #[test]
-    fn has_permission_true() {
+    fn has_permission_reflects_dbus_availability() {
         let extractor = LinuxAccessibility::new();
-        assert!(extractor.has_permission());
+        let dbus_available = std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok()
+            || std::env::var("ATSPI_BUS_ADDRESS").is_ok();
+        // With linux-atspi, permission requires D-Bus session.
+        // Without the feature (stub mode), always returns true.
+        if cfg!(feature = "linux-atspi") {
+            assert_eq!(extractor.has_permission(), dbus_available);
+        } else {
+            assert!(extractor.has_permission());
+        }
     }
 
     #[test]
