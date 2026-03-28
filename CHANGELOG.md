@@ -27,56 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ObjectRefOwned uses name_as_str()/path_as_str() accessors
 
 
-## [Unreleased]
-
-## [0.4.7] - 2026-03-28
-### Added
-
-- Add Storybook & Design System completion
-  Phase A — 4 new UI primitives:
-  - Divider: semantic separator (horizontal/vertical), forwardRef
-  - Alert: info/success/warning/error boxes with icon + title, 5 variants
-  - Dialog: modal overlay with focus trap, ESC close, click-outside, 3 sizes
-  - Checkbox: native checkbox wrapper with label + description
-
-  Phase B — Story quality upgrade:
-  - Add autodocs tag to all 82 story files (100% coverage)
-  - Create mock data factory (18 factories) for page stories
-  - Enhance 7 page stories with WithMockData + EmptyState variants
-  - Add ThemeComparison story for light/dark side-by-side
-
-  Phase C — Storybook documentation:
-  - Getting Started doc page (quick start, categories, key files)
-  - Component Patterns doc page (forwardRef, cn(), variants, architecture rules)
-  - Spec document and implementation plan
-
-- Enhance setting tab stories with realistic mock data
-  - AiAutomationTab: 1 → 3 stories (Default, AutomationEnabled, ExternalProviders)
-  - CoachingGoalsTab: 2 → 3 stories with QueryClient pre-population (WithGoals)
-  - OAuthConnectionPanel: 2 → 3 stories (WithOAuthSurface, WithPreferredCli)
-
-  Other 8 setting tabs already had 2-3 good stories each — no changes needed.
-
-
-### Changed
-
-- Migrate ad-hoc patterns to UI primitives
-  Divider (6 replacements):
-  - ActivityBar: 3 <hr> separators → <Divider>
-  - SegmentContextMenu: 1 <hr> → <Divider>
-  - DevToolbar: 1 <hr> → <Divider>
-  - TagInput: 1 <div border-t> → <Divider>
-
-  Alert (5 replacements):
-  - Privacy: delete success + restore error → <Alert variant="success|error">
-  - OAuthConnectionPanel: 2 info boxes → <Alert variant="info|default">
-  - GeneralTab: update status box → <Alert variant="info">
-
-  Dialog (1 refactoring):
-  - ShortcutsHelp: extracted ~55 lines of duplicate focus trap, backdrop,
-    and prev-focus logic into <Dialog> + <DialogContent>
-
-
 ## [0.4.7-rc.2] - 2026-03-28
 ### Added
 
