@@ -1,7 +1,7 @@
 /**
  *
  */
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useId, useRef } from 'react'
 import { elevation, layout, motion, radius, typography } from '../../styles/tokens'
 import { dialogVariants } from '../../styles/variants'
 import { cn } from '../../utils/cn'
@@ -122,8 +122,9 @@ export function DialogContent({ className, size = 'md', children, ...props }: Di
   )
 }
 
-export function DialogTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn('p-4 pb-0 text-content', typography.h3, className)} {...props} />
+export function DialogTitle({ className, id, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+  const autoId = useId()
+  return <h2 id={id ?? autoId} className={cn('p-4 pb-0 text-content', typography.h3, className)} {...props} />
 }
 
 export function DialogBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

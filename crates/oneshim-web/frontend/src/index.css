@@ -212,3 +212,9 @@ body {
   border: 1.5px solid rgb(var(--brand-signal) / 0.5);
   will-change: box-shadow;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-panel-glow {
+    animation: none;
+  }
+}

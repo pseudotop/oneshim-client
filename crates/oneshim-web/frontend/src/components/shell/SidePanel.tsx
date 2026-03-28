@@ -171,15 +171,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
       if (!el) return
 
       // Find the actual scroll container: <main id="main-content"> or nearest scrollable ancestor
-      const scrollContainer = document.getElementById('main-content')
-      if (scrollContainer) {
-        const containerRect = scrollContainer.getBoundingClientRect()
-        const elRect = el.getBoundingClientRect()
-        const scrollTop = scrollContainer.scrollTop + (elRect.top - containerRect.top) - 16
-        scrollContainer.scrollTo({ top: scrollTop, behavior: 'smooth' })
-      } else {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
       // Brief highlight animation on the target section
       el.classList.add('section-highlight')
