@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7-rc.3] - 2026-03-29
+### Fixed
+
+- Restore [0.4.7-rc.2] CHANGELOG section for CI validation
+
+- Release-guard heredoc + atspi-common 0.13 compat ([#239](https://github.com/pseudotop/oneshim-client/pull/239))
+  * fix: release-guard heredoc/stdin conflict + atspi-common 0.13 API compat
+
+  Release Guard CI had two bugs: (1) PY heredoc terminator had trailing
+  `> release_guard.out` preventing closure, (2) heredoc and here-string
+  both targeted stdin — the here-string won, feeding raw JSON to Python
+  which failed on JSON `false` not being valid Python. Fix: pass JSON
+  via env var, move redirection to command line.
+
+  Linux AT-SPI code updated for atspi-common 0.13 breaking changes:
+  - StateChangedEvent fields are now public (state/enabled/item)
+  - ObjectRef.name() returns Option<&UniqueName> instead of &BusName
+  - ObjectRefOwned uses name_as_str()/path_as_str() accessors
+
+
+## [Unreleased]
+
 ## [0.4.7] - 2026-03-28
 ### Added
 
