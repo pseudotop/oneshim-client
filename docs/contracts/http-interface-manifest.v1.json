@@ -134,6 +134,27 @@
       ]
     },
     {
+      "module": "ai_sessions",
+      "operations": [
+        {
+          "method": "POST",
+          "path": "/api/ai/sessions"
+        },
+        {
+          "method": "GET",
+          "path": "/api/ai/sessions/{id}"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/ai/sessions/{id}"
+        },
+        {
+          "method": "POST",
+          "path": "/api/ai/sessions/{id}/messages"
+        }
+      ]
+    },
+    {
       "module": "integration_api",
       "operations": [
         {

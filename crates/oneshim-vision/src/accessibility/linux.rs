@@ -36,6 +36,7 @@
 
 #[cfg(target_os = "linux")]
 mod inner {
+    #[cfg(feature = "linux-atspi")]
     use std::sync::atomic::{AtomicU32, Ordering};
     #[cfg(feature = "linux-atspi")]
     use std::sync::Arc;
@@ -44,8 +45,11 @@ mod inner {
     #[cfg(feature = "linux-atspi")]
     use tokio::sync::RwLock;
     #[cfg(feature = "linux-atspi")]
+    use tracing::debug;
+    #[cfg(feature = "linux-atspi")]
     use tracing::info;
-    use tracing::{debug, warn};
+    #[cfg(feature = "linux-atspi")]
+    use tracing::warn;
 
     use oneshim_core::config::PiiFilterLevel;
     use oneshim_core::error::CoreError;
@@ -210,9 +214,12 @@ mod inner {
 
     // ── Circuit breaker (same pattern as macOS/Windows) ──────────────
 
+    #[cfg(feature = "linux-atspi")]
     /// Consecutive AT-SPI2 failures before the circuit breaker opens.
     static CONSECUTIVE_FAILURES: AtomicU32 = AtomicU32::new(0);
+    #[cfg(feature = "linux-atspi")]
     const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+    #[cfg(feature = "linux-atspi")]
     /// Retry every 10 ticks (~30s at 3s poll) after circuit opens.
     const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 10;
 
@@ -235,6 +242,7 @@ mod inner {
 
         // ── Circuit breaker ──────────────────────────────────────────
 
+        #[cfg(feature = "linux-atspi")]
         fn circuit_allows() -> bool {
             let failures = CONSECUTIVE_FAILURES.load(Ordering::Relaxed);
             if failures >= CIRCUIT_BREAKER_THRESHOLD {
@@ -250,10 +258,12 @@ mod inner {
             true
         }
 
+        #[cfg(feature = "linux-atspi")]
         fn record_success() {
             CONSECUTIVE_FAILURES.store(0, Ordering::Relaxed);
         }
 
+        #[cfg(feature = "linux-atspi")]
         fn record_failure() {
             let prev = CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
             if prev + 1 == CIRCUIT_BREAKER_THRESHOLD {
