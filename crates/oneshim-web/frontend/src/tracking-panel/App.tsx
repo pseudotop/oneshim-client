@@ -204,7 +204,10 @@ export function App() {
       className={`flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs backdrop-blur-md ${state.paused ? '' : 'animate-panel-glow'}`}
       style={
         state.paused
-          ? { boxShadow: 'inset 0 0 12px 3px rgba(156,163,175,0.25)', border: '1.5px solid rgba(156,163,175,0.3)' }
+          ? {
+              boxShadow: 'inset 0 0 12px 3px rgb(var(--content-muted) / 0.25)',
+              border: '1.5px solid rgb(var(--content-muted) / 0.3)',
+            }
           : undefined
       }
     >

@@ -96,8 +96,10 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
               return (
                 <div
                   key={HOUR_LABELS[hourIndex]}
+                  role="img"
+                  aria-label={`${dayLabels[dayIndex]} ${HOUR_LABELS[hourIndex]}:00 - ${t('heatmap.activity')}: ${value}`}
                   className={cn(
-                    'h-4 flex-1 cursor-pointer rounded-sm hover:ring-2 hover:ring-brand-signal',
+                    'h-4 flex-1 rounded-sm hover:ring-2 hover:ring-brand-signal',
                     motion.colors,
                     getColor(ratio),
                   )}

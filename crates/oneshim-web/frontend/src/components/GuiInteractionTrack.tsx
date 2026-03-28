@@ -30,7 +30,7 @@ export default function GuiInteractionTrack({ start, end }: Props) {
             <div
               key={cell.hour}
               className="flex-1 rounded-sm"
-              style={{ backgroundColor: `rgba(59, 130, 246, ${alpha})` }}
+              style={{ backgroundColor: `rgb(var(--brand-signal) / ${alpha})` }}
               title={`${cell.hour}: ${cell.count} interactions`}
             />
           )
