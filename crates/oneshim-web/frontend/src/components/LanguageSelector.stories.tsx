@@ -4,6 +4,7 @@ import LanguageSelector from './LanguageSelector'
 const meta = {
   title: 'Domain Components/LanguageSelector',
   component: LanguageSelector,
+  tags: ['autodocs'],
 } satisfies Meta<typeof LanguageSelector>
 
 export default meta

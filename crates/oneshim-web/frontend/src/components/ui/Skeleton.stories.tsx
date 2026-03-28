@@ -4,6 +4,7 @@ import { ChartSkeleton, ListSkeleton, Skeleton, StatCardsSkeleton } from './Skel
 const meta = {
   title: 'UI Primitives/Skeleton',
   component: Skeleton,
+  tags: ['autodocs'],
 } satisfies Meta<typeof Skeleton>
 
 export default meta

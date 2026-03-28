@@ -4,6 +4,7 @@ import ShortcutsHelp from './ShortcutsHelp'
 const meta = {
   title: 'Shell/ShortcutsHelp',
   component: ShortcutsHelp,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

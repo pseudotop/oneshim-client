@@ -10,6 +10,7 @@ function WithTheme({ children }: { children: ReactNode }) {
 const meta = {
   title: 'Domain Components/StatisticsPanel',
   component: StatisticsPanel,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <WithTheme>

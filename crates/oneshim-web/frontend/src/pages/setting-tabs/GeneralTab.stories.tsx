@@ -5,6 +5,7 @@ import { makeDefaultFormData } from './stories-utils'
 const meta = {
   title: 'Settings/GeneralTab',
   component: GeneralTab,
+  tags: ['autodocs'],
 } satisfies Meta<typeof GeneralTab>
 
 export default meta

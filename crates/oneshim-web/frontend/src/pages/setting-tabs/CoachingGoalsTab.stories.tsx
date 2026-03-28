@@ -14,6 +14,7 @@ function WithQueryClient({ children }: { children: ReactNode }) {
 const meta = {
   title: 'Settings/CoachingGoalsTab',
   component: CoachingGoalsTab,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <WithQueryClient>

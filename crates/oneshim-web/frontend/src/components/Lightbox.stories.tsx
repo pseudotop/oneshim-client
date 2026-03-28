@@ -6,6 +6,7 @@ const noop = () => {}
 const meta = {
   title: 'Domain Components/Lightbox',
   component: Lightbox,
+  tags: ['autodocs'],
   args: {
     onClose: noop,
   },

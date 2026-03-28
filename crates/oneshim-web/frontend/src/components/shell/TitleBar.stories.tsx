@@ -5,6 +5,7 @@ import TitleBar from './TitleBar'
 const meta = {
   title: 'Shell/TitleBar',
   component: TitleBar,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <MemoryRouter initialEntries={['/']}>

@@ -31,6 +31,7 @@ function generateMockData(hours: number): HourlyMetrics[] {
 const meta = {
   title: 'Domain Components/MetricsChart',
   component: MetricsChart,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <WithTheme>

@@ -4,6 +4,7 @@ import { CaptureFlash } from './CaptureFlash'
 const meta = {
   title: 'Overlay/CaptureFlash',
   component: CaptureFlash,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

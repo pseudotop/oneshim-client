@@ -4,6 +4,7 @@ import { Spinner } from './Spinner'
 const meta = {
   title: 'UI Primitives/Spinner',
   component: Spinner,
+  tags: ['autodocs'],
   argTypes: {
     size: {
       control: 'select',

@@ -5,6 +5,7 @@ import FocusHighlight from './FocusHighlight'
 const meta = {
   title: 'Overlay/FocusHighlight',
   component: FocusHighlight,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

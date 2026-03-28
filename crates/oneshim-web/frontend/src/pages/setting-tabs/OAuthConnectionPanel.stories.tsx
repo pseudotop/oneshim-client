@@ -4,6 +4,7 @@ import OAuthConnectionPanel from './OAuthConnectionPanel'
 const meta = {
   title: 'Settings/OAuthConnectionPanel',
   component: OAuthConnectionPanel,
+  tags: ['autodocs'],
 } satisfies Meta<typeof OAuthConnectionPanel>
 
 export default meta

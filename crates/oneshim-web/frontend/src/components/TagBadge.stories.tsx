@@ -6,6 +6,7 @@ const noop = () => {}
 const meta = {
   title: 'Domain Components/TagBadge',
   component: TagBadge,
+  tags: ['autodocs'],
 } satisfies Meta<typeof TagBadge>
 
 export default meta

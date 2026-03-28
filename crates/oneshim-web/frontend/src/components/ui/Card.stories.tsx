@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './Card'
 const meta = {
   title: 'UI Primitives/Card',
   component: Card,
+  tags: ['autodocs'],
   argTypes: {
     variant: {
       control: 'select',

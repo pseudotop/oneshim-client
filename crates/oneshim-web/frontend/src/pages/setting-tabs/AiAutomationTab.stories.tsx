@@ -5,6 +5,7 @@ import { makeDefaultFormData } from './stories-utils'
 const meta = {
   title: 'Settings/AiAutomationTab',
   component: AiAutomationTab,
+  tags: ['autodocs'],
 } satisfies Meta<typeof AiAutomationTab>
 
 export default meta

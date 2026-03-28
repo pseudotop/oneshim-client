@@ -5,6 +5,7 @@ import { SuggestionItem } from './SuggestionItem'
 const meta = {
   title: 'Overlay/SuggestionItem',
   component: SuggestionItem,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <div className="w-80 rounded-lg border border-content-inverse/10 bg-surface-sunken/90">

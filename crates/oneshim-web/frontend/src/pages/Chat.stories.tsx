@@ -5,6 +5,7 @@ import Chat from './Chat'
 const meta = {
   title: 'Pages/Chat',
   component: Chat,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <MemoryRouter>

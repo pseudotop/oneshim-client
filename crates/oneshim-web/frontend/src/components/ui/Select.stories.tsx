@@ -4,6 +4,7 @@ import { Select } from './Select'
 const meta = {
   title: 'UI Primitives/Select',
   component: Select,
+  tags: ['autodocs'],
   argTypes: {
     selectSize: {
       control: 'select',

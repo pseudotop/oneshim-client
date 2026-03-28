@@ -5,6 +5,7 @@ import SidePanel from './SidePanel'
 const meta = {
   title: 'Shell/SidePanel',
   component: SidePanel,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <MemoryRouter initialEntries={['/']}>

@@ -4,6 +4,7 @@ import { FocusModeIndicator } from './FocusModeIndicator'
 const meta = {
   title: 'Overlay/FocusModeIndicator',
   component: FocusModeIndicator,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

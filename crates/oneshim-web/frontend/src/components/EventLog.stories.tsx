@@ -64,6 +64,7 @@ const mockItems: TimelineItem[] = [
 const meta = {
   title: 'Domain Components/EventLog',
   component: EventLog,
+  tags: ['autodocs'],
 } satisfies Meta<typeof EventLog>
 
 export default meta

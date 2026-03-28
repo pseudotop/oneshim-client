@@ -4,6 +4,7 @@ import ToggleRow from './ToggleRow'
 const meta = {
   title: 'Settings/ToggleRow',
   component: ToggleRow,
+  tags: ['autodocs'],
   argTypes: {
     checked: { control: 'boolean' },
   },

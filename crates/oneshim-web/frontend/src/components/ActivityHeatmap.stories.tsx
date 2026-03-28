@@ -44,6 +44,7 @@ function WithQuery({ children, cells, maxValue }: { children: ReactNode; cells: 
 const meta = {
   title: 'Domain Components/ActivityHeatmap',
   component: ActivityHeatmap,
+  tags: ['autodocs'],
 } satisfies Meta<typeof ActivityHeatmap>
 
 export default meta

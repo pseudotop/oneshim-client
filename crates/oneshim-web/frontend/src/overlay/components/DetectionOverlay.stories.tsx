@@ -5,6 +5,7 @@ import DetectionOverlay from './DetectionOverlay'
 const meta = {
   title: 'Overlay/DetectionOverlay',
   component: DetectionOverlay,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

@@ -5,6 +5,7 @@ import { SuggestionsPanel } from './SuggestionsPanel'
 const meta = {
   title: 'Overlay/SuggestionsPanel',
   component: SuggestionsPanel,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

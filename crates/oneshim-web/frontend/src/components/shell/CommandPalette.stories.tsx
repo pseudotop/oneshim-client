@@ -6,6 +6,7 @@ import CommandPalette from './CommandPalette'
 const meta = {
   title: 'Shell/CommandPalette',
   component: CommandPalette,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },

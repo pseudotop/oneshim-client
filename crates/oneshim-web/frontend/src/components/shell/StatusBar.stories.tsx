@@ -4,6 +4,7 @@ import StatusBar from './StatusBar'
 const meta = {
   title: 'Shell/StatusBar',
   component: StatusBar,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <div className="flex flex-col" style={{ width: 900 }}>

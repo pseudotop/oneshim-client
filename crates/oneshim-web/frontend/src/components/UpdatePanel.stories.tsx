@@ -47,6 +47,7 @@ function WithQueryClient({ children, data }: { children: ReactNode; data?: Updat
 const meta = {
   title: 'Domain Components/UpdatePanel',
   component: UpdatePanel,
+  tags: ['autodocs'],
   decorators: [
     (Story) => (
       <WithQueryClient data={idleStatus}>

@@ -47,6 +47,7 @@ const mockItems: TimelineItem[] = [
 const meta = {
   title: 'Domain Components/TimelineScrubber',
   component: TimelineScrubber,
+  tags: ['autodocs'],
 } satisfies Meta<typeof TimelineScrubber>
 
 export default meta

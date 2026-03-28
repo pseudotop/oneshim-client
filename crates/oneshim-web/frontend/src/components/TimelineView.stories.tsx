@@ -78,6 +78,7 @@ const mockTimeline = [
 const meta = {
   title: 'Domain Components/TimelineView',
   component: TimelineView,
+  tags: ['autodocs'],
 } satisfies Meta<typeof TimelineView>
 
 export default meta
