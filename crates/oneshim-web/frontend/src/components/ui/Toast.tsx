@@ -12,10 +12,10 @@ const iconByType: Record<ToastType, typeof CheckCircle2> = {
 }
 
 const iconToneByType: Record<ToastType, string> = {
-  success: 'text-semantic-success bg-semantic-success/12',
-  error: 'text-semantic-error bg-semantic-error/12',
-  info: 'text-semantic-info bg-semantic-info/12',
-  warning: 'text-semantic-warning bg-semantic-warning/12',
+  success: 'text-semantic-success bg-semantic-success/20',
+  error: 'text-semantic-error bg-semantic-error/20',
+  info: 'text-semantic-info bg-semantic-info/20',
+  warning: 'text-semantic-warning bg-semantic-warning/20',
 }
 
 function ToastItem({ toast }: { toast: ToastRecord }) {

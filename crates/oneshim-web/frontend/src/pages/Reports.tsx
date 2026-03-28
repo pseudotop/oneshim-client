@@ -4,7 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { BarChart3 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bar,
@@ -31,7 +31,7 @@ import {
   Skeleton,
   StatCardsSkeleton,
 } from '../components/ui'
-import { chart, chartPalette, colors, iconSize, typography } from '../styles/tokens'
+import { chart, chartPalette, colors, iconSize, palette, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
@@ -207,6 +207,41 @@ function consolidateAppStats(stats: ReportResponse['app_stats']): ReportResponse
   ]
 }
 
+function AppDistributionPie({ appStats }: { appStats: ReportResponse['app_stats'] }) {
+  const pieData = useMemo(() => consolidateAppStats(appStats), [appStats])
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <PieChart>
+        <Pie
+          data={pieData}
+          dataKey="duration_secs"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          outerRadius={80}
+          label={({ name, percentage }) =>
+            percentage >= 5 ? `${name.length > 8 ? `${name.slice(0, 8)}..` : name} ${percentage.toFixed(0)}%` : ''
+          }
+          labelLine={false}
+          style={{ fontSize: 11 }}
+        >
+          {pieData.map((stat, index) => (
+            <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={chart.tooltipStyle}
+          formatter={(value: number, _name: string, props: { payload?: { percentage?: number } }) => {
+            const pct = props.payload?.percentage
+            return [`${formatDuration(value)}${pct != null ? ` (${pct.toFixed(1)}%)` : ''}`, '']
+          }}
+        />
+      </PieChart>
+    </ResponsiveContainer>
+  )
+}
+
 function ReportContent({ report, t }: ReportContentProps) {
   return (
     <>
@@ -293,15 +328,15 @@ function ReportContent({ report, t }: ReportContentProps) {
         <div className="mt-4 h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={report.daily_stats}>
-              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
+              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={chart.axis.tick} />
+              <YAxis tick={chart.axis.tick} />
               <Tooltip
                 contentStyle={chart.tooltipStyle}
                 labelStyle={chart.labelStyle}
                 formatter={(value: number) => [value.toLocaleString(), '']}
               />
-              <Bar dataKey="events" name={t('reports.events')} fill="#14b8a6" />
-              <Bar dataKey="captures" name={t('reports.captures')} fill="#3b82f6" />
+              <Bar dataKey="events" name={t('reports.events')} fill={palette.teal500} />
+              <Bar dataKey="captures" name={t('reports.captures')} fill={palette.blue500} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -313,10 +348,10 @@ function ReportContent({ report, t }: ReportContentProps) {
         <div className="mt-4 h-48">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={report.hourly_activity}>
-              <XAxis dataKey="hour" tickFormatter={(h) => `${h}:00`} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
+              <XAxis dataKey="hour" tickFormatter={(h) => `${h}:00`} tick={chart.axis.tick} />
+              <YAxis tick={chart.axis.tick} />
               <Tooltip contentStyle={chart.tooltipStyle} labelFormatter={(h) => `${h}:00`} />
-              <Line type="monotone" dataKey="activity" stroke="#14b8a6" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="activity" stroke={palette.teal500} strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -356,41 +391,7 @@ function ReportContent({ report, t }: ReportContentProps) {
           <CardTitle>{t('reports.appDistribution')}</CardTitle>
           <div className="mt-4 h-64">
             {report.app_stats.length > 0 ? (
-              (() => {
-                const pieData = consolidateAppStats(report.app_stats)
-                return (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        dataKey="duration_secs"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        label={({ name, percentage }) =>
-                          percentage >= 5
-                            ? `${name.length > 8 ? `${name.slice(0, 8)}..` : name} ${percentage.toFixed(0)}%`
-                            : ''
-                        }
-                        labelLine={false}
-                        style={{ fontSize: 11 }}
-                      >
-                        {pieData.map((stat, index) => (
-                          <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={chart.tooltipStyle}
-                        formatter={(value: number, _name: string, props: { payload?: { percentage?: number } }) => {
-                          const pct = props.payload?.percentage
-                          return [`${formatDuration(value)}${pct != null ? ` (${pct.toFixed(1)}%)` : ''}`, '']
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )
-              })()
+              <AppDistributionPie appStats={report.app_stats} />
             ) : (
               <div className="flex h-full items-center justify-center text-content-secondary">{t('common.noData')}</div>
             )}
@@ -404,19 +405,26 @@ function ReportContent({ report, t }: ReportContentProps) {
         <div className="mt-4 h-48">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={report.daily_stats}>
-              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={chart.axis.tick} />
+              <YAxis domain={[0, 100]} tick={chart.axis.tick} />
               <Tooltip
                 contentStyle={chart.tooltipStyle}
                 labelStyle={chart.labelStyle}
                 formatter={(value: number) => [`${value.toFixed(1)}%`, '']}
               />
-              <Line type="monotone" dataKey="cpu_avg" name="CPU" stroke="#f59e0b" strokeWidth={2} dot={false} />
+              <Line
+                type="monotone"
+                dataKey="cpu_avg"
+                name="CPU"
+                stroke={palette.amber500}
+                strokeWidth={2}
+                dot={false}
+              />
               <Line
                 type="monotone"
                 dataKey="memory_avg"
                 name={t('reports.memory')}
-                stroke="#8b5cf6"
+                stroke={palette.violet500}
                 strokeWidth={2}
                 dot={false}
               />
