@@ -70,11 +70,12 @@ export default function TimelineScrubber({
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!trackRef.current || totalDuration <= 0) return
 
+      // Cache rect once on mousedown to avoid layout thrashing during drag
+      const cachedRect = trackRef.current.getBoundingClientRect()
+
       const handleMouseMove = (moveEvent: MouseEvent) => {
-        if (!trackRef.current) return
-        const rect = trackRef.current.getBoundingClientRect()
-        const x = moveEvent.clientX - rect.left
-        const ratio = Math.max(0, Math.min(1, x / rect.width))
+        const x = moveEvent.clientX - cachedRect.left
+        const ratio = Math.max(0, Math.min(1, x / cachedRect.width))
         const newTime = new Date(startTime.getTime() + ratio * totalDuration)
         onTimeChange(newTime)
       }
@@ -90,6 +91,38 @@ export default function TimelineScrubber({
       handleTrackClick(e)
     },
     [startTime, totalDuration, onTimeChange, handleTrackClick],
+  )
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (totalDuration <= 0) return
+
+      const STEP_MS = 60_000 // 1 minute
+      const SHIFT_STEP_MS = 300_000 // 5 minutes
+      const step = e.shiftKey ? SHIFT_STEP_MS : STEP_MS
+      let newTime: Date | null = null
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          newTime = new Date(Math.max(startTime.getTime(), currentTime.getTime() - step))
+          break
+        case 'ArrowRight':
+          newTime = new Date(Math.min(endTime.getTime(), currentTime.getTime() + step))
+          break
+        case 'Home':
+          newTime = new Date(startTime.getTime())
+          break
+        case 'End':
+          newTime = new Date(endTime.getTime())
+          break
+        default:
+          return
+      }
+
+      e.preventDefault()
+      onTimeChange(newTime)
+    },
+    [startTime, endTime, currentTime, totalDuration, onTimeChange],
   )
 
   return (
@@ -156,13 +189,19 @@ export default function TimelineScrubber({
       </div>
 
       {/* UI note */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: custom scrubber track — keyboard users use playback buttons */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: drag interaction; keyboard users use playback buttons */}
       <div
         ref={trackRef}
+        role="slider"
+        tabIndex={0}
+        aria-label={t('replay.scrubber', 'Timeline scrubber')}
+        aria-valuemin={0}
+        aria-valuemax={totalDuration}
+        aria-valuenow={currentTime.getTime() - startTime.getTime()}
+        aria-valuetext={formatTime(currentTime.toISOString())}
         className="relative h-10 cursor-pointer overflow-hidden rounded-lg bg-hover"
         onClick={handleTrackClick}
         onMouseDown={handleMouseDown}
+        onKeyDown={handleKeyDown}
       >
         {/* UI note */}
         {segments.map((segment) => {

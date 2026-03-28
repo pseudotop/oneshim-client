@@ -1,5 +1,5 @@
 import { AppWindow, ArrowRightLeft, Camera, Monitor, Moon } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef } from 'react'
+import { memo, type Ref, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TimelineItem } from '../api/client'
 import { iconSize, motion, typography } from '../styles/tokens'
@@ -9,6 +9,16 @@ import { formatTime } from '../utils/formatters'
 interface EventLogProps {
   items: TimelineItem[]
   currentTime: Date
+  onItemClick: (time: Date) => void
+}
+
+interface EventLogItemProps {
+  item: TimelineItem
+  isActive: boolean
+  activeRef: Ref<HTMLButtonElement> | undefined
+  captureLabel: string
+  idleLabel: string
+  minLabel: string
   onItemClick: (time: Date) => void
 }
 
@@ -47,9 +57,109 @@ function getItemTime(item: TimelineItem): Date {
   return new Date(item.timestamp)
 }
 
+function getItemKey(item: TimelineItem): string {
+  if (item.type === 'IdlePeriod') return `idle-${item.start}`
+  if (item.type === 'Frame') return `frame-${item.id}`
+  return `event-${item.timestamp}-${item.event_type}`
+}
+
+const EventLogItem = memo(function EventLogItem({
+  item,
+  isActive,
+  activeRef,
+  captureLabel,
+  idleLabel,
+  minLabel,
+  onItemClick,
+}: EventLogItemProps) {
+  const itemTime = getItemTime(item)
+  const timeStr = item.type === 'IdlePeriod' ? formatTime(item.start) : formatTime(item.timestamp)
+
+  return (
+    <button
+      type="button"
+      ref={activeRef}
+      className={cn(
+        'w-full cursor-pointer px-4 py-2 text-left',
+        motion.colors,
+        isActive ? 'border-brand-signal border-l-2 bg-brand-signal/5' : 'border-transparent border-l-2 hover:bg-hover',
+      )}
+      onClick={() => onItemClick(itemTime)}
+    >
+      <div className="flex items-start space-x-3">
+        {/* UI note */}
+        <div className="mt-0.5">{getEventIcon(item)}</div>
+
+        {/* UI note */}
+        <div className="min-w-0 flex-1">
+          {/* UI note */}
+          <div className="flex items-center justify-between">
+            <span className={cn(typography.mono, 'text-content-secondary', typography.caption)}>{timeStr}</span>
+            <span
+              className={cn(
+                'rounded px-1.5 py-0.5',
+                typography.caption,
+                item.type === 'Frame'
+                  ? 'bg-brand-signal/10 text-brand-text'
+                  : item.type === 'IdlePeriod'
+                    ? 'bg-surface-elevated text-content-secondary'
+                    : 'bg-semantic-info/10 text-semantic-info',
+              )}
+            >
+              {getEventLabel(item, captureLabel, idleLabel, minLabel)}
+            </span>
+          </div>
+
+          {/* UI note */}
+          {item.type !== 'IdlePeriod' && (
+            <div className="mt-1">
+              {item.type === 'Frame' ? (
+                <>
+                  <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
+                  <p className={cn('truncate text-content-secondary', typography.caption)}>{item.window_title}</p>
+                </>
+              ) : (
+                item.app_name && (
+                  <>
+                    <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
+                    {item.window_title && (
+                      <p className={cn('truncate text-content-secondary', typography.caption)}>{item.window_title}</p>
+                    )}
+                  </>
+                )
+              )}
+            </div>
+          )}
+
+          {/* UI note */}
+          {item.type === 'Frame' && (
+            <div className="mt-1 flex items-center space-x-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-muted">
+                <div
+                  className={cn(
+                    'h-full',
+                    item.importance >= 0.7
+                      ? 'bg-semantic-success'
+                      : item.importance >= 0.4
+                        ? 'bg-semantic-warning'
+                        : 'bg-surface-muted',
+                  )}
+                  style={{ width: `${item.importance * 100}%` }}
+                />
+              </div>
+              <span className={cn('text-content-secondary', typography.caption)}>
+                {Math.round(item.importance * 100)}%
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
+  )
+})
+
 export default memo(function EventLog({ items, currentTime, onItemClick }: EventLogProps) {
   const { t } = useTranslation()
-  const listRef = useRef<HTMLDivElement>(null)
   const activeItemRef = useRef<HTMLButtonElement>(null)
 
   const captureLabel = t('replay.capture', 'Capture')
@@ -78,17 +188,17 @@ export default memo(function EventLog({ items, currentTime, onItemClick }: Event
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeIndex change updates activeItemRef via render
   useEffect(() => {
-    if (activeItemRef.current && listRef.current) {
-      const container = listRef.current
-      const item = activeItemRef.current
-      const containerRect = container.getBoundingClientRect()
-      const itemRect = item.getBoundingClientRect()
-
-      if (itemRect.top < containerRect.top || itemRect.bottom > containerRect.bottom) {
-        item.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
+    if (activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [activeIndex])
+
+  const handleItemClick = useCallback(
+    (time: Date) => {
+      onItemClick(time)
+    },
+    [onItemClick],
+  )
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-muted bg-surface-overlay shadow">
@@ -102,7 +212,7 @@ export default memo(function EventLog({ items, currentTime, onItemClick }: Event
       </div>
 
       {/* event list */}
-      <div ref={listRef} className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <div className={cn('flex h-32 items-center justify-center text-content-secondary', typography.body)}>
             {t('common.noData', 'No data')}
@@ -111,105 +221,17 @@ export default memo(function EventLog({ items, currentTime, onItemClick }: Event
           <div className="divide-y divide-border">
             {items.map((item, index) => {
               const isActive = index === activeIndex
-              const itemTime = getItemTime(item)
-              const timeStr = item.type === 'IdlePeriod' ? formatTime(item.start) : formatTime(item.timestamp)
-
-              const itemKey =
-                item.type === 'IdlePeriod'
-                  ? `idle-${item.start}`
-                  : item.type === 'Frame'
-                    ? `frame-${item.id}`
-                    : `event-${item.timestamp}-${item.event_type}`
-
               return (
-                <button
-                  type="button"
-                  key={itemKey}
-                  ref={isActive ? activeItemRef : undefined}
-                  className={cn(
-                    'w-full cursor-pointer px-4 py-2 text-left',
-                    motion.colors,
-                    isActive
-                      ? 'border-brand-signal border-l-2 bg-brand-signal/5'
-                      : 'border-transparent border-l-2 hover:bg-hover',
-                  )}
-                  onClick={() => onItemClick(itemTime)}
-                >
-                  <div className="flex items-start space-x-3">
-                    {/* UI note */}
-                    <div className="mt-0.5">{getEventIcon(item)}</div>
-
-                    {/* UI note */}
-                    <div className="min-w-0 flex-1">
-                      {/* UI note */}
-                      <div className="flex items-center justify-between">
-                        <span className={cn(typography.mono, 'text-content-secondary', typography.caption)}>
-                          {timeStr}
-                        </span>
-                        <span
-                          className={cn(
-                            'rounded px-1.5 py-0.5',
-                            typography.caption,
-                            item.type === 'Frame'
-                              ? 'bg-brand-signal/10 text-brand-text'
-                              : item.type === 'IdlePeriod'
-                                ? 'bg-surface-elevated text-content-secondary'
-                                : 'bg-semantic-info/10 text-semantic-info',
-                          )}
-                        >
-                          {getEventLabel(item, captureLabel, idleLabel, minLabel)}
-                        </span>
-                      </div>
-
-                      {/* UI note */}
-                      {item.type !== 'IdlePeriod' && (
-                        <div className="mt-1">
-                          {item.type === 'Frame' ? (
-                            <>
-                              <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
-                              <p className={cn('truncate text-content-secondary', typography.caption)}>
-                                {item.window_title}
-                              </p>
-                            </>
-                          ) : (
-                            item.app_name && (
-                              <>
-                                <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
-                                {item.window_title && (
-                                  <p className={cn('truncate text-content-secondary', typography.caption)}>
-                                    {item.window_title}
-                                  </p>
-                                )}
-                              </>
-                            )
-                          )}
-                        </div>
-                      )}
-
-                      {/* UI note */}
-                      {item.type === 'Frame' && (
-                        <div className="mt-1 flex items-center space-x-2">
-                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-muted">
-                            <div
-                              className={cn(
-                                'h-full',
-                                item.importance >= 0.7
-                                  ? 'bg-semantic-success'
-                                  : item.importance >= 0.4
-                                    ? 'bg-semantic-warning'
-                                    : 'bg-surface-muted',
-                              )}
-                              style={{ width: `${item.importance * 100}%` }}
-                            />
-                          </div>
-                          <span className={cn('text-content-secondary', typography.caption)}>
-                            {Math.round(item.importance * 100)}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </button>
+                <EventLogItem
+                  key={getItemKey(item)}
+                  item={item}
+                  isActive={isActive}
+                  activeRef={isActive ? activeItemRef : undefined}
+                  captureLabel={captureLabel}
+                  idleLabel={idleLabel}
+                  minLabel={minLabel}
+                  onItemClick={handleItemClick}
+                />
               )
             })}
           </div>

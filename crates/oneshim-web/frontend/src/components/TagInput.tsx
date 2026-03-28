@@ -24,6 +24,7 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedColor, setSelectedColor] = useState(getRandomTagColor())
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -69,18 +70,33 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value)
+    setHighlightedIndex(-1)
     if (!isOpen) setIsOpen(true)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && canCreateNew) {
+    if (e.key === 'ArrowDown') {
       e.preventDefault()
-      createTagMutation.mutate({
-        name: inputValue.trim(),
-        color: selectedColor,
-      })
+      if (!isOpen) {
+        setIsOpen(true)
+      }
+      setHighlightedIndex((prev) => (prev < filteredTags.length - 1 ? prev + 1 : 0))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredTags.length - 1))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (highlightedIndex >= 0 && highlightedIndex < filteredTags.length) {
+        handleSelectTag(filteredTags[highlightedIndex])
+      } else if (canCreateNew) {
+        createTagMutation.mutate({
+          name: inputValue.trim(),
+          color: selectedColor,
+        })
+      }
     } else if (e.key === 'Escape') {
       setIsOpen(false)
+      setHighlightedIndex(-1)
     }
   }
 
@@ -88,6 +104,7 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
     onAddTag(tag)
     setInputValue('')
     setIsOpen(false)
+    setHighlightedIndex(-1)
     inputRef.current?.focus()
   }
 
@@ -116,6 +133,10 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
         <Input
           ref={inputRef}
           type="text"
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-controls="tag-listbox"
+          aria-activedescendant={highlightedIndex >= 0 ? `tag-option-${highlightedIndex}` : undefined}
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
@@ -128,6 +149,7 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
         {isOpen && (inputValue || filteredTags.length > 0) && (
           <div
             ref={dropdownRef}
+            id="tag-listbox"
             role="listbox"
             aria-label={t('timeline.tagSuggestions', 'Tag suggestions')}
             className={cn(
@@ -140,14 +162,17 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
             {/* UI note */}
             {filteredTags.length > 0 && (
               <div className="p-1">
-                {filteredTags.map((tag) => (
+                {filteredTags.map((tag, index) => (
                   <button
                     key={tag.id}
+                    id={`tag-option-${index}`}
                     type="button"
                     role="option"
+                    aria-selected={index === highlightedIndex}
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left',
                       `${motion.colors} hover:bg-hover`,
+                      index === highlightedIndex && 'bg-hover',
                     )}
                     onClick={() => handleSelectTag(tag)}
                   >

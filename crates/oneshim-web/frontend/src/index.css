@@ -78,10 +78,10 @@
 
   /* Content */
   --content: 255 255 255; /* white */
-  --content-secondary: 148 163 184; /* slate-400 */
+  --content-secondary: 186 198 213; /* ~slate-300, WCAG AA ~5.5:1 on slate-900 */
   --content-tertiary: 100 116 139; /* slate-500 */
   --content-inverse: 255 255 255; /* white */
-  --content-muted: 100 116 139; /* slate-500 */
+  --content-muted: 120 137 158; /* bumped from slate-500 for ~3.8:1 on slate-900 */
   --content-strong: 203 213 225; /* slate-300 */
 
   /* Border */
@@ -138,6 +138,7 @@ body {
   grid-template-rows: var(--titlebar-height) 1fr var(--statusbar-height);
   grid-template-columns: var(--activitybar-width) var(--sidebar-width) 1fr;
   height: 100vh;
+  min-width: 768px;
   overflow: hidden;
 }
 
@@ -193,20 +194,21 @@ body {
   -webkit-app-region: no-drag;
 }
 
-/* Tracking panel glow animation — uses inset shadow to avoid window-bounds clipping */
+/* Tracking panel glow animation — reduced blur for GPU/battery efficiency, 3 repeats then settles */
 @keyframes panel-glow {
   0%,
   100% {
-    box-shadow: inset 0 0 20px 5px rgb(var(--brand-signal) / 0.45);
+    box-shadow: inset 0 0 8px 2px rgb(var(--brand-signal) / 0.35);
     border-color: rgb(var(--brand-signal) / 0.5);
   }
   50% {
-    box-shadow: inset 0 0 8px 2px rgb(var(--brand-signal) / 0.12);
+    box-shadow: inset 0 0 4px 1px rgb(var(--brand-signal) / 0.1);
     border-color: rgb(var(--brand-signal) / 0.2);
   }
 }
 
 .animate-panel-glow {
-  animation: panel-glow 2s ease-in-out infinite;
+  animation: panel-glow 2s ease-in-out 3;
   border: 1.5px solid rgb(var(--brand-signal) / 0.5);
+  will-change: box-shadow;
 }

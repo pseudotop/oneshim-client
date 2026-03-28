@@ -257,6 +257,9 @@ export default function PomodoroTimer() {
             timeText={isActive ? formatTime(remaining) : '--:--'}
             label={isActive ? statusLabel(status) : 'Ready'}
           />
+          <span className="sr-only" aria-live="polite">
+            {isActive ? `${statusLabel(status)}: ${formatTime(remaining)}` : 'Ready'}
+          </span>
 
           {/* Controls */}
           <div className="flex gap-2">
