@@ -88,15 +88,9 @@ impl GuiElementDetector {
     }
 }
 
-// TODO Phase 3: Per-word OCR confidence scores.
-// The `leptess` crate does not currently expose per-word confidence via
-// `TessBaseAPIGetIterator` + `RIL_WORD`. To obtain per-word confidence,
-// we would need to either:
-// 1. Contribute upstream to `leptess` to expose `ResultIterator` with
-//    confidence per word-level iterator, or
-// 2. Use raw Tesseract FFI (`TessBaseAPIGetIterator`, `TessPageIteratorGetConfidence`)
-//    directly, bypassing `leptess`.
-// For now, `OcrRegion.confidence` uses `mean_text_conf()` for the entire page.
+// Note: Per-word OCR confidence is not available — `leptess` does not expose
+// `TessBaseAPIGetIterator` + `RIL_WORD`. `OcrRegion.confidence` uses page-level
+// `mean_text_conf()`. Upstream contribution or raw Tesseract FFI would be needed.
 
 #[cfg(test)]
 mod tests;

@@ -155,6 +155,7 @@ impl PrivacyGateway {
             .collect())
     }
 
+    #[allow(clippy::unused_async)] // await used only with `ocr` feature
     async fn blur_pii_regions(image_data: &[u8], filter_level: PiiFilterLevel) -> (Vec<u8>, usize) {
         #[cfg(feature = "ocr")]
         {

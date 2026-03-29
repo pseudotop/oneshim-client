@@ -255,7 +255,7 @@ pub(super) async fn emit_heatmap_and_goals(
         if let Some(ref overlay) = overlay_ref {
             let goals = coaching.all_goal_progress().await;
             if !goals.is_empty() {
-                overlay.update_goal_progress(goals).await;
+                overlay.update_goal_progress(goals);
             }
         }
     }

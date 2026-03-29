@@ -322,7 +322,7 @@ pub fn generate_auto_label(centroid: &RegimeFeatures, top_apps: &[String]) -> St
         "Mixed"
     };
 
-    let app_hint = top_apps.first().map(|a| a.as_str()).unwrap_or("varied");
+    let app_hint = top_apps.first().map_or("varied", |a| a.as_str());
     format!("{mode} ({app_hint})")
 }
 

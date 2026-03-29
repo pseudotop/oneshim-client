@@ -31,8 +31,7 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let now = Utc::now();
-        // TODO: migrate to enum_to_sql_str when AppCategory/SessionState use serde derives consistently
-        let category_str = format!("{:?}", category);
+        let category_str = enum_to_sql_str(&category);
 
         conn.execute(
             "INSERT INTO work_sessions (started_at, primary_app, category, state)
@@ -259,9 +258,9 @@ impl SqliteStorage {
             rusqlite::params![
                 interruption.interrupted_at.to_rfc3339(),
                 interruption.from_app,
-                format!("{:?}", interruption.from_category), // TODO: migrate to enum_to_sql_str
+                enum_to_sql_str(&interruption.from_category),
                 interruption.to_app,
-                format!("{:?}", interruption.to_category), // TODO: migrate to enum_to_sql_str
+                enum_to_sql_str(&interruption.to_category),
                 interruption.snapshot_frame_id,
             ],
         )
@@ -477,6 +476,11 @@ impl SqliteStorage {
     }
 
     pub(crate) fn parse_app_category(s: &str) -> AppCategory {
+        // Try serde deserialization first (handles snake_case from enum_to_sql_str)
+        if let Ok(cat) = serde_json::from_str::<AppCategory>(&format!("\"{s}\"")) {
+            return cat;
+        }
+        // Fallback for legacy Debug-format strings (PascalCase)
         match s {
             "Communication" => AppCategory::Communication,
             "Development" => AppCategory::Development,

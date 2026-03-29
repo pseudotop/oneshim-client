@@ -57,6 +57,7 @@ pub struct LocalLlmSession {
     /// Retained for session introspection; content is pre-seeded into `history`.
     #[allow(dead_code)]
     system_prompt: Option<String>,
+    state: parking_lot::Mutex<SessionState>,
     turn_count: AtomicU32,
     created_at: DateTime<Utc>,
     last_active: parking_lot::Mutex<Instant>,
@@ -87,6 +88,7 @@ impl LocalLlmSession {
             base_url: base_url.trim_end_matches('/').to_string(),
             history: Arc::new(RwLock::new(initial_history)),
             system_prompt,
+            state: parking_lot::Mutex::new(SessionState::Active),
             turn_count: AtomicU32::new(0),
             created_at: Utc::now(),
             last_active: parking_lot::Mutex::new(Instant::now()),
@@ -152,11 +154,15 @@ impl ConversationSession for LocalLlmSession {
             .json(&body)
             .send()
             .await
-            .map_err(|e| CoreError::Network(format!("Ollama request failed: {e}")))?;
+            .map_err(|e| {
+                *self.state.lock() = SessionState::Failed;
+                CoreError::Network(format!("Ollama request failed: {e}"))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
+            *self.state.lock() = SessionState::Failed;
             return Err(CoreError::Network(format!(
                 "Ollama API error {status}: {body_text}"
             )));
@@ -296,7 +302,7 @@ impl ConversationSession for LocalLlmSession {
             session_id: self.session_id.clone(),
             provider_name: "ollama".to_string(),
             model: self.model.clone(),
-            state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
+            state: *self.state.lock(),
             transport: SessionTransport::LocalLlm,
             created_at: self.created_at,
             last_active: last_active_utc,

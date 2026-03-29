@@ -45,7 +45,7 @@ pub fn extract_document_heading(text: &str) -> Option<DocumentHeadingInfo> {
     // Strategy 2: First short line followed by empty line or separator
     if let Some(first) = lines.first().map(|l| l.trim()) {
         if !first.is_empty() && first.len() < 80 {
-            let second = lines.get(1).map(|l| l.trim()).unwrap_or("");
+            let second = lines.get(1).map_or("", |l| l.trim());
             let is_title_like =
                 second.is_empty() || second.chars().all(|c| c == '=' || c == '-' || c == '_');
             if is_title_like {

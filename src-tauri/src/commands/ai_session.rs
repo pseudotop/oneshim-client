@@ -4,15 +4,18 @@
 //! background task that streams `OutboundMessage` events to the frontend via
 //! Tauri events on the channel `ai-session:<session_id>`.
 
+use std::sync::Arc;
+
 use futures::StreamExt;
 use tauri::{command, AppHandle, Emitter};
 
 use oneshim_core::models::ai_session::{
-    ConversationSessionInfo, MessageRole, SessionConfig, SessionMessage,
+    ConversationSessionInfo, MessageRole, SessionConfig, SessionMessage, SessionState,
 };
 use oneshim_core::ports::conversation_session::SessionManager;
 
 use crate::runtime_state::AppState;
+use crate::session_manager::SessionManagerImpl;
 
 /// Create a new AI conversation session.
 #[command]
@@ -52,9 +55,7 @@ pub async fn send_session_message(
         .map_err(|e| e.to_string())?;
 
     // Reset idle timer — keeps the session in Active state.
-    if let Some(ref sm) = state.session_manager {
-        sm.touch_session(&session_id).await;
-    }
+    mgr.touch_session(&session_id).await;
 
     let msg = SessionMessage {
         role: MessageRole::User,
@@ -64,10 +65,14 @@ pub async fn send_session_message(
         context: None,
     };
 
-    let mut stream = session
-        .send_message(&msg)
-        .await
-        .map_err(|e| e.to_string())?;
+    let mgr_clone: Arc<SessionManagerImpl> = mgr.clone();
+    let mut stream = match session.send_message(&msg).await {
+        Ok(s) => s,
+        Err(err) => {
+            mgr_clone.report_failure(&session_id, &err).await;
+            return Err(err.to_string());
+        }
+    };
 
     let event_name = format!("ai-session:{session_id}");
 
@@ -89,11 +94,12 @@ pub async fn send_session_message(
                         session_id = %session_id,
                         "stream error: {err}"
                     );
-                    // Emit the error to the frontend as an error outbound message.
+                    let new_state = mgr_clone.report_failure(&session_id, &err).await;
+                    let retryable = new_state == SessionState::Active;
                     let error_msg = oneshim_core::models::ai_session::OutboundMessage::Error {
                         code: "stream_error".to_string(),
                         message: err.to_string(),
-                        retryable: false,
+                        retryable,
                     };
                     let _ = app.emit(&event_name, &error_msg);
                     break;

@@ -85,19 +85,15 @@ struct OverlayState {
 /// startup so persistent components (TrackingBorder, CaptureFlash) render
 /// immediately. The window is transparent and click-through by default.
 ///
-/// # TODO: CoachingOverlayPort consideration
+/// # Note: CoachingOverlayPort consideration
 ///
 /// This struct is **not** behind a port trait. It depends on `tauri::AppHandle`
 /// which is only available in the binary crate (`src-tauri`), making it
 /// unsuitable for the `oneshim-core` port layer.
 ///
-/// For scheduler coaching loop unit testing, a mock overlay could be
-/// introduced via a `CoachingOverlayPort` trait in `oneshim-core` with
-/// methods like `show_coaching()`, `dismiss()`, `set_interactive()`.
-///
-/// **Deferred**: the notification fallback already provides test coverage
-/// for the coaching output path. The scheduler coaching loop tests can
-/// verify behavior without a real overlay window.
+/// A `CoachingOverlayPort` trait could be introduced for unit testing the
+/// scheduler coaching loop, but the notification fallback already provides
+/// sufficient test coverage for the coaching output path.
 #[derive(Clone)]
 pub struct MagicOverlayHandle {
     app_handle: AppHandle,
@@ -250,7 +246,7 @@ impl MagicOverlayHandle {
 
     /// Update focus highlight overlay element.
     #[allow(dead_code)] // retained for future IPC command usage
-    pub async fn update_focus_highlight(&self, highlight: OverlayFocusPayload) {
+    pub fn update_focus_highlight(&self, highlight: OverlayFocusPayload) {
         if let Err(e) = self.app_handle.emit("overlay:update-focus", &highlight) {
             warn!("failed to emit overlay:update-focus: {e}");
         }
@@ -318,7 +314,7 @@ impl MagicOverlayHandle {
     }
 
     /// Update goal progress data on the overlay.
-    pub async fn update_goal_progress(&self, goals: Vec<GoalProgressView>) {
+    pub fn update_goal_progress(&self, goals: Vec<GoalProgressView>) {
         let payload = OverlayGoalPayload { goals };
         if let Err(e) = self.app_handle.emit("overlay:update-goals", &payload) {
             warn!("failed to emit overlay:update-goals: {e}");
@@ -370,7 +366,7 @@ impl MagicOverlayHandle {
     ///   - Global shortcut Cmd+Shift+O: toggle to interactive
     ///   - Coaching popup dismissed: return to click-through
     ///   - 5-second no-interaction timeout: return to click-through
-    pub async fn set_interactive(&self, interactive: bool) {
+    pub fn set_interactive(&self, interactive: bool) {
         if interactive {
             // Ensure overlay window exists and is visible when making interactive
             let _ = self.ensure_window();

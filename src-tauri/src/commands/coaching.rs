@@ -50,7 +50,7 @@ pub async fn dismiss_coaching_message(
 
     // Return overlay to click-through mode after dismissal
     if let Some(ref overlay) = state.magic_overlay {
-        overlay.set_interactive(false).await;
+        overlay.set_interactive(false);
     }
 
     Ok(())
@@ -135,7 +135,7 @@ pub async fn toggle_overlay_interactive(
     interactive: bool,
 ) -> Result<(), String> {
     if let Some(ref overlay) = state.magic_overlay {
-        overlay.set_interactive(interactive).await;
+        overlay.set_interactive(interactive);
     }
     Ok(())
 }

@@ -17,6 +17,7 @@ impl SearchQueryService {
         Self { ctx }
     }
 
+    #[allow(clippy::unused_async)] // called from axum async handler
     pub async fn search(&self, params: &SearchQuery) -> Result<SearchResponse, ApiError> {
         let query = params.q.trim();
         let tag_ids = parse_tag_ids(params);
