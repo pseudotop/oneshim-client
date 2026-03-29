@@ -11,6 +11,7 @@ pub enum ProviderAuthScheme {
     Bearer,
     XApiKey,
     XGoogApiKey,
+    AwsSignatureV4,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +23,7 @@ pub enum ProviderRequestShape {
     OpenAiResponses,
     GoogleGenerateContent,
     GoogleVisionAnnotate,
+    BedrockConverse,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

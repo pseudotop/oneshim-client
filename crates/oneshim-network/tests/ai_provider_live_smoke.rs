@@ -160,6 +160,8 @@ impl ProviderCapability {
             AiProviderType::Anthropic
             | AiProviderType::OpenAi
             | AiProviderType::Ollama
+            | AiProviderType::Bedrock
+            | AiProviderType::Copilot
             | AiProviderType::Generic => Self {
                 ocr_can_inherit_llm_endpoint: true,
                 ocr_can_inherit_llm_model: true,
@@ -288,6 +290,8 @@ fn provider_label(provider_type: AiProviderType) -> &'static str {
         AiProviderType::OpenAi => "openai",
         AiProviderType::Google => "google",
         AiProviderType::Ollama => "ollama",
+        AiProviderType::Bedrock => "bedrock",
+        AiProviderType::Copilot => "copilot",
         AiProviderType::Generic => "generic",
     }
 }
@@ -298,6 +302,8 @@ fn parse_provider_type(raw: &str) -> AiProviderType {
         "openai" | "open_ai" | "open-ai" => AiProviderType::OpenAi,
         "google" | "gemini" => AiProviderType::Google,
         "ollama" => AiProviderType::Ollama,
+        "bedrock" | "aws-bedrock" | "amazon-bedrock" => AiProviderType::Bedrock,
+        "copilot" | "github-copilot" | "gh-copilot" => AiProviderType::Copilot,
         "generic" => AiProviderType::Generic,
         other => panic!("Unsupported provider type: {other}"),
     }

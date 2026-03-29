@@ -72,6 +72,7 @@ pub(super) fn parse_auth_scheme(raw: &str) -> Result<ProviderAuthScheme, String>
         "bearer" => Ok(ProviderAuthScheme::Bearer),
         "x_api_key" => Ok(ProviderAuthScheme::XApiKey),
         "x_goog_api_key" => Ok(ProviderAuthScheme::XGoogApiKey),
+        "aws_signature_v4" => Ok(ProviderAuthScheme::AwsSignatureV4),
         _ => Err(format!("Unsupported provider auth scheme '{raw}'")),
     }
 }
@@ -85,6 +86,7 @@ pub(super) fn parse_request_shape(raw: &str) -> Result<ProviderRequestShape, Str
         "openai_responses" => Ok(ProviderRequestShape::OpenAiResponses),
         "google_generate_content" => Ok(ProviderRequestShape::GoogleGenerateContent),
         "google_vision_annotate" => Ok(ProviderRequestShape::GoogleVisionAnnotate),
+        "bedrock_converse" => Ok(ProviderRequestShape::BedrockConverse),
         _ => Err(format!("Unsupported provider request shape '{raw}'")),
     }
 }

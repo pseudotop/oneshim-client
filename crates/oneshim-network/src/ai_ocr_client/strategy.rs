@@ -29,6 +29,10 @@ impl TryFrom<ProviderRequestShape> for OcrProviderStrategy {
             | ProviderRequestShape::OpenAiResponses => Ok(Self::OpenAi),
             ProviderRequestShape::GoogleGenerateContent
             | ProviderRequestShape::GoogleVisionAnnotate => Ok(Self::Google),
+            ProviderRequestShape::BedrockConverse => Err(CoreError::Internal(
+                "Bedrock Converse request shape is not yet supported for OCR strategy selection"
+                    .to_string(),
+            )),
         }
     }
 }

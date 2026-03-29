@@ -68,6 +68,8 @@ impl AnalysisClient {
             AiProviderType::OpenAi
             | AiProviderType::Google
             | AiProviderType::Ollama
+            | AiProviderType::Bedrock
+            | AiProviderType::Copilot
             | AiProviderType::Generic => {
                 serde_json::json!({
                     "model": self.model,

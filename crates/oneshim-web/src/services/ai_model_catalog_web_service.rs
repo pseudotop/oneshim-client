@@ -83,6 +83,10 @@ impl AiModelCatalogQueryService {
                 let api_key = api_key.as_deref().unwrap_or_default();
                 builder = builder.header("x-goog-api-key", api_key);
             }
+            ProviderAuthScheme::AwsSignatureV4 => {
+                // AWS Signature V4 not yet supported for model catalog discovery;
+                // skip auth header (request will likely fail at the provider).
+            }
         }
 
         let response = builder.send().await.map_err(|error| {

@@ -313,6 +313,8 @@ fn parse_provider_type(raw: &str) -> Result<AiProviderType, String> {
         "openai" => Ok(AiProviderType::OpenAi),
         "google" => Ok(AiProviderType::Google),
         "ollama" => Ok(AiProviderType::Ollama),
+        "bedrock" => Ok(AiProviderType::Bedrock),
+        "copilot" => Ok(AiProviderType::Copilot),
         "generic" => Ok(AiProviderType::Generic),
         other => Err(format!(
             "Unsupported provider_type '{other}' in provider surface catalog."
@@ -337,6 +339,8 @@ fn fallback_provider_vendor_id(provider_type: AiProviderType) -> &'static str {
         AiProviderType::OpenAi => "openai",
         AiProviderType::Google => "google",
         AiProviderType::Ollama => "ollama",
+        AiProviderType::Bedrock => "bedrock",
+        AiProviderType::Copilot => "copilot",
         AiProviderType::Generic => "generic",
     }
 }
@@ -347,6 +351,8 @@ fn fallback_provider_display_name(provider_type: AiProviderType) -> &'static str
         AiProviderType::OpenAi => "OpenAI",
         AiProviderType::Google => "Google",
         AiProviderType::Ollama => "Ollama",
+        AiProviderType::Bedrock => "Amazon Bedrock",
+        AiProviderType::Copilot => "GitHub Copilot",
         AiProviderType::Generic => "Generic",
     }
 }
