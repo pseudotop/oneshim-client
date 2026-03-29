@@ -285,7 +285,8 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
         {selected.tier === 'local' && (
           <div className={cn('mb-4 p-3 text-sm', radius.md, 'bg-surface-hover')}>
             <p className={colors.text.secondary}>
-              Make sure Ollama is running on <code className={typography.family.mono}>localhost:11434</code>
+              {t('settings.ai.ollamaRunning', 'Make sure Ollama is running on')}{' '}
+              <code className={typography.family.mono}>localhost:11434</code>
             </p>
             <a
               href={selected.docsUrl}
@@ -367,7 +368,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
               'flex items-center gap-2.5 p-3 text-left',
               radius.md,
               'border border-border-default',
-              provider.comingSoon ? 'opacity-50 cursor-not-allowed' : 'hover:border-brand hover:bg-surface-hover',
+              provider.comingSoon ? 'cursor-not-allowed opacity-50' : 'hover:border-brand hover:bg-surface-hover',
               motion.colors,
             )}
           >
