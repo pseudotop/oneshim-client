@@ -450,7 +450,7 @@ impl Updater {
                 if sub_binary.exists() {
                     return Ok(sub_binary);
                 }
-            } else if path.file_name().map(|n| n == binary_name).unwrap_or(false) {
+            } else if path.file_name().is_some_and(|n| n == binary_name) {
                 return Ok(path);
             }
         }

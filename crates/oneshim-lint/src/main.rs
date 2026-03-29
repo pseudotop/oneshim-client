@@ -111,7 +111,6 @@ fn parse_mode(args: &[String]) -> Mode {
         match first.as_str() {
             "non-english" => Mode::NonEnglish,
             "i18n" => Mode::I18n,
-            "all" => Mode::All,
             _ => Mode::All,
         }
     } else {

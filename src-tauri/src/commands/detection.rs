@@ -23,7 +23,7 @@ pub async fn toggle_detection_overlay(
 
     if active {
         info!("detection overlay activated — running scene analysis");
-        spawn_detection_analysis_from_state(&state).await;
+        spawn_detection_analysis_from_state(&state);
     } else {
         info!("detection overlay deactivated");
         if let Some(ref overlay) = state.magic_overlay {
@@ -40,13 +40,13 @@ pub async fn refresh_detection_overlay(state: State<'_, AppState>) -> Result<(),
         return Err("detection overlay is not active".to_string());
     }
     info!("detection overlay manual refresh");
-    spawn_detection_analysis_from_state(&state).await;
+    spawn_detection_analysis_from_state(&state);
     Ok(())
 }
 
 /// Helper for global shortcut handler (setup.rs) and IPC commands.
 /// Clones only the Arc fields needed, not the entire AppState.
-pub async fn spawn_detection_analysis_from_state(state: &AppState) {
+pub fn spawn_detection_analysis_from_state(state: &AppState) {
     let finder: Arc<dyn ElementFinder> = match state.automation_controller.as_ref() {
         Some(controller) => match controller.scene_finder() {
             Some(finder) => finder.clone(),

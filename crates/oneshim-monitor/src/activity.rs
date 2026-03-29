@@ -45,6 +45,7 @@ impl ActivityMonitor for ActivityTracker {
 /// - macOS: Core Graphics API
 /// - Windows: Win32 GetCursorPos
 /// - Linux: xdotool getmouselocation (X11/XWayland)
+#[allow(clippy::unused_async)] // async required on linux (xdotool spawns process)
 async fn get_mouse_position() -> Option<MousePosition> {
     #[cfg(target_os = "macos")]
     {

@@ -125,8 +125,8 @@ pub fn evaluate_model_lifecycle_at_for_surface(
     let warn_at = parse_utc_opt(rule.warn_at.as_deref())?;
     let block_at = parse_utc_opt(rule.block_at.as_deref())?;
 
-    let warn_due = warn_at.map(|at| now >= at).unwrap_or(false);
-    let block_due = block_at.map(|at| now >= at).unwrap_or(false);
+    let warn_due = warn_at.is_some_and(|at| now >= at);
+    let block_due = block_at.is_some_and(|at| now >= at);
 
     match rule.action {
         ModelLifecycleAction::WarnOnly => {
@@ -228,8 +228,8 @@ pub(crate) fn evaluate_rule_at_for_surface(
     let warn_at = parse_utc_opt(rule.warn_at.as_deref())?;
     let block_at = parse_utc_opt(rule.block_at.as_deref())?;
 
-    let warn_due = warn_at.map(|at| now >= at).unwrap_or(false);
-    let block_due = block_at.map(|at| now >= at).unwrap_or(false);
+    let warn_due = warn_at.is_some_and(|at| now >= at);
+    let block_due = block_at.is_some_and(|at| now >= at);
 
     match rule.action {
         ModelLifecycleAction::WarnOnly => {

@@ -197,7 +197,7 @@ fn register_overlay_shortcut(app: &App) {
                         let state: tauri::State<'_, crate::runtime_state::AppState> =
                             handle.state();
                         if let Some(ref overlay) = state.magic_overlay {
-                            overlay.set_interactive(true).await;
+                            overlay.set_interactive(true);
                         }
                     });
                 }
@@ -225,7 +225,7 @@ fn register_suggestions_shortcut(app: &App) {
                         if let Some(state) = handle.try_state::<crate::runtime_state::AppState>() {
                             if let Some(ref overlay) = state.magic_overlay {
                                 overlay.emit_toggle_suggestions();
-                                overlay.set_interactive(true).await;
+                                overlay.set_interactive(true);
                             }
                         }
                     });
@@ -258,15 +258,14 @@ fn register_detection_shortcut(app: &App) {
                         if now_active {
                             tracing::info!("detection overlay toggled ON via shortcut");
                             if let Some(ref overlay) = state.magic_overlay {
-                                overlay.set_interactive(true).await;
+                                overlay.set_interactive(true);
                             }
-                            crate::commands::detection::spawn_detection_analysis_from_state(&state)
-                                .await;
+                            crate::commands::detection::spawn_detection_analysis_from_state(&state);
                         } else {
                             tracing::info!("detection overlay toggled OFF via shortcut");
                             if let Some(ref overlay) = state.magic_overlay {
                                 overlay.clear_detection_scene().await;
-                                overlay.set_interactive(false).await;
+                                overlay.set_interactive(false);
                             }
                         }
                     });
@@ -294,8 +293,7 @@ fn register_detection_refresh_shortcut(app: &App) {
                             .load(std::sync::atomic::Ordering::Relaxed)
                         {
                             tracing::info!("detection overlay refresh via shortcut");
-                            crate::commands::detection::spawn_detection_analysis_from_state(&state)
-                                .await;
+                            crate::commands::detection::spawn_detection_analysis_from_state(&state);
                         }
                     });
                 }

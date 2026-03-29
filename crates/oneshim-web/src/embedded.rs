@@ -28,6 +28,7 @@ impl Assets {
     }
 }
 
+#[allow(clippy::unused_async)] // axum handler requires async return
 pub async fn serve_static(uri: Uri) -> Response {
     serve_static_impl(uri)
 }
