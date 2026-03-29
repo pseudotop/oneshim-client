@@ -328,15 +328,23 @@ fn apply_extended_settings(config: &mut AppConfig, settings: &AppSettings) {
     config.grpc.use_grpc_context = grpc_enabled;
 
     // Coaching
+    // Note: coaching.tone, coaching.overlay_mode are read-only on the wire —
+    // serialized by the assembler for display, but not written back here.
+    // They require enum parsing (CoachingTone, OverlayMode) and are managed
+    // via the dedicated CoachingGoalsTab, not the Advanced tab.
     config.coaching.enabled = settings.coaching.enabled;
     config.coaching.locale = settings.coaching.locale.clone();
 
     // Integration
+    // Note: integration.auth_profile_kind is read-only — enum requires
+    // dedicated parsing (IntegrationAuthProfileKind).
     config.integration.enabled = settings.integration.enabled;
     config.integration.request_timeout_secs = settings.integration.request_timeout_secs;
     config.integration.sync_interval_secs = settings.integration.sync_interval_secs;
 
     // Sync
+    // Note: sync.transport is read-only — enum requires dedicated parsing
+    // (SyncTransportKind).
     config.sync.enabled = settings.sync.enabled;
     config.sync.interval_secs = settings.sync.interval_secs;
     config.sync.device_name = settings.sync.device_name.clone();

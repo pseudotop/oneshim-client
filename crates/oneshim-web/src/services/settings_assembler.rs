@@ -148,10 +148,13 @@ pub(crate) fn config_to_settings(
 }
 
 pub(crate) fn mask_api_key(key: &str) -> String {
-    if key.len() <= 8 {
+    let chars: Vec<char> = key.chars().collect();
+    if chars.len() <= 8 {
         return "***".to_string();
     }
-    format!("{}...{}", &key[..2], &key[key.len() - 4..])
+    let prefix: String = chars[..2].iter().collect();
+    let suffix: String = chars[chars.len() - 4..].iter().collect();
+    format!("{prefix}...{suffix}")
 }
 
 pub(crate) fn is_masked_key(value: &str) -> bool {
