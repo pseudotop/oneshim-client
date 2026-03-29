@@ -1,3 +1,11 @@
+// Cast safety: system metrics, CPU percentages, process counters — precision loss acceptable.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+
 //! # oneshim-monitor
 
 pub mod activity;

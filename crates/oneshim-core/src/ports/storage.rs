@@ -11,6 +11,11 @@ use crate::models::event::Event;
 use crate::models::suggestion::Suggestion;
 use crate::models::system::SystemMetrics;
 
+/// Local event and suggestion persistence.
+///
+/// # Errors
+/// All methods return `CoreError::Internal` on SQLite failures (lock
+/// contention, constraint violation, disk I/O).
 #[async_trait]
 pub trait StorageService: Send + Sync {
     async fn save_event(&self, event: &Event) -> Result<(), CoreError>;
@@ -41,6 +46,10 @@ pub trait StorageService: Send + Sync {
     ) -> Result<(), CoreError>;
 }
 
+/// System metrics, process snapshots, idle periods, and session counters.
+///
+/// # Errors
+/// All methods return `CoreError::Internal` on SQLite failures.
 #[async_trait]
 pub trait MetricsStorage: Send + Sync {
     async fn save_metrics(&self, metrics: &SystemMetrics) -> Result<(), CoreError>;

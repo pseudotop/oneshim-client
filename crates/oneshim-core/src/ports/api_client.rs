@@ -20,16 +20,42 @@ pub struct SessionCreateResponse {
 
 #[async_trait]
 pub trait ApiClient: Send + Sync {
+    /// Create a server session for the given client.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Network` on connection failure, `CoreError::Auth` on
+    /// authentication failure, `CoreError::ServiceUnavailable` when the server is down.
     async fn create_session(&self, client_id: &str) -> Result<SessionCreateResponse, CoreError>;
 
+    /// End an active server session.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Network` on connection failure.
     async fn end_session(&self, session_id: &str) -> Result<(), CoreError>;
 
+    /// Upload an event batch to the server.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Network` on connection failure, `CoreError::RateLimit`
+    /// when the server throttles uploads.
     async fn upload_batch(&self, batch: &EventBatch) -> Result<(), CoreError>;
 
+    /// Upload context data (frames + metadata) to the server.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Network` on connection failure.
     async fn upload_context(&self, upload: &ContextUpload) -> Result<(), CoreError>;
 
+    /// Send suggestion feedback (accept/reject) to the server.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Network` on connection failure.
     async fn send_feedback(&self, feedback: &SuggestionFeedback) -> Result<(), CoreError>;
 
+    /// Send a session heartbeat to keep the server session alive.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Network` on connection failure.
     async fn send_heartbeat(&self, session_id: &str) -> Result<(), CoreError>;
 }
 
@@ -49,6 +75,11 @@ pub enum SseEvent {
 
 #[async_trait]
 pub trait SseClient: Send + Sync {
+    /// Connect to the server SSE stream for real-time suggestion delivery.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Network` on connection failure, `CoreError::Auth`
+    /// on invalid session.
     async fn connect(
         &self,
         session_id: &str,

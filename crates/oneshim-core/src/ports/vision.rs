@@ -26,6 +26,11 @@ pub struct CaptureRequest {
     pub window_bounds: Option<WindowBounds>,
 }
 
+/// Captures and processes screen frames based on importance level.
+///
+/// # Errors
+/// Methods return `CoreError::Internal` on capture failure (no display,
+/// permission denied), `CoreError::OcrError` on OCR extraction failure.
 #[async_trait]
 pub trait FrameProcessor: Send + Sync {
     async fn capture_and_process(
