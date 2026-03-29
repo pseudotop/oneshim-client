@@ -1,3 +1,10 @@
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+
 pub mod ai_providers;
 pub mod automation;
 pub mod automation_gui;

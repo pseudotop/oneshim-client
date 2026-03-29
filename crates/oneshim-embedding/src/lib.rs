@@ -1,3 +1,10 @@
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+
 //! Local embedding provider — fastembed-rs (ONNX Runtime) wrapper.
 //!
 //! Wraps the synchronous fastembed `TextEmbedding` API behind the async

@@ -1,5 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(unexpected_cfgs)]
+// Cast safety: UI metrics, scheduler counters, coordinates — precision loss acceptable.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
 
 //! ONESHIM Desktop Agent — Tauri v2 진입점
 //!

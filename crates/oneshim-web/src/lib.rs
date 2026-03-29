@@ -1,3 +1,11 @@
+// Cast safety: dashboard metrics, report values — precision loss acceptable.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+
 //! # oneshim-web
 //!
 //! ## Hexagonal Architecture — ADR-001 §7 (Port Location Rules)

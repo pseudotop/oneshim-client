@@ -18,6 +18,10 @@ pub type ResponseStream = Pin<Box<dyn Stream<Item = Result<OutboundMessage, Core
 #[async_trait]
 pub trait ConversationSession: Send + Sync {
     /// Send a message with optional attachments, receive streaming response.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Internal` if the provider subprocess or connection
+    /// fails, `CoreError::Network` on HTTP/streaming errors.
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError>;
 
     /// Current session info (synchronous — returns locally held state).
@@ -33,18 +37,29 @@ pub trait ConversationSession: Send + Sync {
 #[async_trait]
 pub trait SessionManager: Send + Sync {
     /// Create a new session with the given provider.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Internal` if max concurrent sessions reached or
+    /// provider detection fails, `CoreError::InvalidArguments` if required
+    /// config fields are missing, `CoreError::Auth` if credentials unavailable.
     async fn create_session(
         &self,
         config: SessionConfig,
     ) -> Result<Arc<dyn ConversationSession>, CoreError>;
 
     /// Terminate a session.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Internal` if the session ID is not found.
     async fn kill_session(&self, session_id: &str) -> Result<(), CoreError>;
 
     /// List active sessions.
     async fn list_sessions(&self) -> Vec<ConversationSessionInfo>;
 
     /// Retrieve a session by ID.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Internal` if the session ID is not found.
     async fn get_session(
         &self,
         session_id: &str,
