@@ -1,7 +1,8 @@
 /**
  *
  */
-import { colors, form } from '../../styles/tokens'
+import { Checkbox } from '../../components/ui'
+import { colors } from '../../styles/tokens'
 
 export interface ToggleRowProps {
   label: string
@@ -17,7 +18,7 @@ export default function ToggleRow({ label, description, checked, onChange }: Tog
         <span className={colors.text.secondary}>{label}</span>
         <p className={colors.text.tertiary}>{description}</p>
       </div>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className={form.checkbox} />
+      <Checkbox checked={checked} onChange={(e) => onChange(e.target.checked)} />
     </label>
   )
 }

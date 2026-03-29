@@ -16,6 +16,14 @@
       "suspicious": {
         "noUnknownAtRules": "off"
       },
+      "a11y": {
+        "noLabelWithoutControl": {
+          "level": "error",
+          "options": {
+            "inputComponents": ["Checkbox", "Input", "Select"]
+          }
+        }
+      },
       "correctness": {
         "useExhaustiveDependencies": "warn"
       },
