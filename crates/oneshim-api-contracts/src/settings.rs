@@ -42,6 +42,22 @@ pub struct AppSettings {
     pub sandbox: SandboxSettings,
     #[serde(default)]
     pub ai_provider: AiProviderSettings,
+    #[serde(default)]
+    pub ai_session: AiSessionSettings,
+    #[serde(default)]
+    pub suggestion: SuggestionSettings,
+    #[serde(default)]
+    pub indicator: IndicatorSettings,
+    #[serde(default)]
+    pub analysis: AnalysisSettings,
+    #[serde(default)]
+    pub network: NetworkSettings,
+    #[serde(default)]
+    pub coaching: CoachingSettings,
+    #[serde(default)]
+    pub integration: IntegrationSettings,
+    #[serde(default)]
+    pub sync: SyncSettings,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -422,6 +438,164 @@ impl Default for AppSettings {
             automation: AutomationSettings::default(),
             sandbox: SandboxSettings::default(),
             ai_provider: AiProviderSettings::default(),
+            ai_session: AiSessionSettings::default(),
+            suggestion: SuggestionSettings::default(),
+            indicator: IndicatorSettings::default(),
+            analysis: AnalysisSettings::default(),
+            network: NetworkSettings::default(),
+            coaching: CoachingSettings::default(),
+            integration: IntegrationSettings::default(),
+            sync: SyncSettings::default(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AiSessionSettings {
+    pub max_concurrent_sessions: u32,
+    pub idle_timeout_secs: u64,
+    pub session_timeout_secs: u64,
+    pub max_retries: u32,
+    pub max_history_turns: u32,
+    pub health_check_interval_secs: u64,
+}
+
+impl Default for AiSessionSettings {
+    fn default() -> Self {
+        Self {
+            max_concurrent_sessions: 3,
+            idle_timeout_secs: 300,
+            session_timeout_secs: 600,
+            max_retries: 3,
+            max_history_turns: 100,
+            health_check_interval_secs: 30,
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct SuggestionSettings {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IndicatorSettings {
+    pub show_border: bool,
+    pub show_panel: bool,
+    pub border_opacity: f32,
+}
+
+impl Default for IndicatorSettings {
+    fn default() -> Self {
+        Self {
+            show_border: true,
+            show_panel: true,
+            border_opacity: 0.6,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AnalysisSettings {
+    pub enabled: bool,
+    pub interval_secs: u64,
+    pub min_confidence: f64,
+    pub max_suggestions: u32,
+    pub embedding_enabled: bool,
+    pub gui_intelligence_enabled: bool,
+    pub text_intelligence_enabled: bool,
+}
+
+impl Default for AnalysisSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_secs: 60,
+            min_confidence: 0.5,
+            max_suggestions: 5,
+            embedding_enabled: true,
+            gui_intelligence_enabled: true,
+            text_intelligence_enabled: true,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NetworkSettings {
+    pub server_base_url: String,
+    pub request_timeout_ms: u64,
+    pub grpc_enabled: bool,
+    pub grpc_endpoint: String,
+    pub tls_enabled: bool,
+}
+
+impl Default for NetworkSettings {
+    fn default() -> Self {
+        Self {
+            server_base_url: "http://localhost:8000".to_string(),
+            request_timeout_ms: 30000,
+            grpc_enabled: false,
+            grpc_endpoint: "http://localhost:50051".to_string(),
+            tls_enabled: false,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CoachingSettings {
+    pub enabled: bool,
+    pub tone: String,
+    pub locale: String,
+    pub overlay_mode: String,
+}
+
+impl Default for CoachingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            tone: "balanced".to_string(),
+            locale: "en".to_string(),
+            overlay_mode: "minimal".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IntegrationSettings {
+    pub enabled: bool,
+    pub auth_profile_kind: String,
+    pub request_timeout_secs: u64,
+    pub sync_interval_secs: u64,
+}
+
+impl Default for IntegrationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            auth_profile_kind: "none".to_string(),
+            request_timeout_secs: 30,
+            sync_interval_secs: 60,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncSettings {
+    pub enabled: bool,
+    pub transport: String,
+    pub interval_secs: u64,
+    pub device_name: String,
+    pub lan_advertise: bool,
+}
+
+impl Default for SyncSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            transport: "none".to_string(),
+            interval_secs: 300,
+            device_name: String::new(),
+            lan_advertise: false,
         }
     }
 }

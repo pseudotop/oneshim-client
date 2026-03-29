@@ -7,7 +7,7 @@ import type {
 } from '../api/client'
 import { surfaceOcrRequiresStructuredOutputModel } from '../features/providerSurfaces'
 
-export type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data' | 'coaching'
+export type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data' | 'coaching' | 'advanced'
 
 export function isSettingsTabId(value: string | null): value is SettingsTabId {
   return (
@@ -16,7 +16,8 @@ export function isSettingsTabId(value: string | null): value is SettingsTabId {
     value === 'monitoring' ||
     value === 'ai-automation' ||
     value === 'data' ||
-    value === 'coaching'
+    value === 'coaching' ||
+    value === 'advanced'
   )
 }
 

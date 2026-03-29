@@ -69,6 +69,7 @@ const MonitoringTab = lazy(() => import('./setting-tabs/MonitoringTab'))
 const AiAutomationTab = lazy(() => import('./setting-tabs/AiAutomationTab'))
 const DataStorageTab = lazy(() => import('./setting-tabs/DataStorageTab'))
 const CoachingGoalsTab = lazy(() => import('./setting-tabs/CoachingGoalsTab'))
+const AdvancedTab = lazy(() => import('./setting-tabs/AdvancedTab'))
 
 import {
   backendAllowsSecretEditing,
@@ -1240,6 +1241,7 @@ export default function Settings() {
     { id: 'ai-automation', label: t('settings.tabs.aiAutomation') },
     { id: 'data', label: t('settings.tabs.dataStorage') },
     { id: 'coaching', label: t('settings.tabs.coaching', 'Coaching Goals') },
+    { id: 'advanced', label: t('settings.tabs.advanced', 'Advanced') },
   ]
 
   const serializedFormData = formData ? JSON.stringify(formData) : null
@@ -1440,6 +1442,24 @@ export default function Settings() {
           {activeTab === 'coaching' && (
             <div id="settings-panel-coaching" role="tabpanel" aria-labelledby="settings-tab-coaching">
               <CoachingGoalsTab />
+            </div>
+          )}
+
+          {activeTab === 'advanced' && formData && (
+            <div id="settings-panel-advanced" role="tabpanel" aria-labelledby="settings-tab-advanced">
+              <AdvancedTab
+                formData={formData}
+                onChange={(section, field, value) => {
+                  setFormData((prev) => {
+                    if (!prev) return prev
+                    const sectionData = prev[section]
+                    if (typeof sectionData === 'object' && sectionData !== null) {
+                      return { ...prev, [section]: { ...sectionData, [field]: value } }
+                    }
+                    return prev
+                  })
+                }}
+              />
             </div>
           )}
         </Suspense>
