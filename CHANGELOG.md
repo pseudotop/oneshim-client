@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.9-rc.1] - 2026-03-29
+### Added
+
+- Add 12 new BYOK providers — Bedrock, Copilot, Groq, DeepSeek, and more
+  - Add AiProviderType variants: Bedrock (AWS SigV4), Copilot (OAuth)
+  - Add ProviderAuthScheme::AwsSignatureV4, ProviderRequestShape::BedrockConverse
+  - Register 12 new vendors in provider-surface-catalog.json:
+    Amazon Bedrock, GitHub Copilot, Groq, DeepSeek, Together AI,
+    Mistral AI, xAI, Perplexity, OpenRouter, NVIDIA NIM, Cerebras,
+    Fireworks AI — each with proper endpoints, auth, and model catalogs
+  - Generic-compatible providers (10) use OpenAI chat completions path
+    verified working via Groq live smoke test
+  - Bedrock/Copilot have stub error handling pending AWS/GitHub credentials
+  - Total: 17 vendors, 23 surfaces (was 5 vendors, 11 surfaces)
+
+
+## [Unreleased]
+
 ## [0.4.8] - 2026-03-29
 ### Added
 
