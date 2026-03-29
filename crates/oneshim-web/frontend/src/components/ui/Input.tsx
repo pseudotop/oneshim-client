@@ -20,6 +20,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         autoCorrect="off"
         autoCapitalize="off"
         spellCheck={false}
+        aria-invalid={error || undefined}
         className={cn(
           'w-full border placeholder-content-tertiary',
           radius.md,

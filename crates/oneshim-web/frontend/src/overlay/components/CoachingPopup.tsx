@@ -75,7 +75,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
 
   return (
     <div className="fixed top-4 right-4 z-overlay">
-      <div className="w-80 rounded-xl border border-content-inverse/10 bg-surface-sunken/90 p-4 shadow-2xl backdrop-blur-md">
+      <div className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-content-inverse/10 bg-surface-sunken/90 p-4 shadow-2xl backdrop-blur-md">
         {/* Message text with transition */}
         <p
           className={`mb-3 text-content text-sm leading-relaxed ${motion.opacity}${

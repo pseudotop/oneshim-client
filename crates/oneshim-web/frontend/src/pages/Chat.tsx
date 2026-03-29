@@ -16,47 +16,85 @@ import {
   Wrench,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
-import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash'
-import cssLang from 'react-syntax-highlighter/dist/esm/languages/prism/css'
-import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript'
-import jsonLang from 'react-syntax-highlighter/dist/esm/languages/prism/json'
-import markdownLang from 'react-syntax-highlighter/dist/esm/languages/prism/markdown'
-import python from 'react-syntax-highlighter/dist/esm/languages/prism/python'
-import rust from 'react-syntax-highlighter/dist/esm/languages/prism/rust'
-import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql'
-import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript'
-import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml'
-import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import remarkGfm from 'remark-gfm'
+
+// Lazy-loaded syntax highlighter — only fetched when a fenced code block is rendered
+const LazySyntaxHighlighter = React.lazy(async () => {
+  const [
+    { default: SyntaxHighlighter },
+    { oneDark },
+    javascript,
+    typescript,
+    python,
+    bash,
+    jsonLang,
+    cssLang,
+    rust,
+    sql,
+    yaml,
+    markdownLang,
+  ] = await Promise.all([
+    import('react-syntax-highlighter/dist/esm/prism-light'),
+    import('react-syntax-highlighter/dist/esm/styles/prism'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/javascript'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/typescript'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/python'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/bash'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/json'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/css'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/rust'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/sql'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/yaml'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/markdown'),
+  ])
+
+  for (const [name, lang] of [
+    ['javascript', javascript.default],
+    ['js', javascript.default],
+    ['jsx', javascript.default],
+    ['typescript', typescript.default],
+    ['ts', typescript.default],
+    ['tsx', typescript.default],
+    ['python', python.default],
+    ['py', python.default],
+    ['bash', bash.default],
+    ['sh', bash.default],
+    ['shell', bash.default],
+    ['json', jsonLang.default],
+    ['css', cssLang.default],
+    ['rust', rust.default],
+    ['rs', rust.default],
+    ['sql', sql.default],
+    ['yaml', yaml.default],
+    ['yml', yaml.default],
+    ['markdown', markdownLang.default],
+    ['md', markdownLang.default],
+  ] as const) {
+    SyntaxHighlighter.registerLanguage(name, lang)
+  }
+
+  // Wrap in a component that accepts our props and forwards to the real highlighter
+  function LazyHighlighterWrapper(props: { language: string; children: string }) {
+    return (
+      <SyntaxHighlighter
+        style={oneDark}
+        language={props.language}
+        PreTag="div"
+        customStyle={{ margin: 0, borderRadius: '0.375rem', fontSize: '0.8rem' }}
+      >
+        {props.children}
+      </SyntaxHighlighter>
+    )
+  }
+  return { default: LazyHighlighterWrapper }
+})
+
 import { Button, Card, CardContent, Select } from '../components/ui'
 import { colors, iconSize, interaction, motion, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
-
-// Register languages with PrismLight (ships with zero languages by default)
-SyntaxHighlighter.registerLanguage('javascript', javascript)
-SyntaxHighlighter.registerLanguage('js', javascript)
-SyntaxHighlighter.registerLanguage('jsx', javascript)
-SyntaxHighlighter.registerLanguage('typescript', typescript)
-SyntaxHighlighter.registerLanguage('ts', typescript)
-SyntaxHighlighter.registerLanguage('tsx', typescript)
-SyntaxHighlighter.registerLanguage('python', python)
-SyntaxHighlighter.registerLanguage('py', python)
-SyntaxHighlighter.registerLanguage('bash', bash)
-SyntaxHighlighter.registerLanguage('sh', bash)
-SyntaxHighlighter.registerLanguage('shell', bash)
-SyntaxHighlighter.registerLanguage('json', jsonLang)
-SyntaxHighlighter.registerLanguage('css', cssLang)
-SyntaxHighlighter.registerLanguage('rust', rust)
-SyntaxHighlighter.registerLanguage('rs', rust)
-SyntaxHighlighter.registerLanguage('sql', sql)
-SyntaxHighlighter.registerLanguage('yaml', yaml)
-SyntaxHighlighter.registerLanguage('yml', yaml)
-SyntaxHighlighter.registerLanguage('markdown', markdownLang)
-SyntaxHighlighter.registerLanguage('md', markdownLang)
 
 type Transport = 'subprocess' | 'http_api' | 'local_llm'
 type SessionState = 'starting' | 'active' | 'idle' | 'recovering' | 'failed' | 'terminated'
@@ -192,14 +230,27 @@ export default function Chat() {
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const isNearBottom = useRef(true)
+  const rafRef = useRef<number | null>(null)
   const messagesCache = useRef<Map<string, ChatMessage[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Smart auto-scroll: only scroll when user is near bottom
+  // Smart auto-scroll: RAF-throttled to avoid forced layout on every scroll event
   const handleScroll = useCallback(() => {
-    const el = scrollRef.current
-    if (!el) return
-    isNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100
+    if (rafRef.current) return
+    rafRef.current = requestAnimationFrame(() => {
+      const el = scrollRef.current
+      if (el) {
+        isNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100
+      }
+      rafRef.current = null
+    })
+  }, [])
+
+  // Clean up pending RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
   }, [])
 
   useEffect(() => {
@@ -674,18 +725,19 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
               </pre>
             )
           }
-          // After done: full syntax highlighting
+          // After done: full syntax highlighting (lazy-loaded)
           return (
             <div className="group relative my-2">
               <CopyButton text={code} />
-              <SyntaxHighlighter
-                style={oneDark}
-                language={match[1]}
-                PreTag="div"
-                customStyle={{ margin: 0, borderRadius: '0.375rem', fontSize: '0.8rem' }}
+              <React.Suspense
+                fallback={
+                  <pre className={cn('overflow-x-auto rounded bg-surface-sunken p-3 text-xs', typography.family.mono)}>
+                    {code}
+                  </pre>
+                }
               >
-                {code}
-              </SyntaxHighlighter>
+                <LazySyntaxHighlighter language={match[1]}>{code}</LazySyntaxHighlighter>
+              </React.Suspense>
             </div>
           )
         }

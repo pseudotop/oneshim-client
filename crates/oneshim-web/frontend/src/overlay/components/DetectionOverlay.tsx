@@ -92,12 +92,13 @@ export default function DetectionOverlay({ scene, selectedId, onSelect }: Detect
               top: el.y,
               width: el.width,
               height: el.height,
-              border: `${isSelected ? 2 : 1.5}px solid ${color}`,
+              outline: `${isSelected ? 2 : 1.5}px solid ${color}`,
+              outlineOffset: '-1px',
               borderRadius: '2px',
               backgroundColor: `${color}${isSelected ? '20' : '14'}`,
               opacity,
               zIndex: isSelected ? 10001 : 10000,
-              transition: 'border-width 0.1s, background-color 0.1s',
+              transition: 'outline-width 0.1s, background-color 0.1s',
             }}
             onClick={(e) => {
               e.stopPropagation()

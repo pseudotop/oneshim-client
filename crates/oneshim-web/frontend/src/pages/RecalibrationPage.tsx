@@ -190,7 +190,7 @@ export default function RecalibrationPage() {
 
         {!segmentsLoading && segments.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[600px] text-left text-sm">
               <thead>
                 <tr className={cn('border-DEFAULT border-b', colors.text.tertiary)}>
                   <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Time</th>
@@ -286,7 +286,7 @@ export default function RecalibrationPage() {
 
         {!overridesLoading && overrides && overrides.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[600px] text-left text-sm">
               <thead>
                 <tr className={cn('border-DEFAULT border-b', colors.text.tertiary)}>
                   <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Segment</th>

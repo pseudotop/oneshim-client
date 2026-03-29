@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchHeatmap, type HeatmapResponse } from '../api/client'
 import { iconSize, motion, typography } from '../styles/tokens'
@@ -20,9 +20,39 @@ function getColor(ratio: number): string {
   return 'bg-brand-signal/80'
 }
 
+interface HeatmapRowProps {
+  row: number[]
+  dayLabel: string
+  maxValue: number
+  activityLabel: string
+}
+
+const HeatmapRow = memo(function HeatmapRow({ row, dayLabel, maxValue, activityLabel }: HeatmapRowProps) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {/* UI note */}
+      <div className={cn('w-8 pr-2 text-right text-content-secondary', typography.caption)}>{dayLabel}</div>
+      {/* UI note */}
+      {row.map((value, hourIndex) => {
+        const ratio = value / maxValue
+        return (
+          <div
+            key={HOUR_LABELS[hourIndex]}
+            role="img"
+            aria-label={`${dayLabel} ${HOUR_LABELS[hourIndex]}:00 - ${activityLabel}: ${value}`}
+            className={cn('h-4 flex-1 rounded-sm hover:ring-2 hover:ring-brand-signal', motion.colors, getColor(ratio))}
+            title={`${dayLabel} ${HOUR_LABELS[hourIndex]}:00 - ${activityLabel}: ${value}`}
+          />
+        )
+      })}
+    </div>
+  )
+})
+
 export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapProps) {
   const { t } = useTranslation()
   const dayLabels = t('heatmap.days', { returnObjects: true }) as string[]
+  const activityLabel = t('heatmap.activity')
   const { data, isLoading, error } = useQuery<HeatmapResponse>({
     queryKey: ['heatmap', days],
     queryFn: () => fetchHeatmap(days),
@@ -85,29 +115,13 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
       {/* UI note */}
       <div className="flex flex-col gap-0.5">
         {grid.map((row, dayIndex) => (
-          <div key={dayLabels[dayIndex]} className="flex items-center gap-0.5">
-            {/* UI note */}
-            <div className={cn('w-8 pr-2 text-right text-content-secondary', typography.caption)}>
-              {dayLabels[dayIndex]}
-            </div>
-            {/* UI note */}
-            {row.map((value, hourIndex) => {
-              const ratio = value / maxValue
-              return (
-                <div
-                  key={HOUR_LABELS[hourIndex]}
-                  role="img"
-                  aria-label={`${dayLabels[dayIndex]} ${HOUR_LABELS[hourIndex]}:00 - ${t('heatmap.activity')}: ${value}`}
-                  className={cn(
-                    'h-4 flex-1 rounded-sm hover:ring-2 hover:ring-brand-signal',
-                    motion.colors,
-                    getColor(ratio),
-                  )}
-                  title={`${dayLabels[dayIndex]} ${HOUR_LABELS[hourIndex]}:00 - ${t('heatmap.activity')}: ${value}`}
-                />
-              )
-            })}
-          </div>
+          <HeatmapRow
+            key={dayLabels[dayIndex]}
+            row={row}
+            dayLabel={dayLabels[dayIndex]}
+            maxValue={maxValue}
+            activityLabel={activityLabel}
+          />
         ))}
       </div>
 

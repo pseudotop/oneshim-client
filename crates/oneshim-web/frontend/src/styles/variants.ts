@@ -15,7 +15,7 @@ export const buttonVariants = {
     sm: 'px-3 py-1.5 text-sm',
     md: 'px-4 py-2 text-sm',
     lg: 'px-6 py-3 text-base',
-    icon: 'p-2',
+    icon: 'p-2.5',
   },
 } as const
 
