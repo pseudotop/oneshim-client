@@ -157,6 +157,73 @@ export interface AppSettings {
   automation: AutomationSettings
   sandbox: SandboxSettings
   ai_provider: AiProviderSettings
+  ai_session: AiSessionSettings
+  suggestion: SuggestionSettings
+  indicator: IndicatorSettings
+  analysis: AnalysisSettings
+  network: NetworkSettings
+  coaching: CoachingSettings
+  integration: IntegrationSettings
+  sync: SyncSettings
+}
+
+export interface AiSessionSettings {
+  max_concurrent_sessions: number
+  idle_timeout_secs: number
+  session_timeout_secs: number
+  max_retries: number
+  max_history_turns: number
+  health_check_interval_secs: number
+}
+
+export interface SuggestionSettings {
+  enabled: boolean
+}
+
+export interface IndicatorSettings {
+  show_border: boolean
+  show_panel: boolean
+  border_opacity: number
+}
+
+export interface AnalysisSettings {
+  enabled: boolean
+  interval_secs: number
+  min_confidence: number
+  max_suggestions: number
+  embedding_enabled: boolean
+  gui_intelligence_enabled: boolean
+  text_intelligence_enabled: boolean
+}
+
+export interface NetworkSettings {
+  server_base_url: string
+  request_timeout_ms: number
+  grpc_enabled: boolean
+  grpc_endpoint: string
+  tls_enabled: boolean
+}
+
+export interface CoachingSettings {
+  enabled: boolean
+  tone: string
+  locale: string
+  overlay_mode: string
+}
+
+export interface IntegrationSettings {
+  enabled: boolean
+  auth_profile_kind: string
+  request_timeout_secs: number
+  sync_interval_secs: number
+}
+
+export interface SyncSettings {
+  enabled: boolean
+  transport: string
+  interval_secs: number
+  device_name: string
+  lan_advertise: boolean
 }
 
 export type UpdatePhase = 'Idle' | 'Checking' | 'PendingApproval' | 'Installing' | 'Updated' | 'Deferred' | 'Error'

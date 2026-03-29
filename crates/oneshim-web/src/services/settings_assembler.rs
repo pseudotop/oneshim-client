@@ -1,9 +1,11 @@
 use oneshim_api_contracts::settings::{
-    AiProviderProfileConfig as ApiAiProviderProfileConfig, AiProviderSettings, AppSettings,
-    AutomationSettings, ExternalApiSettings, MonitorControlSettings, NotificationSettings,
-    OcrValidationSettings, PrivacySettings, SandboxSettings,
+    AiProviderProfileConfig as ApiAiProviderProfileConfig, AiProviderSettings, AiSessionSettings,
+    AnalysisSettings, AppSettings, AutomationSettings, CoachingSettings, ExternalApiSettings,
+    IndicatorSettings, IntegrationSettings, MonitorControlSettings, NetworkSettings,
+    NotificationSettings, OcrValidationSettings, PrivacySettings, SandboxSettings,
     SavedAiProviderProfile as ApiSavedAiProviderProfile, SceneActionOverrideSettings,
-    SceneIntelligenceSettings, ScheduleSettings, TelemetrySettings, UpdateSettings,
+    SceneIntelligenceSettings, ScheduleSettings, SuggestionSettings, SyncSettings,
+    TelemetrySettings, UpdateSettings,
 };
 use oneshim_core::config::{
     AiAccessMode, AiProviderProfileConfig, AppConfig, CredentialAuthMode, CredentialBackendKind,
@@ -91,6 +93,57 @@ pub(crate) fn config_to_settings(
             &config.ai_provider,
             default_secret_backend_kind,
         ),
+        ai_session: AiSessionSettings {
+            max_concurrent_sessions: config.ai_session.max_concurrent_sessions,
+            idle_timeout_secs: config.ai_session.idle_timeout_secs,
+            session_timeout_secs: config.ai_session.session_timeout_secs,
+            max_retries: config.ai_session.max_retries,
+            max_history_turns: config.ai_session.max_history_turns,
+            health_check_interval_secs: config.ai_session.health_check_interval_secs,
+        },
+        suggestion: SuggestionSettings {
+            enabled: config.suggestions.enabled,
+        },
+        indicator: IndicatorSettings {
+            show_border: config.indicator.show_border,
+            show_panel: config.indicator.show_panel,
+            border_opacity: config.indicator.border_opacity,
+        },
+        analysis: AnalysisSettings {
+            enabled: config.analysis.enabled,
+            interval_secs: config.analysis.interval_secs,
+            min_confidence: config.analysis.min_confidence,
+            max_suggestions: config.analysis.max_suggestions as u32,
+            embedding_enabled: config.analysis.embedding.enabled,
+            gui_intelligence_enabled: config.analysis.gui_intelligence.enabled,
+            text_intelligence_enabled: config.analysis.text_intelligence.enabled,
+        },
+        network: NetworkSettings {
+            server_base_url: config.server.base_url.clone(),
+            request_timeout_ms: config.server.request_timeout_ms,
+            grpc_enabled: config.grpc.use_grpc_auth || config.grpc.use_grpc_context,
+            grpc_endpoint: config.grpc.grpc_endpoint.clone(),
+            tls_enabled: config.tls.enabled,
+        },
+        coaching: CoachingSettings {
+            enabled: config.coaching.enabled,
+            tone: format!("{:?}", config.coaching.tone),
+            locale: config.coaching.locale.clone(),
+            overlay_mode: format!("{:?}", config.coaching.overlay_mode),
+        },
+        integration: IntegrationSettings {
+            enabled: config.integration.enabled,
+            auth_profile_kind: format!("{:?}", config.integration.auth_profile_kind),
+            request_timeout_secs: config.integration.request_timeout_secs,
+            sync_interval_secs: config.integration.sync_interval_secs,
+        },
+        sync: SyncSettings {
+            enabled: config.sync.enabled,
+            transport: format!("{:?}", config.sync.transport),
+            interval_secs: config.sync.interval_secs,
+            device_name: config.sync.device_name.clone(),
+            lan_advertise: config.sync.lan_advertise,
+        },
     }
 }
 

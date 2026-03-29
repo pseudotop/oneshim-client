@@ -21,6 +21,7 @@ pub(crate) fn apply_settings_fields_to_config(
 ) -> Result<(), ApiError> {
     apply_general_settings(config, settings)?;
     apply_ai_provider_settings(config, settings)?;
+    apply_extended_settings(config, settings);
     Ok(())
 }
 
@@ -289,4 +290,55 @@ fn sync_selected_saved_ai_provider_profile(config: &mut AiProviderConfig) {
     {
         saved_profile.ai_provider = active_profile;
     }
+}
+
+fn apply_extended_settings(config: &mut AppConfig, settings: &AppSettings) {
+    // AI Session
+    config.ai_session.max_concurrent_sessions = settings.ai_session.max_concurrent_sessions;
+    config.ai_session.idle_timeout_secs = settings.ai_session.idle_timeout_secs;
+    config.ai_session.session_timeout_secs = settings.ai_session.session_timeout_secs;
+    config.ai_session.max_retries = settings.ai_session.max_retries;
+    config.ai_session.max_history_turns = settings.ai_session.max_history_turns;
+    config.ai_session.health_check_interval_secs = settings.ai_session.health_check_interval_secs;
+
+    // Suggestion
+    config.suggestions.enabled = settings.suggestion.enabled;
+
+    // Indicator
+    config.indicator.show_border = settings.indicator.show_border;
+    config.indicator.show_panel = settings.indicator.show_panel;
+    config.indicator.border_opacity = settings.indicator.border_opacity;
+
+    // Analysis
+    config.analysis.enabled = settings.analysis.enabled;
+    config.analysis.interval_secs = settings.analysis.interval_secs;
+    config.analysis.min_confidence = settings.analysis.min_confidence;
+    config.analysis.max_suggestions = settings.analysis.max_suggestions as usize;
+    config.analysis.embedding.enabled = settings.analysis.embedding_enabled;
+    config.analysis.gui_intelligence.enabled = settings.analysis.gui_intelligence_enabled;
+    config.analysis.text_intelligence.enabled = settings.analysis.text_intelligence_enabled;
+
+    // Network
+    config.server.base_url = settings.network.server_base_url.clone();
+    config.server.request_timeout_ms = settings.network.request_timeout_ms;
+    config.grpc.grpc_endpoint = settings.network.grpc_endpoint.clone();
+    config.tls.enabled = settings.network.tls_enabled;
+    let grpc_enabled = settings.network.grpc_enabled;
+    config.grpc.use_grpc_auth = grpc_enabled;
+    config.grpc.use_grpc_context = grpc_enabled;
+
+    // Coaching
+    config.coaching.enabled = settings.coaching.enabled;
+    config.coaching.locale = settings.coaching.locale.clone();
+
+    // Integration
+    config.integration.enabled = settings.integration.enabled;
+    config.integration.request_timeout_secs = settings.integration.request_timeout_secs;
+    config.integration.sync_interval_secs = settings.integration.sync_interval_secs;
+
+    // Sync
+    config.sync.enabled = settings.sync.enabled;
+    config.sync.interval_secs = settings.sync.interval_secs;
+    config.sync.device_name = settings.sync.device_name.clone();
+    config.sync.lan_advertise = settings.sync.lan_advertise;
 }
