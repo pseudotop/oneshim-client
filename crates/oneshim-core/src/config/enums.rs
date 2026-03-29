@@ -80,6 +80,8 @@ pub enum AiProviderType {
     OpenAi,
     Google,
     Ollama,
+    Bedrock,
+    Copilot,
     #[default]
     Generic,
 }

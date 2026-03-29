@@ -107,6 +107,11 @@ impl RemoteLlmProvider {
                     "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
                 ));
             }
+            ProviderRequestShape::BedrockConverse => {
+                return Err(CoreError::Internal(
+                    "Bedrock Converse request shape is not yet supported for LLM chat".to_string(),
+                ));
+            }
         };
         Ok(body)
     }
@@ -137,6 +142,12 @@ impl RemoteLlmProvider {
                 if self.credential.is_managed() {
                     builder = builder.header("version", env!("CARGO_PKG_VERSION"));
                 }
+            }
+            ProviderAuthScheme::AwsSignatureV4 => {
+                return Err(CoreError::Internal(
+                    "AWS Signature V4 authentication is not yet supported for LLM requests"
+                        .to_string(),
+                ));
             }
         }
         let response = builder.send().await.map_err(|e| {
@@ -173,6 +184,12 @@ impl RemoteLlmProvider {
             ProviderRequestShape::GoogleVisionAnnotate => {
                 return Err(CoreError::Internal(
                     "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
+                ));
+            }
+            ProviderRequestShape::BedrockConverse => {
+                return Err(CoreError::Internal(
+                    "Bedrock Converse request shape is not yet supported for LLM response parsing"
+                        .to_string(),
                 ));
             }
         };

@@ -51,6 +51,11 @@ fn apply_auth_headers(
             .header("anthropic-version", crate::ANTHROPIC_API_VERSION),
         ProviderAuthScheme::XGoogApiKey => builder.header("x-goog-api-key", api_key),
         ProviderAuthScheme::Bearer => builder.header("Authorization", format!("Bearer {api_key}")),
+        ProviderAuthScheme::AwsSignatureV4 => {
+            // AWS Signature V4 requires request signing which is not yet implemented for OCR.
+            // Fall back to no-auth; callers should gate on provider type before reaching here.
+            builder
+        }
     }
 }
 impl RemoteOcrProvider {
@@ -358,6 +363,12 @@ impl OcrProvider for RemoteOcrProvider {
                     "TEXT_DETECTION",
                     "maxResults",
                 ])?;
+            }
+            ProviderRequestShape::BedrockConverse => {
+                return Err(CoreError::Internal(
+                    "Bedrock Converse request shape is not yet supported for OCR extraction"
+                        .to_string(),
+                ));
             }
         }
         let strategy = OcrProviderStrategy::try_from(request_shape)?;

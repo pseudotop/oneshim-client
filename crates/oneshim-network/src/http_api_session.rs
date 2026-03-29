@@ -177,6 +177,12 @@ impl HttpApiSession {
                 let token = self.credential.resolve_bearer_token().await?;
                 builder.header("Authorization", format!("Bearer {}", token))
             }
+            ProviderAuthScheme::AwsSignatureV4 => {
+                return Err(CoreError::Internal(
+                    "AWS Signature V4 authentication is not yet supported for API sessions"
+                        .to_string(),
+                ));
+            }
         };
 
         Ok(builder)
@@ -373,6 +379,8 @@ impl ConversationSession for HttpApiSession {
             AiProviderType::OpenAi => "openai",
             AiProviderType::Google => "google",
             AiProviderType::Ollama => "ollama",
+            AiProviderType::Bedrock => "bedrock",
+            AiProviderType::Copilot => "copilot",
             AiProviderType::Generic => "generic",
         }
     }

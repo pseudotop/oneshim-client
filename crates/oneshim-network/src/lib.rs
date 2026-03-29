@@ -30,6 +30,8 @@ pub fn default_model_for_provider(provider: &oneshim_core::config::AiProviderTyp
         AiProviderType::OpenAi => "gpt-5.4",
         AiProviderType::Google => "gemini-2.5-flash",
         AiProviderType::Ollama => "qwen3:8b",
+        AiProviderType::Bedrock => "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        AiProviderType::Copilot => "gpt-5.4",
         AiProviderType::Generic => "gpt-5-mini",
     }
 }
