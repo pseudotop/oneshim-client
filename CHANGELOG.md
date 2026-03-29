@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10-rc.2] - 2026-03-29
+### Fixed
+
+- Review remediation — coming soon badge, i18n, safe masking, mutation docs
+  - Mark Bedrock + Copilot as "Coming soon" with disabled selection in
+    Provider Wizard (prevents runtime error from stub implementations)
+  - Internationalize all ProviderWizard strings via t() (12 strings)
+  - Use char-based slicing in mask_api_key() for non-ASCII safety
+  - Trim API key input before test/save to prevent whitespace issues
+  - Document intentionally read-only enum fields in apply_extended_settings
+
+
+## [Unreleased]
+
 ## [0.4.10-rc.1] - 2026-03-29
 ### Added
 
