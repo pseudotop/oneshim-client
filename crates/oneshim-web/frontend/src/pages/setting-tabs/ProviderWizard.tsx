@@ -12,6 +12,7 @@ interface ProviderDef {
   name: string
   icon: string
   tier: 'recommended' | 'free' | 'local' | 'cloud' | 'oauth'
+  comingSoon?: boolean
   tierLabel: string
   apiKeyEnv: string
   docsUrl: string
@@ -128,6 +129,7 @@ const PROVIDERS: ProviderDef[] = [
     placeholder: '',
     surfaceId: 'provider_surface.copilot.managed_oauth',
     defaultModel: 'gpt-5.4',
+    comingSoon: true,
   },
   {
     id: 'bedrock',
@@ -140,6 +142,7 @@ const PROVIDERS: ProviderDef[] = [
     placeholder: 'AKIA...',
     surfaceId: 'provider_surface.bedrock.direct_api',
     defaultModel: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    comingSoon: true,
   },
   {
     id: 'openrouter',
@@ -205,7 +208,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
         body: JSON.stringify({
           surface_id: selected.surfaceId,
           endpoint: null,
-          api_key: apiKey || null,
+          api_key: apiKey.trim() || null,
         }),
       })
       setTestResult(resp.ok ? 'success' : 'error')
@@ -218,7 +221,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
 
   const handleSave = useCallback(() => {
     if (!selected) return
-    onSelect(selected, apiKey)
+    onSelect(selected, apiKey.trim())
     setSelected(null)
     setApiKey('')
     setTestResult('idle')
@@ -244,7 +247,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
             'hover:bg-surface-hover',
           )}
         >
-          Back
+          {t('common.back', 'Back')}
         </button>
 
         <div className="mb-6 flex items-center gap-3">
@@ -258,7 +261,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
         {needsApiKey && (
           <div className="mb-4">
             <label htmlFor="wizard-api-key" className={cn('mb-1.5 block text-sm', colors.text.secondary)}>
-              API Key
+              {t('settings.ai.apiKey', 'API Key')}
             </label>
             <Input
               id="wizard-api-key"
@@ -274,7 +277,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
               rel="noopener noreferrer"
               className={cn('mt-1.5 inline-block text-xs', colors.primary.text)}
             >
-              Get API key &rarr;
+              {t('settings.ai.getApiKey', 'Get API key')} &rarr;
             </a>
           </div>
         )}
@@ -290,7 +293,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
               rel="noopener noreferrer"
               className={cn('mt-1 inline-block text-xs', colors.primary.text)}
             >
-              Download Ollama &rarr;
+              {t('settings.ai.downloadOllama', 'Download Ollama')} &rarr;
             </a>
           </div>
         )}
@@ -298,14 +301,17 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
         {selected.tier === 'oauth' && (
           <div className={cn('mb-4 p-3 text-sm', radius.md, 'bg-surface-hover')}>
             <p className={colors.text.secondary}>
-              GitHub Copilot requires OAuth authentication. Connect via the advanced settings below.
+              {t(
+                'settings.ai.copilotOauth',
+                'GitHub Copilot requires OAuth authentication. Connect via the advanced settings below.',
+              )}
             </p>
           </div>
         )}
 
         <div className="mb-4">
           <label htmlFor="wizard-model" className={cn('mb-1.5 block text-sm', colors.text.secondary)}>
-            Default Model
+            {t('settings.ai.defaultModel', 'Default Model')}
           </label>
           <Input
             id="wizard-model"
@@ -319,19 +325,23 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
         <div className="flex items-center gap-2">
           {needsApiKey && (
             <Button variant="secondary" onClick={handleTest} disabled={!apiKey || testing} className="text-sm">
-              {testing ? 'Testing...' : 'Test Connection'}
+              {testing ? t('settings.ai.testing', 'Testing...') : t('settings.ai.testConnection', 'Test Connection')}
             </Button>
           )}
 
-          {testResult === 'success' && <span className={cn('text-xs', colors.semantic.success)}>Connected</span>}
+          {testResult === 'success' && (
+            <span className={cn('text-xs', colors.semantic.success)}>{t('settings.ai.connected', 'Connected')}</span>
+          )}
           {testResult === 'error' && (
-            <span className={cn('text-xs', colors.semantic.error)}>Connection failed — check your API key</span>
+            <span className={cn('text-xs', colors.semantic.error)}>
+              {t('settings.ai.connectionFailed', 'Connection failed — check your API key')}
+            </span>
           )}
 
           <div className="flex-1" />
 
           <Button variant="primary" onClick={handleSave} disabled={needsApiKey && !apiKey} className="text-sm">
-            Save &amp; Activate
+            {t('settings.ai.saveActivate', 'Save & Activate')}
           </Button>
         </div>
       </Card>
@@ -351,19 +361,26 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
           <button
             key={provider.id}
             type="button"
-            onClick={() => setSelected(provider)}
+            onClick={() => !provider.comingSoon && setSelected(provider)}
+            disabled={provider.comingSoon}
             className={cn(
               'flex items-center gap-2.5 p-3 text-left',
               radius.md,
               'border border-border-default',
-              'hover:border-brand hover:bg-surface-hover',
+              provider.comingSoon ? 'opacity-50 cursor-not-allowed' : 'hover:border-brand hover:bg-surface-hover',
               motion.colors,
             )}
           >
             <ProviderIcon icon={provider.icon} />
             <div className="min-w-0">
               <div className={cn('truncate', typography.label, colors.text.primary)}>{provider.name}</div>
-              <Badge className={cn('mt-0.5 text-[9px]', TIER_COLORS[provider.tier])}>{provider.tierLabel}</Badge>
+              {provider.comingSoon ? (
+                <Badge className={cn('mt-0.5 text-[9px]', colors.text.tertiary)}>
+                  {t('settings.ai.comingSoon', 'Coming soon')}
+                </Badge>
+              ) : (
+                <Badge className={cn('mt-0.5 text-[9px]', TIER_COLORS[provider.tier])}>{provider.tierLabel}</Badge>
+              )}
             </div>
           </button>
         ))}
@@ -375,7 +392,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
           onClick={() => setShowAll(true)}
           className={cn('mt-3 text-xs', colors.primary.text, 'hover:underline')}
         >
-          Show all {PROVIDERS.length} providers &rarr;
+          {t('settings.ai.showAllProviders', 'Show all {{count}} providers', { count: PROVIDERS.length })} &rarr;
         </button>
       )}
     </Card>
