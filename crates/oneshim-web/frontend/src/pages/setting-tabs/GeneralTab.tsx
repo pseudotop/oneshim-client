@@ -8,7 +8,7 @@ import type {
   UpdateStatus,
 } from '../../api/client'
 import LanguageSelector from '../../components/LanguageSelector'
-import { Alert, Button, Card, CardTitle, Input } from '../../components/ui'
+import { Alert, Button, Card, CardTitle, Checkbox, Input } from '../../components/ui'
 import { DEFAULT_WEB_PORT } from '../../constants'
 import { form } from '../../styles/tokens'
 import { IS_TAURI } from '../../utils/platform'
@@ -66,11 +66,10 @@ export default function GeneralTab({
           <div className="flex items-center">
             <div>
               <label className="flex cursor-pointer items-center">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={formData.allow_external}
                   onChange={(e) => onRootChange('allow_external', e.target.checked)}
-                  className={form.checkboxInline}
+                  className="mr-3"
                 />
                 <div>
                   <span className="text-content-strong">{t('settings.allowExternal')}</span>
@@ -124,11 +123,10 @@ export default function GeneralTab({
             </div>
             <div className="flex items-end">
               <label className="flex cursor-pointer items-center">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={formData.update.include_prerelease}
                   onChange={(e) => onUpdateChange('include_prerelease', e.target.checked)}
-                  className={form.checkboxInline}
+                  className="mr-3"
                 />
                 <div>
                   <span className="text-content-strong">{t('settings.updateIncludePrerelease')}</span>

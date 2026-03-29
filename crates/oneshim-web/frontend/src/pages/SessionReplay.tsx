@@ -14,7 +14,7 @@ import {
 import DateRangePicker from '../components/DateRangePicker'
 import EventLog from '../components/EventLog'
 import TimelineScrubber from '../components/TimelineScrubber'
-import { EmptyState } from '../components/ui'
+import { Checkbox, EmptyState } from '../components/ui'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
@@ -626,8 +626,7 @@ export default function SessionReplay() {
                             className="w-full rounded-md border border-DEFAULT bg-surface-overlay px-2 py-1.5 text-content text-sm"
                           />
                           <label className="flex items-center gap-2 text-content-secondary text-xs">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={allowSensitiveInput}
                               onChange={(e) => setAllowSensitiveInput(e.target.checked)}
                             />

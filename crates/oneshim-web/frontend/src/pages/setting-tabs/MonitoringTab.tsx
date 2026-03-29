@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { MonitorControlSettings } from '../../api/client'
-import { Card, CardTitle, Input } from '../../components/ui'
+import { Card, CardTitle, Checkbox, Input } from '../../components/ui'
 import { form } from '../../styles/tokens'
 import ToggleRow from './ToggleRow'
 import type { SettingsFormTabProps } from './types'
@@ -26,11 +26,9 @@ export default function MonitoringTab({ formData, onRootChange, onMonitorChange 
               <span className="text-content-strong">{t('settings.captureEnabled')}</span>
               <p className="text-content-secondary text-xs">{t('settings.captureEnabledDesc')}</p>
             </div>
-            <input
-              type="checkbox"
+            <Checkbox
               checked={formData.capture_enabled}
               onChange={(e) => onRootChange('capture_enabled', e.target.checked)}
-              className={form.checkbox}
             />
           </label>
 
