@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-03-29
+### Added
+
+- SessionManager Phase 3 — state orchestration, auto-recovery, lifecycle events
+  - Add report_failure() for adapter→manager state propagation with
+    transient error auto-recovery (Network/Timeout/RateLimit/503)
+  - Enforce absolute session lifetime via session_timeout_secs (default 600s)
+  - Emit session-state-changed Tauri events on all state transitions
+  - Propagate stream errors from IPC background task to SessionManager
+  - Wire AppHandle into SessionManagerImpl for event emission
+  - Resolve all 8 TODO/FIXME items across the workspace:
+    - SessionState tracking in 3 adapters (claude/ollama/http-api)
+    - enum_to_sql_str migration with backward-compatible parser
+    - OCR confidence and CoachingOverlayPort doc notes
+  - Add 7 new unit tests for report_failure and absolute timeout
+
+
+### Changed
+
+- Tech debt cleanup — remove unused async, idiomatic Option, match arms
+  - Remove unnecessary async from 4 sync functions (magic_overlay,
+    detection helper) and update all call sites to remove .await
+  - Suppress clippy::unused_async on framework-required async functions
+    (Tauri commands, axum handlers, async_trait, feature-gated)
+  - Replace map().unwrap_or(false) with is_some_and() (5 instances)
+  - Replace map().unwrap_or("x") with map_or("x", f) (2 instances)
+  - Remove duplicate match arm in oneshim-lint
+
+
+### Fixed
+
+- UI/UX audit remediation — a11y, performance, theming, responsive ([#243](https://github.com/pseudotop/oneshim-client/pull/243))
+  * fix: release-guard heredoc/stdin conflict + atspi-common 0.13 API compat
+
+  Release Guard CI had two bugs: (1) PY heredoc terminator had trailing
+  `> release_guard.out` preventing closure, (2) heredoc and here-string
+  both targeted stdin — the here-string won, feeding raw JSON to Python
+  which failed on JSON `false` not being valid Python. Fix: pass JSON
+  via env var, move redirection to command line.
+
+  Linux AT-SPI code updated for atspi-common 0.13 breaking changes:
+  - StateChangedEvent fields are now public (state/enabled/item)
+  - ObjectRef.name() returns Option<&UniqueName> instead of &BusName
+  - ObjectRefOwned uses name_as_str()/path_as_str() accessors
+
+- Release-guard heredoc/stdin conflict + atspi-common 0.13 API compat
+  Release Guard CI had two bugs: (1) PY heredoc terminator had trailing
+  `> release_guard.out` preventing closure, (2) heredoc and here-string
+  both targeted stdin — the here-string won, feeding raw JSON to Python
+  which failed on JSON `false` not being valid Python. Fix: pass JSON
+  via env var, move redirection to command line.
+
+  Linux AT-SPI code updated for atspi-common 0.13 breaking changes:
+  - StateChangedEvent fields are now public (state/enabled/item)
+  - ObjectRef.name() returns Option<&UniqueName> instead of &BusName
+  - ObjectRefOwned uses name_as_str()/path_as_str() accessors
+
+- Remove unused linux-atspi pub use re-exports
+  FocusEventListenerHandle and FocusedObjectInfo are not imported
+  anywhere in the workspace. Removes dead pub use to fix clippy
+  -D warnings on Linux CI.
+
+- Linux AT-SPI test assumes D-Bus available on CI
+  has_permission_true test failed because linux-atspi feature was
+  re-enabled but CI runners lack a D-Bus desktop session. Test now
+  validates against actual D-Bus env var availability.
+
+- Audit remediation — a11y, performance, theming, responsive (14→18+/20)
+  Accessibility (P0-P2):
+  - TimelineScrubber: ARIA slider pattern + keyboard nav (Arrow/Shift/Home/End)
+  - TagInput: combobox pattern with arrow-key nav, Enter, Escape
+  - Lightbox: role="dialog", aria-modal, aria-label
+  - PomodoroTimer: aria-live polite region for screen readers
+  - Input: aria-invalid on error state
+  - Spinner: semantic <output> element
+  - EmptyState: aria-labelledby replaces redundant aria-label
+
+  Performance (P0-P2):
+  - TimelineScrubber: cache getBoundingClientRect on mousedown (not every mousemove)
+  - EventLog: scrollIntoView replaces manual rect comparison + memoized EventLogItem
+  - ActivityHeatmap: memoized HeatmapRow (168 cells no longer reconcile on parent update)
+  - Panel glow: 3 repeats instead of infinite, reduced blur, will-change hint
+
+  Theming (P1):
+  - Dark mode: --content-secondary bumped to ~5.5:1 contrast (WCAG AA)
+  - --content-muted increased for legibility
+  - text-muted-foreground → text-content-secondary (undefined class fix)
+
+  Responsive (P1):
+  - SuggestionsPanel/CoachingPopup: max-w-[calc(100vw-2rem)] overflow guard
+  - Shell layout: min-width 768px prevents grid collapse
+
+- Remaining audit issues — Dialog a11y, SidePanel perf, reduced-motion
+  - Dialog: DialogTitle gets auto-generated id via useId for aria-labelledby
+  - SidePanel: replace double getBoundingClientRect with scrollIntoView
+  - Panel glow: respect prefers-reduced-motion (disable animation)
+
+- P2 audit — lazy tabs, syntax HL code-split, scroll RAF, outline anim
+  - Settings: lazy-load 6 tab components via React.lazy + Suspense
+  - Chat: syntax highlighter code-split (only loaded for code blocks)
+  - Chat: scroll handler throttled via requestAnimationFrame
+  - DetectionOverlay: border → outline animation (paint-only, no reflow)
+  - RecalibrationPage: table min-w-[600px] for proper scroll container
+  - Button icon variant: p-2 → p-2.5 (40px touch target)
+
+- Cast safety lint + pedantic port documentation
+  - Add crate-level #![allow] for 4 cast lint categories across all 13
+    crates (cast_precision_loss, cast_possible_truncation, cast_sign_loss,
+    cast_possible_wrap) — all values are bounded metrics, SQLite IDs,
+    coordinates, or display values where precision loss is acceptable
+  - Add # Errors documentation to 6 core port traits: ApiClient,
+    SseClient, ConversationSession, SessionManager, StorageService,
+    MetricsStorage, SystemMonitor, ProcessMonitor, ActivityMonitor,
+    FrameProcessor
+  - Resolves 666 pedantic clippy cast warnings to 0
+
+
 ## [0.4.8-rc.1] - 2026-03-29
 ### Added
 
