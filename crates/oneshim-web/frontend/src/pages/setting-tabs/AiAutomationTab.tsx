@@ -45,6 +45,7 @@ import {
 } from './ai-automation-utils'
 import OAuthConnectionPanel from './OAuthConnectionPanel'
 import { isProviderOAuthAccessMode } from './oauth-panel-support'
+import ProviderWizard, { type ProviderDef } from './ProviderWizard'
 import ToggleRow from './ToggleRow'
 import type { SettingsFormTabProps } from './types'
 
@@ -399,8 +400,20 @@ export default function AiAutomationTab({
 
   const saveProfileDisabled = !profileNameDraft.trim() && !activeSavedProfile?.name
 
+  const handleProviderWizardSelect = (provider: ProviderDef, apiKey: string) => {
+    onAiProviderChange('access_mode', 'ProviderApiKey')
+    onAiProviderChange('llm_provider', provider.tier === 'local' ? 'Local' : 'Remote')
+    onProviderSurfaceChange('llm_api', provider.surfaceId)
+    if (apiKey) {
+      onExternalApiChange('llm_api', 'api_key_masked', apiKey)
+    }
+    onExternalApiChange('llm_api', 'model', provider.defaultModel)
+  }
+
   return (
     <div className="space-y-6">
+      <ProviderWizard onSelect={handleProviderWizardSelect} />
+
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settingsAutomation.title')}</CardTitle>
         <div className="space-y-4">
