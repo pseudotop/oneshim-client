@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-03-29
+### Added
+
+- Add Provider Wizard quick-setup UI with brand icons
+  - New ProviderWizard component with 12 provider cards (icon + tier badge)
+  - Two-step flow: pick provider → enter API key → test → save
+  - Uses @lobehub/icons-static-svg for brand-consistent provider icons
+  - Integrates into AiAutomationTab as top-level Quick Setup section
+  - Connection test via /api/ai/providers/models endpoint
+  - All design tokens semantic (no hardcoded colors/fonts/transitions)
+  - Biome lint + design token lint clean
+
+
 ## [0.4.9-rc.2] - 2026-03-29
 ### Added
 
