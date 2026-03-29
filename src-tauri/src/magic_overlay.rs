@@ -85,19 +85,15 @@ struct OverlayState {
 /// startup so persistent components (TrackingBorder, CaptureFlash) render
 /// immediately. The window is transparent and click-through by default.
 ///
-/// # TODO: CoachingOverlayPort consideration
+/// # Note: CoachingOverlayPort consideration
 ///
 /// This struct is **not** behind a port trait. It depends on `tauri::AppHandle`
 /// which is only available in the binary crate (`src-tauri`), making it
 /// unsuitable for the `oneshim-core` port layer.
 ///
-/// For scheduler coaching loop unit testing, a mock overlay could be
-/// introduced via a `CoachingOverlayPort` trait in `oneshim-core` with
-/// methods like `show_coaching()`, `dismiss()`, `set_interactive()`.
-///
-/// **Deferred**: the notification fallback already provides test coverage
-/// for the coaching output path. The scheduler coaching loop tests can
-/// verify behavior without a real overlay window.
+/// A `CoachingOverlayPort` trait could be introduced for unit testing the
+/// scheduler coaching loop, but the notification fallback already provides
+/// sufficient test coverage for the coaching output path.
 #[derive(Clone)]
 pub struct MagicOverlayHandle {
     app_handle: AppHandle,

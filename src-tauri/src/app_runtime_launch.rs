@@ -340,6 +340,7 @@ impl AppRuntimeLaunchBuilder {
             if let Some(store) = secret_store {
                 manager = manager.with_secret_store(store);
             }
+            manager = manager.with_app_handle(self.app_handle.clone());
             Some(Arc::new(manager))
         };
 

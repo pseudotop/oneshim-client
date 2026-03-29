@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
@@ -30,10 +32,28 @@ use oneshim_network::local_llm_session::LocalLlmSession;
 struct ManagedSession {
     session: Arc<dyn ConversationSession>,
     state: SessionState,
-    #[allow(dead_code)]
     created_at: Instant,
     last_active: Instant,
     retry_count: u32,
+}
+
+/// Tauri event payload emitted on session state transitions.
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionStateEvent {
+    pub session_id: String,
+    pub previous_state: SessionState,
+    pub new_state: SessionState,
+    pub reason: String,
+}
+
+fn is_transient_error(error: &CoreError) -> bool {
+    matches!(
+        error,
+        CoreError::Network(_)
+            | CoreError::RequestTimeout { .. }
+            | CoreError::RateLimit { .. }
+            | CoreError::ServiceUnavailable(_)
+    )
 }
 
 pub struct SessionManagerImpl {
@@ -43,6 +63,8 @@ pub struct SessionManagerImpl {
     context_assembler: Option<Arc<SessionContextAssembler>>,
     /// Secret store for resolving provider credentials (HttpApi sessions).
     secret_store: Option<Arc<dyn SecretStore>>,
+    /// Tauri app handle for emitting session state change events.
+    app_handle: Option<AppHandle>,
 }
 
 impl SessionManagerImpl {
@@ -57,6 +79,7 @@ impl SessionManagerImpl {
             audit,
             context_assembler,
             secret_store: None,
+            app_handle: None,
         }
     }
 
@@ -64,6 +87,30 @@ impl SessionManagerImpl {
     pub fn with_secret_store(mut self, store: Arc<dyn SecretStore>) -> Self {
         self.secret_store = Some(store);
         self
+    }
+
+    /// Attach a Tauri app handle for emitting state transition events.
+    pub fn with_app_handle(mut self, handle: AppHandle) -> Self {
+        self.app_handle = Some(handle);
+        self
+    }
+
+    fn emit_state_change(
+        &self,
+        session_id: &str,
+        previous: SessionState,
+        new: SessionState,
+        reason: &str,
+    ) {
+        if let Some(ref handle) = self.app_handle {
+            let event = SessionStateEvent {
+                session_id: session_id.to_string(),
+                previous_state: previous,
+                new_state: new,
+                reason: reason.to_string(),
+            };
+            let _ = handle.emit("session-state-changed", &event);
+        }
     }
 
     /// Terminate all sessions (called during app shutdown).
@@ -82,12 +129,56 @@ impl SessionManagerImpl {
         info!("all AI sessions terminated");
     }
 
+    /// Report an adapter-level failure to the manager.
+    /// Auto-recovers transient errors if retries remain; marks permanent errors as Failed.
+    /// Returns the resulting session state.
+    pub async fn report_failure(&self, session_id: &str, error: &CoreError) -> SessionState {
+        let mut sessions = self.sessions.write().await;
+        let Some(managed) = sessions.get_mut(session_id) else {
+            return SessionState::Terminated;
+        };
+
+        let previous = managed.state;
+
+        if is_transient_error(error) && managed.retry_count < self.config.max_retries {
+            managed.retry_count += 1;
+            managed.state = SessionState::Active;
+            info!(
+                session_id,
+                retry = managed.retry_count,
+                error = %error,
+                "auto-recovered transient session error"
+            );
+            self.emit_state_change(session_id, previous, SessionState::Active, "auto-recovery");
+            SessionState::Active
+        } else {
+            managed.state = SessionState::Failed;
+            warn!(
+                session_id,
+                error = %error,
+                retries = managed.retry_count,
+                "session marked failed"
+            );
+            self.emit_state_change(
+                session_id,
+                previous,
+                SessionState::Failed,
+                &error.to_string(),
+            );
+            SessionState::Failed
+        }
+    }
+
     /// Touch a session to reset its idle timer and mark it as Active.
     /// Called on every send_message to keep the session alive.
     pub async fn touch_session(&self, session_id: &str) {
         if let Some(managed) = self.sessions.write().await.get_mut(session_id) {
+            let previous = managed.state;
             managed.last_active = Instant::now();
             managed.state = SessionState::Active;
+            if previous != SessionState::Active {
+                self.emit_state_change(session_id, previous, SessionState::Active, "user activity");
+            }
         }
     }
 
@@ -95,27 +186,55 @@ impl SessionManagerImpl {
     /// Two-phase idle: Active→Idle (warning) on first timeout, Idle→Terminated on second.
     pub async fn reap_idle_sessions(&self) {
         let idle_timeout = std::time::Duration::from_secs(self.config.idle_timeout_secs);
-        let mut to_reap = vec![];
+        let session_timeout = std::time::Duration::from_secs(self.config.session_timeout_secs);
+        let mut to_reap: Vec<(String, &'static str)> = vec![];
 
         {
             let mut sessions = self.sessions.write().await;
             for (id, managed) in sessions.iter_mut() {
+                // Absolute session lifetime — reap regardless of activity.
+                if managed.created_at.elapsed() > session_timeout {
+                    to_reap.push((id.clone(), "absolute session timeout"));
+                    continue;
+                }
+
                 if managed.last_active.elapsed() > idle_timeout {
                     if managed.state == SessionState::Active {
                         // First pass: mark Active → Idle (grace period)
+                        let previous = managed.state;
                         managed.state = SessionState::Idle;
                         warn!(session_id = %id, "session marked idle");
+                        self.emit_state_change(id, previous, SessionState::Idle, "idle timeout");
                     } else if managed.state == SessionState::Idle {
                         // Second pass: Idle past timeout → collect for reaping
-                        to_reap.push(id.clone());
+                        to_reap.push((id.clone(), "idle timeout (second phase)"));
                     }
                 }
             }
         }
 
-        for id in to_reap {
-            info!(session_id = %id, "reaping idle session");
-            let _ = self.kill_session(&id).await;
+        for (id, reason) in to_reap {
+            info!(session_id = %id, reason, "reaping session");
+            let _ = self.kill_session_with_reason(&id, reason).await;
+        }
+    }
+
+    /// Internal kill that captures previous state for event emission.
+    async fn kill_session_with_reason(
+        &self,
+        session_id: &str,
+        reason: &str,
+    ) -> Result<(), CoreError> {
+        let removed = self.sessions.write().await.remove(session_id);
+        match removed {
+            Some(managed) => {
+                info!(session_id = %session_id, "session terminated");
+                self.emit_state_change(session_id, managed.state, SessionState::Terminated, reason);
+                Ok(())
+            }
+            None => Err(CoreError::Internal(format!(
+                "session not found: {session_id}"
+            ))),
         }
     }
 
@@ -341,16 +460,8 @@ impl SessionManager for SessionManagerImpl {
     }
 
     async fn kill_session(&self, session_id: &str) -> Result<(), CoreError> {
-        let removed = self.sessions.write().await.remove(session_id);
-        match removed {
-            Some(_) => {
-                info!(session_id = %session_id, "session terminated");
-                Ok(())
-            }
-            None => Err(CoreError::Internal(format!(
-                "session not found: {session_id}"
-            ))),
-        }
+        self.kill_session_with_reason(session_id, "user terminated")
+            .await
     }
 
     async fn list_sessions(&self) -> Vec<ConversationSessionInfo> {
@@ -825,5 +936,188 @@ mod tests {
             let managed = sessions.get(&id).unwrap();
             assert_eq!(managed.state, SessionState::Failed);
         }
+    }
+
+    // ── report_failure tests ───────────────────────────────────
+
+    #[tokio::test]
+    async fn report_failure_transient_auto_recovers() {
+        let mgr = test_manager();
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(config).await.expect("create session");
+        let id = session.session_id().to_string();
+
+        let err = CoreError::Network("connection reset".into());
+        let result = mgr.report_failure(&id, &err).await;
+        assert_eq!(result, SessionState::Active);
+
+        let sessions = mgr.sessions.read().await;
+        let managed = sessions.get(&id).unwrap();
+        assert_eq!(managed.retry_count, 1);
+        assert_eq!(managed.state, SessionState::Active);
+    }
+
+    #[tokio::test]
+    async fn report_failure_permanent_sets_failed() {
+        let mgr = test_manager();
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(config).await.expect("create session");
+        let id = session.session_id().to_string();
+
+        let err = CoreError::Auth("invalid API key".into());
+        let result = mgr.report_failure(&id, &err).await;
+        assert_eq!(result, SessionState::Failed);
+
+        let sessions = mgr.sessions.read().await;
+        let managed = sessions.get(&id).unwrap();
+        assert_eq!(managed.state, SessionState::Failed);
+    }
+
+    #[tokio::test]
+    async fn report_failure_exhausts_retries() {
+        let config = Arc::new(AiSessionConfig {
+            max_concurrent_sessions: 2,
+            idle_timeout_secs: 300,
+            max_retries: 3,
+            ..Default::default()
+        });
+        let mgr = SessionManagerImpl::new(
+            config,
+            Arc::new(crate::auditing_session::tests::MockAudit::default()),
+            None,
+        );
+
+        let session_config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(session_config).await.expect("create");
+        let id = session.session_id().to_string();
+
+        let err = CoreError::Network("timeout".into());
+        // First 3 should auto-recover.
+        for i in 1..=3 {
+            let result = mgr.report_failure(&id, &err).await;
+            assert_eq!(result, SessionState::Active, "retry {i} should recover");
+        }
+        // 4th should fail.
+        let result = mgr.report_failure(&id, &err).await;
+        assert_eq!(result, SessionState::Failed);
+    }
+
+    #[tokio::test]
+    async fn report_failure_nonexistent_session() {
+        let mgr = test_manager();
+        let err = CoreError::Network("test".into());
+        let result = mgr.report_failure("no-such-id", &err).await;
+        assert_eq!(result, SessionState::Terminated);
+    }
+
+    // ── absolute timeout tests ─────────────────────────────────
+
+    #[tokio::test]
+    async fn reap_enforces_absolute_timeout() {
+        let config = Arc::new(AiSessionConfig {
+            max_concurrent_sessions: 2,
+            idle_timeout_secs: 300,
+            session_timeout_secs: 2,
+            ..Default::default()
+        });
+        let mgr = SessionManagerImpl::new(
+            config,
+            Arc::new(crate::auditing_session::tests::MockAudit::default()),
+            None,
+        );
+
+        let session_config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(session_config).await.expect("create");
+        let id = session.session_id().to_string();
+
+        // Set created_at to past (beyond session_timeout_secs=2).
+        {
+            let mut sessions = mgr.sessions.write().await;
+            let managed = sessions.get_mut(&id).unwrap();
+            managed.created_at = Instant::now() - std::time::Duration::from_secs(10);
+        }
+
+        mgr.reap_idle_sessions().await;
+
+        assert!(
+            mgr.get_session(&id).await.is_err(),
+            "session should be removed after absolute timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn reap_absolute_timeout_with_recent_activity() {
+        let config = Arc::new(AiSessionConfig {
+            max_concurrent_sessions: 2,
+            idle_timeout_secs: 300,
+            session_timeout_secs: 2,
+            ..Default::default()
+        });
+        let mgr = SessionManagerImpl::new(
+            config,
+            Arc::new(crate::auditing_session::tests::MockAudit::default()),
+            None,
+        );
+
+        let session_config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(session_config).await.expect("create");
+        let id = session.session_id().to_string();
+
+        // created_at far in the past, but last_active is NOW.
+        {
+            let mut sessions = mgr.sessions.write().await;
+            let managed = sessions.get_mut(&id).unwrap();
+            managed.created_at = Instant::now() - std::time::Duration::from_secs(10);
+            managed.last_active = Instant::now();
+        }
+
+        mgr.reap_idle_sessions().await;
+
+        assert!(
+            mgr.get_session(&id).await.is_err(),
+            "session should be reaped despite recent activity (absolute timeout)"
+        );
+    }
+
+    #[tokio::test]
+    async fn emit_state_change_no_panic_without_handle() {
+        let mgr = test_manager();
+        // app_handle is None — should not panic.
+        mgr.emit_state_change(
+            "test-id",
+            SessionState::Active,
+            SessionState::Failed,
+            "test",
+        );
     }
 }

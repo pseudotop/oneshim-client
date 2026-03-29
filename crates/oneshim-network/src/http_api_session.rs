@@ -37,6 +37,7 @@ pub struct HttpApiSession {
     provider_type: AiProviderType,
     history: Arc<RwLock<Vec<ChatMessage>>>,
     system_prompt: Option<String>,
+    state: parking_lot::Mutex<SessionState>,
     turn_count: AtomicU32,
     created_at: DateTime<Utc>,
     last_active: parking_lot::Mutex<Instant>,
@@ -75,6 +76,7 @@ impl HttpApiSession {
             provider_type,
             history: Arc::new(RwLock::new(initial_history)),
             system_prompt,
+            state: parking_lot::Mutex::new(SessionState::Active),
             turn_count: AtomicU32::new(0),
             created_at: Utc::now(),
             last_active: parking_lot::Mutex::new(Instant::now()),
@@ -211,12 +213,14 @@ impl ConversationSession for HttpApiSession {
             .header("Content-Type", "application/json")
             .json(&request_body);
 
-        let builder = self.apply_auth(builder).await?;
+        let builder = self.apply_auth(builder).await.inspect_err(|_| {
+            *self.state.lock() = SessionState::Failed;
+        })?;
 
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("HTTP API session request failed: {e}")))?;
+        let response = builder.send().await.map_err(|e| {
+            *self.state.lock() = SessionState::Failed;
+            CoreError::Network(format!("HTTP API session request failed: {e}"))
+        })?;
 
         let status = response.status();
         if !status.is_success() {
@@ -224,6 +228,7 @@ impl ConversationSession for HttpApiSession {
                 .text()
                 .await
                 .unwrap_or_else(|_| "failed to read error body".to_string());
+            *self.state.lock() = SessionState::Failed;
             return Err(CoreError::Network(format!(
                 "HTTP API error ({status}): {}",
                 body.chars().take(300).collect::<String>()
@@ -350,7 +355,7 @@ impl ConversationSession for HttpApiSession {
             session_id: self.session_id.clone(),
             provider_name: format!("{:?}", self.provider_type).to_lowercase(),
             model: self.model.clone(),
-            state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
+            state: *self.state.lock(),
             transport: SessionTransport::HttpApi,
             created_at: self.created_at,
             last_active: last_active_utc,

@@ -29,6 +29,7 @@ pub struct ClaudeSubprocessSession {
     surface: DetectedSubprocessCli,
     model: String,
     system_prompt: Option<String>,
+    state: Mutex<SessionState>,
     turn_count: AtomicU32,
     created_at: chrono::DateTime<chrono::Utc>,
     last_active: Mutex<Instant>,
@@ -48,6 +49,7 @@ impl ClaudeSubprocessSession {
             surface,
             model: config.model.clone().unwrap_or_else(|| "sonnet".to_string()),
             system_prompt: config.system_prompt.clone(),
+            state: Mutex::new(SessionState::Active),
             turn_count: AtomicU32::new(0),
             last_active: Mutex::new(Instant::now()),
             config: session_config,
@@ -89,6 +91,7 @@ impl ConversationSession for ClaudeSubprocessSession {
         let mut cmd = self.build_command(&message.content);
 
         let mut child = cmd.spawn().map_err(|err| {
+            *self.state.lock() = SessionState::Failed;
             CoreError::Internal(format!("Failed to spawn Claude session subprocess: {err}"))
         })?;
 
@@ -149,7 +152,7 @@ impl ConversationSession for ClaudeSubprocessSession {
             session_id: self.session_id.clone(),
             provider_name: "claude".to_string(),
             model: self.model.clone(),
-            state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
+            state: *self.state.lock(),
             transport: SessionTransport::Subprocess,
             created_at: self.created_at,
             last_active: last_active_utc,
