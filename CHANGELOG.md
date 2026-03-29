@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10-rc.1] - 2026-03-29
+### Added
+
+- Expose all 8 missing config sections via REST API and Advanced settings tab
+  - Add API contracts: AiSessionSettings, SuggestionSettings, IndicatorSettings,
+    AnalysisSettings, NetworkSettings, CoachingSettings, IntegrationSettings,
+    SyncSettings — all with serde + Default impls
+  - Add assembler mappings (AppConfig → API) in settings_assembler.rs
+  - Add mutation mappings (API → AppConfig) in settings_config_mutation.rs
+  - Add TypeScript interfaces matching all 8 new sections in contracts.ts
+  - New AdvancedTab component with full UI controls for all sections:
+    AI session limits, suggestion toggle, screen indicator, analysis pipeline,
+    network/gRPC/TLS, coaching, integration hub, cross-device sync
+  - All 13 config sections now accessible via Settings UI (was 5 missing)
+
+
+## [Unreleased]
+
 ## [0.4.9] - 2026-03-29
 ### Added
 
