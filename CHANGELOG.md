@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-03-30
+### Changed
+
+- Migrate 9 native checkboxes to Checkbox UI primitive
+  - Replace all <input type="checkbox"> in page components with <Checkbox>
+  - Affected: ToggleRow, NotificationSettings, GeneralTab, MonitoringTab,
+    SessionReplay (9 instances → 0 native checkboxes remaining)
+  - Update biome.json inputComponents for a11y lint recognition
+  - Consistent styling via design system component
+
+
+### Fixed
+
+- I18n Ollama message + resolve Biome class sorting warning
+  - Wrap Ollama localhost message in t() for i18n coverage
+  - Fix useSortedClasses warning (cursor-not-allowed opacity-50 order)
+  - All ProviderWizard user-facing strings now fully internationalized
+
+
 ## [0.4.10-rc.3] - 2026-03-30
 ### Changed
 
