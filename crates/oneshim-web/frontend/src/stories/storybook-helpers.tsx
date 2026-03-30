@@ -1,10 +1,10 @@
 import type { Decorator } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode, useState } from 'react'
-import { MemoryRouter } from 'react-router-dom'
 import { ActivityBar, SidePanel, TitleBar } from '../components/shell'
 import { Card } from '../components/ui'
 import { ShellLayoutProvider } from '../contexts/ShellLayoutContext'
+import { AppMemoryRouter } from '../router/future'
 import { layout } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -58,7 +58,7 @@ export function StoryProviders({
 
   return (
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={initialEntries}>{content}</MemoryRouter>
+      <AppMemoryRouter initialEntries={initialEntries}>{content}</AppMemoryRouter>
     </QueryClientProvider>
   )
 }

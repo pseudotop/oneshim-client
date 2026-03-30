@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../../router/future'
 import ActivityBar from './ActivityBar'
 
 const meta = {
@@ -8,11 +8,11 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/']}>
+      <AppMemoryRouter initialEntries={['/']}>
         <div style={{ height: 600 }} className="flex">
           <Story />
         </div>
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 } satisfies Meta<typeof ActivityBar>
@@ -41,11 +41,11 @@ export const OnTimelinePage: Story = {
   },
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/timeline']}>
+      <AppMemoryRouter initialEntries={['/timeline']}>
         <div style={{ height: 600 }} className="flex">
           <Story />
         </div>
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 }

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
 import { createMockCoachingHistory, createMockGoalProgress } from '../stories/mock-data'
 import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Coaching from './Coaching'
@@ -22,9 +22,9 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <AppMemoryRouter>
           <Story />
-        </MemoryRouter>
+        </AppMemoryRouter>
       </QueryClientProvider>
     ),
   ],
@@ -43,9 +43,9 @@ export const WithMockData: Story = {
       qc.setQueryData(['goal-progress'], createMockGoalProgress())
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },
@@ -60,9 +60,9 @@ export const EmptyState: Story = {
       qc.setQueryData(['goal-progress'], [])
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },

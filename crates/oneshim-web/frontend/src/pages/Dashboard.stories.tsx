@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
 import {
   createMockHeatmapResponse,
   createMockHourlyMetrics,
@@ -30,9 +30,9 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <AppMemoryRouter>
           <Story />
-        </MemoryRouter>
+        </AppMemoryRouter>
       </QueryClientProvider>
     ),
   ],
@@ -54,9 +54,9 @@ export const WithMockData: Story = {
       qc.setQueryData(['update-status'], createMockUpdateStatus())
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },
@@ -85,9 +85,9 @@ export const EmptyState: Story = {
       qc.setQueryData(['update-status'], createMockUpdateStatus({ phase: 'Idle', pending: null, message: null }))
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },

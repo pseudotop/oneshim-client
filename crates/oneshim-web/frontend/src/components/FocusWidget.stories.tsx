@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
 import FocusWidget from './FocusWidget'
 
 const meta = {
@@ -8,9 +8,9 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <MemoryRouter>
+      <AppMemoryRouter>
         <Story />
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 } satisfies Meta<typeof FocusWidget>

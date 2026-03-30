@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
 import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Privacy from './Privacy'
 
@@ -15,9 +15,9 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <AppMemoryRouter>
           <Story />
-        </MemoryRouter>
+        </AppMemoryRouter>
       </QueryClientProvider>
     ),
   ],

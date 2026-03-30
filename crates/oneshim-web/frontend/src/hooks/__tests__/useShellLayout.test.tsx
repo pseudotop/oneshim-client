@@ -1,11 +1,11 @@
 import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { AppMemoryRouter } from '../../router/future'
 import { useShellLayout } from '../useShellLayout'
 
 function wrapper({ children }: { children: ReactNode }) {
-  return <MemoryRouter>{children}</MemoryRouter>
+  return <AppMemoryRouter>{children}</AppMemoryRouter>
 }
 
 describe('useShellLayout', () => {

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
 import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Chat from './Chat'
 
@@ -9,11 +9,11 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <MemoryRouter>
+      <AppMemoryRouter>
         <div style={{ height: '600px' }}>
           <Story />
         </div>
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 } satisfies Meta<typeof Chat>

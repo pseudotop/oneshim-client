@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
 import { createMockFocusMetricsResponse, createMockInterruptions, createMockWorkSessions } from '../stories/mock-data'
 import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Focus from './Focus'
@@ -22,9 +22,9 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <AppMemoryRouter>
           <Story />
-        </MemoryRouter>
+        </AppMemoryRouter>
       </QueryClientProvider>
     ),
   ],
@@ -50,9 +50,9 @@ export const WithMockData: Story = {
       qc.setQueryData(['interruptions', fromIso, toIso], createMockInterruptions())
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },
@@ -90,9 +90,9 @@ export const EmptyState: Story = {
       qc.setQueryData(['interruptions', fromIso, toIso], [])
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../../router/future'
 import TitleBar from './TitleBar'
 
 const meta = {
@@ -8,9 +8,9 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/']}>
+      <AppMemoryRouter initialEntries={['/']}>
         <Story />
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 } satisfies Meta<typeof TitleBar>
@@ -30,9 +30,9 @@ export const TimelinePage: Story = {
   },
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/timeline']}>
+      <AppMemoryRouter initialEntries={['/timeline']}>
         <Story />
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 }
@@ -43,9 +43,9 @@ export const SettingsPage: Story = {
   },
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/settings']}>
+      <AppMemoryRouter initialEntries={['/settings']}>
         <Story />
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 }

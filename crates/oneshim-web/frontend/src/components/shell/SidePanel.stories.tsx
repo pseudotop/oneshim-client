@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../../router/future'
 import SidePanel from './SidePanel'
 
 const meta = {
@@ -8,11 +8,11 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/']}>
+      <AppMemoryRouter initialEntries={['/']}>
         <div style={{ height: 500 }} className="flex">
           <Story />
         </div>
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 } satisfies Meta<typeof SidePanel>
@@ -38,11 +38,11 @@ export const TimelinePage: Story = {
   },
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/timeline']}>
+      <AppMemoryRouter initialEntries={['/timeline']}>
         <div style={{ height: 500 }} className="flex">
           <Story />
         </div>
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 }
@@ -56,11 +56,11 @@ export const SettingsPage: Story = {
   },
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={['/settings']}>
+      <AppMemoryRouter initialEntries={['/settings']}>
         <div style={{ height: 500 }} className="flex">
           <Story />
         </div>
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 }

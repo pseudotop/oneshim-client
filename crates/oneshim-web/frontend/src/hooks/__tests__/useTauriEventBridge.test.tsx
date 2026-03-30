@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AppMemoryRouter } from '../../router/future'
 
 type EventCallback = (event: { payload?: unknown }) => void
 
@@ -49,7 +50,7 @@ async function renderBridgeHarness({ expectedListenCalls = 6, listenImpl }: Rend
   function wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/']}>{children}</MemoryRouter>
+        <AppMemoryRouter initialEntries={['/']}>{children}</AppMemoryRouter>
       </QueryClientProvider>
     )
   }
