@@ -21,7 +21,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
     truncate_chat_history, Attachment, ChatMessage, ChatRole, ContentBlock,
     ConversationSessionInfo, OutboundMessage, SessionMessage, SessionState, SessionTransport,
-    TokenUsage, ToolDefinition,
+    TokenUsage, ToolDefinition, ToolUseStatus,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 use oneshim_core::ports::credential_source::CredentialSource;
@@ -112,6 +112,42 @@ fn serialize_google_parts(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
         .collect()
 }
 
+// ── Tool Definition Serialization Helpers ───────────────────────
+
+/// Serialize tool definitions to Anthropic Messages API format.
+fn build_anthropic_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .filter_map(|t| {
+            let schema = t.input_schema.as_ref()?;
+            Some(serde_json::json!({"name": t.name, "description": t.description, "input_schema": schema}))
+        })
+        .collect()
+}
+
+/// Serialize tool definitions to OpenAI Chat Completions API format.
+fn build_openai_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .filter_map(|t| {
+            let schema = t.input_schema.as_ref()?;
+            Some(serde_json::json!({"type": "function", "function": {"name": t.name, "description": t.description, "parameters": schema}}))
+        })
+        .collect()
+}
+
+/// Serialize tool definitions to Google Gemini API format.
+fn build_google_tools(tools: &[ToolDefinition]) -> serde_json::Value {
+    let decls: Vec<serde_json::Value> = tools
+        .iter()
+        .filter_map(|t| {
+            let schema = t.input_schema.as_ref()?;
+            Some(serde_json::json!({"name": t.name, "description": t.description, "parameters": schema}))
+        })
+        .collect();
+    serde_json::json!([{"function_declarations": decls}])
+}
+
 impl HttpApiSession {
     /// Create a new HTTP API session.
     pub fn new(
@@ -200,6 +236,13 @@ impl HttpApiSession {
                     body["thinking"] = thinking.clone();
                 }
 
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_anthropic_tools(tools);
+                    if !tool_defs.is_empty() {
+                        body["tools"] = serde_json::Value::Array(tool_defs);
+                    }
+                }
+
                 Ok(body)
             }
             ProviderRequestShape::OpenAiChatCompletions
@@ -231,6 +274,13 @@ impl HttpApiSession {
 
                 if let Some(ref thinking) = self.config.thinking {
                     body["reasoning"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_openai_tools(tools);
+                    if !tool_defs.is_empty() {
+                        body["tools"] = serde_json::Value::Array(tool_defs);
+                    }
                 }
 
                 Ok(body)
@@ -281,6 +331,20 @@ impl HttpApiSession {
 
                 if let Some(ref thinking) = self.config.thinking {
                     body["generationConfig"]["thinking_config"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_google_tools(tools);
+                    if let Some(arr) = tool_defs.as_array() {
+                        if !arr.is_empty()
+                            && !arr[0]
+                                .get("function_declarations")
+                                .and_then(|d| d.as_array())
+                                .map_or(true, |a| a.is_empty())
+                        {
+                            body["tools"] = tool_defs;
+                        }
+                    }
                 }
 
                 Ok(body)
@@ -443,6 +507,7 @@ impl ConversationSession for HttpApiSession {
         // Build the ResponseStream using SSE parsing
         let stream: ResponseStream = Box::pin(try_stream! {
             let mut accumulated = String::new();
+            let mut tool_calls: Vec<PartialToolCall> = Vec::new();
 
             let shape = provider_specs::resolved_request_shape(
                 provider_type,
@@ -474,10 +539,36 @@ impl ConversationSession for HttpApiSession {
 
                         if let Some(msg) = parsed {
                             match &msg {
+                                OutboundMessage::ToolCallDelta { index, id, name, arguments_chunk } => {
+                                    let idx = *index as usize;
+                                    // Ensure vec is large enough
+                                    while tool_calls.len() <= idx {
+                                        tool_calls.push(PartialToolCall { id: String::new(), name: String::new(), arguments: String::new() });
+                                    }
+                                    if !id.is_empty() { tool_calls[idx].id.clone_from(id); }
+                                    if !name.is_empty() { tool_calls[idx].name.clone_from(name); }
+                                    if !arguments_chunk.is_empty() {
+                                        tool_calls[idx].arguments.push_str(arguments_chunk);
+                                    }
+                                    // ToolCallDelta is internal — don't yield to consumer
+                                    continue;
+                                }
                                 OutboundMessage::Text { content, .. } => {
                                     accumulated.push_str(content);
                                 }
                                 OutboundMessage::Result { .. } => {
+                                    // Emit accumulated tool calls before saving text history
+                                    for tc in tool_calls.drain(..) {
+                                        if tc.name.is_empty() { continue; }
+                                        let parsed_args = serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
+                                        yield OutboundMessage::ToolUse {
+                                            tool: tc.name,
+                                            input: Some(parsed_args),
+                                            status: ToolUseStatus::Started,
+                                            result: None,
+                                        };
+                                    }
+
                                     let assistant_msg = ChatMessage {
                                         role: ChatRole::Assistant,
                                         content: accumulated.clone(),
@@ -583,6 +674,22 @@ impl ConversationSession for HttpApiSession {
 /// - `message_delta` → usage info (optional)
 pub fn parse_anthropic_sse_event(event_type: &str, data: &str) -> Option<OutboundMessage> {
     match event_type {
+        "content_block_start" => {
+            let val: serde_json::Value = serde_json::from_str(data).ok()?;
+            let block = val.get("content_block")?;
+            if block.get("type")?.as_str()? == "tool_use" {
+                let id = block.get("id")?.as_str()?.to_string();
+                let name = block.get("name")?.as_str()?.to_string();
+                Some(OutboundMessage::ToolCallDelta {
+                    index: 0,
+                    id,
+                    name,
+                    arguments_chunk: String::new(),
+                })
+            } else {
+                None
+            }
+        }
         "content_block_delta" => {
             let val: serde_json::Value = serde_json::from_str(data).ok()?;
             let delta = val.get("delta")?;
@@ -600,6 +707,15 @@ pub fn parse_anthropic_sse_event(event_type: &str, data: &str) -> Option<Outboun
                     Some(OutboundMessage::Thinking {
                         content: thinking,
                         done: false,
+                    })
+                }
+                "input_json_delta" => {
+                    let partial = delta.get("partial_json")?.as_str()?.to_string();
+                    Some(OutboundMessage::ToolCallDelta {
+                        index: 0,
+                        id: String::new(),
+                        name: String::new(),
+                        arguments_chunk: partial,
                     })
                 }
                 _ => None,
@@ -671,6 +787,21 @@ pub fn parse_google_sse_event(data: &str) -> Option<OutboundMessage> {
     });
 
     for part in parts {
+        if let Some(fc) = part.get("functionCall") {
+            let name = fc
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let args = fc.get("args").cloned().unwrap_or(serde_json::json!({}));
+            return Some(OutboundMessage::ToolUse {
+                tool: name,
+                input: Some(args),
+                status: ToolUseStatus::Started,
+                result: None,
+            });
+        }
+
         if let Some(thinking) = part.get("thinking").and_then(|t| t.as_str()) {
             if !thinking.is_empty() {
                 return Some(OutboundMessage::Thinking {
@@ -725,6 +856,60 @@ pub fn parse_openai_sse_event(data: &str) -> Option<OutboundMessage> {
     }
 
     let val: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+
+    // Check for tool_calls in delta
+    if let Some(tool_calls) = val
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("delta"))
+        .and_then(|d| d.get("tool_calls"))
+        .and_then(|tc| tc.as_array())
+    {
+        for tc in tool_calls {
+            let id = tc
+                .get("id")
+                .and_then(|i| i.as_str())
+                .unwrap_or("")
+                .to_string();
+            let name = tc
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let args = tc
+                .get("function")
+                .and_then(|f| f.get("arguments"))
+                .and_then(|a| a.as_str())
+                .unwrap_or("")
+                .to_string();
+            let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as u32;
+            if !id.is_empty() || !name.is_empty() || !args.is_empty() {
+                return Some(OutboundMessage::ToolCallDelta {
+                    index,
+                    id,
+                    name,
+                    arguments_chunk: args,
+                });
+            }
+        }
+    }
+
+    // Check for finish_reason: tool_calls
+    if let Some(finish) = val
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("finish_reason"))
+        .and_then(|f| f.as_str())
+    {
+        if finish == "tool_calls" {
+            return Some(OutboundMessage::Result {
+                content: String::new(),
+                done: true,
+                usage: None,
+            });
+        }
+    }
 
     // Check for usage in the final chunk (OpenAI includes usage in last chunk if requested)
     if let Some(usage_obj) = val.get("usage") {
@@ -1391,5 +1576,176 @@ mod tests {
             }
             other => panic!("expected Text, got {other:?}"),
         }
+    }
+
+    // ── Tool Calling SSE Parsing Tests ────────────────────────────
+
+    #[test]
+    fn anthropic_tool_use_start() {
+        let data = r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_123","name":"get_weather"}}"#;
+        let msg = parse_anthropic_sse_event("content_block_start", data);
+        match msg {
+            Some(OutboundMessage::ToolCallDelta { id, name, .. }) => {
+                assert_eq!(id, "toolu_123");
+                assert_eq!(name, "get_weather");
+            }
+            other => panic!("expected ToolCallDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn anthropic_input_json_delta() {
+        let data = r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\":"}}"#;
+        let msg = parse_anthropic_sse_event("content_block_delta", data);
+        match msg {
+            Some(OutboundMessage::ToolCallDelta {
+                arguments_chunk, ..
+            }) => {
+                assert_eq!(arguments_chunk, "{\"location\":");
+            }
+            other => panic!("expected ToolCallDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn openai_tool_call_in_delta() {
+        let data = r#"{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}"#;
+        let msg = parse_openai_sse_event(data);
+        match msg {
+            Some(OutboundMessage::ToolCallDelta {
+                index, id, name, ..
+            }) => {
+                assert_eq!(index, 0);
+                assert_eq!(id, "call_abc");
+                assert_eq!(name, "get_weather");
+            }
+            other => panic!("expected ToolCallDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn openai_tool_call_finish() {
+        let data = r#"{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
+        let msg = parse_openai_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Result { done, .. }) => assert!(done),
+            other => panic!("expected Result done=true, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_function_call() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"location":"Tokyo"}}}],"role":"model"}}]}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::ToolUse { tool, input, .. }) => {
+                assert_eq!(tool, "get_weather");
+                assert_eq!(input.unwrap()["location"], "Tokyo");
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    // ── Tool Calling Request Body Tests ───────────────────────────
+
+    #[test]
+    fn anthropic_tools_request_body() {
+        let session = HttpApiSession::new(
+            "provider_surface.anthropic.direct_api".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            "https://api.anthropic.com/v1/messages".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::Anthropic,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "weather?".to_string(),
+            content_blocks: None,
+        }];
+        let tools = vec![ToolDefinition {
+            name: "get_weather".to_string(),
+            description: "Get weather".to_string(),
+            endpoint: String::new(),
+            method: "GET".to_string(),
+            input_schema: Some(
+                serde_json::json!({"type": "object", "properties": {"location": {"type": "string"}}}),
+            ),
+        }];
+        let options = RequestOptions {
+            response_format: None,
+            tools: Some(&tools),
+        };
+        let body = session.build_request_body(&messages, &options).unwrap();
+        let api_tools = body["tools"].as_array().unwrap();
+        assert_eq!(api_tools[0]["name"], "get_weather");
+        assert!(api_tools[0]["input_schema"].is_object());
+    }
+
+    #[test]
+    fn openai_tools_request_body() {
+        let session = HttpApiSession::new(
+            "provider_surface.openai.direct_api".to_string(),
+            "gpt-5.4".to_string(),
+            "https://api.openai.com/v1/chat/completions".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::OpenAi,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "weather?".to_string(),
+            content_blocks: None,
+        }];
+        let tools = vec![ToolDefinition {
+            name: "get_weather".to_string(),
+            description: "Get weather".to_string(),
+            endpoint: String::new(),
+            method: "GET".to_string(),
+            input_schema: Some(
+                serde_json::json!({"type": "object", "properties": {"location": {"type": "string"}}}),
+            ),
+        }];
+        let options = RequestOptions {
+            response_format: None,
+            tools: Some(&tools),
+        };
+        let body = session.build_request_body(&messages, &options).unwrap();
+        let api_tools = body["tools"].as_array().unwrap();
+        assert_eq!(api_tools[0]["type"], "function");
+        assert_eq!(api_tools[0]["function"]["name"], "get_weather");
+    }
+
+    #[test]
+    fn tools_without_schema_are_skipped() {
+        let session = HttpApiSession::new(
+            "provider_surface.anthropic.direct_api".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            "https://api.anthropic.com/v1/messages".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::Anthropic,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "test".to_string(),
+            content_blocks: None,
+        }];
+        let tools = vec![ToolDefinition {
+            name: "ping".to_string(),
+            description: "Ping".to_string(),
+            endpoint: "http://api/ping".to_string(),
+            method: "GET".to_string(),
+            input_schema: None,
+        }];
+        let options = RequestOptions {
+            response_format: None,
+            tools: Some(&tools),
+        };
+        let body = session.build_request_body(&messages, &options).unwrap();
+        assert!(body.get("tools").is_none());
     }
 }
