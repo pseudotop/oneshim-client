@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { createMockDesktopPermissionSnapshot } from '../../stories/mock-data'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../../stories/storybook-helpers'
 import MonitoringTab from './MonitoringTab'
 import { makeDefaultFormData } from './stories-utils'
 
@@ -35,4 +37,32 @@ export const PrivacyModeOn: Story = {
     onRootChange: () => {},
     onMonitorChange: () => {},
   },
+}
+
+export const MacPermissionsAttention: Story = {
+  args: {
+    formData: makeDefaultFormData(),
+    permissionStatus: createMockDesktopPermissionSnapshot(),
+    permissionStatusLoading: false,
+    onRootChange: () => {},
+    onMonitorChange: () => {},
+  },
+  parameters: reviewStoryParameters,
+  globals: lightThemeGlobals,
+}
+
+export const WindowsBaseline: Story = {
+  args: {
+    formData: makeDefaultFormData(),
+    permissionStatus: createMockDesktopPermissionSnapshot({
+      platform: 'windows',
+      accessibility: { state: 'not_required', status_reason: null },
+      screen_capture: { state: 'not_required', status_reason: null },
+    }),
+    permissionStatusLoading: false,
+    onRootChange: () => {},
+    onMonitorChange: () => {},
+  },
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
 }

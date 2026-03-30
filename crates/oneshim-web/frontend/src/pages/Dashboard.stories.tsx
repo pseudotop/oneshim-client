@@ -1,7 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { createMockHourlyMetrics, createMockProcessSnapshot, createMockSummary } from '../stories/mock-data'
+import {
+  createMockHeatmapResponse,
+  createMockHourlyMetrics,
+  createMockProcessSnapshot,
+  createMockSummary,
+  createMockUpdateStatus,
+} from '../stories/mock-data'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Dashboard from './Dashboard'
 
 const queryClient = new QueryClient({
@@ -43,6 +50,8 @@ export const WithMockData: Story = {
       qc.setQueryData(['summary', today], createMockSummary())
       qc.setQueryData(['hourlyMetrics'], createMockHourlyMetrics())
       qc.setQueryData(['processes'], [createMockProcessSnapshot()])
+      qc.setQueryData(['heatmap', 7], createMockHeatmapResponse())
+      qc.setQueryData(['update-status'], createMockUpdateStatus())
       return (
         <QueryClientProvider client={qc}>
           <MemoryRouter>
@@ -72,6 +81,8 @@ export const EmptyState: Story = {
       )
       qc.setQueryData(['hourlyMetrics'], [])
       qc.setQueryData(['processes'], [])
+      qc.setQueryData(['heatmap', 7], createMockHeatmapResponse({ cells: [], max_value: 0 }))
+      qc.setQueryData(['update-status'], createMockUpdateStatus({ phase: 'Idle', pending: null, message: null }))
       return (
         <QueryClientProvider client={qc}>
           <MemoryRouter>
@@ -81,4 +92,16 @@ export const EmptyState: Story = {
       )
     },
   ],
+}
+
+export const LightReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
 }

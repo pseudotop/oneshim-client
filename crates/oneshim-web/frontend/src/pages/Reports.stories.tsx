@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../contexts/ThemeContext'
 import { createMockReport } from '../stories/mock-data'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Reports from './Reports'
 
 const queryClient = new QueryClient({
@@ -22,11 +22,9 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <MemoryRouter>
-            <Story />
-          </MemoryRouter>
-        </ThemeProvider>
+        <MemoryRouter>
+          <Story />
+        </MemoryRouter>
       </QueryClientProvider>
     ),
   ],
@@ -44,11 +42,9 @@ export const WithMockData: Story = {
       qc.setQueryData(['report', 'week', '', ''], createMockReport())
       return (
         <QueryClientProvider client={qc}>
-          <ThemeProvider>
-            <MemoryRouter>
-              <Story />
-            </MemoryRouter>
-          </ThemeProvider>
+          <MemoryRouter>
+            <Story />
+          </MemoryRouter>
         </QueryClientProvider>
       )
     },
@@ -74,13 +70,23 @@ export const EmptyState: Story = {
       )
       return (
         <QueryClientProvider client={qc}>
-          <ThemeProvider>
-            <MemoryRouter>
-              <Story />
-            </MemoryRouter>
-          </ThemeProvider>
+          <MemoryRouter>
+            <Story />
+          </MemoryRouter>
         </QueryClientProvider>
       )
     },
   ],
+}
+
+export const LightReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
 }

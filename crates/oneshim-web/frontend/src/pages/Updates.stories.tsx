@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Updates from './Updates'
 
 const queryClient = new QueryClient({
@@ -26,3 +27,13 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
+
+export const LightReview: Story = {
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
+}

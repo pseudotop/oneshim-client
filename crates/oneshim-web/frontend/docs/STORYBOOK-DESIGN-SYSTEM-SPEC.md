@@ -38,6 +38,23 @@ These patterns MUST be followed by all new primitives:
 | **Document-level listeners** | Click-outside + keyboard via `document.addEventListener` + cleanup | SegmentContextMenu, Lightbox |
 | **No new dependencies** | Built with native browser APIs only | All existing components |
 
+### Composition Review Ladder
+
+Storybook review is no longer limited to isolated components. The review ladder is:
+
+| Level | Storybook area | Purpose |
+|-------|----------------|---------|
+| **Atom / Base** | `UI Primitives/*` | Token correctness and single-control states |
+| **Molecule** | `Domain Components/*` | Small feature groups such as cards, charts, and banners |
+| **Organism** | `Shell/*`, `Settings/*` | Dense interactive groupings and section-level hierarchy |
+| **Template** | `Templates/*` | Cross-component compositions used to catch theme/spacing regressions |
+| **Page** | `Pages/*` | Route-level surfaces with real page title + layout context |
+
+Required review gates:
+- `LightReview` and `DarkReview` stories for route-level pages that rely on shared page typography
+- `Templates/*` stories for shell chrome, dashboard workspace, and settings workbench
+- Storybook preview defaults to `light` so inverse-text regressions surface early
+
 ### What's Missing (Gaps)
 
 #### Gap 1: Missing UI Primitives

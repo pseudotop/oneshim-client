@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { createMockCoachingHistory, createMockGoalProgress } from '../stories/mock-data'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Coaching from './Coaching'
 
 const queryClient = new QueryClient({
@@ -66,4 +67,16 @@ export const EmptyState: Story = {
       )
     },
   ],
+}
+
+export const LightReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
 }

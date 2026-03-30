@@ -20,6 +20,7 @@ function GettingStartedPage() {
             ['UI Primitives', 'src/components/ui/', 'Base components (Button, Input, Card, Alert, Dialog)'],
             ['Shell', 'src/components/shell/', 'App layout (TitleBar, ActivityBar, SidePanel, StatusBar)'],
             ['Domain Components', 'src/components/', 'Feature-specific shared components'],
+            ['Templates', 'src/stories/templates/', 'Composite review surfaces spanning multiple components'],
             ['Pages', 'src/pages/', 'Route-level page components'],
             ['Overlay', 'src/overlay/components/', 'Detection overlay window components'],
           ]}
@@ -39,6 +40,10 @@ function GettingStartedPage() {
           </li>
           <li>
             Create co-located <InlineCode>MyComponent.stories.tsx</InlineCode> with tags: ['autodocs']
+          </li>
+          <li>
+            For templates and route pages, add <InlineCode>LightReview</InlineCode> and{' '}
+            <InlineCode>DarkReview</InlineCode> stories
           </li>
           <li>
             Run <InlineCode>pnpm lint</InlineCode> and <InlineCode>pnpm build-storybook</InlineCode>

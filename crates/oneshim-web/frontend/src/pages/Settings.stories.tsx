@@ -1,27 +1,31 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
-import { ShellLayoutProvider } from '../contexts/ShellLayoutContext'
+import type { QueryClient } from '@tanstack/react-query'
+import { createMockStorageStats, createMockUpdateStatus } from '../stories/mock-data'
+import {
+  darkThemeGlobals,
+  lightThemeGlobals,
+  reviewStoryParameters,
+  withStoryProviders,
+} from '../stories/storybook-helpers'
 import Settings from './Settings'
+import { makeDefaultFormData } from './setting-tabs/stories-utils'
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-})
+function seedSettings(client: QueryClient) {
+  client.setQueryData(['settings'], makeDefaultFormData())
+  client.setQueryData(['storage-stats'], createMockStorageStats())
+  client.setQueryData(['update-status'], createMockUpdateStatus())
+}
 
 const meta = {
   title: 'Pages/Settings',
   component: Settings,
   tags: ['autodocs'],
   decorators: [
-    (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <ShellLayoutProvider sidebarCollapsed={false}>
-            <Story />
-          </ShellLayoutProvider>
-        </MemoryRouter>
-      </QueryClientProvider>
-    ),
+    withStoryProviders({
+      initialEntries: ['/settings'],
+      seedQuery: seedSettings,
+      withShellLayout: true,
+    }),
   ],
 } satisfies Meta<typeof Settings>
 
@@ -29,3 +33,13 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
+
+export const LightReview: Story = {
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
+}

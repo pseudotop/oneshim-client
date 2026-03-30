@@ -9,9 +9,12 @@ import type {
   DailyDigestSegment,
   DailyDigestStatistics,
   DailySummary,
+  DesktopPermissionSnapshot,
   FocusMetrics,
   FocusMetricsResponse,
   Frame,
+  GuiHeatmapCell,
+  HeatmapResponse,
   HourlyMetrics,
   Interruption,
   PaginatedResponse,
@@ -21,10 +24,12 @@ import type {
   ReportDailyStat,
   ReportHourlyActivity,
   ReportResponse,
+  StorageStats,
   Tag,
   TimelineItem,
   TimelineResponse,
   TimelineSessionInfo,
+  UpdateStatus,
   WorkSession,
 } from '../api/contracts'
 
@@ -108,6 +113,22 @@ export function createMockProcessSnapshot(overrides?: Partial<ProcessSnapshot>):
   return {
     timestamp: isoTimestamp(),
     processes: createMockProcesses(5),
+    ...overrides,
+  }
+}
+
+// ── StorageStats ───────────────────────────────────────────────
+
+export function createMockStorageStats(overrides?: Partial<StorageStats>): StorageStats {
+  return {
+    db_size_bytes: 128 * 1024 * 1024,
+    frames_size_bytes: 392 * 1024 * 1024,
+    total_size_bytes: 520 * 1024 * 1024,
+    frame_count: 12480,
+    event_count: 44820,
+    metric_count: 181200,
+    oldest_data_date: new Date(Date.now() - 35 * 24 * 3600 * 1000).toISOString(),
+    newest_data_date: isoTimestamp(),
     ...overrides,
   }
 }
@@ -229,6 +250,28 @@ export function createMockReport(overrides?: Partial<ReportResponse>): ReportRes
   }
 }
 
+// ── UpdateStatus ───────────────────────────────────────────────
+
+export function createMockUpdateStatus(overrides?: Partial<UpdateStatus>): UpdateStatus {
+  return {
+    enabled: true,
+    auto_install: false,
+    phase: 'PendingApproval',
+    message: 'A new release is ready to install.',
+    pending: {
+      current_version: '0.4.9',
+      latest_version: '0.4.10',
+      release_url: 'https://github.com/pseudotop/oneshim-client/releases/tag/v0.4.10',
+      release_name: 'v0.4.10',
+      published_at: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+      download_url: 'https://github.com/pseudotop/oneshim-client/releases/download/v0.4.10/oneshim.dmg',
+    },
+    revision: 4,
+    updated_at: isoTimestamp(),
+    ...overrides,
+  }
+}
+
 // ── FocusMetrics ────────────────────────────────────────────────
 
 export function createMockFocusMetrics(overrides?: Partial<FocusMetrics>): FocusMetrics {
@@ -257,6 +300,57 @@ export function createMockFocusMetricsResponse(overrides?: Partial<FocusMetricsR
         communication_secs: 1800 + Math.round(Math.random() * 3600),
       }),
     ),
+    ...overrides,
+  }
+}
+
+// ── Heatmap / GUI Heatmap ──────────────────────────────────────
+
+export function createMockHeatmapResponse(days = 7, overrides?: Partial<HeatmapResponse>): HeatmapResponse {
+  const fromDate = new Date()
+  fromDate.setDate(fromDate.getDate() - (days - 1))
+
+  const cells = Array.from({ length: days }, (_, day) =>
+    Array.from({ length: 24 }, (_, hour) => ({
+      day,
+      hour,
+      value: hour >= 8 && hour <= 18 ? Math.round(15 + Math.random() * 70) : Math.round(Math.random() * 10),
+    })),
+  ).flat()
+
+  const maxValue = Math.max(...cells.map((cell) => cell.value), 1)
+
+  return {
+    from_date: fromDate.toISOString().split('T')[0],
+    to_date: isoDate(),
+    cells,
+    max_value: maxValue,
+    ...overrides,
+  }
+}
+
+export function createMockGuiHeatmapCells(count = 24): GuiHeatmapCell[] {
+  return Array.from({ length: count }, (_, i) => ({
+    hour: `${String(i).padStart(2, '0')}:00`,
+    count: i >= 9 && i <= 18 ? Math.floor(18 + Math.random() * 64) : Math.floor(Math.random() * 8),
+  }))
+}
+
+// ── Desktop Permission Snapshot ────────────────────────────────
+
+export function createMockDesktopPermissionSnapshot(
+  overrides?: Partial<DesktopPermissionSnapshot>,
+): DesktopPermissionSnapshot {
+  return {
+    platform: 'macos',
+    accessibility: {
+      state: 'granted',
+      status_reason: null,
+    },
+    screen_capture: {
+      state: 'needs_attention',
+      status_reason: 'Grant Screen Recording in System Settings.',
+    },
     ...overrides,
   }
 }
