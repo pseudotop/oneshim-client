@@ -1407,8 +1407,10 @@ mod tests {
         endpoint: &str,
         thinking: serde_json::Value,
     ) -> serde_json::Value {
-        let mut config = AiSessionConfig::default();
-        config.thinking = Some(thinking);
+        let config = AiSessionConfig {
+            thinking: Some(thinking),
+            ..Default::default()
+        };
 
         let session = HttpApiSession::new(
             surface.to_string(),

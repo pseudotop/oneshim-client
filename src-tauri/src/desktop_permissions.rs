@@ -77,6 +77,7 @@ fn current_platform() -> &'static str {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn granted(status_reason: Option<&str>) -> DesktopPermissionEntry {
     DesktopPermissionEntry {
         state: DesktopPermissionState::Granted,
