@@ -79,6 +79,7 @@ impl LocalLlmSession {
             initial_history.push(ChatMessage {
                 role: ChatRole::System,
                 content: prompt.clone(),
+                content_blocks: None,
             });
         }
 
@@ -112,6 +113,7 @@ impl ConversationSession for LocalLlmSession {
         let user_msg = ChatMessage {
             role: ChatRole::User,
             content: message.content.clone(),
+            content_blocks: None,
         };
 
         {
@@ -218,6 +220,7 @@ impl ConversationSession for LocalLlmSession {
                             hist.push(ChatMessage {
                                 role: ChatRole::Assistant,
                                 content: accumulated.clone(),
+                                content_blocks: None,
                             });
                             truncate_chat_history(&mut hist, max_history);
                         }
@@ -266,6 +269,7 @@ impl ConversationSession for LocalLlmSession {
                                 hist.push(ChatMessage {
                                     role: ChatRole::Assistant,
                                     content: accumulated.clone(),
+                                    content_blocks: None,
                                 });
                                 truncate_chat_history(&mut hist, max_history);
                             }
@@ -367,30 +371,37 @@ mod tests {
             ChatMessage {
                 role: ChatRole::System,
                 content: "You are helpful.".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg 1".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "resp 1".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg 2".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "resp 2".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg 3".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "resp 3".to_string(),
+                content_blocks: None,
             },
         ];
 
@@ -413,10 +424,12 @@ mod tests {
             ChatMessage {
                 role: ChatRole::System,
                 content: "system".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "hello".to_string(),
+                content_blocks: None,
             },
         ];
 
@@ -430,14 +443,17 @@ mod tests {
             ChatMessage {
                 role: ChatRole::System,
                 content: "system".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "a".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "b".to_string(),
+                content_blocks: None,
             },
         ];
 

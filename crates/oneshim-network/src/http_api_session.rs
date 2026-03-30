@@ -20,7 +20,7 @@ use oneshim_core::config::{AiProviderType, AiSessionConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
     truncate_chat_history, ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage,
-    SessionMessage, SessionState, SessionTransport, TokenUsage,
+    SessionMessage, SessionState, SessionTransport, TokenUsage, ToolDefinition,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 use oneshim_core::ports::credential_source::CredentialSource;
@@ -45,6 +45,20 @@ pub struct HttpApiSession {
     config: Arc<AiSessionConfig>,
 }
 
+#[derive(Debug, Default)]
+#[allow(dead_code)] // Fields read in Task 2-5 (vision, structured output, tool calling)
+struct RequestOptions<'a> {
+    response_format: Option<&'a serde_json::Value>,
+    tools: Option<&'a [ToolDefinition]>,
+}
+
+#[allow(dead_code)] // Used in Task 5 (tool calling SSE parsing)
+struct PartialToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
 impl HttpApiSession {
     /// Create a new HTTP API session.
     pub fn new(
@@ -64,6 +78,7 @@ impl HttpApiSession {
             initial_history.push(ChatMessage {
                 role: ChatRole::System,
                 content: prompt.clone(),
+                content_blocks: None,
             });
         }
 
@@ -86,7 +101,11 @@ impl HttpApiSession {
     }
 
     /// Build provider-specific streaming request body from conversation history.
-    fn build_request_body(&self, messages: &[ChatMessage]) -> Result<serde_json::Value, CoreError> {
+    fn build_request_body(
+        &self,
+        messages: &[ChatMessage],
+        _options: &RequestOptions<'_>,
+    ) -> Result<serde_json::Value, CoreError> {
         let shape = provider_specs::resolved_request_shape(
             self.provider_type,
             Some(&self.surface_id),
@@ -253,6 +272,7 @@ impl ConversationSession for HttpApiSession {
         let user_msg = ChatMessage {
             role: ChatRole::User,
             content: message.content.clone(),
+            content_blocks: None,
         };
 
         // Append user message to history
@@ -263,7 +283,8 @@ impl ConversationSession for HttpApiSession {
 
         // Snapshot history for the request
         let messages_snapshot = self.history.read().await.clone();
-        let request_body = self.build_request_body(&messages_snapshot)?;
+        let request_body =
+            self.build_request_body(&messages_snapshot, &RequestOptions::default())?;
 
         let streaming_url = self.streaming_endpoint();
         let builder = self
@@ -342,6 +363,7 @@ impl ConversationSession for HttpApiSession {
                                     let assistant_msg = ChatMessage {
                                         role: ChatRole::Assistant,
                                         content: accumulated.clone(),
+                                        content_blocks: None,
                                     };
                                     let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                                     hist.push(assistant_msg);
@@ -359,6 +381,7 @@ impl ConversationSession for HttpApiSession {
                             let assistant_msg = ChatMessage {
                                 role: ChatRole::Assistant,
                                 content: accumulated.clone(),
+                                content_blocks: None,
                             };
                             let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                             hist.push(assistant_msg);
@@ -379,6 +402,7 @@ impl ConversationSession for HttpApiSession {
                     let assistant_msg = ChatMessage {
                         role: ChatRole::Assistant,
                         content: accumulated.clone(),
+                        content_blocks: None,
                     };
                     let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                     hist.push(assistant_msg);
@@ -738,26 +762,32 @@ mod tests {
             ChatMessage {
                 role: ChatRole::System,
                 content: "system".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg1".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "reply1".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg2".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "reply2".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg3".to_string(),
+                content_blocks: None,
             },
         ];
 
@@ -780,10 +810,12 @@ mod tests {
             ChatMessage {
                 role: ChatRole::System,
                 content: "system".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "hello".to_string(),
+                content_blocks: None,
             },
         ];
 
@@ -799,11 +831,13 @@ mod tests {
             attachments: vec![],
             tools: None,
             context: None,
+            response_format: None,
         };
 
         let chat_msg = ChatMessage {
             role: ChatRole::User,
             content: session_msg.content.clone(),
+            content_blocks: None,
         };
 
         assert_eq!(chat_msg.role, ChatRole::User);

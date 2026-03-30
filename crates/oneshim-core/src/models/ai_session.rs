@@ -65,6 +65,8 @@ pub struct SessionMessage {
     pub tools: Option<Vec<ToolDefinition>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<MessageContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,6 +126,32 @@ pub enum Attachment {
     },
 }
 
+// ── Content Blocks ───────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    Text {
+        text: String,
+    },
+    Image {
+        media_type: String,
+        data: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+    },
+    Thinking {
+        thinking: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -131,6 +159,8 @@ pub struct ToolDefinition {
     pub endpoint: String,
     #[serde(default = "default_http_method")]
     pub method: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
 }
 
 fn default_http_method() -> String {
@@ -167,6 +197,16 @@ pub enum OutboundMessage {
     },
     Control {
         action: ControlAction,
+    },
+    Thinking {
+        content: String,
+        done: bool,
+    },
+    ToolCallDelta {
+        index: u32,
+        id: String,
+        name: String,
+        arguments_chunk: String,
     },
 }
 
@@ -264,6 +304,8 @@ pub enum SessionAuditCategory {
 pub struct ChatMessage {
     pub role: ChatRole,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_blocks: Option<Vec<ContentBlock>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -297,6 +339,7 @@ mod tests {
             attachments: vec![],
             tools: None,
             context: None,
+            response_format: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"message\""));
@@ -345,6 +388,7 @@ mod tests {
         let msg = ChatMessage {
             role: ChatRole::Assistant,
             content: "hi".to_string(),
+            content_blocks: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\":\"assistant\""));
@@ -359,5 +403,123 @@ mod tests {
         assert_eq!(json, "\"active\"");
         let parsed: SessionState = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, SessionState::Active);
+    }
+
+    #[test]
+    fn content_block_text_roundtrip() {
+        let block = ContentBlock::Text {
+            text: "hello world".to_string(),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("\"type\":\"text\""));
+        assert!(json.contains("\"text\":\"hello world\""));
+        let parsed: ContentBlock = serde_json::from_str(&json).unwrap();
+        match parsed {
+            ContentBlock::Text { text } => assert_eq!(text, "hello world"),
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn content_block_image_roundtrip() {
+        let block = ContentBlock::Image {
+            media_type: "image/png".to_string(),
+            data: "base64data==".to_string(),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("\"type\":\"image\""));
+        assert!(json.contains("\"media_type\":\"image/png\""));
+        let parsed: ContentBlock = serde_json::from_str(&json).unwrap();
+        match parsed {
+            ContentBlock::Image { media_type, data } => {
+                assert_eq!(media_type, "image/png");
+                assert_eq!(data, "base64data==");
+            }
+            _ => panic!("expected Image variant"),
+        }
+    }
+
+    #[test]
+    fn chat_message_backward_compat_no_content_blocks() {
+        // Old JSON without content_blocks should deserialize successfully
+        let json = r#"{"role":"user","content":"hello"}"#;
+        let msg: ChatMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.role, ChatRole::User);
+        assert_eq!(msg.content, "hello");
+        assert!(msg.content_blocks.is_none());
+    }
+
+    #[test]
+    fn chat_message_with_content_blocks() {
+        let msg = ChatMessage {
+            role: ChatRole::Assistant,
+            content: "summary".to_string(),
+            content_blocks: Some(vec![
+                ContentBlock::Text {
+                    text: "part 1".to_string(),
+                },
+                ContentBlock::Thinking {
+                    thinking: "let me think".to_string(),
+                },
+            ]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"content_blocks\""));
+        let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.content_blocks.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn outbound_thinking_serialization() {
+        let msg = OutboundMessage::Thinking {
+            content: "reasoning step".to_string(),
+            done: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"thinking\""));
+        assert!(json.contains("\"content\":\"reasoning step\""));
+        assert!(json.contains("\"done\":false"));
+        let parsed: OutboundMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            OutboundMessage::Thinking { content, done } => {
+                assert_eq!(content, "reasoning step");
+                assert!(!done);
+            }
+            _ => panic!("expected Thinking variant"),
+        }
+    }
+
+    #[test]
+    fn tool_definition_with_schema() {
+        let tool = ToolDefinition {
+            name: "get_weather".to_string(),
+            description: "Get weather info".to_string(),
+            endpoint: "/weather".to_string(),
+            method: "GET".to_string(),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string"}
+                }
+            })),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(json.contains("\"input_schema\""));
+        assert!(json.contains("\"properties\""));
+        let parsed: ToolDefinition = serde_json::from_str(&json).unwrap();
+        assert!(parsed.input_schema.is_some());
+    }
+
+    #[test]
+    fn tool_definition_without_schema_omits_field() {
+        let tool = ToolDefinition {
+            name: "ping".to_string(),
+            description: "Ping".to_string(),
+            endpoint: "/ping".to_string(),
+            method: "GET".to_string(),
+            input_schema: None,
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(!json.contains("input_schema"));
     }
 }

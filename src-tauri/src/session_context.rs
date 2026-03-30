@@ -73,6 +73,7 @@ impl SessionContextAssembler {
             attachments: vec![],
             tools: Some(self.build_tool_definitions()),
             context: None,
+            response_format: None,
         }
     }
 
@@ -89,42 +90,49 @@ impl SessionContextAssembler {
                 description: "Query raw activity metrics".to_string(),
                 endpoint: format!("{base}/metrics"),
                 method: get.clone(),
+                input_schema: None,
             },
             ToolDefinition {
                 name: "get_stats_summary".to_string(),
                 description: "Get summary statistics (app usage, session counts)".to_string(),
                 endpoint: format!("{base}/stats/summary"),
                 method: get.clone(),
+                input_schema: None,
             },
             ToolDefinition {
                 name: "get_sessions".to_string(),
                 description: "List work sessions".to_string(),
                 endpoint: format!("{base}/sessions"),
                 method: get.clone(),
+                input_schema: None,
             },
             ToolDefinition {
                 name: "get_events".to_string(),
                 description: "Query recent activity events".to_string(),
                 endpoint: format!("{base}/events"),
                 method: get.clone(),
+                input_schema: None,
             },
             ToolDefinition {
                 name: "get_suggestions".to_string(),
                 description: "List pending suggestions".to_string(),
                 endpoint: format!("{base}/suggestions"),
                 method: get.clone(),
+                input_schema: None,
             },
             ToolDefinition {
                 name: "get_focus_metrics".to_string(),
                 description: "Get focus and productivity metrics".to_string(),
                 endpoint: format!("{base}/focus/metrics"),
                 method: get.clone(),
+                input_schema: None,
             },
             ToolDefinition {
                 name: "search".to_string(),
                 description: "Full-text search across events (query param: ?q=...)".to_string(),
                 endpoint: format!("{base}/search"),
                 method: get,
+                input_schema: None,
             },
         ]
     }

@@ -63,6 +63,7 @@ pub async fn send_session_message(
         attachments: vec![],
         tools: None,
         context: None,
+        response_format: None,
     };
 
     let mgr_clone: Arc<SessionManagerImpl> = mgr.clone();

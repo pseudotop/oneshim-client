@@ -26,6 +26,8 @@ pub struct AiSessionConfig {
     pub max_retries: u32,
     #[serde(default = "default_max_output_tokens")]
     pub max_output_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<serde_json::Value>,
 }
 
 impl Default for AiSessionConfig {
@@ -42,6 +44,7 @@ impl Default for AiSessionConfig {
             permission_mode: default_permission_mode(),
             max_retries: default_max_retries(),
             max_output_tokens: default_max_output_tokens(),
+            thinking: None,
         }
     }
 }
