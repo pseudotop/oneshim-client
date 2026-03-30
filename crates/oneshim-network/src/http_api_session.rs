@@ -19,8 +19,9 @@ use oneshim_api_contracts::provider_specs::{
 use oneshim_core::config::{AiProviderType, AiSessionConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
-    truncate_chat_history, ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage,
-    SessionMessage, SessionState, SessionTransport, TokenUsage,
+    truncate_chat_history, Attachment, ChatMessage, ChatRole, ContentBlock,
+    ConversationSessionInfo, OutboundMessage, SessionMessage, SessionState, SessionTransport,
+    TokenUsage, ToolDefinition, ToolUseStatus,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 use oneshim_core::ports::credential_source::CredentialSource;
@@ -45,6 +46,108 @@ pub struct HttpApiSession {
     config: Arc<AiSessionConfig>,
 }
 
+#[derive(Debug, Default)]
+#[allow(dead_code)] // Fields read in Task 2-5 (vision, structured output, tool calling)
+struct RequestOptions<'a> {
+    response_format: Option<&'a serde_json::Value>,
+    tools: Option<&'a [ToolDefinition]>,
+}
+
+#[allow(dead_code)] // Used in Task 5 (tool calling SSE parsing)
+struct PartialToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+// ── Content Block Serialization Helpers ─────────────────────────
+
+/// Serialize content blocks to Anthropic Messages API format.
+///
+/// Anthropic uses `{"type": "image", "source": {"type": "base64", ...}}` for images.
+fn serialize_anthropic_content(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(serde_json::json!({"type": "text", "text": text})),
+            ContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": data}
+            })),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Serialize content blocks to OpenAI Chat Completions API format.
+///
+/// OpenAI uses `{"type": "image_url", "image_url": {"url": "data:...;base64,..."}}` for images.
+fn serialize_openai_content(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(serde_json::json!({"type": "text", "text": text})),
+            ContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                "type": "image_url",
+                "image_url": {"url": format!("data:{media_type};base64,{data}")}
+            })),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Serialize content blocks to Google Gemini API format.
+///
+/// Google uses `{"inlineData": {"mimeType": ..., "data": ...}}` for images.
+fn serialize_google_parts(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(serde_json::json!({"text": text})),
+            ContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                "inlineData": {"mimeType": media_type, "data": data}
+            })),
+            _ => None,
+        })
+        .collect()
+}
+
+// ── Tool Definition Serialization Helpers ───────────────────────
+
+/// Serialize tool definitions to Anthropic Messages API format.
+fn build_anthropic_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .filter_map(|t| {
+            let schema = t.input_schema.as_ref()?;
+            Some(serde_json::json!({"name": t.name, "description": t.description, "input_schema": schema}))
+        })
+        .collect()
+}
+
+/// Serialize tool definitions to OpenAI Chat Completions API format.
+fn build_openai_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .filter_map(|t| {
+            let schema = t.input_schema.as_ref()?;
+            Some(serde_json::json!({"type": "function", "function": {"name": t.name, "description": t.description, "parameters": schema}}))
+        })
+        .collect()
+}
+
+/// Serialize tool definitions to Google Gemini API format.
+fn build_google_tools(tools: &[ToolDefinition]) -> serde_json::Value {
+    let decls: Vec<serde_json::Value> = tools
+        .iter()
+        .filter_map(|t| {
+            let schema = t.input_schema.as_ref()?;
+            Some(serde_json::json!({"name": t.name, "description": t.description, "parameters": schema}))
+        })
+        .collect();
+    serde_json::json!([{"function_declarations": decls}])
+}
+
 impl HttpApiSession {
     /// Create a new HTTP API session.
     pub fn new(
@@ -64,6 +167,7 @@ impl HttpApiSession {
             initial_history.push(ChatMessage {
                 role: ChatRole::System,
                 content: prompt.clone(),
+                content_blocks: None,
             });
         }
 
@@ -86,7 +190,11 @@ impl HttpApiSession {
     }
 
     /// Build provider-specific streaming request body from conversation history.
-    fn build_request_body(&self, messages: &[ChatMessage]) -> Result<serde_json::Value, CoreError> {
+    fn build_request_body(
+        &self,
+        messages: &[ChatMessage],
+        options: &RequestOptions<'_>,
+    ) -> Result<serde_json::Value, CoreError> {
         let shape = provider_specs::resolved_request_shape(
             self.provider_type,
             Some(&self.surface_id),
@@ -102,22 +210,37 @@ impl HttpApiSession {
                     .iter()
                     .filter(|m| m.role != ChatRole::System)
                     .map(|m| {
-                        serde_json::json!({
-                            "role": m.role,
-                            "content": m.content,
-                        })
+                        let content = if let Some(ref blocks) = m.content_blocks {
+                            serde_json::Value::Array(serialize_anthropic_content(blocks))
+                        } else {
+                            serde_json::Value::String(m.content.clone())
+                        };
+                        serde_json::json!({ "role": m.role, "content": content })
                     })
                     .collect();
 
                 let mut body = serde_json::json!({
                     "model": self.model,
-                    "max_tokens": 4096,
+                    "max_tokens": self.config.max_output_tokens,
                     "stream": true,
                     "messages": api_messages,
                 });
 
                 if let Some(ref prompt) = self.system_prompt {
                     body["system"] = serde_json::Value::String(prompt.clone());
+                }
+
+                // Anthropic ignores response_format — no injection needed.
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["thinking"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_anthropic_tools(tools);
+                    if !tool_defs.is_empty() {
+                        body["tools"] = serde_json::Value::Array(tool_defs);
+                    }
                 }
 
                 Ok(body)
@@ -129,19 +252,102 @@ impl HttpApiSession {
                 let api_messages: Vec<serde_json::Value> = messages
                     .iter()
                     .map(|m| {
+                        let content = if let Some(ref blocks) = m.content_blocks {
+                            serde_json::Value::Array(serialize_openai_content(blocks))
+                        } else {
+                            serde_json::Value::String(m.content.clone())
+                        };
+                        serde_json::json!({ "role": m.role, "content": content })
+                    })
+                    .collect();
+
+                let mut body = serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": self.config.max_output_tokens,
+                    "stream": true,
+                    "messages": api_messages,
+                });
+
+                if let Some(rf) = options.response_format {
+                    body["response_format"] = rf.clone();
+                }
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["reasoning"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_openai_tools(tools);
+                    if !tool_defs.is_empty() {
+                        body["tools"] = serde_json::Value::Array(tool_defs);
+                    }
+                }
+
+                Ok(body)
+            }
+            ProviderRequestShape::GoogleGenerateContent => {
+                // Google Gemini: contents array, system_instruction, generationConfig
+                let api_contents: Vec<serde_json::Value> = messages
+                    .iter()
+                    .filter(|m| m.role != ChatRole::System)
+                    .map(|m| {
+                        let parts = if let Some(ref blocks) = m.content_blocks {
+                            serialize_google_parts(blocks)
+                        } else {
+                            vec![serde_json::json!({"text": m.content})]
+                        };
                         serde_json::json!({
-                            "role": m.role,
-                            "content": m.content,
+                            "role": match m.role {
+                                ChatRole::User => "user",
+                                ChatRole::Assistant => "model",
+                                _ => "user",
+                            },
+                            "parts": parts,
                         })
                     })
                     .collect();
 
-                Ok(serde_json::json!({
-                    "model": self.model,
-                    "max_tokens": 4096,
-                    "stream": true,
-                    "messages": api_messages,
-                }))
+                let mut body = serde_json::json!({
+                    "contents": api_contents,
+                    "generationConfig": {
+                        "maxOutputTokens": self.config.max_output_tokens,
+                    },
+                });
+
+                if let Some(ref prompt) = self.system_prompt {
+                    body["system_instruction"] = serde_json::json!({"parts": [{"text": prompt}]});
+                }
+
+                if let Some(rf) = options.response_format {
+                    if let Some(schema) = rf
+                        .get("schema")
+                        .or_else(|| rf.get("json_schema").and_then(|js| js.get("schema")))
+                    {
+                        body["generationConfig"]["responseMimeType"] =
+                            serde_json::json!("application/json");
+                        body["generationConfig"]["responseSchema"] = schema.clone();
+                    }
+                }
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["generationConfig"]["thinking_config"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_google_tools(tools);
+                    if let Some(arr) = tool_defs.as_array() {
+                        if !arr.is_empty()
+                            && !arr[0]
+                                .get("function_declarations")
+                                .and_then(|d| d.as_array())
+                                .map_or(true, |a| a.is_empty())
+                        {
+                            body["tools"] = tool_defs;
+                        }
+                    }
+                }
+
+                Ok(body)
             }
             _ => Err(CoreError::Internal(format!(
                 "unsupported request shape for HTTP API session: {shape:?}"
@@ -188,6 +394,28 @@ impl HttpApiSession {
         Ok(builder)
     }
 
+    /// Resolve the streaming endpoint URL.
+    ///
+    /// Google requires `streamGenerateContent?alt=sse` instead of `generateContent`.
+    fn streaming_endpoint(&self) -> String {
+        let shape = provider_specs::resolved_request_shape(
+            self.provider_type,
+            Some(&self.surface_id),
+            ProviderTransportKind::Llm,
+        );
+        if matches!(shape, Ok(ProviderRequestShape::GoogleGenerateContent)) {
+            self.endpoint
+                .replace(":generateContent", ":streamGenerateContent")
+                + if self.endpoint.contains('?') {
+                    "&alt=sse"
+                } else {
+                    "?alt=sse"
+                }
+        } else {
+            self.endpoint.clone()
+        }
+    }
+
     /// Truncate history to keep the system prompt (first message) + last (max-1) messages.
     #[cfg(test)]
     fn truncate_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
@@ -198,9 +426,35 @@ impl HttpApiSession {
 #[async_trait]
 impl ConversationSession for HttpApiSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
+        // Convert attachments to content blocks for multimodal messages
+        let content_blocks = {
+            let mut blocks = vec![ContentBlock::Text {
+                text: message.content.clone(),
+            }];
+            for att in &message.attachments {
+                if let Attachment::Image {
+                    mime,
+                    data: Some(b64),
+                    ..
+                } = att
+                {
+                    blocks.push(ContentBlock::Image {
+                        media_type: mime.clone(),
+                        data: b64.clone(),
+                    });
+                }
+            }
+            if blocks.len() > 1 {
+                Some(blocks)
+            } else {
+                None
+            }
+        };
+
         let user_msg = ChatMessage {
             role: ChatRole::User,
             content: message.content.clone(),
+            content_blocks,
         };
 
         // Append user message to history
@@ -211,11 +465,13 @@ impl ConversationSession for HttpApiSession {
 
         // Snapshot history for the request
         let messages_snapshot = self.history.read().await.clone();
-        let request_body = self.build_request_body(&messages_snapshot)?;
+        let request_body =
+            self.build_request_body(&messages_snapshot, &RequestOptions::default())?;
 
+        let streaming_url = self.streaming_endpoint();
         let builder = self
             .http_client
-            .post(&self.endpoint)
+            .post(&streaming_url)
             .header("Content-Type", "application/json")
             .json(&request_body);
 
@@ -251,6 +507,7 @@ impl ConversationSession for HttpApiSession {
         // Build the ResponseStream using SSE parsing
         let stream: ResponseStream = Box::pin(try_stream! {
             let mut accumulated = String::new();
+            let mut tool_calls: Vec<PartialToolCall> = Vec::new();
 
             let shape = provider_specs::resolved_request_shape(
                 provider_type,
@@ -264,6 +521,7 @@ impl ConversationSession for HttpApiSession {
                 ProviderRequestShape::AnthropicMessages
                     | ProviderRequestShape::AnthropicVisionMessages
             );
+            let is_google = matches!(shape, ProviderRequestShape::GoogleGenerateContent);
 
             let byte_stream = response.bytes_stream();
             let mut event_stream = byte_stream.eventsource();
@@ -271,43 +529,61 @@ impl ConversationSession for HttpApiSession {
             while let Some(event_result) = event_stream.next().await {
                 match event_result {
                     Ok(event) => {
-                        if is_anthropic {
-                            if let Some(msg) = parse_anthropic_sse_event(&event.event, &event.data) {
-                                match &msg {
-                                    OutboundMessage::Text { content, .. } => {
-                                        accumulated.push_str(content);
+                        let parsed = if is_anthropic {
+                            parse_anthropic_sse_event(&event.event, &event.data)
+                        } else if is_google {
+                            parse_google_sse_event(&event.data)
+                        } else {
+                            parse_openai_sse_event(&event.data)
+                        };
+
+                        if let Some(msg) = parsed {
+                            match &msg {
+                                OutboundMessage::ToolCallDelta { index, id, name, arguments_chunk } => {
+                                    let idx = *index as usize;
+                                    // Ensure vec is large enough
+                                    while tool_calls.len() <= idx {
+                                        tool_calls.push(PartialToolCall { id: String::new(), name: String::new(), arguments: String::new() });
                                     }
-                                    OutboundMessage::Result { .. } => {
-                                        // Stream completion — append assistant response to history
-                                        let assistant_msg = ChatMessage {
-                                            role: ChatRole::Assistant,
-                                            content: accumulated.clone(),
-                                        };
-                                        let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                                        hist.push(assistant_msg);
-                                        truncate_chat_history(&mut hist, max_turns);
+                                    if !id.is_empty() { tool_calls[idx].id.clone_from(id); }
+                                    if !name.is_empty() { tool_calls[idx].name.clone_from(name); }
+                                    if !arguments_chunk.is_empty() {
+                                        tool_calls[idx].arguments.push_str(arguments_chunk);
                                     }
-                                    _ => {}
+                                    // ToolCallDelta is internal — don't yield to consumer
+                                    continue;
                                 }
-                                yield msg;
+                                OutboundMessage::Text { content, .. } => {
+                                    accumulated.push_str(content);
+                                }
+                                OutboundMessage::Result { .. } => {
+                                    // Emit accumulated tool calls before saving text history
+                                    for tc in tool_calls.drain(..) {
+                                        if tc.name.is_empty() { continue; }
+                                        let parsed_args = serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
+                                        yield OutboundMessage::ToolUse {
+                                            tool: tc.name,
+                                            input: Some(parsed_args),
+                                            status: ToolUseStatus::Started,
+                                            result: None,
+                                        };
+                                    }
+
+                                    let assistant_msg = ChatMessage {
+                                        role: ChatRole::Assistant,
+                                        content: accumulated.clone(),
+                                        content_blocks: None,
+                                    };
+                                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
+                                    hist.push(assistant_msg);
+                                    truncate_chat_history(&mut hist, max_turns);
+                                }
+                                OutboundMessage::Thinking { .. } => {
+                                    // Stream to frontend but don't accumulate in history
+                                }
+                                _ => {}
                             }
-                        } else if let Some(msg) = parse_openai_sse_event(&event.data) {
-                                match &msg {
-                                    OutboundMessage::Text { content, .. } => {
-                                        accumulated.push_str(content);
-                                    }
-                                    OutboundMessage::Result { .. } => {
-                                        let assistant_msg = ChatMessage {
-                                            role: ChatRole::Assistant,
-                                            content: accumulated.clone(),
-                                        };
-                                        let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                                        hist.push(assistant_msg);
-                                        truncate_chat_history(&mut hist, max_turns);
-                                    }
-                                    _ => {}
-                                }
-                                yield msg;
+                            yield msg;
                         }
                     }
                     Err(e) => {
@@ -317,6 +593,7 @@ impl ConversationSession for HttpApiSession {
                             let assistant_msg = ChatMessage {
                                 role: ChatRole::Assistant,
                                 content: accumulated.clone(),
+                                content_blocks: None,
                             };
                             let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                             hist.push(assistant_msg);
@@ -337,6 +614,7 @@ impl ConversationSession for HttpApiSession {
                     let assistant_msg = ChatMessage {
                         role: ChatRole::Assistant,
                         content: accumulated.clone(),
+                        content_blocks: None,
                     };
                     let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                     hist.push(assistant_msg);
@@ -396,13 +674,52 @@ impl ConversationSession for HttpApiSession {
 /// - `message_delta` → usage info (optional)
 pub fn parse_anthropic_sse_event(event_type: &str, data: &str) -> Option<OutboundMessage> {
     match event_type {
+        "content_block_start" => {
+            let val: serde_json::Value = serde_json::from_str(data).ok()?;
+            let block = val.get("content_block")?;
+            if block.get("type")?.as_str()? == "tool_use" {
+                let id = block.get("id")?.as_str()?.to_string();
+                let name = block.get("name")?.as_str()?.to_string();
+                Some(OutboundMessage::ToolCallDelta {
+                    index: 0,
+                    id,
+                    name,
+                    arguments_chunk: String::new(),
+                })
+            } else {
+                None
+            }
+        }
         "content_block_delta" => {
             let val: serde_json::Value = serde_json::from_str(data).ok()?;
-            let text = val.get("delta")?.get("text")?.as_str()?.to_string();
-            Some(OutboundMessage::Text {
-                content: text,
-                done: false,
-            })
+            let delta = val.get("delta")?;
+            let delta_type = delta.get("type")?.as_str()?;
+            match delta_type {
+                "text_delta" => {
+                    let text = delta.get("text")?.as_str()?.to_string();
+                    Some(OutboundMessage::Text {
+                        content: text,
+                        done: false,
+                    })
+                }
+                "thinking_delta" => {
+                    let thinking = delta.get("thinking")?.as_str()?.to_string();
+                    Some(OutboundMessage::Thinking {
+                        content: thinking,
+                        done: false,
+                    })
+                }
+                "input_json_delta" => {
+                    let partial = delta.get("partial_json")?.as_str()?.to_string();
+                    Some(OutboundMessage::ToolCallDelta {
+                        index: 0,
+                        id: String::new(),
+                        name: String::new(),
+                        arguments_chunk: partial,
+                    })
+                }
+                _ => None,
+            }
         }
         "message_delta" => {
             // Extract usage from message_delta if present
@@ -438,6 +755,90 @@ pub fn parse_anthropic_sse_event(event_type: &str, data: &str) -> Option<Outboun
     }
 }
 
+/// Parse a Google Gemini SSE event data payload into an OutboundMessage.
+///
+/// Google events:
+/// - `data: {"candidates":[{"content":{"parts":[{"text":"chunk"}]}}]}` → text chunk
+/// - Final chunk includes `usageMetadata` with token counts
+/// - Stream ends without explicit `[DONE]` marker
+pub fn parse_google_sse_event(data: &str) -> Option<OutboundMessage> {
+    let trimmed = data.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let val: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+
+    let parts = val
+        .get("candidates")?
+        .get(0)?
+        .get("content")?
+        .get("parts")?
+        .as_array()?;
+
+    // Check for usage metadata (present in chunks, especially the last one)
+    let usage = val.get("usageMetadata").and_then(|u| {
+        let input = u.get("promptTokenCount")?.as_u64()?;
+        let output = u.get("candidatesTokenCount")?.as_u64()?;
+        Some(TokenUsage {
+            input_tokens: input,
+            output_tokens: output,
+        })
+    });
+
+    for part in parts {
+        if let Some(fc) = part.get("functionCall") {
+            let name = fc
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let args = fc.get("args").cloned().unwrap_or(serde_json::json!({}));
+            return Some(OutboundMessage::ToolUse {
+                tool: name,
+                input: Some(args),
+                status: ToolUseStatus::Started,
+                result: None,
+            });
+        }
+
+        if let Some(thinking) = part.get("thinking").and_then(|t| t.as_str()) {
+            if !thinking.is_empty() {
+                return Some(OutboundMessage::Thinking {
+                    content: thinking.to_string(),
+                    done: usage.is_some(),
+                });
+            }
+        }
+
+        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+            if !text.is_empty() {
+                if usage.is_some() {
+                    return Some(OutboundMessage::Result {
+                        content: text.to_string(),
+                        done: true,
+                        usage,
+                    });
+                }
+                return Some(OutboundMessage::Text {
+                    content: text.to_string(),
+                    done: false,
+                });
+            }
+        }
+    }
+
+    if let Some(usage) = usage {
+        return Some(OutboundMessage::Result {
+            content: String::new(),
+            done: true,
+            usage: Some(usage),
+        });
+    }
+
+    None
+}
+
 /// Parse an OpenAI SSE event data payload into an OutboundMessage.
 ///
 /// OpenAI events:
@@ -455,6 +856,60 @@ pub fn parse_openai_sse_event(data: &str) -> Option<OutboundMessage> {
     }
 
     let val: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+
+    // Check for tool_calls in delta
+    if let Some(tool_calls) = val
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("delta"))
+        .and_then(|d| d.get("tool_calls"))
+        .and_then(|tc| tc.as_array())
+    {
+        for tc in tool_calls {
+            let id = tc
+                .get("id")
+                .and_then(|i| i.as_str())
+                .unwrap_or("")
+                .to_string();
+            let name = tc
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let args = tc
+                .get("function")
+                .and_then(|f| f.get("arguments"))
+                .and_then(|a| a.as_str())
+                .unwrap_or("")
+                .to_string();
+            let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as u32;
+            if !id.is_empty() || !name.is_empty() || !args.is_empty() {
+                return Some(OutboundMessage::ToolCallDelta {
+                    index,
+                    id,
+                    name,
+                    arguments_chunk: args,
+                });
+            }
+        }
+    }
+
+    // Check for finish_reason: tool_calls
+    if let Some(finish) = val
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("finish_reason"))
+        .and_then(|f| f.as_str())
+    {
+        if finish == "tool_calls" {
+            return Some(OutboundMessage::Result {
+                content: String::new(),
+                done: true,
+                usage: None,
+            });
+        }
+    }
 
     // Check for usage in the final chunk (OpenAI includes usage in last chunk if requested)
     if let Some(usage_obj) = val.get("usage") {
@@ -583,6 +1038,45 @@ mod tests {
     }
 
     #[test]
+    fn google_text_chunk() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"text":"Hello from Gemini"}],"role":"model"}}],"modelVersion":"gemini-2.5-flash"}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Text { content, done }) => {
+                assert_eq!(content, "Hello from Gemini");
+                assert!(!done);
+            }
+            other => panic!("expected Text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_final_chunk_with_usage() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"text":"!"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":42},"modelVersion":"gemini-2.5-flash"}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Result {
+                content,
+                done,
+                usage,
+            }) => {
+                assert_eq!(content, "!");
+                assert!(done);
+                let u = usage.unwrap();
+                assert_eq!(u.input_tokens, 10);
+                assert_eq!(u.output_tokens, 42);
+            }
+            other => panic!("expected Result with usage, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_empty_data_ignored() {
+        let msg = parse_google_sse_event("");
+        assert!(msg.is_none());
+    }
+
+    #[test]
     fn openai_empty_content_ignored() {
         let data = r#"{"choices":[{"index":0,"delta":{"content":""}}]}"#;
         let msg = parse_openai_sse_event(data);
@@ -595,26 +1089,32 @@ mod tests {
             ChatMessage {
                 role: ChatRole::System,
                 content: "system".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg1".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "reply1".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg2".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::Assistant,
                 content: "reply2".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "msg3".to_string(),
+                content_blocks: None,
             },
         ];
 
@@ -637,10 +1137,12 @@ mod tests {
             ChatMessage {
                 role: ChatRole::System,
                 content: "system".to_string(),
+                content_blocks: None,
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: "hello".to_string(),
+                content_blocks: None,
             },
         ];
 
@@ -656,11 +1158,13 @@ mod tests {
             attachments: vec![],
             tools: None,
             context: None,
+            response_format: None,
         };
 
         let chat_msg = ChatMessage {
             role: ChatRole::User,
             content: session_msg.content.clone(),
+            content_blocks: None,
         };
 
         assert_eq!(chat_msg.role, ChatRole::User);
@@ -705,5 +1209,543 @@ mod tests {
         );
 
         assert_eq!(session.provider_name(), "openai");
+    }
+
+    // ── Vision Content Block Tests ──────────────────────────────
+
+    /// Helper to create a session and build request body with content blocks.
+    fn build_body_with_blocks(
+        provider: AiProviderType,
+        surface: &str,
+        endpoint: &str,
+        blocks: Vec<ContentBlock>,
+    ) -> serde_json::Value {
+        let session = HttpApiSession::new(
+            surface.to_string(),
+            "test-model".to_string(),
+            endpoint.to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            provider,
+            Some("system prompt".to_string()),
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let messages = vec![
+            ChatMessage {
+                role: ChatRole::System,
+                content: "system prompt".to_string(),
+                content_blocks: None,
+            },
+            ChatMessage {
+                role: ChatRole::User,
+                content: "Describe this image".to_string(),
+                content_blocks: Some(blocks),
+            },
+        ];
+
+        session
+            .build_request_body(&messages, &RequestOptions::default())
+            .expect("build_request_body should succeed")
+    }
+
+    fn sample_image_blocks() -> Vec<ContentBlock> {
+        vec![
+            ContentBlock::Text {
+                text: "Describe this image".to_string(),
+            },
+            ContentBlock::Image {
+                media_type: "image/jpeg".to_string(),
+                data: "dGVzdA==".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn anthropic_vision_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::Anthropic,
+            "provider_surface.anthropic.direct_api",
+            "https://api.anthropic.com/v1/messages",
+            sample_image_blocks(),
+        );
+
+        let messages = body["messages"].as_array().expect("messages array");
+        assert_eq!(messages.len(), 1); // system is excluded
+        let content = messages[0]["content"].as_array().expect("content array");
+        assert_eq!(content.len(), 2);
+
+        // Text block
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[0]["text"], "Describe this image");
+
+        // Image block — Anthropic format
+        assert_eq!(content[1]["type"], "image");
+        assert_eq!(content[1]["source"]["type"], "base64");
+        assert_eq!(content[1]["source"]["media_type"], "image/jpeg");
+        assert_eq!(content[1]["source"]["data"], "dGVzdA==");
+    }
+
+    #[test]
+    fn openai_vision_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::OpenAi,
+            "provider_surface.openai.direct_api",
+            "https://api.openai.com/v1/chat/completions",
+            sample_image_blocks(),
+        );
+
+        let messages = body["messages"].as_array().expect("messages array");
+        // OpenAI includes the system message
+        assert_eq!(messages.len(), 2);
+        let user_content = messages[1]["content"]
+            .as_array()
+            .expect("content array for user message");
+        assert_eq!(user_content.len(), 2);
+
+        // Text block
+        assert_eq!(user_content[0]["type"], "text");
+        assert_eq!(user_content[0]["text"], "Describe this image");
+
+        // Image block — OpenAI format
+        assert_eq!(user_content[1]["type"], "image_url");
+        let url = user_content[1]["image_url"]["url"].as_str().unwrap();
+        assert!(url.starts_with("data:image/jpeg;base64,"));
+        assert!(url.ends_with("dGVzdA=="));
+    }
+
+    #[test]
+    fn google_vision_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::Google,
+            "provider_surface.google.direct_api",
+            "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent",
+            sample_image_blocks(),
+        );
+
+        let contents = body["contents"].as_array().expect("contents array");
+        assert_eq!(contents.len(), 1); // system is excluded
+        let parts = contents[0]["parts"].as_array().expect("parts array");
+        assert_eq!(parts.len(), 2);
+
+        // Text part
+        assert_eq!(parts[0]["text"], "Describe this image");
+
+        // Image part — Google format
+        assert_eq!(parts[1]["inlineData"]["mimeType"], "image/jpeg");
+        assert_eq!(parts[1]["inlineData"]["data"], "dGVzdA==");
+    }
+
+    #[test]
+    fn plain_text_backward_compat() {
+        // When content_blocks is None, content should be a plain string
+        let session = HttpApiSession::new(
+            "provider_surface.anthropic.direct_api".to_string(),
+            "test-model".to_string(),
+            "https://api.anthropic.com/v1/messages".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::Anthropic,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "Hello world".to_string(),
+            content_blocks: None,
+        }];
+
+        let body = session
+            .build_request_body(&messages, &RequestOptions::default())
+            .expect("build_request_body should succeed");
+
+        let api_messages = body["messages"].as_array().expect("messages array");
+        assert_eq!(api_messages.len(), 1);
+
+        // Content should be a plain string, not an array
+        let content = &api_messages[0]["content"];
+        assert!(
+            content.is_string(),
+            "expected string content, got {content}"
+        );
+        assert_eq!(content.as_str().unwrap(), "Hello world");
+    }
+
+    // ── Structured Output + Thinking Injection Tests ───────────
+
+    /// Helper to build a request body with custom RequestOptions.
+    fn build_body_with_options(
+        provider: AiProviderType,
+        surface: &str,
+        endpoint: &str,
+        options: &RequestOptions<'_>,
+    ) -> serde_json::Value {
+        let session = HttpApiSession::new(
+            surface.to_string(),
+            "test-model".to_string(),
+            endpoint.to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            provider,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "Hello".to_string(),
+            content_blocks: None,
+        }];
+
+        session
+            .build_request_body(&messages, options)
+            .expect("build_request_body should succeed")
+    }
+
+    /// Helper to build a request body with thinking config set on the session.
+    fn build_body_with_thinking(
+        provider: AiProviderType,
+        surface: &str,
+        endpoint: &str,
+        thinking: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut config = AiSessionConfig::default();
+        config.thinking = Some(thinking);
+
+        let session = HttpApiSession::new(
+            surface.to_string(),
+            "test-model".to_string(),
+            endpoint.to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            provider,
+            None,
+            Arc::new(config),
+        );
+
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "Hello".to_string(),
+            content_blocks: None,
+        }];
+
+        session
+            .build_request_body(&messages, &RequestOptions::default())
+            .expect("build_request_body should succeed")
+    }
+
+    #[test]
+    fn openai_structured_output_injects_response_format() {
+        let rf = serde_json::json!({"type": "json_schema", "json_schema": {"name": "result", "schema": {"type": "object"}}});
+        let options = RequestOptions {
+            response_format: Some(&rf),
+            tools: None,
+        };
+        let body = build_body_with_options(
+            AiProviderType::OpenAi,
+            "provider_surface.openai.direct_api",
+            "https://api.openai.com/v1/chat/completions",
+            &options,
+        );
+        assert_eq!(body["response_format"]["type"], "json_schema");
+        assert!(body["response_format"]["json_schema"]["schema"].is_object());
+    }
+
+    #[test]
+    fn google_structured_output_sets_response_mime_and_schema() {
+        let rf = serde_json::json!({"schema": {"type": "object", "properties": {"name": {"type": "string"}}}});
+        let options = RequestOptions {
+            response_format: Some(&rf),
+            tools: None,
+        };
+        let body = build_body_with_options(
+            AiProviderType::Google,
+            "provider_surface.google.direct_api",
+            "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent",
+            &options,
+        );
+        assert_eq!(
+            body["generationConfig"]["responseMimeType"],
+            "application/json"
+        );
+        assert_eq!(body["generationConfig"]["responseSchema"]["type"], "object");
+    }
+
+    #[test]
+    fn anthropic_ignores_response_format() {
+        let rf = serde_json::json!({"type": "json_schema"});
+        let options = RequestOptions {
+            response_format: Some(&rf),
+            tools: None,
+        };
+        let body = build_body_with_options(
+            AiProviderType::Anthropic,
+            "provider_surface.anthropic.direct_api",
+            "https://api.anthropic.com/v1/messages",
+            &options,
+        );
+        assert!(
+            body.get("response_format").is_none(),
+            "Anthropic body should not contain response_format"
+        );
+    }
+
+    #[test]
+    fn anthropic_thinking_injected() {
+        let body = build_body_with_thinking(
+            AiProviderType::Anthropic,
+            "provider_surface.anthropic.direct_api",
+            "https://api.anthropic.com/v1/messages",
+            serde_json::json!({"type": "adaptive"}),
+        );
+        assert_eq!(body["thinking"]["type"], "adaptive");
+    }
+
+    #[test]
+    fn openai_reasoning_injected() {
+        let body = build_body_with_thinking(
+            AiProviderType::OpenAi,
+            "provider_surface.openai.direct_api",
+            "https://api.openai.com/v1/chat/completions",
+            serde_json::json!({"effort": "high"}),
+        );
+        assert_eq!(body["reasoning"]["effort"], "high");
+    }
+
+    #[test]
+    fn google_thinking_config_injected() {
+        let body = build_body_with_thinking(
+            AiProviderType::Google,
+            "provider_surface.google.direct_api",
+            "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent",
+            serde_json::json!({"thinking_budget": 2048}),
+        );
+        assert_eq!(
+            body["generationConfig"]["thinking_config"]["thinking_budget"],
+            2048
+        );
+    }
+
+    // ── Thinking SSE Parsing Tests ─────────────────────────────
+
+    #[test]
+    fn anthropic_thinking_delta() {
+        let data = r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me reason..."}}"#;
+        let msg = parse_anthropic_sse_event("content_block_delta", data);
+        match msg {
+            Some(OutboundMessage::Thinking { content, done }) => {
+                assert_eq!(content, "Let me reason...");
+                assert!(!done);
+            }
+            other => panic!("expected Thinking, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn anthropic_text_delta_still_works() {
+        let data = r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The answer is 42."}}"#;
+        let msg = parse_anthropic_sse_event("content_block_delta", data);
+        match msg {
+            Some(OutboundMessage::Text { content, done }) => {
+                assert_eq!(content, "The answer is 42.");
+                assert!(!done);
+            }
+            other => panic!("expected Text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_thinking_part() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"thinking":"Reasoning step..."}],"role":"model"}}]}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Thinking { content, done }) => {
+                assert_eq!(content, "Reasoning step...");
+                assert!(!done);
+            }
+            other => panic!("expected Thinking, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_text_after_thinking() {
+        let data =
+            r#"{"candidates":[{"content":{"parts":[{"text":"Final answer"}],"role":"model"}}]}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Text { content, done }) => {
+                assert_eq!(content, "Final answer");
+                assert!(!done);
+            }
+            other => panic!("expected Text, got {other:?}"),
+        }
+    }
+
+    // ── Tool Calling SSE Parsing Tests ────────────────────────────
+
+    #[test]
+    fn anthropic_tool_use_start() {
+        let data = r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_123","name":"get_weather"}}"#;
+        let msg = parse_anthropic_sse_event("content_block_start", data);
+        match msg {
+            Some(OutboundMessage::ToolCallDelta { id, name, .. }) => {
+                assert_eq!(id, "toolu_123");
+                assert_eq!(name, "get_weather");
+            }
+            other => panic!("expected ToolCallDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn anthropic_input_json_delta() {
+        let data = r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\":"}}"#;
+        let msg = parse_anthropic_sse_event("content_block_delta", data);
+        match msg {
+            Some(OutboundMessage::ToolCallDelta {
+                arguments_chunk, ..
+            }) => {
+                assert_eq!(arguments_chunk, "{\"location\":");
+            }
+            other => panic!("expected ToolCallDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn openai_tool_call_in_delta() {
+        let data = r#"{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}"#;
+        let msg = parse_openai_sse_event(data);
+        match msg {
+            Some(OutboundMessage::ToolCallDelta {
+                index, id, name, ..
+            }) => {
+                assert_eq!(index, 0);
+                assert_eq!(id, "call_abc");
+                assert_eq!(name, "get_weather");
+            }
+            other => panic!("expected ToolCallDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn openai_tool_call_finish() {
+        let data = r#"{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
+        let msg = parse_openai_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Result { done, .. }) => assert!(done),
+            other => panic!("expected Result done=true, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_function_call() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"location":"Tokyo"}}}],"role":"model"}}]}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::ToolUse { tool, input, .. }) => {
+                assert_eq!(tool, "get_weather");
+                assert_eq!(input.unwrap()["location"], "Tokyo");
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    // ── Tool Calling Request Body Tests ───────────────────────────
+
+    #[test]
+    fn anthropic_tools_request_body() {
+        let session = HttpApiSession::new(
+            "provider_surface.anthropic.direct_api".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            "https://api.anthropic.com/v1/messages".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::Anthropic,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "weather?".to_string(),
+            content_blocks: None,
+        }];
+        let tools = vec![ToolDefinition {
+            name: "get_weather".to_string(),
+            description: "Get weather".to_string(),
+            endpoint: String::new(),
+            method: "GET".to_string(),
+            input_schema: Some(
+                serde_json::json!({"type": "object", "properties": {"location": {"type": "string"}}}),
+            ),
+        }];
+        let options = RequestOptions {
+            response_format: None,
+            tools: Some(&tools),
+        };
+        let body = session.build_request_body(&messages, &options).unwrap();
+        let api_tools = body["tools"].as_array().unwrap();
+        assert_eq!(api_tools[0]["name"], "get_weather");
+        assert!(api_tools[0]["input_schema"].is_object());
+    }
+
+    #[test]
+    fn openai_tools_request_body() {
+        let session = HttpApiSession::new(
+            "provider_surface.openai.direct_api".to_string(),
+            "gpt-5.4".to_string(),
+            "https://api.openai.com/v1/chat/completions".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::OpenAi,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "weather?".to_string(),
+            content_blocks: None,
+        }];
+        let tools = vec![ToolDefinition {
+            name: "get_weather".to_string(),
+            description: "Get weather".to_string(),
+            endpoint: String::new(),
+            method: "GET".to_string(),
+            input_schema: Some(
+                serde_json::json!({"type": "object", "properties": {"location": {"type": "string"}}}),
+            ),
+        }];
+        let options = RequestOptions {
+            response_format: None,
+            tools: Some(&tools),
+        };
+        let body = session.build_request_body(&messages, &options).unwrap();
+        let api_tools = body["tools"].as_array().unwrap();
+        assert_eq!(api_tools[0]["type"], "function");
+        assert_eq!(api_tools[0]["function"]["name"], "get_weather");
+    }
+
+    #[test]
+    fn tools_without_schema_are_skipped() {
+        let session = HttpApiSession::new(
+            "provider_surface.anthropic.direct_api".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            "https://api.anthropic.com/v1/messages".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::Anthropic,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "test".to_string(),
+            content_blocks: None,
+        }];
+        let tools = vec![ToolDefinition {
+            name: "ping".to_string(),
+            description: "Ping".to_string(),
+            endpoint: "http://api/ping".to_string(),
+            method: "GET".to_string(),
+            input_schema: None,
+        }];
+        let options = RequestOptions {
+            response_format: None,
+            tools: Some(&tools),
+        };
+        let body = session.build_request_body(&messages, &options).unwrap();
+        assert!(body.get("tools").is_none());
     }
 }

@@ -300,6 +300,30 @@
       "Fri": "Fri",
       "Sat": "Sat",
       "Sun": "Sun"
+    },
+    "ai": {
+      "quickSetup": "Quick Setup",
+      "quickSetupDesc": "Choose a provider to get started. You can change this anytime.",
+      "apiKey": "API Key",
+      "getApiKey": "Get API key",
+      "defaultModel": "Default Model",
+      "testConnection": "Test Connection",
+      "testing": "Testing...",
+      "connected": "Connected",
+      "connectionFailed": "Connection failed — check your API key",
+      "saveActivate": "Save & Activate",
+      "comingSoon": "Coming soon",
+      "showAllProviders": "Show all {{count}} providers",
+      "ollamaRunning": "Make sure Ollama is running on",
+      "downloadOllama": "Download Ollama",
+      "copilotOauth": "GitHub Copilot requires OAuth authentication. Connect via the advanced settings below.",
+      "tierRecommended": "Recommended",
+      "tierFree": "Free tier",
+      "tierLocal": "Local",
+      "tierCloud": "Cloud",
+      "tierOauth": "OAuth",
+      "tierAws": "AWS",
+      "tierAggregator": "Aggregator"
     }
   },
   "privacy": {

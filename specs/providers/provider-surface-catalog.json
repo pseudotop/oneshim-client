@@ -2416,7 +2416,7 @@
         "context_bridge": false
       },
       "llm_capabilities": {
-        "structured_output": true
+        "structured_output": false
       },
       "ocr_capabilities": {
         "strategy": "none",

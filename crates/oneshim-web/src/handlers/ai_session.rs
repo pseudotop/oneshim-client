@@ -85,6 +85,7 @@ pub async fn send_message(
         attachments: vec![],
         tools: None,
         context: None,
+        response_format: None,
     };
 
     let response_stream = session.send_message(&message).await?;
@@ -111,6 +112,14 @@ pub async fn send_message(
                     .unwrap_or_else(|_| Event::default().event("error").data("unknown error")),
                 OutboundMessage::Control { .. } => Event::default()
                     .event("control")
+                    .json_data(&outbound)
+                    .unwrap_or_else(|_| Event::default().event("error").data("serialize error")),
+                OutboundMessage::Thinking { .. } => Event::default()
+                    .event("thinking")
+                    .json_data(&outbound)
+                    .unwrap_or_else(|_| Event::default().event("error").data("serialize error")),
+                OutboundMessage::ToolCallDelta { .. } => Event::default()
+                    .event("tool_call_delta")
                     .json_data(&outbound)
                     .unwrap_or_else(|_| Event::default().event("error").data("serialize error")),
             },

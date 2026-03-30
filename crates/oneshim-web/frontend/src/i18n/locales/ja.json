@@ -298,6 +298,30 @@
       "Fri": "金",
       "Sat": "土",
       "Sun": "日"
+    },
+    "ai": {
+      "quickSetup": "クイックセットアップ",
+      "quickSetupDesc": "プロバイダーを選択して始めましょう。いつでも変更できます。",
+      "apiKey": "APIキー",
+      "getApiKey": "APIキーを取得",
+      "defaultModel": "デフォルトモデル",
+      "testConnection": "接続テスト",
+      "testing": "テスト中...",
+      "connected": "接続済み",
+      "connectionFailed": "接続失敗 — APIキーを確認してください",
+      "saveActivate": "保存して有効化",
+      "comingSoon": "近日公開",
+      "showAllProviders": "全{{count}}件のプロバイダーを表示",
+      "ollamaRunning": "Ollamaが起動していることを確認してください:",
+      "downloadOllama": "Ollamaをダウンロード",
+      "copilotOauth": "GitHub CopilotにはOAuth認証が必要です。下の詳細設定から接続してください。",
+      "tierRecommended": "おすすめ",
+      "tierFree": "無料枠",
+      "tierLocal": "ローカル",
+      "tierCloud": "クラウド",
+      "tierOauth": "OAuth",
+      "tierAws": "AWS",
+      "tierAggregator": "Aggregator"
     }
   },
   "privacy": {

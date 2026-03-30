@@ -27,7 +27,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'Claude (Anthropic)',
     icon: 'anthropic.svg',
     tier: 'recommended',
-    tierLabel: 'Recommended',
+    tierLabel: 'settings.ai.tierRecommended',
     apiKeyEnv: 'ANTHROPIC_API_KEY',
     docsUrl: 'https://console.anthropic.com/settings/keys',
     placeholder: 'sk-ant-...',
@@ -39,7 +39,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'GPT (OpenAI)',
     icon: 'openai.svg',
     tier: 'recommended',
-    tierLabel: 'Recommended',
+    tierLabel: 'settings.ai.tierRecommended',
     apiKeyEnv: 'OPENAI_API_KEY',
     docsUrl: 'https://platform.openai.com/api-keys',
     placeholder: 'sk-...',
@@ -51,7 +51,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'Groq',
     icon: 'groq.svg',
     tier: 'free',
-    tierLabel: 'Free tier',
+    tierLabel: 'settings.ai.tierFree',
     apiKeyEnv: 'GROQ_API_KEY',
     docsUrl: 'https://console.groq.com/keys',
     placeholder: 'gsk_...',
@@ -63,7 +63,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'Ollama',
     icon: 'ollama.svg',
     tier: 'local',
-    tierLabel: 'Local',
+    tierLabel: 'settings.ai.tierLocal',
     apiKeyEnv: '',
     docsUrl: 'https://ollama.com/download',
     placeholder: '',
@@ -75,7 +75,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'Gemini (Google)',
     icon: 'google-brand-color.svg',
     tier: 'cloud',
-    tierLabel: 'Cloud',
+    tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'GOOGLE_API_KEY',
     docsUrl: 'https://aistudio.google.com/apikey',
     placeholder: 'AIza...',
@@ -87,7 +87,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'DeepSeek',
     icon: 'deepseek-color.svg',
     tier: 'cloud',
-    tierLabel: 'Cloud',
+    tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'DEEPSEEK_API_KEY',
     docsUrl: 'https://platform.deepseek.com/api_keys',
     placeholder: 'sk-...',
@@ -99,7 +99,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'Mistral AI',
     icon: 'mistral-color.svg',
     tier: 'cloud',
-    tierLabel: 'Cloud',
+    tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'MISTRAL_API_KEY',
     docsUrl: 'https://console.mistral.ai/api-keys',
     placeholder: '',
@@ -111,7 +111,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'xAI (Grok)',
     icon: 'xai.svg',
     tier: 'cloud',
-    tierLabel: 'Cloud',
+    tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'XAI_API_KEY',
     docsUrl: 'https://console.x.ai/',
     placeholder: 'xai-...',
@@ -123,7 +123,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'GitHub Copilot',
     icon: 'copilot-color.svg',
     tier: 'oauth',
-    tierLabel: 'OAuth',
+    tierLabel: 'settings.ai.tierOauth',
     apiKeyEnv: '',
     docsUrl: 'https://github.com/settings/copilot',
     placeholder: '',
@@ -136,7 +136,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'Amazon Bedrock',
     icon: 'bedrock-color.svg',
     tier: 'cloud',
-    tierLabel: 'AWS',
+    tierLabel: 'settings.ai.tierAws',
     apiKeyEnv: 'AWS_ACCESS_KEY_ID',
     docsUrl: 'https://console.aws.amazon.com/bedrock',
     placeholder: 'AKIA...',
@@ -149,7 +149,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'OpenRouter',
     icon: 'openrouter.svg',
     tier: 'cloud',
-    tierLabel: 'Aggregator',
+    tierLabel: 'settings.ai.tierAggregator',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     docsUrl: 'https://openrouter.ai/settings/keys',
     placeholder: 'sk-or-...',
@@ -161,7 +161,7 @@ const PROVIDERS: ProviderDef[] = [
     name: 'NVIDIA NIM',
     icon: 'nvidia-color.svg',
     tier: 'cloud',
-    tierLabel: 'Cloud',
+    tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'NVIDIA_API_KEY',
     docsUrl: 'https://build.nvidia.com/',
     placeholder: 'nvapi-...',
@@ -254,7 +254,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
           <ProviderIcon icon={selected.icon} size={36} />
           <div>
             <h3 className={typography.h3}>{selected.name}</h3>
-            <Badge className={cn('mt-1 text-[10px]', TIER_COLORS[selected.tier])}>{selected.tierLabel}</Badge>
+            <Badge className={cn('mt-1 text-[10px]', TIER_COLORS[selected.tier])}>{t(selected.tierLabel)}</Badge>
           </div>
         </div>
 
@@ -380,7 +380,7 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
                   {t('settings.ai.comingSoon', 'Coming soon')}
                 </Badge>
               ) : (
-                <Badge className={cn('mt-0.5 text-[9px]', TIER_COLORS[provider.tier])}>{provider.tierLabel}</Badge>
+                <Badge className={cn('mt-0.5 text-[9px]', TIER_COLORS[provider.tier])}>{t(provider.tierLabel)}</Badge>
               )}
             </div>
           </button>

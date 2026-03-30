@@ -298,6 +298,30 @@
       "Fri": "周五",
       "Sat": "周六",
       "Sun": "周日"
+    },
+    "ai": {
+      "quickSetup": "快速设置",
+      "quickSetupDesc": "选择一个提供商开始使用。您可以随时更改。",
+      "apiKey": "API 密钥",
+      "getApiKey": "获取 API 密钥",
+      "defaultModel": "默认模型",
+      "testConnection": "测试连接",
+      "testing": "测试中...",
+      "connected": "已连接",
+      "connectionFailed": "连接失败 — 请检查您的 API 密钥",
+      "saveActivate": "保存并激活",
+      "comingSoon": "即将推出",
+      "showAllProviders": "显示全部 {{count}} 个提供商",
+      "ollamaRunning": "请确认 Ollama 正在运行：",
+      "downloadOllama": "下载 Ollama",
+      "copilotOauth": "GitHub Copilot 需要 OAuth 认证。请通过下方的高级设置进行连接。",
+      "tierRecommended": "推荐",
+      "tierFree": "免费",
+      "tierLocal": "本地",
+      "tierCloud": "云端",
+      "tierOauth": "OAuth",
+      "tierAws": "AWS",
+      "tierAggregator": "Aggregator"
     }
   },
   "privacy": {

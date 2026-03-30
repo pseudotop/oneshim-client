@@ -100,6 +100,8 @@ pub(crate) fn config_to_settings(
             max_retries: config.ai_session.max_retries,
             max_history_turns: config.ai_session.max_history_turns,
             health_check_interval_secs: config.ai_session.health_check_interval_secs,
+            max_output_tokens: config.ai_session.max_output_tokens,
+            thinking: config.ai_session.thinking.clone(),
         },
         suggestion: SuggestionSettings {
             enabled: config.suggestions.enabled,

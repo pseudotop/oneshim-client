@@ -187,6 +187,7 @@ pub(crate) mod tests {
             attachments: vec![],
             tools: None,
             context: None,
+            response_format: None,
         };
         let _ = session.send_message(&msg).await;
 
