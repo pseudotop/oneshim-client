@@ -1117,6 +1117,17 @@
     "http_surface_help": "Elige la surface direct HTTP del proveedor para esta sesión.",
     "model_label": "Anulación de modelo",
     "model_placeholder": "Déjalo vacío para usar el modelo predeterminado",
-    "system_prompt_placeholder": "Indicacion del sistema (opcional)"
+    "system_prompt_placeholder": "Indicacion del sistema (opcional)",
+    "message_payload": "Payload del mensaje",
+    "regime_label": "Régimen",
+    "regime_placeholder": "Pista opcional del régimen",
+    "active_app_label": "App activa",
+    "active_app_placeholder": "Pista opcional de la app activa",
+    "tools_label": "JSON de definiciones de herramientas",
+    "tools_placeholder": "Arreglo JSON opcional de definiciones de herramientas",
+    "response_format_label": "JSON de formato de respuesta",
+    "response_format_placeholder": "Schema JSON opcional o pista de formato",
+    "invalid_tools_json": "Las definiciones de herramientas deben ser un arreglo JSON.",
+    "invalid_response_format_json": "El formato de respuesta debe ser JSON válido."
   }
 }

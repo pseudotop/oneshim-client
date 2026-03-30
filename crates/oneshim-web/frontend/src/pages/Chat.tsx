@@ -158,12 +158,58 @@ type AttachmentPayload =
   | { kind: 'image'; mime: string; data?: string | null; path?: string | null }
   | { kind: 'file'; path: string; mime?: string | null; data?: string | null }
 
+interface ToolDefinitionPayload {
+  name: string
+  description: string
+  endpoint: string
+  method?: string
+  input_schema?: unknown
+}
+
+interface ParsedJsonResult<T> {
+  value: T | undefined
+  error: boolean
+}
+
 function parseDataUrl(dataUrl: string): { mime: string; data: string } | null {
   const match = dataUrl.match(/^data:([^;,]+)?(?:;base64)?,(.*)$/)
   if (!match) return null
   const mime = match[1] || 'application/octet-stream'
   const data = match[2] || ''
   return { mime, data }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isToolDefinitionPayload(value: unknown): value is ToolDefinitionPayload {
+  if (!isRecord(value)) return false
+  if (typeof value.name !== 'string') return false
+  if (typeof value.description !== 'string') return false
+  if (typeof value.endpoint !== 'string') return false
+  if (value.method !== undefined && typeof value.method !== 'string') return false
+  return true
+}
+
+function parseOptionalJsonValue(raw: string): ParsedJsonResult<unknown> {
+  const trimmed = raw.trim()
+  if (!trimmed) return { value: undefined, error: false }
+  try {
+    return { value: JSON.parse(trimmed), error: false }
+  } catch {
+    return { value: undefined, error: true }
+  }
+}
+
+function parseOptionalToolDefinitions(raw: string): ParsedJsonResult<ToolDefinitionPayload[]> {
+  const parsed = parseOptionalJsonValue(raw)
+  if (parsed.error) return { value: undefined, error: true }
+  if (parsed.value === undefined) return { value: undefined, error: false }
+  if (!Array.isArray(parsed.value) || !parsed.value.every(isToolDefinitionPayload)) {
+    return { value: undefined, error: true }
+  }
+  return { value: parsed.value, error: false }
 }
 
 const STATE_DOT: Record<string, string> = {
@@ -259,6 +305,11 @@ export default function Chat() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [httpSurfaceId, setHttpSurfaceId] = useState<string>(HTTP_API_SURFACES[0]?.surface_id ?? '')
   const [modelOverride, setModelOverride] = useState('')
+  const [showMessagePayload, setShowMessagePayload] = useState(false)
+  const [contextRegime, setContextRegime] = useState('')
+  const [contextActiveApp, setContextActiveApp] = useState('')
+  const [toolsJson, setToolsJson] = useState('')
+  const [responseFormatJson, setResponseFormatJson] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
@@ -318,6 +369,29 @@ export default function Chat() {
     }
     return undefined
   }, [modelOverride, selectedHttpSurface, transport])
+  const messageContext = useMemo(() => {
+    const regime = contextRegime.trim()
+    const activeApp = contextActiveApp.trim()
+    if (!regime && !activeApp) return undefined
+    return {
+      regime: regime || undefined,
+      active_app: activeApp || undefined,
+    }
+  }, [contextActiveApp, contextRegime])
+  const parsedTools = useMemo(() => parseOptionalToolDefinitions(toolsJson), [toolsJson])
+  const parsedResponseFormat = useMemo(() => parseOptionalJsonValue(responseFormatJson), [responseFormatJson])
+  const payloadInvalid = parsedTools.error || parsedResponseFormat.error
+  const messagePayloadCount = useMemo(() => {
+    let count = 0
+    if (messageContext) count += 1
+    if (toolsJson.trim()) count += 1
+    if (responseFormatJson.trim()) count += 1
+    return count
+  }, [messageContext, responseFormatJson, toolsJson])
+
+  useEffect(() => {
+    if (payloadInvalid) setShowMessagePayload(true)
+  }, [payloadInvalid])
 
   useEffect(() => {
     if (!activeId) return
@@ -528,7 +602,7 @@ export default function Chat() {
   }, [])
 
   const handleSend = useCallback(async () => {
-    if ((!input.trim() && attachments.length === 0) || !activeId || sending) return
+    if ((!input.trim() && attachments.length === 0) || !activeId || sending || payloadInvalid) return
     const text = input.trim()
     const attachmentPayload: AttachmentPayload[] = attachments.map((attachment) => {
       const parsed = parseDataUrl(attachment.data)
@@ -569,12 +643,24 @@ export default function Chat() {
         sessionId: activeId,
         message: text,
         attachments: attachmentPayload,
+        tools: parsedTools.value,
+        context: messageContext,
+        responseFormat: parsedResponseFormat.value,
       })
     } catch (e) {
       console.warn('send_session_message failed:', e)
       setSending(false)
     }
-  }, [input, activeId, sending, attachments])
+  }, [
+    input,
+    activeId,
+    sending,
+    attachments,
+    payloadInvalid,
+    parsedTools.value,
+    messageContext,
+    parsedResponseFormat.value,
+  ])
 
   const handleRetry = useCallback(async () => {
     if (!activeId) return
@@ -600,6 +686,7 @@ export default function Chat() {
   const isTruncated = messages.length > MAX_VISIBLE_MESSAGES
   const visibleMessages = isTruncated ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages
   const createDisabled = creating || (transport === 'http_api' && !selectedHttpSurface)
+  const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid
 
   return (
     <div className="flex h-full min-h-0">
@@ -843,6 +930,117 @@ export default function Chat() {
                   </div>
                 )}
             </div>
+            <button
+              type="button"
+              onClick={() => setShowMessagePayload((p) => !p)}
+              className={cn(
+                'flex items-center gap-2 border-muted border-t bg-surface-base px-4 py-2 text-xs',
+                interaction.interactive,
+                colors.text.secondary,
+              )}
+            >
+              <ChevronDown className={cn(iconSize.xs, motion.transform, showMessagePayload && 'rotate-180')} />
+              <span>{t('chat.message_payload')}</span>
+              {messagePayloadCount > 0 && (
+                <span className={cn('rounded-full bg-surface-elevated px-1.5 py-0.5 text-[10px]', colors.text.primary)}>
+                  {messagePayloadCount}
+                </span>
+              )}
+            </button>
+            {showMessagePayload && (
+              <div className="space-y-3 bg-surface-base px-4 py-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <p
+                      className={cn(
+                        'text-[10px] uppercase tracking-[0.12em]',
+                        typography.weight.medium,
+                        colors.text.secondary,
+                      )}
+                    >
+                      {t('chat.regime_label')}
+                    </p>
+                    <Input
+                      value={contextRegime}
+                      onChange={(e) => setContextRegime(e.target.value)}
+                      placeholder={t('chat.regime_placeholder')}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p
+                      className={cn(
+                        'text-[10px] uppercase tracking-[0.12em]',
+                        typography.weight.medium,
+                        colors.text.secondary,
+                      )}
+                    >
+                      {t('chat.active_app_label')}
+                    </p>
+                    <Input
+                      value={contextActiveApp}
+                      onChange={(e) => setContextActiveApp(e.target.value)}
+                      placeholder={t('chat.active_app_placeholder')}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p
+                    className={cn(
+                      'text-[10px] uppercase tracking-[0.12em]',
+                      typography.weight.medium,
+                      colors.text.secondary,
+                    )}
+                  >
+                    {t('chat.tools_label')}
+                  </p>
+                  <textarea
+                    value={toolsJson}
+                    onChange={(e) => setToolsJson(e.target.value)}
+                    placeholder={t('chat.tools_placeholder')}
+                    rows={4}
+                    className={cn(
+                      'w-full resize-y border bg-surface-base px-2 py-1.5 text-xs placeholder-content-tertiary',
+                      radius.md,
+                      interaction.focusRing,
+                      colors.text.primary,
+                      'border-DEFAULT focus:border-brand-signal',
+                    )}
+                  />
+                  {parsedTools.error && (
+                    <p className="text-[10px] text-semantic-error">{t('chat.invalid_tools_json')}</p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p
+                    className={cn(
+                      'text-[10px] uppercase tracking-[0.12em]',
+                      typography.weight.medium,
+                      colors.text.secondary,
+                    )}
+                  >
+                    {t('chat.response_format_label')}
+                  </p>
+                  <textarea
+                    value={responseFormatJson}
+                    onChange={(e) => setResponseFormatJson(e.target.value)}
+                    placeholder={t('chat.response_format_placeholder')}
+                    rows={4}
+                    className={cn(
+                      'w-full resize-y border bg-surface-base px-2 py-1.5 text-xs placeholder-content-tertiary',
+                      radius.md,
+                      interaction.focusRing,
+                      colors.text.primary,
+                      'border-DEFAULT focus:border-brand-signal',
+                    )}
+                  />
+                  {parsedResponseFormat.error && (
+                    <p className="text-[10px] text-semantic-error">{t('chat.invalid_response_format_json')}</p>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Attachment chips */}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-1.5 border-muted border-t bg-surface-base px-4 pt-2">
@@ -901,7 +1099,7 @@ export default function Chat() {
                   'max-h-32 border-DEFAULT focus:border-brand-signal',
                 )}
               />
-              <Button variant="primary" size="sm" type="submit" disabled={!input.trim() || sending}>
+              <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
                 <Send className={iconSize.sm} />
               </Button>
             </form>

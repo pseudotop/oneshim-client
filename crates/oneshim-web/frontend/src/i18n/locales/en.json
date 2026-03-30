@@ -1129,6 +1129,17 @@
     "http_surface_help": "Choose the direct HTTP provider surface for this session.",
     "model_label": "Model override",
     "model_placeholder": "Leave empty to use the default model",
-    "system_prompt_placeholder": "System prompt (optional)"
+    "system_prompt_placeholder": "System prompt (optional)",
+    "message_payload": "Message payload",
+    "regime_label": "Regime",
+    "regime_placeholder": "Optional regime hint",
+    "active_app_label": "Active app",
+    "active_app_placeholder": "Optional active app hint",
+    "tools_label": "Tool definitions JSON",
+    "tools_placeholder": "Optional JSON array of tool definitions",
+    "response_format_label": "Response format JSON",
+    "response_format_placeholder": "Optional JSON schema or format hint",
+    "invalid_tools_json": "Tool definitions must be a JSON array of tool definitions.",
+    "invalid_response_format_json": "Response format must be valid JSON."
   }
 }
