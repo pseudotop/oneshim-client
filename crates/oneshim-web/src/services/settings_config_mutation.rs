@@ -300,6 +300,7 @@ fn apply_extended_settings(config: &mut AppConfig, settings: &AppSettings) {
     config.ai_session.max_retries = settings.ai_session.max_retries;
     config.ai_session.max_history_turns = settings.ai_session.max_history_turns;
     config.ai_session.health_check_interval_secs = settings.ai_session.health_check_interval_secs;
+    config.ai_session.max_output_tokens = settings.ai_session.max_output_tokens;
 
     // Suggestion
     config.suggestions.enabled = settings.suggestion.enabled;

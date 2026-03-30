@@ -111,7 +111,7 @@ impl HttpApiSession {
 
                 let mut body = serde_json::json!({
                     "model": self.model,
-                    "max_tokens": 4096,
+                    "max_tokens": self.config.max_output_tokens,
                     "stream": true,
                     "messages": api_messages,
                 });
@@ -138,7 +138,7 @@ impl HttpApiSession {
 
                 Ok(serde_json::json!({
                     "model": self.model,
-                    "max_tokens": 4096,
+                    "max_tokens": self.config.max_output_tokens,
                     "stream": true,
                     "messages": api_messages,
                 }))
@@ -163,7 +163,7 @@ impl HttpApiSession {
                 let mut body = serde_json::json!({
                     "contents": api_contents,
                     "generationConfig": {
-                        "maxOutputTokens": 4096,
+                        "maxOutputTokens": self.config.max_output_tokens,
                     },
                 });
 

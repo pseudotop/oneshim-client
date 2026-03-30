@@ -24,6 +24,8 @@ pub struct AiSessionConfig {
     pub permission_mode: String,
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
+    #[serde(default = "default_max_output_tokens")]
+    pub max_output_tokens: u32,
 }
 
 impl Default for AiSessionConfig {
@@ -39,6 +41,7 @@ impl Default for AiSessionConfig {
             max_history_turns: default_max_history(),
             permission_mode: default_permission_mode(),
             max_retries: default_max_retries(),
+            max_output_tokens: default_max_output_tokens(),
         }
     }
 }
@@ -72,4 +75,7 @@ fn default_permission_mode() -> String {
 }
 fn default_max_retries() -> u32 {
     3
+}
+fn default_max_output_tokens() -> u32 {
+    4096
 }
