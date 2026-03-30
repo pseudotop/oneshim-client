@@ -157,7 +157,7 @@ impl HttpApiSession {
     fn build_request_body(
         &self,
         messages: &[ChatMessage],
-        _options: &RequestOptions<'_>,
+        options: &RequestOptions<'_>,
     ) -> Result<serde_json::Value, CoreError> {
         let shape = provider_specs::resolved_request_shape(
             self.provider_type,
@@ -194,6 +194,12 @@ impl HttpApiSession {
                     body["system"] = serde_json::Value::String(prompt.clone());
                 }
 
+                // Anthropic ignores response_format — no injection needed.
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["thinking"] = thinking.clone();
+                }
+
                 Ok(body)
             }
             ProviderRequestShape::OpenAiChatCompletions
@@ -212,12 +218,22 @@ impl HttpApiSession {
                     })
                     .collect();
 
-                Ok(serde_json::json!({
+                let mut body = serde_json::json!({
                     "model": self.model,
                     "max_tokens": self.config.max_output_tokens,
                     "stream": true,
                     "messages": api_messages,
-                }))
+                });
+
+                if let Some(rf) = options.response_format {
+                    body["response_format"] = rf.clone();
+                }
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["reasoning"] = thinking.clone();
+                }
+
+                Ok(body)
             }
             ProviderRequestShape::GoogleGenerateContent => {
                 // Google Gemini: contents array, system_instruction, generationConfig
@@ -250,6 +266,21 @@ impl HttpApiSession {
 
                 if let Some(ref prompt) = self.system_prompt {
                     body["system_instruction"] = serde_json::json!({"parts": [{"text": prompt}]});
+                }
+
+                if let Some(rf) = options.response_format {
+                    if let Some(schema) = rf
+                        .get("schema")
+                        .or_else(|| rf.get("json_schema").and_then(|js| js.get("schema")))
+                    {
+                        body["generationConfig"]["responseMimeType"] =
+                            serde_json::json!("application/json");
+                        body["generationConfig"]["responseSchema"] = schema.clone();
+                    }
+                }
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["generationConfig"]["thinking_config"] = thinking.clone();
                 }
 
                 Ok(body)
@@ -456,6 +487,9 @@ impl ConversationSession for HttpApiSession {
                                     hist.push(assistant_msg);
                                     truncate_chat_history(&mut hist, max_turns);
                                 }
+                                OutboundMessage::Thinking { .. } => {
+                                    // Stream to frontend but don't accumulate in history
+                                }
                                 _ => {}
                             }
                             yield msg;
@@ -551,11 +585,25 @@ pub fn parse_anthropic_sse_event(event_type: &str, data: &str) -> Option<Outboun
     match event_type {
         "content_block_delta" => {
             let val: serde_json::Value = serde_json::from_str(data).ok()?;
-            let text = val.get("delta")?.get("text")?.as_str()?.to_string();
-            Some(OutboundMessage::Text {
-                content: text,
-                done: false,
-            })
+            let delta = val.get("delta")?;
+            let delta_type = delta.get("type")?.as_str()?;
+            match delta_type {
+                "text_delta" => {
+                    let text = delta.get("text")?.as_str()?.to_string();
+                    Some(OutboundMessage::Text {
+                        content: text,
+                        done: false,
+                    })
+                }
+                "thinking_delta" => {
+                    let thinking = delta.get("thinking")?.as_str()?.to_string();
+                    Some(OutboundMessage::Thinking {
+                        content: thinking,
+                        done: false,
+                    })
+                }
+                _ => None,
+            }
         }
         "message_delta" => {
             // Extract usage from message_delta if present
@@ -605,15 +653,12 @@ pub fn parse_google_sse_event(data: &str) -> Option<OutboundMessage> {
 
     let val: serde_json::Value = serde_json::from_str(trimmed).ok()?;
 
-    // Extract text from candidates[0].content.parts[0].text
-    let text = val
+    let parts = val
         .get("candidates")?
         .get(0)?
         .get("content")?
         .get("parts")?
-        .get(0)?
-        .get("text")?
-        .as_str()?;
+        .as_array()?;
 
     // Check for usage metadata (present in chunks, especially the last one)
     let usage = val.get("usageMetadata").and_then(|u| {
@@ -625,32 +670,42 @@ pub fn parse_google_sse_event(data: &str) -> Option<OutboundMessage> {
         })
     });
 
-    if usage.is_some() {
-        // Final chunk with usage — emit text + result
-        if !text.is_empty() {
-            // Google sends text and usage in the same final chunk;
-            // emit as Result with the final text included.
-            return Some(OutboundMessage::Result {
-                content: text.to_string(),
-                done: true,
-                usage,
-            });
+    for part in parts {
+        if let Some(thinking) = part.get("thinking").and_then(|t| t.as_str()) {
+            if !thinking.is_empty() {
+                return Some(OutboundMessage::Thinking {
+                    content: thinking.to_string(),
+                    done: usage.is_some(),
+                });
+            }
         }
+
+        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+            if !text.is_empty() {
+                if usage.is_some() {
+                    return Some(OutboundMessage::Result {
+                        content: text.to_string(),
+                        done: true,
+                        usage,
+                    });
+                }
+                return Some(OutboundMessage::Text {
+                    content: text.to_string(),
+                    done: false,
+                });
+            }
+        }
+    }
+
+    if let Some(usage) = usage {
         return Some(OutboundMessage::Result {
             content: String::new(),
             done: true,
-            usage,
+            usage: Some(usage),
         });
     }
 
-    if text.is_empty() {
-        return None;
-    }
-
-    Some(OutboundMessage::Text {
-        content: text.to_string(),
-        done: false,
-    })
+    None
 }
 
 /// Parse an OpenAI SSE event data payload into an OutboundMessage.
@@ -1128,5 +1183,213 @@ mod tests {
             "expected string content, got {content}"
         );
         assert_eq!(content.as_str().unwrap(), "Hello world");
+    }
+
+    // ── Structured Output + Thinking Injection Tests ───────────
+
+    /// Helper to build a request body with custom RequestOptions.
+    fn build_body_with_options(
+        provider: AiProviderType,
+        surface: &str,
+        endpoint: &str,
+        options: &RequestOptions<'_>,
+    ) -> serde_json::Value {
+        let session = HttpApiSession::new(
+            surface.to_string(),
+            "test-model".to_string(),
+            endpoint.to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            provider,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "Hello".to_string(),
+            content_blocks: None,
+        }];
+
+        session
+            .build_request_body(&messages, options)
+            .expect("build_request_body should succeed")
+    }
+
+    /// Helper to build a request body with thinking config set on the session.
+    fn build_body_with_thinking(
+        provider: AiProviderType,
+        surface: &str,
+        endpoint: &str,
+        thinking: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut config = AiSessionConfig::default();
+        config.thinking = Some(thinking);
+
+        let session = HttpApiSession::new(
+            surface.to_string(),
+            "test-model".to_string(),
+            endpoint.to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            provider,
+            None,
+            Arc::new(config),
+        );
+
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "Hello".to_string(),
+            content_blocks: None,
+        }];
+
+        session
+            .build_request_body(&messages, &RequestOptions::default())
+            .expect("build_request_body should succeed")
+    }
+
+    #[test]
+    fn openai_structured_output_injects_response_format() {
+        let rf = serde_json::json!({"type": "json_schema", "json_schema": {"name": "result", "schema": {"type": "object"}}});
+        let options = RequestOptions {
+            response_format: Some(&rf),
+            tools: None,
+        };
+        let body = build_body_with_options(
+            AiProviderType::OpenAi,
+            "provider_surface.openai.direct_api",
+            "https://api.openai.com/v1/chat/completions",
+            &options,
+        );
+        assert_eq!(body["response_format"]["type"], "json_schema");
+        assert!(body["response_format"]["json_schema"]["schema"].is_object());
+    }
+
+    #[test]
+    fn google_structured_output_sets_response_mime_and_schema() {
+        let rf = serde_json::json!({"schema": {"type": "object", "properties": {"name": {"type": "string"}}}});
+        let options = RequestOptions {
+            response_format: Some(&rf),
+            tools: None,
+        };
+        let body = build_body_with_options(
+            AiProviderType::Google,
+            "provider_surface.google.direct_api",
+            "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent",
+            &options,
+        );
+        assert_eq!(
+            body["generationConfig"]["responseMimeType"],
+            "application/json"
+        );
+        assert_eq!(body["generationConfig"]["responseSchema"]["type"], "object");
+    }
+
+    #[test]
+    fn anthropic_ignores_response_format() {
+        let rf = serde_json::json!({"type": "json_schema"});
+        let options = RequestOptions {
+            response_format: Some(&rf),
+            tools: None,
+        };
+        let body = build_body_with_options(
+            AiProviderType::Anthropic,
+            "provider_surface.anthropic.direct_api",
+            "https://api.anthropic.com/v1/messages",
+            &options,
+        );
+        assert!(
+            body.get("response_format").is_none(),
+            "Anthropic body should not contain response_format"
+        );
+    }
+
+    #[test]
+    fn anthropic_thinking_injected() {
+        let body = build_body_with_thinking(
+            AiProviderType::Anthropic,
+            "provider_surface.anthropic.direct_api",
+            "https://api.anthropic.com/v1/messages",
+            serde_json::json!({"type": "adaptive"}),
+        );
+        assert_eq!(body["thinking"]["type"], "adaptive");
+    }
+
+    #[test]
+    fn openai_reasoning_injected() {
+        let body = build_body_with_thinking(
+            AiProviderType::OpenAi,
+            "provider_surface.openai.direct_api",
+            "https://api.openai.com/v1/chat/completions",
+            serde_json::json!({"effort": "high"}),
+        );
+        assert_eq!(body["reasoning"]["effort"], "high");
+    }
+
+    #[test]
+    fn google_thinking_config_injected() {
+        let body = build_body_with_thinking(
+            AiProviderType::Google,
+            "provider_surface.google.direct_api",
+            "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent",
+            serde_json::json!({"thinking_budget": 2048}),
+        );
+        assert_eq!(
+            body["generationConfig"]["thinking_config"]["thinking_budget"],
+            2048
+        );
+    }
+
+    // ── Thinking SSE Parsing Tests ─────────────────────────────
+
+    #[test]
+    fn anthropic_thinking_delta() {
+        let data = r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me reason..."}}"#;
+        let msg = parse_anthropic_sse_event("content_block_delta", data);
+        match msg {
+            Some(OutboundMessage::Thinking { content, done }) => {
+                assert_eq!(content, "Let me reason...");
+                assert!(!done);
+            }
+            other => panic!("expected Thinking, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn anthropic_text_delta_still_works() {
+        let data = r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The answer is 42."}}"#;
+        let msg = parse_anthropic_sse_event("content_block_delta", data);
+        match msg {
+            Some(OutboundMessage::Text { content, done }) => {
+                assert_eq!(content, "The answer is 42.");
+                assert!(!done);
+            }
+            other => panic!("expected Text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_thinking_part() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"thinking":"Reasoning step..."}],"role":"model"}}]}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Thinking { content, done }) => {
+                assert_eq!(content, "Reasoning step...");
+                assert!(!done);
+            }
+            other => panic!("expected Thinking, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_text_after_thinking() {
+        let data =
+            r#"{"candidates":[{"content":{"parts":[{"text":"Final answer"}],"role":"model"}}]}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Text { content, done }) => {
+                assert_eq!(content, "Final answer");
+                assert!(!done);
+            }
+            other => panic!("expected Text, got {other:?}"),
+        }
     }
 }

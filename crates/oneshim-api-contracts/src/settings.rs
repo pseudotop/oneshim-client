@@ -460,6 +460,8 @@ pub struct AiSessionSettings {
     pub health_check_interval_secs: u64,
     #[serde(default = "default_max_output_tokens")]
     pub max_output_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<serde_json::Value>,
 }
 
 fn default_max_output_tokens() -> u32 {
@@ -476,6 +478,7 @@ impl Default for AiSessionSettings {
             max_history_turns: 100,
             health_check_interval_secs: 30,
             max_output_tokens: default_max_output_tokens(),
+            thinking: None,
         }
     }
 }
