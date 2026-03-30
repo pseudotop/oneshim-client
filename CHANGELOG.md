@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.11-rc.1] - 2026-03-30
+### Added
+
+- Register 21 ProviderWizard locale keys across 5 languages
+  Add settings.ai section with 14 existing fallback keys and 7 tier
+  labels to all locale files (en/ko/ja/zh-CN/es). Migrate ProviderWizard
+  tierLabel from hardcoded strings to i18n keys with t() calls. Brand
+  names (OAuth, AWS, Aggregator) remain English across all locales.
+
+- Add ContentBlock model, Thinking/ToolCallDelta outbound, response_format, input_schema
+
+- Vision content block serialization for Anthropic/OpenAI/Google
+
+- Structured output + thinking injection + thinking SSE parsing
+
+- Tool calling request build + SSE parsing with stateful accumulation
+
+- Re-enable structured_output in catalog after implementation
+  4 surfaces updated: OpenAI, Google, Ollama, Generic (direct_http).
+  Structured output via response_format is now implemented in
+  build_request_body for all provider shapes.
+
+
+### Changed
+
+- Extract hardcoded max_output_tokens 4096 to AiSessionConfig
+  Add max_output_tokens field to AiSessionConfig (default 4096) and
+  AiSessionSettings API contract. Replace 3 hardcoded 4096 values in
+  HttpApiSession::build_request_body with self.config.max_output_tokens.
+  Users can now configure max output tokens per session via Settings UI.
+
+- Add BYOK Advanced Capabilities spec (vision/structured/thinking/tools)
+  Design document for implementing 4 advanced provider capabilities across
+  HttpApiSession: vision/image content blocks, structured output
+  (response_format), thinking/reasoning config injection, and tool/function
+  calling with stateful SSE parsing. Covers all 3 provider shapes
+  (Anthropic, OpenAI, Google) with Ollama exception handling.
+
+- Spec v2 — resolve 12 review issues (Critical 4, Important 5)
+
+- BYOK Advanced Capabilities implementation plan (6 tasks, ~29 tests)
+  Plan v2 resolves 7 review issues: replaces __tool_json_delta text hack
+  with ToolCallDelta variant, fixes multi-index tool accumulation routing,
+  moves RequestOptions/PartialToolCall to Task 1 for compilation order,
+  clarifies PartialToolCall module-level scope.
+
+
+### Fixed
+
+- Add Google Gemini streaming support + honest capability catalog
+  - Add GoogleGenerateContent request shape to HttpApiSession with
+    contents/system_instruction/generationConfig body format
+  - Add parse_google_sse_event SSE parser for Gemini streaming responses
+  - Add streaming_endpoint() to rewrite generateContent → streamGenerateContent?alt=sse
+  - Refactor stream dispatch to unified parsed-message pattern (reduces duplication)
+  - Set structured_output=false for 5 surfaces where it was declared but
+    not implemented (OpenAI, Google, Ollama, Generic, Copilot direct_http)
+  - Add 3 Google SSE parser unit tests (16 total)
+
+
+## [Unreleased]
+
 ## [0.4.10] - 2026-03-30
 ### Changed
 
