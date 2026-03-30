@@ -19,8 +19,9 @@ use oneshim_api_contracts::provider_specs::{
 use oneshim_core::config::{AiProviderType, AiSessionConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
-    truncate_chat_history, ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage,
-    SessionMessage, SessionState, SessionTransport, TokenUsage, ToolDefinition,
+    truncate_chat_history, Attachment, ChatMessage, ChatRole, ContentBlock,
+    ConversationSessionInfo, OutboundMessage, SessionMessage, SessionState, SessionTransport,
+    TokenUsage, ToolDefinition,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 use oneshim_core::ports::credential_source::CredentialSource;
@@ -57,6 +58,58 @@ struct PartialToolCall {
     id: String,
     name: String,
     arguments: String,
+}
+
+// ── Content Block Serialization Helpers ─────────────────────────
+
+/// Serialize content blocks to Anthropic Messages API format.
+///
+/// Anthropic uses `{"type": "image", "source": {"type": "base64", ...}}` for images.
+fn serialize_anthropic_content(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(serde_json::json!({"type": "text", "text": text})),
+            ContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": data}
+            })),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Serialize content blocks to OpenAI Chat Completions API format.
+///
+/// OpenAI uses `{"type": "image_url", "image_url": {"url": "data:...;base64,..."}}` for images.
+fn serialize_openai_content(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(serde_json::json!({"type": "text", "text": text})),
+            ContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                "type": "image_url",
+                "image_url": {"url": format!("data:{media_type};base64,{data}")}
+            })),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Serialize content blocks to Google Gemini API format.
+///
+/// Google uses `{"inlineData": {"mimeType": ..., "data": ...}}` for images.
+fn serialize_google_parts(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(serde_json::json!({"text": text})),
+            ContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                "inlineData": {"mimeType": media_type, "data": data}
+            })),
+            _ => None,
+        })
+        .collect()
 }
 
 impl HttpApiSession {
@@ -121,10 +174,12 @@ impl HttpApiSession {
                     .iter()
                     .filter(|m| m.role != ChatRole::System)
                     .map(|m| {
-                        serde_json::json!({
-                            "role": m.role,
-                            "content": m.content,
-                        })
+                        let content = if let Some(ref blocks) = m.content_blocks {
+                            serde_json::Value::Array(serialize_anthropic_content(blocks))
+                        } else {
+                            serde_json::Value::String(m.content.clone())
+                        };
+                        serde_json::json!({ "role": m.role, "content": content })
                     })
                     .collect();
 
@@ -148,10 +203,12 @@ impl HttpApiSession {
                 let api_messages: Vec<serde_json::Value> = messages
                     .iter()
                     .map(|m| {
-                        serde_json::json!({
-                            "role": m.role,
-                            "content": m.content,
-                        })
+                        let content = if let Some(ref blocks) = m.content_blocks {
+                            serde_json::Value::Array(serialize_openai_content(blocks))
+                        } else {
+                            serde_json::Value::String(m.content.clone())
+                        };
+                        serde_json::json!({ "role": m.role, "content": content })
                     })
                     .collect();
 
@@ -168,13 +225,18 @@ impl HttpApiSession {
                     .iter()
                     .filter(|m| m.role != ChatRole::System)
                     .map(|m| {
+                        let parts = if let Some(ref blocks) = m.content_blocks {
+                            serialize_google_parts(blocks)
+                        } else {
+                            vec![serde_json::json!({"text": m.content})]
+                        };
                         serde_json::json!({
                             "role": match m.role {
                                 ChatRole::User => "user",
                                 ChatRole::Assistant => "model",
                                 _ => "user",
                             },
-                            "parts": [{"text": m.content}],
+                            "parts": parts,
                         })
                     })
                     .collect();
@@ -269,10 +331,35 @@ impl HttpApiSession {
 #[async_trait]
 impl ConversationSession for HttpApiSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
+        // Convert attachments to content blocks for multimodal messages
+        let content_blocks = {
+            let mut blocks = vec![ContentBlock::Text {
+                text: message.content.clone(),
+            }];
+            for att in &message.attachments {
+                if let Attachment::Image {
+                    mime,
+                    data: Some(b64),
+                    ..
+                } = att
+                {
+                    blocks.push(ContentBlock::Image {
+                        media_type: mime.clone(),
+                        data: b64.clone(),
+                    });
+                }
+            }
+            if blocks.len() > 1 {
+                Some(blocks)
+            } else {
+                None
+            }
+        };
+
         let user_msg = ChatMessage {
             role: ChatRole::User,
             content: message.content.clone(),
-            content_blocks: None,
+            content_blocks,
         };
 
         // Append user message to history
@@ -882,5 +969,164 @@ mod tests {
         );
 
         assert_eq!(session.provider_name(), "openai");
+    }
+
+    // ── Vision Content Block Tests ──────────────────────────────
+
+    /// Helper to create a session and build request body with content blocks.
+    fn build_body_with_blocks(
+        provider: AiProviderType,
+        surface: &str,
+        endpoint: &str,
+        blocks: Vec<ContentBlock>,
+    ) -> serde_json::Value {
+        let session = HttpApiSession::new(
+            surface.to_string(),
+            "test-model".to_string(),
+            endpoint.to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            provider,
+            Some("system prompt".to_string()),
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let messages = vec![
+            ChatMessage {
+                role: ChatRole::System,
+                content: "system prompt".to_string(),
+                content_blocks: None,
+            },
+            ChatMessage {
+                role: ChatRole::User,
+                content: "Describe this image".to_string(),
+                content_blocks: Some(blocks),
+            },
+        ];
+
+        session
+            .build_request_body(&messages, &RequestOptions::default())
+            .expect("build_request_body should succeed")
+    }
+
+    fn sample_image_blocks() -> Vec<ContentBlock> {
+        vec![
+            ContentBlock::Text {
+                text: "Describe this image".to_string(),
+            },
+            ContentBlock::Image {
+                media_type: "image/jpeg".to_string(),
+                data: "dGVzdA==".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn anthropic_vision_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::Anthropic,
+            "provider_surface.anthropic.direct_api",
+            "https://api.anthropic.com/v1/messages",
+            sample_image_blocks(),
+        );
+
+        let messages = body["messages"].as_array().expect("messages array");
+        assert_eq!(messages.len(), 1); // system is excluded
+        let content = messages[0]["content"].as_array().expect("content array");
+        assert_eq!(content.len(), 2);
+
+        // Text block
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[0]["text"], "Describe this image");
+
+        // Image block — Anthropic format
+        assert_eq!(content[1]["type"], "image");
+        assert_eq!(content[1]["source"]["type"], "base64");
+        assert_eq!(content[1]["source"]["media_type"], "image/jpeg");
+        assert_eq!(content[1]["source"]["data"], "dGVzdA==");
+    }
+
+    #[test]
+    fn openai_vision_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::OpenAi,
+            "provider_surface.openai.direct_api",
+            "https://api.openai.com/v1/chat/completions",
+            sample_image_blocks(),
+        );
+
+        let messages = body["messages"].as_array().expect("messages array");
+        // OpenAI includes the system message
+        assert_eq!(messages.len(), 2);
+        let user_content = messages[1]["content"]
+            .as_array()
+            .expect("content array for user message");
+        assert_eq!(user_content.len(), 2);
+
+        // Text block
+        assert_eq!(user_content[0]["type"], "text");
+        assert_eq!(user_content[0]["text"], "Describe this image");
+
+        // Image block — OpenAI format
+        assert_eq!(user_content[1]["type"], "image_url");
+        let url = user_content[1]["image_url"]["url"].as_str().unwrap();
+        assert!(url.starts_with("data:image/jpeg;base64,"));
+        assert!(url.ends_with("dGVzdA=="));
+    }
+
+    #[test]
+    fn google_vision_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::Google,
+            "provider_surface.google.direct_api",
+            "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent",
+            sample_image_blocks(),
+        );
+
+        let contents = body["contents"].as_array().expect("contents array");
+        assert_eq!(contents.len(), 1); // system is excluded
+        let parts = contents[0]["parts"].as_array().expect("parts array");
+        assert_eq!(parts.len(), 2);
+
+        // Text part
+        assert_eq!(parts[0]["text"], "Describe this image");
+
+        // Image part — Google format
+        assert_eq!(parts[1]["inlineData"]["mimeType"], "image/jpeg");
+        assert_eq!(parts[1]["inlineData"]["data"], "dGVzdA==");
+    }
+
+    #[test]
+    fn plain_text_backward_compat() {
+        // When content_blocks is None, content should be a plain string
+        let session = HttpApiSession::new(
+            "provider_surface.anthropic.direct_api".to_string(),
+            "test-model".to_string(),
+            "https://api.anthropic.com/v1/messages".to_string(),
+            CredentialSource::ApiKey("sk-test".to_string()),
+            AiProviderType::Anthropic,
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let messages = vec![ChatMessage {
+            role: ChatRole::User,
+            content: "Hello world".to_string(),
+            content_blocks: None,
+        }];
+
+        let body = session
+            .build_request_body(&messages, &RequestOptions::default())
+            .expect("build_request_body should succeed");
+
+        let api_messages = body["messages"].as_array().expect("messages array");
+        assert_eq!(api_messages.len(), 1);
+
+        // Content should be a plain string, not an array
+        let content = &api_messages[0]["content"];
+        assert!(
+            content.is_string(),
+            "expected string content, got {content}"
+        );
+        assert_eq!(content.as_str().unwrap(), "Hello world");
     }
 }
