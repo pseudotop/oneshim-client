@@ -13,8 +13,9 @@
 
 ## Metrics Consistency Policy
 
-- Mutable quality metrics (test counts, lint/build pass state) must be maintained only in [STATUS.md](./STATUS.md).
-- Other documents must reference `docs/STATUS.md` instead of duplicating live numbers.
+- Mutable quality metrics must not be duplicated across documents.
+- [STATUS.md](./STATUS.md) should be maintained as the human-readable summary page for current quality signals and links.
+- Live workflow state should be referenced from GitHub Actions run pages instead of being treated as a doc-only source of truth.
 
 ## Directory Structure Policy
 

@@ -7,7 +7,7 @@ This directory is organized by document intent.
 ## Top-level docs
 
 - [DOCUMENTATION_POLICY.md](./DOCUMENTATION_POLICY.md): documentation conventions and maintenance rules
-- [STATUS.md](./STATUS.md): mutable quality metrics single source of truth
+- [STATUS.md](./STATUS.md): curated snapshot of mutable quality signals and workflow links
 - [install.md](./install.md): installation guide
 
 ## Directories

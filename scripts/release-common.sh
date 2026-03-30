@@ -29,7 +29,29 @@ next_patch_version() {
 }
 
 workspace_version() {
-  grep -m1 '^version' "${WORKSPACE_CARGO_TOML}" | sed 's/.*"\(.*\)"/\1/'
+  python3 - "${WORKSPACE_CARGO_TOML}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+in_workspace_package = False
+
+for raw_line in path.read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if line == "[workspace.package]":
+        in_workspace_package = True
+        continue
+    if in_workspace_package and line.startswith("[") and line != "[workspace.package]":
+        break
+    if in_workspace_package:
+        match = re.match(r'^version\s*=\s*"([^"]+)"$', line)
+        if match:
+            print(match.group(1))
+            raise SystemExit(0)
+
+raise SystemExit("Could not find [workspace.package] version field in Cargo.toml")
+PY
 }
 
 frontend_version() {

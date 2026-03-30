@@ -1,6 +1,48 @@
 import type { ManualChunkMeta, OutputOptions } from 'rollup'
 import { mergeConfig, type InlineConfig } from 'vite'
 
+const STORYBOOK_MOCKING_PLUGIN_NAMES = [
+  'vite:storybook-inject-mocker-runtime',
+  'storybook:mock-loader',
+  'storybook:mock-loader-preview',
+]
+
+function isNamedPlugin(plugin: unknown): plugin is { name: string } {
+  return (
+    typeof plugin === 'object' &&
+    plugin !== null &&
+    'name' in plugin &&
+    typeof (plugin as { name?: unknown }).name === 'string'
+  )
+}
+
+function stripStorybookMockingPlugins(
+  plugins: InlineConfig['plugins'],
+): InlineConfig['plugins'] {
+  if (!plugins) {
+    return plugins
+  }
+
+  const strip = (plugin: unknown): unknown => {
+    if (Array.isArray(plugin)) {
+      const nested = plugin.map(strip).filter(Boolean)
+      return nested.length > 0 ? nested : null
+    }
+
+    if (isNamedPlugin(plugin) && STORYBOOK_MOCKING_PLUGIN_NAMES.includes(plugin.name)) {
+      return null
+    }
+
+    return plugin
+  }
+
+  if (Array.isArray(plugins)) {
+    return plugins.map(strip).filter(Boolean) as InlineConfig['plugins']
+  }
+
+  return strip(plugins) as InlineConfig['plugins']
+}
+
 function packageNameFromModuleId(id: string): string | null {
   const nodeModulesMarker = '/node_modules/'
   const nodeModulesIndex = id.lastIndexOf(nodeModulesMarker)
@@ -19,10 +61,6 @@ function packageNameFromModuleId(id: string): string | null {
   }
 
   return segments[0] || null
-}
-
-function sanitizeChunkName(packageName: string): string {
-  return packageName.replace(/^@/, '').replace(/[\\/]/g, '-')
 }
 
 function resolveStorybookChunk(id: string): string | undefined {
@@ -70,10 +108,6 @@ function resolveStorybookChunk(id: string): string | undefined {
     packageName.startsWith('@mdx-js/')
   ) {
     return 'sb-addon-docs'
-  }
-
-  if (packageName.startsWith('@storybook/') || packageName === 'storybook') {
-    return `sb-${sanitizeChunkName(packageName)}`
   }
 
   return undefined
@@ -128,4 +162,16 @@ export function applyStorybookViteConfig(
       },
     },
   })
+}
+
+export async function finalizeStorybookViteConfig(
+  config: InlineConfig,
+  pkgVersion: string,
+  chunkSizeWarningLimit = 700,
+): Promise<InlineConfig> {
+  const merged = applyStorybookViteConfig(config, pkgVersion, chunkSizeWarningLimit)
+  return {
+    ...merged,
+    plugins: stripStorybookMockingPlugins(merged.plugins),
+  }
 }

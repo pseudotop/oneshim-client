@@ -1,8 +1,8 @@
 [English](./STATUS.md) | [한국어](./STATUS.ko.md)
 
-# Project Status (Single Source of Truth)
+# Project Status Snapshot
 
-This document is the canonical source for mutable quality signals and workflow references.
+This document is a curated snapshot of mutable quality signals and workflow references.
 
 ## Scope
 
@@ -16,6 +16,7 @@ Track the following here and link this file from other docs instead of duplicati
 ## Update Policy
 
 Update this document whenever workflow status, verification baseline, or known flake status changes.
+GitHub Actions run pages remain the authoritative live source for workflow state.
 
 Recommended verification commands:
 
