@@ -16,7 +16,9 @@ const config: StorybookConfig = {
     options: {},
   },
   viteFinal(config) {
-    return applyStorybookViteConfig(config, pkg.version)
+    // Storybook 10 injects a large mocker virtual entry during static builds.
+    // Keep warning noise focused on app-owned chunks rather than that internal bundle.
+    return applyStorybookViteConfig(config, pkg.version, 1700)
   },
 }
 
