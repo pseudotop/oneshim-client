@@ -82,10 +82,10 @@ pub async fn send_message(
     let message = SessionMessage {
         role: MessageRole::User,
         content: req.content,
-        attachments: vec![],
-        tools: None,
-        context: None,
-        response_format: None,
+        attachments: req.attachments,
+        tools: req.tools,
+        context: req.context,
+        response_format: req.response_format,
     };
 
     let response_stream = session.send_message(&message).await?;

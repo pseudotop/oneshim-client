@@ -23,10 +23,11 @@ use oneshim_core::ports::secret_store::SecretStore;
 
 use crate::auditing_session::AuditingSession;
 use crate::session_adapters::claude_session::ClaudeSubprocessSession;
+use crate::session_adapters::subprocess_session::GenericSubprocessSession;
 use crate::session_context::SessionContextAssembler;
-use crate::subprocess_provider::detect_known_cli_surfaces;
+use crate::subprocess_provider::{probe_known_cli_surfaces, runtime_ready_for_surface};
 
-use oneshim_network::http_api_session::HttpApiSession;
+use oneshim_network::http_api_session::{HttpApiSession, HttpApiSessionInit};
 use oneshim_network::local_llm_session::LocalLlmSession;
 
 struct ManagedSession {
@@ -283,36 +284,87 @@ impl SessionManager for SessionManagerImpl {
             )));
         }
 
-        // Auto-generate system prompt from context if not provided
+        // Auto-generate system prompt from context if not provided and lift any
+        // context-assembler tool definitions into session defaults when enabled.
         let mut config = config;
-        if config.system_prompt.is_none() {
-            if let Some(ref assembler) = self.context_assembler {
+        let mut default_tools = None;
+        if let Some(ref assembler) = self.context_assembler {
+            if config.system_prompt.is_none() || config.tools_enabled {
                 let message = assembler.build_system_message().await;
-                config.system_prompt = Some(message.content);
+                if config.system_prompt.is_none() {
+                    config.system_prompt = Some(message.content);
+                }
+                if config.tools_enabled {
+                    default_tools = message.tools.filter(|tools| !tools.is_empty());
+                }
             }
         }
 
         match config.transport {
             SessionTransport::Subprocess => {
-                let surfaces = detect_known_cli_surfaces();
-                let surface = surfaces
-                    .into_iter()
-                    .find(|s| s.surface_id == "provider_surface.anthropic.subprocess_cli")
-                    .ok_or_else(|| {
-                        CoreError::Internal("no Claude CLI detected on this system".to_string())
-                    })?;
+                let probed_surfaces = probe_known_cli_surfaces();
+                let surface = if let Some(requested_surface_id) = config.surface_id.as_deref() {
+                    probed_surfaces
+                            .iter()
+                            .find(|surface| {
+                                surface
+                                    .detected
+                                    .surface_id
+                                    .eq_ignore_ascii_case(requested_surface_id)
+                            })
+                            .map(|surface| surface.detected.clone())
+                            .ok_or_else(|| {
+                                CoreError::Internal(format!(
+                                    "requested subprocess CLI surface '{requested_surface_id}' is not detected on this system"
+                                ))
+                            })?
+                } else {
+                    probed_surfaces
+                        .iter()
+                        .find(|surface| {
+                            runtime_ready_for_surface(
+                                &surface.detected.surface_id,
+                                surface.auth_status,
+                            )
+                        })
+                        .map(|surface| surface.detected.clone())
+                        .or_else(|| {
+                            probed_surfaces
+                                .first()
+                                .map(|surface| surface.detected.clone())
+                        })
+                        .ok_or_else(|| {
+                            CoreError::Internal(
+                                "no supported subprocess CLI surface detected on this system"
+                                    .to_string(),
+                            )
+                        })?
+                };
 
-                let inner: Arc<dyn ConversationSession> = Arc::new(ClaudeSubprocessSession::new(
-                    surface,
-                    &config,
-                    self.config.clone(),
-                ));
+                let inner: Arc<dyn ConversationSession> = if surface
+                    .surface_id
+                    .eq_ignore_ascii_case("provider_surface.anthropic.subprocess_cli")
+                {
+                    Arc::new(ClaudeSubprocessSession::new(
+                        surface,
+                        &config,
+                        self.config.clone(),
+                        default_tools.clone(),
+                    ))
+                } else {
+                    Arc::new(GenericSubprocessSession::new(
+                        surface,
+                        &config,
+                        self.config.clone(),
+                        default_tools.clone(),
+                    ))
+                };
 
                 let wrapped: Arc<dyn ConversationSession> =
                     Arc::new(AuditingSession::new(inner, self.audit.clone()));
 
                 let session_id = wrapped.session_id().to_string();
-                info!(session_id = %session_id, "created Claude subprocess session");
+                info!(session_id = %session_id, "created subprocess session");
 
                 let managed = ManagedSession {
                     session: wrapped.clone(),
@@ -396,15 +448,17 @@ impl SessionManager for SessionManagerImpl {
                     }
                 })?;
 
-                let inner: Arc<dyn ConversationSession> = Arc::new(HttpApiSession::new(
-                    surface_id.to_string(),
-                    model,
-                    transport_spec.url.clone(),
-                    credential,
-                    provider_type,
-                    config.system_prompt.clone(),
-                    self.config.clone(),
-                ));
+                let inner: Arc<dyn ConversationSession> =
+                    Arc::new(HttpApiSession::new(HttpApiSessionInit {
+                        surface_id: surface_id.to_string(),
+                        model,
+                        endpoint: transport_spec.url.clone(),
+                        credential,
+                        provider_type,
+                        system_prompt: config.system_prompt.clone(),
+                        config: self.config.clone(),
+                        default_tools: default_tools.clone(),
+                    }));
 
                 let wrapped: Arc<dyn ConversationSession> =
                     Arc::new(AuditingSession::new(inner, self.audit.clone()));
@@ -517,10 +571,8 @@ mod tests {
         }
     }
 
-    fn has_claude_cli() -> bool {
-        detect_known_cli_surfaces()
-            .iter()
-            .any(|s| s.surface_id == "provider_surface.anthropic.subprocess_cli")
+    fn has_any_subprocess_cli() -> bool {
+        !probe_known_cli_surfaces().is_empty()
     }
 
     #[tokio::test]
@@ -544,10 +596,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_subprocess_session_succeeds_when_claude_detected() {
-        // detect_known_cli_surfaces checks the filesystem for installed CLIs.
-        // If Claude CLI is not installed (e.g. CI), the test gracefully verifies
-        // the "no Claude CLI detected" error instead.
+    async fn create_subprocess_session_uses_detected_surface() {
+        // probe_known_cli_surfaces checks the filesystem for installed CLIs.
+        // If no supported CLI is installed (e.g. CI), the test gracefully verifies
+        // the corresponding detection error instead.
         let mgr = test_manager();
         let config = SessionConfig {
             transport: SessionTransport::Subprocess,
@@ -558,13 +610,13 @@ mod tests {
         };
         let result = mgr.create_session(config).await;
 
-        if has_claude_cli() {
+        if has_any_subprocess_cli() {
             let session = match result {
-                Ok(s) => s,
-                Err(e) => panic!("should create session when Claude CLI is present: {e}"),
+                Ok(session) => session,
+                Err(e) => panic!("should create session when a supported CLI is present: {e}"),
             };
-            assert_eq!(session.provider_name(), "claude");
             assert!(!session.session_id().is_empty());
+            assert!(!session.provider_name().is_empty());
 
             // Verify it was stored and is retrievable
             let retrieved = mgr.get_session(session.session_id()).await;
@@ -577,7 +629,7 @@ mod tests {
         } else {
             let err_msg = expect_err_msg(result);
             assert!(
-                err_msg.contains("no Claude CLI detected"),
+                err_msg.contains("no supported subprocess CLI surface detected"),
                 "unexpected error: {err_msg}",
             );
         }
@@ -645,8 +697,8 @@ mod tests {
 
     #[tokio::test]
     async fn create_session_enforces_max_concurrent_limit() {
-        if !has_claude_cli() {
-            return; // skip in environments without Claude CLI
+        if !has_any_subprocess_cli() {
+            return; // skip in environments without a supported subprocess CLI
         }
 
         let mgr = test_manager(); // max_concurrent_sessions = 2
@@ -666,7 +718,7 @@ mod tests {
 
     #[tokio::test]
     async fn kill_session_removes_from_map() {
-        if !has_claude_cli() {
+        if !has_any_subprocess_cli() {
             return;
         }
 
@@ -853,8 +905,8 @@ mod tests {
 
     #[tokio::test]
     async fn recover_session_increments_retry_count() {
-        if !has_claude_cli() {
-            return; // skip in environments without Claude CLI
+        if !has_any_subprocess_cli() {
+            return; // skip in environments without a supported subprocess CLI
         }
 
         let mgr = test_manager();
@@ -890,8 +942,8 @@ mod tests {
 
     #[tokio::test]
     async fn recover_session_fails_after_max_retries() {
-        if !has_claude_cli() {
-            return; // skip in environments without Claude CLI
+        if !has_any_subprocess_cli() {
+            return; // skip in environments without a supported subprocess CLI
         }
 
         let config = Arc::new(AiSessionConfig {

@@ -90,49 +90,95 @@ impl SessionContextAssembler {
                 description: "Query raw activity metrics".to_string(),
                 endpoint: format!("{base}/metrics"),
                 method: get.clone(),
-                input_schema: None,
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "from": { "type": "string", "description": "ISO-8601 start timestamp" },
+                        "to": { "type": "string", "description": "ISO-8601 end timestamp" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 500 }
+                    },
+                    "additionalProperties": false
+                })),
             },
             ToolDefinition {
                 name: "get_stats_summary".to_string(),
                 description: "Get summary statistics (app usage, session counts)".to_string(),
                 endpoint: format!("{base}/stats/summary"),
                 method: get.clone(),
-                input_schema: None,
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "date": { "type": "string", "description": "YYYY-MM-DD date override" }
+                    },
+                    "additionalProperties": false
+                })),
             },
             ToolDefinition {
                 name: "get_sessions".to_string(),
                 description: "List work sessions".to_string(),
                 endpoint: format!("{base}/sessions"),
                 method: get.clone(),
-                input_schema: None,
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                })),
             },
             ToolDefinition {
                 name: "get_events".to_string(),
                 description: "Query recent activity events".to_string(),
                 endpoint: format!("{base}/events"),
                 method: get.clone(),
-                input_schema: None,
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "from": { "type": "string", "description": "ISO-8601 start timestamp" },
+                        "to": { "type": "string", "description": "ISO-8601 end timestamp" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 500 },
+                        "offset": { "type": "integer", "minimum": 0 }
+                    },
+                    "additionalProperties": false
+                })),
             },
             ToolDefinition {
                 name: "get_suggestions".to_string(),
                 description: "List pending suggestions".to_string(),
                 endpoint: format!("{base}/suggestions"),
                 method: get.clone(),
-                input_schema: None,
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                })),
             },
             ToolDefinition {
                 name: "get_focus_metrics".to_string(),
                 description: "Get focus and productivity metrics".to_string(),
                 endpoint: format!("{base}/focus/metrics"),
                 method: get.clone(),
-                input_schema: None,
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "from": { "type": "string", "description": "ISO-8601 start timestamp" },
+                        "to": { "type": "string", "description": "ISO-8601 end timestamp" }
+                    },
+                    "additionalProperties": false
+                })),
             },
             ToolDefinition {
                 name: "search".to_string(),
                 description: "Full-text search across events (query param: ?q=...)".to_string(),
                 endpoint: format!("{base}/search"),
                 method: get,
-                input_schema: None,
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "q": { "type": "string", "description": "Full-text search query" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+                    },
+                    "required": ["q"],
+                    "additionalProperties": false
+                })),
             },
         ]
     }

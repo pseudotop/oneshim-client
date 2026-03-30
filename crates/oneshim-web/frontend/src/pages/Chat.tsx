@@ -142,6 +142,18 @@ interface ChatMessage {
   error?: { code: string; message: string; retryable: boolean }
 }
 
+type AttachmentPayload =
+  | { kind: 'image'; mime: string; data?: string | null; path?: string | null }
+  | { kind: 'file'; path: string; mime?: string | null; data?: string | null }
+
+function parseDataUrl(dataUrl: string): { mime: string; data: string } | null {
+  const match = dataUrl.match(/^data:([^;,]+)?(?:;base64)?,(.*)$/)
+  if (!match) return null
+  const mime = match[1] || 'application/octet-stream'
+  const data = match[2] || ''
+  return { mime, data }
+}
+
 const STATE_DOT: Record<string, string> = {
   active: 'bg-status-connected',
   idle: 'bg-status-connecting',
@@ -392,24 +404,48 @@ export default function Chat() {
   }, [])
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !activeId || sending) return
-    let text = input.trim()
-    // Prepend attachments as markdown
-    if (attachments.length > 0) {
-      const parts = attachments.map((a) =>
-        a.type.startsWith('image/') ? `![${a.name}](${a.data})` : `[Attachment: ${a.name}]`,
+    if ((!input.trim() && attachments.length === 0) || !activeId || sending) return
+    const text = input.trim()
+    const attachmentPayload: AttachmentPayload[] = attachments.map((attachment) => {
+      const parsed = parseDataUrl(attachment.data)
+      if (attachment.type.startsWith('image/')) {
+        return {
+          kind: 'image',
+          mime: parsed?.mime || attachment.type || 'application/octet-stream',
+          data: parsed?.data ?? null,
+          path: null,
+        }
+      }
+
+      return {
+        kind: 'file',
+        path: attachment.name,
+        mime: parsed?.mime || attachment.type || null,
+        data: parsed?.data ?? null,
+      }
+    })
+    const attachmentSummary = attachments
+      .map((attachment) =>
+        attachment.type.startsWith('image/')
+          ? `[Image attachment: ${attachment.name}]`
+          : `[Attachment: ${attachment.name}]`,
       )
-      text = `${parts.join('\n')}\n${text}`
-    }
+      .join('\n')
+    const displayText =
+      attachments.length > 0 ? [attachmentSummary, text].filter((section) => section.length > 0).join('\n') : text
     setInput('')
     setAttachments([])
     // Reset textarea height after clearing input
     const ta = document.querySelector<HTMLTextAreaElement>('form textarea')
     if (ta) ta.style.height = 'auto'
-    setMessages((p) => [...p, { role: 'user', content: text, timestamp: now() }])
+    setMessages((p) => [...p, { role: 'user', content: displayText, timestamp: now() }])
     setSending(true)
     try {
-      await ipc('send_session_message', { sessionId: activeId, message: text })
+      await ipc('send_session_message', {
+        sessionId: activeId,
+        message: text,
+        attachments: attachmentPayload,
+      })
     } catch (e) {
       console.warn('send_session_message failed:', e)
       setSending(false)

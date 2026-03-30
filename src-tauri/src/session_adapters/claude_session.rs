@@ -16,11 +16,12 @@ use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
     ConversationSessionInfo, OutboundMessage, SessionConfig, SessionMessage, SessionState,
-    SessionTransport,
+    SessionTransport, ToolDefinition,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
 use crate::session_adapters::claude_normalizer::normalize_claude_stream_event;
+use crate::session_adapters::prompt_payload::render_message_payload;
 use crate::subprocess_provider::DetectedSubprocessCli;
 
 pub struct ClaudeSubprocessSession {
@@ -29,6 +30,7 @@ pub struct ClaudeSubprocessSession {
     surface: DetectedSubprocessCli,
     model: String,
     system_prompt: Option<String>,
+    default_tools: Option<Vec<ToolDefinition>>,
     state: Mutex<SessionState>,
     turn_count: AtomicU32,
     created_at: chrono::DateTime<chrono::Utc>,
@@ -41,6 +43,7 @@ impl ClaudeSubprocessSession {
         surface: DetectedSubprocessCli,
         config: &SessionConfig,
         session_config: Arc<AiSessionConfig>,
+        default_tools: Option<Vec<ToolDefinition>>,
     ) -> Self {
         Self {
             session_id: Uuid::new_v4().to_string(),
@@ -49,6 +52,7 @@ impl ClaudeSubprocessSession {
             surface,
             model: config.model.clone().unwrap_or_else(|| "sonnet".to_string()),
             system_prompt: config.system_prompt.clone(),
+            default_tools,
             state: Mutex::new(SessionState::Active),
             turn_count: AtomicU32::new(0),
             last_active: Mutex::new(Instant::now()),
@@ -88,7 +92,8 @@ impl ClaudeSubprocessSession {
 #[async_trait]
 impl ConversationSession for ClaudeSubprocessSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
-        let mut cmd = self.build_command(&message.content);
+        let prompt = render_message_payload(message, self.default_tools.as_deref());
+        let mut cmd = self.build_command(&prompt);
 
         let mut child = cmd.spawn().map_err(|err| {
             *self.state.lock() = SessionState::Failed;

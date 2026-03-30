@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use oneshim_core::models::ai_session::{Attachment, MessageContext, ToolDefinition};
+
 /// Path parameter for AI conversation session endpoints.
 #[derive(Debug, Deserialize)]
 pub struct AiSessionPath {
@@ -10,6 +12,14 @@ pub struct AiSessionPath {
 #[derive(Debug, Deserialize)]
 pub struct AiSendMessageRequest {
     pub content: String,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+    #[serde(default)]
+    pub tools: Option<Vec<ToolDefinition>>,
+    #[serde(default)]
+    pub context: Option<MessageContext>,
+    #[serde(default)]
+    pub response_format: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]

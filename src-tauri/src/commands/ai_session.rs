@@ -7,15 +7,28 @@
 use std::sync::Arc;
 
 use futures::StreamExt;
+use serde::Deserialize;
 use tauri::{command, AppHandle, Emitter};
 
 use oneshim_core::models::ai_session::{
-    ConversationSessionInfo, MessageRole, SessionConfig, SessionMessage, SessionState,
+    Attachment, ConversationSessionInfo, MessageContext, MessageRole, SessionConfig,
+    SessionMessage, SessionState, ToolDefinition,
 };
 use oneshim_core::ports::conversation_session::SessionManager;
 
 use crate::runtime_state::AppState;
 use crate::session_manager::SessionManagerImpl;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendSessionMessageRequest {
+    pub session_id: String,
+    pub message: String,
+    pub attachments: Option<Vec<Attachment>>,
+    pub tools: Option<Vec<ToolDefinition>>,
+    pub context: Option<MessageContext>,
+    pub response_format: Option<serde_json::Value>,
+}
 
 /// Create a new AI conversation session.
 #[command]
@@ -41,8 +54,7 @@ pub async fn create_ai_session(
 pub async fn send_session_message(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
-    session_id: String,
-    message: String,
+    request: SendSessionMessageRequest,
 ) -> Result<(), String> {
     let mgr = state
         .session_manager
@@ -50,32 +62,33 @@ pub async fn send_session_message(
         .ok_or_else(|| "session manager not available".to_string())?;
 
     let session = mgr
-        .get_session(&session_id)
+        .get_session(&request.session_id)
         .await
         .map_err(|e| e.to_string())?;
 
     // Reset idle timer — keeps the session in Active state.
-    mgr.touch_session(&session_id).await;
+    mgr.touch_session(&request.session_id).await;
 
     let msg = SessionMessage {
         role: MessageRole::User,
-        content: message,
-        attachments: vec![],
-        tools: None,
-        context: None,
-        response_format: None,
+        content: request.message,
+        attachments: request.attachments.unwrap_or_default(),
+        tools: request.tools,
+        context: request.context,
+        response_format: request.response_format,
     };
 
     let mgr_clone: Arc<SessionManagerImpl> = mgr.clone();
     let mut stream = match session.send_message(&msg).await {
         Ok(s) => s,
         Err(err) => {
-            mgr_clone.report_failure(&session_id, &err).await;
+            mgr_clone.report_failure(&request.session_id, &err).await;
             return Err(err.to_string());
         }
     };
 
-    let event_name = format!("ai-session:{session_id}");
+    let event_name = format!("ai-session:{}", request.session_id);
+    let session_id = request.session_id;
 
     // Spawn a background task to drain the stream and emit events.
     tokio::spawn(async move {
