@@ -7,6 +7,7 @@ dist/*
 
 # Storybook output
 storybook-static/
+storybook-review-static/
 
 # Test output
 .playwright-cli/

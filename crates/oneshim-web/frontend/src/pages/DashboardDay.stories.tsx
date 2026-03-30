@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
-import { createMockDailyDigest } from '../stories/mock-data'
+import { AppMemoryRouter } from '../router/future'
+import { createMockDailyDigest, createMockGuiHeatmapCells } from '../stories/mock-data'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import DashboardDay from './DashboardDay'
 
 const queryClient = new QueryClient({
@@ -15,6 +16,8 @@ function createStoryQueryClient() {
 }
 
 const today = new Date().toISOString().split('T')[0]
+const dayStart = `${today}T00:00:00Z`
+const dayEnd = `${today}T23:59:59Z`
 
 const meta = {
   title: 'Pages/DashboardDay',
@@ -23,9 +26,9 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <AppMemoryRouter>
           <Story />
-        </MemoryRouter>
+        </AppMemoryRouter>
       </QueryClientProvider>
     ),
   ],
@@ -41,12 +44,13 @@ export const WithMockData: Story = {
     (Story) => {
       const qc = createStoryQueryClient()
       qc.setQueryData(['dashboard-day', today], createMockDailyDigest())
-      qc.setQueryData(['overrides', `${today}T00:00:00Z`, `${today}T23:59:59Z`], [])
+      qc.setQueryData(['overrides', dayStart, dayEnd], [])
+      qc.setQueryData(['gui-heatmap', dayStart, dayEnd], createMockGuiHeatmapCells())
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },
@@ -73,14 +77,27 @@ export const EmptyState: Story = {
           },
         }),
       )
-      qc.setQueryData(['overrides', `${today}T00:00:00Z`, `${today}T23:59:59Z`], [])
+      qc.setQueryData(['overrides', dayStart, dayEnd], [])
+      qc.setQueryData(['gui-heatmap', dayStart, dayEnd], [])
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },
   ],
+}
+
+export const LightReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
 }

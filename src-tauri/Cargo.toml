@@ -83,6 +83,7 @@ lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 objc2 = { workspace = true }
 objc2-foundation = { workspace = true }
 objc2-core-foundation = { workspace = true }

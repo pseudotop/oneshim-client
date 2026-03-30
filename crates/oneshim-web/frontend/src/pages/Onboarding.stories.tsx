@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Onboarding from './Onboarding'
 
 const meta = {
@@ -8,9 +9,9 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <MemoryRouter>
+      <AppMemoryRouter>
         <Story />
-      </MemoryRouter>
+      </AppMemoryRouter>
     ),
   ],
 } satisfies Meta<typeof Onboarding>
@@ -22,4 +23,20 @@ export const Default: Story = {
   args: {
     onComplete: () => {},
   },
+}
+
+export const LightReview: Story = {
+  args: {
+    onComplete: () => {},
+  },
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  args: {
+    onComplete: () => {},
+  },
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
 }

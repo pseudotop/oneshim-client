@@ -7,6 +7,7 @@ import {
   type AiProviderSettings,
   type AppSettings,
   type AutomationSettings,
+  type DesktopPermissionSnapshot,
   discoverProviderModels,
   downloadBlob,
   type ExportDataType,
@@ -14,6 +15,7 @@ import {
   type ExternalApiSettings,
   exportData,
   type FeatureCapabilitySnapshot,
+  fetchDesktopPermissionStatus,
   fetchFeatureCapabilities,
   fetchProviderSurfaces,
   fetchSecretBackendCapabilities,
@@ -30,6 +32,7 @@ import {
   type ProviderSurfaceSpec,
   postUpdateAction,
   probeProviderSurfaceEndpoint,
+  requestDesktopNotificationPermission,
   type SandboxSettings,
   type SavedAiProviderProfile,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
@@ -153,6 +156,25 @@ export default function Settings() {
     enabled: canQueryDesktopCapabilities,
     retry: 1,
   })
+
+  const {
+    data: desktopPermissionStatus,
+    error: desktopPermissionStatusError,
+    isFetching: desktopPermissionStatusFetching,
+    isLoading: desktopPermissionStatusLoading,
+    refetch: refetchDesktopPermissionStatus,
+  } = useQuery<DesktopPermissionSnapshot, Error>({
+    queryKey: ['desktop-permission-status'],
+    queryFn: fetchDesktopPermissionStatus,
+    staleTime: 0,
+    enabled: canQueryDesktopCapabilities,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  })
+  const handleRefreshDesktopPermissionStatus = useCallback(() => {
+    void refetchDesktopPermissionStatus()
+  }, [refetchDesktopPermissionStatus])
 
   const { data: secretBackendCapabilities } = useQuery({
     queryKey: ['secret-backend-capabilities'],
@@ -636,6 +658,32 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['update-status'] })
       showToast('success', t('settings.updateActionSuccess'), 3000)
+    },
+    onError: (error: Error) => {
+      showToast('error', error.message, 5000)
+    },
+  })
+
+  const requestNotificationPermissionMutation = useMutation({
+    mutationFn: requestDesktopNotificationPermission,
+    onSuccess: (snapshot) => {
+      queryClient.setQueryData(['desktop-permission-status'], snapshot)
+      if (snapshot.notifications.state === 'granted') {
+        showToast(
+          'success',
+          t('settings.permissionNotificationRequestGranted', 'Notifications are ready for ONESHIM.'),
+          3000,
+        )
+      } else {
+        showToast(
+          'info',
+          t(
+            'settings.permissionNotificationRequestFollowUp',
+            'Check the macOS notification prompt or System Settings, then refresh the status if needed.',
+          ),
+          4000,
+        )
+      }
     },
     onError: (error: Error) => {
       showToast('error', error.message, 5000)
@@ -1373,8 +1421,19 @@ export default function Settings() {
             <div id="settings-panel-monitoring" role="tabpanel" aria-labelledby="settings-tab-monitoring">
               <MonitoringTab
                 formData={formData}
+                permissionStatus={desktopPermissionStatus ?? null}
+                permissionStatusError={desktopPermissionStatusError?.message ?? null}
+                permissionStatusLoading={desktopPermissionStatusLoading}
+                permissionStatusRefreshing={desktopPermissionStatusFetching && !desktopPermissionStatusLoading}
+                notificationPermissionRequesting={requestNotificationPermissionMutation.isPending}
                 onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
                 onMonitorChange={handleMonitorChange}
+                onRefreshPermissionStatus={
+                  canQueryDesktopCapabilities ? handleRefreshDesktopPermissionStatus : undefined
+                }
+                onRequestNotificationPermission={
+                  canQueryDesktopCapabilities ? () => requestNotificationPermissionMutation.mutate() : undefined
+                }
               />
             </div>
           )}

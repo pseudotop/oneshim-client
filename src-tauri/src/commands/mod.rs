@@ -8,6 +8,7 @@ pub(crate) mod detection;
 pub(crate) mod focus;
 pub(crate) mod integration;
 pub(crate) mod onboarding;
+pub(crate) mod permissions;
 pub(crate) mod settings;
 pub(crate) mod suggestions;
 pub(crate) mod system;

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '../components/ui'
 import { colors, iconSize, motion, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
+import { IS_LINUX, IS_MAC, IS_WINDOWS } from '../utils/platform'
 
 interface OnboardingProps {
   onComplete: () => void
@@ -51,17 +52,57 @@ function PermissionRow({ icon, label }: { icon: ReactNode; label: string }) {
 function StepPermissions() {
   const { t } = useTranslation()
   const iconCls = cn(iconSize.base, 'text-brand-text')
+  const permissionRows = IS_MAC
+    ? [
+        { icon: <Monitor className={iconCls} />, label: t('onboarding.step2Accessibility') },
+        { icon: <Camera className={iconCls} />, label: t('onboarding.step2ScreenCapture') },
+        { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
+      ]
+    : IS_WINDOWS
+      ? [
+          { icon: <Monitor className={iconCls} />, label: t('onboarding.step2WindowsAccessibility', 'UI Automation') },
+          { icon: <Camera className={iconCls} />, label: t('onboarding.step2WindowsScreenCapture', 'Desktop Capture') },
+          { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
+        ]
+      : IS_LINUX
+        ? [
+            { icon: <Monitor className={iconCls} />, label: t('onboarding.step2LinuxAccessibility', 'AT-SPI Session') },
+            { icon: <Camera className={iconCls} />, label: t('onboarding.step2LinuxScreenCapture', 'Desktop Capture') },
+            { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
+          ]
+        : [
+            { icon: <Monitor className={iconCls} />, label: t('onboarding.step2Accessibility') },
+            { icon: <Camera className={iconCls} />, label: t('onboarding.step2ScreenCapture') },
+            { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
+          ]
+  const description = IS_MAC
+    ? t(
+        'onboarding.step2DescMac',
+        'macOS requires Accessibility, Screen Recording, and notification access for the full ONESHIM experience.',
+      )
+    : IS_WINDOWS
+      ? t(
+          'onboarding.step2DescWindows',
+          'Windows usually does not require separate permission prompts, but ONESHIM still depends on desktop access, screen capture, and notification delivery being available.',
+        )
+      : IS_LINUX
+        ? t(
+            'onboarding.step2DescLinux',
+            'Linux usually relies on session services instead of OS prompts. Confirm accessibility, screen capture, and notifications are available in your desktop session.',
+          )
+        : t('onboarding.step2Desc')
+
   return (
     <div className="flex flex-col items-center text-center">
       <div className={cn('mb-6 flex items-center justify-center rounded-full bg-brand-signal/15 p-4', motion.opacity)}>
         <Shield className={cn(iconSize.hero, 'text-brand-text')} />
       </div>
       <h2 className={cn(typography.h1, colors.text.primary, 'mb-3')}>{t('onboarding.step2Title')}</h2>
-      <p className={cn(typography.body, colors.text.secondary, 'mb-6 max-w-sm')}>{t('onboarding.step2Desc')}</p>
+      <p className={cn(typography.body, colors.text.secondary, 'mb-6 max-w-sm')}>{description}</p>
       <div className="flex w-full max-w-xs flex-col gap-3">
-        <PermissionRow icon={<Monitor className={iconCls} />} label={t('onboarding.step2Accessibility')} />
-        <PermissionRow icon={<Camera className={iconCls} />} label={t('onboarding.step2ScreenCapture')} />
-        <PermissionRow icon={<Lightbulb className={iconCls} />} label={t('onboarding.step2Notifications')} />
+        {permissionRows.map((row) => (
+          <PermissionRow key={row.label} icon={row.icon} label={row.label} />
+        ))}
       </div>
     </div>
   )

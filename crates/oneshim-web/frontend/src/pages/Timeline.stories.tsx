@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { AppMemoryRouter } from '../router/future'
 import { createMockPaginatedFrames, createMockTags } from '../stories/mock-data'
+import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
 import Timeline from './Timeline'
 
 const queryClient = new QueryClient({
@@ -21,9 +22,9 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <AppMemoryRouter>
           <Story />
-        </MemoryRouter>
+        </AppMemoryRouter>
       </QueryClientProvider>
     ),
   ],
@@ -42,9 +43,9 @@ export const WithMockData: Story = {
       qc.setQueryData(['tags'], createMockTags())
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },
@@ -59,11 +60,23 @@ export const EmptyState: Story = {
       qc.setQueryData(['tags'], [])
       return (
         <QueryClientProvider client={qc}>
-          <MemoryRouter>
+          <AppMemoryRouter>
             <Story />
-          </MemoryRouter>
+          </AppMemoryRouter>
         </QueryClientProvider>
       )
     },
   ],
+}
+
+export const LightReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}
+
+export const DarkReview: Story = {
+  decorators: WithMockData.decorators,
+  globals: darkThemeGlobals,
+  parameters: reviewStoryParameters,
 }

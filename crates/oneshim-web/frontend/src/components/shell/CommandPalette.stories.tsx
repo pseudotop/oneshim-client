@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../contexts/ThemeContext'
+import { AppMemoryRouter } from '../../router/future'
 import CommandPalette from './CommandPalette'
 
 const meta = {
@@ -13,9 +13,9 @@ const meta = {
   decorators: [
     (Story) => (
       <ThemeProvider>
-        <MemoryRouter initialEntries={['/']}>
+        <AppMemoryRouter initialEntries={['/']}>
           <Story />
-        </MemoryRouter>
+        </AppMemoryRouter>
       </ThemeProvider>
     ),
   ],
