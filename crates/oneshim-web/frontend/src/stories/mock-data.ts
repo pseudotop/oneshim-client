@@ -349,7 +349,11 @@ export function createMockDesktopPermissionSnapshot(
     },
     screen_capture: {
       state: 'needs_attention',
-      status_reason: 'Grant Screen Recording in System Settings.',
+      status_reason: 'macos_screen_capture_missing',
+    },
+    notifications: {
+      state: 'unavailable',
+      status_reason: 'macos_notifications_status_unverifiable',
     },
     ...overrides,
   }

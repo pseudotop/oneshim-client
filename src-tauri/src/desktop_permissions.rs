@@ -23,6 +23,7 @@ pub struct DesktopPermissionSnapshot {
     pub platform: String,
     pub accessibility: DesktopPermissionEntry,
     pub screen_capture: DesktopPermissionEntry,
+    pub notifications: DesktopPermissionEntry,
 }
 
 pub fn get_desktop_permission_snapshot() -> DesktopPermissionSnapshot {
@@ -30,6 +31,7 @@ pub fn get_desktop_permission_snapshot() -> DesktopPermissionSnapshot {
         platform: current_platform().to_string(),
         accessibility: accessibility_permission_entry(),
         screen_capture: screen_capture_permission_entry(),
+        notifications: notification_permission_entry(),
     }
 }
 
@@ -66,7 +68,7 @@ fn needs_attention(status_reason: &str) -> DesktopPermissionEntry {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn not_required(status_reason: Option<&str>) -> DesktopPermissionEntry {
     DesktopPermissionEntry {
         state: DesktopPermissionState::NotRequired,
@@ -74,7 +76,6 @@ fn not_required(status_reason: Option<&str>) -> DesktopPermissionEntry {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
 fn unavailable(status_reason: &str) -> DesktopPermissionEntry {
     DesktopPermissionEntry {
         state: DesktopPermissionState::Unavailable,
@@ -128,6 +129,28 @@ fn screen_capture_permission_entry() -> DesktopPermissionEntry {
         Ok(_) => unavailable("screen_capture_no_monitors"),
         Err(_) => unavailable("screen_capture_probe_failed"),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn notification_permission_entry() -> DesktopPermissionEntry {
+    // Native desktop notifications are routed through Tauri, but the runtime does not expose
+    // a trustworthy OS-level verification signal for macOS notification settings here.
+    unavailable("macos_notifications_status_unverifiable")
+}
+
+#[cfg(target_os = "windows")]
+fn notification_permission_entry() -> DesktopPermissionEntry {
+    not_required(Some("windows_notifications_managed_by_os"))
+}
+
+#[cfg(target_os = "linux")]
+fn notification_permission_entry() -> DesktopPermissionEntry {
+    not_required(Some("linux_notifications_managed_by_session"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn notification_permission_entry() -> DesktopPermissionEntry {
+    unavailable("notifications_unsupported")
 }
 
 #[cfg(target_os = "macos")]

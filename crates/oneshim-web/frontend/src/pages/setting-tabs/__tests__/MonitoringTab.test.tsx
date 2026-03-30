@@ -33,15 +33,22 @@ describe('MonitoringTab', () => {
             state: 'granted',
             status_reason: 'macos_screen_capture_granted',
           },
+          notifications: {
+            state: 'unavailable',
+            status_reason: 'macos_notifications_status_unverifiable',
+          },
         }}
+        permissionStatusRefreshing={false}
         onRootChange={() => {}}
         onMonitorChange={() => {}}
+        onRefreshPermissionStatus={() => {}}
       />,
     )
 
     expect(screen.getByText('macOS Permissions')).toBeInTheDocument()
     expect(screen.getByText('Attention needed')).toBeInTheDocument()
-    expect(screen.getAllByText('Ready').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getAllByText('Ready').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Action recommended')).toBeInTheDocument()
   })
 
@@ -64,13 +71,35 @@ describe('MonitoringTab', () => {
             state: 'not_required',
             status_reason: 'screen_capture_ready',
           },
+          notifications: {
+            state: 'not_required',
+            status_reason: 'windows_notifications_managed_by_os',
+          },
         }}
+        permissionStatusRefreshing={false}
         onRootChange={() => {}}
         onMonitorChange={() => {}}
+        onRefreshPermissionStatus={() => {}}
       />,
     )
 
     expect(screen.getByText('Windows access')).toBeInTheDocument()
     expect(screen.queryByText('macOS Permissions')).not.toBeInTheDocument()
+  })
+
+  it('renders a permission probe failure with a retry action', () => {
+    renderWithProviders(
+      <MonitoringTab
+        formData={makeDefaultFormData()}
+        permissionStatusError="desktop permission probe failed"
+        permissionStatusRefreshing={false}
+        onRootChange={() => {}}
+        onMonitorChange={() => {}}
+        onRefreshPermissionStatus={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Desktop access check failed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh status' })).toBeInTheDocument()
   })
 })

@@ -1,6 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import type { QueryClient } from '@tanstack/react-query'
-import { createMockStorageStats, createMockUpdateStatus } from '../stories/mock-data'
+import {
+  createMockDesktopPermissionSnapshot,
+  createMockStorageStats,
+  createMockUpdateStatus,
+} from '../stories/mock-data'
 import {
   darkThemeGlobals,
   lightThemeGlobals,
@@ -14,6 +18,15 @@ function seedSettings(client: QueryClient) {
   client.setQueryData(['settings'], makeDefaultFormData())
   client.setQueryData(['storage-stats'], createMockStorageStats())
   client.setQueryData(['update-status'], createMockUpdateStatus())
+  client.setQueryData(
+    ['desktop-permission-status'],
+    createMockDesktopPermissionSnapshot({
+      notifications: {
+        state: 'unavailable',
+        status_reason: 'macos_notifications_status_unverifiable',
+      },
+    }),
+  )
 }
 
 const meta = {

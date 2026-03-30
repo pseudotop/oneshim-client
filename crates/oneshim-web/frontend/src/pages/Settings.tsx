@@ -156,14 +156,24 @@ export default function Settings() {
     retry: 1,
   })
 
-  const { data: desktopPermissionStatus, isLoading: desktopPermissionStatusLoading } =
-    useQuery<DesktopPermissionSnapshot>({
-      queryKey: ['desktop-permission-status'],
-      queryFn: fetchDesktopPermissionStatus,
-      staleTime: 30_000,
-      enabled: canQueryDesktopCapabilities,
-      retry: 1,
-    })
+  const {
+    data: desktopPermissionStatus,
+    error: desktopPermissionStatusError,
+    isFetching: desktopPermissionStatusFetching,
+    isLoading: desktopPermissionStatusLoading,
+    refetch: refetchDesktopPermissionStatus,
+  } = useQuery<DesktopPermissionSnapshot, Error>({
+    queryKey: ['desktop-permission-status'],
+    queryFn: fetchDesktopPermissionStatus,
+    staleTime: 0,
+    enabled: canQueryDesktopCapabilities,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  })
+  const handleRefreshDesktopPermissionStatus = useCallback(() => {
+    void refetchDesktopPermissionStatus()
+  }, [refetchDesktopPermissionStatus])
 
   const { data: secretBackendCapabilities } = useQuery({
     queryKey: ['secret-backend-capabilities'],
@@ -1385,9 +1395,14 @@ export default function Settings() {
               <MonitoringTab
                 formData={formData}
                 permissionStatus={desktopPermissionStatus ?? null}
+                permissionStatusError={desktopPermissionStatusError?.message ?? null}
                 permissionStatusLoading={desktopPermissionStatusLoading}
+                permissionStatusRefreshing={desktopPermissionStatusFetching && !desktopPermissionStatusLoading}
                 onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
                 onMonitorChange={handleMonitorChange}
+                onRefreshPermissionStatus={
+                  canQueryDesktopCapabilities ? handleRefreshDesktopPermissionStatus : undefined
+                }
               />
             </div>
           )}

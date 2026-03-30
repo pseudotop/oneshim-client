@@ -66,3 +66,15 @@ export const WindowsBaseline: Story = {
   globals: darkThemeGlobals,
   parameters: reviewStoryParameters,
 }
+
+export const PermissionProbeError: Story = {
+  args: {
+    formData: makeDefaultFormData(),
+    permissionStatusError: 'desktop permission probe failed',
+    onRootChange: () => {},
+    onMonitorChange: () => {},
+    onRefreshPermissionStatus: () => {},
+  },
+  globals: lightThemeGlobals,
+  parameters: reviewStoryParameters,
+}

@@ -1052,6 +1052,7 @@ export interface DesktopPermissionSnapshot {
   platform: string
   accessibility: DesktopPermissionEntry
   screen_capture: DesktopPermissionEntry
+  notifications: DesktopPermissionEntry
 }
 
 export interface ProviderEndpointProbeResult {

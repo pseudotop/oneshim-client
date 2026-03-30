@@ -1,8 +1,7 @@
-import { Bell, Camera, CircleAlert, CircleCheckBig, Monitor } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Bell, Camera, CircleAlert, CircleCheckBig, Monitor, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { DesktopPermissionSnapshot, DesktopPermissionState, MonitorControlSettings } from '../../api/client'
-import { Alert, Badge, Card, CardTitle, Checkbox, Input } from '../../components/ui'
+import { Alert, Badge, Button, Card, CardTitle, Checkbox, Input } from '../../components/ui'
 import { colors, form, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import ToggleRow from './ToggleRow'
@@ -11,18 +10,14 @@ import type { SettingsFormTabProps } from './types'
 interface MonitoringTabProps extends SettingsFormTabProps {
   permissionStatus?: DesktopPermissionSnapshot | null
   permissionStatusLoading?: boolean
+  permissionStatusRefreshing?: boolean
+  permissionStatusError?: string | null
   onRootChange: (
     field: 'capture_enabled' | 'idle_threshold_secs' | 'metrics_interval_secs' | 'process_interval_secs',
     value: boolean | number,
   ) => void
   onMonitorChange: (field: keyof MonitorControlSettings, value: boolean) => void
-}
-
-function readNotificationPermissionState(): DesktopPermissionState {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return 'unavailable'
-  }
-  return Notification.permission === 'granted' ? 'granted' : 'needs_attention'
+  onRefreshPermissionStatus?: () => void
 }
 
 function badgeColorForState(state: DesktopPermissionState): 'success' | 'warning' | 'default' {
@@ -41,13 +36,13 @@ export default function MonitoringTab({
   formData,
   permissionStatus,
   permissionStatusLoading = false,
+  permissionStatusRefreshing = false,
+  permissionStatusError = null,
   onRootChange,
   onMonitorChange,
+  onRefreshPermissionStatus,
 }: MonitoringTabProps) {
   const { t } = useTranslation()
-  const [notificationState, setNotificationState] = useState<DesktopPermissionState>(() =>
-    readNotificationPermissionState(),
-  )
   const permissionStateLabels: Record<DesktopPermissionState, string> = {
     granted: t('settings.permissionStateGranted', 'Ready'),
     needs_attention: t('settings.permissionStateNeedsAttention', 'Attention needed'),
@@ -55,19 +50,10 @@ export default function MonitoringTab({
     unavailable: t('settings.permissionStateUnavailable', 'Unavailable'),
   }
 
-  useEffect(() => {
-    const refresh = () => setNotificationState(readNotificationPermissionState())
-    refresh()
-    window.addEventListener('focus', refresh)
-    document.addEventListener('visibilitychange', refresh)
-    return () => {
-      window.removeEventListener('focus', refresh)
-      document.removeEventListener('visibilitychange', refresh)
-    }
-  }, [])
-
-  const showPermissionSection = permissionStatusLoading || Boolean(permissionStatus)
+  const showPermissionSection =
+    permissionStatusLoading || permissionStatusRefreshing || Boolean(permissionStatus) || Boolean(permissionStatusError)
   const isMac = permissionStatus?.platform === 'macos'
+  const isWindows = permissionStatus?.platform === 'windows'
   const isLinux = permissionStatus?.platform === 'linux'
   const permissionRows = isMac
     ? [
@@ -95,33 +81,83 @@ export default function MonitoringTab({
           id: 'notifications',
           icon: <Bell className={cn(iconSize.base, 'text-brand-text')} />,
           label: t('onboarding.step2Notifications'),
-          description: t('settings.permissionNotificationsDesc', 'Used for break reminders and coaching prompts.'),
-          state: notificationState,
+          description: t(
+            'settings.permissionMacNotificationsDesc',
+            'Notification delivery is managed in macOS System Settings and cannot be verified automatically yet.',
+          ),
+          state: permissionStatus?.notifications.state ?? 'unavailable',
         },
       ]
-    : isLinux
+    : isWindows
       ? [
           {
-            id: 'accessibility-service',
+            id: 'windows-accessibility',
             icon: <Monitor className={cn(iconSize.base, 'text-brand-text')} />,
-            label: t('settings.permissionLinuxAccessibilityLabel', 'Accessibility Service'),
+            label: t('settings.permissionWindowsAccessibilityLabel', 'UI Automation'),
             description: t(
-              'settings.permissionLinuxAccessibilityDesc',
-              'AT-SPI session availability controls focused element context on Linux.',
+              'settings.permissionWindowsAccessibilityDesc',
+              'Windows accessibility APIs are typically available without a separate approval prompt.',
             ),
-            state: permissionStatus?.accessibility.state ?? 'unavailable',
+            state: permissionStatus?.accessibility.state ?? 'not_required',
           },
           {
-            id: 'notifications',
+            id: 'windows-screen-capture',
+            icon: <Camera className={cn(iconSize.base, 'text-brand-text')} />,
+            label: t('onboarding.step2ScreenCapture'),
+            description: t(
+              'settings.permissionWindowsScreenCaptureDesc',
+              'Screen capture is usually available when ONESHIM can access your active desktop session.',
+            ),
+            state: permissionStatus?.screen_capture.state ?? 'unavailable',
+          },
+          {
+            id: 'windows-notifications',
             icon: <Bell className={cn(iconSize.base, 'text-brand-text')} />,
             label: t('onboarding.step2Notifications'),
-            description: t('settings.permissionNotificationsDesc', 'Used for break reminders and coaching prompts.'),
-            state: notificationState,
+            description: t(
+              'settings.permissionWindowsNotificationsDesc',
+              'Notification delivery depends on your Windows notification settings.',
+            ),
+            state: permissionStatus?.notifications.state ?? 'not_required',
           },
         ]
-      : []
+      : isLinux
+        ? [
+            {
+              id: 'accessibility-service',
+              icon: <Monitor className={cn(iconSize.base, 'text-brand-text')} />,
+              label: t('settings.permissionLinuxAccessibilityLabel', 'Accessibility Service'),
+              description: t(
+                'settings.permissionLinuxAccessibilityDesc',
+                'AT-SPI session availability controls focused element context on Linux.',
+              ),
+              state: permissionStatus?.accessibility.state ?? 'unavailable',
+            },
+            {
+              id: 'linux-screen-capture',
+              icon: <Camera className={cn(iconSize.base, 'text-brand-text')} />,
+              label: t('settings.permissionLinuxScreenCaptureLabel', 'Desktop Capture'),
+              description: t(
+                'settings.permissionLinuxScreenCaptureDesc',
+                'Screen capture availability depends on your compositor and desktop session settings.',
+              ),
+              state: permissionStatus?.screen_capture.state ?? 'unavailable',
+            },
+            {
+              id: 'notifications',
+              icon: <Bell className={cn(iconSize.base, 'text-brand-text')} />,
+              label: t('onboarding.step2Notifications'),
+              description: t(
+                'settings.permissionLinuxNotificationsDesc',
+                'Notification delivery is managed by your desktop session.',
+              ),
+              state: permissionStatus?.notifications.state ?? 'not_required',
+            },
+          ]
+        : []
 
-  const needsAttention = permissionRows.some((row) => row.state === 'needs_attention' || row.state === 'unavailable')
+  const needsAttention = permissionRows.some((row) => row.state === 'needs_attention')
+  const hasUnavailable = permissionRows.some((row) => row.state === 'unavailable')
 
   return (
     <div className="space-y-6">
@@ -186,39 +222,81 @@ export default function MonitoringTab({
 
       {showPermissionSection && (
         <Card variant="default" padding="lg">
-          <CardTitle className="mb-1">
-            {isMac
-              ? t('settings.permissionSectionTitleMac', 'macOS Permissions')
-              : isLinux
-                ? t('settings.permissionSectionTitleLinux', 'Linux Session Access')
-                : t('settings.permissionSectionTitle', 'Desktop Access')}
-          </CardTitle>
-          <p className="mb-4 text-content-secondary text-sm">
-            {isMac
-              ? t(
-                  'settings.permissionSectionDescMac',
-                  'Grant the required macOS permissions so ONESHIM can capture context reliably.',
-                )
-              : isLinux
-                ? t(
-                    'settings.permissionSectionDescLinux',
-                    'Linux usually does not require extra prompts, but session services still need to be reachable.',
-                  )
-                : t(
-                    'settings.permissionSectionDesc',
-                    'Check whether desktop integrations required by ONESHIM are currently reachable.',
-                  )}
-          </p>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle>
+                {isMac
+                  ? t('settings.permissionSectionTitleMac', 'macOS Permissions')
+                  : isLinux
+                    ? t('settings.permissionSectionTitleLinux', 'Linux Session Access')
+                    : isWindows
+                      ? t('settings.permissionSectionTitleWindows', 'Windows Access')
+                      : t('settings.permissionSectionTitle', 'Desktop Access')}
+              </CardTitle>
+              <p className="text-content-secondary text-sm">
+                {isMac
+                  ? t(
+                      'settings.permissionSectionDescMac',
+                      'Grant the required macOS permissions so ONESHIM can capture context reliably.',
+                    )
+                  : isLinux
+                    ? t(
+                        'settings.permissionSectionDescLinux',
+                        'Linux usually does not require extra prompts, but session services still need to be reachable.',
+                      )
+                    : isWindows
+                      ? t(
+                          'settings.permissionSectionDescWindows',
+                          'Windows access is usually available without separate prompts, but desktop integrations should still be verified.',
+                        )
+                      : t(
+                          'settings.permissionSectionDesc',
+                          'Check whether desktop integrations required by ONESHIM are currently reachable.',
+                        )}
+              </p>
+            </div>
 
-          {permissionStatusLoading && (
+            {onRefreshPermissionStatus && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                isLoading={permissionStatusRefreshing}
+                onClick={onRefreshPermissionStatus}
+              >
+                {!permissionStatusRefreshing && <RotateCcw className={cn(iconSize.base, 'mr-2')} />}
+                {t('settings.permissionRefreshAction', 'Refresh status')}
+              </Button>
+            )}
+          </div>
+
+          {(permissionStatusLoading || permissionStatusRefreshing) && (
             <p className="text-content-secondary text-sm">
               {t('settings.permissionChecking', 'Checking desktop access...')}
             </p>
           )}
 
-          {!permissionStatusLoading && permissionStatus?.platform === 'windows' && (
+          {permissionStatusError && (
+            <Alert
+              variant="error"
+              className="mb-4"
+              title={t('settings.permissionCheckFailedTitle', 'Desktop access check failed')}
+              icon={<CircleAlert />}
+            >
+              <p>
+                {t(
+                  'settings.permissionCheckFailedDesc',
+                  'ONESHIM could not read the current desktop access state. Retry the check after returning from your OS settings.',
+                )}
+              </p>
+              <p className="mt-2 text-content-tertiary text-xs">{permissionStatusError}</p>
+            </Alert>
+          )}
+
+          {!permissionStatusLoading && !permissionStatusRefreshing && permissionStatus?.platform === 'windows' && (
             <Alert
               variant="info"
+              className="mb-4"
               title={t('settings.permissionWindowsTitle', 'Windows access')}
               icon={<CircleCheckBig />}
             >
@@ -229,7 +307,7 @@ export default function MonitoringTab({
             </Alert>
           )}
 
-          {!permissionStatusLoading && permissionRows.length > 0 && (
+          {!permissionStatusLoading && !permissionStatusRefreshing && permissionRows.length > 0 && (
             <>
               <div className="space-y-3">
                 {permissionRows.map((row) => (
@@ -268,6 +346,25 @@ export default function MonitoringTab({
                     : t(
                         'settings.permissionAttentionDesc',
                         'If a service is unavailable, check your desktop session settings and reopen ONESHIM.',
+                      )}
+                </Alert>
+              )}
+
+              {!needsAttention && hasUnavailable && (
+                <Alert
+                  variant="info"
+                  className="mt-4"
+                  title={t('settings.permissionManualCheckTitle', 'Manual check still required')}
+                  icon={<CircleAlert />}
+                >
+                  {isMac
+                    ? t(
+                        'settings.permissionManualCheckDescMac',
+                        'Some macOS settings, such as notifications, must still be reviewed manually in System Settings.',
+                      )
+                    : t(
+                        'settings.permissionManualCheckDesc',
+                        'Some desktop integrations cannot be verified automatically yet. Confirm the related OS settings manually if needed.',
                       )}
                 </Alert>
               )}
