@@ -1,4 +1,5 @@
 import { Bell, Camera, CircleAlert, CircleCheckBig, Monitor, RotateCcw } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DesktopPermissionSnapshot, DesktopPermissionState, MonitorControlSettings } from '../../api/client'
 import { Alert, Badge, Button, Card, CardTitle, Checkbox, Input } from '../../components/ui'
@@ -12,12 +13,29 @@ interface MonitoringTabProps extends SettingsFormTabProps {
   permissionStatusLoading?: boolean
   permissionStatusRefreshing?: boolean
   permissionStatusError?: string | null
+  notificationPermissionRequesting?: boolean
   onRootChange: (
     field: 'capture_enabled' | 'idle_threshold_secs' | 'metrics_interval_secs' | 'process_interval_secs',
     value: boolean | number,
   ) => void
   onMonitorChange: (field: keyof MonitorControlSettings, value: boolean) => void
   onRefreshPermissionStatus?: () => void
+  onRequestNotificationPermission?: () => void
+}
+
+interface PermissionRowAction {
+  label: string
+  isLoading?: boolean
+  onClick: () => void
+}
+
+interface PermissionRow {
+  id: string
+  icon: ReactNode
+  label: string
+  description: string
+  state: DesktopPermissionState
+  action?: PermissionRowAction
 }
 
 function badgeColorForState(state: DesktopPermissionState): 'success' | 'warning' | 'default' {
@@ -32,15 +50,52 @@ function badgeColorForState(state: DesktopPermissionState): 'success' | 'warning
   }
 }
 
+function describeMacNotificationPermission(
+  t: ReturnType<typeof useTranslation>['t'],
+  statusReason: string | null | undefined,
+) {
+  switch (statusReason) {
+    case 'macos_notifications_granted':
+      return t('settings.permissionMacNotificationsDescGranted', 'Desktop notifications are enabled for ONESHIM.')
+    case 'macos_notifications_not_determined':
+      return t(
+        'settings.permissionMacNotificationsDescPrompt',
+        'ONESHIM has not requested notification permission yet. Request it so reminders and coaching prompts can appear.',
+      )
+    case 'macos_notifications_denied':
+      return t(
+        'settings.permissionMacNotificationsDescDenied',
+        'Notifications are turned off for ONESHIM in macOS System Settings. Enable them manually if you want reminders and coaching prompts.',
+      )
+    case 'macos_notifications_provisional':
+      return t(
+        'settings.permissionMacNotificationsDescProvisional',
+        'Notifications are available, but macOS may deliver them quietly.',
+      )
+    case 'macos_notifications_ephemeral':
+      return t(
+        'settings.permissionMacNotificationsDescEphemeral',
+        'Notifications are temporarily available for this session.',
+      )
+    default:
+      return t(
+        'settings.permissionMacNotificationsDescFallback',
+        'Refresh after changing notification settings in macOS System Settings.',
+      )
+  }
+}
+
 export default function MonitoringTab({
   formData,
   permissionStatus,
   permissionStatusLoading = false,
   permissionStatusRefreshing = false,
   permissionStatusError = null,
+  notificationPermissionRequesting = false,
   onRootChange,
   onMonitorChange,
   onRefreshPermissionStatus,
+  onRequestNotificationPermission,
 }: MonitoringTabProps) {
   const { t } = useTranslation()
   const permissionStateLabels: Record<DesktopPermissionState, string> = {
@@ -55,7 +110,8 @@ export default function MonitoringTab({
   const isMac = permissionStatus?.platform === 'macos'
   const isWindows = permissionStatus?.platform === 'windows'
   const isLinux = permissionStatus?.platform === 'linux'
-  const permissionRows = isMac
+  const macNotificationReason = permissionStatus?.notifications.status_reason
+  const permissionRows: PermissionRow[] = isMac
     ? [
         {
           id: 'accessibility',
@@ -81,11 +137,16 @@ export default function MonitoringTab({
           id: 'notifications',
           icon: <Bell className={cn(iconSize.base, 'text-brand-text')} />,
           label: t('onboarding.step2Notifications'),
-          description: t(
-            'settings.permissionMacNotificationsDesc',
-            'Notification delivery is managed in macOS System Settings and cannot be verified automatically yet.',
-          ),
+          description: describeMacNotificationPermission(t, macNotificationReason),
           state: permissionStatus?.notifications.state ?? 'unavailable',
+          action:
+            macNotificationReason === 'macos_notifications_not_determined' && onRequestNotificationPermission
+              ? {
+                  label: t('settings.permissionMacNotificationsRequestAction', 'Request permission'),
+                  isLoading: notificationPermissionRequesting,
+                  onClick: onRequestNotificationPermission,
+                }
+              : undefined,
         },
       ]
     : isWindows
@@ -323,6 +384,19 @@ export default function MonitoringTab({
                         <span className={cn(typography.label, colors.text.primary)}>{row.label}</span>
                       </div>
                       <p className="mt-2 text-content-secondary text-sm">{row.description}</p>
+                      {row.action && (
+                        <div className="mt-3">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            isLoading={row.action.isLoading}
+                            onClick={row.action.onClick}
+                          >
+                            {row.action.label}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                     <Badge color={badgeColorForState(row.state)} size="md" className="shrink-0">
                       {permissionStateLabels[row.state]}

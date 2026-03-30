@@ -925,6 +925,10 @@ export async function fetchDesktopPermissionStatus(): Promise<DesktopPermissionS
   return tauriInvoke<DesktopPermissionSnapshot>('get_desktop_permission_status')
 }
 
+export async function requestDesktopNotificationPermission(): Promise<DesktopPermissionSnapshot> {
+  return tauriInvoke<DesktopPermissionSnapshot>('request_desktop_notification_permission')
+}
+
 export async function probeProviderSurfaceEndpoint(args: {
   surface_id: string
   endpoint_kind: 'ocr_api' | 'llm_api'

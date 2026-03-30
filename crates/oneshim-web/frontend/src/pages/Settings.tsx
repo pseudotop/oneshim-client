@@ -32,6 +32,7 @@ import {
   type ProviderSurfaceSpec,
   postUpdateAction,
   probeProviderSurfaceEndpoint,
+  requestDesktopNotificationPermission,
   type SandboxSettings,
   type SavedAiProviderProfile,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
@@ -657,6 +658,32 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['update-status'] })
       showToast('success', t('settings.updateActionSuccess'), 3000)
+    },
+    onError: (error: Error) => {
+      showToast('error', error.message, 5000)
+    },
+  })
+
+  const requestNotificationPermissionMutation = useMutation({
+    mutationFn: requestDesktopNotificationPermission,
+    onSuccess: (snapshot) => {
+      queryClient.setQueryData(['desktop-permission-status'], snapshot)
+      if (snapshot.notifications.state === 'granted') {
+        showToast(
+          'success',
+          t('settings.permissionNotificationRequestGranted', 'Notifications are ready for ONESHIM.'),
+          3000,
+        )
+      } else {
+        showToast(
+          'info',
+          t(
+            'settings.permissionNotificationRequestFollowUp',
+            'Check the macOS notification prompt or System Settings, then refresh the status if needed.',
+          ),
+          4000,
+        )
+      }
     },
     onError: (error: Error) => {
       showToast('error', error.message, 5000)
@@ -1398,10 +1425,14 @@ export default function Settings() {
                 permissionStatusError={desktopPermissionStatusError?.message ?? null}
                 permissionStatusLoading={desktopPermissionStatusLoading}
                 permissionStatusRefreshing={desktopPermissionStatusFetching && !desktopPermissionStatusLoading}
+                notificationPermissionRequesting={requestNotificationPermissionMutation.isPending}
                 onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
                 onMonitorChange={handleMonitorChange}
                 onRefreshPermissionStatus={
                   canQueryDesktopCapabilities ? handleRefreshDesktopPermissionStatus : undefined
+                }
+                onRequestNotificationPermission={
+                  canQueryDesktopCapabilities ? () => requestNotificationPermissionMutation.mutate() : undefined
                 }
               />
             </div>

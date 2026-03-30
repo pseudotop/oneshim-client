@@ -19,8 +19,8 @@ describe('CRT-MK-M052: get_desktop_permission_status IPC contract', () => {
             status_reason: 'macos_screen_capture_granted',
           },
           notifications: {
-            state: 'unavailable',
-            status_reason: 'macos_notifications_status_unverifiable',
+            state: 'needs_attention',
+            status_reason: 'macos_notifications_not_determined',
           },
         }
       }
@@ -36,6 +36,6 @@ describe('CRT-MK-M052: get_desktop_permission_status IPC contract', () => {
     expect(result.platform).toBe('macos')
     expect(result.accessibility.state).toBe('needs_attention')
     expect(result.screen_capture.state).toBe('granted')
-    expect(result.notifications.state).toBe('unavailable')
+    expect(result.notifications.state).toBe('needs_attention')
   })
 })

@@ -51,6 +51,24 @@ export const MacPermissionsAttention: Story = {
   globals: lightThemeGlobals,
 }
 
+export const MacNotificationPrompt: Story = {
+  args: {
+    formData: makeDefaultFormData(),
+    permissionStatus: createMockDesktopPermissionSnapshot({
+      notifications: {
+        state: 'needs_attention',
+        status_reason: 'macos_notifications_not_determined',
+      },
+    }),
+    permissionStatusLoading: false,
+    onRootChange: () => {},
+    onMonitorChange: () => {},
+    onRequestNotificationPermission: () => {},
+  },
+  parameters: reviewStoryParameters,
+  globals: lightThemeGlobals,
+}
+
 export const WindowsBaseline: Story = {
   args: {
     formData: makeDefaultFormData(),

@@ -8,12 +8,16 @@ import {
   cancelPomodoro,
   completePomodoro,
   fetchCurrentPomodoro,
+  fetchDesktopPermissionStatus,
   type PomodoroSession,
   type PomodoroStatus,
+  requestDesktopNotificationPermission,
   startPomodoro,
 } from '../api/client'
+import { isStandaloneModeEnabled } from '../api/standalone'
 import { colors, dataViz, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
+import { IS_MAC, IS_TAURI } from '../utils/platform'
 import { Button, Card, CardContent, CardHeader, CardTitle } from './ui'
 
 const DEFAULT_WORK_MINS = 25
@@ -105,14 +109,53 @@ function TimerRing({
   )
 }
 
-function notifyCompletion(phase: 'work' | 'break') {
-  if (!('Notification' in window)) return
+async function desktopNotificationState(): Promise<'granted' | 'blocked' | 'unknown'> {
+  if (IS_TAURI && IS_MAC && !isStandaloneModeEnabled()) {
+    try {
+      const snapshot = await fetchDesktopPermissionStatus()
+      return snapshot.notifications.state === 'granted' ? 'granted' : 'blocked'
+    } catch {
+      return 'unknown'
+    }
+  }
+
+  if (!('Notification' in window)) {
+    return 'unknown'
+  }
+
   if (Notification.permission === 'granted') {
+    return 'granted'
+  }
+  if (Notification.permission === 'denied') {
+    return 'blocked'
+  }
+  return 'unknown'
+}
+
+async function requestDesktopNotificationAccess() {
+  if (IS_TAURI && IS_MAC && !isStandaloneModeEnabled()) {
+    try {
+      await requestDesktopNotificationPermission()
+    } catch {
+      // Native desktop prompt could fail or be unavailable in non-Tauri tests.
+    }
+    return
+  }
+
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission()
+  }
+}
+
+async function notifyCompletion(phase: 'work' | 'break') {
+  if (!('Notification' in window)) return
+  const permissionState = await desktopNotificationState()
+  if (permissionState === 'granted') {
     const title = phase === 'work' ? 'Focus session complete!' : 'Break is over!'
     const body = phase === 'work' ? 'Time for a break.' : 'Ready to focus again?'
     new Notification(title, { body, icon: '/favicon.ico' })
-  } else if (Notification.permission !== 'denied') {
-    Notification.requestPermission()
+  } else if (permissionState === 'unknown') {
+    await requestDesktopNotificationAccess()
   }
 }
 
@@ -167,9 +210,9 @@ export default function PomodoroTimer() {
 
       // Detect transitions
       if (prevStatusRef.current === 'running' && loc.status === 'on_break') {
-        notifyCompletion('work')
+        void notifyCompletion('work')
       } else if (prevStatusRef.current === 'on_break' && loc.status === 'completed') {
-        notifyCompletion('break')
+        void notifyCompletion('break')
         // Auto-complete on server
         completePomodoro().catch((e) => console.warn('completePomodoro failed:', e))
       }
@@ -195,9 +238,7 @@ export default function PomodoroTimer() {
 
   // Request notification permission eagerly
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
+    void requestDesktopNotificationAccess()
   }, [])
 
   const handleStart = async () => {

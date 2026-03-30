@@ -1,25 +1,11 @@
 import { screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/helpers/render-helpers'
 import MonitoringTab from '../MonitoringTab'
 import { makeDefaultFormData } from '../stories-utils'
 
-const originalNotification = window.Notification
-
 describe('MonitoringTab', () => {
-  afterEach(() => {
-    Object.defineProperty(window, 'Notification', {
-      configurable: true,
-      value: originalNotification,
-    })
-  })
-
   it('renders macOS permission states with actionable badges', () => {
-    Object.defineProperty(window, 'Notification', {
-      configurable: true,
-      value: { permission: 'granted' },
-    })
-
     renderWithProviders(
       <MonitoringTab
         formData={makeDefaultFormData()}
@@ -34,8 +20,8 @@ describe('MonitoringTab', () => {
             status_reason: 'macos_screen_capture_granted',
           },
           notifications: {
-            state: 'unavailable',
-            status_reason: 'macos_notifications_status_unverifiable',
+            state: 'granted',
+            status_reason: 'macos_notifications_granted',
           },
         }}
         permissionStatusRefreshing={false}
@@ -47,17 +33,44 @@ describe('MonitoringTab', () => {
 
     expect(screen.getByText('macOS Permissions')).toBeInTheDocument()
     expect(screen.getByText('Attention needed')).toBeInTheDocument()
-    expect(screen.getByText('Unavailable')).toBeInTheDocument()
     expect(screen.getAllByText('Ready').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Action recommended')).toBeInTheDocument()
   })
 
-  it('renders the Windows guidance copy instead of macOS permission rows', () => {
-    Object.defineProperty(window, 'Notification', {
-      configurable: true,
-      value: { permission: 'default' },
-    })
+  it('renders a request action when macOS notification permission has not been requested yet', () => {
+    const requestPermission = vi.fn()
 
+    renderWithProviders(
+      <MonitoringTab
+        formData={makeDefaultFormData()}
+        permissionStatus={{
+          platform: 'macos',
+          accessibility: {
+            state: 'granted',
+            status_reason: 'macos_accessibility_granted',
+          },
+          screen_capture: {
+            state: 'granted',
+            status_reason: 'macos_screen_capture_granted',
+          },
+          notifications: {
+            state: 'needs_attention',
+            status_reason: 'macos_notifications_not_determined',
+          },
+        }}
+        permissionStatusRefreshing={false}
+        onRootChange={() => {}}
+        onMonitorChange={() => {}}
+        onRefreshPermissionStatus={() => {}}
+        onRequestNotificationPermission={requestPermission}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Request permission' })).toBeInTheDocument()
+    expect(screen.getByText('Attention needed')).toBeInTheDocument()
+  })
+
+  it('renders the Windows guidance copy instead of macOS permission rows', () => {
     renderWithProviders(
       <MonitoringTab
         formData={makeDefaultFormData()}

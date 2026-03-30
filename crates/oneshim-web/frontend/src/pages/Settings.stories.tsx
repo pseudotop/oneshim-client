@@ -22,8 +22,8 @@ function seedSettings(client: QueryClient) {
     ['desktop-permission-status'],
     createMockDesktopPermissionSnapshot({
       notifications: {
-        state: 'unavailable',
-        status_reason: 'macos_notifications_status_unverifiable',
+        state: 'granted',
+        status_reason: 'macos_notifications_granted',
       },
     }),
   )

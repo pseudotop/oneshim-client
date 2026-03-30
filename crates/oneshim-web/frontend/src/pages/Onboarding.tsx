@@ -76,7 +76,10 @@ function StepPermissions() {
             { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
           ]
   const description = IS_MAC
-    ? t('onboarding.step2Desc')
+    ? t(
+        'onboarding.step2DescMac',
+        'macOS requires Accessibility, Screen Recording, and notification access for the full ONESHIM experience.',
+      )
     : IS_WINDOWS
       ? t(
           'onboarding.step2DescWindows',

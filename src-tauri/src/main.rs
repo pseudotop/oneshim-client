@@ -199,6 +199,7 @@ fn main() {
             commands::system::get_secret_backend_capabilities,
             commands::system::get_feature_capabilities,
             commands::permissions::get_desktop_permission_status,
+            commands::permissions::request_desktop_notification_permission,
             commands::system::probe_provider_surface_endpoint,
             commands::settings::get_allowed_setting_keys,
             commands::integration::integration_auth_status,

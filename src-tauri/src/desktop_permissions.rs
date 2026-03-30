@@ -1,6 +1,18 @@
 use serde::Serialize;
+use tauri::{AppHandle, Runtime};
 
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
+
+#[cfg(target_os = "macos")]
+use block2::RcBlock;
+#[cfg(target_os = "macos")]
+use objc2::msg_send;
+#[cfg(target_os = "macos")]
+use objc2::runtime::{AnyClass, AnyObject, Bool};
+#[cfg(target_os = "macos")]
+use std::sync::{Arc, Mutex};
+#[cfg(target_os = "macos")]
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -26,13 +38,24 @@ pub struct DesktopPermissionSnapshot {
     pub notifications: DesktopPermissionEntry,
 }
 
-pub fn get_desktop_permission_snapshot() -> DesktopPermissionSnapshot {
+pub fn get_desktop_permission_snapshot<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> DesktopPermissionSnapshot {
     DesktopPermissionSnapshot {
         platform: current_platform().to_string(),
         accessibility: accessibility_permission_entry(),
         screen_capture: screen_capture_permission_entry(),
-        notifications: notification_permission_entry(),
+        notifications: notification_permission_entry(app_handle),
     }
+}
+
+pub fn request_desktop_notification_permission<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> Result<DesktopPermissionSnapshot, String> {
+    #[cfg(target_os = "macos")]
+    request_macos_notification_permission(app_handle)?;
+
+    Ok(get_desktop_permission_snapshot(app_handle))
 }
 
 fn current_platform() -> &'static str {
@@ -132,25 +155,150 @@ fn screen_capture_permission_entry() -> DesktopPermissionEntry {
 }
 
 #[cfg(target_os = "macos")]
-fn notification_permission_entry() -> DesktopPermissionEntry {
-    // Native desktop notifications are routed through Tauri, but the runtime does not expose
-    // a trustworthy OS-level verification signal for macOS notification settings here.
-    unavailable("macos_notifications_status_unverifiable")
+fn notification_permission_entry<R: Runtime>(app_handle: &AppHandle<R>) -> DesktopPermissionEntry {
+    match macos_notification_authorization_status(app_handle) {
+        Ok(0) => needs_attention("macos_notifications_not_determined"),
+        Ok(1) => needs_attention("macos_notifications_denied"),
+        Ok(2) => granted(Some("macos_notifications_granted")),
+        Ok(3) => granted(Some("macos_notifications_provisional")),
+        Ok(4) => granted(Some("macos_notifications_ephemeral")),
+        Ok(_) => unavailable("macos_notifications_unknown_status"),
+        Err(_) => unavailable("macos_notifications_probe_failed"),
+    }
 }
 
 #[cfg(target_os = "windows")]
-fn notification_permission_entry() -> DesktopPermissionEntry {
+fn notification_permission_entry<R: Runtime>(_app_handle: &AppHandle<R>) -> DesktopPermissionEntry {
     not_required(Some("windows_notifications_managed_by_os"))
 }
 
 #[cfg(target_os = "linux")]
-fn notification_permission_entry() -> DesktopPermissionEntry {
+fn notification_permission_entry<R: Runtime>(_app_handle: &AppHandle<R>) -> DesktopPermissionEntry {
     not_required(Some("linux_notifications_managed_by_session"))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-fn notification_permission_entry() -> DesktopPermissionEntry {
+fn notification_permission_entry<R: Runtime>(_app_handle: &AppHandle<R>) -> DesktopPermissionEntry {
     unavailable("notifications_unsupported")
+}
+
+#[cfg(target_os = "macos")]
+fn request_macos_notification_permission<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> Result<(), String> {
+    const UN_AUTHORIZATION_OPTION_BADGE: usize = 1 << 0;
+    const UN_AUTHORIZATION_OPTION_SOUND: usize = 1 << 1;
+    const UN_AUTHORIZATION_OPTION_ALERT: usize = 1 << 2;
+    const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    let request_sender = Arc::clone(&tx);
+
+    app_handle
+        .run_on_main_thread(move || unsafe {
+            let Some(notification_center_class) = AnyClass::get(c"UNUserNotificationCenter") else {
+                send_once(
+                    &request_sender,
+                    Err("macos notification center unavailable".to_string()),
+                );
+                return;
+            };
+
+            let notification_center: *mut AnyObject =
+                msg_send![notification_center_class, currentNotificationCenter];
+            if notification_center.is_null() {
+                send_once(
+                    &request_sender,
+                    Err("macos notification center probe failed".to_string()),
+                );
+                return;
+            }
+
+            let sender = Arc::clone(&request_sender);
+            let handler = RcBlock::new(move |_granted: Bool, error: *mut AnyObject| {
+                let result = if error.is_null() {
+                    Ok(())
+                } else {
+                    Err("macos notification authorization failed".to_string())
+                };
+                send_once(&sender, result);
+            });
+
+            let options = UN_AUTHORIZATION_OPTION_BADGE
+                | UN_AUTHORIZATION_OPTION_SOUND
+                | UN_AUTHORIZATION_OPTION_ALERT;
+            let _: () = msg_send![
+                notification_center,
+                requestAuthorizationWithOptions: options,
+                completionHandler: &*handler
+            ];
+        })
+        .map_err(|error| error.to_string())?;
+
+    rx.recv_timeout(REQUEST_TIMEOUT)
+        .map_err(|_| "timed out waiting for macOS notification authorization".to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn macos_notification_authorization_status<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> Result<isize, String> {
+    const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    let probe_sender = Arc::clone(&tx);
+
+    app_handle
+        .run_on_main_thread(move || unsafe {
+            let Some(notification_center_class) = AnyClass::get(c"UNUserNotificationCenter") else {
+                send_once(
+                    &probe_sender,
+                    Err("macos notification center unavailable".to_string()),
+                );
+                return;
+            };
+
+            let notification_center: *mut AnyObject =
+                msg_send![notification_center_class, currentNotificationCenter];
+            if notification_center.is_null() {
+                send_once(
+                    &probe_sender,
+                    Err("macos notification center probe failed".to_string()),
+                );
+                return;
+            }
+
+            let sender = Arc::clone(&probe_sender);
+            let handler = RcBlock::new(move |settings: *mut AnyObject| {
+                let result = if settings.is_null() {
+                    Err("macos notification settings unavailable".to_string())
+                } else {
+                    let status: isize = msg_send![settings, authorizationStatus];
+                    Ok(status)
+                };
+                send_once(&sender, result);
+            });
+
+            let _: () = msg_send![
+                notification_center,
+                getNotificationSettingsWithCompletionHandler: &*handler
+            ];
+        })
+        .map_err(|error| error.to_string())?;
+
+    rx.recv_timeout(PROBE_TIMEOUT)
+        .map_err(|_| "timed out waiting for macOS notification settings".to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn send_once<T>(sender: &Arc<Mutex<Option<std::sync::mpsc::SyncSender<T>>>>, value: T) {
+    if let Ok(mut guard) = sender.lock() {
+        if let Some(sender) = guard.take() {
+            let _ = sender.send(value);
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
