@@ -14,6 +14,7 @@ import type {
   DailySummary,
   DeleteRangeRequest,
   DeleteResult,
+  DesktopPermissionSnapshot,
   DiagnosticsBundleResponse,
   Event,
   ExecuteIntentHintRequest,
@@ -918,6 +919,10 @@ export async function fetchSecretBackendCapabilities(): Promise<SecretBackendCap
 
 export async function fetchFeatureCapabilities(): Promise<FeatureCapabilitySnapshot> {
   return tauriInvoke<FeatureCapabilitySnapshot>('get_feature_capabilities')
+}
+
+export async function fetchDesktopPermissionStatus(): Promise<DesktopPermissionSnapshot> {
+  return tauriInvoke<DesktopPermissionSnapshot>('get_desktop_permission_status')
 }
 
 export async function probeProviderSurfaceEndpoint(args: {

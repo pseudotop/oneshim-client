@@ -1041,6 +1041,19 @@ export interface FeatureCapabilitySnapshot {
   features: FeatureCapability[]
 }
 
+export type DesktopPermissionState = 'granted' | 'needs_attention' | 'not_required' | 'unavailable'
+
+export interface DesktopPermissionEntry {
+  state: DesktopPermissionState
+  status_reason: string | null
+}
+
+export interface DesktopPermissionSnapshot {
+  platform: string
+  accessibility: DesktopPermissionEntry
+  screen_capture: DesktopPermissionEntry
+}
+
 export interface ProviderEndpointProbeResult {
   surface_id: string
   endpoint_kind: string

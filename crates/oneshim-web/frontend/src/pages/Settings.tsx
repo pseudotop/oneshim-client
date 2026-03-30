@@ -7,6 +7,7 @@ import {
   type AiProviderSettings,
   type AppSettings,
   type AutomationSettings,
+  type DesktopPermissionSnapshot,
   discoverProviderModels,
   downloadBlob,
   type ExportDataType,
@@ -14,6 +15,7 @@ import {
   type ExternalApiSettings,
   exportData,
   type FeatureCapabilitySnapshot,
+  fetchDesktopPermissionStatus,
   fetchFeatureCapabilities,
   fetchProviderSurfaces,
   fetchSecretBackendCapabilities,
@@ -153,6 +155,15 @@ export default function Settings() {
     enabled: canQueryDesktopCapabilities,
     retry: 1,
   })
+
+  const { data: desktopPermissionStatus, isLoading: desktopPermissionStatusLoading } =
+    useQuery<DesktopPermissionSnapshot>({
+      queryKey: ['desktop-permission-status'],
+      queryFn: fetchDesktopPermissionStatus,
+      staleTime: 30_000,
+      enabled: canQueryDesktopCapabilities,
+      retry: 1,
+    })
 
   const { data: secretBackendCapabilities } = useQuery({
     queryKey: ['secret-backend-capabilities'],
@@ -1373,6 +1384,8 @@ export default function Settings() {
             <div id="settings-panel-monitoring" role="tabpanel" aria-labelledby="settings-tab-monitoring">
               <MonitoringTab
                 formData={formData}
+                permissionStatus={desktopPermissionStatus ?? null}
+                permissionStatusLoading={desktopPermissionStatusLoading}
                 onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
                 onMonitorChange={handleMonitorChange}
               />

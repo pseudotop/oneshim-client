@@ -27,6 +27,7 @@ mod bootstrap_runtime;
 mod bridge_cli;
 mod cli_subscription_bridge;
 mod commands;
+mod desktop_permissions;
 mod desktop_startup;
 mod feature_capabilities;
 mod focus_analyzer;
@@ -197,6 +198,7 @@ fn main() {
             commands::settings::get_web_port,
             commands::system::get_secret_backend_capabilities,
             commands::system::get_feature_capabilities,
+            commands::permissions::get_desktop_permission_status,
             commands::system::probe_provider_surface_endpoint,
             commands::settings::get_allowed_setting_keys,
             commands::integration::integration_auth_status,

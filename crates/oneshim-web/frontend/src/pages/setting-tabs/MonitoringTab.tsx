@@ -1,11 +1,16 @@
+import { Bell, Camera, CircleAlert, CircleCheckBig, Monitor } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { MonitorControlSettings } from '../../api/client'
-import { Card, CardTitle, Checkbox, Input } from '../../components/ui'
-import { form } from '../../styles/tokens'
+import type { DesktopPermissionSnapshot, DesktopPermissionState, MonitorControlSettings } from '../../api/client'
+import { Alert, Badge, Card, CardTitle, Checkbox, Input } from '../../components/ui'
+import { colors, form, iconSize, typography } from '../../styles/tokens'
+import { cn } from '../../utils/cn'
 import ToggleRow from './ToggleRow'
 import type { SettingsFormTabProps } from './types'
 
 interface MonitoringTabProps extends SettingsFormTabProps {
+  permissionStatus?: DesktopPermissionSnapshot | null
+  permissionStatusLoading?: boolean
   onRootChange: (
     field: 'capture_enabled' | 'idle_threshold_secs' | 'metrics_interval_secs' | 'process_interval_secs',
     value: boolean | number,
@@ -13,8 +18,117 @@ interface MonitoringTabProps extends SettingsFormTabProps {
   onMonitorChange: (field: keyof MonitorControlSettings, value: boolean) => void
 }
 
-export default function MonitoringTab({ formData, onRootChange, onMonitorChange }: MonitoringTabProps) {
+function readNotificationPermissionState(): DesktopPermissionState {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unavailable'
+  }
+  return Notification.permission === 'granted' ? 'granted' : 'needs_attention'
+}
+
+function badgeColorForState(state: DesktopPermissionState): 'success' | 'warning' | 'default' {
+  switch (state) {
+    case 'granted':
+      return 'success'
+    case 'needs_attention':
+      return 'warning'
+    case 'not_required':
+    case 'unavailable':
+      return 'default'
+  }
+}
+
+function statusLabel(t: (key: string, fallback?: string) => string, state: DesktopPermissionState): string {
+  switch (state) {
+    case 'granted':
+      return t('settings.permissionStateGranted', 'Ready')
+    case 'needs_attention':
+      return t('settings.permissionStateNeedsAttention', 'Attention needed')
+    case 'not_required':
+      return t('settings.permissionStateNotRequired', 'Not required')
+    case 'unavailable':
+      return t('settings.permissionStateUnavailable', 'Unavailable')
+  }
+}
+
+export default function MonitoringTab({
+  formData,
+  permissionStatus,
+  permissionStatusLoading = false,
+  onRootChange,
+  onMonitorChange,
+}: MonitoringTabProps) {
   const { t } = useTranslation()
+  const [notificationState, setNotificationState] = useState<DesktopPermissionState>(() =>
+    readNotificationPermissionState(),
+  )
+
+  useEffect(() => {
+    const refresh = () => setNotificationState(readNotificationPermissionState())
+    refresh()
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [])
+
+  const showPermissionSection = permissionStatusLoading || Boolean(permissionStatus)
+  const isMac = permissionStatus?.platform === 'macos'
+  const isLinux = permissionStatus?.platform === 'linux'
+  const permissionRows = isMac
+    ? [
+        {
+          id: 'accessibility',
+          icon: <Monitor className={cn(iconSize.base, 'text-brand-text')} />,
+          label: t('onboarding.step2Accessibility'),
+          description: t(
+            'settings.permissionAccessibilityDesc',
+            'Needed for focused element tracking and GUI context analysis.',
+          ),
+          state: permissionStatus?.accessibility.state ?? 'unavailable',
+        },
+        {
+          id: 'screen-capture',
+          icon: <Camera className={cn(iconSize.base, 'text-brand-text')} />,
+          label: t('settings.permissionScreenRecordingLabel', 'Screen Recording'),
+          description: t(
+            'settings.permissionScreenCaptureDesc',
+            'Needed to capture screenshots for timeline and insights.',
+          ),
+          state: permissionStatus?.screen_capture.state ?? 'unavailable',
+        },
+        {
+          id: 'notifications',
+          icon: <Bell className={cn(iconSize.base, 'text-brand-text')} />,
+          label: t('onboarding.step2Notifications'),
+          description: t('settings.permissionNotificationsDesc', 'Used for break reminders and coaching prompts.'),
+          state: notificationState,
+        },
+      ]
+    : isLinux
+      ? [
+          {
+            id: 'accessibility-service',
+            icon: <Monitor className={cn(iconSize.base, 'text-brand-text')} />,
+            label: t('settings.permissionLinuxAccessibilityLabel', 'Accessibility Service'),
+            description: t(
+              'settings.permissionLinuxAccessibilityDesc',
+              'AT-SPI session availability controls focused element context on Linux.',
+            ),
+            state: permissionStatus?.accessibility.state ?? 'unavailable',
+          },
+          {
+            id: 'notifications',
+            icon: <Bell className={cn(iconSize.base, 'text-brand-text')} />,
+            label: t('onboarding.step2Notifications'),
+            description: t('settings.permissionNotificationsDesc', 'Used for break reminders and coaching prompts.'),
+            state: notificationState,
+          },
+        ]
+      : []
+
+  const needsAttention = permissionRows.some((row) => row.state === 'needs_attention' || row.state === 'unavailable')
 
   return (
     <div className="space-y-6">
@@ -76,6 +190,98 @@ export default function MonitoringTab({ formData, onRootChange, onMonitorChange 
           </div>
         </div>
       </Card>
+
+      {showPermissionSection && (
+        <Card variant="default" padding="lg">
+          <CardTitle className="mb-1">
+            {isMac
+              ? t('settings.permissionSectionTitleMac', 'macOS Permissions')
+              : isLinux
+                ? t('settings.permissionSectionTitleLinux', 'Linux Session Access')
+                : t('settings.permissionSectionTitle', 'Desktop Access')}
+          </CardTitle>
+          <p className="mb-4 text-content-secondary text-sm">
+            {isMac
+              ? t(
+                  'settings.permissionSectionDescMac',
+                  'Grant the required macOS permissions so ONESHIM can capture context reliably.',
+                )
+              : isLinux
+                ? t(
+                    'settings.permissionSectionDescLinux',
+                    'Linux usually does not require extra prompts, but session services still need to be reachable.',
+                  )
+                : t(
+                    'settings.permissionSectionDesc',
+                    'Check whether desktop integrations required by ONESHIM are currently reachable.',
+                  )}
+          </p>
+
+          {permissionStatusLoading && (
+            <p className="text-content-secondary text-sm">
+              {t('settings.permissionChecking', 'Checking desktop access...')}
+            </p>
+          )}
+
+          {!permissionStatusLoading && permissionStatus?.platform === 'windows' && (
+            <Alert
+              variant="info"
+              title={t('settings.permissionWindowsTitle', 'Windows access')}
+              icon={<CircleCheckBig />}
+            >
+              {t(
+                'settings.permissionWindowsDesc',
+                'Windows does not usually require separate OS permissions for accessibility or screen capture. Notifications can still depend on system notification settings.',
+              )}
+            </Alert>
+          )}
+
+          {!permissionStatusLoading && permissionRows.length > 0 && (
+            <>
+              <div className="space-y-3">
+                {permissionRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex items-start justify-between gap-4 rounded-lg border border-muted bg-surface-inset p-4"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-signal/15">
+                          {row.icon}
+                        </span>
+                        <span className={cn(typography.label, colors.text.primary)}>{row.label}</span>
+                      </div>
+                      <p className="mt-2 text-content-secondary text-sm">{row.description}</p>
+                    </div>
+                    <Badge color={badgeColorForState(row.state)} size="md" className="shrink-0">
+                      {statusLabel(t, row.state)}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+
+              {needsAttention && (
+                <Alert
+                  variant="warning"
+                  className="mt-4"
+                  title={t('settings.permissionAttentionTitle', 'Action recommended')}
+                  icon={<CircleAlert />}
+                >
+                  {isMac
+                    ? t(
+                        'settings.permissionAttentionDescMac',
+                        'If a required permission is missing, re-open the setup guide and approve it in System Settings.',
+                      )
+                    : t(
+                        'settings.permissionAttentionDesc',
+                        'If a service is unavailable, check your desktop session settings and reopen ONESHIM.',
+                      )}
+                </Alert>
+              )}
+            </>
+          )}
+        </Card>
+      )}
 
       <Card id="section-monitoring" variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settings.monitorTitle')}</CardTitle>
