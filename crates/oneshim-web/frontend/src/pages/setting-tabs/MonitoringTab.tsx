@@ -37,19 +37,6 @@ function badgeColorForState(state: DesktopPermissionState): 'success' | 'warning
   }
 }
 
-function statusLabel(t: (key: string, fallback?: string) => string, state: DesktopPermissionState): string {
-  switch (state) {
-    case 'granted':
-      return t('settings.permissionStateGranted', 'Ready')
-    case 'needs_attention':
-      return t('settings.permissionStateNeedsAttention', 'Attention needed')
-    case 'not_required':
-      return t('settings.permissionStateNotRequired', 'Not required')
-    case 'unavailable':
-      return t('settings.permissionStateUnavailable', 'Unavailable')
-  }
-}
-
 export default function MonitoringTab({
   formData,
   permissionStatus,
@@ -61,6 +48,12 @@ export default function MonitoringTab({
   const [notificationState, setNotificationState] = useState<DesktopPermissionState>(() =>
     readNotificationPermissionState(),
   )
+  const permissionStateLabels: Record<DesktopPermissionState, string> = {
+    granted: t('settings.permissionStateGranted', 'Ready'),
+    needs_attention: t('settings.permissionStateNeedsAttention', 'Attention needed'),
+    not_required: t('settings.permissionStateNotRequired', 'Not required'),
+    unavailable: t('settings.permissionStateUnavailable', 'Unavailable'),
+  }
 
   useEffect(() => {
     const refresh = () => setNotificationState(readNotificationPermissionState())
@@ -254,7 +247,7 @@ export default function MonitoringTab({
                       <p className="mt-2 text-content-secondary text-sm">{row.description}</p>
                     </div>
                     <Badge color={badgeColorForState(row.state)} size="md" className="shrink-0">
-                      {statusLabel(t, row.state)}
+                      {permissionStateLabels[row.state]}
                     </Badge>
                   </div>
                 ))}

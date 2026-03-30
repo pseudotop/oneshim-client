@@ -81,7 +81,7 @@ export const EmptyState: Story = {
       )
       qc.setQueryData(['hourlyMetrics'], [])
       qc.setQueryData(['processes'], [])
-      qc.setQueryData(['heatmap', 7], createMockHeatmapResponse({ cells: [], max_value: 0 }))
+      qc.setQueryData(['heatmap', 7], createMockHeatmapResponse(7, { cells: [], max_value: 0 }))
       qc.setQueryData(['update-status'], createMockUpdateStatus({ phase: 'Idle', pending: null, message: null }))
       return (
         <QueryClientProvider client={qc}>
