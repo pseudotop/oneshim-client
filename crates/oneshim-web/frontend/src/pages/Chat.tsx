@@ -443,7 +443,13 @@ export default function Chat() {
             const base = finalizeThinking(items)
             let existingIndex = -1
             for (let index = base.length - 1; index >= 0; index -= 1) {
-              if (base[index]?.tool_call_delta?.id === payload.id) {
+              const current = base[index]?.tool_call_delta
+              if (!current) continue
+              if (payload.id && current.id === payload.id) {
+                existingIndex = index
+                break
+              }
+              if (!payload.id && current.index === payload.index) {
                 existingIndex = index
                 break
               }
@@ -462,6 +468,8 @@ export default function Chat() {
                   content: `${existing.content}${payload.arguments_chunk}`,
                   tool_call_delta: {
                     ...existing.tool_call_delta,
+                    id: payload.id || existing.tool_call_delta.id,
+                    name: payload.name || existing.tool_call_delta.name,
                     arguments: `${existing.tool_call_delta.arguments}${payload.arguments_chunk}`,
                   },
                 },
@@ -487,8 +495,11 @@ export default function Chat() {
           if (p.type === 'thinking') return appendThinking(prev, p.content, p.done)
           if (p.type === 'text') return appendStream(prev, p.content, p.done)
           if (p.type === 'result') {
-            setSending(false)
-            return appendStream(prev, p.content, true, { usage: p.usage, streaming: false })
+            if (p.done) setSending(false)
+            return appendStream(prev, p.content, p.done, {
+              usage: p.usage,
+              streaming: !p.done,
+            })
           }
           if (p.type === 'tool_call_delta') return appendToolCallDelta(prev, p)
           if (p.type === 'tool_use')
