@@ -1,11 +1,20 @@
+import anthropicIconUrl from '@lobehub/icons-static-svg/icons/anthropic.svg?url'
+import bedrockIconUrl from '@lobehub/icons-static-svg/icons/bedrock-color.svg?url'
+import copilotIconUrl from '@lobehub/icons-static-svg/icons/copilot-color.svg?url'
+import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
+import googleIconUrl from '@lobehub/icons-static-svg/icons/google-brand-color.svg?url'
+import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
+import mistralIconUrl from '@lobehub/icons-static-svg/icons/mistral-color.svg?url'
+import nvidiaIconUrl from '@lobehub/icons-static-svg/icons/nvidia-color.svg?url'
+import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
+import openaiIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
+import openrouterIconUrl from '@lobehub/icons-static-svg/icons/openrouter.svg?url'
+import xaiIconUrl from '@lobehub/icons-static-svg/icons/xai.svg?url'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge, Button, Card, Input } from '../../components/ui'
 import { colors, motion, radius, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
-
-// Static SVG icon paths from @lobehub/icons-static-svg
-const ICON_BASE = new URL('@lobehub/icons-static-svg/icons/', import.meta.url).href
 
 interface ProviderDef {
   id: string
@@ -25,7 +34,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'anthropic',
     name: 'Claude (Anthropic)',
-    icon: 'anthropic.svg',
+    icon: anthropicIconUrl,
     tier: 'recommended',
     tierLabel: 'settings.ai.tierRecommended',
     apiKeyEnv: 'ANTHROPIC_API_KEY',
@@ -37,7 +46,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'openai',
     name: 'GPT (OpenAI)',
-    icon: 'openai.svg',
+    icon: openaiIconUrl,
     tier: 'recommended',
     tierLabel: 'settings.ai.tierRecommended',
     apiKeyEnv: 'OPENAI_API_KEY',
@@ -49,7 +58,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'groq',
     name: 'Groq',
-    icon: 'groq.svg',
+    icon: groqIconUrl,
     tier: 'free',
     tierLabel: 'settings.ai.tierFree',
     apiKeyEnv: 'GROQ_API_KEY',
@@ -61,7 +70,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'ollama',
     name: 'Ollama',
-    icon: 'ollama.svg',
+    icon: ollamaIconUrl,
     tier: 'local',
     tierLabel: 'settings.ai.tierLocal',
     apiKeyEnv: '',
@@ -73,7 +82,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'google',
     name: 'Gemini (Google)',
-    icon: 'google-brand-color.svg',
+    icon: googleIconUrl,
     tier: 'cloud',
     tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'GOOGLE_API_KEY',
@@ -85,7 +94,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'deepseek',
     name: 'DeepSeek',
-    icon: 'deepseek-color.svg',
+    icon: deepseekIconUrl,
     tier: 'cloud',
     tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'DEEPSEEK_API_KEY',
@@ -97,7 +106,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'mistral',
     name: 'Mistral AI',
-    icon: 'mistral-color.svg',
+    icon: mistralIconUrl,
     tier: 'cloud',
     tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'MISTRAL_API_KEY',
@@ -109,7 +118,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'xai',
     name: 'xAI (Grok)',
-    icon: 'xai.svg',
+    icon: xaiIconUrl,
     tier: 'cloud',
     tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'XAI_API_KEY',
@@ -121,7 +130,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'copilot',
     name: 'GitHub Copilot',
-    icon: 'copilot-color.svg',
+    icon: copilotIconUrl,
     tier: 'oauth',
     tierLabel: 'settings.ai.tierOauth',
     apiKeyEnv: '',
@@ -134,7 +143,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'bedrock',
     name: 'Amazon Bedrock',
-    icon: 'bedrock-color.svg',
+    icon: bedrockIconUrl,
     tier: 'cloud',
     tierLabel: 'settings.ai.tierAws',
     apiKeyEnv: 'AWS_ACCESS_KEY_ID',
@@ -147,7 +156,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'openrouter',
     name: 'OpenRouter',
-    icon: 'openrouter.svg',
+    icon: openrouterIconUrl,
     tier: 'cloud',
     tierLabel: 'settings.ai.tierAggregator',
     apiKeyEnv: 'OPENROUTER_API_KEY',
@@ -159,7 +168,7 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'nvidia',
     name: 'NVIDIA NIM',
-    icon: 'nvidia-color.svg',
+    icon: nvidiaIconUrl,
     tier: 'cloud',
     tierLabel: 'settings.ai.tierCloud',
     apiKeyEnv: 'NVIDIA_API_KEY',
@@ -179,7 +188,7 @@ const TIER_COLORS: Record<string, string> = {
 }
 
 function ProviderIcon({ icon, size = 28 }: { icon: string; size?: number }) {
-  return <img src={`${ICON_BASE}${icon}`} alt="" width={size} height={size} className="shrink-0" loading="lazy" />
+  return <img src={icon} alt="" width={size} height={size} className="shrink-0" loading="lazy" />
 }
 
 interface ProviderWizardProps {
