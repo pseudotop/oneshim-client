@@ -64,6 +64,7 @@ impl ClaudeSubprocessSession {
         let mut cmd = Command::new(&self.surface.executable_path);
         cmd.arg("-p");
         cmd.arg("--output-format").arg("stream-json");
+        cmd.arg("--verbose");
         cmd.arg("--bare");
         cmd.arg("--permission-mode")
             .arg(&self.config.permission_mode);

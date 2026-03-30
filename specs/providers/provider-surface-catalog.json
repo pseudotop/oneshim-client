@@ -984,8 +984,7 @@
           "read-only",
           "--skip-git-repo-check",
           "--color",
-          "never",
-          "--no-browser-login"
+          "never"
         ],
         "session_flags": []
       },
