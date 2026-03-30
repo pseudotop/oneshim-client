@@ -65,7 +65,6 @@ impl ClaudeSubprocessSession {
         cmd.arg("-p");
         cmd.arg("--output-format").arg("stream-json");
         cmd.arg("--verbose");
-        cmd.arg("--bare");
         cmd.arg("--permission-mode")
             .arg(&self.config.permission_mode);
         cmd.arg("--model").arg(&self.model);
