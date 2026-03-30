@@ -486,7 +486,10 @@ export default function Chat() {
           }
           if (p.type === 'thinking') return appendThinking(prev, p.content, p.done)
           if (p.type === 'text') return appendStream(prev, p.content, p.done)
-          if (p.type === 'result') return appendStream(prev, p.content, true, { usage: p.usage, streaming: false })
+          if (p.type === 'result') {
+            setSending(false)
+            return appendStream(prev, p.content, true, { usage: p.usage, streaming: false })
+          }
           if (p.type === 'tool_call_delta') return appendToolCallDelta(prev, p)
           if (p.type === 'tool_use')
             return [
@@ -503,7 +506,8 @@ export default function Chat() {
                 },
               },
             ]
-          if (p.type === 'error')
+          if (p.type === 'error') {
+            setSending(false)
             return [
               ...finalizeThinking(prev),
               {
@@ -513,6 +517,7 @@ export default function Chat() {
                 error: { code: p.code, message: p.message, retryable: p.retryable },
               },
             ]
+          }
           if (p.type === 'control' && p.action === 'done') setSending(false)
           return prev
         })

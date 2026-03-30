@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use parking_lot::Mutex;
 use tempfile::tempdir;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
@@ -19,7 +19,7 @@ use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
     ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage, SessionConfig, SessionMessage,
-    SessionState, SessionTransport, ToolDefinition,
+    SessionState, SessionTransport, TokenUsage, ToolDefinition, ToolUseStatus,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
@@ -186,11 +186,188 @@ impl GenericSubprocessSession {
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
+
+    async fn send_codex_message(
+        &self,
+        message: &SessionMessage,
+    ) -> Result<ResponseStream, CoreError> {
+        let rendered_user_message = render_message_payload(message, self.default_tools.as_deref());
+
+        {
+            let mut history = self.history.write().await;
+            history.push(ChatMessage {
+                role: ChatRole::User,
+                content: rendered_user_message,
+                content_blocks: None,
+            });
+        }
+
+        let prompt = {
+            let history = self.history.read().await;
+            render_conversation_prompt(self.system_prompt.as_deref(), &history)
+        };
+
+        self.turn_count.fetch_add(1, Ordering::Relaxed);
+        *self.last_active.lock() = Instant::now();
+
+        let temp_dir = tempdir().map_err(|err| {
+            CoreError::Internal(format!("Failed to create Codex session tempdir: {err}"))
+        })?;
+
+        let mut child = Command::new(&self.surface.executable_path);
+        child
+            .arg("exec")
+            .arg("--json")
+            .arg("-C")
+            .arg(temp_dir.path())
+            .arg("-")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        append_oneshot_flags(&mut child, &self.surface.surface_id);
+        append_model_flag(&mut child, &self.surface.surface_id, &self.model);
+
+        let mut child = child.spawn().map_err(|err| {
+            CoreError::Internal(format!("Failed to spawn Codex session subprocess: {err}"))
+        })?;
+
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            CoreError::Internal("Failed to open stdin for Codex session subprocess".to_string())
+        })?;
+        stdin
+            .write_all(prompt.as_bytes())
+            .await
+            .map_err(CoreError::Io)?;
+        drop(stdin);
+
+        let stdout = child.stdout.take().ok_or_else(|| {
+            CoreError::Internal("Failed to capture Codex session stdout".to_string())
+        })?;
+        let mut stderr = child.stderr.take().ok_or_else(|| {
+            CoreError::Internal("Failed to capture Codex session stderr".to_string())
+        })?;
+
+        let history = self.history.clone();
+        let max_history_turns = self.max_history_turns;
+        let timeout = self.timeout;
+        let surface_id = self.surface.surface_id.clone();
+        let provider_name = self.provider_name.clone();
+
+        let stream: ResponseStream = Box::pin(try_stream! {
+            let _temp_dir = temp_dir;
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            let deadline = tokio::time::Instant::now() + timeout;
+            let stderr_task = tokio::spawn(async move {
+                let mut stderr_buf = String::new();
+                let _ = stderr.read_to_string(&mut stderr_buf).await;
+                stderr_buf
+            });
+            let mut assistant_text = String::new();
+            let mut saw_non_empty_event = false;
+
+            loop {
+                let line_result = tokio::time::timeout_at(deadline, lines.next_line()).await;
+                match line_result {
+                    Ok(Ok(Some(line))) => {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+
+                        if let Some(message) = parse_codex_json_event(trimmed) {
+                            if matches!(&message, OutboundMessage::Error { message, .. } if message.starts_with("Reconnecting...")) {
+                                continue;
+                            }
+
+                            if let OutboundMessage::Text { content, .. } = &message {
+                                if !content.is_empty() {
+                                    assistant_text.push_str(content);
+                                    saw_non_empty_event = true;
+                                }
+                            } else {
+                                saw_non_empty_event = true;
+                            }
+
+                            yield message;
+                            continue;
+                        }
+
+                        assistant_text.push_str(trimmed);
+                        saw_non_empty_event = true;
+                        yield OutboundMessage::Text {
+                            content: trimmed.to_string(),
+                            done: false,
+                        };
+                    }
+                    Ok(Ok(None)) => break,
+                    Ok(Err(err)) => {
+                        yield OutboundMessage::Error {
+                            code: "io_error".to_string(),
+                            message: err.to_string(),
+                            retryable: false,
+                        };
+                        break;
+                    }
+                    Err(_) => {
+                        yield OutboundMessage::Error {
+                            code: "timeout".to_string(),
+                            message: format!("Session response timeout ({}s)", timeout.as_secs()),
+                            retryable: true,
+                        };
+                        break;
+                    }
+                }
+            }
+
+            let status = child.wait().await.map_err(CoreError::Io)?;
+            let stderr_output = stderr_task.await.unwrap_or_default();
+
+            if !status.success() {
+                let classified = classify_subprocess_error(&surface_id, &stderr_output);
+                yield OutboundMessage::Error {
+                    code: "subprocess_error".to_string(),
+                    message: classified.to_string(),
+                    retryable: false,
+                };
+                return;
+            }
+
+            if assistant_text.is_empty() {
+                if !saw_non_empty_event {
+                    yield OutboundMessage::Error {
+                        code: "empty_response".to_string(),
+                        message: format!("{provider_name} CLI returned an empty session response"),
+                        retryable: false,
+                    };
+                }
+                return;
+            }
+
+            let mut history = history.write().await;
+            history.push(ChatMessage {
+                role: ChatRole::Assistant,
+                content: assistant_text,
+                content_blocks: None,
+            });
+            truncate_history(&mut history, max_history_turns);
+        });
+
+        Ok(stream)
+    }
 }
 
 #[async_trait]
 impl ConversationSession for GenericSubprocessSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
+        if self
+            .surface
+            .surface_id
+            .eq("provider_surface.openai.subprocess_cli")
+        {
+            return self.send_codex_message(message).await;
+        }
+
         let rendered_user_message = render_message_payload(message, self.default_tools.as_deref());
 
         {
@@ -269,6 +446,171 @@ impl ConversationSession for GenericSubprocessSession {
     }
 }
 
+fn parse_codex_json_event(line: &str) -> Option<OutboundMessage> {
+    let value = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    let event_type = value.get("type")?.as_str()?;
+
+    match event_type {
+        "item.started" | "item.completed" => parse_codex_item_event(event_type, value.get("item")?),
+        "turn.completed" => Some(OutboundMessage::Result {
+            content: String::new(),
+            done: true,
+            usage: parse_codex_usage(value.get("usage")),
+        }),
+        "error" => Some(OutboundMessage::Error {
+            code: "subprocess_error".to_string(),
+            message: value
+                .get("message")
+                .and_then(|message| message.as_str())
+                .unwrap_or("Codex CLI error")
+                .to_string(),
+            retryable: true,
+        }),
+        _ => None,
+    }
+}
+
+fn parse_codex_item_event(event_type: &str, item: &serde_json::Value) -> Option<OutboundMessage> {
+    let item_type = item.get("type")?.as_str()?;
+
+    match item_type {
+        "agent_message" => extract_stringish(item, &["text", "message", "content"]).map(|text| {
+            OutboundMessage::Text {
+                content: text,
+                done: false,
+            }
+        }),
+        "reasoning" => extract_stringish(item, &["summary", "text", "content"]).map(|content| {
+            OutboundMessage::Thinking {
+                content,
+                done: event_type == "item.completed",
+            }
+        }),
+        "command_execution" | "mcp_tool_call" | "web_search" => Some(OutboundMessage::ToolUse {
+            tool: codex_tool_name(item_type, item),
+            input: codex_tool_input(item_type, item),
+            status: codex_tool_status(event_type, item),
+            result: if event_type == "item.completed" {
+                extract_stringish(
+                    item,
+                    &[
+                        "aggregated_output",
+                        "result",
+                        "output",
+                        "message",
+                        "content",
+                        "text",
+                    ],
+                )
+            } else {
+                None
+            },
+        }),
+        _ => None,
+    }
+}
+
+fn parse_codex_usage(value: Option<&serde_json::Value>) -> Option<TokenUsage> {
+    let usage = value?;
+    Some(TokenUsage {
+        input_tokens: usage.get("input_tokens")?.as_u64()?,
+        output_tokens: usage.get("output_tokens")?.as_u64()?,
+    })
+}
+
+fn extract_stringish(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) if !text.is_empty() => Some(text.clone()),
+        serde_json::Value::Array(items) => {
+            let parts: Vec<String> = items
+                .iter()
+                .filter_map(|item| extract_stringish(item, keys))
+                .collect();
+            if parts.is_empty() {
+                None
+            } else {
+                Some(parts.join("\n"))
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for key in keys {
+                if let Some(text) = map
+                    .get(*key)
+                    .and_then(|nested| extract_stringish(nested, keys))
+                {
+                    return Some(text);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn codex_tool_status(event_type: &str, item: &serde_json::Value) -> ToolUseStatus {
+    match item.get("status").and_then(|status| status.as_str()) {
+        Some("failed") => ToolUseStatus::Failed,
+        Some("completed") | Some("success") => ToolUseStatus::Completed,
+        Some("in_progress") | Some("running") => ToolUseStatus::Started,
+        _ if event_type == "item.started" => ToolUseStatus::Started,
+        _ => ToolUseStatus::Completed,
+    }
+}
+
+fn codex_tool_name(item_type: &str, item: &serde_json::Value) -> String {
+    match item_type {
+        "command_execution" => "command_execution".to_string(),
+        "mcp_tool_call" => {
+            let server = item
+                .get("server")
+                .and_then(|value| value.as_str())
+                .unwrap_or("mcp");
+            let tool = item
+                .get("tool")
+                .or_else(|| item.get("name"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("tool");
+            format!("{server}:{tool}")
+        }
+        "web_search" => "web_search".to_string(),
+        _ => item_type.to_string(),
+    }
+}
+
+fn codex_tool_input(item_type: &str, item: &serde_json::Value) -> Option<serde_json::Value> {
+    let mut payload = serde_json::Map::new();
+    match item_type {
+        "command_execution" => {
+            for key in ["command", "cwd"] {
+                if let Some(value) = item.get(key) {
+                    payload.insert(key.to_string(), value.clone());
+                }
+            }
+        }
+        "mcp_tool_call" => {
+            for key in ["server", "tool", "name", "arguments"] {
+                if let Some(value) = item.get(key) {
+                    payload.insert(key.to_string(), value.clone());
+                }
+            }
+        }
+        "web_search" => {
+            for key in ["query", "url"] {
+                if let Some(value) = item.get(key) {
+                    payload.insert(key.to_string(), value.clone());
+                }
+            }
+        }
+        _ => {}
+    }
+
+    if payload.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(payload))
+    }
+}
+
 fn truncate_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
     let max = max_turns as usize;
     if max == 0 || history.len() <= max {
@@ -309,6 +651,71 @@ mod tests {
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].content, "two");
         assert_eq!(history[1].content, "three");
+    }
+
+    #[test]
+    fn parses_codex_agent_message_event() {
+        let event = parse_codex_json_event(
+            r#"{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}"#,
+        )
+        .expect("codex agent message should parse");
+
+        match event {
+            OutboundMessage::Text { content, done } => {
+                assert_eq!(content, "OK");
+                assert!(!done);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_codex_turn_completed_usage() {
+        let event = parse_codex_json_event(
+            r#"{"type":"turn.completed","usage":{"input_tokens":12,"cached_input_tokens":3,"output_tokens":7}}"#,
+        )
+        .expect("codex usage event should parse");
+
+        match event {
+            OutboundMessage::Result {
+                content,
+                done,
+                usage,
+            } => {
+                assert!(content.is_empty());
+                assert!(done);
+                let usage = usage.expect("usage should be present");
+                assert_eq!(usage.input_tokens, 12);
+                assert_eq!(usage.output_tokens, 7);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_codex_command_execution_item() {
+        let event = parse_codex_json_event(
+            r#"{"type":"item.completed","item":{"type":"command_execution","status":"completed","command":"pwd","aggregated_output":"/tmp"}}"#,
+        )
+        .expect("codex command execution should parse");
+
+        match event {
+            OutboundMessage::ToolUse {
+                tool,
+                status,
+                input,
+                result,
+            } => {
+                assert_eq!(tool, "command_execution");
+                assert_eq!(status, ToolUseStatus::Completed);
+                assert_eq!(
+                    input.expect("tool input should exist")["command"],
+                    serde_json::json!("pwd")
+                );
+                assert_eq!(result.as_deref(), Some("/tmp"));
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 
     #[tokio::test]
