@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 
 // Lazy-loaded syntax highlighter — only fetched when a fenced code block is rendered
 const LazySyntaxHighlighter = React.lazy(async () => {
@@ -92,7 +93,8 @@ const LazySyntaxHighlighter = React.lazy(async () => {
   return { default: LazyHighlighterWrapper }
 })
 
-import { Button, Card, CardContent, Select } from '../components/ui'
+import { Button, Card, CardContent, Input, Select } from '../components/ui'
+import { defaultSurfaceModel, sortProviderSurfaces } from '../features/providerSurfaces'
 import { colors, iconSize, interaction, motion, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -131,6 +133,13 @@ type OutboundMessage =
       input?: unknown
       result?: string
     }
+  | {
+      type: 'tool_call_delta'
+      index: number
+      id: string
+      name: string
+      arguments_chunk: string
+    }
   | { type: 'error'; code: string; message: string; retryable: boolean }
   | { type: 'control'; action: string }
 interface ChatMessage {
@@ -140,6 +149,7 @@ interface ChatMessage {
   streaming?: boolean
   thinking?: { content: string; done: boolean }
   tool_use?: { tool: string; status: string; input?: Record<string, unknown>; result?: string }
+  tool_call_delta?: { index: number; id: string; name: string; arguments: string }
   usage?: { input_tokens: number; output_tokens: number }
   error?: { code: string; message: string; retryable: boolean }
 }
@@ -166,6 +176,14 @@ const STATE_DOT: Record<string, string> = {
 }
 
 const MAX_CACHED_SESSIONS = 20
+const HTTP_API_SURFACES = sortProviderSurfaces(
+  DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.filter(
+    (surface) =>
+      surface.supports.llm &&
+      surface.execution_kind === 'direct_http' &&
+      surface.llm_transport?.auth_scheme !== 'aws_signature_v4',
+  ),
+)
 
 async function ipc<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
@@ -239,6 +257,8 @@ export default function Chat() {
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [httpSurfaceId, setHttpSurfaceId] = useState<string>(HTTP_API_SURFACES[0]?.surface_id ?? '')
+  const [modelOverride, setModelOverride] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
@@ -274,10 +294,30 @@ export default function Chat() {
   }, [])
 
   useEffect(() => {
+    if (HTTP_API_SURFACES.length === 0) return
+    if (!HTTP_API_SURFACES.some((surface) => surface.surface_id === httpSurfaceId)) {
+      setHttpSurfaceId(HTTP_API_SURFACES[0].surface_id)
+    }
+  }, [httpSurfaceId])
+
+  useEffect(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
       .then(setSessions)
       .catch((e) => console.warn('list_ai_sessions failed:', e))
   }, [])
+
+  const selectedHttpSurface = useMemo(
+    () => HTTP_API_SURFACES.find((surface) => surface.surface_id === httpSurfaceId) ?? HTTP_API_SURFACES[0] ?? null,
+    [httpSurfaceId],
+  )
+  const resolvedModel = useMemo(() => {
+    const override = modelOverride.trim()
+    if (override) return override
+    if (transport === 'http_api') {
+      return defaultSurfaceModel(selectedHttpSurface ?? undefined, 'llm_api') ?? undefined
+    }
+    return undefined
+  }, [modelOverride, selectedHttpSurface, transport])
 
   useEffect(() => {
     if (!activeId) return
@@ -322,9 +362,58 @@ export default function Chat() {
               },
             ]
           }
+          const appendToolCallDelta = (
+            items: ChatMessage[],
+            payload: Extract<OutboundMessage, { type: 'tool_call_delta' }>,
+          ) => {
+            const base = finalizeThinking(items)
+            let existingIndex = -1
+            for (let index = base.length - 1; index >= 0; index -= 1) {
+              if (base[index]?.tool_call_delta?.id === payload.id) {
+                existingIndex = index
+                break
+              }
+            }
+
+            if (existingIndex >= 0) {
+              const existing = base[existingIndex]
+              if (!existing?.tool_call_delta) {
+                return base
+              }
+
+              return [
+                ...base.slice(0, existingIndex),
+                {
+                  ...existing,
+                  content: `${existing.content}${payload.arguments_chunk}`,
+                  tool_call_delta: {
+                    ...existing.tool_call_delta,
+                    arguments: `${existing.tool_call_delta.arguments}${payload.arguments_chunk}`,
+                  },
+                },
+                ...base.slice(existingIndex + 1),
+              ]
+            }
+
+            return [
+              ...base,
+              {
+                role: 'system' as const,
+                content: payload.arguments_chunk,
+                timestamp: now(),
+                tool_call_delta: {
+                  index: payload.index,
+                  id: payload.id,
+                  name: payload.name,
+                  arguments: payload.arguments_chunk,
+                },
+              },
+            ]
+          }
           if (p.type === 'thinking') return appendThinking(prev, p.content, p.done)
           if (p.type === 'text') return appendStream(prev, p.content, p.done)
           if (p.type === 'result') return appendStream(prev, p.content, true, { usage: p.usage, streaming: false })
+          if (p.type === 'tool_call_delta') return appendToolCallDelta(prev, p)
           if (p.type === 'tool_use')
             return [
               ...finalizeThinking(prev),
@@ -387,6 +476,8 @@ export default function Chat() {
       const info = await ipc<SessionInfo>('create_ai_session', {
         config: {
           transport,
+          surface_id: transport === 'http_api' ? selectedHttpSurface?.surface_id : undefined,
+          model: resolvedModel,
           system_prompt: systemPrompt || undefined,
           tools_enabled: true,
         } satisfies SessionConfig,
@@ -398,7 +489,7 @@ export default function Chat() {
       console.warn('create_ai_session failed:', e)
     }
     setCreating(false)
-  }, [transport, systemPrompt])
+  }, [transport, selectedHttpSurface, resolvedModel, systemPrompt])
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -508,6 +599,7 @@ export default function Chat() {
   const MAX_VISIBLE_MESSAGES = 500
   const isTruncated = messages.length > MAX_VISIBLE_MESSAGES
   const visibleMessages = isTruncated ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages
+  const createDisabled = creating || (transport === 'http_api' && !selectedHttpSurface)
 
   return (
     <div className="flex h-full min-h-0">
@@ -530,7 +622,7 @@ export default function Chat() {
             <option value="http_api">HTTP API</option>
             <option value="local_llm">Local LLM</option>
           </Select>
-          <Button variant="primary" size="sm" onClick={handleCreate} isLoading={creating} disabled={creating}>
+          <Button variant="primary" size="sm" onClick={handleCreate} isLoading={creating} disabled={createDisabled}>
             <Plus className={iconSize.sm} />
           </Button>
         </div>
@@ -549,7 +641,54 @@ export default function Chat() {
           {t('chat.advanced')}
         </button>
         {showAdvanced && (
-          <div className="border-muted border-b px-2 py-2">
+          <div className="space-y-3 border-muted border-b px-2 py-2">
+            {transport === 'http_api' && (
+              <div className="space-y-1">
+                <p
+                  className={cn(
+                    'text-[10px] uppercase tracking-[0.12em]',
+                    typography.weight.medium,
+                    colors.text.secondary,
+                  )}
+                >
+                  {t('chat.http_surface_label')}
+                </p>
+                <Select
+                  selectSize="sm"
+                  value={selectedHttpSurface?.surface_id ?? ''}
+                  onChange={(e) => setHttpSurfaceId(e.target.value)}
+                  className="w-full text-xs"
+                >
+                  {HTTP_API_SURFACES.map((surface) => (
+                    <option key={surface.surface_id} value={surface.surface_id}>
+                      {surface.display_name}
+                    </option>
+                  ))}
+                </Select>
+                <p className={cn('text-[10px]', colors.text.secondary)}>{t('chat.http_surface_help')}</p>
+              </div>
+            )}
+            <div className="space-y-1">
+              <p
+                className={cn(
+                  'text-[10px] uppercase tracking-[0.12em]',
+                  typography.weight.medium,
+                  colors.text.secondary,
+                )}
+              >
+                {t('chat.model_label')}
+              </p>
+              <Input
+                value={modelOverride}
+                onChange={(e) => setModelOverride(e.target.value)}
+                placeholder={
+                  transport === 'http_api'
+                    ? (defaultSurfaceModel(selectedHttpSurface ?? undefined, 'llm_api') ?? t('chat.model_placeholder'))
+                    : t('chat.model_placeholder')
+                }
+                className="text-xs"
+              />
+            </div>
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
@@ -907,6 +1046,24 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
             </pre>
           </details>
         )}
+      </Card>
+    )
+  }
+
+  if (msg.tool_call_delta) {
+    return (
+      <Card variant="default" padding="sm" className="border-border/50 bg-surface-base">
+        <CardContent>
+          <div className="flex items-start gap-2">
+            <Loader2 className={cn(iconSize.xs, 'mt-0.5 shrink-0 animate-spin text-content-secondary')} />
+            <div className="min-w-0 flex-1">
+              <p className={cn('text-xs', typography.weight.medium)}>{msg.tool_call_delta.name}</p>
+              <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 text-[10px]">
+                {msg.tool_call_delta.arguments}
+              </pre>
+            </div>
+          </div>
+        </CardContent>
       </Card>
     )
   }

@@ -1113,6 +1113,10 @@
     "copy": "Copiar",
     "copied": "Copiado",
     "advanced": "Avanzado",
+    "http_surface_label": "HTTP surface",
+    "http_surface_help": "Elige la surface direct HTTP del proveedor para esta sesión.",
+    "model_label": "Anulación de modelo",
+    "model_placeholder": "Déjalo vacío para usar el modelo predeterminado",
     "system_prompt_placeholder": "Indicacion del sistema (opcional)"
   }
 }

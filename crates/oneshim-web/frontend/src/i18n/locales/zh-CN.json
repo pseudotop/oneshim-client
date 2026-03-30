@@ -1113,6 +1113,10 @@
     "copy": "复制",
     "copied": "已复制",
     "advanced": "高级选项",
+    "http_surface_label": "HTTP Surface",
+    "http_surface_help": "为此会话选择 direct HTTP provider surface。",
+    "model_label": "模型覆盖",
+    "model_placeholder": "留空则使用默认模型",
     "system_prompt_placeholder": "系统提示（可选）"
   }
 }

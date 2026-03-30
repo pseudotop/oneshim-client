@@ -1125,6 +1125,10 @@
     "copy": "Copy",
     "copied": "Copied",
     "advanced": "Advanced",
+    "http_surface_label": "HTTP surface",
+    "http_surface_help": "Choose the direct HTTP provider surface for this session.",
+    "model_label": "Model override",
+    "model_placeholder": "Leave empty to use the default model",
     "system_prompt_placeholder": "System prompt (optional)"
   }
 }
