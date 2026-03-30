@@ -8,7 +8,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use chrono::Utc;
 use parking_lot::Mutex;
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStr
 
 use crate::session_adapters::claude_normalizer::normalize_claude_stream_event;
 use crate::session_adapters::prompt_payload::render_message_payload;
-use crate::subprocess_provider::DetectedSubprocessCli;
+use crate::subprocess_provider::{classify_subprocess_error, DetectedSubprocessCli};
 
 pub struct ClaudeSubprocessSession {
     session_id: String,
@@ -104,11 +104,15 @@ impl ConversationSession for ClaudeSubprocessSession {
         let stdout = child.stdout.take().ok_or_else(|| {
             CoreError::Internal("Failed to capture Claude session stdout".to_string())
         })?;
+        let mut stderr = child.stderr.take().ok_or_else(|| {
+            CoreError::Internal("Failed to capture Claude session stderr".to_string())
+        })?;
 
         self.turn_count.fetch_add(1, Ordering::Relaxed);
         *self.last_active.lock() = Instant::now();
 
         let timeout_secs = self.config.session_timeout_secs;
+        let surface_id = self.surface.surface_id.clone();
         let reader = tokio::io::BufReader::new(stdout);
 
         let stream = async_stream::try_stream! {
@@ -116,6 +120,13 @@ impl ConversationSession for ClaudeSubprocessSession {
             let deadline = tokio::time::Instant::now()
                 + tokio::time::Duration::from_secs(timeout_secs);
             let mut saw_text_chunk = false;
+            let mut force_kill = false;
+            let mut emitted_terminal_error = false;
+            let stderr_task = tokio::spawn(async move {
+                let mut stderr_buf = String::new();
+                let _ = stderr.read_to_string(&mut stderr_buf).await;
+                stderr_buf
+            });
 
             loop {
                 let line_result = tokio::time::timeout_at(deadline, lines.next_line()).await;
@@ -145,6 +156,8 @@ impl ConversationSession for ClaudeSubprocessSession {
                             message: err.to_string(),
                             retryable: false,
                         };
+                        force_kill = true;
+                        emitted_terminal_error = true;
                         break;
                     }
                     Err(_) => {
@@ -153,13 +166,28 @@ impl ConversationSession for ClaudeSubprocessSession {
                             message: format!("Session response timeout ({timeout_secs}s)"),
                             retryable: true,
                         };
+                        force_kill = true;
+                        emitted_terminal_error = true;
                         break;
                     }
                 }
             }
 
-            // Wait for process exit
-            let _ = child.wait().await;
+            if force_kill {
+                let _ = child.kill().await;
+            }
+
+            let status = child.wait().await.map_err(CoreError::Io)?;
+            let stderr_output = stderr_task.await.unwrap_or_default();
+
+            if !status.success() && !emitted_terminal_error {
+                let classified = classify_subprocess_error(&surface_id, &stderr_output);
+                yield OutboundMessage::Error {
+                    code: "subprocess_error".to_string(),
+                    message: classified.to_string(),
+                    retryable: false,
+                };
+            }
         };
 
         Ok(Box::pin(stream))

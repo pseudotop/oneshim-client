@@ -307,6 +307,7 @@ impl GenericSubprocessSession {
                             message: err.to_string(),
                             retryable: false,
                         };
+                        let _ = child.kill().await;
                         break;
                     }
                     Err(_) => {
@@ -315,6 +316,7 @@ impl GenericSubprocessSession {
                             message: format!("Session response timeout ({}s)", timeout.as_secs()),
                             retryable: true,
                         };
+                        let _ = child.kill().await;
                         break;
                     }
                 }
