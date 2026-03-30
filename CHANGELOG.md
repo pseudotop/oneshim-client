@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.11-rc.2] - 2026-03-30
+### Fixed
+
+- Improve dmg background contrast and text clarity
+
+- Surface os permission status and restore page title contrast
+
+- Add page and template review coverage
+
+- Keep storybook review files out of app build
+
+- Harden permission review flows
+
+- Statically import provider brand icons
+
+- Enable react-router future flags
+
+- Probe macos notification access natively
+
+- Satisfy workspace clippy checks
+
+
+## [Unreleased]
+
 ## [0.4.11-rc.1] - 2026-03-30
 ### Added
 
