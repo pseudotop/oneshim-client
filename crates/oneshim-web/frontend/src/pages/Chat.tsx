@@ -117,6 +117,7 @@ interface SessionInfo {
 }
 type OutboundMessage =
   | { type: 'text'; content: string; done: boolean }
+  | { type: 'thinking'; content: string; done: boolean }
   | {
       type: 'result'
       content: string
@@ -137,6 +138,7 @@ interface ChatMessage {
   content: string
   timestamp: string
   streaming?: boolean
+  thinking?: { content: string; done: boolean }
   tool_use?: { tool: string; status: string; input?: Record<string, unknown>; result?: string }
   usage?: { input_tokens: number; output_tokens: number }
   error?: { code: string; message: string; retryable: boolean }
@@ -284,17 +286,48 @@ export default function Chat() {
       const { listen } = await import('@tauri-apps/api/event')
       unlisten = await listen<OutboundMessage>(`ai-session:${activeId}`, ({ payload: p }) => {
         setMessages((prev) => {
-          const last = prev[prev.length - 1]
-          const appendStream = (c: string, done: boolean, extra?: Partial<ChatMessage>) => {
-            if (last?.role === 'assistant' && last.streaming)
-              return [...prev.slice(0, -1), { ...last, content: last.content + c, streaming: !done, ...extra }]
-            return [...prev, { role: 'assistant' as const, content: c, timestamp: now(), streaming: !done, ...extra }]
+          const finalizeThinking = (items: ChatMessage[]) => {
+            const lastItem = items[items.length - 1]
+            if (lastItem?.thinking && !lastItem.thinking.done) {
+              return [...items.slice(0, -1), { ...lastItem, thinking: { ...lastItem.thinking, done: true } }]
+            }
+            return items
           }
-          if (p.type === 'text') return appendStream(p.content, p.done)
-          if (p.type === 'result') return appendStream(p.content, true, { usage: p.usage, streaming: false })
+          const appendStream = (items: ChatMessage[], c: string, done: boolean, extra?: Partial<ChatMessage>) => {
+            const base = finalizeThinking(items)
+            const lastItem = base[base.length - 1]
+            if (lastItem?.role === 'assistant' && lastItem.streaming)
+              return [...base.slice(0, -1), { ...lastItem, content: lastItem.content + c, streaming: !done, ...extra }]
+            return [...base, { role: 'assistant' as const, content: c, timestamp: now(), streaming: !done, ...extra }]
+          }
+          const appendThinking = (items: ChatMessage[], c: string, done: boolean) => {
+            const lastItem = items[items.length - 1]
+            if (lastItem?.thinking && !lastItem.thinking.done) {
+              return [
+                ...items.slice(0, -1),
+                {
+                  ...lastItem,
+                  content: lastItem.content + c,
+                  thinking: { content: lastItem.thinking.content + c, done },
+                },
+              ]
+            }
+            return [
+              ...items,
+              {
+                role: 'system' as const,
+                content: c,
+                timestamp: now(),
+                thinking: { content: c, done },
+              },
+            ]
+          }
+          if (p.type === 'thinking') return appendThinking(prev, p.content, p.done)
+          if (p.type === 'text') return appendStream(prev, p.content, p.done)
+          if (p.type === 'result') return appendStream(prev, p.content, true, { usage: p.usage, streaming: false })
           if (p.type === 'tool_use')
             return [
-              ...prev,
+              ...finalizeThinking(prev),
               {
                 role: 'system',
                 content: `Tool: ${p.tool} [${p.status}]`,
@@ -309,7 +342,7 @@ export default function Chat() {
             ]
           if (p.type === 'error')
             return [
-              ...prev,
+              ...finalizeThinking(prev),
               {
                 role: 'system',
                 content: p.message,
@@ -663,11 +696,13 @@ export default function Chat() {
                   </div>
                 )
               })}
-              {sending && messages[messages.length - 1]?.role !== 'assistant' && (
-                <div className="flex items-center gap-2 text-content-secondary text-xs">
-                  <Loader2 className={cn(iconSize.sm, 'animate-spin')} /> {t('chat.thinking')}
-                </div>
-              )}
+              {sending &&
+                messages[messages.length - 1]?.role !== 'assistant' &&
+                !messages[messages.length - 1]?.thinking && (
+                  <div className="flex items-center gap-2 text-content-secondary text-xs">
+                    <Loader2 className={cn(iconSize.sm, 'animate-spin')} /> {t('chat.thinking')}
+                  </div>
+                )}
             </div>
             {/* Attachment chips */}
             {attachments.length > 0 && (
@@ -872,6 +907,34 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
             </pre>
           </details>
         )}
+      </Card>
+    )
+  }
+
+  if (msg.thinking) {
+    return (
+      <Card variant="default" padding="sm" className="border-brand/20 bg-brand/5">
+        <CardContent>
+          <div className="flex items-start gap-2">
+            <Loader2
+              className={cn(iconSize.xs, !msg.thinking.done && 'animate-spin', 'mt-0.5 shrink-0 text-brand-text')}
+            />
+            <div className="min-w-0 flex-1">
+              <p
+                className={cn(
+                  'text-[10px] text-content-secondary uppercase tracking-[0.14em]',
+                  typography.weight.medium,
+                )}
+              >
+                {t('chat.thinking')}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-content-secondary text-xs">
+                {msg.thinking.content}
+                {!msg.thinking.done ? '\u258C' : ''}
+              </p>
+            </div>
+          </div>
+        </CardContent>
       </Card>
     )
   }

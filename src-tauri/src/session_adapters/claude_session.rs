@@ -65,6 +65,7 @@ impl ClaudeSubprocessSession {
         cmd.arg("-p");
         cmd.arg("--output-format").arg("stream-json");
         cmd.arg("--verbose");
+        cmd.arg("--include-partial-messages");
         cmd.arg("--permission-mode")
             .arg(&self.config.permission_mode);
         cmd.arg("--model").arg(&self.model);
@@ -114,13 +115,27 @@ impl ConversationSession for ClaudeSubprocessSession {
             let mut lines = reader.lines();
             let deadline = tokio::time::Instant::now()
                 + tokio::time::Duration::from_secs(timeout_secs);
+            let mut saw_text_chunk = false;
 
             loop {
                 let line_result = tokio::time::timeout_at(deadline, lines.next_line()).await;
                 match line_result {
                     Ok(Ok(Some(line))) => {
-                        if let Some(msg) = normalize_claude_stream_event(&line) {
-                            yield msg;
+                        if let Some(mut normalized) = normalize_claude_stream_event(&line) {
+                            if matches!(normalized.kind, crate::session_adapters::claude_normalizer::ClaudeEventKind::AssistantSummary) && saw_text_chunk {
+                                continue;
+                            }
+                            if matches!(normalized.kind, crate::session_adapters::claude_normalizer::ClaudeEventKind::Result)
+                                && saw_text_chunk
+                            {
+                                if let OutboundMessage::Result { content, .. } = &mut normalized.message {
+                                    content.clear();
+                                }
+                            }
+                            if matches!(&normalized.message, OutboundMessage::Text { content, .. } if !content.is_empty()) {
+                                saw_text_chunk = true;
+                            }
+                            yield normalized.message;
                         }
                     }
                     Ok(Ok(None)) => break, // EOF

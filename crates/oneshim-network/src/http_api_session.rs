@@ -1,6 +1,7 @@
 //! HTTP API session adapter — direct Anthropic/OpenAI API calls with
 //! self-managed conversation history and SSE streaming responses.
 
+use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -72,6 +73,113 @@ struct PartialToolCall {
     arguments: String,
 }
 
+fn attachment_filename(path: Option<&str>) -> Option<String> {
+    path.and_then(|value| {
+        Path::new(value)
+            .file_name()
+            .and_then(|segment| segment.to_str())
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn supports_anthropic_document(media_type: &str) -> bool {
+    media_type == "application/pdf"
+}
+
+fn native_content_block(
+    shape: &ProviderRequestShape,
+    attachment: &Attachment,
+) -> Option<ContentBlock> {
+    match attachment {
+        Attachment::Image {
+            mime,
+            data: Some(data),
+            ..
+        } => Some(ContentBlock::Image {
+            media_type: mime.clone(),
+            data: data.clone(),
+        }),
+        Attachment::File {
+            mime: Some(mime),
+            data: Some(data),
+            path,
+        } if mime.starts_with("image/") => Some(ContentBlock::Image {
+            media_type: mime.clone(),
+            data: data.clone(),
+        }),
+        Attachment::File {
+            mime: Some(mime),
+            data: Some(data),
+            path,
+        } => {
+            let filename = attachment_filename(Some(path));
+            if matches!(
+                shape,
+                ProviderRequestShape::AnthropicMessages
+                    | ProviderRequestShape::AnthropicVisionMessages
+            ) && supports_anthropic_document(mime)
+            {
+                return Some(ContentBlock::File {
+                    media_type: mime.clone(),
+                    data: data.clone(),
+                    filename,
+                });
+            }
+
+            if matches!(
+                shape,
+                ProviderRequestShape::OpenAiResponses | ProviderRequestShape::GoogleGenerateContent
+            ) {
+                return Some(ContentBlock::File {
+                    media_type: mime.clone(),
+                    data: data.clone(),
+                    filename,
+                });
+            }
+
+            None
+        }
+        _ => None,
+    }
+}
+
+fn attachment_manifest_entry(attachment: &Attachment) -> serde_json::Value {
+    match attachment {
+        Attachment::Image { mime, path, data } => serde_json::json!({
+            "kind": "image",
+            "mime": mime,
+            "path": path,
+            "has_inline_data": data.as_ref().is_some_and(|value| !value.is_empty()),
+        }),
+        Attachment::File { path, mime, data } => serde_json::json!({
+            "kind": "file",
+            "path": path,
+            "mime": mime,
+            "has_inline_data": data.as_ref().is_some_and(|value| !value.is_empty()),
+        }),
+        Attachment::Directory { path } => serde_json::json!({
+            "kind": "directory",
+            "path": path,
+        }),
+        Attachment::Skill {
+            skill_id,
+            display_name,
+        } => serde_json::json!({
+            "kind": "skill",
+            "skill_id": skill_id,
+            "display_name": display_name,
+        }),
+        Attachment::AppReference {
+            app_name,
+            window_title,
+        } => serde_json::json!({
+            "kind": "app_reference",
+            "app_name": app_name,
+            "window_title": window_title,
+        }),
+    }
+}
+
 // ── Content Block Serialization Helpers ─────────────────────────
 
 /// Serialize content blocks to Anthropic Messages API format.
@@ -86,6 +194,20 @@ fn serialize_anthropic_content(blocks: &[ContentBlock]) -> Vec<serde_json::Value
                 "type": "image",
                 "source": {"type": "base64", "media_type": media_type, "data": data}
             })),
+            ContentBlock::File {
+                media_type,
+                data,
+                filename,
+            } if supports_anthropic_document(media_type) => {
+                let mut document = serde_json::json!({
+                    "type": "document",
+                    "source": {"type": "base64", "media_type": media_type, "data": data}
+                });
+                if let Some(filename) = filename {
+                    document["title"] = serde_json::json!(filename);
+                }
+                Some(document)
+            }
             _ => None,
         })
         .collect()
@@ -117,6 +239,11 @@ fn serialize_google_parts(blocks: &[ContentBlock]) -> Vec<serde_json::Value> {
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(serde_json::json!({"text": text})),
             ContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                "inlineData": {"mimeType": media_type, "data": data}
+            })),
+            ContentBlock::File {
+                media_type, data, ..
+            } => Some(serde_json::json!({
                 "inlineData": {"mimeType": media_type, "data": data}
             })),
             _ => None,
@@ -190,6 +317,16 @@ fn serialize_openai_responses_content(blocks: &[ContentBlock]) -> Vec<serde_json
                 "type": "input_image",
                 "image_url": format!("data:{media_type};base64,{data}")
             })),
+            ContentBlock::File { data, filename, .. } => {
+                let mut input_file = serde_json::json!({
+                    "type": "input_file",
+                    "file_data": data,
+                });
+                if let Some(filename) = filename {
+                    input_file["filename"] = serde_json::json!(filename);
+                }
+                Some(input_file)
+            }
             _ => None,
         })
         .collect()
@@ -542,7 +679,7 @@ impl HttpApiSession {
     }
 }
 
-fn render_message_content(message: &SessionMessage) -> String {
+fn render_message_content(message: &SessionMessage, shape: &ProviderRequestShape) -> String {
     let mut sections = vec![message.content.clone()];
 
     if let Some(context) = message.context.as_ref() {
@@ -565,40 +702,8 @@ fn render_message_content(message: &SessionMessage) -> String {
     let attachment_manifest: Vec<serde_json::Value> = message
         .attachments
         .iter()
-        .map(|attachment| match attachment {
-            Attachment::Image { mime, path, data } => serde_json::json!({
-                "kind": "image",
-                "mime": mime,
-                "path": path,
-                "has_inline_data": data.as_ref().is_some_and(|value| !value.is_empty()),
-            }),
-            Attachment::File { path, mime, data } => serde_json::json!({
-                "kind": "file",
-                "path": path,
-                "mime": mime,
-                "has_inline_data": data.as_ref().is_some_and(|value| !value.is_empty()),
-            }),
-            Attachment::Directory { path } => serde_json::json!({
-                "kind": "directory",
-                "path": path,
-            }),
-            Attachment::Skill {
-                skill_id,
-                display_name,
-            } => serde_json::json!({
-                "kind": "skill",
-                "skill_id": skill_id,
-                "display_name": display_name,
-            }),
-            Attachment::AppReference {
-                app_name,
-                window_title,
-            } => serde_json::json!({
-                "kind": "app_reference",
-                "app_name": app_name,
-                "window_title": window_title,
-            }),
-        })
+        .filter(|attachment| native_content_block(shape, attachment).is_none())
+        .map(attachment_manifest_entry)
         .collect();
 
     if !attachment_manifest.is_empty() {
@@ -614,7 +719,13 @@ fn render_message_content(message: &SessionMessage) -> String {
 #[async_trait]
 impl ConversationSession for HttpApiSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
-        let message_content = render_message_content(message);
+        let shape = provider_specs::resolved_request_shape(
+            self.provider_type,
+            Some(&self.surface_id),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+        let message_content = render_message_content(message, &shape);
 
         // Convert attachments to content blocks for multimodal messages
         let content_blocks = {
@@ -625,34 +736,14 @@ impl ConversationSession for HttpApiSession {
                 });
             }
             for att in &message.attachments {
-                match att {
-                    Attachment::Image {
-                        mime,
-                        data: Some(b64),
-                        ..
-                    } => {
-                        blocks.push(ContentBlock::Image {
-                            media_type: mime.clone(),
-                            data: b64.clone(),
-                        });
-                    }
-                    Attachment::File {
-                        mime: Some(mime),
-                        data: Some(b64),
-                        ..
-                    } if mime.starts_with("image/") => {
-                        blocks.push(ContentBlock::Image {
-                            media_type: mime.clone(),
-                            data: b64.clone(),
-                        });
-                    }
-                    _ => {}
+                if let Some(block) = native_content_block(&shape, att) {
+                    blocks.push(block);
                 }
             }
-            let starts_with_image = blocks
+            let starts_with_non_text = blocks
                 .first()
-                .is_some_and(|block| matches!(block, ContentBlock::Image { .. }));
-            if blocks.len() > 1 || starts_with_image {
+                .is_some_and(|block| !matches!(block, ContentBlock::Text { .. }));
+            if blocks.len() > 1 || starts_with_non_text {
                 Some(blocks)
             } else {
                 None
@@ -715,8 +806,6 @@ impl ConversationSession for HttpApiSession {
             )));
         }
 
-        let provider_type = self.provider_type;
-        let surface_id = self.surface_id.clone();
         let history = self.history.clone();
         let max_turns = self.config.max_history_turns;
         let turn_count = &self.turn_count;
@@ -727,13 +816,6 @@ impl ConversationSession for HttpApiSession {
         let stream: ResponseStream = Box::pin(try_stream! {
             let mut accumulated = String::new();
             let mut tool_calls: Vec<PartialToolCall> = Vec::new();
-
-            let shape = provider_specs::resolved_request_shape(
-                provider_type,
-                Some(&surface_id),
-                ProviderTransportKind::Llm,
-            )
-            .map_err(CoreError::Internal)?;
 
             let is_anthropic = matches!(
                 shape,
@@ -1710,6 +1792,19 @@ mod tests {
         ]
     }
 
+    fn sample_file_blocks() -> Vec<ContentBlock> {
+        vec![
+            ContentBlock::Text {
+                text: "Summarize this file".to_string(),
+            },
+            ContentBlock::File {
+                media_type: "application/pdf".to_string(),
+                data: "JVBERi0xLjQK".to_string(),
+                filename: Some("notes.pdf".to_string()),
+            },
+        ]
+    }
+
     #[test]
     fn anthropic_vision_content_blocks() {
         let body = build_body_with_blocks(
@@ -1782,6 +1877,81 @@ mod tests {
         // Image part — Google format
         assert_eq!(parts[1]["inlineData"]["mimeType"], "image/jpeg");
         assert_eq!(parts[1]["inlineData"]["data"], "dGVzdA==");
+    }
+
+    #[test]
+    fn anthropic_pdf_file_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::Anthropic,
+            "provider_surface.anthropic.direct_api",
+            "https://api.anthropic.com/v1/messages",
+            sample_file_blocks(),
+        );
+
+        let messages = body["messages"].as_array().expect("messages array");
+        let content = messages[0]["content"].as_array().expect("content array");
+        assert_eq!(content[1]["type"], "document");
+        assert_eq!(content[1]["source"]["type"], "base64");
+        assert_eq!(content[1]["source"]["media_type"], "application/pdf");
+        assert_eq!(content[1]["source"]["data"], "JVBERi0xLjQK");
+        assert_eq!(content[1]["title"], "notes.pdf");
+    }
+
+    #[test]
+    fn openai_file_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::OpenAi,
+            "provider_surface.openai.direct_api",
+            "https://api.openai.com/v1/responses",
+            sample_file_blocks(),
+        );
+
+        let input = body["input"].as_array().expect("input array");
+        let user_content = input[0]["content"].as_array().expect("input content array");
+        assert_eq!(user_content[1]["type"], "input_file");
+        assert_eq!(user_content[1]["file_data"], "JVBERi0xLjQK");
+        assert_eq!(user_content[1]["filename"], "notes.pdf");
+    }
+
+    #[test]
+    fn google_file_content_blocks() {
+        let body = build_body_with_blocks(
+            AiProviderType::Google,
+            "provider_surface.google.direct_api",
+            "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent",
+            sample_file_blocks(),
+        );
+
+        let contents = body["contents"].as_array().expect("contents array");
+        let parts = contents[0]["parts"].as_array().expect("parts array");
+        assert_eq!(parts[1]["inlineData"]["mimeType"], "application/pdf");
+        assert_eq!(parts[1]["inlineData"]["data"], "JVBERi0xLjQK");
+    }
+
+    #[test]
+    fn render_message_content_omits_native_attachment_manifest_entries() {
+        let message = SessionMessage {
+            role: oneshim_core::models::ai_session::MessageRole::User,
+            content: "Summarize these attachments".to_string(),
+            attachments: vec![
+                Attachment::File {
+                    path: "/tmp/notes.pdf".to_string(),
+                    mime: Some("application/pdf".to_string()),
+                    data: Some("JVBERi0xLjQK".to_string()),
+                },
+                Attachment::Directory {
+                    path: "/tmp/workspace".to_string(),
+                },
+            ],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let rendered = render_message_content(&message, &ProviderRequestShape::OpenAiResponses);
+        assert!(!rendered.contains("/tmp/notes.pdf"));
+        assert!(rendered.contains("/tmp/workspace"));
+        assert!(rendered.contains("Attachment manifest"));
     }
 
     #[test]
