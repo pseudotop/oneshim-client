@@ -143,6 +143,36 @@ impl HttpApiSession {
                     "messages": api_messages,
                 }))
             }
+            ProviderRequestShape::GoogleGenerateContent => {
+                // Google Gemini: contents array, system_instruction, generationConfig
+                let api_contents: Vec<serde_json::Value> = messages
+                    .iter()
+                    .filter(|m| m.role != ChatRole::System)
+                    .map(|m| {
+                        serde_json::json!({
+                            "role": match m.role {
+                                ChatRole::User => "user",
+                                ChatRole::Assistant => "model",
+                                _ => "user",
+                            },
+                            "parts": [{"text": m.content}],
+                        })
+                    })
+                    .collect();
+
+                let mut body = serde_json::json!({
+                    "contents": api_contents,
+                    "generationConfig": {
+                        "maxOutputTokens": 4096,
+                    },
+                });
+
+                if let Some(ref prompt) = self.system_prompt {
+                    body["system_instruction"] = serde_json::json!({"parts": [{"text": prompt}]});
+                }
+
+                Ok(body)
+            }
             _ => Err(CoreError::Internal(format!(
                 "unsupported request shape for HTTP API session: {shape:?}"
             ))),
@@ -188,6 +218,28 @@ impl HttpApiSession {
         Ok(builder)
     }
 
+    /// Resolve the streaming endpoint URL.
+    ///
+    /// Google requires `streamGenerateContent?alt=sse` instead of `generateContent`.
+    fn streaming_endpoint(&self) -> String {
+        let shape = provider_specs::resolved_request_shape(
+            self.provider_type,
+            Some(&self.surface_id),
+            ProviderTransportKind::Llm,
+        );
+        if matches!(shape, Ok(ProviderRequestShape::GoogleGenerateContent)) {
+            self.endpoint
+                .replace(":generateContent", ":streamGenerateContent")
+                + if self.endpoint.contains('?') {
+                    "&alt=sse"
+                } else {
+                    "?alt=sse"
+                }
+        } else {
+            self.endpoint.clone()
+        }
+    }
+
     /// Truncate history to keep the system prompt (first message) + last (max-1) messages.
     #[cfg(test)]
     fn truncate_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
@@ -213,9 +265,10 @@ impl ConversationSession for HttpApiSession {
         let messages_snapshot = self.history.read().await.clone();
         let request_body = self.build_request_body(&messages_snapshot)?;
 
+        let streaming_url = self.streaming_endpoint();
         let builder = self
             .http_client
-            .post(&self.endpoint)
+            .post(&streaming_url)
             .header("Content-Type", "application/json")
             .json(&request_body);
 
@@ -264,6 +317,7 @@ impl ConversationSession for HttpApiSession {
                 ProviderRequestShape::AnthropicMessages
                     | ProviderRequestShape::AnthropicVisionMessages
             );
+            let is_google = matches!(shape, ProviderRequestShape::GoogleGenerateContent);
 
             let byte_stream = response.bytes_stream();
             let mut event_stream = byte_stream.eventsource();
@@ -271,43 +325,31 @@ impl ConversationSession for HttpApiSession {
             while let Some(event_result) = event_stream.next().await {
                 match event_result {
                     Ok(event) => {
-                        if is_anthropic {
-                            if let Some(msg) = parse_anthropic_sse_event(&event.event, &event.data) {
-                                match &msg {
-                                    OutboundMessage::Text { content, .. } => {
-                                        accumulated.push_str(content);
-                                    }
-                                    OutboundMessage::Result { .. } => {
-                                        // Stream completion — append assistant response to history
-                                        let assistant_msg = ChatMessage {
-                                            role: ChatRole::Assistant,
-                                            content: accumulated.clone(),
-                                        };
-                                        let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                                        hist.push(assistant_msg);
-                                        truncate_chat_history(&mut hist, max_turns);
-                                    }
-                                    _ => {}
+                        let parsed = if is_anthropic {
+                            parse_anthropic_sse_event(&event.event, &event.data)
+                        } else if is_google {
+                            parse_google_sse_event(&event.data)
+                        } else {
+                            parse_openai_sse_event(&event.data)
+                        };
+
+                        if let Some(msg) = parsed {
+                            match &msg {
+                                OutboundMessage::Text { content, .. } => {
+                                    accumulated.push_str(content);
                                 }
-                                yield msg;
+                                OutboundMessage::Result { .. } => {
+                                    let assistant_msg = ChatMessage {
+                                        role: ChatRole::Assistant,
+                                        content: accumulated.clone(),
+                                    };
+                                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
+                                    hist.push(assistant_msg);
+                                    truncate_chat_history(&mut hist, max_turns);
+                                }
+                                _ => {}
                             }
-                        } else if let Some(msg) = parse_openai_sse_event(&event.data) {
-                                match &msg {
-                                    OutboundMessage::Text { content, .. } => {
-                                        accumulated.push_str(content);
-                                    }
-                                    OutboundMessage::Result { .. } => {
-                                        let assistant_msg = ChatMessage {
-                                            role: ChatRole::Assistant,
-                                            content: accumulated.clone(),
-                                        };
-                                        let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                                        hist.push(assistant_msg);
-                                        truncate_chat_history(&mut hist, max_turns);
-                                    }
-                                    _ => {}
-                                }
-                                yield msg;
+                            yield msg;
                         }
                     }
                     Err(e) => {
@@ -436,6 +478,68 @@ pub fn parse_anthropic_sse_event(event_type: &str, data: &str) -> Option<Outboun
             None
         }
     }
+}
+
+/// Parse a Google Gemini SSE event data payload into an OutboundMessage.
+///
+/// Google events:
+/// - `data: {"candidates":[{"content":{"parts":[{"text":"chunk"}]}}]}` → text chunk
+/// - Final chunk includes `usageMetadata` with token counts
+/// - Stream ends without explicit `[DONE]` marker
+pub fn parse_google_sse_event(data: &str) -> Option<OutboundMessage> {
+    let trimmed = data.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let val: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+
+    // Extract text from candidates[0].content.parts[0].text
+    let text = val
+        .get("candidates")?
+        .get(0)?
+        .get("content")?
+        .get("parts")?
+        .get(0)?
+        .get("text")?
+        .as_str()?;
+
+    // Check for usage metadata (present in chunks, especially the last one)
+    let usage = val.get("usageMetadata").and_then(|u| {
+        let input = u.get("promptTokenCount")?.as_u64()?;
+        let output = u.get("candidatesTokenCount")?.as_u64()?;
+        Some(TokenUsage {
+            input_tokens: input,
+            output_tokens: output,
+        })
+    });
+
+    if usage.is_some() {
+        // Final chunk with usage — emit text + result
+        if !text.is_empty() {
+            // Google sends text and usage in the same final chunk;
+            // emit as Result with the final text included.
+            return Some(OutboundMessage::Result {
+                content: text.to_string(),
+                done: true,
+                usage,
+            });
+        }
+        return Some(OutboundMessage::Result {
+            content: String::new(),
+            done: true,
+            usage,
+        });
+    }
+
+    if text.is_empty() {
+        return None;
+    }
+
+    Some(OutboundMessage::Text {
+        content: text.to_string(),
+        done: false,
+    })
 }
 
 /// Parse an OpenAI SSE event data payload into an OutboundMessage.
@@ -580,6 +684,45 @@ mod tests {
             }
             other => panic!("expected Result with usage, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn google_text_chunk() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"text":"Hello from Gemini"}],"role":"model"}}],"modelVersion":"gemini-2.5-flash"}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Text { content, done }) => {
+                assert_eq!(content, "Hello from Gemini");
+                assert!(!done);
+            }
+            other => panic!("expected Text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_final_chunk_with_usage() {
+        let data = r#"{"candidates":[{"content":{"parts":[{"text":"!"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":42},"modelVersion":"gemini-2.5-flash"}"#;
+        let msg = parse_google_sse_event(data);
+        match msg {
+            Some(OutboundMessage::Result {
+                content,
+                done,
+                usage,
+            }) => {
+                assert_eq!(content, "!");
+                assert!(done);
+                let u = usage.unwrap();
+                assert_eq!(u.input_tokens, 10);
+                assert_eq!(u.output_tokens, 42);
+            }
+            other => panic!("expected Result with usage, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn google_empty_data_ignored() {
+        let msg = parse_google_sse_event("");
+        assert!(msg.is_none());
     }
 
     #[test]

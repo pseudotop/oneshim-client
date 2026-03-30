@@ -395,7 +395,8 @@ fn loads_surface_execution_capabilities_from_catalog() {
         .iter()
         .find(|surface| surface.surface_id == "provider_surface.openai.direct_api")
         .expect("openai direct surface should exist");
-    assert!(openai.llm_capabilities.structured_output);
+    // structured_output is false until client-side implementation is complete
+    assert!(!openai.llm_capabilities.structured_output);
 
     let google = catalog
         .surfaces
