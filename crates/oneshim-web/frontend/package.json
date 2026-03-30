@@ -29,7 +29,9 @@
     "test:e2e:tauri": "wdio run e2e-tauri/wdio.conf.ts",
     "test:e2e:tauri:watch": "wdio run e2e-tauri/wdio.conf.ts --watch",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "storybook:review": "storybook dev -p 6007 -c .storybook-review",
+    "build-storybook": "storybook build",
+    "build-storybook:review": "storybook build -c .storybook-review -o storybook-review-static"
   },
   "dependencies": {
     "@lobehub/icons-static-svg": "^1.84.0",

@@ -76,10 +76,10 @@ jobs:
 
       - name: Build Storybook review catalog
         working-directory: crates/oneshim-web/frontend
-        run: pnpm build-storybook
+        run: pnpm build-storybook:review
 
       - name: Verify Storybook build output
-        run: test -f crates/oneshim-web/frontend/storybook-static/index.html
+        run: test -f crates/oneshim-web/frontend/storybook-review-static/index.html
 
       - name: Install Playwright browser
         working-directory: crates/oneshim-web/frontend
@@ -111,13 +111,13 @@ jobs:
           if-no-files-found: error
 
       - name: Package Storybook artifact
-        run: tar -czf crates/oneshim-web/frontend/storybook-static.tar.gz -C crates/oneshim-web/frontend storybook-static
+        run: tar -czf crates/oneshim-web/frontend/storybook-review-static.tar.gz -C crates/oneshim-web/frontend storybook-review-static
 
       - name: Upload Storybook artifact
         uses: actions/upload-artifact@v7
         with:
           name: frontend-storybook-bundle
-          path: crates/oneshim-web/frontend/storybook-static.tar.gz
+          path: crates/oneshim-web/frontend/storybook-review-static.tar.gz
           if-no-files-found: error
 
   check:
