@@ -23,7 +23,9 @@ use oneshim_core::models::ai_session::{
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
-use crate::session_adapters::prompt_payload::{render_conversation_prompt, render_message_payload};
+use crate::session_adapters::prompt_payload::{
+    extract_native_response_schema, render_conversation_prompt, render_message_payload,
+};
 use crate::subprocess_provider::{
     append_model_flag, append_oneshot_flags, classify_subprocess_error, DetectedSubprocessCli,
 };
@@ -213,6 +215,7 @@ impl GenericSubprocessSession {
         let temp_dir = tempdir().map_err(|err| {
             CoreError::Internal(format!("Failed to create Codex session tempdir: {err}"))
         })?;
+        let response_schema = extract_native_response_schema(message.response_format.as_ref());
 
         let mut child = Command::new(&self.surface.executable_path);
         child
@@ -227,6 +230,24 @@ impl GenericSubprocessSession {
             .kill_on_drop(true);
         append_oneshot_flags(&mut child, &self.surface.surface_id);
         append_model_flag(&mut child, &self.surface.surface_id, &self.model);
+
+        if let Some(schema) = response_schema.as_ref() {
+            let schema_path = temp_dir.path().join("output-schema.json");
+            std::fs::write(
+                &schema_path,
+                serde_json::to_vec_pretty(schema).map_err(|err| {
+                    CoreError::Internal(format!(
+                        "Failed to serialize Codex output schema for session: {err}"
+                    ))
+                })?,
+            )
+            .map_err(|err| {
+                CoreError::Internal(format!(
+                    "Failed to write Codex output schema for session: {err}"
+                ))
+            })?;
+            child.arg("--output-schema").arg(schema_path);
+        }
 
         let mut child = child.spawn().map_err(|err| {
             CoreError::Internal(format!("Failed to spawn Codex session subprocess: {err}"))

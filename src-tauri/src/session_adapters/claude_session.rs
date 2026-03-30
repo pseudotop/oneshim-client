@@ -21,7 +21,9 @@ use oneshim_core::models::ai_session::{
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
 use crate::session_adapters::claude_normalizer::normalize_claude_stream_event;
-use crate::session_adapters::prompt_payload::render_message_payload;
+use crate::session_adapters::prompt_payload::{
+    extract_native_response_schema, render_message_payload,
+};
 use crate::subprocess_provider::{classify_subprocess_error, DetectedSubprocessCli};
 
 pub struct ClaudeSubprocessSession {
@@ -60,7 +62,7 @@ impl ClaudeSubprocessSession {
         }
     }
 
-    fn build_command(&self, prompt: &str) -> Command {
+    fn build_command(&self, prompt: &str, response_schema: Option<&serde_json::Value>) -> Command {
         let mut cmd = Command::new(&self.surface.executable_path);
         cmd.arg("-p");
         cmd.arg("--output-format").arg("stream-json");
@@ -82,6 +84,10 @@ impl ClaudeSubprocessSession {
             }
         }
 
+        if let Some(schema) = response_schema {
+            cmd.arg("--json-schema").arg(schema.to_string());
+        }
+
         cmd.arg(prompt);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -94,7 +100,8 @@ impl ClaudeSubprocessSession {
 impl ConversationSession for ClaudeSubprocessSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
         let prompt = render_message_payload(message, self.default_tools.as_deref());
-        let mut cmd = self.build_command(&prompt);
+        let response_schema = extract_native_response_schema(message.response_format.as_ref());
+        let mut cmd = self.build_command(&prompt, response_schema.as_ref());
 
         let mut child = cmd.spawn().map_err(|err| {
             *self.state.lock() = SessionState::Failed;

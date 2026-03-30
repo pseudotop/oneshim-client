@@ -1,6 +1,10 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use oneshim_core::models::ai_session::{
     Attachment, ChatMessage, ChatRole, MessageContext, SessionMessage, ToolDefinition,
 };
+
+const MAX_ATTACHMENT_PREVIEW_BYTES: usize = 8 * 1024;
+const MAX_ATTACHMENT_PREVIEW_FILES: usize = 4;
 
 pub(crate) fn render_message_payload(
     message: &SessionMessage,
@@ -27,6 +31,14 @@ pub(crate) fn render_message_payload(
         ));
     }
 
+    let attachment_previews = attachment_content_previews(&message.attachments);
+    if !attachment_previews.is_empty() {
+        sections.push(format!(
+            "Attachment content previews JSON:\n{}",
+            pretty_json(&attachment_previews)
+        ));
+    }
+
     let tools = message
         .tools
         .as_deref()
@@ -47,6 +59,34 @@ pub(crate) fn render_message_payload(
     }
 
     sections.join("\n\n")
+}
+
+pub(crate) fn extract_native_response_schema(
+    response_format: Option<&serde_json::Value>,
+) -> Option<serde_json::Value> {
+    let response_format = response_format?;
+
+    if response_format.get("type").and_then(|value| value.as_str()) == Some("json_schema") {
+        if let Some(schema) = response_format
+            .get("json_schema")
+            .and_then(|value| value.get("schema"))
+        {
+            return Some(schema.clone());
+        }
+    }
+
+    if let Some(schema) = response_format.get("schema") {
+        return Some(schema.clone());
+    }
+
+    if response_format.get("properties").is_some()
+        || response_format.get("required").is_some()
+        || response_format.get("$schema").is_some()
+    {
+        return Some(response_format.clone());
+    }
+
+    None
 }
 
 pub(crate) fn render_conversation_prompt(
@@ -139,6 +179,121 @@ fn attachment_manifest(attachments: &[Attachment]) -> Vec<serde_json::Value> {
         .collect()
 }
 
+fn attachment_content_previews(attachments: &[Attachment]) -> Vec<serde_json::Value> {
+    attachments
+        .iter()
+        .filter_map(|attachment| match attachment {
+            Attachment::File { path, mime, data } => {
+                let mime_ref = mime.as_deref();
+                let encoded = data.as_deref()?;
+                if !is_text_like_attachment(path, mime_ref) {
+                    return None;
+                }
+
+                let decoded = BASE64.decode(encoded).ok()?;
+                let truncated = decoded.len() > MAX_ATTACHMENT_PREVIEW_BYTES;
+                let preview_bytes = if truncated {
+                    &decoded[..MAX_ATTACHMENT_PREVIEW_BYTES]
+                } else {
+                    decoded.as_slice()
+                };
+
+                let preview = String::from_utf8_lossy(preview_bytes).to_string();
+                if preview.trim().is_empty() {
+                    return None;
+                }
+
+                Some(serde_json::json!({
+                    "kind": "file",
+                    "path": path,
+                    "mime": mime_ref,
+                    "truncated": truncated,
+                    "preview": preview,
+                }))
+            }
+            _ => None,
+        })
+        .take(MAX_ATTACHMENT_PREVIEW_FILES)
+        .collect()
+}
+
+fn is_text_like_attachment(path: &str, mime: Option<&str>) -> bool {
+    if let Some(mime) = mime.map(|value| value.trim().to_ascii_lowercase()) {
+        if mime.starts_with("text/") {
+            return true;
+        }
+
+        if matches!(
+            mime.as_str(),
+            "application/json"
+                | "application/ld+json"
+                | "application/xml"
+                | "application/yaml"
+                | "application/x-yaml"
+                | "application/toml"
+                | "application/javascript"
+                | "application/x-javascript"
+                | "application/sql"
+                | "application/x-sh"
+                | "application/x-python-code"
+        ) {
+            return true;
+        }
+    }
+
+    let ext = path
+        .rsplit('.')
+        .next()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+
+    matches!(
+        ext.as_str(),
+        "txt"
+            | "md"
+            | "markdown"
+            | "json"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "xml"
+            | "csv"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "cjs"
+            | "py"
+            | "rs"
+            | "go"
+            | "java"
+            | "kt"
+            | "swift"
+            | "rb"
+            | "php"
+            | "c"
+            | "cc"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "sh"
+            | "bash"
+            | "zsh"
+            | "fish"
+            | "sql"
+            | "html"
+            | "css"
+            | "scss"
+            | "less"
+            | "ini"
+            | "cfg"
+            | "conf"
+            | "env"
+            | "log"
+    )
+}
+
 fn pretty_json<T: serde::Serialize + ?Sized>(value: &T) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
 }
@@ -187,6 +342,76 @@ mod tests {
         assert!(rendered.contains("Attachments JSON"));
         assert!(rendered.contains("Available tools JSON"));
         assert!(rendered.contains("Required response format JSON"));
+    }
+
+    #[test]
+    fn render_message_payload_includes_text_attachment_preview() {
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "Summarize the attached file".to_string(),
+            attachments: vec![Attachment::File {
+                path: "notes.md".to_string(),
+                mime: Some("text/markdown".to_string()),
+                data: Some(BASE64.encode("# Notes\n- ship it\n")),
+            }],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let rendered = render_message_payload(&message, None);
+        assert!(rendered.contains("Attachment content previews JSON"));
+        assert!(rendered.contains("# Notes"));
+        assert!(rendered.contains("ship it"));
+    }
+
+    #[test]
+    fn render_message_payload_skips_binary_attachment_preview() {
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "Inspect the binary".to_string(),
+            attachments: vec![Attachment::File {
+                path: "archive.bin".to_string(),
+                mime: Some("application/octet-stream".to_string()),
+                data: Some(BASE64.encode([0_u8, 159, 146, 150])),
+            }],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let rendered = render_message_payload(&message, None);
+        assert!(!rendered.contains("Attachment content previews JSON"));
+    }
+
+    #[test]
+    fn extract_native_response_schema_from_json_schema_wrapper() {
+        let response_format = serde_json::json!({
+            "type": "json_schema",
+            "json_schema": {
+                "name": "answer",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "result": { "type": "string" }
+                    }
+                }
+            }
+        });
+
+        let schema =
+            extract_native_response_schema(Some(&response_format)).expect("schema should exist");
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"].get("result").is_some());
+    }
+
+    #[test]
+    fn extract_native_response_schema_ignores_non_schema_format() {
+        let response_format = serde_json::json!({
+            "type": "json_object"
+        });
+
+        assert!(extract_native_response_schema(Some(&response_format)).is_none());
     }
 
     #[test]
