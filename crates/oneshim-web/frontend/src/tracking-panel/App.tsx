@@ -71,10 +71,16 @@ export function App() {
 
     invoke<CaptureState>('get_capture_status')
       .then(setState)
-      .catch((e) => console.warn('get_capture_status failed:', e))
+      .catch((e) => {
+        console.warn('get_capture_status failed:', e)
+        showFeedback('Status unavailable')
+      })
     invoke<ConnectionStatus>('get_connection_status')
       .then(setConn)
-      .catch((e) => console.warn('get_connection_status failed:', e))
+      .catch((e) => {
+        console.warn('get_connection_status failed:', e)
+        showFeedback('Connection status unavailable')
+      })
 
     // Restore saved position
     invoke<string | null>('get_panel_position')
@@ -94,7 +100,7 @@ export function App() {
       unlistenCapture?.()
       unlistenConn?.()
     }
-  }, [])
+  }, [showFeedback])
 
   // Save position on window move (debounced)
   useEffect(() => {
