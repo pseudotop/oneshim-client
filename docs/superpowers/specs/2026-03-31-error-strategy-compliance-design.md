@@ -46,10 +46,13 @@ impl From<NetworkError> for CoreError {
         match err {
             NetworkError::Http(msg) => CoreError::Network(msg),
             NetworkError::Timeout { timeout_ms } => CoreError::RequestTimeout { timeout_ms },
-            // ...
+            // ... (exhaustive — no catch-all arm)
         }
     }
 }
+```
+
+**Exhaustive match required**: `From<CrateError> for CoreError` must NOT use a catch-all `_ =>` arm. Since `CrateError` is local, adding a new variant should produce a compiler error forcing the mapping to be updated. (This differs from `From<CoreError> for ApiError` in oneshim-web, which correctly uses a catch-all because CoreError is foreign.)
 ```
 
 - **Internal functions** return `Result<T, CrateError>` (domain-specific)
@@ -110,7 +113,7 @@ For each crate:
 
 Constructors (e.g., `HttpApiClient::new()`, `GrpcSessionClient::connect()`) are public non-port functions called by `src-tauri`. These SHOULD return `CrateError`, not `CoreError`:
 
-- `src-tauri` uses `anyhow::Result`, so `?` on any `thiserror` type auto-converts via `Display`
+- `src-tauri` uses `anyhow::Result`, so `?` on any `thiserror` type auto-converts via `std::error::Error` trait
 - Keeping constructors on `CoreError` while internals use `CrateError` creates inconsistency
 - If a constructor fails, the error is crate-specific (e.g., TLS config, connection refused)
 
@@ -138,6 +141,16 @@ assert!(matches!(result.unwrap_err(), AutomationError::PolicyDenied(_)));
 
 Tests that validate port trait behavior (e.g., gRPC error mapping) stay on `CoreError` — they test the `From<CrateError> for CoreError` conversion boundary.
 
+### Information Loss at Conversion Boundary
+
+Some CoreError variants are `String`-only (e.g., `Network(String)`, `Storage(String)`). Crate-specific errors may have structured fields (e.g., `Http { status: u16, message: String }`). The `From` conversion flattens these into strings:
+
+```rust
+NetworkError::Http { status, message } => CoreError::Network(format!("{status}: {message}"))
+```
+
+This is acceptable — port-level consumers (src-tauri, oneshim-web) need error category, not internal detail. The structured detail is available in logs via `tracing::error!` before conversion.
+
 ## What Does NOT Change
 
 - Port trait signatures in `oneshim-core` (stay `CoreError`)
@@ -145,6 +158,7 @@ Tests that validate port trait behavior (e.g., gRPC error mapping) stay on `Core
 - `oneshim-web` (already has `ApiError`)
 - `oneshim-api-contracts` (pure DTOs, no errors)
 - `CoreError` itself (remains the port-level error lingua franca)
+- `GuiInteractionError` in `oneshim-core` — already compliant (defined in core, re-exported by automation as a core type, not an adapter error)
 
 ## Execution
 
