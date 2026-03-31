@@ -223,7 +223,7 @@ export default function MonitoringTab({
   return (
     <div className="space-y-6">
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.collectionTitle')}</CardTitle>
+        <CardTitle sticky>{t('settings.collectionTitle')}</CardTitle>
         <div className="space-y-4">
           <label className="flex cursor-pointer items-center justify-between">
             <div>
@@ -448,7 +448,7 @@ export default function MonitoringTab({
       )}
 
       <Card id="section-monitoring" variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.monitorTitle')}</CardTitle>
+        <CardTitle sticky>{t('settings.monitorTitle')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label={t('settings.processMonitoring')}

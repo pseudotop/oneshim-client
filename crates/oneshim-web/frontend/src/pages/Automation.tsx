@@ -25,6 +25,7 @@ import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { addToast } from '../hooks/useToast'
 import { colors, iconSize, interaction, motion, typography } from '../styles/tokens'
+import type { BadgeColor } from '../styles/variants'
 import { cn } from '../utils/cn'
 
 type PresetTab = 'Productivity' | 'AppManagement' | 'Workflow' | 'Custom'
@@ -43,7 +44,7 @@ const sourceLabelByValue: Record<string, string> = {
   platform: 'automation.sourcePlatform',
 }
 
-const sourceBadgeColorByValue: Record<string, 'default' | 'info' | 'warning' | 'success' | 'primary'> = {
+const sourceBadgeColorByValue: Record<string, BadgeColor> = {
   local: 'default',
   remote: 'info',
   'local-fallback': 'warning',

@@ -415,7 +415,7 @@ export default function AiAutomationTab({
       <ProviderWizard onSelect={handleProviderWizardSelect} />
 
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settingsAutomation.title')}</CardTitle>
+        <CardTitle sticky>{t('settingsAutomation.title')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label={t('settingsAutomation.enabled')}
@@ -427,7 +427,7 @@ export default function AiAutomationTab({
       </Card>
 
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settingsAutomation.sandboxTitle')}</CardTitle>
+        <CardTitle sticky>{t('settingsAutomation.sandboxTitle')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label={t('settingsAutomation.sandboxEnabled')}
@@ -463,7 +463,7 @@ export default function AiAutomationTab({
       </Card>
 
       <Card id="section-ai" variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settingsAutomation.aiTitle')}</CardTitle>
+        <CardTitle sticky>{t('settingsAutomation.aiTitle')}</CardTitle>
         <div className="space-y-4">
           <div className="space-y-3 rounded-lg border border-muted p-4">
             <div>

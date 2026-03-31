@@ -17,7 +17,7 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
 
   return (
     <Card variant="default" padding="lg">
-      <CardTitle className="mb-4">{t('settings.privacyTitle')}</CardTitle>
+      <CardTitle sticky>{t('settings.privacyTitle')}</CardTitle>
       <div className="space-y-4">
         <ToggleRow
           label={t('settings.autoExclude')}

@@ -17,7 +17,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
 
   return (
     <Card variant="default" padding="lg">
-      <CardTitle className="mb-4">{t('settings.scheduleTitle')}</CardTitle>
+      <CardTitle sticky>{t('settings.scheduleTitle')}</CardTitle>
       <div className="space-y-4">
         <ToggleRow
           label={t('settings.scheduleEnabled')}

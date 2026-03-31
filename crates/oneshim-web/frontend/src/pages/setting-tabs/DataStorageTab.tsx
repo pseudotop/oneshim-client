@@ -88,7 +88,7 @@ export default function DataStorageTab({
   return (
     <div className="space-y-6">
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.storageStats')}</CardTitle>
+        <CardTitle sticky>{t('settings.storageStats')}</CardTitle>
         {storageLoading ? (
           <div className="flex h-32 items-center justify-center">
             <Spinner size="lg" className={colors.primary.text} />
@@ -130,7 +130,7 @@ export default function DataStorageTab({
       </Card>
 
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.exportTitle')}</CardTitle>
+        <CardTitle sticky>{t('settings.exportTitle')}</CardTitle>
         <p className="mb-4 text-content-secondary text-sm">{t('settings.exportDescription')}</p>
 
         <div className="mb-4 flex items-center gap-4">
@@ -182,7 +182,7 @@ export default function DataStorageTab({
       </Card>
 
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.retentionTitle')}</CardTitle>
+        <CardTitle sticky>{t('settings.retentionTitle')}</CardTitle>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
             <label htmlFor="settings-retention-days" className={form.label}>
@@ -217,7 +217,7 @@ export default function DataStorageTab({
       </Card>
 
       <Card id="section-telemetry" variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.telemetryTitle')}</CardTitle>
+        <CardTitle sticky>{t('settings.telemetryTitle')}</CardTitle>
         <p className="mb-4 text-content-secondary text-sm">{t('settings.telemetryDesc')}</p>
         <div className="space-y-4">
           <ToggleRow

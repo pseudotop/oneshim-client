@@ -56,7 +56,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
     <div className="space-y-6">
       {/* AI Session */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.aiSession', 'AI Session')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.aiSession', 'AI Session')}</CardTitle>
         <div className="grid grid-cols-2 gap-4">
           <NumberField
             id="ai-session-max-concurrent"
@@ -107,7 +107,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
 
       {/* Suggestion */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.suggestion', 'Suggestions')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.suggestion', 'Suggestions')}</CardTitle>
         <ToggleRow
           label="Enable suggestions"
           description="Receive AI-powered suggestions based on your activity"
@@ -118,7 +118,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
 
       {/* Indicator */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.indicator', 'Screen Indicator')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.indicator', 'Screen Indicator')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label="Show border"
@@ -145,7 +145,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
 
       {/* Analysis */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.analysis', 'Analysis Pipeline')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.analysis', 'Analysis Pipeline')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label="Enable analysis"
@@ -201,7 +201,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
 
       {/* Network */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.network', 'Network & Server')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.network', 'Network & Server')}</CardTitle>
         <div className="space-y-4">
           <div>
             <SectionLabel htmlFor="network-base-url">Server base URL</SectionLabel>
@@ -247,7 +247,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
 
       {/* Coaching */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.coaching', 'Coaching')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.coaching', 'Coaching')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label="Enable coaching"
@@ -269,7 +269,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
 
       {/* Integration */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.integration', 'Integration')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.integration', 'Integration')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label="Enable integration"
@@ -298,7 +298,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
 
       {/* Sync */}
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.advanced.sync', 'Cross-Device Sync')}</CardTitle>
+        <CardTitle sticky>{t('settings.advanced.sync', 'Cross-Device Sync')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label="Enable sync"

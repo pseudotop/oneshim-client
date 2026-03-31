@@ -4,7 +4,7 @@
 export { Alert, type AlertProps } from './Alert'
 export { Badge, type BadgeProps } from './Badge'
 export { Button, type ButtonProps } from './Button'
-export { Card, CardContent, CardHeader, type CardProps, CardTitle } from './Card'
+export { Card, CardContent, CardHeader, type CardProps, CardTitle, type CardTitleProps } from './Card'
 export { Checkbox, type CheckboxProps } from './Checkbox'
 export {
   Dialog,

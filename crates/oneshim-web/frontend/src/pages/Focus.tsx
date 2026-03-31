@@ -23,6 +23,7 @@ import { Spinner } from '../components/ui/Spinner'
 import { chart, colors, dataViz, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
+import { scoreColor } from '../utils/score-color'
 
 const CATEGORY_COLORS: Record<string, string> = {
   Development: 'bg-brand-signal/80',
@@ -52,13 +53,7 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
   const circumference = 2 * Math.PI * 45
   const strokeDashoffset = circumference * (1 - percentage)
 
-  const getColor = (score: number) => {
-    if (score >= 70) return dataViz.stroke.good
-    if (score >= 40) return dataViz.stroke.warning
-    return dataViz.stroke.critical
-  }
-
-  const color = getColor(value)
+  const color = scoreColor(value)
 
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">

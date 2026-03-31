@@ -35,8 +35,22 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
   return <div className={cn('mb-4', className)} {...props} />
 }
 
-export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn(typography.h3, colors.text.primary, className)} {...props} />
+export interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+  sticky?: boolean
+}
+
+export function CardTitle({ className, sticky, ...props }: CardTitleProps) {
+  return (
+    <h2
+      className={cn(
+        typography.h3,
+        colors.text.primary,
+        sticky && 'sticky top-0 z-10 -mx-6 -mt-6 mb-4 rounded-t-md bg-surface-elevated px-6 pt-6 pb-3',
+        className,
+      )}
+      {...props}
+    />
+  )
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

@@ -16,7 +16,7 @@ export default function NotificationSettings({ notification, onChange }: Notific
 
   return (
     <Card variant="default" padding="lg">
-      <CardTitle className="mb-4">{t('settings.notifTitle')}</CardTitle>
+      <CardTitle sticky>{t('settings.notifTitle')}</CardTitle>
 
       {/* UI note */}
       <label className={`mb-6 flex cursor-pointer items-center justify-between border-b pb-4 ${form.sectionDivider}`}>

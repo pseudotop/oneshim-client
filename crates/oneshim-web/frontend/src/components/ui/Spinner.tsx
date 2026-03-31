@@ -1,24 +1,18 @@
 /**
  */
-import { iconSize } from '../../styles/tokens'
+import { spinnerVariants } from '../../styles/variants'
 import { cn } from '../../utils/cn'
 
 export interface SpinnerProps {
   className?: string
-  size?: 'sm' | 'md' | 'lg'
-}
-
-const sizeClasses = {
-  sm: iconSize.base,
-  md: iconSize.lg,
-  lg: iconSize.hero,
+  size?: keyof typeof spinnerVariants.size
 }
 
 export function Spinner({ className, size = 'md' }: SpinnerProps) {
   return (
     <output aria-label="Loading">
       <svg
-        className={cn('animate-spin', sizeClasses[size], className)}
+        className={cn('animate-spin', spinnerVariants.size[size], className)}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 24 24"

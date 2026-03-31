@@ -28,14 +28,14 @@ const highlightConfig: Record<string, { icon: string; bg: string; text: string }
 export default function InsightCard({ insight }: InsightCardProps) {
   if (!insight) {
     return (
-      <Card padding="md" className="border-brand-signal border-l-4">
+      <Card variant="accent" padding="md">
         <p className={cn(typography.body, colors.text.secondary)}>No insight available for today</p>
       </Card>
     )
   }
 
   return (
-    <Card padding="md" className="border-brand-signal border-l-4">
+    <Card variant="accent" padding="md">
       <p className={cn('mb-3 leading-relaxed', typography.body, colors.text.primary)}>{insight.narrative}</p>
       {insight.highlights.length > 0 && (
         <div className="flex flex-wrap gap-2">
