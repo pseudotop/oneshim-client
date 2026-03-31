@@ -8,10 +8,8 @@ use oneshim_core::ports::llm_provider::{
 use oneshim_core::ports::skill_loader::SkillLoader;
 use std::sync::Arc;
 
-#[async_trait]
-pub trait IntentPlanner: Send + Sync {
-    async fn plan(&self, intent_hint: &str) -> Result<AutomationIntent, CoreError>;
-}
+// Re-export from core — canonical definition is in oneshim-core/src/ports/intent_planner.rs
+pub use oneshim_core::ports::intent_planner::IntentPlanner;
 
 pub struct LlmIntentPlanner {
     llm_provider: Arc<dyn LlmProvider>,

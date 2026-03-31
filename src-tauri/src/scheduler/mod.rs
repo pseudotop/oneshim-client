@@ -73,9 +73,8 @@ pub(crate) struct AdaptiveTriggerState {
     pub drift_detector: oneshim_analysis::auto_tuner::DriftDetector,
     /// Tick counter for periodic auto-tune override generation.
     pub auto_tune_tick_count: u64,
-    /// Clustering strategy (HDBSCAN or k-means) for constrained re-clustering.
-    pub clustering_strategy:
-        Option<Box<dyn oneshim_analysis::clustering_strategy::ClusteringStrategy>>,
+    /// Regime analysis facade for constrained re-clustering.
+    pub regime_analysis: Option<oneshim_analysis::RegimeAnalysisFacade>,
     /// Override store for loading user overrides during re-clustering.
     pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     /// Flag set by REST/Tauri to request on-demand re-clustering.

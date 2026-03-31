@@ -17,13 +17,12 @@ use oneshim_core::ports::integration::{
 };
 use oneshim_core::ports::secret_store::SecretStore;
 use oneshim_network::integration::{
-    Ed25519DpopProofFactory, EnvIntegrationAuthPort, HttpsIntegrationTransportClient,
-    HttpsIntegrationTransportConfig, IntegrationEgressCoordinator, IntegrationInboxCoordinator,
-    IntegrationInboxTransportClient, IntegrationInsightProducerCoordinator,
-    IntegrationProducerRuntimeLoop, IntegrationProducerRuntimeLoopProfile,
-    IntegrationRequestProofFactory, IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile,
-    IntegrationRuntimeTelemetryHandle, IntegrationSessionCoordinator,
-    IntegrationSessionRuntimeProfile, IntegrationTransportClient,
+    assemble_https_transport, Ed25519DpopProofFactory, EnvIntegrationAuthPort,
+    IntegrationEgressCoordinator, IntegrationInboxCoordinator,
+    IntegrationInsightProducerCoordinator, IntegrationProducerRuntimeLoop,
+    IntegrationProducerRuntimeLoopProfile, IntegrationRequestProofFactory, IntegrationRuntimeLoop,
+    IntegrationRuntimeLoopProfile, IntegrationRuntimeTelemetryHandle,
+    IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile,
     NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
     OidcDeviceFlowIntegrationAuthPort, PolicyAwareIntegrationEgressCoordinator,
 };
@@ -315,11 +314,9 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
             return Ok(bundle);
         }
 
-        let transport = HttpsIntegrationTransportClient::new(
-            HttpsIntegrationTransportConfig::new(
-                bootstrap_url.expect("runtime_configured requires bootstrap_url"),
-                Duration::from_secs(integration.request_timeout_secs),
-            ),
+        let transport_assembly = assemble_https_transport(
+            bootstrap_url.expect("runtime_configured requires bootstrap_url"),
+            Duration::from_secs(integration.request_timeout_secs),
             auth.clone()
                 .expect("runtime_configured requires an integration auth port"),
             dpop_proof_factory,
@@ -334,11 +331,9 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
         )?;
         let session_store = Arc::new(integration_state_store.session_store())
             as Arc<dyn oneshim_core::ports::integration::IntegrationSessionStorePort>;
-        let egress_transport = Arc::new(transport.egress_transport())
-            as Arc<dyn oneshim_network::integration::IntegrationEgressTransportClient>;
-        let inbox_transport =
-            Arc::new(transport.inbox_transport()) as Arc<dyn IntegrationInboxTransportClient>;
-        let transport = Arc::new(transport) as Arc<dyn IntegrationTransportClient>;
+        let egress_transport = transport_assembly.egress_transport;
+        let inbox_transport = transport_assembly.inbox_transport;
+        let transport = transport_assembly.session_transport;
 
         let device_id = integration
             .device_id

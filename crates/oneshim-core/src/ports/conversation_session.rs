@@ -9,7 +9,7 @@ use futures_core::Stream;
 
 use crate::error::CoreError;
 use crate::models::ai_session::{
-    ConversationSessionInfo, OutboundMessage, SessionConfig, SessionMessage,
+    ConversationSessionInfo, OutboundMessage, SessionConfig, SessionMessage, SessionState,
 };
 
 /// Streaming response from a conversation session.
@@ -32,6 +32,10 @@ pub trait ConversationSession: Send + Sync {
 
     /// Provider display name.
     fn provider_name(&self) -> &str;
+
+    /// Gracefully terminate the session, releasing provider resources.
+    /// Default implementation is a no-op for backwards compatibility.
+    async fn terminate(&self) {}
 }
 
 #[async_trait]
@@ -64,4 +68,10 @@ pub trait SessionManager: Send + Sync {
         &self,
         session_id: &str,
     ) -> Result<Arc<dyn ConversationSession>, CoreError>;
+
+    /// Reset idle timer for a session (keeps it alive during active use).
+    async fn touch_session(&self, session_id: &str);
+
+    /// Report an adapter-level failure. Returns the resulting session state.
+    async fn report_failure(&self, session_id: &str, error: &CoreError) -> SessionState;
 }

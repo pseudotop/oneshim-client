@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
-use oneshim_automation::intent_planner::{IntentPlanner, LlmIntentPlanner};
+use oneshim_automation::intent_planner::LlmIntentPlanner;
 use oneshim_automation::intent_resolver::{IntentExecutor, IntentResolver};
 use oneshim_core::config::{AiAccessMode, AiProviderConfig, PiiFilterLevel};
 use oneshim_core::error::CoreError;
@@ -8,6 +8,7 @@ use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
+use oneshim_core::ports::intent_planner::IntentPlanner;
 use oneshim_core::ports::secret_store::SecretStoreSet;
 use oneshim_core::ports::skill_loader::SkillLoader;
 use oneshim_storage::frame_storage::FrameFileStorage;

@@ -11,6 +11,7 @@ pub mod runtime_loop;
 pub mod runtime_telemetry;
 pub mod session_coordinator;
 pub mod transport;
+pub mod transport_assembly;
 
 pub use auth::{
     Ed25519DpopProofFactory, EnvIntegrationAuthPort, NoopIntegrationRequestProofFactory,
@@ -42,3 +43,4 @@ pub use transport::{
     IntegrationRequestProofFactory, IntegrationTransportClient, IntegrationTransportConnectRequest,
     IntegrationTransportConnectResponse,
 };
+pub use transport_assembly::{assemble_https_transport, IntegrationTransportAssembly};

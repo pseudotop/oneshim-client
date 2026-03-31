@@ -229,6 +229,7 @@ impl SessionManagerImpl {
         let removed = self.sessions.write().await.remove(session_id);
         match removed {
             Some(managed) => {
+                managed.session.terminate().await;
                 info!(session_id = %session_id, "session terminated");
                 self.emit_state_change(session_id, managed.state, SessionState::Terminated, reason);
                 Ok(())
@@ -268,6 +269,24 @@ impl SessionManagerImpl {
         managed.state = SessionState::Active;
         Ok(managed.session.clone())
     }
+
+    /// Atomically check admission and insert a session under a single write lock.
+    /// Prevents TOCTOU race where concurrent create_session calls both pass the count check.
+    async fn admit_session(
+        &self,
+        session_id: String,
+        managed: ManagedSession,
+    ) -> Result<(), CoreError> {
+        let mut sessions = self.sessions.write().await;
+        if sessions.len() >= self.config.max_concurrent_sessions as usize {
+            return Err(CoreError::Internal(format!(
+                "max concurrent sessions ({}) reached",
+                self.config.max_concurrent_sessions,
+            )));
+        }
+        sessions.insert(session_id, managed);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -276,14 +295,6 @@ impl SessionManager for SessionManagerImpl {
         &self,
         config: SessionConfig,
     ) -> Result<Arc<dyn ConversationSession>, CoreError> {
-        let session_count = self.sessions.read().await.len();
-        if session_count >= self.config.max_concurrent_sessions as usize {
-            return Err(CoreError::Internal(format!(
-                "max concurrent sessions ({}) reached",
-                self.config.max_concurrent_sessions,
-            )));
-        }
-
         // Auto-generate system prompt from context if not provided and lift any
         // context-assembler tool definitions into session defaults when enabled.
         let mut config = config;
@@ -373,7 +384,7 @@ impl SessionManager for SessionManagerImpl {
                     last_active: Instant::now(),
                     retry_count: 0,
                 };
-                self.sessions.write().await.insert(session_id, managed);
+                self.admit_session(session_id, managed).await?;
 
                 Ok(wrapped)
             }
@@ -473,7 +484,7 @@ impl SessionManager for SessionManagerImpl {
                     last_active: Instant::now(),
                     retry_count: 0,
                 };
-                self.sessions.write().await.insert(session_id, managed);
+                self.admit_session(session_id, managed).await?;
 
                 Ok(wrapped)
             }
@@ -506,7 +517,7 @@ impl SessionManager for SessionManagerImpl {
                     last_active: Instant::now(),
                     retry_count: 0,
                 };
-                self.sessions.write().await.insert(session_id, managed);
+                self.admit_session(session_id, managed).await?;
 
                 Ok(wrapped)
             }
@@ -540,6 +551,14 @@ impl SessionManager for SessionManagerImpl {
             .get(session_id)
             .map(|m| m.session.clone())
             .ok_or_else(|| CoreError::Internal(format!("session not found: {session_id}")))
+    }
+
+    async fn touch_session(&self, session_id: &str) {
+        self.touch_session(session_id).await;
+    }
+
+    async fn report_failure(&self, session_id: &str, error: &CoreError) -> SessionState {
+        self.report_failure(session_id, error).await
     }
 }
 
