@@ -175,36 +175,49 @@ from pathlib import Path
 path = Path(sys.argv[1])
 expected = sys.argv[2]
 mismatches = []
-name = None
-version = None
-has_source = False
+content = path.read_text(encoding="utf-8")
 
+try:
+    import tomllib  # Python 3.11+
 
-def flush() -> None:
-    if not name or not name.startswith("oneshim-") or has_source:
-        return
-    if version != expected:
-        mismatches.append((name, version or "<missing>"))
+    for package in tomllib.loads(content).get("package", []):
+        name = package.get("name")
+        if not isinstance(name, str) or not name.startswith("oneshim-"):
+            continue
+        if "source" in package:
+            continue
+        version = package.get("version", "<missing>")
+        if version != expected:
+            mismatches.append((name, version))
+except ModuleNotFoundError:
+    name = None
+    version = None
+    has_source = False
 
+    def flush() -> None:
+        if not name or not name.startswith("oneshim-") or has_source:
+            return
+        if version != expected:
+            mismatches.append((name, version or "<missing>"))
 
-for raw_line in path.read_text(encoding="utf-8").splitlines():
-    line = raw_line.strip()
-    if line == "[[package]]":
-        flush()
-        name = None
-        version = None
-        has_source = False
-        continue
-    if line.startswith('name = "'):
-        name = line.split('"', 2)[1]
-        continue
-    if line.startswith('version = "'):
-        version = line.split('"', 2)[1]
-        continue
-    if line.startswith("source = "):
-        has_source = True
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if line == "[[package]]":
+            flush()
+            name = None
+            version = None
+            has_source = False
+            continue
+        if line.startswith('name = "'):
+            name = line.split('"', 2)[1]
+            continue
+        if line.startswith('version = "'):
+            version = line.split('"', 2)[1]
+            continue
+        if line.startswith("source = "):
+            has_source = True
 
-flush()
+    flush()
 
 if mismatches:
     for name, version in mismatches:
@@ -213,39 +226,8 @@ if mismatches:
 PY
 }
 
-set_workspace_lock_version() {
-  python3 - "${CARGO_LOCK_PATH}" "${1}" <<'PY'
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-target_version = sys.argv[2]
-lines = path.read_text(encoding="utf-8").splitlines()
-updated = []
-current_name = None
-
-for line in lines:
-    stripped = line.strip()
-    if stripped == "[[package]]":
-        current_name = None
-        updated.append(line)
-        continue
-    if stripped.startswith('name = "'):
-        current_name = stripped.split('"', 2)[1]
-        updated.append(line)
-        continue
-    if current_name and current_name.startswith("oneshim-") and stripped.startswith('version = "'):
-        indent = line[: len(line) - len(line.lstrip())]
-        updated.append(f'{indent}version = "{target_version}"')
-        continue
-    updated.append(line)
-
-path.write_text("\n".join(updated) + "\n", encoding="utf-8")
-PY
-}
-
 sync_workspace_lockfile() {
-  set_workspace_lock_version "${1}"
+  cargo metadata --format-version 1 --manifest-path "${WORKSPACE_CARGO_TOML}" >/dev/null
 }
 
 set_workspace_version() {

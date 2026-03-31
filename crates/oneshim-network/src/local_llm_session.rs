@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use async_stream::try_stream;
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use serde::Deserialize;
@@ -25,6 +26,9 @@ use oneshim_core::models::ai_session::{
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
 // ── Ollama NDJSON response shapes ────────────────────────────────
+
+const MAX_ATTACHMENT_PREVIEW_BYTES: usize = 8 * 1024;
+const MAX_ATTACHMENT_PREVIEW_FILES: usize = 4;
 
 /// Single NDJSON line from Ollama `/api/chat` with `stream: true`.
 #[derive(Debug, Deserialize)]
@@ -159,6 +163,131 @@ fn attachment_manifest(attachments: &[Attachment]) -> Vec<serde_json::Value> {
         .collect()
 }
 
+fn attachment_content_previews(attachments: &[Attachment]) -> Vec<serde_json::Value> {
+    attachments
+        .iter()
+        .filter_map(|attachment| match attachment {
+            Attachment::File { path, mime, data } => {
+                let mime_ref = mime.as_deref();
+                let encoded = data.as_deref()?;
+                if !is_text_like_attachment(path, mime_ref) {
+                    return None;
+                }
+
+                let decoded = BASE64.decode(encoded).ok()?;
+                let truncated = decoded.len() > MAX_ATTACHMENT_PREVIEW_BYTES;
+                let preview_bytes = if truncated {
+                    &decoded[..MAX_ATTACHMENT_PREVIEW_BYTES]
+                } else {
+                    decoded.as_slice()
+                };
+                let preview = String::from_utf8_lossy(preview_bytes).to_string();
+                if preview.trim().is_empty() {
+                    return None;
+                }
+
+                Some(serde_json::json!({
+                    "kind": "file",
+                    "path": path,
+                    "mime": mime_ref,
+                    "truncated": truncated,
+                    "preview": preview,
+                }))
+            }
+            _ => None,
+        })
+        .take(MAX_ATTACHMENT_PREVIEW_FILES)
+        .collect()
+}
+
+fn is_text_like_attachment(path: &str, mime: Option<&str>) -> bool {
+    if let Some(mime) = mime.map(|value| value.trim().to_ascii_lowercase()) {
+        if mime.starts_with("text/") {
+            return true;
+        }
+
+        if matches!(
+            mime.as_str(),
+            "application/json"
+                | "application/ld+json"
+                | "application/xml"
+                | "application/yaml"
+                | "application/x-yaml"
+                | "application/toml"
+                | "application/javascript"
+                | "application/x-javascript"
+                | "application/sql"
+                | "application/x-sh"
+                | "application/x-python-code"
+        ) {
+            return true;
+        }
+    }
+
+    let ext = path
+        .rsplit('.')
+        .next()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+
+    matches!(
+        ext.as_str(),
+        "txt"
+            | "md"
+            | "markdown"
+            | "json"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "xml"
+            | "csv"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "rs"
+            | "py"
+            | "sh"
+            | "sql"
+            | "java"
+            | "kt"
+            | "go"
+            | "c"
+            | "cc"
+            | "cpp"
+            | "h"
+            | "hpp"
+    )
+}
+
+fn extract_response_schema(
+    response_format: Option<&serde_json::Value>,
+) -> Option<serde_json::Value> {
+    let response_format = response_format?;
+
+    if response_format.get("type").and_then(|value| value.as_str()) == Some("json_schema") {
+        if let Some(schema) = response_format
+            .get("json_schema")
+            .and_then(|value| value.get("schema"))
+        {
+            return Some(schema.clone());
+        }
+    }
+
+    if let Some(schema) = response_format.get("schema") {
+        return Some(schema.clone());
+    }
+
+    if response_format.get("properties").is_some()
+        || response_format.get("required").is_some()
+        || response_format.get("$schema").is_some()
+    {
+        return Some(response_format.clone());
+    }
+
+    None
+}
+
 fn render_local_message_content(message: &SessionMessage) -> String {
     let mut sections = vec![message.content.clone()];
 
@@ -181,6 +310,14 @@ fn render_local_message_content(message: &SessionMessage) -> String {
         ));
     }
 
+    let attachment_previews = attachment_content_previews(&message.attachments);
+    if !attachment_previews.is_empty() {
+        sections.push(format!(
+            "Attachment content previews JSON:\n{}",
+            serde_json::to_string_pretty(&attachment_previews).unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
+
     let tools = message.tools.as_deref().filter(|tools| !tools.is_empty());
     if let Some(tools) = tools {
         sections.push(format!(
@@ -189,7 +326,12 @@ fn render_local_message_content(message: &SessionMessage) -> String {
         ));
     }
 
-    if let Some(response_format) = message.response_format.as_ref() {
+    if let Some(schema) = extract_response_schema(message.response_format.as_ref()) {
+        sections.push(format!(
+            "Required response schema JSON:\n{}\nReturn the final answer as valid JSON matching this schema exactly.",
+            serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string())
+        ));
+    } else if let Some(response_format) = message.response_format.as_ref() {
         sections.push(format!(
             "Required response format JSON:\n{}\nReturn the final answer in this format exactly.",
             serde_json::to_string_pretty(response_format).unwrap_or_else(|_| "{}".to_string())
@@ -464,9 +606,9 @@ mod tests {
             role: MessageRole::User,
             content: "Summarize this".to_string(),
             attachments: vec![Attachment::File {
-                path: "/tmp/notes.pdf".to_string(),
-                mime: Some("application/pdf".to_string()),
-                data: Some("JVBERi0xLjQK".to_string()),
+                path: "/tmp/notes.md".to_string(),
+                mime: Some("text/markdown".to_string()),
+                data: Some("IyBOb3RlcwoKLSBmaXJzdAo=".to_string()),
             }],
             tools: Some(vec![ToolDefinition {
                 name: "get_sessions".to_string(),
@@ -495,8 +637,48 @@ mod tests {
         let rendered = render_local_message_content(&message);
         assert!(rendered.contains("Additional context JSON"));
         assert!(rendered.contains("Attachments JSON"));
+        assert!(rendered.contains("Attachment content previews JSON"));
         assert!(rendered.contains("Available tools JSON"));
+        assert!(rendered.contains("Required response schema JSON"));
+        assert!(rendered.contains("Notes"));
+    }
+
+    #[test]
+    fn render_local_message_content_skips_binary_attachment_previews() {
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "Summarize this".to_string(),
+            attachments: vec![Attachment::File {
+                path: "/tmp/photo.png".to_string(),
+                mime: Some("image/png".to_string()),
+                data: Some("iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB".to_string()),
+            }],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let rendered = render_local_message_content(&message);
+        assert!(rendered.contains("Attachments JSON"));
+        assert!(!rendered.contains("Attachment content previews JSON"));
+    }
+
+    #[test]
+    fn render_local_message_content_falls_back_to_response_format_when_schema_missing() {
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "Summarize this".to_string(),
+            attachments: Vec::new(),
+            tools: None,
+            context: None,
+            response_format: Some(serde_json::json!({
+                "type": "json_object"
+            })),
+        };
+
+        let rendered = render_local_message_content(&message);
         assert!(rendered.contains("Required response format JSON"));
+        assert!(!rendered.contains("Required response schema JSON"));
     }
 
     // ── History truncation ──────────────────────────────────────

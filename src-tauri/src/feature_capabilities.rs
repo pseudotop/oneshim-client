@@ -238,6 +238,21 @@ fn subprocess_cli_feature(
 }
 
 async fn probed_http_surface_feature(surface: &ProviderSurfaceSpec) -> FeatureCapability {
+    if let Some((availability, status_reason, copy_suffix)) = direct_http_runtime_status(surface) {
+        return FeatureCapability {
+            feature_id: surface.surface_id.clone(),
+            maturity: feature_maturity(surface),
+            availability,
+            preferred: surface.preferred_for_product_auth,
+            requires: vec![format!("endpoint:{}", surface.vendor_id)],
+            status_reason: Some(status_reason),
+            status_copy_key: Some(surface_status_copy_key(&surface.surface_id, copy_suffix)),
+            setup_copy_key: None,
+            setup_docs_url: None,
+            configuration_env_vars: Vec::new(),
+        };
+    }
+
     let availability = match probe_surface_http_reachability(surface).await {
         Ok(true) => FeatureAvailability::Available,
         Ok(false) => FeatureAvailability::Unavailable,
@@ -290,6 +305,41 @@ async fn probe_surface_http_reachability(surface: &ProviderSurfaceSpec) -> Resul
             )
         })?;
     probe_surface_http_reachability_at_url(surface, &probe_url).await
+}
+
+fn direct_http_runtime_status(
+    surface: &ProviderSurfaceSpec,
+) -> Option<(FeatureAvailability, String, &'static str)> {
+    let transport = surface
+        .llm_transport
+        .as_ref()
+        .filter(|_| surface.supports.llm)
+        .or_else(|| {
+            surface
+                .ocr_transport
+                .as_ref()
+                .filter(|_| surface.supports.ocr)
+        })?;
+
+    let auth_scheme = transport.auth_scheme.trim().to_ascii_lowercase();
+    if auth_scheme == "aws_signature_v4" {
+        return Some((
+            FeatureAvailability::Unavailable,
+            "runtime_unsupported:aws_signature_v4".to_string(),
+            "unavailable",
+        ));
+    }
+
+    let request_shape = transport.request_shape.trim().to_ascii_lowercase();
+    if request_shape == "bedrock_converse" {
+        return Some((
+            FeatureAvailability::Unavailable,
+            "runtime_unsupported:bedrock_converse".to_string(),
+            "unavailable",
+        ));
+    }
+
+    None
 }
 
 async fn probe_surface_http_reachability_at_url(
@@ -373,6 +423,17 @@ pub async fn probe_provider_surface_endpoint(
             }
         }
     };
+
+    if let Some((availability, status_reason, copy_suffix)) = direct_http_runtime_status(surface) {
+        return ProviderEndpointProbeResult {
+            surface_id: surface.surface_id.clone(),
+            endpoint_kind: endpoint_kind.to_string(),
+            endpoint: normalized_endpoint,
+            availability,
+            status_reason: Some(status_reason),
+            status_copy_key: copy_key(copy_suffix),
+        };
+    }
 
     let probe_url = match probe_url_for_endpoint(surface, parsed_kind, endpoint) {
         Ok(url) => url,
@@ -739,6 +800,49 @@ mod tests {
             .requires
             .iter()
             .any(|value| value == "local_server:ollama"));
+    }
+
+    #[tokio::test]
+    async fn unsupported_direct_http_surface_is_reported_unavailable_without_probe() {
+        let surface = provider_surface_catalog()
+            .expect("catalog should load")
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.bedrock.direct_api")
+            .expect("bedrock surface should exist")
+            .clone();
+
+        let feature = probed_http_surface_feature(&surface).await;
+
+        assert_eq!(feature.availability, FeatureAvailability::Unavailable);
+        assert_eq!(
+            feature.status_reason.as_deref(),
+            Some("runtime_unsupported:aws_signature_v4")
+        );
+        assert_eq!(
+            feature.status_copy_key.as_deref(),
+            Some("featureCapability.surface.provider_surface.bedrock.direct_api.unavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn unsupported_direct_http_surface_endpoint_probe_short_circuits() {
+        let result = probe_provider_surface_endpoint(
+            "provider_surface.bedrock.direct_api",
+            "llm_api",
+            "https://bedrock-runtime.us-east-1.amazonaws.com/model/anthropic.claude-3-5-sonnet/converse",
+        )
+        .await;
+
+        assert_eq!(result.availability, FeatureAvailability::Unavailable);
+        assert_eq!(
+            result.status_reason.as_deref(),
+            Some("runtime_unsupported:aws_signature_v4")
+        );
+        assert_eq!(
+            result.status_copy_key.as_deref(),
+            Some("featureCapability.surface.provider_surface.bedrock.direct_api.unavailable")
+        );
     }
 
     #[test]
