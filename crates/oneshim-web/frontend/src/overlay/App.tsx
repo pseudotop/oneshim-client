@@ -28,6 +28,7 @@ export default function OverlayApp() {
       dispatch({ type: 'set-suggestions', payload: suggestions })
     } catch (e) {
       console.warn('get_pending_suggestions failed:', e)
+      throw e
     }
   }, [dispatch])
 

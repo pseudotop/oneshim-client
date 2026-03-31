@@ -47,6 +47,16 @@ impl AiModelCatalogQueryService {
         } else {
             Some(resolve_model_discovery_api_key(request, &self.ctx, provider_type).await?)
         };
+        if matches!(auth_scheme, ProviderAuthScheme::AwsSignatureV4) {
+            return Ok(ProviderModelsResponse {
+                models: Vec::new(),
+                model_details: Vec::new(),
+                notice: Some(
+                    "AWS Signature V4 model discovery is not yet supported for this provider surface."
+                        .to_string(),
+                ),
+            });
+        }
         if let Some(notice) = ai_provider_spec_service::ocr_model_catalog_notice_for_surface(
             provider_type,
             requested_surface_id.as_deref(),
@@ -84,8 +94,7 @@ impl AiModelCatalogQueryService {
                 builder = builder.header("x-goog-api-key", api_key);
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                // AWS Signature V4 not yet supported for model catalog discovery;
-                // skip auth header (request will likely fail at the provider).
+                unreachable!("AWS Signature V4 discovery exits early with an explicit notice.")
             }
         }
 

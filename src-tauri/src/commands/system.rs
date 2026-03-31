@@ -1,3 +1,10 @@
+use std::collections::VecDeque;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+
+use chrono::Utc;
+use oneshim_api_contracts::support::RuntimeLogSnapshotDto;
 use tauri::command;
 
 use crate::feature_capabilities::{
@@ -6,41 +13,201 @@ use crate::feature_capabilities::{
     FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
 };
 use crate::runtime_state::{AppState, SecretBackendCapabilities, SecretBackendState};
-use oneshim_web::update_control::UpdateAction;
 
-/// 업데이트 상태 조회
-#[deprecated(
-    since = "0.42.0",
-    note = "Use REST endpoint /api/update-status instead"
-)]
-#[command]
-pub async fn get_update_status(
-    state: tauri::State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    if let Some(ref control) = state.update_control {
-        let status = control.state.read().await;
-        serde_json::to_value(&*status).map_err(|e| e.to_string())
-    } else {
-        Ok(serde_json::json!({"phase": "Disabled", "message": "Updates disabled"}))
+const DEFAULT_LOG_LINE_LIMIT: usize = 200;
+const MAX_LOG_LINE_LIMIT: usize = 500;
+const MAX_FRONTEND_LOG_MESSAGE_LEN: usize = 4_000;
+const MAX_FRONTEND_LOG_CONTEXT_LEN: usize = 12_000;
+
+fn runtime_log_dir() -> PathBuf {
+    oneshim_core::config_manager::ConfigManager::data_dir()
+        .map(|d| d.join("logs"))
+        .unwrap_or_else(|_| PathBuf::from("logs"))
+}
+
+fn newest_log_file(log_dir: &Path) -> Result<Option<PathBuf>, String> {
+    if !log_dir.exists() {
+        return Ok(None);
     }
+
+    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    let entries = std::fs::read_dir(log_dir).map_err(|err| {
+        format!(
+            "Failed to read runtime log directory '{}': {err}",
+            log_dir.display()
+        )
+    })?;
+
+    for entry in entries {
+        let entry =
+            entry.map_err(|err| format!("Failed to inspect runtime log directory entry: {err}"))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let modified = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+
+        match newest.as_ref() {
+            Some((current_modified, _)) if modified <= *current_modified => {}
+            _ => newest = Some((modified, path)),
+        }
+    }
+
+    Ok(newest.map(|(_, path)| path))
 }
 
-/// 업데이트 승인
-#[command]
-pub async fn approve_update(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state
-        .update_action_tx
-        .send(UpdateAction::Approve)
-        .map_err(|e| e.to_string())
+fn tail_log_file(path: &Path, line_limit: usize) -> Result<(usize, String), String> {
+    let file = File::open(path).map_err(|err| {
+        format!(
+            "Failed to open runtime log file '{}': {err}",
+            path.display()
+        )
+    })?;
+    let reader = BufReader::new(file);
+    let mut lines = VecDeque::with_capacity(line_limit);
+
+    for line in reader.lines() {
+        let line = line.map_err(|err| {
+            format!(
+                "Failed to read runtime log file '{}': {err}",
+                path.display()
+            )
+        })?;
+        if lines.len() == line_limit {
+            lines.pop_front();
+        }
+        lines.push_back(line);
+    }
+
+    let count = lines.len();
+    let recent_text = lines.into_iter().collect::<Vec<_>>().join("\n");
+    Ok((count, recent_text))
 }
 
-/// 업데이트 연기
-#[command]
-pub async fn defer_update(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state
-        .update_action_tx
-        .send(UpdateAction::Defer)
-        .map_err(|e| e.to_string())
+fn runtime_log_snapshot_from_dir(
+    log_dir: &Path,
+    line_limit: usize,
+) -> Result<RuntimeLogSnapshotDto, String> {
+    let latest_log = newest_log_file(log_dir)?;
+    let (log_file, line_count, recent_text) = if let Some(path) = latest_log {
+        let (line_count, recent_text) = tail_log_file(&path, line_limit)?;
+        (Some(path.display().to_string()), line_count, recent_text)
+    } else {
+        (None, 0, String::new())
+    };
+
+    Ok(RuntimeLogSnapshotDto {
+        generated_at: Utc::now().to_rfc3339(),
+        log_dir: log_dir.display().to_string(),
+        log_file,
+        line_count,
+        recent_text,
+    })
+}
+
+fn sanitize_frontend_surface(surface: &str) -> String {
+    let trimmed = surface.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+
+    let normalized: String = trimmed
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    normalized.trim_matches('-').to_string()
+}
+
+fn truncate_log_field(value: String, limit: usize) -> String {
+    if value.len() <= limit {
+        return value;
+    }
+
+    let mut truncated = value;
+    truncated.truncate(limit);
+    truncated.push_str(" …(truncated)");
+    truncated
+}
+
+fn emit_frontend_log(level: &str, surface: &str, message: String, context: Option<String>) {
+    match (level, context.as_deref()) {
+        ("trace", Some(context)) => tracing::trace!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("trace", None) => tracing::trace!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("debug", Some(context)) => tracing::debug!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("debug", None) => tracing::debug!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("info", Some(context)) => tracing::info!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("info", None) => tracing::info!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("warn", Some(context)) => tracing::warn!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("warn", None) => tracing::warn!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("error", Some(context)) => tracing::error!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("error", None) => tracing::error!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        _ => {}
+    }
 }
 
 /// 자동화 상태 조회 — 사용자 설정 기반 반환
@@ -74,4 +241,94 @@ pub async fn probe_provider_surface_endpoint(
     endpoint: String,
 ) -> Result<ProviderEndpointProbeResult, String> {
     Ok(probe_provider_surface_endpoint_impl(&surface_id, &endpoint_kind, &endpoint).await)
+}
+
+#[command]
+pub async fn get_runtime_log_snapshot(
+    line_limit: Option<usize>,
+) -> Result<RuntimeLogSnapshotDto, String> {
+    let line_limit = line_limit
+        .unwrap_or(DEFAULT_LOG_LINE_LIMIT)
+        .clamp(10, MAX_LOG_LINE_LIMIT);
+    runtime_log_snapshot_from_dir(&runtime_log_dir(), line_limit)
+}
+
+#[command]
+pub async fn record_frontend_log(
+    surface: String,
+    level: String,
+    message: String,
+    context: Option<String>,
+) -> Result<(), String> {
+    let surface = sanitize_frontend_surface(&surface);
+    let surface = if surface.is_empty() {
+        "unknown".to_string()
+    } else {
+        surface
+    };
+    let message = truncate_log_field(message.trim().to_string(), MAX_FRONTEND_LOG_MESSAGE_LEN);
+    let context = context
+        .map(|value| truncate_log_field(value.trim().to_string(), MAX_FRONTEND_LOG_CONTEXT_LEN))
+        .filter(|value| !value.is_empty());
+
+    let level = match level.trim().to_ascii_lowercase().as_str() {
+        "trace" => "trace",
+        "debug" => "debug",
+        "info" => "info",
+        "warn" | "warning" => "warn",
+        "error" => "error",
+        other => return Err(format!("Unsupported frontend log level: {other}")),
+    };
+    emit_frontend_log(level, &surface, message, context);
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn runtime_log_snapshot_returns_empty_when_directory_is_missing() {
+        let dir = PathBuf::from("/nonexistent/oneshim-log-tests");
+        let snapshot =
+            runtime_log_snapshot_from_dir(&dir, 50).expect("snapshot should still succeed");
+
+        assert_eq!(snapshot.log_dir, dir.display().to_string());
+        assert!(snapshot.log_file.is_none());
+        assert_eq!(snapshot.line_count, 0);
+        assert!(snapshot.recent_text.is_empty());
+    }
+
+    #[test]
+    fn runtime_log_snapshot_reads_tail_of_newest_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let older = temp.path().join("oneshim.log.older");
+        let newer = temp.path().join("oneshim.log.newer");
+
+        fs::write(&older, "old-1\nold-2\n").expect("write older log");
+        thread::sleep(Duration::from_millis(20));
+        fs::write(&newer, "new-1\nnew-2\nnew-3\n").expect("write newer log");
+
+        let snapshot =
+            runtime_log_snapshot_from_dir(temp.path(), 2).expect("snapshot should succeed");
+        let log_file = snapshot.log_file.expect("newest file should be selected");
+
+        assert_eq!(snapshot.log_dir, temp.path().display().to_string());
+        assert!(log_file.ends_with("oneshim.log.newer"));
+        assert_eq!(snapshot.line_count, 2);
+        assert_eq!(snapshot.recent_text, "new-2\nnew-3");
+    }
+
+    #[test]
+    fn sanitize_frontend_surface_normalizes_unsafe_characters() {
+        assert_eq!(
+            sanitize_frontend_surface("tracking panel/main"),
+            "tracking-panel-main"
+        );
+        assert_eq!(sanitize_frontend_surface(""), "unknown");
+    }
 }

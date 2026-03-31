@@ -2,6 +2,7 @@ import { Brain, Coffee, Focus, MessageSquare, Play, RotateCcw, X } from 'lucide-
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchLocalSuggestions, type LocalSuggestion, submitSuggestionFeedback } from '../api/client'
+import { addToast } from '../hooks/useToast'
 import { iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { Button } from './ui/Button'
@@ -71,9 +72,12 @@ export default function SuggestionBanner() {
         const pending = data.filter((s) => !s.acted_at && !s.dismissed_at)
         setSuggestions(pending)
       })
-      .catch((e) => console.warn('fetchLocalSuggestions failed:', e))
+      .catch((e) => {
+        console.warn('fetchLocalSuggestions failed:', e)
+        addToast('warning', t('focus.suggestions.loadFailed', 'Failed to load focus suggestions.'), 5000)
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [t])
 
   const pendingSuggestions = suggestions.filter((s) => !dismissed.has(s.id))
 
@@ -98,24 +102,26 @@ export default function SuggestionBanner() {
   const handleDismiss = async () => {
     try {
       await submitSuggestionFeedback(currentSuggestion.id, 'dismissed')
+      setDismissed(new Set(dismissed).add(currentSuggestion.id))
+      if (currentIndex >= pendingSuggestions.length - 1) {
+        setCurrentIndex(Math.max(0, currentIndex - 1))
+      }
     } catch (e) {
       console.warn('submitSuggestionFeedback(dismissed) failed:', e)
-    }
-    setDismissed(new Set(dismissed).add(currentSuggestion.id))
-    if (currentIndex >= pendingSuggestions.length - 1) {
-      setCurrentIndex(Math.max(0, currentIndex - 1))
+      addToast('error', t('focus.suggestions.dismissFailed', 'Failed to dismiss the suggestion.'), 5000)
     }
   }
 
   const handleAct = async () => {
     try {
       await submitSuggestionFeedback(currentSuggestion.id, 'acted')
+      setDismissed(new Set(dismissed).add(currentSuggestion.id))
+      if (currentIndex >= pendingSuggestions.length - 1) {
+        setCurrentIndex(Math.max(0, currentIndex - 1))
+      }
     } catch (e) {
       console.warn('submitSuggestionFeedback(acted) failed:', e)
-    }
-    setDismissed(new Set(dismissed).add(currentSuggestion.id))
-    if (currentIndex >= pendingSuggestions.length - 1) {
-      setCurrentIndex(Math.max(0, currentIndex - 1))
+      addToast('error', t('focus.suggestions.actFailed', 'Failed to apply the suggestion.'), 5000)
     }
   }
 

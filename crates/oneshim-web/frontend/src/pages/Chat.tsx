@@ -93,8 +93,9 @@ const LazySyntaxHighlighter = React.lazy(async () => {
   return { default: LazyHighlighterWrapper }
 })
 
-import { Button, Card, CardContent, Input, Select } from '../components/ui'
+import { Alert, Button, Card, CardContent, Input, Select } from '../components/ui'
 import { defaultSurfaceModel, sortProviderSurfaces } from '../features/providerSurfaces'
+import { addToast } from '../hooks/useToast'
 import { colors, iconSize, interaction, motion, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -192,6 +193,13 @@ function isToolDefinitionPayload(value: unknown): value is ToolDefinitionPayload
   return true
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (typeof error === 'string' && error.trim()) return error
+  if (isRecord(error) && typeof error.message === 'string' && error.message.trim()) return error.message
+  return fallback
+}
+
 function parseOptionalJsonValue(raw: string): ParsedJsonResult<unknown> {
   const trimmed = raw.trim()
   if (!trimmed) return { value: undefined, error: false }
@@ -243,6 +251,7 @@ function now() {
 /* ---- Copy button for code blocks ---- */
 
 function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const handleCopy = useCallback(async () => {
     try {
@@ -251,8 +260,9 @@ function CopyButton({ text }: { text: string }) {
       setTimeout(() => setCopied(false), 2000)
     } catch (e) {
       console.warn('clipboard.writeText failed:', e)
+      addToast('error', t('chat.copy_failed', 'Failed to copy the content.'), 4000)
     }
-  }, [text])
+  }, [text, t])
   return (
     <button
       type="button"
@@ -261,7 +271,7 @@ function CopyButton({ text }: { text: string }) {
         'absolute top-2 right-2 rounded bg-surface-elevated/40 p-1.5 text-content-inverse/60 opacity-0 hover:bg-surface-elevated/60 group-hover:opacity-100',
         motion.opacity,
       )}
-      title="Copy"
+      title={t('chat.copy')}
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}
     </button>
@@ -313,6 +323,8 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isNearBottom = useRef(true)
   const rafRef = useRef<number | null>(null)
@@ -353,9 +365,17 @@ export default function Chat() {
 
   useEffect(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
-      .then(setSessions)
-      .catch((e) => console.warn('list_ai_sessions failed:', e))
-  }, [])
+      .then((items) => {
+        setSessions(items)
+        setSessionLoadError(null)
+      })
+      .catch((e) => {
+        const message = errorMessage(e, t('chat.load_failed', 'Failed to load AI sessions.'))
+        console.warn('list_ai_sessions failed:', e)
+        setSessionLoadError(message)
+        addToast('error', message, 5000)
+      })
+  }, [t])
 
   const selectedHttpSurface = useMemo(
     () => HTTP_API_SURFACES.find((surface) => surface.surface_id === httpSurfaceId) ?? HTTP_API_SURFACES[0] ?? null,
@@ -541,9 +561,17 @@ export default function Chat() {
 
   const refresh = useCallback(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
-      .then(setSessions)
-      .catch((e) => console.warn('list_ai_sessions failed:', e))
-  }, [])
+      .then((items) => {
+        setSessions(items)
+        setSessionLoadError(null)
+      })
+      .catch((e) => {
+        const message = errorMessage(e, t('chat.refresh_failed', 'Failed to refresh AI sessions.'))
+        console.warn('list_ai_sessions failed:', e)
+        setSessionLoadError(message)
+        addToast('error', message, 5000)
+      })
+  }, [t])
 
   const handleSelectSession = useCallback(
     (id: string) => {
@@ -562,6 +590,7 @@ export default function Chat() {
 
   const handleCreate = useCallback(async () => {
     setCreating(true)
+    setCreateError(null)
     try {
       const info = await ipc<SessionInfo>('create_ai_session', {
         config: {
@@ -575,11 +604,16 @@ export default function Chat() {
       setSessions((p) => [info, ...p])
       setActiveId(info.session_id)
       setMessages([])
+      setCreateError(null)
+      setSessionLoadError(null)
     } catch (e) {
       console.warn('create_ai_session failed:', e)
+      const message = errorMessage(e, t('chat.create_failed', 'Failed to create an AI session.'))
+      setCreateError(message)
+      addToast('error', message, 6000)
     }
     setCreating(false)
-  }, [transport, selectedHttpSurface, resolvedModel, systemPrompt])
+  }, [transport, selectedHttpSurface, resolvedModel, systemPrompt, t])
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -593,9 +627,10 @@ export default function Chat() {
         }
       } catch (e) {
         console.warn('kill_ai_session failed:', e)
+        addToast('error', errorMessage(e, t('chat.delete_failed', 'Failed to delete the session.')), 5000)
       }
     },
-    [activeId],
+    [activeId, t],
   )
 
   const searchMatchCount = useMemo(() => {
@@ -666,6 +701,7 @@ export default function Chat() {
     } catch (e) {
       console.warn('send_session_message failed:', e)
       setSending(false)
+      addToast('error', errorMessage(e, t('chat.send_failed', 'Failed to send the message.')), 5000)
     }
   }, [
     input,
@@ -676,6 +712,7 @@ export default function Chat() {
     parsedTools.value,
     messageContext,
     parsedResponseFormat.value,
+    t,
   ])
 
   const handleRetry = useCallback(async () => {
@@ -685,8 +722,9 @@ export default function Chat() {
       setSessions((p) => p.map((s) => (s.session_id === info.session_id ? info : s)))
     } catch (e) {
       console.warn('retry_ai_session failed:', e)
+      addToast('error', errorMessage(e, t('chat.retry_failed', 'Failed to retry the session.')), 5000)
     }
-  }, [activeId])
+  }, [activeId, t])
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
@@ -857,6 +895,24 @@ export default function Chat() {
             </div>
             <p className={cn('text-sm', typography.weight.medium, colors.text.primary)}>{t('chat.create_session')}</p>
             <p className={cn('text-xs', colors.text.secondary)}>{t('chat.create_hint')}</p>
+            {createError && (
+              <div className="w-full max-w-md px-6">
+                <Alert
+                  variant="error"
+                  title={t('chat.create_failed_title', 'Could not create a session')}
+                  className="mt-2"
+                >
+                  <p>{createError}</p>
+                </Alert>
+              </div>
+            )}
+            {sessionLoadError && (
+              <div className="w-full max-w-md px-6">
+                <Alert variant="error" title={t('chat.load_failed_title', 'Could not load sessions')} className="mt-2">
+                  <p>{sessionLoadError}</p>
+                </Alert>
+              </div>
+            )}
           </div>
         ) : (
           <>

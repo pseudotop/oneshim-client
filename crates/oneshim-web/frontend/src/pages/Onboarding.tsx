@@ -2,13 +2,32 @@
  * First-run onboarding page — 4-step guide shown before the main shell.
  */
 
-import { Camera, ChevronLeft, ChevronRight, Cpu, Lightbulb, Monitor, Rocket, Shield } from 'lucide-react'
-import { type ReactNode, useCallback, useState } from 'react'
+import {
+  Bell,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleCheckBig,
+  Cpu,
+  Lightbulb,
+  Monitor,
+  Rocket,
+  RotateCcw,
+  Shield,
+} from 'lucide-react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '../components/ui'
+import {
+  type DesktopPermissionSnapshot,
+  type DesktopPermissionState,
+  fetchDesktopPermissionStatus,
+  requestDesktopNotificationPermission,
+} from '../api/client'
+import { Alert, Badge, Button } from '../components/ui'
 import { colors, iconSize, motion, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
-import { IS_LINUX, IS_MAC, IS_WINDOWS } from '../utils/platform'
+import { IS_LINUX, IS_MAC, IS_TAURI, IS_WINDOWS } from '../utils/platform'
 
 interface OnboardingProps {
   onComplete: () => void
@@ -23,6 +42,11 @@ async function invokeCommand(cmd: string) {
   } catch {
     // Standalone / dev mode — no Tauri runtime
   }
+}
+
+async function openPermissionSettings(permissionKind: 'accessibility' | 'screen_capture') {
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('open_desktop_permission_settings', { permissionKind })
 }
 
 /* ── Step content components ── */
@@ -49,32 +73,275 @@ function PermissionRow({ icon, label }: { icon: ReactNode; label: string }) {
   )
 }
 
-function StepPermissions() {
+function badgeColorForPermission(state: DesktopPermissionState): 'success' | 'warning' | 'default' {
+  switch (state) {
+    case 'granted':
+      return 'success'
+    case 'needs_attention':
+      return 'warning'
+    case 'not_required':
+    case 'unavailable':
+      return 'default'
+  }
+}
+
+interface OnboardingPermissionRowAction {
+  id: 'accessibility' | 'screen_capture' | 'notifications'
+  label: string
+  onClick: () => void
+}
+
+interface OnboardingPermissionRow {
+  id: string
+  icon: ReactNode
+  label: string
+  description: string
+  state: DesktopPermissionState
+  action?: OnboardingPermissionRowAction
+}
+
+function PermissionStatusPill({
+  state,
+  loading = false,
+  label,
+}: {
+  state: DesktopPermissionState
+  loading?: boolean
+  label: string
+}) {
+  if (state === 'granted') {
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-2 rounded-lg bg-semantic-success/10 px-3 py-2 text-semantic-success',
+          typography.body,
+          typography.weight.medium,
+        )}
+      >
+        <CircleCheckBig className={iconSize.base} />
+        <span>{label}</span>
+      </div>
+    )
+  }
+
+  return <Badge color={badgeColorForPermission(state)}>{loading ? '...' : label}</Badge>
+}
+
+function OnboardingPermissionCard({
+  row,
+  actionLoading,
+  stateLabel,
+}: {
+  row: OnboardingPermissionRow
+  actionLoading: boolean
+  stateLabel: string
+}) {
+  return (
+    <div className="rounded-xl border border-DEFAULT bg-surface-muted/70 p-4 text-left">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center rounded-md bg-brand-signal/15 p-2">{row.icon}</div>
+            <h3 className={cn(typography.body, typography.weight.medium, colors.text.primary)}>{row.label}</h3>
+          </div>
+          <p className={cn(typography.small, colors.text.secondary, 'max-w-md')}>{row.description}</p>
+        </div>
+
+        <div className="flex min-w-[220px] flex-col items-stretch gap-2 md:items-end">
+          <PermissionStatusPill state={row.state} loading={actionLoading} label={stateLabel} />
+          {row.action && row.state !== 'granted' && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              isLoading={actionLoading}
+              onClick={row.action.onClick}
+              className="w-full md:w-auto"
+            >
+              {row.action.label}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StepPermissions({ onReadyChange }: { onReadyChange: (ready: boolean) => void }) {
   const { t } = useTranslation()
+  const [permissionStatus, setPermissionStatus] = useState<DesktopPermissionSnapshot | null>(null)
+  const [loading, setLoading] = useState(IS_TAURI)
+  const [error, setError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<
+    'accessibility' | 'screen_capture' | 'notifications' | 'refresh' | null
+  >(null)
   const iconCls = cn(iconSize.base, 'text-brand-text')
-  const permissionRows = IS_MAC
+
+  const loadPermissionStatus = useCallback(async () => {
+    if (!IS_TAURI) {
+      setLoading(false)
+      setPermissionStatus(null)
+      setError(null)
+      onReadyChange(true)
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    try {
+      const snapshot = await fetchDesktopPermissionStatus()
+      setPermissionStatus(snapshot)
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : t('onboarding.step2PermissionCheckFailed')
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }, [onReadyChange, t])
+
+  useEffect(() => {
+    void loadPermissionStatus()
+  }, [loadPermissionStatus])
+
+  useEffect(() => {
+    if (!IS_TAURI) return
+    const refreshOnFocus = () => void loadPermissionStatus()
+    window.addEventListener('focus', refreshOnFocus)
+    return () => window.removeEventListener('focus', refreshOnFocus)
+  }, [loadPermissionStatus])
+
+  const requiredReady = useMemo(() => {
+    if (!IS_TAURI || !IS_MAC) return true
+    if (!permissionStatus) return false
+    return permissionStatus.accessibility.state === 'granted' && permissionStatus.screen_capture.state === 'granted'
+  }, [permissionStatus])
+
+  useEffect(() => {
+    onReadyChange(requiredReady)
+  }, [onReadyChange, requiredReady])
+
+  const handleOpenPermissionSettings = useCallback(
+    async (kind: 'accessibility' | 'screen_capture') => {
+      setActionLoading(kind)
+      setError(null)
+      try {
+        await openPermissionSettings(kind)
+      } catch (nextError) {
+        const message = nextError instanceof Error ? nextError.message : t('onboarding.step2SystemSettingsOpenFailed')
+        setError(message)
+      } finally {
+        setActionLoading(null)
+      }
+    },
+    [t],
+  )
+
+  const handleRequestNotificationPermission = useCallback(async () => {
+    setActionLoading('notifications')
+    setError(null)
+    try {
+      const snapshot = await requestDesktopNotificationPermission()
+      setPermissionStatus(snapshot)
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : t('onboarding.step2NotificationRequestFailed')
+      setError(message)
+    } finally {
+      setActionLoading(null)
+    }
+  }, [t])
+
+  const permissionRows: OnboardingPermissionRow[] = IS_MAC
     ? [
-        { icon: <Monitor className={iconCls} />, label: t('onboarding.step2Accessibility') },
-        { icon: <Camera className={iconCls} />, label: t('onboarding.step2ScreenCapture') },
-        { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
+        {
+          id: 'accessibility',
+          icon: <Monitor className={iconCls} />,
+          label: t('onboarding.step2Accessibility'),
+          description: t('settings.permissionAccessibilityDesc'),
+          state: permissionStatus?.accessibility.state ?? 'needs_attention',
+          action: {
+            id: 'accessibility',
+            label: t('onboarding.step2AccessibilityAction'),
+            onClick: () => void handleOpenPermissionSettings('accessibility'),
+          },
+        },
+        {
+          id: 'screen-capture',
+          icon: <Camera className={iconCls} />,
+          label: t('onboarding.step2ScreenCapture'),
+          description: t('settings.permissionScreenCaptureDesc'),
+          state: permissionStatus?.screen_capture.state ?? 'needs_attention',
+          action: {
+            id: 'screen_capture',
+            label: t('onboarding.step2ScreenCaptureAction'),
+            onClick: () => void handleOpenPermissionSettings('screen_capture'),
+          },
+        },
+        {
+          id: 'notifications',
+          icon: <Bell className={iconCls} />,
+          label: t('onboarding.step2Notifications'),
+          description: t('settings.permissionNotificationsDesc'),
+          state: permissionStatus?.notifications.state ?? 'needs_attention',
+          action:
+            permissionStatus?.notifications.status_reason === 'macos_notifications_not_determined'
+              ? {
+                  id: 'notifications',
+                  label: t('settings.permissionMacNotificationsRequestAction'),
+                  onClick: () => void handleRequestNotificationPermission(),
+                }
+              : undefined,
+        },
       ]
     : IS_WINDOWS
       ? [
-          { icon: <Monitor className={iconCls} />, label: t('onboarding.step2WindowsAccessibility', 'UI Automation') },
-          { icon: <Camera className={iconCls} />, label: t('onboarding.step2WindowsScreenCapture', 'Desktop Capture') },
-          { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
+          {
+            id: 'windows-accessibility',
+            icon: <Monitor className={iconCls} />,
+            label: t('onboarding.step2WindowsAccessibility'),
+            description: t('settings.permissionWindowsAccessibilityDesc'),
+            state: permissionStatus?.accessibility.state ?? 'not_required',
+          },
+          {
+            id: 'windows-screen-capture',
+            icon: <Camera className={iconCls} />,
+            label: t('onboarding.step2WindowsScreenCapture'),
+            description: t('settings.permissionWindowsScreenCaptureDesc'),
+            state: permissionStatus?.screen_capture.state ?? 'not_required',
+          },
+          {
+            id: 'windows-notifications',
+            icon: <Bell className={iconCls} />,
+            label: t('onboarding.step2Notifications'),
+            description: t('settings.permissionWindowsNotificationsDesc'),
+            state: permissionStatus?.notifications.state ?? 'not_required',
+          },
         ]
       : IS_LINUX
         ? [
-            { icon: <Monitor className={iconCls} />, label: t('onboarding.step2LinuxAccessibility', 'AT-SPI Session') },
-            { icon: <Camera className={iconCls} />, label: t('onboarding.step2LinuxScreenCapture', 'Desktop Capture') },
-            { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
+            {
+              id: 'linux-accessibility',
+              icon: <Monitor className={iconCls} />,
+              label: t('onboarding.step2LinuxAccessibility'),
+              description: t('settings.permissionLinuxAccessibilityDesc'),
+              state: permissionStatus?.accessibility.state ?? 'unavailable',
+            },
+            {
+              id: 'linux-screen-capture',
+              icon: <Camera className={iconCls} />,
+              label: t('onboarding.step2LinuxScreenCapture'),
+              description: t('settings.permissionLinuxScreenCaptureDesc'),
+              state: permissionStatus?.screen_capture.state ?? 'unavailable',
+            },
+            {
+              id: 'linux-notifications',
+              icon: <Bell className={iconCls} />,
+              label: t('onboarding.step2Notifications'),
+              description: t('settings.permissionLinuxNotificationsDesc'),
+              state: permissionStatus?.notifications.state ?? 'not_required',
+            },
           ]
-        : [
-            { icon: <Monitor className={iconCls} />, label: t('onboarding.step2Accessibility') },
-            { icon: <Camera className={iconCls} />, label: t('onboarding.step2ScreenCapture') },
-            { icon: <Lightbulb className={iconCls} />, label: t('onboarding.step2Notifications') },
-          ]
+        : []
+
   const description = IS_MAC
     ? t(
         'onboarding.step2DescMac',
@@ -99,11 +366,98 @@ function StepPermissions() {
       </div>
       <h2 className={cn(typography.h1, colors.text.primary, 'mb-3')}>{t('onboarding.step2Title')}</h2>
       <p className={cn(typography.body, colors.text.secondary, 'mb-6 max-w-sm')}>{description}</p>
-      <div className="flex w-full max-w-xs flex-col gap-3">
+
+      <div className="mb-4 flex w-full max-w-2xl justify-end">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          isLoading={loading || actionLoading === 'refresh'}
+          onClick={() => {
+            setActionLoading('refresh')
+            void loadPermissionStatus().finally(() => setActionLoading(null))
+          }}
+        >
+          <RotateCcw className={cn(iconSize.base, 'mr-2')} />
+          {t('settings.permissionRefreshAction')}
+        </Button>
+      </div>
+
+      {error && (
+        <div className="mb-4 w-full max-w-2xl">
+          <Alert variant="error" title={t('settings.permissionCheckFailedTitle')}>
+            <p>{error}</p>
+          </Alert>
+        </div>
+      )}
+
+      <div className="flex w-full max-w-2xl flex-col gap-3">
         {permissionRows.map((row) => (
-          <PermissionRow key={row.label} icon={row.icon} label={row.label} />
+          <OnboardingPermissionCard
+            key={row.id}
+            row={row}
+            actionLoading={actionLoading === row.action?.id}
+            stateLabel={
+              row.state === 'granted'
+                ? t('onboarding.step2PermissionEnabled')
+                : row.state === 'needs_attention'
+                  ? t('settings.permissionStateNeedsAttention')
+                  : row.state === 'not_required'
+                    ? t('settings.permissionStateNotRequired')
+                    : t('settings.permissionStateUnavailable')
+            }
+          />
         ))}
       </div>
+
+      {IS_MAC && (
+        <div className="mt-4 w-full max-w-2xl">
+          {requiredReady ? (
+            <Alert variant="success" title={t('onboarding.step2ReadyTitle')}>
+              <p>{t('onboarding.step2ReadyDesc')}</p>
+            </Alert>
+          ) : (
+            <Alert variant="warning" title={t('onboarding.step2RequiredTitle')}>
+              <p>{t('onboarding.step2RequiredDesc')}</p>
+            </Alert>
+          )}
+        </div>
+      )}
+
+      {!IS_MAC && permissionRows.length > 0 && (
+        <div className="mt-4 w-full max-w-2xl">
+          <Alert variant="info" title={t('settings.permissionManualCheckTitle')}>
+            <p>{t('settings.permissionManualCheckDesc')}</p>
+          </Alert>
+        </div>
+      )}
+
+      {permissionRows.length === 0 && !loading && (
+        <div className="w-full max-w-xs">
+          <PermissionRow icon={<Shield className={iconCls} />} label={t('common.loading')} />
+        </div>
+      )}
+      {loading && (
+        <div className="mt-4 flex items-center gap-2 text-content-secondary text-sm">
+          <RotateCcw className={cn(iconSize.base, 'animate-spin')} />
+          <span>{t('settings.permissionChecking')}</span>
+        </div>
+      )}
+      {!requiredReady && IS_MAC && (
+        <p className="mt-4 text-content-secondary text-sm">{t('onboarding.step2RequiredContinueHint')}</p>
+      )}
+      {!loading && permissionRows.length === 0 && (
+        <div className="mt-4 flex items-center gap-2 text-semantic-warning text-sm">
+          <CircleAlert className={iconSize.base} />
+          <span>{t('settings.permissionManualCheckDesc')}</span>
+        </div>
+      )}
+      {!loading && permissionRows.length > 0 && requiredReady && IS_MAC && (
+        <div className="mt-4 flex items-center gap-2 text-semantic-success text-sm">
+          <CircleCheckBig className={iconSize.base} />
+          <span>{t('onboarding.step2ReadyInline')}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -149,8 +503,6 @@ function StepReady() {
   )
 }
 
-const STEPS = [StepIntro, StepPermissions, StepFeatures, StepReady]
-
 /* ── Step indicator dots ── */
 
 function StepDots({ current, total }: { current: number; total: number }) {
@@ -177,6 +529,7 @@ function StepDots({ current, total }: { current: number; total: number }) {
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const { t } = useTranslation()
   const [step, setStep] = useState(0)
+  const [permissionStepReady, setPermissionStepReady] = useState(!IS_TAURI || !IS_MAC)
 
   const handleComplete = useCallback(async () => {
     await invokeCommand('complete_onboarding')
@@ -187,9 +540,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     onComplete()
   }, [onComplete])
 
-  const StepContent = STEPS[step]
   const isFirst = step === 0
   const isLast = step === TOTAL_STEPS - 1
+  const isPermissionStep = step === 1
+  const canAdvance = !isPermissionStep || permissionStepReady
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-sunken p-4">
@@ -201,7 +555,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         {/* Step content */}
         <div className="mb-8 w-full">
-          <StepContent />
+          {step === 0 && <StepIntro />}
+          {step === 1 && <StepPermissions onReadyChange={setPermissionStepReady} />}
+          {step === 2 && <StepFeatures />}
+          {step === 3 && <StepReady />}
         </div>
 
         {/* Navigation buttons */}
@@ -225,7 +582,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 {t('onboarding.complete')}
               </Button>
             ) : (
-              <Button variant="primary" size="md" onClick={() => setStep((s) => s + 1)}>
+              <Button variant="primary" size="md" disabled={!canAdvance} onClick={() => setStep((s) => s + 1)}>
                 {t('onboarding.next')}
                 <ChevronRight className={cn(iconSize.base, 'ml-1')} />
               </Button>

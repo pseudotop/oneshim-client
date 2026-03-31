@@ -1,5 +1,5 @@
 // e2e-tauri/privacy-audit-setup.spec.ts
-import { invokeIpc } from './helpers.js'
+import { fetchApiJson, invokeIpc } from './helpers.js'
 
 describe('J2: Privacy & Settings Persistence', () => {
   /**
@@ -12,7 +12,7 @@ describe('J2: Privacy & Settings Persistence', () => {
    */
   it('T110: Settings write persists PII filter level after reload', async () => {
     // 현재 설정 저장
-    const before = await invokeIpc<Record<string, any>>('get_settings')
+    const before = await fetchApiJson<Record<string, any>>('/settings')
     const originalLevel = before?.privacy?.pii_filter_level
 
     // PII filter를 Strict로 변경
@@ -24,7 +24,7 @@ describe('J2: Privacy & Settings Persistence', () => {
     await browser.pause(2000) // config reload 대기
 
     // 변경 사항이 유지되는지 확인
-    const after = await invokeIpc<Record<string, any>>('get_settings')
+    const after = await fetchApiJson<Record<string, any>>('/settings')
     expect(after.privacy.pii_filter_level).toBe('Strict')
 
     // 원래 값 복원
@@ -43,7 +43,7 @@ describe('J2: Privacy & Settings Persistence', () => {
    * @tauri_only_reason IPC update_setting writes config JSON to disk
    */
   it('T111: Settings write persists capture_enabled toggle after reload', async () => {
-    const before = await invokeIpc<Record<string, any>>('get_settings')
+    const before = await fetchApiJson<Record<string, any>>('/settings')
     const originalEnabled = before?.capture?.capture_enabled
 
     // capture 비활성화
@@ -53,7 +53,7 @@ describe('J2: Privacy & Settings Persistence', () => {
     await browser.url('tauri://localhost/')
     await browser.pause(2000)
 
-    const after = await invokeIpc<Record<string, any>>('get_settings')
+    const after = await fetchApiJson<Record<string, any>>('/settings')
     expect(after.capture.capture_enabled).toBe(false)
 
     // 원래 값 복원

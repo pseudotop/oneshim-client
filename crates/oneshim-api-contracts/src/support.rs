@@ -24,3 +24,12 @@ pub struct DiagnosticsBundleDto {
     pub recent_audit_entries: Vec<AuditEntryDto>,
     pub recent_policy_events: Vec<AuditEntryDto>,
 }
+
+#[derive(Debug, Serialize)]
+pub struct RuntimeLogSnapshotDto {
+    pub generated_at: String,
+    pub log_dir: String,
+    pub log_file: Option<String>,
+    pub line_count: usize,
+    pub recent_text: String,
+}

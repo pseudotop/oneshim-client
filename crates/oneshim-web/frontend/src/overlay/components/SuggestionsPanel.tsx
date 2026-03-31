@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
@@ -8,7 +8,7 @@ interface SuggestionsPanelProps {
   open: boolean
   suggestions: SuggestionViewDto[]
   onClose: () => void
-  onRefresh: () => void
+  onRefresh: () => Promise<void> | void
 }
 
 /**
@@ -18,8 +18,16 @@ interface SuggestionsPanelProps {
  * - Interactive elements use standard tab order within the panel.
  */
 export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: SuggestionsPanelProps) {
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    if (open) onRefresh()
+    if (!open) return
+
+    setError(null)
+    void Promise.resolve(onRefresh()).catch((e) => {
+      console.warn('SuggestionsPanel refresh failed:', e)
+      setError('Could not load suggestions.')
+    })
   }, [open, onRefresh])
 
   useEffect(() => {
@@ -35,9 +43,11 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       const { invoke } = await import('@tauri-apps/api/core')
       // Tauri v2 auto-converts camelCase JS -> snake_case Rust params
       await invoke('submit_suggestion_feedback', { suggestionId: id, action })
-      onRefresh()
+      setError(null)
+      await Promise.resolve(onRefresh())
     } catch (e) {
       console.warn('Feedback failed:', e)
+      setError('Could not save suggestion feedback.')
     }
   }
 
@@ -67,6 +77,9 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
 
       {/* List */}
       <div className="max-h-[calc(100vh-14rem)] overflow-y-auto">
+        {error && (
+          <div className="border-content-inverse/5 border-b px-4 py-2 text-semantic-error text-xs">{error}</div>
+        )}
         {suggestions.length > 0 ? (
           <ul className="list-none">
             {suggestions.map((s) => (

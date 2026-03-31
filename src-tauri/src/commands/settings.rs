@@ -1,57 +1,12 @@
-use serde::Serialize;
 use std::sync::atomic::Ordering;
-use sysinfo::System;
 use tauri::command;
 
 use crate::runtime_state::AppState;
 
 use super::deep_merge;
 
-/// 시스템 메트릭 응답
-#[derive(Serialize)]
-pub struct MetricsResponse {
-    pub agent_cpu: f32,
-    pub agent_memory_mb: f64,
-    pub system_cpu: f32,
-    pub system_memory_used_mb: f64,
-    pub system_memory_total_mb: f64,
-}
-
-/// 시스템 메트릭 수집 — 기존 LocalMonitor 로직
-#[deprecated(since = "0.42.0", note = "Use REST endpoint /api/metrics instead")]
-#[command]
-pub async fn get_metrics(_state: tauri::State<'_, AppState>) -> Result<MetricsResponse, String> {
-    let mut sys = System::new();
-    sys.refresh_cpu_all();
-    sys.refresh_memory();
-
-    let cpu = sys.global_cpu_usage();
-    let mem_used = sys.used_memory() as f64 / 1_048_576.0;
-    let mem_total = sys.total_memory() as f64 / 1_048_576.0;
-
-    // Agent 프로세스 자체 메트릭
-    let pid = sysinfo::get_current_pid().ok();
-    let (agent_cpu, agent_mem) = if let Some(pid) = pid {
-        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
-        if let Some(proc) = sys.process(pid) {
-            (proc.cpu_usage(), proc.memory() as f64 / 1_048_576.0)
-        } else {
-            (0.0, 0.0)
-        }
-    } else {
-        (0.0, 0.0)
-    };
-
-    Ok(MetricsResponse {
-        agent_cpu,
-        agent_memory_mb: agent_mem,
-        system_cpu: cpu,
-        system_memory_used_mb: mem_used,
-        system_memory_total_mb: mem_total,
-    })
-}
-
 /// WebView에 노출되는 민감 필드를 마스킹하는 키 목록
+#[cfg(test)]
 const REDACTED_PATHS: &[(&str, &[&str])] = &[
     ("server", &["base_url", "api_key"]),
     ("ai_provider", &["ocr_api.api_key", "llm_api.api_key"]),
@@ -87,16 +42,7 @@ pub(crate) const ALLOWED_KEYS: &[&str] = &[
     "analysis",
 ];
 
-/// 설정 조회 — 민감 필드 마스킹 후 반환
-#[deprecated(since = "0.42.0", note = "Use REST endpoint /api/settings instead")]
-#[command]
-pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let config = state.config_manager.get();
-    let mut v = serde_json::to_value(&config).map_err(|e| e.to_string())?;
-    redact_sensitive_fields(&mut v);
-    Ok(v)
-}
-
+#[cfg(test)]
 fn redact_sensitive_fields(config: &mut serde_json::Value) {
     let redacted = serde_json::Value::String("[REDACTED]".to_string());
     for &(section, fields) in REDACTED_PATHS {
