@@ -36,6 +36,7 @@ pub(crate) mod reports_query_support;
 pub mod reports_service;
 pub(crate) mod search_assembler;
 pub mod search_service;
+pub mod semantic_search_service;
 pub(crate) mod sessions_assembler;
 pub mod sessions_service;
 pub(crate) mod settings_assembler;
