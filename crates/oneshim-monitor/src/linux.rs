@@ -1,4 +1,4 @@
-use oneshim_core::error::CoreError;
+use crate::error::MonitorError;
 use oneshim_core::models::context::{MousePosition, WindowInfo};
 use std::time::Duration;
 use tokio::process::Command;
@@ -34,7 +34,7 @@ pub fn detect_display_server() -> DisplayServer {
     DisplayServer::Unknown
 }
 
-pub async fn get_active_window_linux() -> Result<Option<WindowInfo>, CoreError> {
+pub async fn get_active_window_linux() -> Result<Option<WindowInfo>, MonitorError> {
     let display_server = detect_display_server();
 
     match display_server {
@@ -56,7 +56,7 @@ pub async fn get_active_window_linux() -> Result<Option<WindowInfo>, CoreError> 
     }
 }
 
-async fn get_active_window_x11() -> Result<Option<WindowInfo>, CoreError> {
+async fn get_active_window_x11() -> Result<Option<WindowInfo>, MonitorError> {
     let window_id = match timeout(
         Duration::from_secs(SUBPROCESS_TIMEOUT_SECS),
         Command::new("xdotool").arg("getactivewindow").output(),
