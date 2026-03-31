@@ -5296,6 +5296,7 @@ dependencies = [
  "async-trait",
  "fastembed",
  "oneshim-core",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-test",
  "tracing",
@@ -5320,6 +5321,7 @@ dependencies = [
  "serde",
  "sysinfo",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "windows-sys 0.61.2",
@@ -5413,6 +5415,7 @@ dependencies = [
  "oneshim-core",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]

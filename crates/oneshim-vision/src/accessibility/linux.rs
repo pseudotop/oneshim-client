@@ -51,6 +51,8 @@ mod inner {
     #[cfg(feature = "linux-atspi")]
     use tracing::warn;
 
+    #[cfg(feature = "linux-atspi")]
+    use crate::error::VisionError;
     use oneshim_core::config::PiiFilterLevel;
     use oneshim_core::error::CoreError;
     #[cfg(feature = "linux-atspi")]
@@ -122,18 +124,18 @@ mod inner {
         ///
         /// The task runs until the returned handle (and all its clones) are
         /// dropped, which triggers the shutdown watch channel.
-        async fn spawn() -> Result<FocusEventListenerHandle, CoreError> {
+        async fn spawn() -> Result<FocusEventListenerHandle, VisionError> {
             use atspi::connection::AccessibilityConnection;
             use atspi::events::ObjectEvents;
 
             let conn = AccessibilityConnection::new().await.map_err(|e| {
-                CoreError::Internal(format!(
+                VisionError::Internal(format!(
                     "AT-SPI2 focus listener: D-Bus connection failed: {e}"
                 ))
             })?;
 
             conn.register_event::<ObjectEvents>().await.map_err(|e| {
-                CoreError::Internal(format!(
+                VisionError::Internal(format!(
                     "AT-SPI2 focus listener: event registration failed: {e}"
                 ))
             })?;
@@ -302,7 +304,7 @@ mod inner {
         /// The listener task runs until the returned handle (and all its
         /// clones) are dropped.
         #[cfg(feature = "linux-atspi")]
-        pub async fn start_focus_listener(&self) -> Result<FocusEventListenerHandle, CoreError> {
+        pub async fn start_focus_listener(&self) -> Result<FocusEventListenerHandle, VisionError> {
             FocusEventListener::spawn().await
         }
 
@@ -837,7 +839,7 @@ mod tests {
                 drop(handle);
                 eprintln!("AT-SPI2 focus listener started and stopped successfully");
             }
-            Err(oneshim_core::error::CoreError::Internal(msg)) => {
+            Err(crate::error::VisionError::Internal(msg)) => {
                 eprintln!("AT-SPI2 focus listener unavailable (expected on CI): {msg}");
             }
             Err(e) => {
