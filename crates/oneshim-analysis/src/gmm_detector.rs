@@ -7,7 +7,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-use oneshim_core::error::CoreError;
 use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::RegimeFeatures;
 
@@ -15,6 +14,7 @@ use crate::clustering_strategy::{
     apply_link_constraints, filter_features, parse_constraints, reconstruct_labels,
     ClusterAssignment, ClusteringResult, ClusteringStrategy,
 };
+use crate::error::AnalysisError;
 
 /// Gaussian Mixture Model detector for regime detection.
 ///
@@ -372,7 +372,7 @@ impl Default for GmmDetector {
 }
 
 impl ClusteringStrategy for GmmDetector {
-    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, CoreError> {
+    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, AnalysisError> {
         if features.is_empty() {
             return Ok(ClusteringResult {
                 labels: vec![],
@@ -417,7 +417,7 @@ impl ClusteringStrategy for GmmDetector {
         }
 
         let model = best_model
-            .ok_or_else(|| CoreError::Analysis("GMM: failed to fit any model".to_string()))?;
+            .ok_or_else(|| AnalysisError::Clustering("GMM: failed to fit any model".to_string()))?;
 
         // Assign each point to the component with highest posterior
         let mut labels = Vec::with_capacity(n);
@@ -473,7 +473,7 @@ impl ClusteringStrategy for GmmDetector {
         &self,
         features: &[RegimeFeatures],
         constraints: &[ClusterConstraint],
-    ) -> Result<ClusteringResult, CoreError> {
+    ) -> Result<ClusteringResult, AnalysisError> {
         if features.is_empty() {
             return Ok(ClusteringResult {
                 labels: vec![],
