@@ -16,6 +16,8 @@ use crate::runtime_state::{AppState, SecretBackendCapabilities, SecretBackendSta
 
 const DEFAULT_LOG_LINE_LIMIT: usize = 200;
 const MAX_LOG_LINE_LIMIT: usize = 500;
+const MAX_FRONTEND_LOG_MESSAGE_LEN: usize = 4_000;
+const MAX_FRONTEND_LOG_CONTEXT_LEN: usize = 12_000;
 
 fn runtime_log_dir() -> PathBuf {
     oneshim_core::config_manager::ConfigManager::data_dir()
@@ -106,6 +108,108 @@ fn runtime_log_snapshot_from_dir(
     })
 }
 
+fn sanitize_frontend_surface(surface: &str) -> String {
+    let trimmed = surface.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+
+    let normalized: String = trimmed
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    normalized.trim_matches('-').to_string()
+}
+
+fn truncate_log_field(value: String, limit: usize) -> String {
+    if value.len() <= limit {
+        return value;
+    }
+
+    let mut truncated = value;
+    truncated.truncate(limit);
+    truncated.push_str(" …(truncated)");
+    truncated
+}
+
+fn emit_frontend_log(level: &str, surface: &str, message: String, context: Option<String>) {
+    match (level, context.as_deref()) {
+        ("trace", Some(context)) => tracing::trace!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("trace", None) => tracing::trace!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("debug", Some(context)) => tracing::debug!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("debug", None) => tracing::debug!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("info", Some(context)) => tracing::info!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("info", None) => tracing::info!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("warn", Some(context)) => tracing::warn!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("warn", None) => tracing::warn!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        ("error", Some(context)) => tracing::error!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            context = %context,
+            "frontend runtime log"
+        ),
+        ("error", None) => tracing::error!(
+            target: "webview.console",
+            surface = %surface,
+            message = %message,
+            "frontend runtime log"
+        ),
+        _ => {}
+    }
+}
+
 /// 자동화 상태 조회 — 사용자 설정 기반 반환
 #[command]
 pub async fn get_automation_status(state: tauri::State<'_, AppState>) -> Result<bool, String> {
@@ -149,6 +253,37 @@ pub async fn get_runtime_log_snapshot(
     runtime_log_snapshot_from_dir(&runtime_log_dir(), line_limit)
 }
 
+#[command]
+pub async fn record_frontend_log(
+    surface: String,
+    level: String,
+    message: String,
+    context: Option<String>,
+) -> Result<(), String> {
+    let surface = sanitize_frontend_surface(&surface);
+    let surface = if surface.is_empty() {
+        "unknown".to_string()
+    } else {
+        surface
+    };
+    let message = truncate_log_field(message.trim().to_string(), MAX_FRONTEND_LOG_MESSAGE_LEN);
+    let context = context
+        .map(|value| truncate_log_field(value.trim().to_string(), MAX_FRONTEND_LOG_CONTEXT_LEN))
+        .filter(|value| !value.is_empty());
+
+    let level = match level.trim().to_ascii_lowercase().as_str() {
+        "trace" => "trace",
+        "debug" => "debug",
+        "info" => "info",
+        "warn" | "warning" => "warn",
+        "error" => "error",
+        other => return Err(format!("Unsupported frontend log level: {other}")),
+    };
+    emit_frontend_log(level, &surface, message, context);
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +321,14 @@ mod tests {
         assert!(log_file.ends_with("oneshim.log.newer"));
         assert_eq!(snapshot.line_count, 2);
         assert_eq!(snapshot.recent_text, "new-2\nnew-3");
+    }
+
+    #[test]
+    fn sanitize_frontend_surface_normalizes_unsafe_characters() {
+        assert_eq!(
+            sanitize_frontend_surface("tracking panel/main"),
+            "tracking-panel-main"
+        );
+        assert_eq!(sanitize_frontend_surface(""), "unknown");
     }
 }
