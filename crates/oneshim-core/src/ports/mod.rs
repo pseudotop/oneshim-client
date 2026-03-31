@@ -18,6 +18,7 @@ pub mod focus_probe;
 pub mod focus_storage;
 pub mod input_driver;
 pub mod integration;
+pub mod intent_planner;
 pub mod llm_provider;
 pub mod monitor;
 pub mod notifier;
