@@ -16,41 +16,9 @@ pub async fn semantic_search(
     debug!("GET /api/semantic-search q={} mode={}", params.q, mode);
 
     let limit = params.limit.unwrap_or(10).min(50);
-
-    let results = match mode {
-        "keyword" => {
-            let ts = state.text_search.as_ref().ok_or_else(|| {
-                ApiError::ServiceUnavailable(
-                    "Keyword search is not available (text search provider not configured)"
-                        .to_string(),
-                )
-            })?;
-            semantic_search_service::keyword_search(ts, &state, &params.q, limit)
-                .await
-                .map_err(|e| ApiError::Internal(format!("Keyword search failed: {e}")))?
-        }
-        _ => {
-            let (vs, ep) = match (&state.vector_store, &state.embedding_provider) {
-                (Some(vs), Some(ep)) => (vs, ep),
-                _ => {
-                    return Err(ApiError::ServiceUnavailable(
-                        "Semantic search is not available (embedding pipeline not configured)"
-                            .to_string(),
-                    ));
-                }
-            };
-            semantic_search_service::vector_search(
-                vs,
-                ep,
-                &state,
-                &params.q,
-                limit,
-                mode == "hybrid",
-            )
-            .await
-            .map_err(|e| ApiError::Internal(format!("Vector search failed: {e}")))?
-        }
-    };
+    let results = semantic_search_service::execute(&state, &params.q, limit, mode)
+        .await
+        .map_err(ApiError::ServiceUnavailable)?;
 
     Ok(Json(results))
 }

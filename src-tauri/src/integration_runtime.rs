@@ -17,13 +17,11 @@ use oneshim_core::ports::integration::{
 };
 use oneshim_core::ports::secret_store::SecretStore;
 use oneshim_network::integration::{
-    assemble_https_transport, Ed25519DpopProofFactory, EnvIntegrationAuthPort,
-    IntegrationEgressCoordinator, IntegrationInboxCoordinator,
-    IntegrationInsightProducerCoordinator, IntegrationProducerRuntimeLoop,
-    IntegrationProducerRuntimeLoopProfile, IntegrationRequestProofFactory, IntegrationRuntimeLoop,
+    assemble_https_transport, EnvIntegrationAuthPort, IntegrationEgressCoordinator,
+    IntegrationInboxCoordinator, IntegrationInsightProducerCoordinator,
+    IntegrationProducerRuntimeLoop, IntegrationProducerRuntimeLoopProfile, IntegrationRuntimeLoop,
     IntegrationRuntimeLoopProfile, IntegrationRuntimeTelemetryHandle,
-    IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile,
-    NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
+    IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile, OidcDeviceFlowAuthConfig,
     OidcDeviceFlowIntegrationAuthPort, PolicyAwareIntegrationEgressCoordinator,
 };
 use oneshim_storage::integration_state_store::{
@@ -220,12 +218,10 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
             IntegrationAuthProfileKind::OidcDeviceFlow => false,
         };
 
-        let dpop_proof_factory: Arc<dyn IntegrationRequestProofFactory> =
-            if supported_auth_schemes.contains(&IntegrationAuthScheme::DpopBearer) {
-                Arc::new(Ed25519DpopProofFactory::new(self.secret_store.clone()))
-            } else {
-                Arc::new(NoopIntegrationRequestProofFactory)
-            };
+        let dpop_proof_factory = oneshim_network::integration::build_proof_factory(
+            &supported_auth_schemes,
+            self.secret_store.clone(),
+        );
 
         let auth: Option<Arc<dyn IntegrationAuthPort>> = match integration.auth_profile_kind {
             IntegrationAuthProfileKind::EnvToken => auth_token_env_var.clone().map(|env_var| {
@@ -319,7 +315,8 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
             Duration::from_secs(integration.request_timeout_secs),
             auth.clone()
                 .expect("runtime_configured requires an integration auth port"),
-            dpop_proof_factory,
+            &supported_auth_schemes,
+            self.secret_store.clone(),
         )?;
 
         let integration_state_store = FileIntegrationStateStore::with_policy(

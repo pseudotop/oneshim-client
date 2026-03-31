@@ -43,4 +43,6 @@ pub use transport::{
     IntegrationRequestProofFactory, IntegrationTransportClient, IntegrationTransportConnectRequest,
     IntegrationTransportConnectResponse,
 };
-pub use transport_assembly::{assemble_https_transport, IntegrationTransportAssembly};
+pub use transport_assembly::{
+    assemble_https_transport, build_proof_factory, IntegrationTransportAssembly,
+};
