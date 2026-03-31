@@ -36,6 +36,36 @@ pub(crate) fn resolve_mode(mode: Option<&str>) -> &str {
     }
 }
 
+/// Execute a search with mode dispatch and provider availability checks.
+pub async fn execute(
+    state: &AppState,
+    query: &str,
+    limit: usize,
+    mode: &str,
+) -> Result<Vec<SemanticSearchResult>, String> {
+    match mode {
+        "keyword" => {
+            let ts = state.text_search.as_ref().ok_or_else(|| {
+                "Keyword search is not available (text search provider not configured)".to_string()
+            })?;
+            keyword_search(ts, state, query, limit)
+                .await
+                .map_err(|e| format!("Keyword search failed: {e}"))
+        }
+        _ => {
+            let vs = state.vector_store.as_ref().ok_or_else(|| {
+                "Semantic search is not available (embedding pipeline not configured)".to_string()
+            })?;
+            let ep = state.embedding_provider.as_ref().ok_or_else(|| {
+                "Semantic search is not available (embedding provider not configured)".to_string()
+            })?;
+            vector_search(vs, ep, state, query, limit, mode == "hybrid")
+                .await
+                .map_err(|e| format!("Vector search failed: {e}"))
+        }
+    }
+}
+
 /// Execute keyword-only search via TextSearchProvider.
 pub async fn keyword_search(
     text_search: &Arc<dyn TextSearchProvider>,
@@ -90,7 +120,10 @@ pub async fn vector_search(
 ) -> Result<Vec<SemanticSearchResult>, CoreError> {
     let sanitized = sanitize_query(query);
 
-    let query_vector = embedding_provider.embed(&sanitized).await?;
+    let query_vector = embedding_provider
+        .embed(&sanitized)
+        .await
+        .map_err(|e| CoreError::Internal(format!("Embedding failed: {e}")))?;
     let time_decay_hours = 168.0; // 1 week default
     let vector_results = vector_store
         .search(&query_vector, limit, time_decay_hours)

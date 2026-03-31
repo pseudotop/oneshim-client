@@ -6,13 +6,29 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use oneshim_core::error::CoreError;
+use oneshim_core::models::integration::IntegrationAuthScheme;
 use oneshim_core::ports::integration::IntegrationAuthPort;
+use oneshim_core::ports::secret_store::SecretStore;
 
+use super::auth::{Ed25519DpopProofFactory, NoopIntegrationRequestProofFactory};
 use super::transport::{
     IntegrationEgressTransportClient, IntegrationInboxTransportClient,
     IntegrationRequestProofFactory, IntegrationTransportClient,
 };
 use super::{HttpsIntegrationTransportClient, HttpsIntegrationTransportConfig};
+
+/// Build a proof factory based on supported auth schemes.
+/// Returns an opaque Arc so callers don't need to import the trait.
+pub fn build_proof_factory(
+    supported_auth_schemes: &[IntegrationAuthScheme],
+    secret_store: Arc<dyn SecretStore>,
+) -> Arc<dyn IntegrationRequestProofFactory> {
+    if supported_auth_schemes.contains(&IntegrationAuthScheme::DpopBearer) {
+        Arc::new(Ed25519DpopProofFactory::new(Some(secret_store)))
+    } else {
+        Arc::new(NoopIntegrationRequestProofFactory)
+    }
+}
 
 /// Pre-assembled integration transport components.
 /// All fields are trait-object Arcs ready for coordinator injection.
@@ -30,8 +46,11 @@ pub fn assemble_https_transport(
     bootstrap_url: String,
     request_timeout: Duration,
     auth: Arc<dyn IntegrationAuthPort>,
-    proof_factory: Arc<dyn IntegrationRequestProofFactory>,
+    supported_auth_schemes: &[IntegrationAuthScheme],
+    secret_store: Arc<dyn SecretStore>,
 ) -> Result<IntegrationTransportAssembly, CoreError> {
+    let proof_factory = build_proof_factory(supported_auth_schemes, secret_store);
+
     let transport = HttpsIntegrationTransportClient::new(
         HttpsIntegrationTransportConfig::new(bootstrap_url, request_timeout),
         auth,
