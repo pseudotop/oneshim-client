@@ -1,5 +1,5 @@
+use crate::error::VisionError;
 use image::DynamicImage;
-use oneshim_core::error::CoreError;
 use oneshim_core::models::context::WindowBounds;
 use tracing::debug;
 use xcap::Monitor;
@@ -12,19 +12,19 @@ impl ScreenCapture {
         Self
     }
 
-    pub fn capture_primary(&self) -> Result<DynamicImage, CoreError> {
+    pub fn capture_primary(&self) -> Result<DynamicImage, VisionError> {
         let monitors = Monitor::all()
-            .map_err(|e| CoreError::Internal(format!("Failed to query monitor list: {e}")))?;
+            .map_err(|e| VisionError::Internal(format!("Failed to query monitor list: {e}")))?;
 
         let monitor = monitors
             .into_iter()
             .find(|m| m.is_primary().unwrap_or(false))
             .or_else(|| Monitor::all().ok()?.into_iter().next())
-            .ok_or_else(|| CoreError::Internal("Monitor not found".to_string()))?;
+            .ok_or_else(|| VisionError::Internal("Monitor not found".to_string()))?;
 
         let image = monitor
             .capture_image()
-            .map_err(|e| CoreError::Internal(format!("Screen capture failed: {e}")))?;
+            .map_err(|e| VisionError::Internal(format!("Screen capture failed: {e}")))?;
 
         debug!(
             "screen capture completed: {}x{}",
@@ -44,9 +44,9 @@ impl ScreenCapture {
     pub fn capture_for_window(
         &self,
         bounds: Option<&WindowBounds>,
-    ) -> Result<DynamicImage, CoreError> {
+    ) -> Result<DynamicImage, VisionError> {
         let monitors = Monitor::all()
-            .map_err(|e| CoreError::Internal(format!("Failed to query monitor list: {e}")))?;
+            .map_err(|e| VisionError::Internal(format!("Failed to query monitor list: {e}")))?;
 
         // Single monitor or no bounds — primary capture
         if monitors.len() <= 1 || bounds.is_none() {
@@ -72,11 +72,11 @@ impl ScreenCapture {
         let monitor = target
             .or_else(|| monitors.iter().find(|m| m.is_primary().unwrap_or(false)))
             .or(monitors.first())
-            .ok_or_else(|| CoreError::Internal("No monitor found".to_string()))?;
+            .ok_or_else(|| VisionError::Internal("No monitor found".to_string()))?;
 
         let image = monitor
             .capture_image()
-            .map_err(|e| CoreError::Internal(format!("Screen capture failed: {e}")))?;
+            .map_err(|e| VisionError::Internal(format!("Screen capture failed: {e}")))?;
 
         debug!(
             "captured monitor at ({}, {}) — {}x{}",
@@ -89,26 +89,26 @@ impl ScreenCapture {
         Ok(DynamicImage::ImageRgba8(image))
     }
 
-    pub fn capture_monitor(&self, index: usize) -> Result<DynamicImage, CoreError> {
+    pub fn capture_monitor(&self, index: usize) -> Result<DynamicImage, VisionError> {
         let monitors = Monitor::all()
-            .map_err(|e| CoreError::Internal(format!("Failed to query monitor list: {e}")))?;
+            .map_err(|e| VisionError::Internal(format!("Failed to query monitor list: {e}")))?;
 
         let monitor = monitors
             .into_iter()
             .nth(index)
-            .ok_or_else(|| CoreError::Internal(format!("Monitor index {index} not found")))?;
+            .ok_or_else(|| VisionError::Internal(format!("Monitor index {index} not found")))?;
 
         let image = monitor
             .capture_image()
-            .map_err(|e| CoreError::Internal(format!("Screen capture failed: {e}")))?;
+            .map_err(|e| VisionError::Internal(format!("Screen capture failed: {e}")))?;
 
         Ok(DynamicImage::ImageRgba8(image))
     }
 
-    pub fn monitor_count() -> Result<usize, CoreError> {
+    pub fn monitor_count() -> Result<usize, VisionError> {
         Monitor::all()
             .map(|m| m.len())
-            .map_err(|e| CoreError::Internal(format!("Failed to query monitor list: {e}")))
+            .map_err(|e| VisionError::Internal(format!("Failed to query monitor list: {e}")))
     }
 }
 
