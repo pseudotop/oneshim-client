@@ -26,6 +26,7 @@ export const cardVariants = {
     highlight: 'bg-brand-signal/10 border border-brand-signal/30',
     interactive: 'bg-surface-elevated hover:bg-active cursor-pointer transition-colors',
     danger: 'bg-surface-elevated border border-semantic-error/30',
+    accent: 'bg-surface-elevated border-brand-signal border-l-4',
   },
   padding: {
     none: '',
@@ -58,6 +59,7 @@ export const badgeVariants = {
     purple: 'bg-brand-signal/20 text-brand-text',
   },
   size: {
+    xs: 'px-1.5 py-0.5 text-[10px]',
     sm: 'px-1.5 py-0.5 text-xs',
     md: 'px-2 py-1 text-sm',
   },

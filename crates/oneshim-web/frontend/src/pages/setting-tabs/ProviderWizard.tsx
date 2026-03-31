@@ -193,12 +193,12 @@ const PROVIDERS: ProviderDef[] = [
   },
 ]
 
-const TIER_COLORS: Record<string, string> = {
-  recommended: colors.semantic.success,
-  free: colors.semantic.info,
-  local: 'bg-brand-signal/20 text-brand-text',
-  cloud: colors.semantic.info,
-  oauth: colors.semantic.warning,
+const TIER_BADGE_COLOR: Record<string, 'success' | 'info' | 'primary' | 'warning' | 'default'> = {
+  recommended: 'success',
+  free: 'info',
+  local: 'primary',
+  cloud: 'info',
+  oauth: 'warning',
 }
 
 function ProviderIcon({ icon, size = 28 }: { icon: string; size?: number }) {
@@ -277,7 +277,9 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
           <ProviderIcon icon={selected.icon} size={36} />
           <div>
             <h3 className={typography.h3}>{selected.name}</h3>
-            <Badge className={cn('mt-1 text-[10px]', TIER_COLORS[selected.tier])}>{t(selected.tierLabel)}</Badge>
+            <Badge size="xs" color={TIER_BADGE_COLOR[selected.tier]} className="mt-1">
+              {t(selected.tierLabel)}
+            </Badge>
           </div>
         </div>
 
@@ -399,11 +401,13 @@ export default function ProviderWizard({ onSelect, className }: ProviderWizardPr
             <div className="min-w-0">
               <div className={cn('truncate', typography.label, colors.text.primary)}>{provider.name}</div>
               {provider.comingSoon ? (
-                <Badge className={cn('mt-0.5 text-[9px]', colors.text.tertiary)}>
+                <Badge size="xs" className="mt-0.5">
                   {t('settings.ai.comingSoon', 'Coming soon')}
                 </Badge>
               ) : (
-                <Badge className={cn('mt-0.5 text-[9px]', TIER_COLORS[provider.tier])}>{t(provider.tierLabel)}</Badge>
+                <Badge size="xs" color={TIER_BADGE_COLOR[provider.tier]} className="mt-0.5">
+                  {t(provider.tierLabel)}
+                </Badge>
               )}
             </div>
           </button>
