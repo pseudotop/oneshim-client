@@ -38,6 +38,7 @@ impl AutomationCommandService {
         self.validate_preset_ai_profile_binding(&preset)?;
 
         let config_manager = require_config_manager(&self.ctx)?;
+        let mut duplicate = false;
         config_manager
             .update_with(|config| {
                 if config
@@ -46,6 +47,7 @@ impl AutomationCommandService {
                     .iter()
                     .any(|p| p.id == preset.id)
                 {
+                    duplicate = true;
                     return Ok(());
                 }
                 let mut new_preset = preset.clone();
@@ -54,6 +56,13 @@ impl AutomationCommandService {
                 Ok(())
             })
             .map_err(|e| ApiError::Internal(format!("Failed to save preset: {e}")))?;
+
+        if duplicate {
+            return Err(ApiError::Conflict(format!(
+                "Preset '{}' already exists",
+                preset.id,
+            )));
+        }
 
         Ok(preset)
     }
@@ -158,24 +167,9 @@ impl AutomationCommandService {
                 Err(e) => Err(ApiError::Internal(format!("execution failure: {}", e))),
             }
         } else {
-            tracing::info!(
-                preset_id = %preset.id,
-                steps = preset.steps.len(),
-                "workflow preset execution requested (controller not configured, logging only)"
-            );
-
-            Ok(PresetRunResult {
-                preset_id: id,
-                success: true,
-                message: format!(
-                    "preset '{}' execution requested ({} steps, logging only)",
-                    preset.name,
-                    preset.steps.len()
-                ),
-                steps_executed: None,
-                total_steps: Some(preset.steps.len()),
-                total_elapsed_ms: None,
-            })
+            Err(ApiError::BadRequest(
+                "Automation controller is not active.".to_string(),
+            ))
         }
     }
 
