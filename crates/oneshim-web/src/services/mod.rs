@@ -11,6 +11,7 @@ pub mod automation_gui_service;
 pub mod automation_service;
 pub(crate) mod backup_assembler;
 pub mod backup_service;
+pub mod dashboard_service;
 pub mod data_web_service;
 pub(crate) mod events_assembler;
 pub mod events_service;

@@ -6,27 +6,44 @@ use tracing::debug;
 use oneshim_core::models::daily_digest::DailyDigest;
 
 use crate::error::ApiError;
+use crate::services::dashboard_service;
 use oneshim_api_contracts::dashboard::DashboardDayQuery;
 
-use crate::handlers::dashboard::get_dashboard_day;
 use crate::AppState;
 
 /// GET /api/digests/daily?date=YYYY-MM-DD — returns a daily digest.
-///
-/// Uses the same cache-or-generate logic as the dashboard endpoint.
 pub async fn get_daily_digest(
-    state: State<AppState>,
+    State(state): State<AppState>,
     Query(params): Query<DashboardDayQuery>,
 ) -> Result<Json<DailyDigest>, ApiError> {
-    debug!("GET /api/digests/daily date={:?}", params.date);
-    get_dashboard_day(state, Query(params)).await
+    let date_str = params
+        .date
+        .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+    debug!("GET /api/digests/daily date={}", date_str);
+
+    let date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {e}")))?;
+
+    let digest = dashboard_service::get_or_generate_digest(&state, &date_str, date)
+        .map_err(ApiError::Internal)?;
+
+    Ok(Json(digest))
 }
 
 /// GET /api/digests/daily/today — shortcut for today's daily digest.
-pub async fn get_daily_digest_today(state: State<AppState>) -> Result<Json<DailyDigest>, ApiError> {
+pub async fn get_daily_digest_today(
+    State(state): State<AppState>,
+) -> Result<Json<DailyDigest>, ApiError> {
     let today = Utc::now().format("%Y-%m-%d").to_string();
     debug!("GET /api/digests/daily/today ({})", today);
-    get_dashboard_day(state, Query(DashboardDayQuery { date: Some(today) })).await
+
+    let date = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d")
+        .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {e}")))?;
+
+    let digest = dashboard_service::get_or_generate_digest(&state, &today, date)
+        .map_err(ApiError::Internal)?;
+
+    Ok(Json(digest))
 }
 
 #[cfg(test)]
