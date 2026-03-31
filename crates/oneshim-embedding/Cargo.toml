@@ -11,6 +11,7 @@ authors.workspace = true
 
 [dependencies]
 oneshim-core = { workspace = true }
+thiserror = { workspace = true }
 async-trait = { workspace = true }
 fastembed = { version = "5", optional = true }
 tokio = { workspace = true, features = ["rt"] }
