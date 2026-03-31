@@ -4,6 +4,7 @@
  */
 import { Timer, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   cancelPomodoro,
   completePomodoro,
@@ -15,6 +16,7 @@ import {
   startPomodoro,
 } from '../api/client'
 import { isStandaloneModeEnabled } from '../api/standalone'
+import { addToast } from '../hooks/useToast'
 import { colors, dataViz, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { IS_MAC, IS_TAURI } from '../utils/platform'
@@ -28,19 +30,6 @@ function formatTime(secs: number): string {
   const m = Math.floor(secs / 60)
   const s = secs % 60
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-function statusLabel(status: PomodoroStatus): string {
-  switch (status) {
-    case 'running':
-      return 'Focus'
-    case 'on_break':
-      return 'Break'
-    case 'completed':
-      return 'Done'
-    case 'cancelled':
-      return 'Cancelled'
-  }
 }
 
 function statusColor(status: PomodoroStatus): string {
@@ -147,12 +136,10 @@ async function requestDesktopNotificationAccess() {
   }
 }
 
-async function notifyCompletion(phase: 'work' | 'break') {
+async function notifyCompletion(_phase: 'work' | 'break', title: string, body: string) {
   if (!('Notification' in window)) return
   const permissionState = await desktopNotificationState()
   if (permissionState === 'granted') {
-    const title = phase === 'work' ? 'Focus session complete!' : 'Break is over!'
-    const body = phase === 'work' ? 'Time for a break.' : 'Ready to focus again?'
     new Notification(title, { body, icon: '/favicon.ico' })
   } else if (permissionState === 'unknown') {
     await requestDesktopNotificationAccess()
@@ -160,6 +147,7 @@ async function notifyCompletion(phase: 'work' | 'break') {
 }
 
 export default function PomodoroTimer() {
+  const { t } = useTranslation()
   const [session, setSession] = useState<PomodoroSession | null>(null)
   const [remaining, setRemaining] = useState(0)
   const [status, setStatus] = useState<PomodoroStatus>('completed')
@@ -167,6 +155,25 @@ export default function PomodoroTimer() {
   const [error, setError] = useState<string | null>(null)
   const prevStatusRef = useRef<PomodoroStatus>('completed')
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const describeError = useCallback(
+    (value: unknown, fallback: string) => (value instanceof Error && value.message ? value.message : fallback),
+    [],
+  )
+  const statusLabelText = useCallback(
+    (value: PomodoroStatus) => {
+      switch (value) {
+        case 'running':
+          return t('focus.pomodoro.focus', 'Focus')
+        case 'on_break':
+          return t('focus.pomodoro.break', 'Break')
+        case 'completed':
+          return t('focus.pomodoro.done', 'Done')
+        case 'cancelled':
+          return t('focus.pomodoro.cancelled', 'Cancelled')
+      }
+    },
+    [t],
+  )
 
   // Derive effective status + remaining from the session snapshot and local clock
   const computeLocal = useCallback((s: PomodoroSession) => {
@@ -210,11 +217,24 @@ export default function PomodoroTimer() {
 
       // Detect transitions
       if (prevStatusRef.current === 'running' && loc.status === 'on_break') {
-        void notifyCompletion('work')
+        void notifyCompletion(
+          'work',
+          t('focus.pomodoro.workCompleteTitle', 'Focus session complete!'),
+          t('focus.pomodoro.workCompleteBody', 'Time for a break.'),
+        )
       } else if (prevStatusRef.current === 'on_break' && loc.status === 'completed') {
-        void notifyCompletion('break')
+        void notifyCompletion(
+          'break',
+          t('focus.pomodoro.breakCompleteTitle', 'Break is over!'),
+          t('focus.pomodoro.breakCompleteBody', 'Ready to focus again?'),
+        )
         // Auto-complete on server
-        completePomodoro().catch((e) => console.warn('completePomodoro failed:', e))
+        completePomodoro().catch((e) => {
+          console.warn('completePomodoro failed:', e)
+          const message = describeError(e, t('focus.pomodoro.syncFailed', 'Failed to sync the completed session.'))
+          setError(message)
+          addToast('warning', message, 5000)
+        })
       }
       prevStatusRef.current = loc.status
     }, 1000)
@@ -222,7 +242,7 @@ export default function PomodoroTimer() {
     return () => {
       if (tickRef.current) clearInterval(tickRef.current)
     }
-  }, [session, computeLocal])
+  }, [session, computeLocal, describeError, t])
 
   // Load current session on mount
   useEffect(() => {
@@ -233,8 +253,13 @@ export default function PomodoroTimer() {
           prevStatusRef.current = s.status
         }
       })
-      .catch((e) => console.warn('fetchCurrentPomodoro failed:', e))
-  }, [])
+      .catch((e) => {
+        console.warn('fetchCurrentPomodoro failed:', e)
+        const message = describeError(e, t('focus.pomodoro.loadFailed', 'Failed to load the current timer.'))
+        setError(message)
+        addToast('error', message, 5000)
+      })
+  }, [describeError, t])
 
   // Request notification permission eagerly
   useEffect(() => {
@@ -252,7 +277,9 @@ export default function PomodoroTimer() {
       setSession(s)
       prevStatusRef.current = 'running'
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to start')
+      const message = describeError(e, t('focus.pomodoro.startFailed', 'Failed to start the timer.'))
+      setError(message)
+      addToast('error', message, 5000)
     } finally {
       setLoading(false)
     }
@@ -265,7 +292,9 @@ export default function PomodoroTimer() {
       const s = await cancelPomodoro()
       setSession(s)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to cancel')
+      const message = describeError(e, t('focus.pomodoro.cancelFailed', 'Failed to cancel the timer.'))
+      setError(message)
+      addToast('error', message, 5000)
     } finally {
       setLoading(false)
     }
@@ -287,7 +316,7 @@ export default function PomodoroTimer() {
       <CardHeader>
         <CardTitle>
           <Timer className={`mr-2 inline ${iconSize.md}`} />
-          Pomodoro
+          {t('focus.pomodoro.title', 'Pomodoro')}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -296,22 +325,22 @@ export default function PomodoroTimer() {
             progress={progress}
             status={status}
             timeText={isActive ? formatTime(remaining) : '--:--'}
-            label={isActive ? statusLabel(status) : 'Ready'}
+            label={isActive ? statusLabelText(status) : t('focus.pomodoro.ready', 'Ready')}
           />
           <span className="sr-only" aria-live="polite">
-            {isActive ? `${statusLabel(status)}: ${formatTime(remaining)}` : 'Ready'}
+            {isActive ? `${statusLabelText(status)}: ${formatTime(remaining)}` : t('focus.pomodoro.ready', 'Ready')}
           </span>
 
           {/* Controls */}
           <div className="flex gap-2">
             {!isActive ? (
               <Button variant="primary" size="sm" onClick={handleStart} disabled={loading}>
-                Start {DEFAULT_WORK_MINS}m
+                {t('focus.pomodoro.start', { minutes: DEFAULT_WORK_MINS })}
               </Button>
             ) : (
               <Button variant="secondary" size="sm" onClick={handleCancel} disabled={loading}>
                 <X className="mr-1 h-3.5 w-3.5" />
-                Cancel
+                {t('focus.pomodoro.cancel', 'Cancel')}
               </Button>
             )}
           </div>
@@ -321,7 +350,9 @@ export default function PomodoroTimer() {
 
           {/* Session info for completed */}
           {session && status === 'completed' && (
-            <p className={cn(typography.small, colors.text.tertiary)}>Session completed</p>
+            <p className={cn(typography.small, colors.text.tertiary)}>
+              {t('focus.pomodoro.sessionCompleted', 'Session completed')}
+            </p>
           )}
         </div>
       </CardContent>

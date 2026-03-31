@@ -940,7 +940,29 @@
       "patternDetected": "패턴 발견: {description}",
       "excessiveCommunication": "소통 시간이 많습니다. 집중 시간을 확보하세요",
       "default": "새로운 제안이 있습니다",
-      "act": "실행"
+      "act": "실행",
+      "loadFailed": "집중도 제안을 불러오지 못했습니다.",
+      "dismissFailed": "제안을 닫지 못했습니다.",
+      "actFailed": "제안을 적용하지 못했습니다."
+    },
+    "pomodoro": {
+      "title": "포모도로",
+      "focus": "집중",
+      "break": "휴식",
+      "done": "완료",
+      "cancelled": "취소됨",
+      "ready": "준비됨",
+      "start": "{{minutes}}분 시작",
+      "cancel": "취소",
+      "sessionCompleted": "세션이 완료되었습니다",
+      "startFailed": "타이머를 시작하지 못했습니다.",
+      "cancelFailed": "타이머를 취소하지 못했습니다.",
+      "loadFailed": "현재 타이머 상태를 불러오지 못했습니다.",
+      "syncFailed": "완료된 세션을 동기화하지 못했습니다.",
+      "workCompleteTitle": "집중 세션이 완료되었습니다!",
+      "workCompleteBody": "이제 휴식할 시간입니다.",
+      "breakCompleteTitle": "휴식이 끝났습니다!",
+      "breakCompleteBody": "다시 집중할 준비가 되었나요?"
     }
   },
   "emptyState": {
@@ -1128,6 +1150,8 @@
     "create_session": "세션을 만들어 채팅을 시작하세요",
     "create_failed_title": "세션을 만들 수 없습니다",
     "create_failed": "AI 세션을 만들지 못했습니다.",
+    "load_failed_title": "세션을 불러올 수 없습니다",
+    "load_failed": "AI 세션을 불러오지 못했습니다.",
     "refresh_failed": "AI 세션 목록을 새로고침하지 못했습니다.",
     "send_failed": "메시지를 보내지 못했습니다.",
     "retry_failed": "세션을 재시도하지 못했습니다.",
@@ -1137,6 +1161,7 @@
     "retry": "재시도",
     "turns": "턴",
     "copy": "복사",
+    "copy_failed": "내용을 복사하지 못했습니다.",
     "copied": "복사됨",
     "advanced": "고급 설정",
     "http_surface_label": "HTTP surface",

@@ -940,7 +940,29 @@
       "patternDetected": "Pattern detected: {description}",
       "excessiveCommunication": "Communication time is high. Secure some focus time",
       "default": "You have a new suggestion",
-      "act": "Act"
+      "act": "Act",
+      "loadFailed": "Failed to load focus suggestions.",
+      "dismissFailed": "Failed to dismiss the suggestion.",
+      "actFailed": "Failed to apply the suggestion."
+    },
+    "pomodoro": {
+      "title": "Pomodoro",
+      "focus": "Focus",
+      "break": "Break",
+      "done": "Done",
+      "cancelled": "Cancelled",
+      "ready": "Ready",
+      "start": "Start {{minutes}}m",
+      "cancel": "Cancel",
+      "sessionCompleted": "Session completed",
+      "startFailed": "Failed to start the timer.",
+      "cancelFailed": "Failed to cancel the timer.",
+      "loadFailed": "Failed to load the current timer.",
+      "syncFailed": "Failed to sync the completed session.",
+      "workCompleteTitle": "Focus session complete!",
+      "workCompleteBody": "Time for a break.",
+      "breakCompleteTitle": "Break is over!",
+      "breakCompleteBody": "Ready to focus again?"
     }
   },
   "emptyState": {
@@ -1128,6 +1150,8 @@
     "create_session": "Create a session to start chatting",
     "create_failed_title": "Could not create a session",
     "create_failed": "Failed to create an AI session.",
+    "load_failed_title": "Could not load sessions",
+    "load_failed": "Failed to load AI sessions.",
     "refresh_failed": "Failed to refresh AI sessions.",
     "send_failed": "Failed to send the message.",
     "retry_failed": "Failed to retry the session.",
@@ -1137,6 +1161,7 @@
     "retry": "Retry",
     "turns": "turns",
     "copy": "Copy",
+    "copy_failed": "Failed to copy the content.",
     "copied": "Copied",
     "advanced": "Advanced",
     "http_surface_label": "HTTP surface",

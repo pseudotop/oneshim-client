@@ -18,6 +18,7 @@ interface CoachingPopupProps {
 export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopupProps) {
   const [text, setText] = useState(message.text)
   const [transitioning, setTransitioning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const prevTextRef = useRef(message.text)
 
   // Detect text upgrade (LLM personalization)
@@ -68,6 +69,32 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
     [message.message_id],
   )
 
+  const handleDismiss = useCallback(
+    async (action: DismissAction) => {
+      try {
+        setError(null)
+        await dismiss(action)
+      } catch (e) {
+        console.warn(`dismiss_coaching_message(${action}) failed:`, e)
+        setError('Could not update the coaching message.')
+      }
+    },
+    [dismiss],
+  )
+
+  const handleFeedback = useCallback(
+    async (positive: boolean) => {
+      try {
+        setError(null)
+        await feedback(positive)
+      } catch (e) {
+        console.warn(`submit_coaching_feedback(${positive ? 'positive' : 'negative'}) failed:`, e)
+        setError('Could not save feedback.')
+      }
+    },
+    [feedback],
+  )
+
   // Note: No per-element mouseenter/mouseleave cursor passthrough management.
   // The overlay is click-through by default. The user presses Cmd+Shift+O to
   // make it interactive. After dismissal, the Rust backend returns it to
@@ -84,13 +111,14 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
         >
           {text}
         </p>
+        {error && <p className="mb-3 text-semantic-error text-xs">{error}</p>}
 
         {/* Actions row */}
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => void dismiss('ok').catch((e) => console.warn('dismiss_coaching_message(ok) failed:', e))}
+              onClick={() => void handleDismiss('ok')}
               aria-label="Dismiss coaching message"
               className={`rounded-md bg-content-inverse/10 px-3 py-1 text-xs ${typography.weight.medium} text-content-secondary ${motion.colors} hover:bg-content-inverse/20`}
             >
@@ -98,9 +126,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             </button>
             <button
               type="button"
-              onClick={() =>
-                void dismiss('later').catch((e) => console.warn('dismiss_coaching_message(later) failed:', e))
-              }
+              onClick={() => void handleDismiss('later')}
               aria-label="Remind me later"
               className={`rounded-md bg-content-inverse/5 px-3 py-1 text-xs ${typography.weight.medium} text-content-tertiary ${motion.colors} hover:bg-content-inverse/10`}
             >
@@ -112,9 +138,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
           <div className="flex gap-1">
             <button
               type="button"
-              onClick={() =>
-                void feedback(true).catch((e) => console.warn('submit_coaching_feedback(positive) failed:', e))
-              }
+              onClick={() => void handleFeedback(true)}
               className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-success hover:opacity-100`.trim()}
               aria-label="Helpful"
             >
@@ -122,9 +146,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             </button>
             <button
               type="button"
-              onClick={() =>
-                void feedback(false).catch((e) => console.warn('submit_coaching_feedback(negative) failed:', e))
-              }
+              onClick={() => void handleFeedback(false)}
               className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-error hover:opacity-100`.trim()}
               aria-label="Not helpful"
             >

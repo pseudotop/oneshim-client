@@ -251,6 +251,7 @@ function now() {
 /* ---- Copy button for code blocks ---- */
 
 function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const handleCopy = useCallback(async () => {
     try {
@@ -259,8 +260,9 @@ function CopyButton({ text }: { text: string }) {
       setTimeout(() => setCopied(false), 2000)
     } catch (e) {
       console.warn('clipboard.writeText failed:', e)
+      addToast('error', t('chat.copy_failed', 'Failed to copy the content.'), 4000)
     }
-  }, [text])
+  }, [text, t])
   return (
     <button
       type="button"
@@ -269,7 +271,7 @@ function CopyButton({ text }: { text: string }) {
         'absolute top-2 right-2 rounded bg-surface-elevated/40 p-1.5 text-content-inverse/60 opacity-0 hover:bg-surface-elevated/60 group-hover:opacity-100',
         motion.opacity,
       )}
-      title="Copy"
+      title={t('chat.copy')}
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}
     </button>
@@ -322,6 +324,7 @@ export default function Chat() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
   const [createError, setCreateError] = useState<string | null>(null)
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isNearBottom = useRef(true)
   const rafRef = useRef<number | null>(null)
@@ -362,9 +365,17 @@ export default function Chat() {
 
   useEffect(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
-      .then(setSessions)
-      .catch((e) => console.warn('list_ai_sessions failed:', e))
-  }, [])
+      .then((items) => {
+        setSessions(items)
+        setSessionLoadError(null)
+      })
+      .catch((e) => {
+        const message = errorMessage(e, t('chat.load_failed', 'Failed to load AI sessions.'))
+        console.warn('list_ai_sessions failed:', e)
+        setSessionLoadError(message)
+        addToast('error', message, 5000)
+      })
+  }, [t])
 
   const selectedHttpSurface = useMemo(
     () => HTTP_API_SURFACES.find((surface) => surface.surface_id === httpSurfaceId) ?? HTTP_API_SURFACES[0] ?? null,
@@ -550,10 +561,14 @@ export default function Chat() {
 
   const refresh = useCallback(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
-      .then(setSessions)
+      .then((items) => {
+        setSessions(items)
+        setSessionLoadError(null)
+      })
       .catch((e) => {
         const message = errorMessage(e, t('chat.refresh_failed', 'Failed to refresh AI sessions.'))
         console.warn('list_ai_sessions failed:', e)
+        setSessionLoadError(message)
         addToast('error', message, 5000)
       })
   }, [t])
@@ -590,6 +605,7 @@ export default function Chat() {
       setActiveId(info.session_id)
       setMessages([])
       setCreateError(null)
+      setSessionLoadError(null)
     } catch (e) {
       console.warn('create_ai_session failed:', e)
       const message = errorMessage(e, t('chat.create_failed', 'Failed to create an AI session.'))
@@ -887,6 +903,13 @@ export default function Chat() {
                   className="mt-2"
                 >
                   <p>{createError}</p>
+                </Alert>
+              </div>
+            )}
+            {sessionLoadError && (
+              <div className="w-full max-w-md px-6">
+                <Alert variant="error" title={t('chat.load_failed_title', 'Could not load sessions')} className="mt-2">
+                  <p>{sessionLoadError}</p>
                 </Alert>
               </div>
             )}
