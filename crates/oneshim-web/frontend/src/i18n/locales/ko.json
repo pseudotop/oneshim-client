@@ -953,6 +953,14 @@
       "description": "Settings에서 스크린샷 캡처를 활성화하세요",
       "action": "설정으로 이동"
     },
+    "timelineWaiting": {
+      "title": "아직 캡처된 스크린샷이 없습니다",
+      "description": "ONESHIM이 아직 타임라인 프레임을 저장하지 않았습니다. 잠시 앱을 실행한 상태로 두고, 계속 이 상태면 데스크톱 캡처 권한을 다시 확인하세요."
+    },
+    "timelineStandalone": {
+      "title": "데스크톱 캡처를 사용할 수 없습니다",
+      "description": "ONESHIM이 현재 live desktop capture 연결 없이 실행 중입니다. 앱을 다시 열어 live desktop mode로 연결한 뒤 프레임이 쌓이는지 확인하세요."
+    },
     "reports": {
       "title": "분석 데이터 부족",
       "description": "하루 이상 사용 후 리포트를 확인하세요"

@@ -7,7 +7,16 @@ import { Camera, Copy } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { addTagToFrame, type Frame, fetchFrames, fetchFrameTags, fetchTags, removeTagFromFrame } from '../api/client'
+import {
+  addTagToFrame,
+  type Frame,
+  fetchFrames,
+  fetchFrameTags,
+  fetchSettings,
+  fetchTags,
+  removeTagFromFrame,
+} from '../api/client'
+import { isStandaloneModeEnabled } from '../api/standalone'
 import DateRangePicker from '../components/DateRangePicker'
 import Lightbox from '../components/Lightbox'
 import { TagBadge } from '../components/TagBadge'
@@ -59,6 +68,7 @@ export default function Timeline() {
   const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all')
   const [tagFilter, setTagFilter] = useState<number | 'all'>('all')
   const pageSize = 50
+  const standaloneMode = isStandaloneModeEnabled()
 
   const handleRangeChange = useCallback(
     (from: string | undefined, to: string | undefined) => {
@@ -71,6 +81,12 @@ export default function Timeline() {
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: fetchTags,
+  })
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: fetchSettings,
+    staleTime: Number.POSITIVE_INFINITY,
   })
 
   const { data: selectedFrameTags = [] } = useQuery({
@@ -203,12 +219,39 @@ export default function Timeline() {
   }
 
   if (frames.length === 0) {
+    const emptyState = standaloneMode
+      ? {
+          title: t('emptyState.timelineStandalone.title', 'Desktop Capture Unavailable'),
+          description: t(
+            'emptyState.timelineStandalone.description',
+            'ONESHIM is currently running without the live desktop capture connection. Reopen the app in live desktop mode, then wait for frames to appear.',
+          ),
+          action: undefined,
+        }
+      : settings?.capture_enabled === false
+        ? {
+            title: t('emptyState.timeline.title'),
+            description: t('emptyState.timeline.description'),
+            action: {
+              label: t('emptyState.timeline.action'),
+              onClick: () => navigate('/settings?tab=monitoring'),
+            },
+          }
+        : {
+            title: t('emptyState.timelineWaiting.title', 'No Screenshots Captured Yet'),
+            description: t(
+              'emptyState.timelineWaiting.description',
+              'ONESHIM has not stored any timeline frames yet. Keep the app running for a moment and confirm desktop capture permissions if this persists.',
+            ),
+            action: undefined,
+          }
+
     return (
       <EmptyState
         icon={<Camera className="h-8 w-8" />}
-        title={t('emptyState.timeline.title')}
-        description={t('emptyState.timeline.description')}
-        action={{ label: t('emptyState.timeline.action'), onClick: () => navigate('/settings?tab=monitoring') }}
+        title={emptyState.title}
+        description={emptyState.description}
+        action={emptyState.action}
       />
     )
   }

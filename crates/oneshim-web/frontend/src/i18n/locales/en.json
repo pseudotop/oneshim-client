@@ -953,6 +953,14 @@
       "description": "Enable screenshot capture in Settings",
       "action": "Go to Settings"
     },
+    "timelineWaiting": {
+      "title": "No Screenshots Captured Yet",
+      "description": "ONESHIM has not stored any timeline frames yet. Keep the app running for a moment and confirm desktop capture permissions if this persists."
+    },
+    "timelineStandalone": {
+      "title": "Desktop Capture Unavailable",
+      "description": "ONESHIM is currently running without the live desktop capture connection. Reopen the app in live desktop mode, then wait for frames to appear."
+    },
     "reports": {
       "title": "Insufficient Data",
       "description": "Check reports after using the app for at least one day"
