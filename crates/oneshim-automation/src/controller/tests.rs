@@ -455,7 +455,7 @@ async fn execute_intent_disabled_returns_policy_denied() {
     let err = result.unwrap_err();
     assert!(matches!(
         err,
-        oneshim_core::error::CoreError::PolicyDenied(_)
+        crate::error::AutomationError::PolicyDenied(_)
     ));
 }
 
@@ -476,7 +476,7 @@ async fn execute_intent_no_executor_returns_internal_error() {
     let result = controller.execute_intent(&cmd).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(matches!(err, oneshim_core::error::CoreError::Internal(_)));
+    assert!(matches!(err, crate::error::AutomationError::Internal(_)));
 }
 
 #[tokio::test]
@@ -581,7 +581,7 @@ async fn execute_intent_hint_requires_planner() {
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
-        CoreError::Internal(msg) if msg.contains("IntentPlanner")
+        crate::error::AutomationError::Internal(msg) if msg.contains("IntentPlanner")
     ));
 }
 

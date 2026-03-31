@@ -5,10 +5,10 @@ use tokio::sync::RwLock;
 
 use crate::action_dispatcher::AutomationActionDispatcher;
 use crate::audit::AuditLogger;
+use crate::error::AutomationError;
 use crate::policy::{AuditLevel, PolicyClient};
 use crate::resolver;
 use oneshim_core::config::SandboxConfig;
-use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::{AutomationCommand, CommandResult};
 
 pub(super) const GUI_SESSION_POLICY_TOKEN: &str = "gui-session";
@@ -88,7 +88,7 @@ impl CommandExecutionGate {
     pub(super) async fn execute(
         &self,
         cmd: &AutomationCommand,
-    ) -> Result<CommandResult, CoreError> {
+    ) -> Result<CommandResult, AutomationError> {
         if !Self::uses_internal_policy_token(&cmd.policy_token)
             && !self.policy_client.validate_command(cmd).await?
         {

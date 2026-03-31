@@ -6,7 +6,7 @@ mod tests;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use oneshim_core::error::CoreError;
+use crate::error::StorageError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -50,19 +50,19 @@ impl FileIntegrationStateRegistry {
         }
     }
 
-    fn load_or_default(path: &Path) -> Result<Self, CoreError> {
+    fn load_or_default(path: &Path) -> Result<Self, StorageError> {
         match std::fs::read_to_string(path) {
             Ok(contents) => serde_json::from_str(&contents).map_err(|err| {
-                CoreError::Internal(format!("integration state registry parse: {err}"))
+                StorageError::Internal(format!("integration state registry parse: {err}"))
             }),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Self::new()),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn save(&self, path: &Path) -> Result<(), CoreError> {
+    fn save(&self, path: &Path) -> Result<(), StorageError> {
         let serialized = serde_json::to_string_pretty(self).map_err(|err| {
-            CoreError::Internal(format!("integration state registry serialization: {err}"))
+            StorageError::Internal(format!("integration state registry serialization: {err}"))
         })?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -95,14 +95,14 @@ pub struct FileIntegrationStateStore {
 }
 
 impl FileIntegrationStateStore {
-    pub fn new(registry_path: PathBuf) -> Result<Self, CoreError> {
+    pub fn new(registry_path: PathBuf) -> Result<Self, StorageError> {
         Self::with_policy(registry_path, IntegrationStateStorePolicy::default())
     }
 
     pub fn with_policy(
         registry_path: PathBuf,
         policy: IntegrationStateStorePolicy,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, StorageError> {
         Ok(Self {
             inner: Arc::new(FileIntegrationStateInner::new(registry_path, policy)?),
         })

@@ -20,11 +20,11 @@ use super::AutomationController;
 #[async_trait]
 impl AutomationPort for AutomationController {
     async fn execute_command(&self, cmd: &AutomationCommand) -> Result<CommandResult, CoreError> {
-        self.execute_command(cmd).await
+        self.execute_command(cmd).await.map_err(Into::into)
     }
 
     async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {
-        self.execute_intent(cmd).await
+        self.execute_intent(cmd).await.map_err(Into::into)
     }
 
     async fn execute_intent_hint(
@@ -35,10 +35,11 @@ impl AutomationPort for AutomationController {
     ) -> Result<PlannedIntentResult, CoreError> {
         self.execute_intent_hint(command_id, session_id, intent_hint)
             .await
+            .map_err(Into::into)
     }
 
     async fn run_workflow(&self, preset: &WorkflowPreset) -> Result<WorkflowResult, CoreError> {
-        self.run_workflow(preset).await
+        self.run_workflow(preset).await.map_err(Into::into)
     }
 
     async fn analyze_scene(

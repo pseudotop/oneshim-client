@@ -1,10 +1,11 @@
-use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::api_client::{SseClient, SseEvent};
 use oneshim_core::ports::notifier::DesktopNotifier;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
+
+use crate::error::SuggestionError;
 
 use crate::queue::SuggestionQueue;
 
@@ -27,7 +28,7 @@ impl SuggestionReceiver {
         }
     }
 
-    pub async fn run(&self, session_id: &str) -> Result<(), CoreError> {
+    pub async fn run(&self, session_id: &str) -> Result<(), SuggestionError> {
         let (tx, mut rx) = mpsc::channel::<SseEvent>(64);
 
         let sse = self.sse_client.clone();
@@ -101,6 +102,7 @@ impl SuggestionReceiver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::suggestion::{Priority, SuggestionSource, SuggestionType};
     use std::sync::atomic::{AtomicUsize, Ordering};
 

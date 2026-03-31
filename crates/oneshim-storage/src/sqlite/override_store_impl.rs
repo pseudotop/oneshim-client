@@ -35,18 +35,20 @@ fn serialize_action(action: &UserOverrideAction) -> (String, Option<String>) {
 fn deserialize_action(
     action_type: &str,
     action_data: Option<&str>,
-) -> Result<UserOverrideAction, CoreError> {
+) -> Result<UserOverrideAction, StorageError> {
     match action_type {
         "MARK_AS_NOISE" => Ok(UserOverrideAction::MarkAsNoise),
         "REASSIGN_REGIME" => {
             let data = action_data.ok_or_else(|| {
-                CoreError::Internal("Missing action_data for REASSIGN_REGIME".to_string())
+                StorageError::Internal("Missing action_data for REASSIGN_REGIME".to_string())
             })?;
-            let parsed: serde_json::Value = serde_json::from_str(data)?;
+            let parsed: serde_json::Value = serde_json::from_str(data).map_err(|e| {
+                StorageError::Internal(format!("Failed to parse REASSIGN_REGIME action_data: {e}"))
+            })?;
             let target = parsed["target_regime_id"]
                 .as_str()
                 .ok_or_else(|| {
-                    CoreError::Internal("Missing target_regime_id in action_data".to_string())
+                    StorageError::Internal("Missing target_regime_id in action_data".to_string())
                 })?
                 .to_string();
             Ok(UserOverrideAction::ReassignRegime {
@@ -55,24 +57,30 @@ fn deserialize_action(
         }
         "MARK_AS_PERSONAL_TIME" => {
             let data = action_data.ok_or_else(|| {
-                CoreError::Internal("Missing action_data for MARK_AS_PERSONAL_TIME".to_string())
+                StorageError::Internal("Missing action_data for MARK_AS_PERSONAL_TIME".to_string())
             })?;
-            let parsed: serde_json::Value = serde_json::from_str(data)?;
-            let from_str = parsed["from"]
-                .as_str()
-                .ok_or_else(|| CoreError::Internal("Missing 'from' in action_data".to_string()))?;
+            let parsed: serde_json::Value = serde_json::from_str(data).map_err(|e| {
+                StorageError::Internal(format!(
+                    "Failed to parse MARK_AS_PERSONAL_TIME action_data: {e}"
+                ))
+            })?;
+            let from_str = parsed["from"].as_str().ok_or_else(|| {
+                StorageError::Internal("Missing 'from' in action_data".to_string())
+            })?;
             let to_str = parsed["to"]
                 .as_str()
-                .ok_or_else(|| CoreError::Internal("Missing 'to' in action_data".to_string()))?;
+                .ok_or_else(|| StorageError::Internal("Missing 'to' in action_data".to_string()))?;
             let from = DateTime::parse_from_rfc3339(from_str)
-                .map_err(|e| CoreError::Internal(format!("Invalid 'from' datetime: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Invalid 'from' datetime: {e}")))?
                 .with_timezone(&Utc);
             let to = DateTime::parse_from_rfc3339(to_str)
-                .map_err(|e| CoreError::Internal(format!("Invalid 'to' datetime: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Invalid 'to' datetime: {e}")))?
                 .with_timezone(&Utc);
             Ok(UserOverrideAction::MarkAsPersonalTime { from, to })
         }
-        other => Err(CoreError::Internal(format!("Unknown action_type: {other}"))),
+        other => Err(StorageError::Internal(format!(
+            "Unknown action_type: {other}"
+        ))),
     }
 }
 

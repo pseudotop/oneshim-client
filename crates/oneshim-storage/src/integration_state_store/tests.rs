@@ -1,4 +1,5 @@
 use chrono::{Duration, Utc};
+use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
     InsightPacket, InsightSourceWindow, IntegrationCapabilityScope, IntegrationEnvelope,
     IntegrationInboxItemStatus, IntegrationMessageType, IntegrationOrigin,

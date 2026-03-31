@@ -65,12 +65,7 @@ impl GatedInputDriver {
     async fn dispatch_action(&self, action: AutomationAction) -> Result<(), AutomationError> {
         let command = self.build_command(action);
         let effective_timeout_ms = self.gate.effective_timeout_ms(&command).await;
-        match self
-            .gate
-            .execute(&command)
-            .await
-            .map_err(AutomationError::Core)?
-        {
+        match self.gate.execute(&command).await? {
             CommandResult::Success => Ok(()),
             CommandResult::Failed(message) => Err(AutomationError::Internal(message)),
             CommandResult::Timeout => Err(AutomationError::ExecutionTimeout {
@@ -160,7 +155,10 @@ impl AutomationController {
         Ok(template.with_overrides(Some(input_driver), cmd.config.clone()))
     }
 
-    pub async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {
+    pub async fn execute_intent(
+        &self,
+        cmd: &IntentCommand,
+    ) -> Result<IntentResult, AutomationError> {
         self.ensure_enabled()?;
         let executor = self.scoped_intent_executor(cmd)?;
 
@@ -197,7 +195,7 @@ impl AutomationController {
         command_id: &str,
         session_id: &str,
         intent_hint: &str,
-    ) -> Result<PlannedIntentResult, CoreError> {
+    ) -> Result<PlannedIntentResult, AutomationError> {
         self.ensure_enabled()?;
         let planner = self.require_intent_planner()?;
 

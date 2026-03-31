@@ -2,17 +2,20 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use crate::controller::gate::WORKFLOW_STEP_POLICY_TOKEN;
+use crate::error::AutomationError;
 use crate::policy::AuditLevel;
 #[cfg(test)]
 use oneshim_core::config::SandboxConfig;
-use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{IntentCommand, WorkflowPreset};
 
 use super::types::{AutomationCommand, CommandResult, WorkflowResult, WorkflowStepResult};
 use super::AutomationController;
 
 impl AutomationController {
-    pub async fn run_workflow(&self, preset: &WorkflowPreset) -> Result<WorkflowResult, CoreError> {
+    pub async fn run_workflow(
+        &self,
+        preset: &WorkflowPreset,
+    ) -> Result<WorkflowResult, AutomationError> {
         self.ensure_enabled()?;
 
         let total_steps = preset.steps.len();
@@ -176,7 +179,7 @@ impl AutomationController {
     pub async fn execute_command(
         &self,
         cmd: &AutomationCommand,
-    ) -> Result<CommandResult, CoreError> {
+    ) -> Result<CommandResult, AutomationError> {
         self.ensure_enabled()?;
         let result = self.command_execution_gate().execute(cmd).await;
         if let Some(ref flag) = self.last_command_ok {
