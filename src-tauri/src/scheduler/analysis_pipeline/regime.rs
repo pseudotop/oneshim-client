@@ -10,7 +10,7 @@ use super::super::AdaptiveTriggerState;
 /// Run regime detection at most once per day from calibration data,
 /// or on demand when `recluster_requested` flag is set.
 ///
-/// When a `ClusteringStrategy` is available, constrained re-clustering is used
+/// When a `RegimeAnalysisFacade` is available, constrained re-clustering is used
 /// (loading user overrides from `OverrideStore`). Otherwise falls back to the
 /// legacy `RegimeDetector` (k-means).
 pub(in crate::scheduler) async fn run_periodic_regime_detection(
@@ -75,8 +75,8 @@ pub(in crate::scheduler) async fn run_periodic_regime_detection(
                 })
                 .collect();
 
-            // Try constrained re-clustering via ClusteringStrategy if available
-            let has_strategy = ts.clustering_strategy.is_some();
+            // Try constrained re-clustering via RegimeAnalysisFacade if available
+            let has_strategy = ts.regime_analysis.is_some();
             if has_strategy {
                 run_constrained_clustering(ts, &features, now).await;
             } else {
@@ -122,9 +122,9 @@ pub(in crate::scheduler) async fn run_periodic_regime_detection(
     }
 }
 
-/// Run constrained re-clustering using `ClusteringStrategy` and user overrides.
+/// Run constrained re-clustering using `RegimeAnalysisFacade` and user overrides.
 ///
-/// Assumes `ts.clustering_strategy.is_some()` — caller must verify.
+/// Assumes `ts.regime_analysis.is_some()` — caller must verify.
 async fn run_constrained_clustering(
     ts: &mut AdaptiveTriggerState,
     features: &[oneshim_core::models::tiered_memory::RegimeFeatures],
@@ -132,9 +132,9 @@ async fn run_constrained_clustering(
 ) {
     use oneshim_analysis::constraint_builder;
 
-    // Temporarily take the strategy out to avoid borrow conflict
-    let Some(strategy) = ts.clustering_strategy.take() else {
-        tracing::warn!("clustering_strategy missing, skipping constrained clustering");
+    // Temporarily take the facade out to avoid borrow conflict
+    let Some(facade) = ts.regime_analysis.take() else {
+        tracing::warn!("regime_analysis missing, skipping constrained clustering");
         return;
     };
 
@@ -207,20 +207,14 @@ async fn run_constrained_clustering(
 
     // Offload heavy clustering to blocking thread to avoid stalling monitor loop
     let features_owned = features.to_vec();
-    let detector_clone = ts.regime_detector.clone();
     let blocking_result = tokio::task::spawn_blocking(move || {
-        let r = if constraints.is_empty() {
-            strategy.as_ref().detect(&features_owned)
-        } else {
-            strategy
-                .as_ref()
-                .detect_with_constraints(&features_owned, &constraints)
-        };
-        (strategy, r, features_owned)
+        let r = facade.recluster_with_constraints(&features_owned, &constraints, now);
+        let algo = facade.algorithm_name().to_string();
+        (facade, r, algo)
     })
     .await;
 
-    let (strategy_back, result, features_owned) = match blocking_result {
+    let (facade_back, result, algo_name) = match blocking_result {
         Ok(tuple) => tuple,
         Err(e) => {
             warn!("constrained clustering task panicked: {e}");
@@ -228,28 +222,22 @@ async fn run_constrained_clustering(
         }
     };
 
-    let algo_name = strategy_back.algorithm_name().to_string();
-
-    // Put strategy back
-    ts.clustering_strategy = Some(strategy_back);
+    // Put facade back
+    ts.regime_analysis = Some(facade_back);
 
     match result {
-        Ok(clustering_result) if clustering_result.cluster_count > 0 => {
-            let detected = build_regimes_from_clustering(&clustering_result, &features_owned, now);
-            if !detected.is_empty() {
-                info!(
-                    count = detected.len(),
-                    noise = clustering_result.noise_count,
-                    algorithm = algo_name,
-                    "constrained regime detection completed"
-                );
-                ts.regime_manager.update_from_detection(detected);
-            }
+        Ok(detected) if !detected.is_empty() => {
+            info!(
+                count = detected.len(),
+                algorithm = algo_name,
+                "constrained regime detection completed"
+            );
+            ts.regime_manager.update_from_detection(detected);
         }
         Ok(_) => {
             debug!(
                 algorithm = algo_name,
-                "clustering produced 0 clusters — skipping update"
+                "clustering produced 0 regimes — skipping update"
             );
         }
         Err(e) => {
@@ -257,9 +245,11 @@ async fn run_constrained_clustering(
                 algorithm = algo_name,
                 "constrained clustering failure: {e} — falling back to legacy"
             );
-            // Fallback to legacy k-means (also offloaded)
+            // Fallback to legacy k-means via RegimeDetector
+            let detector_clone = ts.regime_detector.clone();
+            let features_for_fallback = features.to_vec();
             let detected =
-                tokio::task::spawn_blocking(move || detector_clone.detect(&features_owned))
+                tokio::task::spawn_blocking(move || detector_clone.detect(&features_for_fallback))
                     .await
                     .unwrap_or_else(|e| {
                         warn!("fallback k-means task panicked: {e}");
@@ -274,77 +264,4 @@ async fn run_constrained_clustering(
             }
         }
     }
-}
-
-/// Build `Regime` entries from a `ClusteringResult`.
-fn build_regimes_from_clustering(
-    result: &oneshim_analysis::clustering_strategy::ClusteringResult,
-    features: &[oneshim_core::models::tiered_memory::RegimeFeatures],
-    now: DateTime<Utc>,
-) -> Vec<oneshim_core::models::tiered_memory::Regime> {
-    use oneshim_core::models::tiered_memory::{Regime, RegimeStatus, TriggerParams};
-
-    let mut cluster_points: HashMap<i32, Vec<usize>> = HashMap::new();
-    for (i, &label) in result.labels.iter().enumerate() {
-        if label >= 0 {
-            cluster_points.entry(label).or_default().push(i);
-        }
-    }
-
-    cluster_points
-        .iter()
-        .map(|(&cluster_id, indices)| {
-            let centroid = if (cluster_id as usize) < result.centroids.len() {
-                result.centroids[cluster_id as usize].clone()
-            } else {
-                // Compute centroid from member points
-                let mut sum = oneshim_core::models::tiered_memory::RegimeFeatures::default();
-                for &idx in indices {
-                    if idx < features.len() {
-                        sum.category_coding += features[idx].category_coding;
-                        sum.category_communication += features[idx].category_communication;
-                        sum.category_browser += features[idx].category_browser;
-                        sum.avg_event_rate += features[idx].avg_event_rate;
-                        sum.avg_importance += features[idx].avg_importance;
-                        sum.context_activity_signal += features[idx].context_activity_signal;
-                        sum.communication_ratio += features[idx].communication_ratio;
-                    }
-                }
-                let n = indices.len() as f32;
-                if n > 0.0 {
-                    sum.category_coding /= n;
-                    sum.category_communication /= n;
-                    sum.category_browser /= n;
-                    sum.avg_event_rate /= n;
-                    sum.avg_importance /= n;
-                    sum.context_activity_signal /= n;
-                    sum.communication_ratio /= n;
-                }
-                sum
-            };
-
-            // Generate auto-label from dominant feature
-            let auto_label = if centroid.category_coding > 0.5 {
-                "Deep Work".to_string()
-            } else if centroid.category_communication > 0.5 {
-                "Communication".to_string()
-            } else if centroid.category_browser > 0.5 {
-                "Browsing".to_string()
-            } else {
-                format!("Regime-{}", cluster_id)
-            };
-
-            Regime {
-                regime_id: format!("cluster-{}", cluster_id),
-                name: None,
-                auto_label,
-                centroid,
-                optimal_params: TriggerParams::default(),
-                sample_count: indices.len() as u64,
-                first_seen: now,
-                last_seen: now,
-                status: RegimeStatus::Active,
-            }
-        })
-        .collect()
 }

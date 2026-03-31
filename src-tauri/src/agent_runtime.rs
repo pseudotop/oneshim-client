@@ -316,33 +316,9 @@ impl AgentRuntimeBundle {
                         tm_config.auto_tuning.drift_threshold,
                     ),
                     auto_tune_tick_count: 0,
-                    clustering_strategy: {
-                        match tm_config.clustering_algorithm {
-                            oneshim_core::config::ClusteringAlgorithm::Hdbscan => {
-                                #[cfg(feature = "hdbscan")]
-                                {
-                                    Some(Box::new(
-                                        oneshim_analysis::hdbscan_detector::HdbscanDetector::new(
-                                            5, None,
-                                        ),
-                                    ))
-                                }
-                                #[cfg(not(feature = "hdbscan"))]
-                                {
-                                    warn!("HDBSCAN requested but not compiled; falling back to k-means");
-                                    Some(Box::new(
-                                        oneshim_analysis::kmeans_adapter::KmeansDetector::new(),
-                                    ))
-                                }
-                            }
-                            oneshim_core::config::ClusteringAlgorithm::Kmeans => Some(Box::new(
-                                oneshim_analysis::kmeans_adapter::KmeansDetector::new(),
-                            )),
-                            oneshim_core::config::ClusteringAlgorithm::Gmm => {
-                                Some(Box::new(oneshim_analysis::gmm_detector::GmmDetector::new()))
-                            }
-                        }
-                    },
+                    regime_analysis: Some(oneshim_analysis::RegimeAnalysisFacade::new(
+                        tm_config.clustering_algorithm.clone(),
+                    )),
                     override_store: self.override_store.clone(),
                     recluster_requested: self.recluster_requested.clone(),
                     last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),

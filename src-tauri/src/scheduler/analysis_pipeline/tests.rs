@@ -111,7 +111,7 @@ fn make_trigger_state() -> AdaptiveTriggerState {
         ema_tracker: oneshim_analysis::auto_tuner::EmaStatsTracker::new(0.05),
         drift_detector: oneshim_analysis::auto_tuner::DriftDetector::new(0.05, 3.0),
         auto_tune_tick_count: 0,
-        clustering_strategy: None,
+        regime_analysis: None,
         override_store: None,
         recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),

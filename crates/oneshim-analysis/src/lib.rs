@@ -35,6 +35,7 @@ pub mod param_resolver;
 mod pattern_miner;
 mod prompts;
 pub mod query_expander;
+pub mod regime_analysis_facade;
 pub mod regime_classifier;
 pub mod regime_detector;
 pub mod regime_manager;
@@ -75,6 +76,7 @@ pub use work_type_classifier::WorkTypeClassifier;
 // Priority 2: Accuracy Improvements re-exports
 pub use auto_tuner::{DriftDetector, EmaStatsTracker};
 pub use clustering_strategy::{ClusterAssignment, ClusteringResult, ClusteringStrategy};
+pub use regime_analysis_facade::RegimeAnalysisFacade;
 
 pub use adaptive_search::{AdaptiveSearchCoordinator, SearchConfig, SearchStrategy};
 pub use daily_digest_generator::DailyDigestGenerator;
