@@ -42,12 +42,12 @@ export default function GeneralTab({
   return (
     <div className="space-y-6">
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.language')}</CardTitle>
+        <CardTitle sticky>{t('settings.language')}</CardTitle>
         <LanguageSelector />
       </Card>
 
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.webTitle')}</CardTitle>
+        <CardTitle sticky>{t('settings.webTitle')}</CardTitle>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
             <label htmlFor="settings-web-port" className={form.label}>
@@ -91,7 +91,7 @@ export default function GeneralTab({
       </div>
 
       <Card variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('settings.updateTitle')}</CardTitle>
+        <CardTitle sticky>{t('settings.updateTitle')}</CardTitle>
         <div className="space-y-4">
           <ToggleRow
             label={t('settings.updateEnabled')}
