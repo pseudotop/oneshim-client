@@ -20,8 +20,9 @@ use tracing::{debug, warn};
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
-    truncate_chat_history, Attachment, ChatMessage, ChatRole, ConversationSessionInfo,
-    MessageContext, OutboundMessage, SessionMessage, SessionState, SessionTransport, TokenUsage,
+    truncate_chat_history, Attachment, ChatMessage, ChatRole, ContentBlock,
+    ConversationSessionInfo, MessageContext, OutboundMessage, SessionMessage, SessionState,
+    SessionTransport, TokenUsage,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
@@ -341,15 +342,85 @@ fn render_local_message_content(message: &SessionMessage) -> String {
     sections.join("\n\n")
 }
 
+fn local_content_blocks(
+    rendered_text: &str,
+    attachments: &[Attachment],
+) -> Option<Vec<ContentBlock>> {
+    let mut blocks = vec![ContentBlock::Text {
+        text: rendered_text.to_string(),
+    }];
+
+    blocks.extend(
+        attachments
+            .iter()
+            .filter_map(|attachment| match attachment {
+                Attachment::Image { mime, data, .. } => {
+                    data.as_ref().map(|payload| ContentBlock::Image {
+                        media_type: mime.clone(),
+                        data: payload.clone(),
+                    })
+                }
+                Attachment::File {
+                    mime: Some(mime),
+                    data: Some(data),
+                    ..
+                } if mime.trim().to_ascii_lowercase().starts_with("image/") => {
+                    Some(ContentBlock::Image {
+                        media_type: mime.clone(),
+                        data: data.clone(),
+                    })
+                }
+                _ => None,
+            }),
+    );
+
+    (blocks.len() > 1).then_some(blocks)
+}
+
+fn ollama_message_payload(message: &ChatMessage) -> serde_json::Value {
+    let mut content = message.content.clone();
+    let mut images = Vec::new();
+
+    if let Some(blocks) = message.content_blocks.as_ref() {
+        let mut text_segments = Vec::new();
+        for block in blocks {
+            match block {
+                ContentBlock::Text { text } => text_segments.push(text.clone()),
+                ContentBlock::Image { data, .. } => images.push(data.clone()),
+                ContentBlock::File { .. }
+                | ContentBlock::ToolUse { .. }
+                | ContentBlock::ToolResult { .. }
+                | ContentBlock::Thinking { .. } => {}
+            }
+        }
+        if !text_segments.is_empty() {
+            content = text_segments.join("\n\n");
+        }
+    }
+
+    let mut payload = serde_json::json!({
+        "role": message.role,
+        "content": content,
+    });
+
+    if !images.is_empty() {
+        payload["images"] =
+            serde_json::Value::Array(images.into_iter().map(serde_json::Value::String).collect());
+    }
+
+    payload
+}
+
 #[async_trait]
 impl ConversationSession for LocalLlmSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
         // Convert SessionMessage to ChatMessage and append to history.
         let rendered_user_message = render_local_message_content(message);
+        let content_blocks = local_content_blocks(&rendered_user_message, &message.attachments);
         let user_msg = ChatMessage {
             role: ChatRole::User,
             content: rendered_user_message,
-            content_blocks: None,
+            content_blocks,
         };
 
         {
@@ -360,15 +431,7 @@ impl ConversationSession for LocalLlmSession {
         // Build request body with full history.
         let messages: Vec<serde_json::Value> = {
             let history = self.history.read().await;
-            history
-                .iter()
-                .map(|m| {
-                    serde_json::json!({
-                        "role": m.role,
-                        "content": m.content,
-                    })
-                })
-                .collect()
+            history.iter().map(ollama_message_payload).collect()
         };
 
         let url = format!("{}/api/chat", self.base_url);
@@ -679,6 +742,51 @@ mod tests {
         let rendered = render_local_message_content(&message);
         assert!(rendered.contains("Required response format JSON"));
         assert!(!rendered.contains("Required response schema JSON"));
+    }
+
+    #[test]
+    fn local_content_blocks_include_image_attachments() {
+        let blocks = local_content_blocks(
+            "Describe this image",
+            &[
+                Attachment::Image {
+                    mime: "image/png".to_string(),
+                    path: None,
+                    data: Some("iVBORw0KGgo=".to_string()),
+                },
+                Attachment::File {
+                    path: "/tmp/chart.jpg".to_string(),
+                    mime: Some("image/jpeg".to_string()),
+                    data: Some("/9j/4AAQSkZJRg==".to_string()),
+                },
+            ],
+        )
+        .expect("image attachments should produce content blocks");
+
+        assert_eq!(blocks.len(), 3);
+        assert!(matches!(blocks[0], ContentBlock::Text { .. }));
+        assert!(matches!(blocks[1], ContentBlock::Image { .. }));
+        assert!(matches!(blocks[2], ContentBlock::Image { .. }));
+    }
+
+    #[test]
+    fn ollama_message_payload_emits_images_from_content_blocks() {
+        let payload = ollama_message_payload(&ChatMessage {
+            role: ChatRole::User,
+            content: "fallback".to_string(),
+            content_blocks: Some(vec![
+                ContentBlock::Text {
+                    text: "Describe this image".to_string(),
+                },
+                ContentBlock::Image {
+                    media_type: "image/png".to_string(),
+                    data: "iVBORw0KGgo=".to_string(),
+                },
+            ]),
+        });
+
+        assert_eq!(payload["content"], "Describe this image");
+        assert_eq!(payload["images"][0], "iVBORw0KGgo=");
     }
 
     // ── History truncation ──────────────────────────────────────
