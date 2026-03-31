@@ -44,6 +44,7 @@ pub enum NetworkError {
 impl From<NetworkError> for CoreError {
     fn from(err: NetworkError) -> Self {
         match err {
+            NetworkError::Core(e) => e,  // unwrap identity
             NetworkError::Http(msg) => CoreError::Network(msg),
             NetworkError::Timeout { timeout_ms } => CoreError::RequestTimeout { timeout_ms },
             // ... (exhaustive — no catch-all arm)
@@ -53,7 +54,45 @@ impl From<NetworkError> for CoreError {
 ```
 
 **Exhaustive match required**: `From<CrateError> for CoreError` must NOT use a catch-all `_ =>` arm. Since `CrateError` is local, adding a new variant should produce a compiler error forcing the mapping to be updated. (This differs from `From<CoreError> for ApiError` in oneshim-web, which correctly uses a catch-all because CoreError is foreign.)
+
+### Bidirectional Conversion via Core Variant
+
+Adapter crates hold port trait references (`Arc<dyn PortTrait>`) and call their methods, which return `CoreError`. When an internal function returns `CrateError`, the `?` operator on port calls needs `From<CoreError> for CrateError`.
+
+**Solution**: Every crate error enum includes a `Core(CoreError)` variant with `#[from]`:
+
+```rust
+#[derive(Debug, Error)]
+pub enum AnalysisError {
+    #[error(transparent)]
+    Core(#[from] CoreError),    // wraps port trait errors via ?
+
+    #[error("embedding failed: {0}")]
+    Embedding(String),          // crate-specific failure
+    // ...
+}
 ```
+
+This enables:
+
+```rust
+// Internal function returns AnalysisError
+pub async fn process_activities(&self) -> Result<usize, AnalysisError> {
+    // Port call returns CoreError — ? wraps into AnalysisError::Core
+    let vectors = self.embedding_provider.embed_batch(&texts).await?;
+    Ok(vectors.len())
+}
+
+// Port trait impl returns CoreError — ? unwraps AnalysisError::Core back
+impl SomePort for AnalysisService {
+    async fn analyze(&self) -> Result<(), CoreError> {
+        self.process_activities().await?;  // AnalysisError → CoreError via From
+        Ok(())
+    }
+}
+```
+
+The `Core` variant round-trips cleanly: `CoreError → AnalysisError::Core(e) → CoreError` (identity unwrap in the `From<AnalysisError> for CoreError` match arm).
 
 - **Internal functions** return `Result<T, CrateError>` (domain-specific)
 - **Port trait impls** return `Result<T, CoreError>` (unchanged), `?` on CrateError works via `From`
@@ -87,14 +126,16 @@ External crate errors use `#[from]` for automatic wrapping where a 1:1 mapping e
 
 | # | Crate | Error Type | `#[from]` candidates |
 |---|-------|-----------|---------------------|
-| 1 | oneshim-storage | `StorageError` | `rusqlite::Error`, `std::io::Error` |
-| 2 | oneshim-analysis | `AnalysisError` | — |
-| 3 | oneshim-network | `NetworkError` | `reqwest::Error`, `std::io::Error` |
-| 4 | oneshim-automation | `AutomationError` | `std::io::Error` |
-| 5 | oneshim-monitor | `MonitorError` | — |
-| 6 | oneshim-embedding | `EmbeddingError` | — |
-| 7 | oneshim-suggestion | `SuggestionError` | — |
-| 8 | oneshim-vision | `VisionError` | (absorbs existing internal `OcrError`) |
+| 1 | oneshim-storage | `StorageError` | `CoreError`, `rusqlite::Error`, `std::io::Error` |
+| 2 | oneshim-analysis | `AnalysisError` | `CoreError` |
+| 3 | oneshim-network | `NetworkError` | `CoreError`, `reqwest::Error`, `std::io::Error` |
+| 4 | oneshim-automation | `AutomationError` | `CoreError`, `std::io::Error` |
+| 5 | oneshim-monitor | `MonitorError` | `CoreError` |
+| 6 | oneshim-embedding | `EmbeddingError` | `CoreError` |
+| 7 | oneshim-suggestion | `SuggestionError` | `CoreError` |
+| 8 | oneshim-vision | `VisionError` | `CoreError` (absorbs existing internal `OcrError`) |
+
+All crate errors include `Core(#[from] CoreError)` for port trait call propagation.
 
 Exact variants per crate are determined during implementation by analyzing actual `.map_err()` and `CoreError::Xxx` usage.
 
@@ -168,8 +209,8 @@ This is acceptable — port-level consumers (src-tauri, oneshim-web) need error 
 
 ## Success Criteria
 
-- All 8 library crates define their own `thiserror` error enum
+- All 8 library crates define their own `thiserror` error enum with `Core(#[from] CoreError)` variant
 - No internal function returns `CoreError` directly (only port trait impls)
-- `From<CrateError> for CoreError` implemented for all 8 types
+- `From<CrateError> for CoreError` implemented for all 8 types (exhaustive match, no catch-all)
 - All existing tests pass
 - No new `#[allow(dead_code)]` on error variants
