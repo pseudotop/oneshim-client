@@ -19,8 +19,8 @@ use tracing::{debug, warn};
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
-    truncate_chat_history, ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage,
-    SessionMessage, SessionState, SessionTransport, TokenUsage,
+    truncate_chat_history, Attachment, ChatMessage, ChatRole, ConversationSessionInfo,
+    MessageContext, OutboundMessage, SessionMessage, SessionState, SessionTransport, TokenUsage,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
@@ -106,13 +106,107 @@ fn parse_ndjson_line(line: &str) -> Result<OllamaChatChunk, CoreError> {
     })
 }
 
+fn has_meaningful_context(context: &MessageContext) -> bool {
+    context
+        .regime
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+        || context
+            .active_app
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+}
+
+fn attachment_manifest(attachments: &[Attachment]) -> Vec<serde_json::Value> {
+    attachments
+        .iter()
+        .map(|attachment| match attachment {
+            Attachment::Image { mime, path, data } => serde_json::json!({
+                "kind": "image",
+                "mime": mime,
+                "path": path,
+                "has_inline_data": data.as_ref().is_some_and(|value| !value.is_empty()),
+            }),
+            Attachment::File { path, mime, data } => serde_json::json!({
+                "kind": "file",
+                "path": path,
+                "mime": mime,
+                "has_inline_data": data.as_ref().is_some_and(|value| !value.is_empty()),
+            }),
+            Attachment::Directory { path } => serde_json::json!({
+                "kind": "directory",
+                "path": path,
+            }),
+            Attachment::Skill {
+                skill_id,
+                display_name,
+            } => serde_json::json!({
+                "kind": "skill",
+                "skill_id": skill_id,
+                "display_name": display_name,
+            }),
+            Attachment::AppReference {
+                app_name,
+                window_title,
+            } => serde_json::json!({
+                "kind": "app_reference",
+                "app_name": app_name,
+                "window_title": window_title,
+            }),
+        })
+        .collect()
+}
+
+fn render_local_message_content(message: &SessionMessage) -> String {
+    let mut sections = vec![message.content.clone()];
+
+    if let Some(context) = message
+        .context
+        .as_ref()
+        .filter(|context| has_meaningful_context(context))
+    {
+        sections.push(format!(
+            "Additional context JSON:\n{}",
+            serde_json::to_string_pretty(context).unwrap_or_else(|_| "{}".to_string())
+        ));
+    }
+
+    let attachments = attachment_manifest(&message.attachments);
+    if !attachments.is_empty() {
+        sections.push(format!(
+            "Attachments JSON:\n{}",
+            serde_json::to_string_pretty(&attachments).unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
+
+    let tools = message.tools.as_deref().filter(|tools| !tools.is_empty());
+    if let Some(tools) = tools {
+        sections.push(format!(
+            "Available tools JSON:\n{}\nIf you need one of these tools, explain the intended call and arguments explicitly.",
+            serde_json::to_string_pretty(tools).unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
+
+    if let Some(response_format) = message.response_format.as_ref() {
+        sections.push(format!(
+            "Required response format JSON:\n{}\nReturn the final answer in this format exactly.",
+            serde_json::to_string_pretty(response_format).unwrap_or_else(|_| "{}".to_string())
+        ));
+    }
+
+    sections.join("\n\n")
+}
+
 #[async_trait]
 impl ConversationSession for LocalLlmSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
         // Convert SessionMessage to ChatMessage and append to history.
+        let rendered_user_message = render_local_message_content(message);
         let user_msg = ChatMessage {
             role: ChatRole::User,
-            content: message.content.clone(),
+            content: rendered_user_message,
             content_blocks: None,
         };
 
@@ -326,6 +420,7 @@ impl ConversationSession for LocalLlmSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::models::ai_session::{MessageRole, ToolDefinition};
 
     // ── NDJSON parsing ──────────────────────────────────────────
 
@@ -361,6 +456,47 @@ mod tests {
     fn parse_ndjson_invalid_json_returns_error() {
         let line = "not json at all";
         assert!(parse_ndjson_line(line).is_err());
+    }
+
+    #[test]
+    fn render_local_message_content_includes_optional_sections() {
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "Summarize this".to_string(),
+            attachments: vec![Attachment::File {
+                path: "/tmp/notes.pdf".to_string(),
+                mime: Some("application/pdf".to_string()),
+                data: Some("JVBERi0xLjQK".to_string()),
+            }],
+            tools: Some(vec![ToolDefinition {
+                name: "get_sessions".to_string(),
+                description: "List sessions".to_string(),
+                endpoint: "http://localhost/api/sessions".to_string(),
+                method: "GET".to_string(),
+                input_schema: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                })),
+            }]),
+            context: Some(MessageContext {
+                regime: Some("focus".to_string()),
+                active_app: Some("VS Code".to_string()),
+            }),
+            response_format: Some(serde_json::json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "answer",
+                    "schema": { "type": "object" }
+                }
+            })),
+        };
+
+        let rendered = render_local_message_content(&message);
+        assert!(rendered.contains("Additional context JSON"));
+        assert!(rendered.contains("Attachments JSON"));
+        assert!(rendered.contains("Available tools JSON"));
+        assert!(rendered.contains("Required response format JSON"));
     }
 
     // ── History truncation ──────────────────────────────────────

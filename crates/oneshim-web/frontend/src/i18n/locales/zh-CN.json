@@ -1113,6 +1113,21 @@
     "copy": "复制",
     "copied": "已复制",
     "advanced": "高级选项",
-    "system_prompt_placeholder": "系统提示（可选）"
+    "http_surface_label": "HTTP Surface",
+    "http_surface_help": "为此会话选择 direct HTTP provider surface。",
+    "model_label": "模型覆盖",
+    "model_placeholder": "留空则使用默认模型",
+    "system_prompt_placeholder": "系统提示（可选）",
+    "message_payload": "消息 Payload",
+    "regime_label": "Regime",
+    "regime_placeholder": "可选的 regime 提示",
+    "active_app_label": "当前应用",
+    "active_app_placeholder": "可选的当前应用提示",
+    "tools_label": "工具定义 JSON",
+    "tools_placeholder": "可选的工具定义 JSON 数组",
+    "response_format_label": "响应格式 JSON",
+    "response_format_placeholder": "可选的 JSON schema 或格式提示",
+    "invalid_tools_json": "工具定义必须是 JSON 数组。",
+    "invalid_response_format_json": "响应格式必须是有效的 JSON。"
   }
 }

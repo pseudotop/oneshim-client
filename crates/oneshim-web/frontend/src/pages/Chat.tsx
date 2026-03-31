@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 
 // Lazy-loaded syntax highlighter — only fetched when a fenced code block is rendered
 const LazySyntaxHighlighter = React.lazy(async () => {
@@ -92,7 +93,8 @@ const LazySyntaxHighlighter = React.lazy(async () => {
   return { default: LazyHighlighterWrapper }
 })
 
-import { Button, Card, CardContent, Select } from '../components/ui'
+import { Button, Card, CardContent, Input, Select } from '../components/ui'
+import { defaultSurfaceModel, sortProviderSurfaces } from '../features/providerSurfaces'
 import { colors, iconSize, interaction, motion, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -117,6 +119,7 @@ interface SessionInfo {
 }
 type OutboundMessage =
   | { type: 'text'; content: string; done: boolean }
+  | { type: 'thinking'; content: string; done: boolean }
   | {
       type: 'result'
       content: string
@@ -130,6 +133,13 @@ type OutboundMessage =
       input?: unknown
       result?: string
     }
+  | {
+      type: 'tool_call_delta'
+      index: number
+      id: string
+      name: string
+      arguments_chunk: string
+    }
   | { type: 'error'; code: string; message: string; retryable: boolean }
   | { type: 'control'; action: string }
 interface ChatMessage {
@@ -137,9 +147,69 @@ interface ChatMessage {
   content: string
   timestamp: string
   streaming?: boolean
+  thinking?: { content: string; done: boolean }
   tool_use?: { tool: string; status: string; input?: Record<string, unknown>; result?: string }
+  tool_call_delta?: { index: number; id: string; name: string; arguments: string }
   usage?: { input_tokens: number; output_tokens: number }
   error?: { code: string; message: string; retryable: boolean }
+}
+
+type AttachmentPayload =
+  | { kind: 'image'; mime: string; data?: string | null; path?: string | null }
+  | { kind: 'file'; path: string; mime?: string | null; data?: string | null }
+
+interface ToolDefinitionPayload {
+  name: string
+  description: string
+  endpoint: string
+  method?: string
+  input_schema?: unknown
+}
+
+interface ParsedJsonResult<T> {
+  value: T | undefined
+  error: boolean
+}
+
+function parseDataUrl(dataUrl: string): { mime: string; data: string } | null {
+  const match = dataUrl.match(/^data:([^;,]+)?(?:;base64)?,(.*)$/)
+  if (!match) return null
+  const mime = match[1] || 'application/octet-stream'
+  const data = match[2] || ''
+  return { mime, data }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isToolDefinitionPayload(value: unknown): value is ToolDefinitionPayload {
+  if (!isRecord(value)) return false
+  if (typeof value.name !== 'string') return false
+  if (typeof value.description !== 'string') return false
+  if (typeof value.endpoint !== 'string') return false
+  if (value.method !== undefined && typeof value.method !== 'string') return false
+  return true
+}
+
+function parseOptionalJsonValue(raw: string): ParsedJsonResult<unknown> {
+  const trimmed = raw.trim()
+  if (!trimmed) return { value: undefined, error: false }
+  try {
+    return { value: JSON.parse(trimmed), error: false }
+  } catch {
+    return { value: undefined, error: true }
+  }
+}
+
+function parseOptionalToolDefinitions(raw: string): ParsedJsonResult<ToolDefinitionPayload[]> {
+  const parsed = parseOptionalJsonValue(raw)
+  if (parsed.error) return { value: undefined, error: true }
+  if (parsed.value === undefined) return { value: undefined, error: false }
+  if (!Array.isArray(parsed.value) || !parsed.value.every(isToolDefinitionPayload)) {
+    return { value: undefined, error: true }
+  }
+  return { value: parsed.value, error: false }
 }
 
 const STATE_DOT: Record<string, string> = {
@@ -152,6 +222,14 @@ const STATE_DOT: Record<string, string> = {
 }
 
 const MAX_CACHED_SESSIONS = 20
+const HTTP_API_SURFACES = sortProviderSurfaces(
+  DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.filter(
+    (surface) =>
+      surface.supports.llm &&
+      surface.execution_kind === 'direct_http' &&
+      surface.llm_transport?.auth_scheme !== 'aws_signature_v4',
+  ),
+)
 
 async function ipc<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
@@ -225,6 +303,13 @@ export default function Chat() {
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [httpSurfaceId, setHttpSurfaceId] = useState<string>(HTTP_API_SURFACES[0]?.surface_id ?? '')
+  const [modelOverride, setModelOverride] = useState('')
+  const [showMessagePayload, setShowMessagePayload] = useState(false)
+  const [contextRegime, setContextRegime] = useState('')
+  const [contextActiveApp, setContextActiveApp] = useState('')
+  const [toolsJson, setToolsJson] = useState('')
+  const [responseFormatJson, setResponseFormatJson] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
@@ -260,10 +345,53 @@ export default function Chat() {
   }, [])
 
   useEffect(() => {
+    if (HTTP_API_SURFACES.length === 0) return
+    if (!HTTP_API_SURFACES.some((surface) => surface.surface_id === httpSurfaceId)) {
+      setHttpSurfaceId(HTTP_API_SURFACES[0].surface_id)
+    }
+  }, [httpSurfaceId])
+
+  useEffect(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
       .then(setSessions)
       .catch((e) => console.warn('list_ai_sessions failed:', e))
   }, [])
+
+  const selectedHttpSurface = useMemo(
+    () => HTTP_API_SURFACES.find((surface) => surface.surface_id === httpSurfaceId) ?? HTTP_API_SURFACES[0] ?? null,
+    [httpSurfaceId],
+  )
+  const resolvedModel = useMemo(() => {
+    const override = modelOverride.trim()
+    if (override) return override
+    if (transport === 'http_api') {
+      return defaultSurfaceModel(selectedHttpSurface ?? undefined, 'llm_api') ?? undefined
+    }
+    return undefined
+  }, [modelOverride, selectedHttpSurface, transport])
+  const messageContext = useMemo(() => {
+    const regime = contextRegime.trim()
+    const activeApp = contextActiveApp.trim()
+    if (!regime && !activeApp) return undefined
+    return {
+      regime: regime || undefined,
+      active_app: activeApp || undefined,
+    }
+  }, [contextActiveApp, contextRegime])
+  const parsedTools = useMemo(() => parseOptionalToolDefinitions(toolsJson), [toolsJson])
+  const parsedResponseFormat = useMemo(() => parseOptionalJsonValue(responseFormatJson), [responseFormatJson])
+  const payloadInvalid = parsedTools.error || parsedResponseFormat.error
+  const messagePayloadCount = useMemo(() => {
+    let count = 0
+    if (messageContext) count += 1
+    if (toolsJson.trim()) count += 1
+    if (responseFormatJson.trim()) count += 1
+    return count
+  }, [messageContext, responseFormatJson, toolsJson])
+
+  useEffect(() => {
+    if (payloadInvalid) setShowMessagePayload(true)
+  }, [payloadInvalid])
 
   useEffect(() => {
     if (!activeId) return
@@ -272,17 +400,111 @@ export default function Chat() {
       const { listen } = await import('@tauri-apps/api/event')
       unlisten = await listen<OutboundMessage>(`ai-session:${activeId}`, ({ payload: p }) => {
         setMessages((prev) => {
-          const last = prev[prev.length - 1]
-          const appendStream = (c: string, done: boolean, extra?: Partial<ChatMessage>) => {
-            if (last?.role === 'assistant' && last.streaming)
-              return [...prev.slice(0, -1), { ...last, content: last.content + c, streaming: !done, ...extra }]
-            return [...prev, { role: 'assistant' as const, content: c, timestamp: now(), streaming: !done, ...extra }]
+          const finalizeThinking = (items: ChatMessage[]) => {
+            const lastItem = items[items.length - 1]
+            if (lastItem?.thinking && !lastItem.thinking.done) {
+              return [...items.slice(0, -1), { ...lastItem, thinking: { ...lastItem.thinking, done: true } }]
+            }
+            return items
           }
-          if (p.type === 'text') return appendStream(p.content, p.done)
-          if (p.type === 'result') return appendStream(p.content, true, { usage: p.usage, streaming: false })
+          const appendStream = (items: ChatMessage[], c: string, done: boolean, extra?: Partial<ChatMessage>) => {
+            const base = finalizeThinking(items)
+            const lastItem = base[base.length - 1]
+            if (lastItem?.role === 'assistant' && lastItem.streaming)
+              return [...base.slice(0, -1), { ...lastItem, content: lastItem.content + c, streaming: !done, ...extra }]
+            return [...base, { role: 'assistant' as const, content: c, timestamp: now(), streaming: !done, ...extra }]
+          }
+          const appendThinking = (items: ChatMessage[], c: string, done: boolean) => {
+            const lastItem = items[items.length - 1]
+            if (lastItem?.thinking && !lastItem.thinking.done) {
+              return [
+                ...items.slice(0, -1),
+                {
+                  ...lastItem,
+                  content: lastItem.content + c,
+                  thinking: { content: lastItem.thinking.content + c, done },
+                },
+              ]
+            }
+            return [
+              ...items,
+              {
+                role: 'system' as const,
+                content: c,
+                timestamp: now(),
+                thinking: { content: c, done },
+              },
+            ]
+          }
+          const appendToolCallDelta = (
+            items: ChatMessage[],
+            payload: Extract<OutboundMessage, { type: 'tool_call_delta' }>,
+          ) => {
+            const base = finalizeThinking(items)
+            let existingIndex = -1
+            for (let index = base.length - 1; index >= 0; index -= 1) {
+              const current = base[index]?.tool_call_delta
+              if (!current) continue
+              if (payload.id && current.id === payload.id) {
+                existingIndex = index
+                break
+              }
+              if (!payload.id && current.index === payload.index) {
+                existingIndex = index
+                break
+              }
+            }
+
+            if (existingIndex >= 0) {
+              const existing = base[existingIndex]
+              if (!existing?.tool_call_delta) {
+                return base
+              }
+
+              return [
+                ...base.slice(0, existingIndex),
+                {
+                  ...existing,
+                  content: `${existing.content}${payload.arguments_chunk}`,
+                  tool_call_delta: {
+                    ...existing.tool_call_delta,
+                    id: payload.id || existing.tool_call_delta.id,
+                    name: payload.name || existing.tool_call_delta.name,
+                    arguments: `${existing.tool_call_delta.arguments}${payload.arguments_chunk}`,
+                  },
+                },
+                ...base.slice(existingIndex + 1),
+              ]
+            }
+
+            return [
+              ...base,
+              {
+                role: 'system' as const,
+                content: payload.arguments_chunk,
+                timestamp: now(),
+                tool_call_delta: {
+                  index: payload.index,
+                  id: payload.id,
+                  name: payload.name,
+                  arguments: payload.arguments_chunk,
+                },
+              },
+            ]
+          }
+          if (p.type === 'thinking') return appendThinking(prev, p.content, p.done)
+          if (p.type === 'text') return appendStream(prev, p.content, p.done)
+          if (p.type === 'result') {
+            if (p.done) setSending(false)
+            return appendStream(prev, p.content, p.done, {
+              usage: p.usage,
+              streaming: !p.done,
+            })
+          }
+          if (p.type === 'tool_call_delta') return appendToolCallDelta(prev, p)
           if (p.type === 'tool_use')
             return [
-              ...prev,
+              ...finalizeThinking(prev),
               {
                 role: 'system',
                 content: `Tool: ${p.tool} [${p.status}]`,
@@ -295,9 +517,10 @@ export default function Chat() {
                 },
               },
             ]
-          if (p.type === 'error')
+          if (p.type === 'error') {
+            setSending(false)
             return [
-              ...prev,
+              ...finalizeThinking(prev),
               {
                 role: 'system',
                 content: p.message,
@@ -305,6 +528,7 @@ export default function Chat() {
                 error: { code: p.code, message: p.message, retryable: p.retryable },
               },
             ]
+          }
           if (p.type === 'control' && p.action === 'done') setSending(false)
           return prev
         })
@@ -342,6 +566,8 @@ export default function Chat() {
       const info = await ipc<SessionInfo>('create_ai_session', {
         config: {
           transport,
+          surface_id: transport === 'http_api' ? selectedHttpSurface?.surface_id : undefined,
+          model: resolvedModel,
           system_prompt: systemPrompt || undefined,
           tools_enabled: true,
         } satisfies SessionConfig,
@@ -353,7 +579,7 @@ export default function Chat() {
       console.warn('create_ai_session failed:', e)
     }
     setCreating(false)
-  }, [transport, systemPrompt])
+  }, [transport, selectedHttpSurface, resolvedModel, systemPrompt])
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -392,29 +618,65 @@ export default function Chat() {
   }, [])
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !activeId || sending) return
-    let text = input.trim()
-    // Prepend attachments as markdown
-    if (attachments.length > 0) {
-      const parts = attachments.map((a) =>
-        a.type.startsWith('image/') ? `![${a.name}](${a.data})` : `[Attachment: ${a.name}]`,
+    if ((!input.trim() && attachments.length === 0) || !activeId || sending || payloadInvalid) return
+    const text = input.trim()
+    const attachmentPayload: AttachmentPayload[] = attachments.map((attachment) => {
+      const parsed = parseDataUrl(attachment.data)
+      if (attachment.type.startsWith('image/')) {
+        return {
+          kind: 'image',
+          mime: parsed?.mime || attachment.type || 'application/octet-stream',
+          data: parsed?.data ?? null,
+          path: null,
+        }
+      }
+
+      return {
+        kind: 'file',
+        path: attachment.name,
+        mime: parsed?.mime || attachment.type || null,
+        data: parsed?.data ?? null,
+      }
+    })
+    const attachmentSummary = attachments
+      .map((attachment) =>
+        attachment.type.startsWith('image/')
+          ? `[Image attachment: ${attachment.name}]`
+          : `[Attachment: ${attachment.name}]`,
       )
-      text = `${parts.join('\n')}\n${text}`
-    }
+      .join('\n')
+    const displayText =
+      attachments.length > 0 ? [attachmentSummary, text].filter((section) => section.length > 0).join('\n') : text
     setInput('')
     setAttachments([])
     // Reset textarea height after clearing input
     const ta = document.querySelector<HTMLTextAreaElement>('form textarea')
     if (ta) ta.style.height = 'auto'
-    setMessages((p) => [...p, { role: 'user', content: text, timestamp: now() }])
+    setMessages((p) => [...p, { role: 'user', content: displayText, timestamp: now() }])
     setSending(true)
     try {
-      await ipc('send_session_message', { sessionId: activeId, message: text })
+      await ipc('send_session_message', {
+        sessionId: activeId,
+        message: text,
+        attachments: attachmentPayload,
+        tools: parsedTools.value,
+        context: messageContext,
+        responseFormat: parsedResponseFormat.value,
+      })
     } catch (e) {
       console.warn('send_session_message failed:', e)
       setSending(false)
     }
-  }, [input, activeId, sending, attachments])
+  }, [
+    input,
+    activeId,
+    sending,
+    attachments,
+    payloadInvalid,
+    parsedTools.value,
+    messageContext,
+    parsedResponseFormat.value,
+  ])
 
   const handleRetry = useCallback(async () => {
     if (!activeId) return
@@ -439,6 +701,8 @@ export default function Chat() {
   const MAX_VISIBLE_MESSAGES = 500
   const isTruncated = messages.length > MAX_VISIBLE_MESSAGES
   const visibleMessages = isTruncated ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages
+  const createDisabled = creating || (transport === 'http_api' && !selectedHttpSurface)
+  const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid
 
   return (
     <div className="flex h-full min-h-0">
@@ -461,7 +725,7 @@ export default function Chat() {
             <option value="http_api">HTTP API</option>
             <option value="local_llm">Local LLM</option>
           </Select>
-          <Button variant="primary" size="sm" onClick={handleCreate} isLoading={creating} disabled={creating}>
+          <Button variant="primary" size="sm" onClick={handleCreate} isLoading={creating} disabled={createDisabled}>
             <Plus className={iconSize.sm} />
           </Button>
         </div>
@@ -480,7 +744,54 @@ export default function Chat() {
           {t('chat.advanced')}
         </button>
         {showAdvanced && (
-          <div className="border-muted border-b px-2 py-2">
+          <div className="space-y-3 border-muted border-b px-2 py-2">
+            {transport === 'http_api' && (
+              <div className="space-y-1">
+                <p
+                  className={cn(
+                    'text-[10px] uppercase tracking-[0.12em]',
+                    typography.weight.medium,
+                    colors.text.secondary,
+                  )}
+                >
+                  {t('chat.http_surface_label')}
+                </p>
+                <Select
+                  selectSize="sm"
+                  value={selectedHttpSurface?.surface_id ?? ''}
+                  onChange={(e) => setHttpSurfaceId(e.target.value)}
+                  className="w-full text-xs"
+                >
+                  {HTTP_API_SURFACES.map((surface) => (
+                    <option key={surface.surface_id} value={surface.surface_id}>
+                      {surface.display_name}
+                    </option>
+                  ))}
+                </Select>
+                <p className={cn('text-[10px]', colors.text.secondary)}>{t('chat.http_surface_help')}</p>
+              </div>
+            )}
+            <div className="space-y-1">
+              <p
+                className={cn(
+                  'text-[10px] uppercase tracking-[0.12em]',
+                  typography.weight.medium,
+                  colors.text.secondary,
+                )}
+              >
+                {t('chat.model_label')}
+              </p>
+              <Input
+                value={modelOverride}
+                onChange={(e) => setModelOverride(e.target.value)}
+                placeholder={
+                  transport === 'http_api'
+                    ? (defaultSurfaceModel(selectedHttpSurface ?? undefined, 'llm_api') ?? t('chat.model_placeholder'))
+                    : t('chat.model_placeholder')
+                }
+                className="text-xs"
+              />
+            </div>
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
@@ -627,12 +938,125 @@ export default function Chat() {
                   </div>
                 )
               })}
-              {sending && messages[messages.length - 1]?.role !== 'assistant' && (
-                <div className="flex items-center gap-2 text-content-secondary text-xs">
-                  <Loader2 className={cn(iconSize.sm, 'animate-spin')} /> {t('chat.thinking')}
-                </div>
-              )}
+              {sending &&
+                messages[messages.length - 1]?.role !== 'assistant' &&
+                !messages[messages.length - 1]?.thinking && (
+                  <div className="flex items-center gap-2 text-content-secondary text-xs">
+                    <Loader2 className={cn(iconSize.sm, 'animate-spin')} /> {t('chat.thinking')}
+                  </div>
+                )}
             </div>
+            <button
+              type="button"
+              onClick={() => setShowMessagePayload((p) => !p)}
+              className={cn(
+                'flex items-center gap-2 border-muted border-t bg-surface-base px-4 py-2 text-xs',
+                interaction.interactive,
+                colors.text.secondary,
+              )}
+            >
+              <ChevronDown className={cn(iconSize.xs, motion.transform, showMessagePayload && 'rotate-180')} />
+              <span>{t('chat.message_payload')}</span>
+              {messagePayloadCount > 0 && (
+                <span className={cn('rounded-full bg-surface-elevated px-1.5 py-0.5 text-[10px]', colors.text.primary)}>
+                  {messagePayloadCount}
+                </span>
+              )}
+            </button>
+            {showMessagePayload && (
+              <div className="space-y-3 bg-surface-base px-4 py-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <p
+                      className={cn(
+                        'text-[10px] uppercase tracking-[0.12em]',
+                        typography.weight.medium,
+                        colors.text.secondary,
+                      )}
+                    >
+                      {t('chat.regime_label')}
+                    </p>
+                    <Input
+                      value={contextRegime}
+                      onChange={(e) => setContextRegime(e.target.value)}
+                      placeholder={t('chat.regime_placeholder')}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p
+                      className={cn(
+                        'text-[10px] uppercase tracking-[0.12em]',
+                        typography.weight.medium,
+                        colors.text.secondary,
+                      )}
+                    >
+                      {t('chat.active_app_label')}
+                    </p>
+                    <Input
+                      value={contextActiveApp}
+                      onChange={(e) => setContextActiveApp(e.target.value)}
+                      placeholder={t('chat.active_app_placeholder')}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p
+                    className={cn(
+                      'text-[10px] uppercase tracking-[0.12em]',
+                      typography.weight.medium,
+                      colors.text.secondary,
+                    )}
+                  >
+                    {t('chat.tools_label')}
+                  </p>
+                  <textarea
+                    value={toolsJson}
+                    onChange={(e) => setToolsJson(e.target.value)}
+                    placeholder={t('chat.tools_placeholder')}
+                    rows={4}
+                    className={cn(
+                      'w-full resize-y border bg-surface-base px-2 py-1.5 text-xs placeholder-content-tertiary',
+                      radius.md,
+                      interaction.focusRing,
+                      colors.text.primary,
+                      'border-DEFAULT focus:border-brand-signal',
+                    )}
+                  />
+                  {parsedTools.error && (
+                    <p className="text-[10px] text-semantic-error">{t('chat.invalid_tools_json')}</p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p
+                    className={cn(
+                      'text-[10px] uppercase tracking-[0.12em]',
+                      typography.weight.medium,
+                      colors.text.secondary,
+                    )}
+                  >
+                    {t('chat.response_format_label')}
+                  </p>
+                  <textarea
+                    value={responseFormatJson}
+                    onChange={(e) => setResponseFormatJson(e.target.value)}
+                    placeholder={t('chat.response_format_placeholder')}
+                    rows={4}
+                    className={cn(
+                      'w-full resize-y border bg-surface-base px-2 py-1.5 text-xs placeholder-content-tertiary',
+                      radius.md,
+                      interaction.focusRing,
+                      colors.text.primary,
+                      'border-DEFAULT focus:border-brand-signal',
+                    )}
+                  />
+                  {parsedResponseFormat.error && (
+                    <p className="text-[10px] text-semantic-error">{t('chat.invalid_response_format_json')}</p>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Attachment chips */}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-1.5 border-muted border-t bg-surface-base px-4 pt-2">
@@ -691,7 +1115,7 @@ export default function Chat() {
                   'max-h-32 border-DEFAULT focus:border-brand-signal',
                 )}
               />
-              <Button variant="primary" size="sm" type="submit" disabled={!input.trim() || sending}>
+              <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
                 <Send className={iconSize.sm} />
               </Button>
             </form>
@@ -836,6 +1260,52 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
             </pre>
           </details>
         )}
+      </Card>
+    )
+  }
+
+  if (msg.tool_call_delta) {
+    return (
+      <Card variant="default" padding="sm" className="border-border/50 bg-surface-base">
+        <CardContent>
+          <div className="flex items-start gap-2">
+            <Loader2 className={cn(iconSize.xs, 'mt-0.5 shrink-0 animate-spin text-content-secondary')} />
+            <div className="min-w-0 flex-1">
+              <p className={cn('text-xs', typography.weight.medium)}>{msg.tool_call_delta.name}</p>
+              <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 text-[10px]">
+                {msg.tool_call_delta.arguments}
+              </pre>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (msg.thinking) {
+    return (
+      <Card variant="default" padding="sm" className="border-brand/20 bg-brand/5">
+        <CardContent>
+          <div className="flex items-start gap-2">
+            <Loader2
+              className={cn(iconSize.xs, !msg.thinking.done && 'animate-spin', 'mt-0.5 shrink-0 text-brand-text')}
+            />
+            <div className="min-w-0 flex-1">
+              <p
+                className={cn(
+                  'text-[10px] text-content-secondary uppercase tracking-[0.14em]',
+                  typography.weight.medium,
+                )}
+              >
+                {t('chat.thinking')}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-content-secondary text-xs">
+                {msg.thinking.content}
+                {!msg.thinking.done ? '\u258C' : ''}
+              </p>
+            </div>
+          </div>
+        </CardContent>
       </Card>
     )
   }

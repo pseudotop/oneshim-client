@@ -4,6 +4,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WORKSPACE_CARGO_TOML="${REPO_ROOT}/Cargo.toml"
+CARGO_LOCK_PATH="${REPO_ROOT}/Cargo.lock"
 FRONTEND_PACKAGE_JSON="${REPO_ROOT}/crates/oneshim-web/frontend/package.json"
 CHANGELOG_PATH="${REPO_ROOT}/CHANGELOG.md"
 
@@ -28,7 +29,29 @@ next_patch_version() {
 }
 
 workspace_version() {
-  grep -m1 '^version' "${WORKSPACE_CARGO_TOML}" | sed 's/.*"\(.*\)"/\1/'
+  python3 - "${WORKSPACE_CARGO_TOML}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+in_workspace_package = False
+
+for raw_line in path.read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if line == "[workspace.package]":
+        in_workspace_package = True
+        continue
+    if in_workspace_package and line.startswith("[") and line != "[workspace.package]":
+        break
+    if in_workspace_package:
+        match = re.match(r'^version\s*=\s*"([^"]+)"$', line)
+        if match:
+            print(match.group(1))
+            raise SystemExit(0)
+
+raise SystemExit("Could not find [workspace.package] version field in Cargo.toml")
+PY
 }
 
 frontend_version() {
@@ -40,6 +63,107 @@ from pathlib import Path
 path = Path(sys.argv[1])
 print(json.loads(path.read_text(encoding="utf-8"))["version"])
 PY
+}
+
+changelog_unreleased_count() {
+  python3 - "${CHANGELOG_PATH}" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+count = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line == "## [Unreleased]")
+print(count)
+PY
+}
+
+require_single_unreleased_header() {
+  local count
+  count="$(changelog_unreleased_count)"
+  if [[ "${count}" -ne 1 ]]; then
+    echo "CHANGELOG.md must contain exactly one [Unreleased] header (found ${count})" >&2
+    return 1
+  fi
+}
+
+workspace_lock_mismatches() {
+  python3 - "${CARGO_LOCK_PATH}" "${1}" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+expected = sys.argv[2]
+mismatches = []
+name = None
+version = None
+has_source = False
+
+
+def flush() -> None:
+    if not name or not name.startswith("oneshim-") or has_source:
+        return
+    if version != expected:
+        mismatches.append((name, version or "<missing>"))
+
+
+for raw_line in path.read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if line == "[[package]]":
+        flush()
+        name = None
+        version = None
+        has_source = False
+        continue
+    if line.startswith('name = "'):
+        name = line.split('"', 2)[1]
+        continue
+    if line.startswith('version = "'):
+        version = line.split('"', 2)[1]
+        continue
+    if line.startswith("source = "):
+        has_source = True
+
+flush()
+
+if mismatches:
+    for name, version in mismatches:
+        print(f"{name}\t{version}")
+    raise SystemExit(1)
+PY
+}
+
+set_workspace_lock_version() {
+  python3 - "${CARGO_LOCK_PATH}" "${1}" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+target_version = sys.argv[2]
+lines = path.read_text(encoding="utf-8").splitlines()
+updated = []
+current_name = None
+
+for line in lines:
+    stripped = line.strip()
+    if stripped == "[[package]]":
+        current_name = None
+        updated.append(line)
+        continue
+    if stripped.startswith('name = "'):
+        current_name = stripped.split('"', 2)[1]
+        updated.append(line)
+        continue
+    if current_name and current_name.startswith("oneshim-") and stripped.startswith('version = "'):
+        indent = line[: len(line) - len(line.lstrip())]
+        updated.append(f'{indent}version = "{target_version}"')
+        continue
+    updated.append(line)
+
+path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+PY
+}
+
+sync_workspace_lockfile() {
+  set_workspace_lock_version "${1}"
 }
 
 set_workspace_version() {
@@ -110,14 +234,15 @@ target_header = re.compile(rf"^## \[{re.escape(target_version)}\](?: - .*)?\n?$"
 if any(target_header.match(line) for line in lines):
     raise SystemExit(f"CHANGELOG.md already has [{target_version}]")
 
-unreleased_idx = None
-for idx, line in enumerate(lines):
-    if line.startswith("## [Unreleased]"):
-        unreleased_idx = idx
-        break
-
-if unreleased_idx is None:
+unreleased_indices = [idx for idx, line in enumerate(lines) if line.startswith("## [Unreleased]")]
+if not unreleased_indices:
     raise SystemExit("CHANGELOG.md is missing the [Unreleased] header")
+if len(unreleased_indices) != 1:
+    raise SystemExit(
+        f"CHANGELOG.md must contain exactly one [Unreleased] header, found {len(unreleased_indices)}"
+    )
+
+unreleased_idx = unreleased_indices[0]
 
 next_section_idx = len(lines)
 for idx in range(unreleased_idx + 1, len(lines)):

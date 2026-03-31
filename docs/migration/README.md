@@ -102,6 +102,6 @@ All phases have been completed:
 **Python client**: `client/` folder has been marked **DEPRECATED** (2026-01-28)
 
 > **📌 Note**: Features have continued to expand since the migration.
-> The single source of truth for current quality metrics (test counts, failures, lint/build status) is [STATUS.md](../STATUS.md).
+> The current quality summary page is [STATUS.md](../STATUS.md), with live workflow truth anchored in GitHub Actions run pages.
 > For the latest development guide, see [CLAUDE.md](../../CLAUDE.md).
 > Korean docs are maintained as companion documents, kept semantically aligned with the English primary docs.

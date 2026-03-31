@@ -114,7 +114,7 @@ mod fastembed_impl {
     /// 1% accuracy degradation compared to the full-precision (FP32) version.
     /// Users who need maximum accuracy can override `local_model` in config to
     /// `"AllMiniLML6V2"` (or any other supported variant) to switch back.
-    fn resolve_model(name: Option<&str>) -> (fastembed::EmbeddingModel, String, usize) {
+    pub(super) fn resolve_model(name: Option<&str>) -> (fastembed::EmbeddingModel, String, usize) {
         match name {
             // Quantized variants (INT8 ONNX — ~3x faster, ~1% accuracy loss)
             Some("AllMiniLML6V2Q") | Some("all-MiniLM-L6-v2-Q") | None => (
@@ -232,17 +232,35 @@ pub use stub_impl::LocalEmbeddingProvider;
 mod tests {
     use super::*;
 
+    #[cfg(feature = "fastembed-local")]
     #[test]
-    fn provider_creates_successfully() {
-        // Verify struct construction compiles with the trait bound
-        let provider = LocalEmbeddingProvider::new(None).expect("should create provider");
-        assert_eq!(provider.dimensions(), 384);
-        assert!(!provider.model_id().is_empty());
+    fn resolve_model_defaults_to_quantized_minilm() {
+        let (_model, model_id, dimensions) = fastembed_impl::resolve_model(None);
+        assert_eq!(model_id, "all-MiniLM-L6-v2-Q");
+        assert_eq!(dimensions, 384);
+    }
+
+    #[cfg(feature = "fastembed-local")]
+    #[test]
+    fn unknown_model_falls_back_to_quantized_minilm() {
+        let (_model, model_id, dimensions) = fastembed_impl::resolve_model(Some("bogus-model"));
+        assert_eq!(model_id, "all-MiniLM-L6-v2-Q");
+        assert_eq!(dimensions, 384);
     }
 
     #[cfg(feature = "fastembed-local")]
     mod fastembed_tests {
         use super::*;
+
+        #[test]
+        #[ignore = "requires downloading the fastembed model"]
+        fn provider_creates_successfully() {
+            // Constructor coverage is kept as an ignored network test because
+            // fastembed downloads model assets on first initialization.
+            let provider = LocalEmbeddingProvider::new(None).expect("should create provider");
+            assert_eq!(provider.dimensions(), 384);
+            assert!(!provider.model_id().is_empty());
+        }
 
         /// NOTE: This test downloads the model on first run (~25 MB).
         /// It is marked `#[ignore]` for CI — run with `cargo test -- --ignored`.

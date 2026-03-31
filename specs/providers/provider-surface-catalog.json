@@ -984,8 +984,7 @@
           "read-only",
           "--skip-git-repo-check",
           "--color",
-          "never",
-          "--no-browser-login"
+          "never"
         ],
         "session_flags": []
       },
@@ -1114,7 +1113,6 @@
         "model_flag": "--model",
         "json_output_supported": true,
         "oneshot_flags": [
-          "--bare",
           "--no-session-persistence",
           "--permission-mode",
           "dontAsk",

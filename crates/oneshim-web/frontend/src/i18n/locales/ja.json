@@ -1113,6 +1113,21 @@
     "copy": "コピー",
     "copied": "コピーしました",
     "advanced": "詳細設定",
-    "system_prompt_placeholder": "システムプロンプト（任意）"
+    "http_surface_label": "HTTP surface",
+    "http_surface_help": "このセッションで使う direct HTTP provider surface を選択します。",
+    "model_label": "モデル上書き",
+    "model_placeholder": "空欄の場合は既定モデルを使用します",
+    "system_prompt_placeholder": "システムプロンプト（任意）",
+    "message_payload": "メッセージ payload",
+    "regime_label": "レジーム",
+    "regime_placeholder": "任意のレジームヒント",
+    "active_app_label": "アクティブアプリ",
+    "active_app_placeholder": "任意のアクティブアプリヒント",
+    "tools_label": "ツール定義 JSON",
+    "tools_placeholder": "任意のツール定義 JSON 配列",
+    "response_format_label": "レスポンス形式 JSON",
+    "response_format_placeholder": "任意の JSON schema または形式ヒント",
+    "invalid_tools_json": "ツール定義は JSON 配列である必要があります。",
+    "invalid_response_format_json": "レスポンス形式は有効な JSON である必要があります。"
   }
 }

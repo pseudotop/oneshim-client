@@ -8,7 +8,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use chrono::Utc;
 use parking_lot::Mutex;
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -16,12 +16,15 @@ use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
     ConversationSessionInfo, OutboundMessage, SessionConfig, SessionMessage, SessionState,
-    SessionTransport,
+    SessionTransport, ToolDefinition,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
 use crate::session_adapters::claude_normalizer::normalize_claude_stream_event;
-use crate::subprocess_provider::DetectedSubprocessCli;
+use crate::session_adapters::prompt_payload::{
+    extract_native_response_schema, render_message_payload,
+};
+use crate::subprocess_provider::{classify_subprocess_error, DetectedSubprocessCli};
 
 pub struct ClaudeSubprocessSession {
     session_id: String,
@@ -29,6 +32,7 @@ pub struct ClaudeSubprocessSession {
     surface: DetectedSubprocessCli,
     model: String,
     system_prompt: Option<String>,
+    default_tools: Option<Vec<ToolDefinition>>,
     state: Mutex<SessionState>,
     turn_count: AtomicU32,
     created_at: chrono::DateTime<chrono::Utc>,
@@ -41,6 +45,7 @@ impl ClaudeSubprocessSession {
         surface: DetectedSubprocessCli,
         config: &SessionConfig,
         session_config: Arc<AiSessionConfig>,
+        default_tools: Option<Vec<ToolDefinition>>,
     ) -> Self {
         Self {
             session_id: Uuid::new_v4().to_string(),
@@ -49,6 +54,7 @@ impl ClaudeSubprocessSession {
             surface,
             model: config.model.clone().unwrap_or_else(|| "sonnet".to_string()),
             system_prompt: config.system_prompt.clone(),
+            default_tools,
             state: Mutex::new(SessionState::Active),
             turn_count: AtomicU32::new(0),
             last_active: Mutex::new(Instant::now()),
@@ -56,11 +62,12 @@ impl ClaudeSubprocessSession {
         }
     }
 
-    fn build_command(&self, prompt: &str) -> Command {
+    fn build_command(&self, prompt: &str, response_schema: Option<&serde_json::Value>) -> Command {
         let mut cmd = Command::new(&self.surface.executable_path);
         cmd.arg("-p");
         cmd.arg("--output-format").arg("stream-json");
-        cmd.arg("--bare");
+        cmd.arg("--verbose");
+        cmd.arg("--include-partial-messages");
         cmd.arg("--permission-mode")
             .arg(&self.config.permission_mode);
         cmd.arg("--model").arg(&self.model);
@@ -77,6 +84,10 @@ impl ClaudeSubprocessSession {
             }
         }
 
+        if let Some(schema) = response_schema {
+            cmd.arg("--json-schema").arg(schema.to_string());
+        }
+
         cmd.arg(prompt);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -88,7 +99,9 @@ impl ClaudeSubprocessSession {
 #[async_trait]
 impl ConversationSession for ClaudeSubprocessSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
-        let mut cmd = self.build_command(&message.content);
+        let prompt = render_message_payload(message, self.default_tools.as_deref());
+        let response_schema = extract_native_response_schema(message.response_format.as_ref());
+        let mut cmd = self.build_command(&prompt, response_schema.as_ref());
 
         let mut child = cmd.spawn().map_err(|err| {
             *self.state.lock() = SessionState::Failed;
@@ -98,24 +111,49 @@ impl ConversationSession for ClaudeSubprocessSession {
         let stdout = child.stdout.take().ok_or_else(|| {
             CoreError::Internal("Failed to capture Claude session stdout".to_string())
         })?;
+        let mut stderr = child.stderr.take().ok_or_else(|| {
+            CoreError::Internal("Failed to capture Claude session stderr".to_string())
+        })?;
 
         self.turn_count.fetch_add(1, Ordering::Relaxed);
         *self.last_active.lock() = Instant::now();
 
         let timeout_secs = self.config.session_timeout_secs;
+        let surface_id = self.surface.surface_id.clone();
         let reader = tokio::io::BufReader::new(stdout);
 
         let stream = async_stream::try_stream! {
             let mut lines = reader.lines();
             let deadline = tokio::time::Instant::now()
                 + tokio::time::Duration::from_secs(timeout_secs);
+            let mut saw_text_chunk = false;
+            let mut force_kill = false;
+            let mut emitted_terminal_error = false;
+            let stderr_task = tokio::spawn(async move {
+                let mut stderr_buf = String::new();
+                let _ = stderr.read_to_string(&mut stderr_buf).await;
+                stderr_buf
+            });
 
             loop {
                 let line_result = tokio::time::timeout_at(deadline, lines.next_line()).await;
                 match line_result {
                     Ok(Ok(Some(line))) => {
-                        if let Some(msg) = normalize_claude_stream_event(&line) {
-                            yield msg;
+                        if let Some(mut normalized) = normalize_claude_stream_event(&line) {
+                            if matches!(normalized.kind, crate::session_adapters::claude_normalizer::ClaudeEventKind::AssistantSummary) && saw_text_chunk {
+                                continue;
+                            }
+                            if matches!(normalized.kind, crate::session_adapters::claude_normalizer::ClaudeEventKind::Result)
+                                && saw_text_chunk
+                            {
+                                if let OutboundMessage::Result { content, .. } = &mut normalized.message {
+                                    content.clear();
+                                }
+                            }
+                            if matches!(&normalized.message, OutboundMessage::Text { content, .. } if !content.is_empty()) {
+                                saw_text_chunk = true;
+                            }
+                            yield normalized.message;
                         }
                     }
                     Ok(Ok(None)) => break, // EOF
@@ -125,6 +163,8 @@ impl ConversationSession for ClaudeSubprocessSession {
                             message: err.to_string(),
                             retryable: false,
                         };
+                        force_kill = true;
+                        emitted_terminal_error = true;
                         break;
                     }
                     Err(_) => {
@@ -133,13 +173,28 @@ impl ConversationSession for ClaudeSubprocessSession {
                             message: format!("Session response timeout ({timeout_secs}s)"),
                             retryable: true,
                         };
+                        force_kill = true;
+                        emitted_terminal_error = true;
                         break;
                     }
                 }
             }
 
-            // Wait for process exit
-            let _ = child.wait().await;
+            if force_kill {
+                let _ = child.kill().await;
+            }
+
+            let status = child.wait().await.map_err(CoreError::Io)?;
+            let stderr_output = stderr_task.await.unwrap_or_default();
+
+            if !status.success() && !emitted_terminal_error {
+                let classified = classify_subprocess_error(&surface_id, &stderr_output);
+                yield OutboundMessage::Error {
+                    code: "subprocess_error".to_string(),
+                    message: classified.to_string(),
+                    retryable: false,
+                };
+            }
         };
 
         Ok(Box::pin(stream))

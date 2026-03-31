@@ -98,8 +98,9 @@ Before any build starts, the pipeline verifies:
 - The tag format is either `vX.Y.Z-rc.N` or `vX.Y.Z`.
 - The tag points to the current `main` branch head.
 - `Cargo.toml` workspace version matches the git tag.
+- `Cargo.lock` workspace package versions match the git tag.
 - `crates/oneshim-web/frontend/package.json` matches the git tag.
-- `CHANGELOG.md` contains an entry for the version being released.
+- `CHANGELOG.md` contains exactly one `[Unreleased]` header and an entry for the version being released.
 - `tauri.conf.json` `productName` is `ONESHIM` and `identifier` is `com.oneshim.client`.
 
 For stable tags, the pipeline also verifies:

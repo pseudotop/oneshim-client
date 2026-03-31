@@ -74,12 +74,17 @@ fi
 if ! changelog_has_entry "${RC_VERSION}"; then
   die "CHANGELOG.md에 [${RC_VERSION}] 섹션이 없습니다"
 fi
+if ! LOCK_MISMATCHES="$(workspace_lock_mismatches "${RC_VERSION}" 2>&1)"; then
+  die "RC 기준 Cargo.lock 워크스페이스 버전이 맞지 않습니다:\n${LOCK_MISMATCHES}"
+fi
 success "RC 메타데이터 검증 완료"
 
 info "버전 파일을 stable ${STABLE_VERSION}으로 승격합니다..."
 set_workspace_version "${STABLE_VERSION}"
 set_frontend_version "${STABLE_VERSION}"
 copy_changelog_section "${RC_VERSION}" "${STABLE_VERSION}"
+info "Cargo.lock를 stable ${STABLE_VERSION}으로 동기화합니다..."
+sync_workspace_lockfile "${STABLE_VERSION}"
 
 if [[ "$(workspace_version)" != "${STABLE_VERSION}" ]]; then
   die "Cargo.toml stable 승격에 실패했습니다"
@@ -93,9 +98,12 @@ fi
 if ! changelog_section_body_matches "${STABLE_VERSION}" "${RC_VERSION}"; then
   die "Stable CHANGELOG 섹션이 RC 섹션과 일치하지 않습니다"
 fi
+if ! LOCK_MISMATCHES="$(workspace_lock_mismatches "${STABLE_VERSION}" 2>&1)"; then
+  die "Stable 기준 Cargo.lock 워크스페이스 버전 동기화에 실패했습니다:\n${LOCK_MISMATCHES}"
+fi
 success "Stable 메타데이터 동기화 완료"
 
-git add Cargo.toml CHANGELOG.md crates/oneshim-web/frontend/package.json
+git add Cargo.toml Cargo.lock CHANGELOG.md crates/oneshim-web/frontend/package.json
 git commit -m "chore(release): ${STABLE_TAG}"
 success "승격 커밋 완료"
 

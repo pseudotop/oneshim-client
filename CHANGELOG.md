@@ -29,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Satisfy workspace clippy checks
 
 
-## [Unreleased]
 
 ## [0.4.11-rc.1] - 2026-03-30
 ### Added
@@ -91,7 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add 3 Google SSE parser unit tests (16 total)
 
 
-## [Unreleased]
 
 ## [0.4.10] - 2026-03-30
 ### Changed
@@ -131,7 +129,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All ProviderWizard user-facing strings now fully internationalized
 
 
-## [Unreleased]
 
 ## [0.4.10-rc.2] - 2026-03-29
 ### Fixed
@@ -145,7 +142,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Document intentionally read-only enum fields in apply_extended_settings
 
 
-## [Unreleased]
 
 ## [0.4.10-rc.1] - 2026-03-29
 ### Added
@@ -163,7 +159,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All 13 config sections now accessible via Settings UI (was 5 missing)
 
 
-## [Unreleased]
 
 ## [0.4.9] - 2026-03-29
 ### Added
@@ -191,7 +186,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Biome lint + design token lint clean
 
 
-## [Unreleased]
 
 ## [0.4.9-rc.1] - 2026-03-29
 ### Added
@@ -209,7 +203,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Total: 17 vendors, 23 surfaces (was 5 vendors, 11 surfaces)
 
 
-## [Unreleased]
 
 ## [0.4.8] - 2026-03-29
 ### Added
@@ -445,7 +438,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Resolves 666 pedantic clippy cast warnings to 0
 
 
-## [Unreleased]
 
 ## [0.4.7-rc.5] - 2026-03-29
 ### Added
@@ -564,7 +556,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Resolves 666 pedantic clippy cast warnings to 0
 
 
-## [Unreleased]
 
 ## [0.4.7] - 2026-03-28
 ### Fixed
@@ -584,7 +575,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   promote-stable.sh can create a fresh one.
 
 
-## [Unreleased]
 
 ## [0.4.7-rc.3] - 2026-03-29
 ### Fixed
@@ -665,7 +655,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Production code now has zero hardcoded hex colors.
 
 
-## [Unreleased]
 
 ## [0.4.6] - 2026-03-28
 ### Fixed
@@ -681,7 +670,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * fix: resolve Linux atspi 0.29 API split + Windows windows-future conflict
 
 
-## [Unreleased]
 
 ## [0.4.6-rc.2] - 2026-03-28
 ### Fixed
@@ -695,7 +683,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manual theme branching from MetricsChart, StatisticsPanel, Focus, Reports.
 
 
-## [Unreleased]
 
 ## [0.4.6-rc.1] - 2026-03-28
 ### Changed
@@ -719,7 +706,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before updating the overlay.
 
 
-## [Unreleased]
 
 ## [0.4.5] - 2026-03-28
 ### Fixed
@@ -785,7 +771,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add lan-sync test run to Test job
 
 
-## [Unreleased]
 
 ## [0.4.5-rc.4] - 2026-03-28
 ### Fixed
@@ -826,7 +811,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timestamps. Helps diagnose cross-device data loss from concurrent edits.
 
 
-## [Unreleased]
 
 ## [0.4.5-rc.3] - 2026-03-27
 ### Added
@@ -839,7 +823,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Based on design system audit (7.5/10 maturity score).
 
 
-## [Unreleased]
 
 ## [0.4.5-rc.2] - 2026-03-27
 ### Added
@@ -871,7 +854,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - React.memo overlay components, URL logging, dep policy
 
 
-## [Unreleased]
 
 ## [0.4.5-rc.1] - 2026-03-27
 ### Fixed
@@ -883,7 +865,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (Linux users get AT-SPI accessibility without manual flag)
 
 
-## [Unreleased]
 
 ## [0.4.4] - 2026-03-27
 ### Added
@@ -1171,7 +1152,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config fallback, chat message cap, scheduler startup logging
 
 
-## [Unreleased]
 
 ## [0.4.4-rc.4] - 2026-03-27
 ### Added
@@ -1193,7 +1173,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to prevent SQLITE_BUSY errors when multiple threads compete for write locks.
 
 
-## [Unreleased]
 
 ## [0.4.4-rc.3] - 2026-03-26
 ### Added
@@ -1221,7 +1200,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhance Chat with markdown rendering, code highlighting, i18n, and session cache
 
 
-## [Unreleased]
 
 ## [0.4.4-rc.2] - 2026-03-26
 ### Added
@@ -1229,7 +1207,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activate all action buttons + offline mode indicator
 
 
-## [Unreleased]
 
 ## [0.4.4-rc.1] - 2026-03-26
 ### Added
@@ -1251,7 +1228,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Bottom-center avoids menu bar/notch collision and keeps work area clear.
 
 
-## [Unreleased]
 
 ## [0.4.3] - 2026-03-26
 ### Added
@@ -1449,7 +1425,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - toggleExpanded logs setSize calls for debugging
 
 
-## [Unreleased]
 
 ## [0.4.3-rc.4] - 2026-03-25
 ### Fixed
@@ -1470,7 +1445,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Combined with decorations(false), this prevents user resize.
 
 
-## [Unreleased]
 
 ## [0.4.3-rc.3] - 2026-03-25
 ### Changed
@@ -1492,7 +1466,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is passed through, enabling notification display on suggestion arrival.
 
 
-## [Unreleased]
 
 ## [0.4.3-rc.2] - 2026-03-25
 ### Added
@@ -1645,7 +1618,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - spec: fix emit() → emit_to("main") in P2-1 spec document
 
 
-## [Unreleased]
 
 ## [0.4.3-rc.1] - 2026-03-24
 ### Added
@@ -1667,7 +1639,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plain nav selector.
 
 
-## [Unreleased]
 
 ## [0.4.2] - 2026-03-24
 ### Added
@@ -1749,7 +1720,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Filter these warnings to prevent false failures.
 
 
-## [Unreleased]
 
 ## [0.4.2-rc.1] - 2026-03-24
 ### Added
@@ -1807,7 +1777,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Tests: 2,469 pass, 0 fail | Clippy: 0 warnings
 
 
-## [Unreleased]
 
 ## [0.4.1] - 2026-03-24
 ### Added

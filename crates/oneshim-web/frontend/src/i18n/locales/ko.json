@@ -1125,6 +1125,21 @@
     "copy": "복사",
     "copied": "복사됨",
     "advanced": "고급 설정",
-    "system_prompt_placeholder": "시스템 프롬프트 (선택)"
+    "http_surface_label": "HTTP surface",
+    "http_surface_help": "이 세션에 사용할 direct HTTP provider surface를 선택하세요.",
+    "model_label": "모델 오버라이드",
+    "model_placeholder": "비워두면 기본 모델을 사용합니다",
+    "system_prompt_placeholder": "시스템 프롬프트 (선택)",
+    "message_payload": "메시지 payload",
+    "regime_label": "레짐",
+    "regime_placeholder": "선택 사항 레짐 힌트",
+    "active_app_label": "활성 앱",
+    "active_app_placeholder": "선택 사항 활성 앱 힌트",
+    "tools_label": "도구 정의 JSON",
+    "tools_placeholder": "선택 사항 도구 정의 JSON 배열",
+    "response_format_label": "응답 형식 JSON",
+    "response_format_placeholder": "선택 사항 JSON schema 또는 형식 힌트",
+    "invalid_tools_json": "도구 정의는 JSON 배열이어야 합니다.",
+    "invalid_response_format_json": "응답 형식은 유효한 JSON이어야 합니다."
   }
 }

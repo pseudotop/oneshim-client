@@ -1,6 +1,6 @@
 import type { StorybookConfig } from '@storybook/react-vite'
 import { readFileSync } from 'node:fs'
-import { applyStorybookViteConfig } from './vite-shared.ts'
+import { finalizeStorybookViteConfig } from './vite-shared.ts'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
@@ -15,8 +15,8 @@ const config: StorybookConfig = {
     name: '@storybook/react-vite',
     options: {},
   },
-  viteFinal(config) {
-    return applyStorybookViteConfig(config, pkg.version)
+  async viteFinal(config) {
+    return finalizeStorybookViteConfig(config, pkg.version)
   },
 }
 

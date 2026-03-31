@@ -7,7 +7,7 @@
 ## 루트 문서
 
 - [DOCUMENTATION_POLICY.md](./DOCUMENTATION_POLICY.md): 문서 컨벤션 및 유지보수 규칙
-- [STATUS.md](./STATUS.md): 변동 품질 지표 단일 출처
+- [STATUS.md](./STATUS.md): 변동 품질 신호와 워크플로우 링크를 모아 둔 스냅샷
 - [install.ko.md](./install.ko.md): 설치 가이드
 
 ## 하위 디렉터리

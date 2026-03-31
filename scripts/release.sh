@@ -80,6 +80,9 @@ CHANGELOG="CHANGELOG.md"
 if [[ ! -f "${CHANGELOG}" ]]; then
     die "${CHANGELOG} 파일이 없습니다"
 fi
+if ! require_single_unreleased_header; then
+    die "CHANGELOG.md의 [Unreleased] 헤더는 정확히 1개여야 합니다"
+fi
 
 # [Unreleased] 헤딩과 다음 ## 헤딩 사이의 내용을 추출
 UNRELEASED_CONTENT=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' "${CHANGELOG}" | grep -v '^[[:space:]]*$' || true)
@@ -110,6 +113,8 @@ success "CHANGELOG.md 승격 완료"
 info "버전 파일을 ${VERSION}으로 동기화합니다..."
 set_workspace_version "${VERSION}"
 set_frontend_version "${VERSION}"
+info "Cargo.lock를 워크스페이스 버전에 동기화합니다..."
+sync_workspace_lockfile "${VERSION}"
 
 UPDATED_CARGO_VERSION="$(workspace_version)"
 UPDATED_FRONTEND_VERSION="$(frontend_version)"
@@ -122,11 +127,14 @@ fi
 if ! changelog_has_entry "${VERSION}"; then
     die "CHANGELOG.md에 [${VERSION}] 섹션이 없습니다"
 fi
+if ! LOCK_MISMATCHES="$(workspace_lock_mismatches "${VERSION}" 2>&1)"; then
+    die "Cargo.lock 워크스페이스 버전 동기화에 실패했습니다:\n${LOCK_MISMATCHES}"
+fi
 success "버전 파일 동기화 완료: ${VERSION}"
 
 # ── 변경사항 커밋 ─────────────────────────────────────────────────────────────
 info "변경사항을 커밋합니다..."
-git add "${CHANGELOG}" Cargo.toml crates/oneshim-web/frontend/package.json
+git add "${CHANGELOG}" Cargo.toml Cargo.lock crates/oneshim-web/frontend/package.json
 git commit -m "chore(release): ${TAG}"
 success "커밋 완료"
 

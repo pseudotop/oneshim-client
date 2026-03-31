@@ -138,6 +138,12 @@ pub enum ContentBlock {
         media_type: String,
         data: String,
     },
+    File {
+        media_type: String,
+        data: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filename: Option<String>,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -436,6 +442,31 @@ mod tests {
                 assert_eq!(data, "base64data==");
             }
             _ => panic!("expected Image variant"),
+        }
+    }
+
+    #[test]
+    fn content_block_file_roundtrip() {
+        let block = ContentBlock::File {
+            media_type: "application/pdf".to_string(),
+            data: "JVBERi0xLjQK".to_string(),
+            filename: Some("notes.pdf".to_string()),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("\"type\":\"file\""));
+        assert!(json.contains("\"media_type\":\"application/pdf\""));
+        let parsed: ContentBlock = serde_json::from_str(&json).unwrap();
+        match parsed {
+            ContentBlock::File {
+                media_type,
+                data,
+                filename,
+            } => {
+                assert_eq!(media_type, "application/pdf");
+                assert_eq!(data, "JVBERi0xLjQK");
+                assert_eq!(filename.as_deref(), Some("notes.pdf"));
+            }
+            _ => panic!("expected File variant"),
         }
     }
 
