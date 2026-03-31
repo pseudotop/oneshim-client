@@ -85,6 +85,88 @@ require_single_unreleased_header() {
   fi
 }
 
+unreleased_section_content() {
+  python3 - "${CHANGELOG_PATH}" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+found = False
+body = []
+
+for line in lines:
+    if not found:
+        if line == "## [Unreleased]":
+            found = True
+        continue
+    if line.startswith("## ["):
+        break
+    body.append(line)
+
+print("\n".join(line for line in body if line.strip()))
+PY
+}
+
+populate_unreleased_section_from_generated_changelog() {
+  GENERATED_CHANGELOG="${1}" python3 - "${CHANGELOG_PATH}" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+generated = os.environ.get("GENERATED_CHANGELOG", "")
+
+
+def extract_unreleased_body(lines: list[str]) -> list[str]:
+    found = False
+    body: list[str] = []
+    for line in lines:
+        if not found:
+            if line == "## [Unreleased]":
+                found = True
+            continue
+        if line.startswith("## ["):
+            break
+        body.append(line)
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and not body[-1].strip():
+        body.pop()
+    return body
+
+
+current_lines = path.read_text(encoding="utf-8").splitlines()
+count = sum(1 for line in current_lines if line == "## [Unreleased]")
+if count != 1:
+    raise SystemExit(
+        f"CHANGELOG.md must contain exactly one [Unreleased] header (found {count})"
+    )
+
+new_body = extract_unreleased_body(generated.splitlines())
+if not any(line.strip() for line in new_body):
+    raise SystemExit("Generated changelog did not contain any [Unreleased] content")
+
+updated: list[str] = []
+i = 0
+while i < len(current_lines):
+    line = current_lines[i]
+    if line == "## [Unreleased]":
+        updated.append(line)
+        updated.append("")
+        updated.extend(new_body)
+        updated.append("")
+        i += 1
+        while i < len(current_lines) and not current_lines[i].startswith("## ["):
+            i += 1
+        continue
+    updated.append(line)
+    i += 1
+
+path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+PY
+}
+
 workspace_lock_mismatches() {
   python3 - "${CARGO_LOCK_PATH}" "${1}" <<'PY'
 import sys

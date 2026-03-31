@@ -17,6 +17,7 @@ emit_all_true() {
     echo "rust=true"
     echo "frontend=true"
     echo "ci=true"
+    echo "release_metadata_only=false"
   } >> "$OUTPUT_PATH"
 }
 
@@ -44,10 +45,21 @@ fi
 rust=false
 frontend=false
 ci=false
+release_metadata_only=true
+release_metadata_file_count=0
 
 for file in "${changed_files[@]}"; do
   [[ -z "$file" ]] && continue
   echo "changed: $file"
+
+  case "$file" in
+    CHANGELOG.md|Cargo.toml|Cargo.lock|crates/oneshim-web/frontend/package.json)
+      release_metadata_file_count=$((release_metadata_file_count + 1))
+      ;;
+    *)
+      release_metadata_only=false
+      ;;
+  esac
 
   case "$file" in
     crates/oneshim-web/frontend/*)
@@ -73,8 +85,13 @@ for file in "${changed_files[@]}"; do
   esac
 done
 
+if [[ "${release_metadata_file_count}" -eq 0 ]]; then
+  release_metadata_only=false
+fi
+
 {
   echo "rust=${rust}"
   echo "frontend=${frontend}"
   echo "ci=${ci}"
+  echo "release_metadata_only=${release_metadata_only}"
 } >> "$OUTPUT_PATH"

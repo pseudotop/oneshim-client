@@ -1,6 +1,6 @@
 // e2e-tauri/security-api-access.spec.ts
 import http from 'node:http'
-import { invokeIpc } from './helpers.js'
+import { fetchApiJson, invokeIpc } from './helpers.js'
 
 /**
  * Node.js HTTP client로 외부에서 REST API 호출
@@ -67,10 +67,10 @@ describe('S1: API Access Control', () => {
   /**
    * @tc_id T202
    * @risk_id SEC-012
-   * @tauri_only_reason IPC get_settings returns real config from disk
+   * @tauri_only_reason REST /api/settings returns the real desktop config snapshot from disk
    */
   it('T202: get_settings does not expose server credentials', async () => {
-    const config = await invokeIpc<Record<string, any>>('get_settings')
+    const config = await fetchApiJson<Record<string, any>>('/settings')
 
     // server.base_url 이 마스킹되어야 함
     if (config.server) {

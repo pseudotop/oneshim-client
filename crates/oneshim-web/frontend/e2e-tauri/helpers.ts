@@ -29,6 +29,59 @@ export async function invokeIpc<T = unknown>(
   return result.data as T
 }
 
+export async function fetchApiJson<T = unknown>(
+  path: string,
+  init?: {
+    method?: string
+    headers?: Record<string, string>
+    body?: string
+  }
+): Promise<T> {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const result = await browser.executeAsync(
+    (
+      relativePath: string,
+      requestInit: { method?: string; headers?: Record<string, string>; body?: string } | undefined,
+      done: (r: { ok: boolean; data?: unknown; error?: string }) => void
+    ) => {
+      const port = (window as any).__ONESHIM_WEB_PORT__ || 10090
+      const url = `http://127.0.0.1:${port}/api${relativePath}`
+      fetch(url, requestInit)
+        .then(async (response) => {
+          const text = await response.text()
+          let data: unknown = null
+          if (text.length > 0) {
+            try {
+              data = JSON.parse(text)
+            } catch {
+              data = text
+            }
+          }
+
+          if (!response.ok) {
+            done({
+              ok: false,
+              error:
+                typeof data === 'string'
+                  ? `${response.status} ${response.statusText}: ${data}`
+                  : `${response.status} ${response.statusText}`,
+            })
+            return
+          }
+
+          done({ ok: true, data })
+        })
+        .catch((err: unknown) => done({ ok: false, error: String(err) }))
+    },
+    normalizedPath,
+    init
+  )
+  if (!result.ok) {
+    throw new Error(`API ${normalizedPath} failed: ${result.error}`)
+  }
+  return result.data as T
+}
+
 /**
  * SSE 이벤트 수신 대기 — /api/stream에서 특정 이벤트 타입 캡처
  * WebView 내부의 EventSource를 사용하므로 CSP connect-src 범위 내에서 동작
@@ -67,17 +120,6 @@ export async function waitForSseEvent(
     throw new Error(result.error)
   }
   return result.data as Record<string, unknown>
-}
-
-/**
- * IPC 응답 타입 정의
- */
-export interface MetricsResponse {
-  agent_cpu: number
-  agent_memory_mb: number
-  system_cpu: number
-  system_memory_used_mb: number
-  system_memory_total_mb: number
 }
 
 export interface UpdateStatusResponse {

@@ -6,42 +6,6 @@ use crate::feature_capabilities::{
     FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
 };
 use crate::runtime_state::{AppState, SecretBackendCapabilities, SecretBackendState};
-use oneshim_web::update_control::UpdateAction;
-
-/// 업데이트 상태 조회
-#[deprecated(
-    since = "0.42.0",
-    note = "Use REST endpoint /api/update-status instead"
-)]
-#[command]
-pub async fn get_update_status(
-    state: tauri::State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    if let Some(ref control) = state.update_control {
-        let status = control.state.read().await;
-        serde_json::to_value(&*status).map_err(|e| e.to_string())
-    } else {
-        Ok(serde_json::json!({"phase": "Disabled", "message": "Updates disabled"}))
-    }
-}
-
-/// 업데이트 승인
-#[command]
-pub async fn approve_update(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state
-        .update_action_tx
-        .send(UpdateAction::Approve)
-        .map_err(|e| e.to_string())
-}
-
-/// 업데이트 연기
-#[command]
-pub async fn defer_update(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state
-        .update_action_tx
-        .send(UpdateAction::Defer)
-        .map_err(|e| e.to_string())
-}
 
 /// 자동화 상태 조회 — 사용자 설정 기반 반환
 #[command]

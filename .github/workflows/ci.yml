@@ -24,6 +24,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       ci: ${{ steps.filter.outputs.ci }}
+      release_metadata_only: ${{ steps.filter.outputs.release_metadata_only }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -274,13 +275,13 @@ jobs:
       needs.changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
-      RUN_HEAVY_TESTS: ${{ github.event_name == 'workflow_dispatch' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true' }}
+      RUN_HEAVY_TESTS: ${{ github.event_name == 'workflow_dispatch' || ((needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true') && needs.changes.outputs.release_metadata_only != 'true') }}
     steps:
       - uses: actions/checkout@v6
 
-      - name: Skip heavy Rust tests when no Rust or CI files changed
+      - name: Skip heavy Rust tests for metadata-only or non-Rust changes
         if: env.RUN_HEAVY_TESTS != 'true'
-        run: echo "No Rust or CI changes detected; marking Test check green without running the heavy suite."
+        run: echo "Only metadata-only or non-Rust changes detected; marking Test check green without running the heavy suite."
 
       - name: Install Linux dependencies
         if: env.RUN_HEAVY_TESTS == 'true'

@@ -23,7 +23,7 @@ fail() { echo -e "  ${RED}✗${NC} $1"; errors=$((errors + 1)); }
 warn() { echo -e "  ${YELLOW}!${NC} $1"; warnings=$((warnings + 1)); }
 
 # --- Resolve version ---
-CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+CARGO_VERSION="$(workspace_version)"
 
 if [ -n "${1:-}" ]; then
   VERSION="$1"

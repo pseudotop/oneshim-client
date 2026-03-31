@@ -84,21 +84,21 @@ if ! require_single_unreleased_header; then
     die "CHANGELOG.md의 [Unreleased] 헤더는 정확히 1개여야 합니다"
 fi
 
-# [Unreleased] 헤딩과 다음 ## 헤딩 사이의 내용을 추출
-UNRELEASED_CONTENT=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' "${CHANGELOG}" | grep -v '^[[:space:]]*$' || true)
+UNRELEASED_CONTENT="$(unreleased_section_content)"
 
 if [[ -z "${UNRELEASED_CONTENT}" ]]; then
-    info "[Unreleased] 섹션이 비어 있습니다. git-cliff로 자동 생성합니다..."
+    info "[Unreleased] 섹션이 비어 있습니다. 기존 헤더를 유지한 채 git-cliff로 내용을 채웁니다..."
     if command -v git-cliff &>/dev/null; then
-        git-cliff --unreleased --prepend "${CHANGELOG}"
-        UNRELEASED_CONTENT=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' "${CHANGELOG}" | grep -v '^[[:space:]]*$' || true)
+        GENERATED_CHANGELOG="$(git-cliff --unreleased)"
+        populate_unreleased_section_from_generated_changelog "${GENERATED_CHANGELOG}"
+        UNRELEASED_CONTENT="$(unreleased_section_content)"
         if [[ -z "${UNRELEASED_CONTENT}" ]]; then
             die "git-cliff 실행 후에도 [Unreleased] 섹션이 비어 있습니다. conventional commit이 없는 것 같습니다."
         fi
-        success "git-cliff로 [Unreleased] 섹션을 자동 생성했습니다"
+        success "git-cliff로 [Unreleased] 섹션 내용을 채웠습니다"
     else
         die "[Unreleased] 섹션이 비어 있고 git-cliff가 설치되지 않았습니다.
-힌트: cargo install git-cliff && git-cliff --unreleased --prepend CHANGELOG.md"
+힌트: cargo install git-cliff && git-cliff --unreleased"
     fi
 else
     success "[Unreleased] 섹션에 내용이 있습니다"

@@ -94,7 +94,6 @@ use tracing_subscriber::EnvFilter;
 #[allow(dead_code)]
 pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
 
-#[allow(deprecated)] // get_metrics, get_settings, get_update_status — superseded by REST
 fn main() {
     // Windows DLL search order hardening (Spec Section 9.2):
     // Remove CWD from DLL search path to prevent DLL hijacking.
@@ -188,12 +187,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::settings::get_metrics,
-            commands::settings::get_settings,
             commands::settings::update_setting,
-            commands::system::get_update_status,
-            commands::system::approve_update,
-            commands::system::defer_update,
             commands::system::get_automation_status,
             commands::settings::get_web_port,
             commands::system::get_secret_backend_capabilities,
