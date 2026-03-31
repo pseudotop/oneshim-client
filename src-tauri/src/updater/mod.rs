@@ -118,31 +118,23 @@ impl Updater {
         &self,
         base_url: &str,
     ) -> Result<UpdateCheckResult, UpdateError> {
+        self.check_for_updates_from(base_url).await
+    }
+
+    pub async fn check_for_updates(&self) -> Result<UpdateCheckResult, UpdateError> {
+        self.check_for_updates_from("https://api.github.com").await
+    }
+
+    async fn check_for_updates_from(
+        &self,
+        base_url: &str,
+    ) -> Result<UpdateCheckResult, UpdateError> {
         if !self.config.enabled {
             return Err(UpdateError::Disabled);
         }
 
         let current = semver::Version::parse(CURRENT_VERSION)?;
-
-        let url = format!(
-            "{}/repos/{}/{}/releases/latest",
-            base_url, self.config.repo_owner, self.config.repo_name
-        );
-
-        let response = self.http_client.get(&url).send().await?;
-
-        if !response.status().is_success() {
-            return Err(UpdateError::ParseResponse(format!(
-                "API response status: {}",
-                response.status()
-            )));
-        }
-
-        let release: ReleaseInfo = response.json().await?;
-
-        if release.prerelease && !self.config.include_prerelease {
-            return Ok(UpdateCheckResult::UpToDate { current });
-        }
+        let release = self.fetch_target_release(base_url).await?;
 
         let latest_tag = release.tag_name.trim_start_matches('v');
         let latest = semver::Version::parse(latest_tag)?;
@@ -162,17 +154,22 @@ impl Updater {
         }
     }
 
-    pub async fn check_for_updates(&self) -> Result<UpdateCheckResult, UpdateError> {
-        if !self.config.enabled {
-            return Err(UpdateError::Disabled);
-        }
-
-        let current = semver::Version::parse(CURRENT_VERSION)?;
-
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/releases/latest",
-            self.config.repo_owner, self.config.repo_name
-        );
+    /// Fetch the target release from GitHub.
+    /// When `include_prerelease` is true, queries `/releases` (all releases,
+    /// newest first) so that RC/beta tags are visible.
+    /// Otherwise, uses `/releases/latest` which only returns stable releases.
+    async fn fetch_target_release(&self, base_url: &str) -> Result<ReleaseInfo, UpdateError> {
+        let url = if self.config.include_prerelease {
+            format!(
+                "{}/repos/{}/{}/releases?per_page=1",
+                base_url, self.config.repo_owner, self.config.repo_name
+            )
+        } else {
+            format!(
+                "{}/repos/{}/{}/releases/latest",
+                base_url, self.config.repo_owner, self.config.repo_name
+            )
+        };
 
         let response = self.http_client.get(&url).send().await?;
 
@@ -183,27 +180,14 @@ impl Updater {
             )));
         }
 
-        let release: ReleaseInfo = response.json().await?;
-
-        if release.prerelease && !self.config.include_prerelease {
-            return Ok(UpdateCheckResult::UpToDate { current });
-        }
-
-        let latest_tag = release.tag_name.trim_start_matches('v');
-        let latest = semver::Version::parse(latest_tag)?;
-        self.enforce_version_floor(&latest)?;
-
-        if latest > current {
-            let download_url = self.find_platform_asset(&release)?;
-
-            Ok(UpdateCheckResult::Available {
-                current,
-                latest,
-                release: Box::new(release),
-                download_url,
-            })
+        if self.config.include_prerelease {
+            let releases: Vec<ReleaseInfo> = response.json().await?;
+            releases
+                .into_iter()
+                .next()
+                .ok_or_else(|| UpdateError::ParseResponse("No releases found".to_string()))
         } else {
-            Ok(UpdateCheckResult::UpToDate { current })
+            Ok(response.json().await?)
         }
     }
 }
@@ -474,21 +458,23 @@ mod tests {
     async fn prerelease_filtered_when_disabled() {
         let mut server = mockito::Server::new_async().await;
 
+        // With include_prerelease=false, uses /releases/latest which returns stable only
         let mock = server
             .mock("GET", "/repos/test-owner/test-repo/releases/latest")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(
-                r#"{
-                "tag_name": "v99.0.0-beta",
-                "name": "Beta Release",
-                "body": "Beta features",
-                "prerelease": true,
+            .with_body(format!(
+                r#"{{
+                "tag_name": "v{}",
+                "name": "Current Stable",
+                "body": "Stable release",
+                "prerelease": false,
                 "assets": [],
-                "html_url": "https://github.com/test/releases/v99.0.0-beta",
+                "html_url": "https://github.com/test/releases/v0.1.0",
                 "published_at": "2024-01-01T00:00:00Z"
-            }"#,
-            )
+            }}"#,
+                CURRENT_VERSION
+            ))
             .create_async()
             .await;
 
@@ -501,6 +487,75 @@ mod tests {
         mock.assert_async().await;
 
         assert!(matches!(result, Ok(UpdateCheckResult::UpToDate { .. })));
+    }
+
+    #[tokio::test]
+    async fn prerelease_found_when_enabled() {
+        let mut server = mockito::Server::new_async().await;
+
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let asset_name = "oneshim-macos-arm64.tar.gz";
+        #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+        let asset_name = "oneshim-macos-x64.tar.gz";
+        #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+        let asset_name = "oneshim-windows-x64.zip";
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let asset_name = "oneshim-linux-x64.tar.gz";
+        #[cfg(not(any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(target_os = "macos", target_arch = "x86_64"),
+            all(target_os = "windows", target_arch = "x86_64"),
+            all(target_os = "linux", target_arch = "x86_64"),
+        )))]
+        let asset_name = "oneshim-unknown.tar.gz";
+
+        // With include_prerelease=true, uses /releases?per_page=1
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/releases?per_page=1")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(
+                r#"[{{
+                "tag_name": "v99.0.0-rc.1",
+                "name": "RC Release",
+                "body": "Release candidate",
+                "prerelease": true,
+                "assets": [{{
+                    "name": "{}",
+                    "browser_download_url": "https://example.com/download/{}",
+                    "size": 10000,
+                    "content_type": "application/octet-stream"
+                }}],
+                "html_url": "https://github.com/test/releases/v99.0.0-rc.1",
+                "published_at": "2024-01-01T00:00:00Z"
+            }}]"#,
+                asset_name, asset_name
+            ))
+            .create_async()
+            .await;
+
+        let mut config = test_config();
+        config.include_prerelease = true;
+        let updater = Updater::new(config);
+
+        let result = updater.check_for_updates_with_base_url(&server.url()).await;
+
+        mock.assert_async().await;
+
+        #[cfg(any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(target_os = "macos", target_arch = "x86_64"),
+            all(target_os = "windows", target_arch = "x86_64"),
+            all(target_os = "linux", target_arch = "x86_64"),
+        ))]
+        {
+            match result {
+                Ok(UpdateCheckResult::Available { latest, .. }) => {
+                    assert_eq!(latest, semver::Version::parse("99.0.0-rc.1").unwrap());
+                }
+                other => unreachable!("Expected Available, got {:?}", other),
+            }
+        }
     }
 
     #[tokio::test]
