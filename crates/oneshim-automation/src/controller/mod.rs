@@ -15,13 +15,13 @@ use tokio::sync::RwLock;
 
 use crate::action_dispatcher::{AutomationActionDispatcher, SandboxActionDispatcher};
 use crate::audit::AuditLogger;
+use crate::error::AutomationError;
 use crate::gui_interaction::{GuiInteractionError, GuiInteractionService};
 use crate::intent_planner::IntentPlanner;
 use crate::intent_resolver::IntentExecutor;
 use crate::policy::PolicyClient;
 use gate::CommandExecutionGate;
 use oneshim_core::config::SandboxConfig;
-use oneshim_core::error::CoreError;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::focus_probe::FocusProbe;
 use oneshim_core::ports::overlay_driver::OverlayDriver;
@@ -109,11 +109,13 @@ impl AutomationController {
         focus_probe: Arc<dyn FocusProbe>,
         overlay_driver: Arc<dyn OverlayDriver>,
         hmac_secret: Option<String>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), AutomationError> {
         let scene_finder = self
             .scene_finder
             .as_ref()
-            .ok_or_else(|| CoreError::Internal("Scene analyzer is not configured".to_string()))?
+            .ok_or_else(|| {
+                AutomationError::Internal("Scene analyzer is not configured".to_string())
+            })?
             .clone();
 
         let service = Arc::new(GuiInteractionService::new(
@@ -127,32 +129,34 @@ impl AutomationController {
         Ok(())
     }
 
-    pub(super) fn ensure_enabled(&self) -> Result<(), CoreError> {
+    pub(super) fn ensure_enabled(&self) -> Result<(), AutomationError> {
         if self.enabled {
             Ok(())
         } else {
-            Err(CoreError::PolicyDenied(
+            Err(AutomationError::PolicyDenied(
                 "자동화가 비active화 state입니다".to_string(),
             ))
         }
     }
 
-    pub(super) fn require_intent_executor(&self) -> Result<&Arc<IntentExecutor>, CoreError> {
-        self.intent_executor
-            .as_ref()
-            .ok_or_else(|| CoreError::Internal("IntentExecutor is not configured".to_string()))
+    pub(super) fn require_intent_executor(&self) -> Result<&Arc<IntentExecutor>, AutomationError> {
+        self.intent_executor.as_ref().ok_or_else(|| {
+            AutomationError::Internal("IntentExecutor is not configured".to_string())
+        })
     }
 
-    pub(super) fn require_intent_planner(&self) -> Result<&Arc<dyn IntentPlanner>, CoreError> {
+    pub(super) fn require_intent_planner(
+        &self,
+    ) -> Result<&Arc<dyn IntentPlanner>, AutomationError> {
         self.intent_planner
             .as_ref()
-            .ok_or_else(|| CoreError::Internal("IntentPlanner is not configured".to_string()))
+            .ok_or_else(|| AutomationError::Internal("IntentPlanner is not configured".to_string()))
     }
 
-    pub(super) fn require_scene_finder(&self) -> Result<&Arc<dyn ElementFinder>, CoreError> {
-        self.scene_finder
-            .as_ref()
-            .ok_or_else(|| CoreError::Internal("Scene analyzer is not configured".to_string()))
+    pub(super) fn require_scene_finder(&self) -> Result<&Arc<dyn ElementFinder>, AutomationError> {
+        self.scene_finder.as_ref().ok_or_else(|| {
+            AutomationError::Internal("Scene analyzer is not configured".to_string())
+        })
     }
 
     /// Returns a reference to the GUI interaction service, if configured.

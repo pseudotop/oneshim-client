@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::controller::AutomationCommand;
-use oneshim_core::error::CoreError;
+use crate::error::AutomationError;
 
 use super::models::ExecutionPolicy;
 
@@ -78,14 +78,14 @@ pub(super) fn issue_command_token_for_policy(
     policy: &ExecutionPolicy,
     nonce: &str,
     command_hash: Option<&str>,
-) -> Result<String, CoreError> {
+) -> Result<String, AutomationError> {
     if !is_valid_nonce(nonce) {
-        return Err(CoreError::InvalidArguments(
+        return Err(AutomationError::InvalidArguments(
             "policy token nonce 형식이 유효하지 않습니다".to_string(),
         ));
     }
     if command_hash.is_some_and(|hash| !is_valid_hash(hash)) {
-        return Err(CoreError::InvalidArguments(
+        return Err(AutomationError::InvalidArguments(
             "policy token command hash 형식이 유효하지 않습니다".to_string(),
         ));
     }
@@ -99,7 +99,7 @@ pub(super) fn issue_command_token_for_policy(
 
     if policy.require_signed_token {
         let secret = load_signing_secret().ok_or_else(|| {
-            CoreError::Config(format!(
+            AutomationError::Config(format!(
                 "서명 policy이 active화되어 있지만 {} 환경 변수가 비어 있습니다.",
                 POLICY_TOKEN_SIGNING_SECRET_ENV
             ))
@@ -129,7 +129,9 @@ pub(super) fn is_valid_hash(hash: &str) -> bool {
     hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-pub(super) fn compute_command_scope_hash(cmd: &AutomationCommand) -> Result<String, CoreError> {
+pub(super) fn compute_command_scope_hash(
+    cmd: &AutomationCommand,
+) -> Result<String, AutomationError> {
     #[derive(serde::Serialize)]
     struct PolicyCommandScope<'a> {
         command_id: &'a str,
@@ -145,7 +147,7 @@ pub(super) fn compute_command_scope_hash(cmd: &AutomationCommand) -> Result<Stri
         timeout_ms: cmd.timeout_ms,
     };
     let serialized = serde_json::to_vec(&scope).map_err(|e| {
-        CoreError::Internal(format!(
+        AutomationError::Internal(format!(
             "Failed to serialize policy token command scope: {e}"
         ))
     })?;

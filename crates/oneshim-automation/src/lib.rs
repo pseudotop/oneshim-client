@@ -7,6 +7,9 @@
 
 //! # oneshim-automation
 
+pub mod error;
+pub use error::AutomationError;
+
 pub mod action_dispatcher;
 pub mod audit;
 pub mod controller;

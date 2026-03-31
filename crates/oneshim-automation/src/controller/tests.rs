@@ -2,6 +2,7 @@ use super::*;
 use crate::intent_planner::IntentPlanner;
 use crate::policy::{AuditLevel, ExecutionPolicy};
 use crate::sandbox::NoOpSandbox;
+use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{
     AutomationIntent, FinderSource, IntentConfig, PresetCategory, UiElement, WorkflowPreset,
     WorkflowStep,

@@ -71,10 +71,13 @@ pub struct EnigoInputDriver {
 
 #[cfg(feature = "enigo")]
 impl EnigoInputDriver {
-    pub fn new() -> Result<Self, CoreError> {
+    pub fn new() -> Result<Self, crate::error::AutomationError> {
         let settings = enigo::Settings::default();
-        let enigo = enigo::Enigo::new(&settings)
-            .map_err(|e| CoreError::Internal(format!("Failed to initialize input driver: {e}")))?;
+        let enigo = enigo::Enigo::new(&settings).map_err(|e| {
+            crate::error::AutomationError::Internal(format!(
+                "Failed to initialize input driver: {e}"
+            ))
+        })?;
         Ok(Self {
             enigo: tokio::sync::Mutex::new(enigo),
         })
