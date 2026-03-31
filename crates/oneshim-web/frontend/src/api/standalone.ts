@@ -31,9 +31,20 @@ function hasWindow(): boolean {
   return typeof window !== 'undefined'
 }
 
+function isTauriWindow(): boolean {
+  return hasWindow() && '__TAURI_INTERNALS__' in window
+}
+
 function detectInitialStandaloneMode(): boolean {
   if (!hasWindow()) {
     return true
+  }
+
+  // Desktop builds should always use the live Axum/Tauri integration surface.
+  // Persisted dev-only mock flags must not bleed into packaged releases.
+  if (isTauriWindow()) {
+    window.localStorage.setItem(STANDALONE_STORAGE_KEY, '0')
+    return false
   }
 
   const params = new URLSearchParams(window.location.search)
@@ -50,11 +61,6 @@ function detectInitialStandaloneMode(): boolean {
   const saved = window.localStorage.getItem(STANDALONE_STORAGE_KEY)
   if (saved === '0') return false
   if (saved === '1') return true
-
-  // Tauri webview has the Axum backend running — use real API, not standalone mock
-  if ('__TAURI_INTERNALS__' in window) {
-    return false
-  }
 
   // Default to connected mode — standalone requires explicit opt-in via ?standalone=1
   return false
