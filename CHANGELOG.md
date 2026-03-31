@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.12-rc.1] - 2026-03-31
+
+### Fixed
+
+- Close remaining runtime and release debt ([#266](https://github.com/pseudotop/oneshim-client/pull/266))
+  * fix(legacy): harden release flow and retire desktop IPC
+
+  * fix(runtime): close remaining low-level debt
+
+  * feat(local-llm): support native image attachments
+
+  * fix(installer): refine dmg packaging
+
+  * fix(settings): always use live desktop mode in tauri
+
+  * fix(timeline): clarify empty capture states
+
+  * fix(chat): surface session creation failures
+
+  * fix(frontend): surface remaining runtime ux failures
+
+  * feat(support): add diagnostics and developer log tooling
+
+  * feat(logging): bridge webview logs into desktop diagnostics
+
+  * feat(onboarding): guide desktop permissions on first run
+
+- Fix provider SVG icons and migrate to Alert primitive ([#267](https://github.com/pseudotop/oneshim-client/pull/267))
+  * fix(frontend): fix provider SVG icons and migrate raw alerts to Alert primitive
+
+  Provider icons were broken in production builds because Vite ?url imports
+  don't resolve node_modules SVGs at build time. Switched to ?raw + data URI
+  encoding so SVGs are inlined in the JS bundle. Also migrated 4 raw styled
+  divs to the Alert UI primitive for consistency.
+
 ## [0.4.11] - 2026-03-31
 ### Added
 
