@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
+use crate::error::NetworkError;
 use crate::http_client::build_reqwest_client;
 
 #[derive(Debug, Deserialize)]
@@ -78,7 +79,7 @@ impl TokenManager {
         base_url: &str,
         tls: &TlsConfig,
         timeout: Option<std::time::Duration>,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, NetworkError> {
         let client = build_reqwest_client(tls, timeout)?;
         Ok(Self::new_with_client(base_url, client))
     }

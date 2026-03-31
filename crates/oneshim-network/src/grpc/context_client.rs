@@ -22,7 +22,7 @@ pub struct GrpcContextClient {
 impl GrpcContextClient {
     pub async fn connect(config: GrpcConfig) -> Result<Self, CoreError> {
         let endpoints = config.all_endpoints();
-        let mut last_error = None;
+        let mut last_error: Option<crate::error::NetworkError> = None;
 
         for endpoint_url in &endpoints {
             info!(endpoint = %endpoint_url, "gRPC context client connection attempt");
@@ -46,7 +46,9 @@ impl GrpcContextClient {
         }
 
         error!(endpoints = ?endpoints, "all gRPC endpoint connection failure");
-        Err(last_error.unwrap_or_else(|| CoreError::Network("gRPC endpoint none".to_string())))
+        Err(last_error
+            .unwrap_or_else(|| crate::error::NetworkError::Http("gRPC endpoint none".to_string()))
+            .into())
     }
 
     /// Upload a batch of events and frame metadata.
@@ -62,7 +64,7 @@ impl GrpcContextClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC batch upload failure");
-                map_grpc_status_error("grpc batch upload failed", status)
+                map_grpc_status_error("grpc batch upload failed", status).into()
             })?;
 
         Ok(response.into_inner())
@@ -85,7 +87,7 @@ impl GrpcContextClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC suggestion stream subscribe failure");
-                map_grpc_status_error("grpc suggestion stream subscription failed", status)
+                map_grpc_status_error("grpc suggestion stream subscription failed", status).into()
             })?;
 
         Ok(response.into_inner())
@@ -111,7 +113,7 @@ impl GrpcContextClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC feedback sent failure");
-                map_grpc_status_error("grpc feedback submission failed", status)
+                map_grpc_status_error("grpc feedback submission failed", status).into()
             })?;
 
         Ok(())

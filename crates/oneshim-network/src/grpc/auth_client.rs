@@ -17,7 +17,7 @@ pub struct GrpcAuthClient {
 impl GrpcAuthClient {
     pub async fn connect(config: GrpcConfig) -> Result<Self, CoreError> {
         let endpoints = config.all_endpoints();
-        let mut last_error = None;
+        let mut last_error: Option<crate::error::NetworkError> = None;
 
         for endpoint_url in &endpoints {
             info!(endpoint = %endpoint_url, "gRPC auth client connection attempt");
@@ -36,7 +36,9 @@ impl GrpcAuthClient {
         }
 
         error!(endpoints = ?endpoints, "all gRPC endpoint connection failure");
-        Err(last_error.unwrap_or_else(|| CoreError::Network("gRPC endpoint none".to_string())))
+        Err(last_error
+            .unwrap_or_else(|| crate::error::NetworkError::Http("gRPC endpoint none".to_string()))
+            .into())
     }
 
     pub async fn get_token(
@@ -55,7 +57,7 @@ impl GrpcAuthClient {
 
         let response = self.client.get_token(request).await.map_err(|status| {
             error!(error = %status, "gRPC get_token failure");
-            map_grpc_status_error("grpc get_token failed", status)
+            map_grpc_status_error("grpc get_token failed", status).into()
         })?;
 
         Ok(response.into_inner())
@@ -70,7 +72,7 @@ impl GrpcAuthClient {
 
         let response = self.client.refresh_token(request).await.map_err(|status| {
             error!(error = %status, "gRPC token refresh failure");
-            map_grpc_status_error("grpc token refresh failed", status)
+            map_grpc_status_error("grpc token refresh failed", status).into()
         })?;
 
         Ok(response.into_inner())

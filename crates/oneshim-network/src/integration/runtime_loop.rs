@@ -14,7 +14,25 @@ use tokio::sync::watch;
 use tracing::warn;
 
 use super::runtime_telemetry::{IntegrationRuntimeLane, IntegrationRuntimeTelemetryHandle};
+use crate::error::NetworkError;
 use crate::resilience::{scale_duration, RetryBackoffGate, RetryBackoffPolicy};
+
+/// Convert a `&CoreError` to a `NetworkError` so it can be passed to
+/// `RetryBackoffGate::on_failure`, which matches on `NetworkError::RateLimited`
+/// to honour server-specified retry-after delays.
+fn core_to_network_error(e: &CoreError) -> NetworkError {
+    match e {
+        CoreError::RateLimit { retry_after_secs } => NetworkError::RateLimited {
+            retry_after_secs: *retry_after_secs,
+        },
+        CoreError::RequestTimeout { timeout_ms } => NetworkError::Timeout {
+            timeout_ms: *timeout_ms,
+        },
+        CoreError::ServiceUnavailable(msg) => NetworkError::ServiceUnavailable(msg.clone()),
+        CoreError::Auth(msg) => NetworkError::Auth(msg.clone()),
+        other => NetworkError::Http(other.to_string()),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct IntegrationRuntimeLoopProfile {
@@ -204,7 +222,7 @@ impl IntegrationRuntimeLoop {
                         continue;
                     }
                     if let Err(error) = self.run_connect_cycle().await {
-                        let delay = connect_gate.on_failure(now, &error);
+                        let delay = connect_gate.on_failure(now, &core_to_network_error(&error));
                         self.record_cycle_failure(IntegrationRuntimeLane::Connect, &error, delay).await;
                         warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime connect cycle failed");
                     } else {
@@ -218,7 +236,7 @@ impl IntegrationRuntimeLoop {
                         continue;
                     }
                     if let Err(error) = self.run_heartbeat_cycle().await {
-                        let delay = heartbeat_gate.on_failure(now, &error);
+                        let delay = heartbeat_gate.on_failure(now, &core_to_network_error(&error));
                         self.record_cycle_failure(IntegrationRuntimeLane::Heartbeat, &error, delay).await;
                         warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime heartbeat cycle failed");
                     } else {
@@ -232,7 +250,7 @@ impl IntegrationRuntimeLoop {
                         continue;
                     }
                     if let Err(error) = self.run_egress_cycle().await {
-                        let delay = egress_gate.on_failure(now, &error);
+                        let delay = egress_gate.on_failure(now, &core_to_network_error(&error));
                         self.record_cycle_failure(IntegrationRuntimeLane::Egress, &error, delay).await;
                         warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime egress cycle failed");
                     } else {
@@ -245,7 +263,7 @@ impl IntegrationRuntimeLoop {
                     match signal {
                         Ok(true) if egress_gate.is_ready(now) => {
                             if let Err(error) = self.run_egress_cycle().await {
-                                let delay = egress_gate.on_failure(now, &error);
+                                let delay = egress_gate.on_failure(now, &core_to_network_error(&error));
                                 self.record_cycle_failure(IntegrationRuntimeLane::Egress, &error, delay).await;
                                 warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime signal-driven egress cycle failed");
                             } else {
@@ -255,7 +273,7 @@ impl IntegrationRuntimeLoop {
                         }
                         Ok(_) => {}
                         Err(error) => {
-                            let delay = egress_gate.on_failure(now, &error);
+                            let delay = egress_gate.on_failure(now, &core_to_network_error(&error));
                             self.record_cycle_failure(IntegrationRuntimeLane::Egress, &error, delay).await;
                             warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime egress signal wait failed");
                         }
@@ -267,7 +285,7 @@ impl IntegrationRuntimeLoop {
                         continue;
                     }
                     if let Err(error) = self.run_inbox_cycle().await {
-                        let delay = inbox_gate.on_failure(now, &error);
+                        let delay = inbox_gate.on_failure(now, &core_to_network_error(&error));
                         self.record_cycle_failure(IntegrationRuntimeLane::Inbox, &error, delay).await;
                         warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime inbox cycle failed");
                     } else {
@@ -280,7 +298,7 @@ impl IntegrationRuntimeLoop {
                     match signal {
                         Ok(true) if inbox_gate.is_ready(now) => {
                             if let Err(error) = self.run_inbox_cycle().await {
-                                let delay = inbox_gate.on_failure(now, &error);
+                                let delay = inbox_gate.on_failure(now, &core_to_network_error(&error));
                                 self.record_cycle_failure(IntegrationRuntimeLane::Inbox, &error, delay).await;
                                 warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime signal-driven inbox cycle failed");
                             } else {
@@ -290,7 +308,7 @@ impl IntegrationRuntimeLoop {
                         }
                         Ok(_) => {}
                         Err(error) => {
-                            let delay = inbox_gate.on_failure(now, &error);
+                            let delay = inbox_gate.on_failure(now, &core_to_network_error(&error));
                             self.record_cycle_failure(IntegrationRuntimeLane::Inbox, &error, delay).await;
                             warn!(error = %error, retry_in_ms = delay.as_millis() as u64, "integration runtime inbox signal wait failed");
                         }

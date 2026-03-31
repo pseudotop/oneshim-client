@@ -44,7 +44,7 @@ impl SseStreamClient {
         token_manager: Arc<TokenManager>,
         max_retry_secs: u64,
         tls: &TlsConfig,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, crate::error::NetworkError> {
         // SSE 스트림에도 HTTP 클라이언트와 동일한 TLS 정책 적용
         // 전역 타임아웃 미적용(None): SSE는 장기 스트림 연결이므로 단일 타임아웃으로 끊기면 안 됨
         let http_client = build_reqwest_client(tls, None)?;

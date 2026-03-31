@@ -48,13 +48,13 @@ impl RemoteLlmProvider {
     fn resolved_runtime_endpoint(
         config: &ExternalApiEndpoint,
         model: &str,
-    ) -> Result<String, CoreError> {
+    ) -> Result<String, crate::error::NetworkError> {
         let shape = provider_specs::resolved_request_shape(
             config.provider_type,
             config.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(crate::error::NetworkError::Internal)?;
         Ok(match shape {
             ProviderRequestShape::GoogleGenerateContent => {
                 Self::rewrite_google_generate_content_endpoint(&config.endpoint, model)
@@ -79,15 +79,16 @@ impl RemoteLlmProvider {
         let suffix = &rest[action_idx..];
         format!("{prefix}{model}{suffix}")
     }
-    pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
+    pub fn new(config: &ExternalApiEndpoint) -> Result<Self, crate::error::NetworkError> {
+        use crate::error::NetworkError;
         let auth_scheme = provider_specs::resolved_auth_scheme(
             config.provider_type,
             config.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(NetworkError::Internal)?;
         if !matches!(auth_scheme, ProviderAuthScheme::None) && config.api_key.is_empty() {
-            return Err(CoreError::Config(
+            return Err(NetworkError::Config(
                 "AI LLM API key is not configured. Set it in Settings.".into(),
             ));
         }
@@ -99,13 +100,13 @@ impl RemoteLlmProvider {
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
             .build()
-            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+            .map_err(|e| NetworkError::Http(format!("HTTP client create failure: {}", e)))?;
         let supports_model = provider_specs::resolved_surface_supports_model_selection(
             config.provider_type,
             config.surface_id.as_deref(),
             provider_specs::SurfaceCapabilityKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(NetworkError::Internal)?;
         let model = config
             .model
             .clone()
@@ -126,13 +127,13 @@ impl RemoteLlmProvider {
                 }
             })
             .ok_or_else(|| {
-                CoreError::Config(
+                NetworkError::Config(
                     "The selected LLM provider surface requires an explicit model selection."
                         .to_string(),
                 )
             })?;
         if !supports_model {
-            return Err(CoreError::Config(
+            return Err(NetworkError::Config(
                 "The selected LLM provider surface does not support configurable model selection."
                     .to_string(),
             ));
@@ -141,7 +142,9 @@ impl RemoteLlmProvider {
             config.provider_type,
             config.surface_id.as_deref(),
             &model,
-        )? {
+        )
+        .map_err(NetworkError::Core)?
+        {
             ModelLifecycleDecision::Allowed => {}
             ModelLifecycleDecision::Warn {
                 message,
@@ -150,7 +153,7 @@ impl RemoteLlmProvider {
                 warn!(provider = ?config.provider_type, model = %model, replacement = ?replacement, "{}", message);
             }
             ModelLifecycleDecision::Block { message, .. } => {
-                return Err(CoreError::PolicyDenied(message));
+                return Err(NetworkError::PolicyDenied(message));
             }
         }
         if let Some(message) = provider_specs::known_model_capability_warning(
@@ -159,7 +162,7 @@ impl RemoteLlmProvider {
             provider_specs::SurfaceCapabilityKind::Llm,
             &model,
         )
-        .map_err(CoreError::Internal)?
+        .map_err(NetworkError::Internal)?
         {
             warn!(provider = ?config.provider_type, surface_id = ?config.surface_id, model = %model, "{message}");
         }
@@ -169,7 +172,7 @@ impl RemoteLlmProvider {
             provider_specs::SurfaceCapabilityKind::Llm,
             &model,
         )
-        .map_err(CoreError::Config)?;
+        .map_err(NetworkError::Config)?;
         debug!(endpoint = %config.endpoint, model = %model, timeout = config.timeout_secs, "RemoteLlmProvider initialize");
         let endpoint = Self::resolved_runtime_endpoint(config, &model)?;
         Ok(Self {
@@ -193,17 +196,18 @@ impl RemoteLlmProvider {
     pub fn new_with_credential(
         config: &ExternalApiEndpoint,
         credential: CredentialSource,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, crate::error::NetworkError> {
+        use crate::error::NetworkError;
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
             .build()
-            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+            .map_err(|e| NetworkError::Http(format!("HTTP client create failure: {}", e)))?;
         let supports_model = provider_specs::resolved_surface_supports_model_selection(
             config.provider_type,
             config.surface_id.as_deref(),
             provider_specs::SurfaceCapabilityKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(NetworkError::Internal)?;
         let model = config
             .model
             .clone()
@@ -224,13 +228,13 @@ impl RemoteLlmProvider {
                 }
             })
             .ok_or_else(|| {
-                CoreError::Config(
+                NetworkError::Config(
                     "The selected LLM provider surface requires an explicit model selection."
                         .to_string(),
                 )
             })?;
         if !supports_model {
-            return Err(CoreError::Config(
+            return Err(NetworkError::Config(
                 "The selected LLM provider surface does not support configurable model selection."
                     .to_string(),
             ));
@@ -239,7 +243,9 @@ impl RemoteLlmProvider {
             config.provider_type,
             config.surface_id.as_deref(),
             &model,
-        )? {
+        )
+        .map_err(NetworkError::Core)?
+        {
             ModelLifecycleDecision::Allowed => {}
             ModelLifecycleDecision::Warn {
                 message,
@@ -248,7 +254,7 @@ impl RemoteLlmProvider {
                 warn!(provider = ?config.provider_type, model = %model, replacement = ?replacement, "{}", message);
             }
             ModelLifecycleDecision::Block { message, .. } => {
-                return Err(CoreError::PolicyDenied(message));
+                return Err(NetworkError::PolicyDenied(message));
             }
         }
         provider_specs::validate_known_model_capability(
@@ -257,7 +263,7 @@ impl RemoteLlmProvider {
             provider_specs::SurfaceCapabilityKind::Llm,
             &model,
         )
-        .map_err(CoreError::Config)?;
+        .map_err(NetworkError::Config)?;
         let endpoint = credential
             .api_base_url()
             .map(String::from)
