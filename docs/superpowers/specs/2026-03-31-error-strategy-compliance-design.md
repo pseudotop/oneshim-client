@@ -106,6 +106,38 @@ For each crate:
 5. Export error type from `lib.rs`
 6. Verify `cargo check -p <crate>` and `cargo test -p <crate>`
 
+### Constructor & Builder Functions
+
+Constructors (e.g., `HttpApiClient::new()`, `GrpcSessionClient::connect()`) are public non-port functions called by `src-tauri`. These SHOULD return `CrateError`, not `CoreError`:
+
+- `src-tauri` uses `anyhow::Result`, so `?` on any `thiserror` type auto-converts via `Display`
+- Keeping constructors on `CoreError` while internals use `CrateError` creates inconsistency
+- If a constructor fails, the error is crate-specific (e.g., TLS config, connection refused)
+
+```rust
+// src-tauri/src/main.rs (before)
+let client = HttpApiClient::new(&url, token_mgr, timeout)?; // CoreError → anyhow
+
+// src-tauri/src/main.rs (after — same callsite, no change needed)
+let client = HttpApiClient::new(&url, token_mgr, timeout)?; // NetworkError → anyhow
+```
+
+### Test Migration Strategy
+
+15+ tests across crates match on specific `CoreError` variants (e.g., `matches!(err, CoreError::PolicyDenied(_))`). These must be updated:
+
+**Rule**: Tests for internal functions should assert on `CrateError` variants. Tests for port trait impls continue to assert on `CoreError` variants (since ports return `CoreError`).
+
+```rust
+// Before: test for internal function
+assert!(matches!(result.unwrap_err(), CoreError::PolicyDenied(_)));
+
+// After: test asserts on crate-specific error
+assert!(matches!(result.unwrap_err(), AutomationError::PolicyDenied(_)));
+```
+
+Tests that validate port trait behavior (e.g., gRPC error mapping) stay on `CoreError` — they test the `From<CrateError> for CoreError` conversion boundary.
+
 ## What Does NOT Change
 
 - Port trait signatures in `oneshim-core` (stay `CoreError`)
