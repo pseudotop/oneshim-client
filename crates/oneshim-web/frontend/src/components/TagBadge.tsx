@@ -3,6 +3,7 @@
  */
 import { useTranslation } from 'react-i18next'
 import { iconSize, interaction, motion, typography } from '../styles/tokens'
+import { tagBadgeVariants } from '../styles/variants'
 import { cn } from '../utils/cn'
 
 interface TagBadgeProps {
@@ -11,7 +12,7 @@ interface TagBadgeProps {
   onRemove?: () => void
   onClick?: () => void
   selected?: boolean
-  size?: 'sm' | 'md'
+  size?: keyof typeof tagBadgeVariants.size
 }
 
 export function TagBadge({ name, color, onRemove, onClick, selected = false, size = 'md' }: TagBadgeProps) {
@@ -19,14 +20,9 @@ export function TagBadge({ name, color, onRemove, onClick, selected = false, siz
   const bgColor = `${color}20`
   const borderColor = selected ? color : `${color}60`
 
-  const sizeClasses = {
-    sm: 'px-1.5 py-0.5 text-xs',
-    md: 'px-2 py-1 text-sm',
-  }
-
   const sharedClassName = cn(
     `inline-flex items-center gap-1 rounded-full border ${typography.weight.medium} ${motion.all}`,
-    sizeClasses[size],
+    tagBadgeVariants.size[size],
     onClick && 'cursor-pointer hover:opacity-80',
     selected && 'ring-2 ring-offset-1',
   )

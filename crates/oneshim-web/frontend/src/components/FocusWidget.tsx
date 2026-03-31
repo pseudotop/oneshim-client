@@ -6,6 +6,7 @@ import { type FocusMetricsResponse, fetchFocusMetrics } from '../api/client'
 import { colors, dataViz, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
+import { scoreColor } from '../utils/score-color'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card'
 import { Spinner } from './ui/Spinner'
 
@@ -37,13 +38,7 @@ function CircularGauge({ value, max = 100, size = 80 }: { value: number; max?: n
   const circumference = 2 * Math.PI * 35
   const strokeDashoffset = circumference * (1 - percentage)
 
-  const getColor = (score: number) => {
-    if (score >= 70) return dataViz.stroke.good
-    if (score >= 40) return dataViz.stroke.warning
-    return dataViz.stroke.critical
-  }
-
-  const color = getColor(value)
+  const color = scoreColor(value)
 
   return (
     <svg width={size} height={size} viewBox="0 0 80 80" aria-hidden="true">

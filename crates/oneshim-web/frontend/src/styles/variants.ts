@@ -99,3 +99,22 @@ export const dialogVariants = {
     lg: 'max-w-xl',
   },
 } as const
+
+export const spinnerVariants = {
+  size: {
+    sm: 'w-4 h-4',
+    md: 'w-6 h-6',
+    lg: 'w-10 h-10',
+  },
+} as const
+
+export const tagBadgeVariants = {
+  size: {
+    sm: 'px-1.5 py-0.5 text-xs',
+    md: 'px-2 py-1 text-sm',
+  },
+} as const
+
+/** Reusable type aliases derived from variant objects */
+export type BadgeColor = keyof typeof badgeVariants.color
+export type BadgeSize = keyof typeof badgeVariants.size

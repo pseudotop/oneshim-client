@@ -14,6 +14,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge, Button, Card, Input } from '../../components/ui'
 import { colors, motion, radius, typography } from '../../styles/tokens'
+import type { BadgeColor } from '../../styles/variants'
 import { cn } from '../../utils/cn'
 
 const toDataUri = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`
@@ -193,7 +194,7 @@ const PROVIDERS: ProviderDef[] = [
   },
 ]
 
-const TIER_BADGE_COLOR: Record<string, 'success' | 'info' | 'primary' | 'warning' | 'default'> = {
+const TIER_BADGE_COLOR: Record<string, BadgeColor> = {
   recommended: 'success',
   free: 'info',
   local: 'primary',
