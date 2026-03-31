@@ -338,8 +338,8 @@ pub enum NetworkError {
     #[error("configuration error: {0}")]
     Config(String),
 
-    #[error("validation error: {0}")]
-    Validation(String),
+    #[error("validation error — {field}: {message}")]
+    Validation { field: String, message: String },
 
     #[error("analysis API error: {0}")]
     Analysis(String),
@@ -385,10 +385,9 @@ impl From<NetworkError> for CoreError {
                 CoreError::Internal(format!("serialization: {msg}"))
             }
             NetworkError::Config(msg) => CoreError::Config(msg),
-            NetworkError::Validation(msg) => CoreError::Validation {
-                field: String::new(),
-                message: msg,
-            },
+            NetworkError::Validation { field, message } => {
+                CoreError::Validation { field, message }
+            }
             NetworkError::Analysis(msg) => CoreError::Analysis(msg),
             NetworkError::PolicyDenied(msg) => CoreError::PolicyDenied(msg),
             NetworkError::Ocr(msg) => CoreError::OcrError(msg),
@@ -423,7 +422,7 @@ Key mappings:
 - `CoreError::OAuthRefreshError { provider, message, .. }` → `NetworkError::OAuthRefresh { provider, message }`
 - `CoreError::NotFound { .. }` → `NetworkError::NotFound { .. }`
 - `CoreError::Config(msg)` → `NetworkError::Config(msg)`
-- `CoreError::Validation { field, message }` → `NetworkError::Validation(format!("{field}: {message}"))`
+- `CoreError::Validation { field, message }` → `NetworkError::Validation { field, message }`
 - `CoreError::Analysis(msg)` → `NetworkError::Analysis(msg)`
 - `CoreError::PolicyDenied(msg)` → `NetworkError::PolicyDenied(msg)`
 - `CoreError::OcrError(msg)` → `NetworkError::Ocr(msg)`
@@ -458,6 +457,12 @@ assert!(matches!(result, NetworkError::Auth(_)));
 assert!(matches!(err, CoreError::InvalidArguments(_)));
 // AFTER
 assert!(matches!(err, NetworkError::Config(_)));
+
+// grpc/error_mapping.rs tests — Validation with field
+// BEFORE
+assert!(matches!(result, CoreError::Validation { .. }));
+// AFTER
+assert!(matches!(result, NetworkError::Validation { .. }));
 ```
 
 - [ ] **Step 6: Verify network crate**
@@ -854,21 +859,43 @@ Run: `cargo check -p oneshim-vision`
 
 - [ ] **Step 4: Absorb OcrError into VisionError**
 
-In `ocr.rs`, the internal `OcrError` enum (5 variants) is used only within that module. Replace with `VisionError::Ocr`:
+In `ocr.rs`, the internal `OcrError` enum has 5 variants and is returned by public functions (`extract()`, `extract_async()`, `extract_words_with_boxes()`, etc.). These are called by `local_ocr_provider.rs` which wraps the errors.
+
+Two changes needed:
+
+**4a.** Change all public `ocr.rs` function return types from `Result<T, OcrError>` to `Result<T, VisionError>`:
 
 ```rust
 // BEFORE (ocr.rs)
-#[derive(Debug, Error)]
-pub enum OcrError {
-    #[error("OCR initialize failure: {0}")]
-    Init(String),
-    // ...
-}
+pub fn extract(&mut self) -> Result<String, OcrError> { ... }
+pub async fn extract_async(&self) -> Result<String, OcrError> { ... }
 
-// AFTER — remove OcrError, use VisionError
+// AFTER
 use crate::error::VisionError;
-// Replace OcrError::Init(msg) → VisionError::Ocr(format!("init: {msg}"))
+pub fn extract(&mut self) -> Result<String, VisionError> { ... }
+pub async fn extract_async(&self) -> Result<String, VisionError> { ... }
 ```
+
+**4b.** Replace `OcrError` variant construction with `VisionError::Ocr`:
+
+```rust
+// BEFORE
+Err(OcrError::Init(format!("failed: {e}")))
+// AFTER
+Err(VisionError::Ocr(format!("init: {e}")))
+```
+
+**4c.** Update `local_ocr_provider.rs` — remove the `.map_err()` that previously converted `OcrError` → `CoreError::OcrError`, since `VisionError::Ocr` is now the direct return type:
+
+```rust
+// BEFORE (local_ocr_provider.rs)
+extractor.extract_words_with_boxes(&img).await
+    .map_err(|e| CoreError::OcrError(format!("OCR extraction failed: {e}")))?;
+// AFTER
+extractor.extract_words_with_boxes(&img).await?;  // VisionError propagates directly
+```
+
+**4d.** Remove the `OcrError` enum definition from `ocr.rs`.
 
 - [ ] **Step 5: Migrate internal functions**
 
