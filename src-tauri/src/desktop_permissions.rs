@@ -58,6 +58,33 @@ pub fn request_desktop_notification_permission<R: Runtime>(
     Ok(get_desktop_permission_snapshot(app_handle))
 }
 
+pub fn open_desktop_permission_settings(permission_kind: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let url = macos_permission_settings_url(permission_kind).ok_or_else(|| {
+            format!("Unsupported desktop permission settings kind: {permission_kind}")
+        })?;
+        let status = std::process::Command::new("open")
+            .arg(url)
+            .status()
+            .map_err(|err| format!("Failed to open macOS System Settings: {err}"))?;
+
+        if status.success() {
+            return Ok(());
+        }
+
+        Err(format!(
+            "macOS System Settings returned a non-zero exit status for permission kind: {permission_kind}"
+        ))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = permission_kind;
+        Err("Desktop permission shortcuts are only supported on macOS right now".to_string())
+    }
+}
+
 fn current_platform() -> &'static str {
     #[cfg(target_os = "macos")]
     {
@@ -82,6 +109,19 @@ fn granted(status_reason: Option<&str>) -> DesktopPermissionEntry {
     DesktopPermissionEntry {
         state: DesktopPermissionState::Granted,
         status_reason: status_reason.map(ToOwned::to_owned),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_permission_settings_url(permission_kind: &str) -> Option<&'static str> {
+    match permission_kind {
+        "accessibility" => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        }
+        "screen_capture" => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        }
+        _ => None,
     }
 }
 
@@ -320,5 +360,19 @@ mod tests {
     #[test]
     fn platform_name_is_known() {
         assert!(!current_platform().is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_permission_settings_urls_match_expected_targets() {
+        assert_eq!(
+            macos_permission_settings_url("accessibility"),
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        );
+        assert_eq!(
+            macos_permission_settings_url("screen_capture"),
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        );
+        assert_eq!(macos_permission_settings_url("notifications"), None);
     }
 }

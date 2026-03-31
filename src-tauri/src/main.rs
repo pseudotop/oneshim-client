@@ -196,6 +196,7 @@ fn main() {
             commands::system::record_frontend_log,
             commands::permissions::get_desktop_permission_status,
             commands::permissions::request_desktop_notification_permission,
+            commands::permissions::open_desktop_permission_settings,
             commands::system::probe_provider_surface_endpoint,
             commands::settings::get_allowed_setting_keys,
             commands::integration::integration_auth_status,
