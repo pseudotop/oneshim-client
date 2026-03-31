@@ -29,6 +29,36 @@ Each crate gets one new file and modifications to existing files:
 
 ---
 
+### Task 0: Add thiserror dependency to 6 crates
+
+6 of 8 crates are missing `thiserror` in Cargo.toml. It's a workspace dep but each crate needs it directly for `#[derive(Error)]`.
+
+- [ ] **Step 1: Add thiserror to Cargo.toml for each crate**
+
+Add `thiserror = { workspace = true }` to `[dependencies]` in:
+- `crates/oneshim-storage/Cargo.toml`
+- `crates/oneshim-analysis/Cargo.toml`
+- `crates/oneshim-network/Cargo.toml`
+- `crates/oneshim-monitor/Cargo.toml`
+- `crates/oneshim-embedding/Cargo.toml`
+- `crates/oneshim-suggestion/Cargo.toml`
+
+(`oneshim-automation` and `oneshim-vision` already have it.)
+
+- [ ] **Step 2: Verify workspace compiles**
+
+Run: `cargo check --workspace`
+Expected: PASS
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add crates/*/Cargo.toml
+git commit -m "chore: add thiserror dependency to 6 adapter crates"
+```
+
+---
+
 ### Task 1: oneshim-storage — StorageError
 
 **Files:**
@@ -326,8 +356,12 @@ pub enum NetworkError {
     #[error("OAuth error for {provider}: {message}")]
     OAuth { provider: String, message: String },
 
-    #[error("OAuth refresh failed for {provider}: {message}")]
-    OAuthRefresh { provider: String, message: String },
+    #[error("OAuth refresh failed for {provider}: [{kind:?}] {message}")]
+    OAuthRefresh {
+        provider: String,
+        kind: oneshim_core::ports::oauth::OAuthErrorKind,
+        message: String,
+    },
 
     #[error("{resource_type} not found: {id}")]
     NotFound { resource_type: String, id: String },
@@ -371,12 +405,8 @@ impl From<NetworkError> for CoreError {
             NetworkError::OAuth { provider, message } => {
                 CoreError::OAuthError { provider, message }
             }
-            NetworkError::OAuthRefresh { provider, message } => {
-                CoreError::OAuthRefreshError {
-                    provider,
-                    kind: oneshim_core::ports::oauth::OAuthErrorKind::ServerError,
-                    message,
-                }
+            NetworkError::OAuthRefresh { provider, kind, message } => {
+                CoreError::OAuthRefreshError { provider, kind, message }
             }
             NetworkError::NotFound { resource_type, id } => {
                 CoreError::NotFound { resource_type, id }
@@ -419,7 +449,7 @@ Key mappings:
 - `CoreError::ServiceUnavailable(msg)` → `NetworkError::ServiceUnavailable(msg)`
 - `CoreError::Auth(msg)` → `NetworkError::Auth(msg)`
 - `CoreError::OAuthError { provider, message }` → `NetworkError::OAuth { provider, message }`
-- `CoreError::OAuthRefreshError { provider, message, .. }` → `NetworkError::OAuthRefresh { provider, message }`
+- `CoreError::OAuthRefreshError { provider, kind, message }` → `NetworkError::OAuthRefresh { provider, kind, message }`
 - `CoreError::NotFound { .. }` → `NetworkError::NotFound { .. }`
 - `CoreError::Config(msg)` → `NetworkError::Config(msg)`
 - `CoreError::Validation { field, message }` → `NetworkError::Validation { field, message }`
