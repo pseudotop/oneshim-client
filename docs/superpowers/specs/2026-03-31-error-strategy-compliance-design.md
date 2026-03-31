@@ -33,6 +33,9 @@ Port traits in `oneshim-core` return `Result<T, CoreError>`. This does NOT chang
 // oneshim-network/src/error.rs
 #[derive(Debug, Error)]
 pub enum NetworkError {
+    #[error(transparent)]
+    Core(#[from] CoreError),
+
     #[error("HTTP request failed: {0}")]
     Http(String),
     #[error("Connection timeout after {timeout_ms}ms")]
