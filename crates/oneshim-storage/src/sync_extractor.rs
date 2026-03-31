@@ -9,6 +9,7 @@ use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 
+use crate::error::StorageError;
 use oneshim_core::config::SyncConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::sync::{ChangeSet, ChangeSetKind};
@@ -40,7 +41,7 @@ impl SqliteSyncExtractor {
 
     /// Backfill origin_device_id for pre-sync rows (empty string -> local device_id).
     /// Called once on first extraction. Idempotent.
-    fn backfill_origin_device_id(conn: &Connection, device_id: &str) -> Result<u64, CoreError> {
+    fn backfill_origin_device_id(conn: &Connection, device_id: &str) -> Result<u64, StorageError> {
         let tables = [
             "activity_segments",
             "regimes",
@@ -56,7 +57,7 @@ impl SqliteSyncExtractor {
             let updated = conn
                 .execute(&sql, rusqlite::params![device_id])
                 .map_err(|e| {
-                    CoreError::Internal(format!("backfill origin_device_id on {table}: {e}"))
+                    StorageError::Internal(format!("backfill origin_device_id on {table}: {e}"))
                 })?;
             total += updated as u64;
         }
@@ -72,7 +73,7 @@ impl SqliteSyncExtractor {
         table: &str,
         columns: &str,
         since: &Hlc,
-    ) -> Result<Vec<serde_json::Value>, CoreError> {
+    ) -> Result<Vec<serde_json::Value>, StorageError> {
         let sql = format!(
             "SELECT {columns} FROM {table} \
              WHERE (hlc_wall_ms > ?1) \
@@ -82,7 +83,7 @@ impl SqliteSyncExtractor {
         );
         let mut stmt = conn
             .prepare(&sql)
-            .map_err(|e| CoreError::Internal(format!("prepare query for {table}: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("prepare query for {table}: {e}")))?;
 
         let rows = stmt
             .query_map(
@@ -92,21 +93,21 @@ impl SqliteSyncExtractor {
                     Ok(json_str)
                 },
             )
-            .map_err(|e| CoreError::Internal(format!("query {table}: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("query {table}: {e}")))?;
 
         let mut results = Vec::new();
         for row in rows {
             let json_str =
-                row.map_err(|e| CoreError::Internal(format!("row read {table}: {e}")))?;
+                row.map_err(|e| StorageError::Internal(format!("row read {table}: {e}")))?;
             let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| CoreError::Internal(format!("json parse {table}: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("json parse {table}: {e}")))?;
             results.push(value);
         }
         Ok(results)
     }
 
     /// Find the maximum HLC across all syncable tables.
-    fn compute_max_hlc(conn: &Connection, device_id: &str) -> Result<Hlc, CoreError> {
+    fn compute_max_hlc(conn: &Connection, device_id: &str) -> Result<Hlc, StorageError> {
         let tables = [
             "activity_segments",
             "regimes",
@@ -127,7 +128,7 @@ impl SqliteSyncExtractor {
             );
             let (wall_ms, counter): (u64, u32) = conn
                 .query_row(&sql, [], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(|e| CoreError::Internal(format!("max HLC query on {table}: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("max HLC query on {table}: {e}")))?;
 
             let candidate = Hlc {
                 wall_ms,
@@ -155,7 +156,7 @@ impl ChangeExtractor for SqliteSyncExtractor {
         tokio::task::spawn_blocking(move || {
             let guard = conn
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
             // Backfill on first extraction
             Self::backfill_origin_device_id(&guard, &device_id)?;
@@ -257,7 +258,7 @@ impl ChangeExtractor for SqliteSyncExtractor {
             // Compute new watermark from max HLC across all extracted rows
             let watermark = Self::compute_max_hlc(&guard, &device_id)?;
 
-            Ok(ChangeSet {
+            Ok::<ChangeSet, StorageError>(ChangeSet {
                 kind: ChangeSetKind::Data,
                 origin_device_id: device_id,
                 origin_device_name: device_name,
@@ -273,6 +274,7 @@ impl ChangeExtractor for SqliteSyncExtractor {
         })
         .await
         .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+        .map_err(CoreError::from)
     }
 
     async fn local_watermark(&self) -> Result<Hlc, CoreError> {
@@ -282,11 +284,12 @@ impl ChangeExtractor for SqliteSyncExtractor {
         tokio::task::spawn_blocking(move || {
             let guard = conn
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
             Self::compute_max_hlc(&guard, &device_id)
         })
         .await
         .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+        .map_err(CoreError::from)
     }
 }
 

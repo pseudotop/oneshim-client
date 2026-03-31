@@ -11,6 +11,7 @@ authors.workspace = true
 
 [dependencies]
 oneshim-core = { workspace = true }
+thiserror = { workspace = true }
 getrandom = "0.4"
 rusqlite = { workspace = true }
 tokio = { workspace = true }

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::error::StorageError;
 use async_trait::async_trait;
 use oneshim_core::config::AiProviderType;
 use oneshim_core::error::CoreError;
@@ -42,9 +43,9 @@ impl ProcessEnvSecretProjection {
 
 pub fn provider_api_key_cli_template(
     provider_type: AiProviderType,
-) -> Result<ProjectionTemplate, CoreError> {
+) -> Result<ProjectionTemplate, StorageError> {
     let projection = provider_projection_for_type(provider_type).ok_or_else(|| {
-        CoreError::Config(format!(
+        StorageError::Config(format!(
             "missing provider projection metadata for provider type '{provider_type:?}'"
         ))
     })?;

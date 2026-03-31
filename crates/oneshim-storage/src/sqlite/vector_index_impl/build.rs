@@ -9,6 +9,7 @@ use rusqlite::params;
 use tracing::info;
 
 use super::{metadata, search, SqliteVectorIndex};
+use crate::error::StorageError;
 
 // These methods are part of the VectorIndex trait impl but defined here
 // for organizational clarity. The #[async_trait] impl block is in this file.
@@ -32,7 +33,7 @@ impl VectorIndex for SqliteVectorIndex {
                      WHERE is_stale = 0 AND vector_int8 IS NOT NULL",
                     )
                     .map_err(|e| {
-                        CoreError::Internal(format!("Failed to prepare vector load: {e}"))
+                        StorageError::Internal(format!("Failed to prepare vector load: {e}"))
                     })?;
 
                 let rows: Vec<(i64, QuantizedVector)> = stmt
@@ -50,7 +51,7 @@ impl VectorIndex for SqliteVectorIndex {
                             },
                         ))
                     })
-                    .map_err(|e| CoreError::Internal(format!("Failed to load vectors: {e}")))?
+                    .map_err(|e| StorageError::Internal(format!("Failed to load vectors: {e}")))?
                     .filter_map(|r| r.ok())
                     .collect();
 
@@ -96,14 +97,14 @@ impl VectorIndex for SqliteVectorIndex {
         self.with_conn(move |conn| {
             // Clear old data
             conn.execute("DELETE FROM ivf_assignments", [])
-                .map_err(|e| CoreError::Internal(format!("Failed to clear assignments: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to clear assignments: {e}")))?;
             conn.execute("DELETE FROM ivf_centroids", [])
-                .map_err(|e| CoreError::Internal(format!("Failed to clear centroids: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to clear centroids: {e}")))?;
 
             // Insert centroids
             {
                 let tx = conn.unchecked_transaction().map_err(|e| {
-                    CoreError::Internal(format!("Failed to begin transaction: {e}"))
+                    StorageError::Internal(format!("Failed to begin transaction: {e}"))
                 })?;
 
                 let mut stmt = tx
@@ -112,27 +113,27 @@ impl VectorIndex for SqliteVectorIndex {
                          VALUES (?1, ?2, ?3, ?4, ?5)",
                     )
                     .map_err(|e| {
-                        CoreError::Internal(format!("Failed to prepare centroid insert: {e}"))
+                        StorageError::Internal(format!("Failed to prepare centroid insert: {e}"))
                     })?;
 
                 for (id, blob, scale, offset, count) in &centroids_data {
                     stmt.execute(params![*id as i64, blob, scale, offset, *count as i64])
                         .map_err(|e| {
-                            CoreError::Internal(format!(
+                            StorageError::Internal(format!(
                                 "Failed to insert centroid {id}: {e}"
                             ))
                         })?;
                 }
                 drop(stmt);
                 tx.commit().map_err(|e| {
-                    CoreError::Internal(format!("Failed to commit centroids: {e}"))
+                    StorageError::Internal(format!("Failed to commit centroids: {e}"))
                 })?;
             }
 
             // Insert assignments in chunks of 1000
             for chunk in assignments.chunks(1000) {
                 let tx = conn.unchecked_transaction().map_err(|e| {
-                    CoreError::Internal(format!("Failed to begin assignment tx: {e}"))
+                    StorageError::Internal(format!("Failed to begin assignment tx: {e}"))
                 })?;
 
                 let mut stmt = tx
@@ -141,7 +142,7 @@ impl VectorIndex for SqliteVectorIndex {
                          VALUES (?1, ?2)",
                     )
                     .map_err(|e| {
-                        CoreError::Internal(format!(
+                        StorageError::Internal(format!(
                             "Failed to prepare assignment insert: {e}"
                         ))
                     })?;
@@ -149,14 +150,14 @@ impl VectorIndex for SqliteVectorIndex {
                 for (vid, cid) in chunk {
                     stmt.execute(params![vid, *cid as i64])
                         .map_err(|e| {
-                            CoreError::Internal(format!(
+                            StorageError::Internal(format!(
                                 "Failed to insert assignment for vector {vid}: {e}"
                             ))
                         })?;
                 }
                 drop(stmt);
                 tx.commit().map_err(|e| {
-                    CoreError::Internal(format!("Failed to commit assignments: {e}"))
+                    StorageError::Internal(format!("Failed to commit assignments: {e}"))
                 })?;
             }
 
@@ -165,12 +166,12 @@ impl VectorIndex for SqliteVectorIndex {
             conn.execute(
                 "INSERT OR REPLACE INTO vector_index_meta (key, value, updated_at) VALUES ('ivf_built_at', ?1, ?1)",
                 params![now],
-            ).map_err(|e| CoreError::Internal(format!("Failed to update index meta: {e}")))?;
+            ).map_err(|e| StorageError::Internal(format!("Failed to update index meta: {e}")))?;
 
             conn.execute(
                 "INSERT OR REPLACE INTO vector_index_meta (key, value, updated_at) VALUES ('ivf_vector_count', ?1, ?2)",
                 params![n_vectors.to_string(), now],
-            ).map_err(|e| CoreError::Internal(format!("Failed to update vector count meta: {e}")))?;
+            ).map_err(|e| StorageError::Internal(format!("Failed to update vector count meta: {e}")))?;
 
             // WAL checkpoint
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
@@ -202,7 +203,7 @@ impl VectorIndex for SqliteVectorIndex {
                      WHERE is_stale = 0 AND vector_int8 IS NOT NULL",
                     )
                     .map_err(|e| {
-                        CoreError::Internal(format!("Failed to prepare vector load: {e}"))
+                        StorageError::Internal(format!("Failed to prepare vector load: {e}"))
                     })?;
 
                 let rows: Vec<(i64, Vec<f32>)> = stmt
@@ -218,7 +219,7 @@ impl VectorIndex for SqliteVectorIndex {
                         };
                         Ok((id, ScalarQuantizer::dequantize(&qv)))
                     })
-                    .map_err(|e| CoreError::Internal(format!("Failed to load vectors: {e}")))?
+                    .map_err(|e| StorageError::Internal(format!("Failed to load vectors: {e}")))?
                     .filter_map(|r| r.ok())
                     .collect();
 
@@ -256,7 +257,7 @@ impl VectorIndex for SqliteVectorIndex {
         self.with_conn(move |conn| {
             for chunk in codes.chunks(1000) {
                 let tx = conn.unchecked_transaction().map_err(|e| {
-                    CoreError::Internal(format!("Failed to begin binary code tx: {e}"))
+                    StorageError::Internal(format!("Failed to begin binary code tx: {e}"))
                 })?;
 
                 let mut stmt = tx
@@ -265,21 +266,21 @@ impl VectorIndex for SqliteVectorIndex {
                          VALUES (?1, ?2)",
                     )
                     .map_err(|e| {
-                        CoreError::Internal(format!(
+                        StorageError::Internal(format!(
                             "Failed to prepare binary code insert: {e}"
                         ))
                     })?;
 
                 for (vid, code_data) in chunk {
                     stmt.execute(params![vid, code_data]).map_err(|e| {
-                        CoreError::Internal(format!(
+                        StorageError::Internal(format!(
                             "Failed to insert binary code for vector {vid}: {e}"
                         ))
                     })?;
                 }
                 drop(stmt);
                 tx.commit().map_err(|e| {
-                    CoreError::Internal(format!("Failed to commit binary codes: {e}"))
+                    StorageError::Internal(format!("Failed to commit binary codes: {e}"))
                 })?;
             }
 
@@ -288,12 +289,12 @@ impl VectorIndex for SqliteVectorIndex {
             conn.execute(
                 "INSERT OR REPLACE INTO vector_index_meta (key, value, updated_at) VALUES ('binary_quantile_thresholds', ?1, ?2)",
                 params![thresholds_json, now],
-            ).map_err(|e| CoreError::Internal(format!("Failed to store thresholds: {e}")))?;
+            ).map_err(|e| StorageError::Internal(format!("Failed to store thresholds: {e}")))?;
 
             conn.execute(
                 "INSERT OR REPLACE INTO vector_index_meta (key, value, updated_at) VALUES ('binary_built_at', ?1, ?1)",
                 params![now],
-            ).map_err(|e| CoreError::Internal(format!("Failed to update binary build time: {e}")))?;
+            ).map_err(|e| StorageError::Internal(format!("Failed to update binary build time: {e}")))?;
 
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
 
@@ -304,6 +305,7 @@ impl VectorIndex for SqliteVectorIndex {
             Ok(count)
         })
         .await
+        .map_err(CoreError::from)
     }
 
     // Remaining trait methods are in search.rs and metadata.rs
@@ -350,26 +352,26 @@ impl VectorIndex for SqliteVectorIndex {
         vector_id: i64,
         vector: &QuantizedVector,
     ) -> Result<(), CoreError> {
-        metadata::assign_to_cluster_impl(self, vector_id, vector).await
+        Ok(metadata::assign_to_cluster_impl(self, vector_id, vector).await?)
     }
 
     async fn store_binary_code(&self, vector_id: i64, code: &BinaryCode) -> Result<(), CoreError> {
-        metadata::store_binary_code_impl(self, vector_id, code).await
+        Ok(metadata::store_binary_code_impl(self, vector_id, code).await?)
     }
 
     async fn get_index_meta(
         &self,
     ) -> Result<oneshim_core::ports::vector_index::IndexMeta, CoreError> {
-        metadata::get_index_meta_impl(self).await
+        Ok(metadata::get_index_meta_impl(self).await?)
     }
 
     async fn count_unindexed(&self) -> Result<u64, CoreError> {
-        metadata::count_unindexed_impl(self).await
+        Ok(metadata::count_unindexed_impl(self).await?)
     }
 
     async fn load_quantile_thresholds(
         &self,
     ) -> Result<Option<oneshim_core::binary_quantizer::QuantileThresholds>, CoreError> {
-        metadata::load_quantile_thresholds_impl(self).await
+        Ok(metadata::load_quantile_thresholds_impl(self).await?)
     }
 }

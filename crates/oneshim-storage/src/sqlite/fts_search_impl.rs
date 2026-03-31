@@ -5,6 +5,7 @@ use std::sync::atomic::Ordering;
 use tracing::warn;
 
 use super::{SqliteStorage, FTS_AVAILABLE, GUI_INTERACTIONS_AVAILABLE};
+use crate::error::StorageError;
 
 #[async_trait]
 impl TextSearchProvider for SqliteStorage {
@@ -30,7 +31,7 @@ impl TextSearchProvider for SqliteStorage {
                      ORDER BY rank
                      LIMIT ?2",
                 )
-                .map_err(|e| CoreError::Internal(format!("FTS5 query prepare failed: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("FTS5 query prepare failed: {e}")))?;
 
             let results = stmt
                 .query_map(rusqlite::params![query, limit as i64], |row| {
@@ -41,20 +42,24 @@ impl TextSearchProvider for SqliteStorage {
                         rank: row.get(3)?,
                     })
                 })
-                .map_err(|e| CoreError::Internal(format!("FTS5 query failed: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("FTS5 query failed: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
             Ok(results)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn sync_segment(&self, segment_id: &str, searchable_text: &str) -> Result<(), CoreError> {
         let segment_id = segment_id.to_string();
         let searchable_text = searchable_text.to_string();
-        self.with_conn(move |conn| Self::upsert_fts(conn, &segment_id, "segment", &searchable_text))
-            .await
+        self.with_conn(move |conn| {
+            Self::upsert_fts(conn, &segment_id, "segment", &searchable_text).map_err(Into::into)
+        })
+        .await
+        .map_err(Into::into)
     }
 }
 
@@ -99,9 +104,10 @@ impl SqliteStorage {
             }
 
             let combined = parts.join(" ");
-            Self::upsert_fts(conn, &segment_id, "segment", &combined)
+            Self::upsert_fts(conn, &segment_id, "segment", &combined).map_err(Into::into)
         })
         .await
+        .map_err(Into::into)
     }
 
     /// Insert or replace a row in the FTS5 search_fts table.

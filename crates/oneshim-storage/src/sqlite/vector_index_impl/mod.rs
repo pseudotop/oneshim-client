@@ -10,12 +10,13 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{EmbeddingContentType, SearchFilters, SearchResult};
 use oneshim_core::quantization::{QuantizedVector, ScalarQuantizer};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
+
+use crate::error::StorageError;
 
 /// SQLite-backed vector index supporting IVF clustering and binary code search.
 pub struct SqliteVectorIndex {
@@ -42,24 +43,24 @@ impl SqliteVectorIndex {
     }
 
     /// Execute a closure with the SQLite connection via spawn_blocking.
-    async fn with_conn<F, T>(&self, f: F) -> Result<T, CoreError>
+    async fn with_conn<F, T>(&self, f: F) -> Result<T, StorageError>
     where
-        F: FnOnce(&Connection) -> Result<T, CoreError> + Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, StorageError> + Send + 'static,
         T: Send + 'static,
     {
         let conn = self.conn.clone();
         tokio::task::spawn_blocking(move || {
             let guard = conn
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
             f(&guard)
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| StorageError::Internal(format!("spawn_blocking join error: {e}")))?
     }
 
     /// Load centroids from DB into cache if not already cached.
-    async fn ensure_cache(&self) -> Result<(), CoreError> {
+    async fn ensure_cache(&self) -> Result<(), StorageError> {
         {
             let cache = self.centroid_cache.read().await;
             if cache.is_some() {
@@ -73,11 +74,11 @@ impl SqliteVectorIndex {
             let conn = self
                 .conn
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
             let mut stmt = conn
                 .prepare("SELECT id, centroid_int8, centroid_scale, centroid_offset FROM ivf_centroids ORDER BY id")
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare centroid query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare centroid query: {e}")))?;
 
             let rows: Vec<CachedCentroid> = stmt
                 .query_map([], |row| {
@@ -94,7 +95,7 @@ impl SqliteVectorIndex {
                         },
                     })
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to query centroids: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to query centroids: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
             rows

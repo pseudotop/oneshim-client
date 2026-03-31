@@ -1,5 +1,5 @@
+use crate::error::StorageError;
 use chrono::{DateTime, Utc};
-use oneshim_core::error::CoreError;
 
 use super::super::SqliteStorage;
 
@@ -10,11 +10,11 @@ impl SqliteStorage {
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
-    ) -> Result<Vec<oneshim_core::models::tiered_memory::SegmentSummary>, CoreError> {
+    ) -> Result<Vec<oneshim_core::models::tiered_memory::SegmentSummary>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         // Check table existence (may not have run V9 migration yet)
         let table_exists: bool = conn
@@ -42,7 +42,9 @@ impl SqliteStorage {
                  WHERE start_time >= ?1 AND end_time <= ?2 \
                  ORDER BY start_time",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare segments query: {e}")))?;
+            .map_err(|e| {
+                StorageError::Internal(format!("Failed to prepare segments query: {e}"))
+            })?;
 
         let segments: Vec<oneshim_core::models::tiered_memory::SegmentSummary> = stmt
             .query_map(rusqlite::params![from_str, to_str], |row| {
@@ -81,7 +83,7 @@ impl SqliteStorage {
                     llm_summary,
                 ))
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to query segments: {e}")))?
+            .map_err(|e| StorageError::Internal(format!("Failed to query segments: {e}")))?
             .filter_map(|r| r.ok())
             .filter_map(
                 |(

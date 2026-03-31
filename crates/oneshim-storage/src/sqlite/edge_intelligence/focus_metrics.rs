@@ -1,5 +1,5 @@
+use crate::error::StorageError;
 use chrono::Utc;
-use oneshim_core::error::CoreError;
 #[allow(deprecated)]
 use oneshim_core::models::work_session::FocusMetrics;
 use tracing::debug;
@@ -10,16 +10,16 @@ impl SqliteStorage {
     // --------------------------------------------------------
     // --------------------------------------------------------
 
-    pub fn get_or_create_today_focus_metrics(&self) -> Result<FocusMetrics, CoreError> {
+    pub fn get_or_create_today_focus_metrics(&self) -> Result<FocusMetrics, StorageError> {
         let today = Utc::now().format("%Y-%m-%d").to_string();
         self.get_or_create_focus_metrics(&today)
     }
 
-    pub fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, CoreError> {
+    pub fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result = conn.query_row(
             "SELECT total_active_secs, deep_work_secs, communication_secs, context_switches,
@@ -69,11 +69,13 @@ impl SqliteStorage {
                     "INSERT INTO focus_metrics (date) VALUES (?1)",
                     rusqlite::params![date],
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to create focus metric: {e}")))?;
+                .map_err(|e| {
+                    StorageError::Internal(format!("Failed to create focus metric: {e}"))
+                })?;
 
                 Ok(FocusMetrics::new(period_start, period_end))
             }
-            Err(e) => Err(CoreError::Internal(format!(
+            Err(e) => Err(StorageError::Internal(format!(
                 "Failed to query focus metric: {e}"
             ))),
         }
@@ -83,11 +85,11 @@ impl SqliteStorage {
         &self,
         date: &str,
         metrics: &FocusMetrics,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE focus_metrics SET
@@ -113,7 +115,7 @@ impl SqliteStorage {
                 date,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to update focus metric: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to update focus metric: {e}")))?;
 
         debug!(
             "focus metrics updated: date={}, score={:.2}",
@@ -130,13 +132,13 @@ impl SqliteStorage {
         communication_secs: u64,
         context_switches: u32,
         interruption_count: u32,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let _ = self.get_or_create_focus_metrics(date)?;
 
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE focus_metrics SET
@@ -156,7 +158,7 @@ impl SqliteStorage {
                 date,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to increment focus metric: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to increment focus metric: {e}")))?;
 
         Ok(())
     }
@@ -164,11 +166,11 @@ impl SqliteStorage {
     pub fn get_recent_focus_metrics(
         &self,
         days: usize,
-    ) -> Result<Vec<(String, FocusMetrics)>, CoreError> {
+    ) -> Result<Vec<(String, FocusMetrics)>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -176,7 +178,7 @@ impl SqliteStorage {
                         interruption_count, avg_focus_duration_secs, max_focus_duration_secs, focus_score
                  FROM focus_metrics ORDER BY date DESC LIMIT ?1",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![days as i64], |row| {
@@ -192,7 +194,7 @@ impl SqliteStorage {
                     row.get::<_, f32>(8)?,
                 ))
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut results = Vec::new();
         for row in rows {
@@ -206,7 +208,7 @@ impl SqliteStorage {
                 avg_focus_duration_secs,
                 max_focus_duration_secs,
                 focus_score,
-            ) = row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?;
+            ) = row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?;
 
             let (period_start, period_end) = Self::date_to_period_range(&date);
 
