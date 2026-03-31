@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-03-31
+### Added
+
+- Surface structured message payloads, tool deltas, and thinking output in the desktop chat UI.
+
+- Stream Codex CLI JSON events and enrich subprocess prompts with text-like attachment previews plus response schemas.
+
+### Changed
+
+- Extend AI session handling across HTTP, subprocess, and local LLM transports, including native file inputs where supported.
+
+- Tighten release metadata validation, Storybook review coverage, and status documentation hygiene.
+
+### Fixed
+
+- Preserve Claude product auth, normalize partial stream output, and harden subprocess termination/error handling.
+
+- Unblock direct HTTP chat sessions from the product UI and keep chat streaming state consistent across result and error events.
+
 ## [0.4.11-rc.3] - 2026-03-31
 ### Added
 
