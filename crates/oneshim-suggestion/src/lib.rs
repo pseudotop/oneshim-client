@@ -7,6 +7,9 @@
 
 //! # oneshim-suggestion
 
+pub mod error;
+pub use error::SuggestionError;
+
 pub mod feedback;
 pub mod history;
 pub mod presenter;
