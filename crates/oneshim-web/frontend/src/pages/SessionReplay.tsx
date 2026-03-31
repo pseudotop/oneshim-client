@@ -14,7 +14,7 @@ import {
 import DateRangePicker from '../components/DateRangePicker'
 import EventLog from '../components/EventLog'
 import TimelineScrubber from '../components/TimelineScrubber'
-import { Checkbox, EmptyState } from '../components/ui'
+import { Alert, Checkbox, EmptyState } from '../components/ui'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
@@ -356,10 +356,9 @@ export default function SessionReplay() {
 
       {/* UI note */}
       {error && (
-        <div className="flex items-center space-x-2 rounded-lg bg-semantic-error/10 p-3 text-semantic-error">
-          <AlertCircle className={`${iconSize.md}`} />
-          <span>{error}</span>
-        </div>
+        <Alert variant="error" icon={<AlertCircle className={iconSize.md} />}>
+          {error}
+        </Alert>
       )}
 
       {/* UI note */}
@@ -603,14 +602,14 @@ export default function SessionReplay() {
                       </div>
 
                       {!sceneIntelligenceEnabled && (
-                        <div className="rounded-lg bg-semantic-warning/10 px-3 py-2 text-semantic-warning text-xs">
+                        <Alert variant="warning" className="py-2 text-xs">
                           {t('replay.sceneIntelligenceDisabled', 'Scene intelligence is disabled in settings.')}
-                        </div>
+                        </Alert>
                       )}
                       {sceneCalibration && !sceneCalibrationPassed && sceneCalibrationReasons.length > 0 && (
-                        <div className="rounded-lg bg-semantic-warning/10 px-3 py-2 text-semantic-warning text-xs">
+                        <Alert variant="warning" className="py-2 text-xs">
                           {t('replay.calibrationReasons', 'Calibration notes')}: {sceneCalibrationReasons.join('; ')}
-                        </div>
+                        </Alert>
                       )}
 
                       {selectedActionType === 'type_text' && (

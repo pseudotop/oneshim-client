@@ -366,10 +366,9 @@ export default function OAuthConnectionPanel({
               )
             })()}
           {state.status.has_refresh_token === false && (
-            <p className="flex items-center gap-1.5 rounded bg-semantic-warning/20 px-2 py-1.5 text-semantic-warning text-xs">
-              <span aria-hidden="true">⚠</span>
+            <Alert variant="warning" className="py-1.5 text-xs">
               {t('settingsOAuth.noRefreshToken')}
-            </p>
+            </Alert>
           )}
           <Button type="button" variant="secondary" size="sm" onClick={handleDisconnect}>
             {t('settingsOAuth.disconnect')}
