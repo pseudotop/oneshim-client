@@ -93,7 +93,13 @@ pub async fn send_message(
 
     let mgr_for_stream = session_manager.clone();
     let session_id_for_stream = path.id.clone();
-    let response_stream = session.send_message(&message).await?;
+    let response_stream = match session.send_message(&message).await {
+        Ok(s) => s,
+        Err(err) => {
+            session_manager.report_failure(&path.id, &err).await;
+            return Err(err.into());
+        }
+    };
 
     // Convert ResponseStream items to SSE Events (async for report_failure).
     let sse_stream = response_stream.then(move |item| {

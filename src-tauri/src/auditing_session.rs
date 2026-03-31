@@ -77,6 +77,10 @@ impl ConversationSession for AuditingSession {
     fn provider_name(&self) -> &str {
         self.inner.provider_name()
     }
+
+    async fn terminate(&self) {
+        self.inner.terminate().await;
+    }
 }
 
 #[cfg(test)]
