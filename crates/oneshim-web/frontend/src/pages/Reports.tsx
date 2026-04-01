@@ -302,7 +302,7 @@ function ReportContent({ report, t }: ReportContentProps) {
           <div>
             <p className="text-content-secondary text-sm">{t('reports.activeRatio')}</p>
             <p className={`${typography.weight.semibold} text-content text-xl`}>
-              {report.productivity.active_ratio.toFixed(1)}%
+              {(report.productivity.active_ratio ?? 0).toFixed(1)}%
             </p>
           </div>
           <div>
@@ -317,7 +317,7 @@ function ReportContent({ report, t }: ReportContentProps) {
           </div>
           <div>
             <p className="text-content-secondary text-sm">{t('reports.avgCpu')}</p>
-            <p className={`${typography.weight.semibold} text-content text-xl`}>{report.avg_cpu.toFixed(1)}%</p>
+            <p className={`${typography.weight.semibold} text-content text-xl`}>{(report.avg_cpu ?? 0).toFixed(1)}%</p>
           </div>
         </div>
       </Card>
@@ -333,7 +333,7 @@ function ReportContent({ report, t }: ReportContentProps) {
               <Tooltip
                 contentStyle={chart.tooltipStyle}
                 labelStyle={chart.labelStyle}
-                formatter={(value: number) => [value.toLocaleString(), '']}
+                formatter={(value: number) => [(value ?? 0).toLocaleString(), '']}
               />
               <Bar dataKey="events" name={t('reports.events')} fill={palette.teal500} />
               <Bar dataKey="captures" name={t('reports.captures')} fill={palette.blue500} />
@@ -375,7 +375,7 @@ function ReportContent({ report, t }: ReportContentProps) {
                 <div className="flex items-center gap-4 text-sm">
                   <span className="text-content-secondary">{formatDuration(app.duration_secs)}</span>
                   <Badge color="primary" size="sm">
-                    {app.percentage.toFixed(1)}%
+                    {(app.percentage ?? 0).toFixed(1)}%
                   </Badge>
                 </div>
               </div>

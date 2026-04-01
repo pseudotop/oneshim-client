@@ -33,16 +33,16 @@ export default function Coaching() {
                     <span className={`text-sm ${typography.weight.medium}`}>{g.regime_label}</span>
                   </div>
                   <div className="mt-2 flex items-baseline gap-1">
-                    <span className={`text-2xl ${typography.weight.bold}`}>{g.percentage}%</span>
+                    <span className={`text-2xl ${typography.weight.bold}`}>{g.percentage ?? 0}%</span>
                     <span className="text-content-secondary text-xs">
-                      {g.current_minutes}/{g.target_minutes}m
+                      {g.current_minutes ?? 0}/{g.target_minutes ?? 0}m
                     </span>
                   </div>
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-muted">
                     <div
                       className={`h-full rounded-full ${motion.all} `.trim()}
                       style={{
-                        width: `${Math.min(g.percentage, 100)}%`,
+                        width: `${Math.min(g.percentage ?? 0, 100)}%`,
                         backgroundColor: g.display_color,
                       }}
                     />
