@@ -30,6 +30,7 @@ pub mod rectangle_detector;
 pub mod sandbox;
 pub mod secret_projection;
 pub mod secret_store;
+pub mod session_storage;
 pub mod skill_loader;
 pub mod storage;
 pub mod sync_transport;

@@ -348,6 +348,9 @@ impl AppRuntimeLaunchBuilder {
         // to transition Active→Idle→Terminated for sessions that exceed the idle timeout.
         if let Some(ref sm) = session_manager {
             let sm_clone = sm.clone();
+            let ss_clone: Arc<dyn oneshim_core::ports::session_storage::SessionStoragePort> =
+                sqlite_storage.clone();
+            let retention_days = config.ai_session.audit_retention_days;
             let mut shutdown_rx = reaper_shutdown_rx;
             handle.spawn(async move {
                 let interval =
@@ -356,6 +359,12 @@ impl AppRuntimeLaunchBuilder {
                     tokio::select! {
                         _ = tokio::time::sleep(interval) => {
                             sm_clone.reap_idle_sessions().await;
+                            // Purge expired persisted sessions
+                            if let Ok(count) = ss_clone.purge_expired(retention_days).await {
+                                if count > 0 {
+                                    tracing::info!("purged {count} expired session records");
+                                }
+                            }
                         }
                         _ = shutdown_rx.changed() => break,
                     }
@@ -411,7 +420,7 @@ impl AppRuntimeLaunchBuilder {
             runtime_handle: handle,
             config,
             web_port,
-            storage: sqlite_storage,
+            storage: sqlite_storage.clone(),
             config_manager,
             update_control: Some(update_control),
             update_action_tx,
@@ -443,6 +452,7 @@ impl AppRuntimeLaunchBuilder {
             },
             suggestion_manager,
             session_manager,
+            session_storage: Some(sqlite_storage.clone()),
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

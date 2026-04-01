@@ -11,6 +11,7 @@ mod lan_pin_store;
 mod maintenance;
 mod metrics;
 mod override_store_impl;
+mod session_storage_impl;
 mod tags;
 pub mod vector_index_impl;
 pub mod vector_store_impl;

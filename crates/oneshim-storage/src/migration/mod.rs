@@ -10,12 +10,12 @@
 mod tests;
 mod v01_v08;
 mod v09_v18;
-mod v19_v20;
+mod v19_v21;
 
 use rusqlite::Connection;
 use tracing::{error, info, warn};
 
-pub(crate) const CURRENT_VERSION: u32 = 20;
+pub(crate) const CURRENT_VERSION: u32 = 21;
 
 /// Back up the database file before running schema migrations.
 fn backup_if_needed(conn: &Connection, current_version: u32) -> Option<std::path::PathBuf> {
@@ -148,7 +148,10 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         run_migration_step(conn, 19, v09_v18::migrate_v19)?;
     }
     if current < 20 {
-        run_migration_step(conn, 20, v19_v20::migrate_v20)?;
+        run_migration_step(conn, 20, v19_v21::migrate_v20)?;
+    }
+    if current < 21 {
+        run_migration_step(conn, 21, v19_v21::migrate_v21)?;
     }
 
     Ok(())

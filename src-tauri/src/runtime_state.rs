@@ -7,6 +7,7 @@ use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::monitor::ActivityMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
+use oneshim_core::ports::session_storage::SessionStoragePort;
 use oneshim_core::ports::vision::FrameProcessor;
 use oneshim_core::ports::work_classifier::WorkTypeClassifier;
 use oneshim_storage::frame_storage::FrameFileStorage;
@@ -90,6 +91,8 @@ pub struct AppState {
     pub suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
     /// AI conversation session manager for Tauri IPC commands.
     pub session_manager: Option<Arc<SessionManagerImpl>>,
+    /// Persisted session storage for AI chat history (fire-and-forget writes).
+    pub session_storage: Option<Arc<dyn SessionStoragePort>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -308,6 +311,7 @@ mod tests {
             },
             suggestion_manager: None,
             session_manager: None,
+            session_storage: None,
         })
         .build();
 
