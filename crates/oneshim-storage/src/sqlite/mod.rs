@@ -17,6 +17,8 @@ pub mod vector_store_impl;
 mod web_storage_impl;
 
 #[cfg(test)]
+mod port_contract_tests;
+#[cfg(test)]
 pub(crate) mod test_utils;
 #[cfg(test)]
 mod tests;

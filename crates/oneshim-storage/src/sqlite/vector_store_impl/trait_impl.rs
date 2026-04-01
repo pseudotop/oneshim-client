@@ -7,7 +7,7 @@ use oneshim_core::models::embedding::{EmbeddingMetadata, SearchFilters, SearchRe
 use oneshim_core::ports::vector_store::VectorStore;
 use oneshim_core::quantization::QuantizedVector;
 use rusqlite::params;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::error::StorageError;
 
@@ -20,6 +20,12 @@ use super::SqliteVectorStore;
 #[async_trait]
 impl VectorStore for SqliteVectorStore {
     async fn store(&self, vector: Vec<f32>, metadata: EmbeddingMetadata) -> Result<(), CoreError> {
+        if vector.is_empty() {
+            return Err(CoreError::InvalidArguments(
+                "Cannot store empty f32 vector".to_string(),
+            ));
+        }
+
         let blob = f32_vec_to_bytes(&vector);
         let content_type_str = content_type_to_str(&metadata.content_type).to_string();
         let timestamp_str = metadata.timestamp.to_rfc3339();
@@ -70,7 +76,10 @@ impl VectorStore for SqliteVectorStore {
             let rows: Vec<super::helpers::VectorRow> = stmt
                 .query_map([], map_vector_row)
                 .map_err(|e| StorageError::Internal(format!("Failed to query vectors: {e}")))?
-                .filter_map(|r| r.ok())
+                .filter_map(|r| match r {
+                    Ok(row) => Some(row),
+                    Err(e) => { warn!("Skipping corrupted row in search: {e}"); None }
+                })
                 .collect();
 
             Ok(brute_force_search(rows, &qv, limit, time_decay_hours))
@@ -157,7 +166,13 @@ impl VectorStore for SqliteVectorStore {
                 .map_err(|e| {
                     StorageError::Internal(format!("Failed to query filtered vectors: {e}"))
                 })?
-                .filter_map(|r| r.ok())
+                .filter_map(|r| match r {
+                    Ok(row) => Some(row),
+                    Err(e) => {
+                        warn!("Skipping corrupted row in search_filtered: {e}");
+                        None
+                    }
+                })
                 .collect();
 
             Ok(brute_force_search(rows, &qv, limit, time_decay_hours))
@@ -229,7 +244,13 @@ impl VectorStore for SqliteVectorStore {
             let rows: Vec<(i64, String)> = stmt
                 .query_map(params![limit as i64], |row| Ok((row.get(0)?, row.get(1)?)))
                 .map_err(|e| StorageError::Internal(format!("Failed to query stale vectors: {e}")))?
-                .filter_map(|r| r.ok())
+                .filter_map(|r| match r {
+                    Ok(row) => Some(row),
+                    Err(e) => {
+                        warn!("Skipping corrupted row in get_stale_vectors: {e}");
+                        None
+                    }
+                })
                 .collect();
             Ok(rows)
         })
@@ -409,7 +430,10 @@ impl VectorStore for SqliteVectorStore {
             let rows: Vec<super::helpers::QuantizedVectorRow> = stmt
                 .query_map(params_ref.as_slice(), map_quantized_row)
                 .map_err(|e| StorageError::Internal(format!("Failed to query quantized vectors: {e}")))?
-                .filter_map(|r| r.ok())
+                .filter_map(|r| match r {
+                    Ok(row) => Some(row),
+                    Err(e) => { warn!("Skipping corrupted row in search_quantized: {e}"); None }
+                })
                 .collect();
             Ok(brute_force_search_quantized(rows, &qv, limit, time_decay_hours))
         })
@@ -434,7 +458,10 @@ impl VectorStore for SqliteVectorStore {
                 .map_err(|e| {
                     StorageError::Internal(format!("Failed to query backfill rows: {e}"))
                 })?
-                .filter_map(|r| r.ok())
+                .filter_map(|r| match r {
+                    Ok(row) => Some(row),
+                    Err(e) => { warn!("Skipping corrupted row in backfill_quantized: {e}"); None }
+                })
                 .collect();
 
             if rows.is_empty() {
@@ -605,7 +632,13 @@ impl VectorStore for SqliteVectorStore {
                 .map_err(|e| {
                     StorageError::Internal(format!("Failed to query vectors for rebuild: {e}"))
                 })?
-                .filter_map(|r| r.ok())
+                .filter_map(|r| match r {
+                    Ok(row) => Some(row),
+                    Err(e) => {
+                        warn!("Skipping corrupted row in get_all_vectors_for_rebuild: {e}");
+                        None
+                    }
+                })
                 .collect();
 
             debug!("Fetched {} vectors for HNSW rebuild", rows.len());
@@ -631,7 +664,13 @@ impl VectorStore for SqliteVectorStore {
                 .map_err(|e| {
                     StorageError::Internal(format!("Failed to query expired vector ids: {e}"))
                 })?
-                .filter_map(|r| r.ok())
+                .filter_map(|r| match r {
+                    Ok(row) => Some(row),
+                    Err(e) => {
+                        warn!("Skipping corrupted row in get_expired_ids: {e}");
+                        None
+                    }
+                })
                 .collect();
             Ok(ids)
         })
