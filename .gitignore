@@ -27,6 +27,9 @@ coverage/
 *.sqlite
 *.sqlite3
 
+# Whisper model files (downloaded, not committed)
+src-tauri/resources/*.bin
+
 # Node.js (웹 대시보드 프론트엔드)
 node_modules/
 
