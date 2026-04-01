@@ -257,6 +257,8 @@ fn main() {
             commands::suggestions::submit_suggestion_feedback,
             commands::detection::toggle_detection_overlay,
             commands::detection::refresh_detection_overlay,
+            commands::audio::start_audio_capture,
+            commands::audio::stop_and_transcribe,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");
