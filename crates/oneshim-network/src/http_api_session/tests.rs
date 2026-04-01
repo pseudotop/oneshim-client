@@ -26,7 +26,8 @@ fn test_session(
 
 #[test]
 fn anthropic_content_block_delta() {
-    let data = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
+    let data =
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
     let msg = parse_anthropic_sse_event("content_block_delta", data);
     match msg {
         Some(OutboundMessage::Text { content, done }) => {
@@ -775,8 +776,7 @@ fn google_thinking_part() {
 
 #[test]
 fn google_text_after_thinking() {
-    let data =
-        r#"{"candidates":[{"content":{"parts":[{"text":"Final answer"}],"role":"model"}}]}"#;
+    let data = r#"{"candidates":[{"content":{"parts":[{"text":"Final answer"}],"role":"model"}}]}"#;
     let msg = parse_google_sse_event(data);
     match msg {
         Some(OutboundMessage::Text { content, done }) => {

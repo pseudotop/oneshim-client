@@ -604,10 +604,14 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
         &self,
         flow_id: &str,
     ) -> Result<IntegrationAuthStatus, CoreError> {
-        let pending = self.flows.get(flow_id).await.ok_or_else(|| CoreError::NotFound {
-            resource_type: "integration_device_authorization_flow".to_string(),
-            id: flow_id.to_string(),
-        })?;
+        let pending = self
+            .flows
+            .get(flow_id)
+            .await
+            .ok_or_else(|| CoreError::NotFound {
+                resource_type: "integration_device_authorization_flow".to_string(),
+                id: flow_id.to_string(),
+            })?;
 
         if pending.flow.expires_at <= Utc::now() {
             self.flows.remove(flow_id).await;

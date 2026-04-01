@@ -131,7 +131,9 @@ impl AgentRuntimeBundle {
             embedding_setup::build_embedding_components(&self.config, self.vector_store.clone());
 
         // Wire embedding provider + vector store into scheduler if available.
-        if let (Some(ref vs), Some(ref ep)) = (&embedding.vector_store, &embedding.embedding_provider) {
+        if let (Some(ref vs), Some(ref ep)) =
+            (&embedding.vector_store, &embedding.embedding_provider)
+        {
             scheduler = scheduler
                 .with_vector_store(vs.clone())
                 .with_embedding_provider(ep.clone());

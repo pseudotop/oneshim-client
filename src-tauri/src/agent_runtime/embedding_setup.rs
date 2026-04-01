@@ -93,14 +93,13 @@ pub(super) fn build_embedding_components(
             });
             let skip_float32 = embedding_config.quantization_enabled
                 && !embedding_config.quantization_float32_retention;
-            let pipeline =
-                Arc::new(oneshim_analysis::EmbeddingPipeline::with_float32_retention(
-                    provider.clone(),
-                    pii_filter_embed,
-                    vector_store.clone(),
-                    embedding_config.quantization_enabled,
-                    skip_float32,
-                ));
+            let pipeline = Arc::new(oneshim_analysis::EmbeddingPipeline::with_float32_retention(
+                provider.clone(),
+                pii_filter_embed,
+                vector_store.clone(),
+                embedding_config.quantization_enabled,
+                skip_float32,
+            ));
             embedding_pipeline_arc = Some(pipeline);
 
             // Build LlmSegmentSummarizer if LLM summary is enabled
@@ -115,10 +114,7 @@ pub(super) fn build_embedding_components(
                     let pii_level_summ = config.privacy.pii_filter_level;
                     let pii_filter_summ: oneshim_analysis::PiiFilter =
                         Box::new(move |text: &str| {
-                            oneshim_vision::privacy::sanitize_title_with_level(
-                                text,
-                                pii_level_summ,
-                            )
+                            oneshim_vision::privacy::sanitize_title_with_level(text, pii_level_summ)
                         });
                     let min_duration = embedding_config.min_segment_for_summary_secs;
                     llm_summarizer_arc =

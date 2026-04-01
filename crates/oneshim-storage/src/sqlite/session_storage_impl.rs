@@ -226,8 +226,7 @@ impl SessionStoragePort for SqliteStorage {
             })();
             match result {
                 Ok(()) => {
-                    conn.execute_batch("COMMIT")
-                        .map_err(StorageError::Sqlite)?;
+                    conn.execute_batch("COMMIT").map_err(StorageError::Sqlite)?;
                     Ok(())
                 }
                 Err(e) => {
@@ -495,10 +494,7 @@ mod tests {
     async fn update_session_usage() {
         let storage = setup().await;
         storage.save_session(&make_session("s1")).await.unwrap();
-        storage
-            .update_session_usage("s1", 100, 200)
-            .await
-            .unwrap();
+        storage.update_session_usage("s1", 100, 200).await.unwrap();
 
         let sessions = storage.list_sessions(10).await.unwrap();
         assert_eq!(sessions[0].total_input_tokens, 100);
