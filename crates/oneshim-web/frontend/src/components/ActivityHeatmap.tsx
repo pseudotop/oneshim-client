@@ -63,7 +63,7 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
     if (!data) return { grid: [] as number[][], maxValue: 1 }
     const g: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
     for (const cell of data.cells) {
-      if (cell.day < 7 && cell.hour < 24) {
+      if (cell.day >= 0 && cell.day < 7 && cell.hour >= 0 && cell.hour < 24) {
         g[cell.day][cell.hour] = cell.value
       }
     }

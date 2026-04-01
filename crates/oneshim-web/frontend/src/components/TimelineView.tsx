@@ -142,7 +142,7 @@ export default function TimelineView({
     <Card padding="md">
       <div className="space-y-0">
         {timeline.map((entry) => {
-          const blockHeight = Math.max(entry.duration_mins * 2, minBlockHeight)
+          const blockHeight = Math.max((entry.duration_mins ?? 0) * 2, minBlockHeight)
           const isExpanded = expandedId === entry.segment_id
           const override = overrideMap.get(entry.segment_id)
           const isOverridden = !!override

@@ -26,8 +26,8 @@ export default function MetricsChart({ data }: MetricsChartProps) {
         hour: formatHour(m.hour),
         cpu: m.cpu_avg,
         cpuMax: m.cpu_max,
-        memory: m.memory_avg / (1024 * 1024 * 1024), // GB
-        memoryMax: m.memory_max / (1024 * 1024 * 1024),
+        memory: (m.memory_avg ?? 0) / (1024 * 1024 * 1024), // GB
+        memoryMax: (m.memory_max ?? 0) / (1024 * 1024 * 1024),
       })),
     [data],
   )
@@ -54,7 +54,7 @@ export default function MetricsChart({ data }: MetricsChartProps) {
             orientation="right"
             stroke={chart.axis.stroke}
             tick={chart.axis.tick}
-            tickFormatter={(v) => `${v.toFixed(0)}GB`}
+            tickFormatter={(v) => `${(v ?? 0).toFixed(0)}GB`}
           />
           <Tooltip contentStyle={chart.tooltipStyle} labelStyle={chart.labelStyle} />
           <Legend />

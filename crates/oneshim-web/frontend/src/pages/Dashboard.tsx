@@ -256,7 +256,7 @@ export default function Dashboard() {
             <div className={cn(typography.stat.hero, colors.primary.text)}>
               {(
                 ((summary?.total_active_secs ?? 0) /
-                  ((summary?.total_active_secs ?? 0) + (summary?.total_idle_secs ?? 1))) *
+                  Math.max(1, (summary?.total_active_secs ?? 0) + (summary?.total_idle_secs ?? 0))) *
                 100
               ).toFixed(0)}
               %

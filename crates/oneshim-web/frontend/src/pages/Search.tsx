@@ -298,7 +298,7 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
           <span className="text-content-secondary text-sm">{formatDateTime(result.timestamp)}</span>
           {isFrame && result.importance && (
             <span className="text-content-tertiary text-sm">
-              {t('search.importance')} {(result.importance * 100).toFixed(0)}%
+              {t('search.importance')} {((result.importance ?? 0) * 100).toFixed(0)}%
             </span>
           )}
         </div>

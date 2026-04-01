@@ -144,11 +144,11 @@ const EventLogItem = memo(function EventLogItem({
                         ? 'bg-semantic-warning'
                         : 'bg-surface-muted',
                   )}
-                  style={{ width: `${item.importance * 100}%` }}
+                  style={{ width: `${(item.importance ?? 0) * 100}%` }}
                 />
               </div>
               <span className={cn('text-content-secondary', typography.caption)}>
-                {Math.round(item.importance * 100)}%
+                {Math.round((item.importance ?? 0) * 100)}%
               </span>
             </div>
           )}
