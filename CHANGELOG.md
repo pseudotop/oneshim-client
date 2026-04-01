@@ -7,6 +7,165 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13-rc.1] - 2026-04-01
+
+### Added
+
+- Add store_quantized() boundary validation for vector dimensions
+  Add f32/INT8 dimension consistency check at the storage boundary to
+  prevent silently storing mismatched vector representations. This was the
+  last remaining gap from the cross-cutting improvements spec (T6).
+
+- Cross-cutting hardening — empty-vector guard, warn logging, port contract tests
+  - Add empty-vector validation to VectorStore::store() (parity with store_quantized)
+  - Replace 7x silent filter_map(|r| r.ok()) with warn! logging in vector_store_impl
+  - Add 22 port contract tests covering 6 core storage traits:
+    VectorStore (6), StorageService (4), TextSearchProvider (3),
+    MetricsStorage (3), VectorIndex (3), FocusStorage (3)
+  - Panic audit: 0 production panic!/unwrap/expect found — no changes needed
+
+
+### Changed
+
+- Add error strategy ADR-001 §1 compliance spec
+  Per-crate thiserror enums for all 8 non-compliant library crates,
+  with From<CrateError> for CoreError conversion at port boundaries.
+
+- Address spec review — constructor returns + test migration
+  Add sections for constructor/builder error return types and
+  test migration strategy based on deep review findings.
+
+- Spec review iteration 2 — exhaustive match, GuiInteractionError, info loss
+  - Clarify exhaustive match required for From<CrateError> for CoreError
+    (no catch-all) vs catch-all acceptable for From<CoreError> for ApiError
+  - Fix anyhow conversion path (Error trait, not Display)
+  - Add GuiInteractionError to "does not change" (already compliant)
+  - Document information loss at conversion boundary as acceptable
+
+- Critical fix — bidirectional conversion via Core variant
+  Adapter crates hold port trait refs (Arc<dyn T>) and call methods
+  returning CoreError. After refactoring internal functions to return
+  CrateError, ? on port calls needs From<CoreError> for CrateError.
+
+- Fix example inconsistency — add Core variant to NetworkError enum
+  The first code example showed NetworkError::Core(e) in the From impl
+  match arm but omitted it from the enum definition. Now consistent
+  with the AnalysisError example.
+
+- Add error strategy implementation plan
+  9 tasks covering all 8 library crates + final verification.
+  Per-crate error enums with bidirectional CoreError conversion.
+
+- Plan review fixes — Validation field, OcrError absorption, Serialization
+  - NetworkError::Validation changed from String to { field, message }
+    to preserve context from gRPC error mapping
+  - OcrError absorption step expanded with sub-steps: change ocr.rs
+    function signatures, update local_ocr_provider.rs callers, remove enum
+  - Serialization mapping to CoreError::Internal is correct since
+    CoreError::Serialization takes serde_json::Error not String
+
+- Plan review fixes — thiserror deps + OAuthRefresh kind field
+
+- Introduce StorageError per ADR-001 §1
+  Add `StorageError` enum (thiserror) with `From<StorageError> for CoreError`
+  bridge. Migrate all internal non-port-trait functions across the storage crate
+  from `CoreError` to `StorageError`; port-trait impls keep `Result<T, CoreError>`
+  and auto-convert via `?` or `.map_err(Into::into)`. Fix call sites in
+  `src-tauri` (SchedulerStorage, FileSyncTransport::new) accordingly.
+
+- Introduce AnalysisError per ADR-001 §1
+  Add crate-specific AnalysisError enum (VectorIndex, Clustering, LlmService,
+  Internal, Core variants) with From<AnalysisError> for CoreError bridging.
+  Migrate all non-port-trait public methods off CoreError; port trait impls
+  (AnnIndex, VectorStore, EmbeddingProvider) and test mocks stay on CoreError.
+
+- Introduce NetworkError per ADR-001 §1
+
+- Introduce AutomationError per ADR-001 §1
+
+- Introduce MonitorError per ADR-001 §1
+  Add crate-specific MonitorError enum (Core + Internal variants) with
+  From<MonitorError> for CoreError. Platform helpers (macos/linux/windows)
+  now return MonitorError; ProcessMonitor port-trait impls in process.rs
+  keep CoreError and use .map_err(Into::into) for the conversion.
+
+- Introduce EmbeddingError per ADR-001 §1
+  Add crate-specific EmbeddingError enum (Core + Internal variants) with
+  From<EmbeddingError> for CoreError. LocalEmbeddingProvider::new()
+  constructors (fastembed and stub) now return EmbeddingError; EmbeddingProvider
+  port-trait impls (embed, embed_batch) keep CoreError as required by the
+  port signature.
+
+- Introduce SuggestionError per ADR-001 §1
+  Add crate-specific SuggestionError enum (Core + Internal variants) with
+  From<SuggestionError> for CoreError. No internal CoreError constructions
+  exist in this crate — the enum is scaffolded for future use and maintains
+  consistent ADR-001 §1 compliance across all adapter crates.
+
+- Introduce VisionError per ADR-001 §1
+  Add crate-specific VisionError enum (Core, PermissionDenied, Ocr,
+  ElementNotFound, Internal variants) with From<VisionError> for CoreError.
+  Replace the ad-hoc OcrError enum in ocr.rs with VisionError::Ocr(String).
+  Internal helpers (capture, encoder, thumbnail, ocr) now return VisionError;
+  FrameProcessor port-trait impls in processor.rs keep CoreError and rely on
+  the From impl for automatic conversion via the ? operator.
+
+- Retain self_update in ADR-004 — reject tauri-plugin-updater migration
+  The custom updater provides SHA256 + Ed25519 verification, rollback,
+  prerelease filtering, version floor enforcement, and coordinator state
+  machine. tauri-plugin-updater cannot cover these features. Migration
+  evaluated and rejected due to feature loss risk with no clear benefit.
+
+- ADR-003 — SOLID principles take priority over line counts
+  Clarify that 500-line threshold is a review signal, not a split trigger.
+  Files should only be split on SRP violations, not mechanical line counts.
+  A well-structured 1000-line file with one responsibility is preferred
+  over three 300-line files with tangled concerns.
+
+
+### Fixed
+
+- Session lifecycle correctness and automation false-success bugs ([#270](https://github.com/pseudotop/oneshim-client/pull/270))
+  * fix: session lifecycle correctness and automation false-success bugs
+
+  P1 fixes:
+  - Add ConversationSession::terminate() port, call before dropping state
+    so provider resources are released on kill_session
+  - Web AI handler now calls touch_session + report_failure, matching
+    Tauri path behavior (prevents mid-use reaping and silent failures)
+  - Fix max_concurrent_sessions TOCTOU race by using write lock for
+    admission check (was: read lock check, separate write lock insert)
+
+  P2 fixes:
+  - Duplicate preset creation now returns 409 Conflict instead of false Ok
+  - run_preset without controller returns error instead of success:true
+
+- Address Codex P1 final review — proof factory leak, handler LOC, error msgs ([#271](https://github.com/pseudotop/oneshim-client/pull/271))
+  - IntegrationRequestProofFactory no longer imported by src-tauri:
+    build_proof_factory() helper in transport_assembly creates it opaquely
+  - semantic_search handler reduced from 46 to 12 LOC via service execute()
+  - Embedding vs vector search error messages distinguished in service
+
+- Complete StorageError migration for integration_state_store
+
+- Complete NetworkError/VisionError migration (I4+I5)
+  Gaps I4 and I5 of the error-strategy refactoring:
+
+  * oneshim-network: BatchUploader::flush → Result<usize, NetworkError>;
+    local_llm_session::parse_ndjson_line → Result<…, NetworkError>.
+    Port trait impls (BatchSink) bridge via .map_err(Into::into).
+
+  * oneshim-vision: OcrElementFinder::analyze_scene and
+    analyze_scene_from_image_data → Result<…, VisionError>;
+    start_focus_listener / FocusEventListener::spawn (linux-atspi)
+    → Result<…, VisionError>.
+    Port trait impls (ElementFinder) bridge via .map_err(Into::into).
+    Fixed E0283 ambiguity in extract_elements call by using
+    VisionError::from instead of Into::into.
+    Fixed call site in automation_runtime.rs: analyze_scene wrapper
+    adds .map_err(Into::into); analyze_scene_from_image delegates to
+    the trait method (already CoreError, no conversion needed).
+
 ## [0.4.12] - 2026-03-31
 
 ### Fixed
