@@ -333,6 +333,55 @@ pub fn truncate_chat_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
     }
 }
 
+// ── Session Persistence ─────────────────────────────────────
+
+/// Persisted session metadata (SQLite ↔ Rust bridge).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionRecord {
+    pub session_id: String,
+    pub provider_name: String,
+    pub model: String,
+    pub transport: SessionTransport,
+    pub state: SessionState,
+    pub system_prompt: Option<String>,
+    pub turn_count: u32,
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub created_at: DateTime<Utc>,
+    pub last_active: DateTime<Utc>,
+    pub terminated_at: Option<DateTime<Utc>>,
+}
+
+/// Persisted conversation message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageRecord {
+    pub id: Option<i64>,
+    pub session_id: String,
+    pub role: String,
+    pub content: String,
+    pub thinking: Option<String>,
+    pub tool_use: Option<String>,
+    pub usage_input: Option<u64>,
+    pub usage_output: Option<u64>,
+    pub created_at: DateTime<Utc>,
+    pub seq: i64,
+}
+
+impl From<&SessionRecord> for ConversationSessionInfo {
+    fn from(r: &SessionRecord) -> Self {
+        Self {
+            session_id: r.session_id.clone(),
+            provider_name: r.provider_name.clone(),
+            model: r.model.clone(),
+            state: r.state,
+            transport: r.transport,
+            created_at: r.created_at,
+            last_active: r.last_active,
+            turn_count: r.turn_count,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
