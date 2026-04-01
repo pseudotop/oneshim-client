@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.14-rc.2] - 2026-04-02
+
+### Changed
+
+- Extract AuthMaterialManager + PendingFlowManager from oidc_device_flow
+
+- Improve PendingFlowManager encapsulation
+  Replace direct self.flows.flows field access with proper methods
+  (insert, remove, get, clear, find_first_active, increase_interval).
+  Remove unused get_device_code method.
+
 ## [0.4.14-rc.1] - 2026-04-01
 
 ### Added
