@@ -19,6 +19,20 @@ function valueToColor(v: number): string {
 export default function HeatmapGhost() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
+  // Keep canvas resolution in sync with its CSS layout size
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      canvas.width = width
+      canvas.height = height
+    })
+    ro.observe(canvas)
+    return () => ro.disconnect()
+  }, [])
+
   useEffect(() => {
     let unlisten: (() => void) | null = null
 
@@ -57,13 +71,5 @@ export default function HeatmapGhost() {
     }
   }, [])
 
-  return (
-    <canvas
-      ref={canvasRef}
-      width={window.innerWidth}
-      height={window.innerHeight}
-      className="pointer-events-none fixed inset-0"
-      style={{ zIndex: 0 }}
-    />
-  )
+  return <canvas ref={canvasRef} className="pointer-events-none fixed inset-0 h-full w-full" style={{ zIndex: 0 }} />
 }

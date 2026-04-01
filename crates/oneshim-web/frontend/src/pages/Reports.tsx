@@ -227,7 +227,7 @@ function AppDistributionPie({ appStats }: { appStats: ReportResponse['app_stats'
           style={{ fontSize: 11 }}
         >
           {pieData.map((stat, index) => (
-            <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
+            <Cell key={`${stat.name}-${stat.duration_secs}`} fill={COLORS[index % COLORS.length]} />
           ))}
         </Pie>
         <Tooltip
