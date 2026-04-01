@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  Download,
   Loader2,
   MessageSquarePlus,
   Paperclip,
@@ -20,7 +21,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { fetchProviderSurfaces } from '../api/client'
+import { downloadBlob, fetchProviderSurfaces } from '../api/client'
 import type { ProviderSurfaceCatalog, ProviderSurfaceSpec } from '../api/contracts'
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 
@@ -655,6 +656,64 @@ export default function Chat() {
     [activeId, t],
   )
 
+  const handleExport = useCallback(
+    (format: 'json' | 'markdown') => {
+      if (!activeId || messages.length === 0) return
+      const session = sessions.find((s) => s.session_id === activeId)
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+
+      if (format === 'json') {
+        const payload = {
+          session_id: activeId,
+          provider: session?.provider_name,
+          model: session?.model,
+          transport: session?.transport,
+          exported_at: new Date().toISOString(),
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            ...(m.usage && { usage: m.usage }),
+            ...(m.thinking?.content && { thinking: m.thinking.content }),
+            ...(m.tool_use && { tool_use: m.tool_use }),
+          })),
+        }
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+        downloadBlob(blob, `chat-${timestamp}.json`)
+      } else {
+        const lines: string[] = [
+          `# Chat Export`,
+          ``,
+          `- **Session**: ${activeId}`,
+          `- **Provider**: ${session?.provider_name ?? 'unknown'}`,
+          `- **Model**: ${session?.model ?? 'default'}`,
+          `- **Exported**: ${new Date().toISOString()}`,
+          ``,
+          `---`,
+          ``,
+        ]
+        for (const m of messages) {
+          const prefix = m.role === 'user' ? '## User' : m.role === 'assistant' ? '## Assistant' : '## System'
+          lines.push(`${prefix} (${m.timestamp})`, ``)
+          if (m.thinking?.content) {
+            lines.push(`<details><summary>Thinking</summary>`, ``, m.thinking.content, ``, `</details>`, ``)
+          }
+          lines.push(m.content, ``)
+          if (m.tool_use) {
+            lines.push(`> Tool: **${m.tool_use.tool}** (${m.tool_use.status})`, ``)
+          }
+          if (m.usage) {
+            lines.push(`*Tokens: ${m.usage.input_tokens} in / ${m.usage.output_tokens} out*`, ``)
+          }
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+        downloadBlob(blob, `chat-${timestamp}.md`)
+      }
+      addToast('success', t('chat.exported', 'Conversation exported'), 3000)
+    },
+    [activeId, messages, sessions, t],
+  )
+
   const searchMatchCount = useMemo(() => {
     if (!searchQuery) return 0
     const q = searchQuery.toLowerCase()
@@ -982,6 +1041,14 @@ export default function Chat() {
                   }}
                 >
                   <Search className={iconSize.xs} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExport('json')}
+                  title={t('chat.export_json', 'Export JSON')}
+                >
+                  <Download className={iconSize.xs} />
                 </Button>
                 {active?.state === 'failed' && (
                   <Button variant="ghost" size="sm" onClick={handleRetry} className="text-xs">
