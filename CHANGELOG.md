@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.14-rc.1] - 2026-04-01
+
+### Added
+
+- Dynamic provider model catalog in Chat page
+  Replace static DEFAULT_PROVIDER_SURFACE_CATALOG import with dynamic fetch
+  via /ai/provider-surfaces endpoint (same pattern as Settings.tsx).
+
+  - Add fetchProviderSurfaces() call on mount with static fallback
+  - Convert HTTP_API_SURFACES module constant to useMemo (httpApiSurfaces)
+  - Add httpApiSurfaces to useEffect/useMemo dependency arrays
+  - Enables future runtime model discovery without rebuild
+
+- Add conversation export (JSON/Markdown) to Chat page
+  - Add handleExport() with JSON and Markdown format support
+  - JSON: structured payload with session metadata + full message history
+  - Markdown: human-readable format with thinking blocks, tool use, token usage
+  - Export button (Download icon) in session header, defaults to JSON
+  - Uses existing downloadBlob() utility
+
+- Add token budget tracking and rate limiting for AI sessions
+
+- Add session persistence models and SessionStoragePort trait
+  Add SessionRecord, MessageRecord structs with From<&SessionRecord> conversion
+  to ConversationSessionInfo. Add SessionStoragePort async trait for SQLite
+  persistence of AI chat sessions and messages.
+
+- Add migration v21 — ai_sessions + ai_conversation_messages tables
+
+- Implement SessionStoragePort for SqliteStorage with 9 tests
+
+- Wire session persistence + IPC commands for chat history
+  - Add session_storage field to AppState
+  - Persist session metadata on create, messages on stream completion
+  - Mark terminated on kill, purge expired in reap loop
+  - Add load_session_messages + delete_session_history IPC commands
+  - Merge persisted sessions into list_ai_sessions response
+
+- Load persisted chat history + read-only historical session mode
+
+
+### Changed
+
+- Split http_api_session into ADR-003 directory module
+  Convert 2381-line single file into directory module with 5 submodules:
+  - mod.rs: core struct, ConversationSession impl, dispatchers
+  - anthropic.rs: Anthropic-specific serialization + SSE parsing
+  - openai.rs: OpenAI Chat + Responses serialization + SSE parsing
+  - google.rs: Google Gemini serialization + SSE parsing
+  - content.rs: shared attachment/content helpers
+  - tests.rs: all tests (38 tests, 0 failures)
+
+- Split session_manager into ADR-003 directory module
+  Decompose 1233-line session_manager.rs into 4 focused files:
+  - mod.rs: SessionManagerImpl struct, lifecycle (create/kill/list/touch/reap, token budget)
+  - factory.rs: Provider routing (Subprocess/HttpApi/LocalLlm session creation)
+  - error_recovery.rs: Transient error detection, report_failure, recover_session
+  - tests.rs: All 22 unit tests
+
+  Zero behavior change — public API unchanged.
+
+- Split agent_runtime into ADR-003 directory module
+  Extract embedding pipeline, analysis pipeline, and sync engine setup
+  from the 889-line agent_runtime.rs God function into focused sub-modules.
+
+
+### Fixed
+
+- Address review findings — I-1~I-3 + M-1/M-2/M-4/M-6
+  - I-1: add sessions to handleDelete dependency array (stale closure)
+  - I-2: include 'failed' state in purge_expired orphan cleanup
+  - I-3: change update_session_usage to additive SQL (+=) instead of overwrite
+  - M-1: remove no-op PRAGMA foreign_keys from migration DDL
+  - M-2: add warn! log on datetime parse failure in parse_dt
+  - M-4: wrap save_messages in explicit BEGIN/COMMIT transaction
+  - M-6: apply i18n t() to History badge label
+
 ## [0.4.13-rc.3] - 2026-04-01
 
 ### Fixed
