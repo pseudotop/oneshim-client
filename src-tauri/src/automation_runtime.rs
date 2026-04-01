@@ -271,7 +271,10 @@ impl ElementFinder for LatestFrameOcrElementFinder {
                 "자동화용 최신 frame이 없습니다".to_string(),
             ));
         }
-        self.inner.analyze_scene(app_name, screen_id).await
+        self.inner
+            .analyze_scene(app_name, screen_id)
+            .await
+            .map_err(Into::into)
     }
 
     async fn analyze_scene_from_image(

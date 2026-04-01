@@ -369,7 +369,9 @@ impl AgentRuntimeBundle {
                                                 std::path::PathBuf::from(folder),
                                                 device_id.clone(),
                                                 passphrase.clone(),
-                                            ).map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>)
+                                            )
+                                            .map_err(Into::into)
+                                            .map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>)
                                         }
                                         None => {
                                             warn!("sync transport=file but sync_folder not configured");

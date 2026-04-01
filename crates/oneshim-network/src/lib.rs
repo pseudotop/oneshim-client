@@ -36,6 +36,9 @@ pub fn default_model_for_provider(provider: &oneshim_core::config::AiProviderTyp
     }
 }
 
+pub mod error;
+pub use error::NetworkError;
+
 pub mod ai_llm_client;
 pub mod ai_ocr_client;
 pub mod analysis_client;

@@ -113,10 +113,11 @@ impl SchedulerStorage for SqliteStorage {
         bounds: Option<&WindowBounds>,
     ) -> Result<i64, CoreError> {
         SqliteStorage::save_frame_metadata_with_bounds(self, metadata, file_path, ocr_text, bounds)
+            .map_err(Into::into)
     }
 
     fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError> {
-        SqliteStorage::has_recent_server_suggestions(self, lookback_secs)
+        SqliteStorage::has_recent_server_suggestions(self, lookback_secs).map_err(Into::into)
     }
 
     fn list_weekly_digests(
@@ -140,15 +141,15 @@ impl SchedulerStorage for SqliteStorage {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> Result<Vec<SegmentSummary>, CoreError> {
-        SqliteStorage::list_segments_between(self, from, to)
+        SqliteStorage::list_segments_between(self, from, to).map_err(Into::into)
     }
 
     fn enforce_segment_retention(&self, max_days: u32) -> Result<usize, CoreError> {
-        SqliteStorage::enforce_segment_retention(self, max_days)
+        SqliteStorage::enforce_segment_retention(self, max_days).map_err(Into::into)
     }
 
     fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError> {
-        SqliteStorage::enforce_digest_retention(self, max_weeks)
+        SqliteStorage::enforce_digest_retention(self, max_weeks).map_err(Into::into)
     }
 
     fn get_daily_digest(
@@ -184,27 +185,27 @@ impl SchedulerStorage for SqliteStorage {
     }
 
     fn enforce_all_retention(&self) -> Result<u64, CoreError> {
-        SqliteStorage::enforce_all_retention(self)
+        SqliteStorage::enforce_all_retention(self).map_err(Into::into)
     }
 
     fn wal_checkpoint_passive(&self) -> Result<(), CoreError> {
-        SqliteStorage::wal_checkpoint_passive(self)
+        SqliteStorage::wal_checkpoint_passive(self).map_err(Into::into)
     }
 
     fn maybe_vacuum(&self, threshold_percent: u64) -> Result<bool, CoreError> {
-        SqliteStorage::maybe_vacuum(self, threshold_percent)
+        SqliteStorage::maybe_vacuum(self, threshold_percent).map_err(Into::into)
     }
 
     fn fts_merge(&self, pages: u32) -> Result<(), CoreError> {
-        SqliteStorage::fts_merge(self, pages)
+        SqliteStorage::fts_merge(self, pages).map_err(Into::into)
     }
 
     fn fts_optimize(&self) -> Result<(), CoreError> {
-        SqliteStorage::fts_optimize(self)
+        SqliteStorage::fts_optimize(self).map_err(Into::into)
     }
 
     fn run_analyze(&self) -> Result<(), CoreError> {
-        SqliteStorage::run_analyze(self)
+        SqliteStorage::run_analyze(self).map_err(Into::into)
     }
 }
 

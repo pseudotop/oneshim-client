@@ -9,6 +9,7 @@ use tracing::{debug, warn};
 
 use super::edge_intelligence::enum_to_sql_str;
 use super::SqliteStorage;
+use crate::error::StorageError;
 
 // ---------------------------------------------------------------------------
 // CalibrationWriter (synchronous)
@@ -154,21 +155,22 @@ impl CalibrationReader for SqliteStorage {
 
             let mut stmt = conn
                 .prepare(sql)
-                .map_err(|e| CoreError::Internal(format!("prepare get_entries: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("prepare get_entries: {e}")))?;
 
             let rows = stmt
                 .query_map(params![from_str, to_str], map_calibration_row)
-                .map_err(|e| CoreError::Internal(format!("query calibration entries: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("query calibration entries: {e}")))?;
 
             let mut entries = Vec::new();
             for row_result in rows {
                 let entry = row_result
-                    .map_err(|e| CoreError::Internal(format!("read calibration row: {e}")))?;
+                    .map_err(|e| StorageError::Internal(format!("read calibration row: {e}")))?;
                 entries.push(entry);
             }
             Ok(entries)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn enforce_retention(&self, max_days: u32, max_rows: u64) -> Result<u64, CoreError> {
@@ -184,13 +186,13 @@ impl CalibrationReader for SqliteStorage {
                     "DELETE FROM calibration_log WHERE timestamp < ?1",
                     params![cutoff_str],
                 )
-                .map_err(|e| CoreError::Internal(format!("retention age delete: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("retention age delete: {e}")))?;
             total_deleted += deleted_by_age as u64;
 
             // 2. If remaining rows exceed max_rows, delete oldest
             let remaining: i64 = conn
                 .query_row("SELECT COUNT(*) FROM calibration_log", [], |row| row.get(0))
-                .map_err(|e| CoreError::Internal(format!("count calibration rows: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("count calibration rows: {e}")))?;
 
             if remaining as u64 > max_rows {
                 let excess = remaining as u64 - max_rows;
@@ -201,7 +203,7 @@ impl CalibrationReader for SqliteStorage {
                          )",
                         params![excess as i64],
                     )
-                    .map_err(|e| CoreError::Internal(format!("retention count delete: {e}")))?;
+                    .map_err(|e| StorageError::Internal(format!("retention count delete: {e}")))?;
                 total_deleted += deleted_by_count as u64;
             }
 
@@ -209,6 +211,7 @@ impl CalibrationReader for SqliteStorage {
             Ok(total_deleted)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn list_segment_time_ranges(
@@ -239,7 +242,7 @@ impl CalibrationReader for SqliteStorage {
                      WHERE start_time >= ?1 AND end_time <= ?2 \
                      ORDER BY start_time ASC",
                 )
-                .map_err(|e| CoreError::Internal(format!("prepare segment ranges: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("prepare segment ranges: {e}")))?;
 
             let rows = stmt
                 .query_map(params![from_str, to_str], |row| {
@@ -248,23 +251,24 @@ impl CalibrationReader for SqliteStorage {
                     let end_str: String = row.get(2)?;
                     Ok((id, start_str, end_str))
                 })
-                .map_err(|e| CoreError::Internal(format!("query segment ranges: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("query segment ranges: {e}")))?;
 
             let mut result = Vec::new();
             for row_result in rows {
                 let (id, start_str, end_str) =
-                    row_result.map_err(|e| CoreError::Internal(format!("read segment row: {e}")))?;
+                    row_result.map_err(|e| StorageError::Internal(format!("read segment row: {e}")))?;
                 let start = DateTime::parse_from_rfc3339(&start_str)
                     .map(|dt| dt.with_timezone(&Utc))
-                    .map_err(|e| CoreError::Internal(format!("invalid segment start: {e}")))?;
+                    .map_err(|e| StorageError::Internal(format!("invalid segment start: {e}")))?;
                 let end = DateTime::parse_from_rfc3339(&end_str)
                     .map(|dt| dt.with_timezone(&Utc))
-                    .map_err(|e| CoreError::Internal(format!("invalid segment end: {e}")))?;
+                    .map_err(|e| StorageError::Internal(format!("invalid segment end: {e}")))?;
                 result.push((id, start, end));
             }
             Ok(result)
         })
         .await
+        .map_err(Into::into)
     }
 }
 

@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
 use crate::controller::AutomationCommand;
-use oneshim_core::error::CoreError;
+use crate::error::AutomationError;
 
 use token::{
     compute_command_scope_hash, is_valid_nonce, is_valid_signature, issue_command_token_for_policy,
@@ -56,7 +56,7 @@ impl PolicyClient {
         elapsed < cache.ttl_seconds
     }
 
-    pub async fn validate_command(&self, cmd: &AutomationCommand) -> Result<bool, CoreError> {
+    pub async fn validate_command(&self, cmd: &AutomationCommand) -> Result<bool, AutomationError> {
         let now = Utc::now();
         let token = cmd.policy_token.trim();
         if token.is_empty() {
@@ -152,7 +152,7 @@ impl PolicyClient {
 
     /// - unsigned: `{policy_id}:{nonce}`
     /// - signed: `{policy_id}:{nonce}:{sha256(policy_id:nonce:secret)}`
-    pub async fn issue_command_token(&self, policy_id: &str) -> Result<String, CoreError> {
+    pub async fn issue_command_token(&self, policy_id: &str) -> Result<String, AutomationError> {
         let policy = {
             let cache = self.policy_cache.read().await;
             cache
@@ -161,7 +161,7 @@ impl PolicyClient {
                 .find(|p| p.policy_id == policy_id)
                 .cloned()
         }
-        .ok_or_else(|| CoreError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
+        .ok_or_else(|| AutomationError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
 
         let nonce = issue_policy_nonce();
         issue_command_token_for_policy(&policy, &nonce, None)
@@ -171,7 +171,7 @@ impl PolicyClient {
         &self,
         policy_id: &str,
         cmd: &AutomationCommand,
-    ) -> Result<String, CoreError> {
+    ) -> Result<String, AutomationError> {
         let policy = {
             let cache = self.policy_cache.read().await;
             cache
@@ -180,7 +180,7 @@ impl PolicyClient {
                 .find(|p| p.policy_id == policy_id)
                 .cloned()
         }
-        .ok_or_else(|| CoreError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
+        .ok_or_else(|| AutomationError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
 
         let nonce = issue_policy_nonce();
         let command_hash = compute_command_scope_hash(cmd)?;
@@ -486,7 +486,7 @@ mod tests {
     async fn issue_command_token_rejects_unknown_policy() {
         let client = PolicyClient::new();
         let result = client.issue_command_token("unknown").await;
-        assert!(matches!(result, Err(CoreError::PolicyDenied(_))));
+        assert!(matches!(result, Err(AutomationError::PolicyDenied(_))));
     }
 
     #[tokio::test]
@@ -516,7 +516,7 @@ mod tests {
         client.update_policies(vec![policy]).await;
 
         let result = client.issue_command_token("pol-1").await;
-        assert!(matches!(result, Err(CoreError::Config(_))));
+        assert!(matches!(result, Err(AutomationError::Config(_))));
 
         drop(env_guard);
     }

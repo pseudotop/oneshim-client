@@ -1,5 +1,7 @@
 # Cross-Cutting Improvements — Implementation Plan
 
+> **Status: Superseded** — 9/10 tasks implemented in prior sessions. Remaining gap addressed in `2026-04-01-store-quantized-validation.md`.
+
 > **For agentic workers:** REQUIRED: Use superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Harden GDPR compliance (transactional deletion + frame file cleanup), validate vector similarity dimensions, and add persistent observability (tracing instrumentation + file-based logging with rotation).

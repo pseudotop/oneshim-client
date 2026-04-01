@@ -1,16 +1,16 @@
+use crate::error::StorageError;
 use chrono::Utc;
-use oneshim_core::error::CoreError;
 
 use super::super::SqliteStorage;
 
 impl SqliteStorage {
     /// Delete activity segments older than `max_days`. Returns the number of deleted rows.
-    pub fn enforce_segment_retention(&self, max_days: u32) -> Result<usize, CoreError> {
+    pub fn enforce_segment_retention(&self, max_days: u32) -> Result<usize, StorageError> {
         let cutoff = (Utc::now() - chrono::Duration::days(max_days as i64)).to_rfc3339();
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
         let table_exists: bool = conn
             .query_row(
                 "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='activity_segments'",
@@ -26,7 +26,7 @@ impl SqliteStorage {
                 "DELETE FROM activity_segments WHERE start_time < ?1 AND start_time IS NOT NULL",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| CoreError::Internal(format!("segment retention failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("segment retention failure: {e}")))?;
         tracing::debug!(
             "Enforced segment retention: deleted {deleted} rows older than {max_days} days"
         );
@@ -34,12 +34,12 @@ impl SqliteStorage {
     }
 
     /// Delete weekly digests older than `max_weeks`. Returns the number of deleted rows.
-    pub fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError> {
+    pub fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, StorageError> {
         let cutoff = (Utc::now() - chrono::Duration::days(max_weeks as i64 * 7)).to_rfc3339();
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
         let table_exists: bool = conn
             .query_row(
                 "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='weekly_digests'",
@@ -55,7 +55,7 @@ impl SqliteStorage {
                 "DELETE FROM weekly_digests WHERE week_start < ?1",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| CoreError::Internal(format!("digest retention failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("digest retention failure: {e}")))?;
         tracing::debug!(
             "Enforced digest retention: deleted {deleted} rows older than {max_weeks} weeks"
         );
@@ -68,11 +68,11 @@ impl SqliteStorage {
     /// from `conn.execute` are silently ignored via `let _ = …`).
     ///
     /// Returns the total number of rows deleted across all tables.
-    pub fn enforce_all_retention(&self) -> Result<u64, CoreError> {
+    pub fn enforce_all_retention(&self) -> Result<u64, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
         let mut total: u64 = 0;
 

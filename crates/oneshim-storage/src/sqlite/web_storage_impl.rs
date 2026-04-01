@@ -60,11 +60,11 @@ impl SqliteStorage {
 
 impl WebStorage for SqliteStorage {
     fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
-        SqliteStorage::count_events_in_range(self, from, to)
+        SqliteStorage::count_events_in_range(self, from, to).map_err(Into::into)
     }
 
     fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
-        SqliteStorage::count_frames_in_range(self, from, to)
+        SqliteStorage::count_frames_in_range(self, from, to).map_err(Into::into)
     }
 
     fn get_frames(
@@ -73,15 +73,15 @@ impl WebStorage for SqliteStorage {
         to: DateTime<Utc>,
         limit: usize,
     ) -> Result<Vec<FrameRecord>, CoreError> {
-        SqliteStorage::get_frames(self, from, to, limit)
+        SqliteStorage::get_frames(self, from, to, limit).map_err(Into::into)
     }
 
     fn get_frame_file_path(&self, frame_id: i64) -> Result<Option<String>, CoreError> {
-        SqliteStorage::get_frame_file_path(self, frame_id)
+        SqliteStorage::get_frame_file_path(self, frame_id).map_err(Into::into)
     }
 
     fn get_storage_stats_summary(&self) -> Result<StorageStatsSummaryRecord, CoreError> {
-        SqliteStorage::get_storage_stats_summary(self)
+        SqliteStorage::get_storage_stats_summary(self).map_err(Into::into)
     }
 
     fn list_frame_file_paths_in_range(
@@ -89,7 +89,7 @@ impl WebStorage for SqliteStorage {
         from: &str,
         to: &str,
     ) -> Result<Vec<String>, CoreError> {
-        SqliteStorage::list_frame_file_paths_in_range(self, from, to)
+        SqliteStorage::list_frame_file_paths_in_range(self, from, to).map_err(Into::into)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -113,10 +113,11 @@ impl WebStorage for SqliteStorage {
             delete_processes,
             delete_idle,
         )
+        .map_err(Into::into)
     }
 
     fn delete_all_data(&self) -> Result<(), CoreError> {
-        SqliteStorage::delete_all_data(self)
+        SqliteStorage::delete_all_data(self).map_err(Into::into)
     }
 
     fn count_search_frames(
@@ -124,7 +125,7 @@ impl WebStorage for SqliteStorage {
         count_sql: &str,
         pattern: Option<&str>,
     ) -> Result<u64, CoreError> {
-        SqliteStorage::count_search_frames(self, count_sql, pattern)
+        SqliteStorage::count_search_frames(self, count_sql, pattern).map_err(Into::into)
     }
 
     fn search_frames_with_sql(
@@ -135,10 +136,11 @@ impl WebStorage for SqliteStorage {
         offset: usize,
     ) -> Result<Vec<SearchFrameRow>, CoreError> {
         SqliteStorage::search_frames_with_sql(self, select_sql, pattern, limit, offset)
+            .map_err(Into::into)
     }
 
     fn count_search_events(&self, pattern: &str) -> Result<u64, CoreError> {
-        SqliteStorage::count_search_events(self, pattern)
+        SqliteStorage::count_search_events(self, pattern).map_err(Into::into)
     }
 
     fn search_events(
@@ -147,46 +149,46 @@ impl WebStorage for SqliteStorage {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<SearchEventRow>, CoreError> {
-        SqliteStorage::search_events(self, pattern, limit, offset)
+        SqliteStorage::search_events(self, pattern, limit, offset).map_err(Into::into)
     }
 
     fn get_all_tags(&self) -> Result<Vec<TagRecord>, CoreError> {
-        SqliteStorage::get_all_tags(self)
+        SqliteStorage::get_all_tags(self).map_err(Into::into)
     }
 
     fn get_tag(&self, tag_id: i64) -> Result<Option<TagRecord>, CoreError> {
-        SqliteStorage::get_tag(self, tag_id)
+        SqliteStorage::get_tag(self, tag_id).map_err(Into::into)
     }
 
     fn get_tag_ids_for_frames(
         &self,
         frame_ids: &[i64],
     ) -> Result<std::collections::HashMap<i64, Vec<i64>>, CoreError> {
-        SqliteStorage::get_tag_ids_for_frames(self, frame_ids)
+        SqliteStorage::get_tag_ids_for_frames(self, frame_ids).map_err(Into::into)
     }
 
     fn create_tag(&self, name: &str, color: &str) -> Result<TagRecord, CoreError> {
-        SqliteStorage::create_tag(self, name, color)
+        SqliteStorage::create_tag(self, name, color).map_err(Into::into)
     }
 
     fn update_tag(&self, tag_id: i64, name: &str, color: &str) -> Result<bool, CoreError> {
-        SqliteStorage::update_tag(self, tag_id, name, color)
+        SqliteStorage::update_tag(self, tag_id, name, color).map_err(Into::into)
     }
 
     fn delete_tag(&self, tag_id: i64) -> Result<bool, CoreError> {
-        SqliteStorage::delete_tag(self, tag_id)
+        SqliteStorage::delete_tag(self, tag_id).map_err(Into::into)
     }
 
     fn get_tags_for_frame(&self, frame_id: i64) -> Result<Vec<TagRecord>, CoreError> {
-        SqliteStorage::get_tags_for_frame(self, frame_id)
+        SqliteStorage::get_tags_for_frame(self, frame_id).map_err(Into::into)
     }
 
     fn add_tag_to_frame(&self, frame_id: i64, tag_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::add_tag_to_frame(self, frame_id, tag_id)
+        SqliteStorage::add_tag_to_frame(self, frame_id, tag_id).map_err(Into::into)
     }
 
     fn remove_tag_from_frame(&self, frame_id: i64, tag_id: i64) -> Result<bool, CoreError> {
-        SqliteStorage::remove_tag_from_frame(self, frame_id, tag_id)
+        SqliteStorage::remove_tag_from_frame(self, frame_id, tag_id).map_err(Into::into)
     }
 
     fn get_app_durations_by_date(
@@ -194,26 +196,26 @@ impl WebStorage for SqliteStorage {
         from: &str,
         to: &str,
     ) -> Result<Vec<(String, i64)>, CoreError> {
-        SqliteStorage::get_app_durations_by_date(self, from, to)
+        SqliteStorage::get_app_durations_by_date(self, from, to).map_err(Into::into)
     }
 
     fn get_daily_active_secs(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError> {
-        SqliteStorage::get_daily_active_secs(self, from, to)
+        SqliteStorage::get_daily_active_secs(self, from, to).map_err(Into::into)
     }
 
     fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError> {
-        SqliteStorage::list_session_stats(self, limit)
+        SqliteStorage::list_session_stats(self, limit).map_err(Into::into)
     }
 
     fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, CoreError> {
-        SqliteStorage::get_or_create_focus_metrics(self, date)
+        SqliteStorage::get_or_create_focus_metrics(self, date).map_err(Into::into)
     }
 
     fn get_recent_focus_metrics(
         &self,
         days: usize,
     ) -> Result<Vec<(String, FocusMetrics)>, CoreError> {
-        SqliteStorage::get_recent_focus_metrics(self, days)
+        SqliteStorage::get_recent_focus_metrics(self, days).map_err(Into::into)
     }
 
     fn list_work_sessions(
@@ -222,7 +224,7 @@ impl WebStorage for SqliteStorage {
         to: &str,
         limit: usize,
     ) -> Result<Vec<FocusWorkSessionRecord>, CoreError> {
-        SqliteStorage::list_work_sessions(self, from, to, limit)
+        SqliteStorage::list_work_sessions(self, from, to, limit).map_err(Into::into)
     }
 
     fn list_interruptions(
@@ -231,7 +233,7 @@ impl WebStorage for SqliteStorage {
         to: &str,
         limit: usize,
     ) -> Result<Vec<FocusInterruptionRecord>, CoreError> {
-        SqliteStorage::list_interruptions(self, from, to, limit)
+        SqliteStorage::list_interruptions(self, from, to, limit).map_err(Into::into)
     }
 
     fn list_recent_local_suggestions(
@@ -239,31 +241,31 @@ impl WebStorage for SqliteStorage {
         cutoff: &str,
         limit: usize,
     ) -> Result<Vec<LocalSuggestionRecord>, CoreError> {
-        SqliteStorage::list_recent_local_suggestions(self, cutoff, limit)
+        SqliteStorage::list_recent_local_suggestions(self, cutoff, limit).map_err(Into::into)
     }
 
     fn mark_suggestion_shown(&self, suggestion_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::mark_suggestion_shown(self, suggestion_id)
+        SqliteStorage::mark_suggestion_shown(self, suggestion_id).map_err(Into::into)
     }
 
     fn mark_suggestion_dismissed(&self, suggestion_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::mark_suggestion_dismissed(self, suggestion_id)
+        SqliteStorage::mark_suggestion_dismissed(self, suggestion_id).map_err(Into::into)
     }
 
     fn mark_suggestion_acted(&self, suggestion_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::mark_suggestion_acted(self, suggestion_id)
+        SqliteStorage::mark_suggestion_acted(self, suggestion_id).map_err(Into::into)
     }
 
     fn list_suggestions(&self, limit: usize) -> Result<Vec<SuggestionRecord>, CoreError> {
-        SqliteStorage::list_suggestions(self, limit)
+        SqliteStorage::list_suggestions(self, limit).map_err(Into::into)
     }
 
     fn dismiss_unified_suggestion(&self, suggestion_id: &str) -> Result<bool, CoreError> {
-        SqliteStorage::dismiss_unified_suggestion(self, suggestion_id)
+        SqliteStorage::dismiss_unified_suggestion(self, suggestion_id).map_err(Into::into)
     }
 
     fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError> {
-        SqliteStorage::has_recent_server_suggestions(self, lookback_secs)
+        SqliteStorage::has_recent_server_suggestions(self, lookback_secs).map_err(Into::into)
     }
 
     fn list_weekly_digests(
@@ -337,11 +339,11 @@ impl WebStorage for SqliteStorage {
     }
 
     fn list_backup_tags(&self) -> Result<Vec<TagRecord>, CoreError> {
-        SqliteStorage::list_backup_tags(self)
+        SqliteStorage::list_backup_tags(self).map_err(Into::into)
     }
 
     fn list_backup_frame_tags(&self) -> Result<Vec<FrameTagLinkRecord>, CoreError> {
-        SqliteStorage::list_backup_frame_tags(self)
+        SqliteStorage::list_backup_frame_tags(self).map_err(Into::into)
     }
 
     fn list_event_exports(
@@ -349,7 +351,7 @@ impl WebStorage for SqliteStorage {
         from: &str,
         to: &str,
     ) -> Result<Vec<EventExportRecord>, CoreError> {
-        SqliteStorage::list_event_exports(self, from, to)
+        SqliteStorage::list_event_exports(self, from, to).map_err(Into::into)
     }
 
     fn list_metric_exports(
@@ -357,7 +359,7 @@ impl WebStorage for SqliteStorage {
         from: &str,
         to: &str,
     ) -> Result<Vec<MetricExportRecord>, CoreError> {
-        SqliteStorage::list_metric_exports(self, from, to)
+        SqliteStorage::list_metric_exports(self, from, to).map_err(Into::into)
     }
 
     fn list_frame_exports(
@@ -365,11 +367,11 @@ impl WebStorage for SqliteStorage {
         from: &str,
         to: &str,
     ) -> Result<Vec<FrameExportRecord>, CoreError> {
-        SqliteStorage::list_frame_exports(self, from, to)
+        SqliteStorage::list_frame_exports(self, from, to).map_err(Into::into)
     }
 
     fn list_hourly_metrics_since(&self, from: &str) -> Result<Vec<HourlyMetricsRecord>, CoreError> {
-        SqliteStorage::list_hourly_metrics_since(self, from)
+        SqliteStorage::list_hourly_metrics_since(self, from).map_err(Into::into)
     }
 
     fn upsert_backup_tag(
@@ -379,7 +381,7 @@ impl WebStorage for SqliteStorage {
         color: &str,
         created_at: &str,
     ) -> Result<(), CoreError> {
-        SqliteStorage::upsert_backup_tag(self, id, name, color, created_at)
+        SqliteStorage::upsert_backup_tag(self, id, name, color, created_at).map_err(Into::into)
     }
 
     fn upsert_backup_frame_tag(
@@ -389,6 +391,7 @@ impl WebStorage for SqliteStorage {
         created_at: &str,
     ) -> Result<(), CoreError> {
         SqliteStorage::upsert_backup_frame_tag(self, frame_id, tag_id, created_at)
+            .map_err(Into::into)
     }
 
     fn upsert_backup_event(
@@ -407,6 +410,7 @@ impl WebStorage for SqliteStorage {
             app_name,
             window_title,
         )
+        .map_err(Into::into)
     }
 
     fn upsert_backup_frame(
@@ -433,6 +437,7 @@ impl WebStorage for SqliteStorage {
             height,
             ocr_text,
         )
+        .map_err(Into::into)
     }
 
     fn get_segment_details(
@@ -778,6 +783,7 @@ impl WebStorage for SqliteStorage {
     ) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, CoreError> {
         // Delegate to the coaching_storage impl on SqliteStorage
         self.query_coaching_events(limit, offset)
+            .map_err(Into::into)
     }
 }
 

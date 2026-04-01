@@ -9,6 +9,7 @@
 pub mod adaptive_search;
 mod adaptive_trigger;
 mod analyzer;
+pub mod error;
 
 mod assembler;
 pub mod auto_tuner;
@@ -82,6 +83,7 @@ pub use adaptive_search::{AdaptiveSearchCoordinator, SearchConfig, SearchStrateg
 pub use daily_digest_generator::DailyDigestGenerator;
 pub use daily_insight_generator::DailyInsightGenerator;
 pub use embedding_pipeline::EmbeddingPipeline;
+pub use error::AnalysisError;
 pub use gui_aggregator::GuiActivityAggregator;
 pub use gui_work_type_refiner::GuiWorkTypeRefiner;
 pub use hybrid_search_service::{HybridSearchService, SearchMode};

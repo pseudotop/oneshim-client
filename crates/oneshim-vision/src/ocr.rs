@@ -1,26 +1,8 @@
+use crate::error::VisionError;
 use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use thiserror::Error;
 use tracing::{debug, warn};
-
-#[derive(Debug, Error)]
-pub enum OcrError {
-    #[error("OCR initialize failure: {0}")]
-    Init(String),
-
-    #[error("OCR image setup failed: {0}")]
-    ImageSetup(String),
-
-    #[error("OCR text extraction failed: {0}")]
-    Extraction(String),
-
-    #[error("Empty image: width or height is 0")]
-    EmptyImage,
-
-    #[error("OCR async task failed: {0}")]
-    Async(String),
-}
 
 static TESSDATA_PATH: OnceLock<Option<String>> = OnceLock::new();
 
@@ -51,24 +33,26 @@ impl OcrExtractor {
         self
     }
 
-    pub fn extract(&self, image: &image::DynamicImage) -> Result<String, OcrError> {
+    pub fn extract(&self, image: &image::DynamicImage) -> Result<String, VisionError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
 
         if w == 0 || h == 0 {
-            return Err(OcrError::EmptyImage);
+            return Err(VisionError::Ocr(
+                "Empty image: width or height is 0".to_string(),
+            ));
         }
 
         // Try to reuse cached LepTess instance; fall back to creating new one
         let mut cached_guard = self.cached_leptess.lock().ok();
 
-        let create_new = || -> Result<leptess::LepTess, OcrError> {
+        let create_new = || -> Result<leptess::LepTess, VisionError> {
             let tessdata = self
                 .tessdata_path
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string());
             leptess::LepTess::new(tessdata.as_deref(), "eng")
-                .map_err(|e| OcrError::Init(format!("{e}")))
+                .map_err(|e| VisionError::Ocr(format!("OCR initialize failure: {e}")))
         };
 
         let lt = if let Some(ref mut guard) = cached_guard {
@@ -80,11 +64,15 @@ impl OcrExtractor {
             // Lock failed — create a temporary instance
             let mut lt = create_new()?;
             lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+                .map_err(|_| {
+                    VisionError::Ocr(
+                        "OCR image setup failed: Image memory setup failed".to_string(),
+                    )
+                })?;
 
             let text = lt
                 .get_utf8_text()
-                .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+                .map_err(|e| VisionError::Ocr(format!("OCR text extraction failed: {e}")))?;
 
             let result = text.trim().to_string();
             return if self.max_chars > 0 && result.len() > self.max_chars {
@@ -95,11 +83,13 @@ impl OcrExtractor {
         };
 
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
-            .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+            .map_err(|_| {
+                VisionError::Ocr("OCR image setup failed: Image memory setup failed".to_string())
+            })?;
 
         let text = lt
             .get_utf8_text()
-            .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+            .map_err(|e| VisionError::Ocr(format!("OCR text extraction failed: {e}")))?;
 
         let result = text.trim().to_string();
 
@@ -110,12 +100,14 @@ impl OcrExtractor {
         }
     }
 
-    pub async fn extract_async(&self, image: &image::DynamicImage) -> Result<String, OcrError> {
+    pub async fn extract_async(&self, image: &image::DynamicImage) -> Result<String, VisionError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
 
         if w == 0 || h == 0 {
-            return Err(OcrError::EmptyImage);
+            return Err(VisionError::Ocr(
+                "Empty image: width or height is 0".to_string(),
+            ));
         }
 
         let tessdata = self
@@ -130,14 +122,18 @@ impl OcrExtractor {
             let tessdata_ref = tessdata.as_deref();
 
             let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
-                .map_err(|e| OcrError::Init(format!("{e}")))?;
+                .map_err(|e| VisionError::Ocr(format!("OCR initialize failure: {e}")))?;
 
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+                .map_err(|_| {
+                    VisionError::Ocr(
+                        "OCR image setup failed: Image memory setup failed".to_string(),
+                    )
+                })?;
 
             let text = lt
                 .get_utf8_text()
-                .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+                .map_err(|e| VisionError::Ocr(format!("OCR text extraction failed: {e}")))?;
 
             let result = text.trim().to_string();
 
@@ -148,7 +144,7 @@ impl OcrExtractor {
             }
         })
         .await
-        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?;
+        .map_err(|e| VisionError::Ocr(format!("OCR async task failed: Task join failed: {e}")))?;
 
         result
     }
@@ -157,13 +153,15 @@ impl OcrExtractor {
         &self,
         image: &image::DynamicImage,
         roi_ratio: f32,
-    ) -> Result<String, OcrError> {
+    ) -> Result<String, VisionError> {
         use image::GenericImageView;
 
         let (w, h) = image.dimensions();
 
         if w == 0 || h == 0 {
-            return Err(OcrError::EmptyImage);
+            return Err(VisionError::Ocr(
+                "Empty image: width or height is 0".to_string(),
+            ));
         }
 
         let roi_ratio = roi_ratio.clamp(0.1, 1.0);
@@ -200,12 +198,14 @@ impl OcrExtractor {
     pub async fn extract_words_with_boxes(
         &self,
         image: &image::DynamicImage,
-    ) -> Result<Vec<OcrWordBox>, OcrError> {
+    ) -> Result<Vec<OcrWordBox>, VisionError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
 
         if w == 0 || h == 0 {
-            return Err(OcrError::EmptyImage);
+            return Err(VisionError::Ocr(
+                "Empty image: width or height is 0".to_string(),
+            ));
         }
 
         let tessdata = self
@@ -219,18 +219,26 @@ impl OcrExtractor {
             let tessdata_ref = tessdata.as_deref();
 
             let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
-                .map_err(|e| OcrError::Init(format!("{e}")))?;
+                .map_err(|e| VisionError::Ocr(format!("OCR initialize failure: {e}")))?;
 
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+                .map_err(|_| {
+                    VisionError::Ocr(
+                        "OCR image setup failed: Image memory setup failed".to_string(),
+                    )
+                })?;
 
             let boxes = lt
                 .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
-                .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
+                .ok_or_else(|| {
+                    VisionError::Ocr(
+                        "OCR text extraction failed: Failed to extract word boxes".to_string(),
+                    )
+                })?;
 
             let full_text = lt
                 .get_utf8_text()
-                .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+                .map_err(|e| VisionError::Ocr(format!("OCR text extraction failed: {e}")))?;
             let words: Vec<&str> = full_text.split_whitespace().collect();
 
             let box_count = boxes.len();
@@ -262,7 +270,7 @@ impl OcrExtractor {
             Ok(result)
         })
         .await
-        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?
+        .map_err(|e| VisionError::Ocr(format!("OCR async task failed: Task join failed: {e}")))?
     }
 }
 
@@ -272,14 +280,16 @@ impl OcrExtractor {
 /// with its bounding box. When word and box counts diverge (an unreliable
 /// assumption in Tesseract), truncates to the shorter list and logs a warning.
 /// Confidence is derived from `mean_text_conf()`.
-fn build_regions_from_leptess(lt: &mut leptess::LepTess) -> Result<Vec<OcrRegion>, OcrError> {
+fn build_regions_from_leptess(lt: &mut leptess::LepTess) -> Result<Vec<OcrRegion>, VisionError> {
     let boxes = lt
         .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
-        .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
+        .ok_or_else(|| {
+            VisionError::Ocr("OCR text extraction failed: Failed to extract word boxes".to_string())
+        })?;
 
     let full_text = lt
         .get_utf8_text()
-        .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+        .map_err(|e| VisionError::Ocr(format!("OCR text extraction failed: {e}")))?;
     let words: Vec<&str> = full_text.split_whitespace().collect();
 
     let box_count = boxes.len();
@@ -321,21 +331,26 @@ impl OcrExtractor {
     /// Uses Tesseract word-level component images to obtain spatial coordinates.
     /// Each word that matches a component box is returned as a separate region.
     /// Reuses cached LepTess instance when available.
-    pub fn extract_regions(&self, image: &image::DynamicImage) -> Result<Vec<OcrRegion>, OcrError> {
+    pub fn extract_regions(
+        &self,
+        image: &image::DynamicImage,
+    ) -> Result<Vec<OcrRegion>, VisionError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
 
         if w == 0 || h == 0 {
-            return Err(OcrError::EmptyImage);
+            return Err(VisionError::Ocr(
+                "Empty image: width or height is 0".to_string(),
+            ));
         }
 
-        let create_new = || -> Result<leptess::LepTess, OcrError> {
+        let create_new = || -> Result<leptess::LepTess, VisionError> {
             let tessdata = self
                 .tessdata_path
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string());
             leptess::LepTess::new(tessdata.as_deref(), "eng")
-                .map_err(|e| OcrError::Init(format!("{e}")))
+                .map_err(|e| VisionError::Ocr(format!("OCR initialize failure: {e}")))
         };
 
         let mut cached_guard = self.cached_leptess.lock().ok();
@@ -349,12 +364,18 @@ impl OcrExtractor {
             // Lock failed — create a temporary instance
             let mut lt = create_new()?;
             lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+                .map_err(|_| {
+                    VisionError::Ocr(
+                        "OCR image setup failed: Image memory setup failed".to_string(),
+                    )
+                })?;
             return build_regions_from_leptess(&mut lt);
         };
 
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
-            .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+            .map_err(|_| {
+                VisionError::Ocr("OCR image setup failed: Image memory setup failed".to_string())
+            })?;
 
         build_regions_from_leptess(lt)
     }
@@ -363,12 +384,14 @@ impl OcrExtractor {
     pub async fn extract_regions_async(
         &self,
         image: &image::DynamicImage,
-    ) -> Result<Vec<OcrRegion>, OcrError> {
+    ) -> Result<Vec<OcrRegion>, VisionError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
 
         if w == 0 || h == 0 {
-            return Err(OcrError::EmptyImage);
+            return Err(VisionError::Ocr(
+                "Empty image: width or height is 0".to_string(),
+            ));
         }
 
         let tessdata = self
@@ -381,24 +404,28 @@ impl OcrExtractor {
             let tessdata_ref = tessdata.as_deref();
 
             let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
-                .map_err(|e| OcrError::Init(format!("{e}")))?;
+                .map_err(|e| VisionError::Ocr(format!("OCR initialize failure: {e}")))?;
 
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+                .map_err(|_| {
+                    VisionError::Ocr(
+                        "OCR image setup failed: Image memory setup failed".to_string(),
+                    )
+                })?;
 
             build_regions_from_leptess(&mut lt)
         })
         .await
-        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?
+        .map_err(|e| VisionError::Ocr(format!("OCR async task failed: Task join failed: {e}")))?
     }
 }
 
-pub fn extract_text(image: &image::DynamicImage) -> Result<String, OcrError> {
+pub fn extract_text(image: &image::DynamicImage) -> Result<String, VisionError> {
     let extractor = OcrExtractor::new(None);
     extractor.extract(image)
 }
 
-pub async fn extract_text_async(image: &image::DynamicImage) -> Result<String, OcrError> {
+pub async fn extract_text_async(image: &image::DynamicImage) -> Result<String, VisionError> {
     let extractor = OcrExtractor::new(None);
     extractor.extract_async(image).await
 }
@@ -413,25 +440,25 @@ mod tests {
         let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
         let result = extractor.extract(&img);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+        assert!(matches!(result.unwrap_err(), VisionError::Ocr(_)));
     }
 
     #[test]
     fn error_display_messages() {
-        let e1 = OcrError::Init("test".to_string());
-        assert!(e1.to_string().contains("initialize"));
+        let e1 = VisionError::Ocr("initialize".to_string());
+        assert!(e1.to_string().contains("OCR error"));
 
-        let e2 = OcrError::ImageSetup("test".to_string());
-        assert!(e2.to_string().contains("image"));
+        let e2 = VisionError::Ocr("image setup".to_string());
+        assert!(e2.to_string().contains("OCR error"));
 
-        let e3 = OcrError::Extraction("test".to_string());
-        assert!(e3.to_string().contains("extraction"));
+        let e3 = VisionError::Ocr("extraction".to_string());
+        assert!(e3.to_string().contains("OCR error"));
 
-        let e4 = OcrError::EmptyImage;
-        assert!(e4.to_string().contains("Empty image"));
+        let e4 = VisionError::Ocr("Empty image".to_string());
+        assert!(e4.to_string().contains("OCR error"));
 
-        let e5 = OcrError::Async("test".to_string());
-        assert!(e5.to_string().contains("async"));
+        let e5 = VisionError::Ocr("async".to_string());
+        assert!(e5.to_string().contains("OCR error"));
     }
 
     #[test]
@@ -456,7 +483,7 @@ mod tests {
         let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
         let result = extractor.extract_async(&img).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+        assert!(matches!(result.unwrap_err(), VisionError::Ocr(_)));
     }
 
     #[test]
@@ -481,7 +508,7 @@ mod tests {
         let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
         let result = extractor.extract_words_with_boxes(&img).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+        assert!(matches!(result.unwrap_err(), VisionError::Ocr(_)));
     }
 
     #[tokio::test]
@@ -499,7 +526,7 @@ mod tests {
         let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
         let result = extractor.extract_regions(&img);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+        assert!(matches!(result.unwrap_err(), VisionError::Ocr(_)));
     }
 
     #[tokio::test]
@@ -508,7 +535,7 @@ mod tests {
         let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
         let result = extractor.extract_regions_async(&img).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+        assert!(matches!(result.unwrap_err(), VisionError::Ocr(_)));
     }
 
     #[test]

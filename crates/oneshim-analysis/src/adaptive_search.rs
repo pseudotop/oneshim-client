@@ -10,10 +10,10 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use crate::error::AnalysisError;
 #[cfg(feature = "hnsw")]
 use chrono::Utc;
 use oneshim_core::binary_quantizer::BinaryQuantizer;
-use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{SearchFilters, SearchResult};
 #[cfg(feature = "hnsw")]
 use oneshim_core::ports::ann_index::AnnIndex;
@@ -104,7 +104,7 @@ impl AdaptiveSearchCoordinator {
 
     /// Refresh the cached vector count from the store.
     /// Called from the scheduler aggregate loop (not the search hot path).
-    pub async fn refresh_count(&self) -> Result<(), CoreError> {
+    pub async fn refresh_count(&self) -> Result<(), AnalysisError> {
         let count = self.vector_store.count_active_vectors().await?;
         self.cached_vector_count.store(count, Ordering::Relaxed);
         Ok(())
@@ -163,7 +163,7 @@ impl AdaptiveSearchCoordinator {
         &self,
         hnsw_results: Vec<(u64, f32)>,
         time_decay_hours: f32,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         if hnsw_results.is_empty() {
             return Ok(Vec::new());
         }
@@ -214,7 +214,7 @@ impl AdaptiveSearchCoordinator {
         limit: usize,
         time_decay_hours: f32,
         filters: &SearchFilters,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         let strategy = self.determine_strategy();
         debug!(?strategy, "AdaptiveSearchCoordinator selected strategy");
 
@@ -243,11 +243,11 @@ impl AdaptiveSearchCoordinator {
         let quantized = ScalarQuantizer::quantize(query_f32)?;
 
         match strategy {
-            SearchStrategy::BruteForceInt8 => {
-                self.vector_store
-                    .search_quantized(&quantized, limit, time_decay_hours, filters)
-                    .await
-            }
+            SearchStrategy::BruteForceInt8 => self
+                .vector_store
+                .search_quantized(&quantized, limit, time_decay_hours, filters)
+                .await
+                .map_err(AnalysisError::Core),
             #[cfg(feature = "hnsw")]
             SearchStrategy::Hnsw => {
                 // Already handled above; this arm is unreachable but required
@@ -259,6 +259,7 @@ impl AdaptiveSearchCoordinator {
                 self.vector_index
                     .search_ivf(&quantized, nprobe, limit, time_decay_hours, filters)
                     .await
+                    .map_err(AnalysisError::Core)
             }
             SearchStrategy::IvfBinaryRerank => {
                 let nprobe = self.compute_nprobe();
@@ -278,6 +279,7 @@ impl AdaptiveSearchCoordinator {
                                 filters,
                             )
                             .await
+                            .map_err(AnalysisError::Core)
                     }
                     None => {
                         // Thresholds not built yet — fall back to IVF-only
@@ -285,6 +287,7 @@ impl AdaptiveSearchCoordinator {
                         self.vector_index
                             .search_ivf(&quantized, nprobe, limit, time_decay_hours, filters)
                             .await
+                            .map_err(AnalysisError::Core)
                     }
                 }
             }
@@ -299,7 +302,7 @@ impl AdaptiveSearchCoordinator {
     ///
     /// Call at startup (scheduler initialization) before the first search.
     #[cfg(feature = "hnsw")]
-    pub async fn load_or_rebuild_hnsw(&self) -> Result<(), CoreError> {
+    pub async fn load_or_rebuild_hnsw(&self) -> Result<(), AnalysisError> {
         let ann = match self.ann_index {
             Some(ref a) => a,
             None => {
@@ -351,6 +354,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use oneshim_core::binary_quantizer::{BinaryCode, QuantileThresholds};
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::embedding::{EmbeddingMetadata, SearchResult};
     use oneshim_core::ports::vector_index::IndexMeta;
     use oneshim_core::quantization::QuantizedVector;

@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use std::process::Command;
 
+use crate::error::AutomationError;
 use oneshim_core::config::{SandboxConfig, SandboxProfile};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
@@ -114,7 +115,7 @@ impl Sandbox for MacOsSandbox {
             "macOS Seatbelt sandbox execution"
         );
 
-        apply_resource_limits(config)?;
+        apply_resource_limits(config).map_err(CoreError::from)?;
 
         tracing::info!(
             action = ?action,
@@ -160,7 +161,7 @@ fn escape_sbpl_path(path: &str) -> String {
     path.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn apply_resource_limits(config: &SandboxConfig) -> Result<(), CoreError> {
+fn apply_resource_limits(config: &SandboxConfig) -> Result<(), AutomationError> {
     if config.max_memory_bytes > 0 {
         tracing::debug!(
             max_memory = config.max_memory_bytes,

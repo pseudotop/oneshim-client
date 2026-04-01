@@ -4,9 +4,10 @@ mod trait_impl;
 #[cfg(test)]
 mod tests;
 
-use oneshim_core::error::CoreError;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
+
+use crate::error::StorageError;
 
 pub use helpers::{
     brute_force_search, brute_force_search_quantized, bytes_to_f32_vec, bytes_to_i8_vec,
@@ -30,19 +31,19 @@ impl SqliteVectorStore {
     }
 
     /// Wrap a synchronous closure on the connection via `spawn_blocking`.
-    async fn with_conn<F, T>(&self, f: F) -> Result<T, CoreError>
+    async fn with_conn<F, T>(&self, f: F) -> Result<T, StorageError>
     where
-        F: FnOnce(&Connection) -> Result<T, CoreError> + Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, StorageError> + Send + 'static,
         T: Send + 'static,
     {
         let conn = self.conn.clone();
         tokio::task::spawn_blocking(move || {
             let guard = conn
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
             f(&guard)
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| StorageError::Internal(format!("spawn_blocking join error: {e}")))?
     }
 }

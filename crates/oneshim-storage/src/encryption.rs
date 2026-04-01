@@ -8,7 +8,7 @@
 //! SQLCipher 또는 at-rest 암호화 레이어와 연동 예정.
 //! 현재는 키 생성/저장/로드 인프라만 제공.
 
-use oneshim_core::error::CoreError;
+use crate::error::StorageError;
 use std::path::{Path, PathBuf};
 
 /// 32바이트 AES-256 데이터베이스 암호화 키
@@ -20,7 +20,7 @@ impl EncryptionKey {
     ///
     /// - 파일 존재 시: 로드 (32바이트 검증)
     /// - 파일 없을 시: 생성 후 파일에 저장 (Unix: 0o600 권한)
-    pub fn load_or_create(app_data_dir: &Path) -> Result<Self, CoreError> {
+    pub fn load_or_create(app_data_dir: &Path) -> Result<Self, StorageError> {
         let key_path = app_data_dir.join(".db_key");
 
         if key_path.exists() {
@@ -49,19 +49,20 @@ impl EncryptionKey {
         &self.0
     }
 
-    fn generate() -> Result<Self, CoreError> {
+    fn generate() -> Result<Self, StorageError> {
         let mut key = [0u8; 32];
-        getrandom::fill(&mut key)
-            .map_err(|e| CoreError::Internal(format!("OS random number generation failed: {e}")))?;
+        getrandom::fill(&mut key).map_err(|e| {
+            StorageError::Encryption(format!("OS random number generation failed: {e}"))
+        })?;
         Ok(Self(key))
     }
 
-    fn load_from_file(path: &PathBuf) -> Result<Self, CoreError> {
+    fn load_from_file(path: &PathBuf) -> Result<Self, StorageError> {
         let bytes = std::fs::read(path)
-            .map_err(|e| CoreError::Internal(format!("Key file read failed ({path:?}): {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Key file read failed ({path:?}): {e}")))?;
 
         if bytes.len() != 32 {
-            return Err(CoreError::Internal(format!(
+            return Err(StorageError::Internal(format!(
                 "Key file size error: expected 32 bytes, got {} bytes",
                 bytes.len()
             )));
@@ -72,15 +73,17 @@ impl EncryptionKey {
         Ok(Self(key))
     }
 
-    fn save_to_file(&self, path: &PathBuf) -> Result<(), CoreError> {
-        std::fs::write(path, self.0)
-            .map_err(|e| CoreError::Internal(format!("Key file write failed ({path:?}): {e}")))?;
+    fn save_to_file(&self, path: &PathBuf) -> Result<(), StorageError> {
+        std::fs::write(path, self.0).map_err(|e| {
+            StorageError::Internal(format!("Key file write failed ({path:?}): {e}"))
+        })?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-                .map_err(|e| CoreError::Internal(format!("Key file permission set failed: {e}")))?;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(
+                |e| StorageError::Internal(format!("Key file permission set failed: {e}")),
+            )?;
         }
 
         Ok(())

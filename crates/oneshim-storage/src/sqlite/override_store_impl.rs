@@ -8,6 +8,7 @@ use oneshim_core::ports::override_store::OverrideStore;
 use rusqlite::params;
 
 use super::SqliteStorage;
+use crate::error::StorageError;
 
 /// Serialize `UserOverrideAction` into (action_type, action_data) for storage.
 fn serialize_action(action: &UserOverrideAction) -> (String, Option<String>) {
@@ -34,18 +35,20 @@ fn serialize_action(action: &UserOverrideAction) -> (String, Option<String>) {
 fn deserialize_action(
     action_type: &str,
     action_data: Option<&str>,
-) -> Result<UserOverrideAction, CoreError> {
+) -> Result<UserOverrideAction, StorageError> {
     match action_type {
         "MARK_AS_NOISE" => Ok(UserOverrideAction::MarkAsNoise),
         "REASSIGN_REGIME" => {
             let data = action_data.ok_or_else(|| {
-                CoreError::Internal("Missing action_data for REASSIGN_REGIME".to_string())
+                StorageError::Internal("Missing action_data for REASSIGN_REGIME".to_string())
             })?;
-            let parsed: serde_json::Value = serde_json::from_str(data)?;
+            let parsed: serde_json::Value = serde_json::from_str(data).map_err(|e| {
+                StorageError::Internal(format!("Failed to parse REASSIGN_REGIME action_data: {e}"))
+            })?;
             let target = parsed["target_regime_id"]
                 .as_str()
                 .ok_or_else(|| {
-                    CoreError::Internal("Missing target_regime_id in action_data".to_string())
+                    StorageError::Internal("Missing target_regime_id in action_data".to_string())
                 })?
                 .to_string();
             Ok(UserOverrideAction::ReassignRegime {
@@ -54,24 +57,30 @@ fn deserialize_action(
         }
         "MARK_AS_PERSONAL_TIME" => {
             let data = action_data.ok_or_else(|| {
-                CoreError::Internal("Missing action_data for MARK_AS_PERSONAL_TIME".to_string())
+                StorageError::Internal("Missing action_data for MARK_AS_PERSONAL_TIME".to_string())
             })?;
-            let parsed: serde_json::Value = serde_json::from_str(data)?;
-            let from_str = parsed["from"]
-                .as_str()
-                .ok_or_else(|| CoreError::Internal("Missing 'from' in action_data".to_string()))?;
+            let parsed: serde_json::Value = serde_json::from_str(data).map_err(|e| {
+                StorageError::Internal(format!(
+                    "Failed to parse MARK_AS_PERSONAL_TIME action_data: {e}"
+                ))
+            })?;
+            let from_str = parsed["from"].as_str().ok_or_else(|| {
+                StorageError::Internal("Missing 'from' in action_data".to_string())
+            })?;
             let to_str = parsed["to"]
                 .as_str()
-                .ok_or_else(|| CoreError::Internal("Missing 'to' in action_data".to_string()))?;
+                .ok_or_else(|| StorageError::Internal("Missing 'to' in action_data".to_string()))?;
             let from = DateTime::parse_from_rfc3339(from_str)
-                .map_err(|e| CoreError::Internal(format!("Invalid 'from' datetime: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Invalid 'from' datetime: {e}")))?
                 .with_timezone(&Utc);
             let to = DateTime::parse_from_rfc3339(to_str)
-                .map_err(|e| CoreError::Internal(format!("Invalid 'to' datetime: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Invalid 'to' datetime: {e}")))?
                 .with_timezone(&Utc);
             Ok(UserOverrideAction::MarkAsPersonalTime { from, to })
         }
-        other => Err(CoreError::Internal(format!("Unknown action_type: {other}"))),
+        other => Err(StorageError::Internal(format!(
+            "Unknown action_type: {other}"
+        ))),
     }
 }
 
@@ -90,10 +99,11 @@ impl OverrideStore for SqliteStorage {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![override_id, segment_id, original_regime_id, action_type, action_data, created_at],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to save override: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to save override: {e}")))?;
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn list_overrides(
@@ -112,7 +122,7 @@ impl OverrideStore for SqliteStorage {
                      WHERE created_at >= ?1 AND created_at <= ?2
                      ORDER BY created_at ASC",
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare list query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare list query: {e}")))?;
 
             let rows = stmt
                 .query_map(params![from_str, to_str], |row| {
@@ -125,18 +135,18 @@ impl OverrideStore for SqliteStorage {
                         row.get::<_, String>(5)?,
                     ))
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to query overrides: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to query overrides: {e}")))?;
 
             let mut overrides = Vec::new();
             for row in rows {
                 let (override_id, segment_id, original_regime_id, action_type, action_data, created_at_str) =
-                    row.map_err(|e| CoreError::Internal(format!("Row read error: {e}")))?;
+                    row.map_err(|e| StorageError::Internal(format!("Row read error: {e}")))?;
 
                 let user_action =
                     deserialize_action(&action_type, action_data.as_deref())?;
 
                 let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-                    .map_err(|e| CoreError::Internal(format!("Invalid created_at: {e}")))?
+                    .map_err(|e| StorageError::Internal(format!("Invalid created_at: {e}")))?
                     .with_timezone(&Utc);
 
                 overrides.push(RegimeOverride {
@@ -151,6 +161,7 @@ impl OverrideStore for SqliteStorage {
             Ok(overrides)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn delete_override(&self, override_id: &str) -> Result<(), CoreError> {
@@ -161,10 +172,10 @@ impl OverrideStore for SqliteStorage {
                 "DELETE FROM regime_overrides WHERE override_id = ?1",
                 params![id],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to delete override: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to delete override: {e}")))?;
 
             if conn.changes() == 0 {
-                return Err(CoreError::NotFound {
+                return Err(StorageError::NotFound {
                     resource_type: "RegimeOverride".to_string(),
                     id,
                 });
@@ -172,6 +183,7 @@ impl OverrideStore for SqliteStorage {
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 }
 

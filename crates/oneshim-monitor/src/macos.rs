@@ -1,6 +1,6 @@
+use crate::error::MonitorError;
 use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use oneshim_core::error::CoreError;
 use oneshim_core::models::context::{MousePosition, WindowBounds, WindowInfo};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -22,7 +22,7 @@ const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
 /// if the permission was granted in the meantime.
 const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 60;
 
-pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
+pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, MonitorError> {
     let timeouts = CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed);
     if timeouts >= CIRCUIT_BREAKER_THRESHOLD {
         // Circuit breaker is open — periodically retry to detect permission grant
@@ -66,7 +66,8 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
         Ok(result) => {
             // osascript completed (success or failure, but did not hang)
             CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
-            result.map_err(|e| CoreError::Internal(format!("osascript execution failure: {e}")))?
+            result
+                .map_err(|e| MonitorError::Internal(format!("osascript execution failure: {e}")))?
         }
         Err(_elapsed) => {
             let prev = CONSECUTIVE_TIMEOUTS.fetch_add(1, Ordering::Relaxed);
@@ -77,7 +78,7 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
                     CIRCUIT_BREAKER_THRESHOLD
                 );
             }
-            return Err(CoreError::Internal("osascript timed out".to_string()));
+            return Err(MonitorError::Internal("osascript timed out".to_string()));
         }
     };
 

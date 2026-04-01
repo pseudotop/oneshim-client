@@ -24,9 +24,12 @@ pub struct FileIntegrationSessionStore {
 impl IntegrationSessionStorePort for FileIntegrationSessionStore {
     async fn load(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.load_session_sync()))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.load_session_sync())
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn store(&self, state: IntegrationSessionState) -> Result<(), CoreError> {
@@ -34,6 +37,7 @@ impl IntegrationSessionStorePort for FileIntegrationSessionStore {
         tokio::task::spawn_blocking(move || inner.store_session_sync(state))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 
     async fn clear(&self) -> Result<(), CoreError> {
@@ -41,6 +45,7 @@ impl IntegrationSessionStorePort for FileIntegrationSessionStore {
         tokio::task::spawn_blocking(move || inner.clear_session_sync())
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 }
 
@@ -60,6 +65,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         tokio::task::spawn_blocking(move || inner.enqueue_outbox_sync(envelope, payload))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 
     async fn list_pending(
@@ -67,9 +73,12 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         limit: usize,
     ) -> Result<Vec<QueuedIntegrationEgressMessage>, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.list_outbox_sync(limit)))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.list_outbox_sync(limit))
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn delete(&self, queue_ids: &[String]) -> Result<(), CoreError> {
@@ -78,20 +87,27 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         tokio::task::spawn_blocking(move || inner.delete_outbox_sync(&queue_ids))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 
     async fn pending_count(&self) -> Result<usize, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.outbox_pending_count_sync()))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.outbox_pending_count_sync())
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.outbox_ack_cursor_sync()))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.outbox_ack_cursor_sync())
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn store_ack_cursor(&self, cursor: IntegrationAckCursor) -> Result<(), CoreError> {
@@ -99,6 +115,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         tokio::task::spawn_blocking(move || inner.store_outbox_ack_cursor_sync(cursor))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 }
 
@@ -122,6 +139,7 @@ impl IntegrationPromptReceiptStorePort for FileIntegrationInboxStore {
         })
         .await
         .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 }
 
@@ -132,13 +150,17 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         tokio::task::spawn_blocking(move || inner.upsert_inbox_sync(prompts))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 
     async fn list_pending(&self) -> Result<Vec<StoredProactivePrompt>, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.list_inbox_pending_sync()))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.list_inbox_pending_sync())
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn list_unpresented(
@@ -146,16 +168,22 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         limit: usize,
     ) -> Result<Vec<StoredProactivePrompt>, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.list_inbox_unpresented_sync(limit)))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.list_inbox_unpresented_sync(limit))
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn pending_count(&self) -> Result<usize, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.inbox_pending_count_sync()))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.inbox_pending_count_sync())
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn mark_presented(
@@ -168,6 +196,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         tokio::task::spawn_blocking(move || inner.mark_presented_sync(&prompt_id, presented_at))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 
     async fn update_status(
@@ -183,6 +212,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         })
         .await
         .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn expire_stale(&self) -> Result<usize, CoreError> {
@@ -190,13 +220,17 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         tokio::task::spawn_blocking(move || inner.expire_inbox_sync())
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 
     async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.inbox_ack_cursor_sync()))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.inbox_ack_cursor_sync())
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn store_ack_cursor(&self, cursor: IntegrationAckCursor) -> Result<(), CoreError> {
@@ -204,6 +238,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         tokio::task::spawn_blocking(move || inner.store_inbox_ack_cursor_sync(cursor))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 }
 
@@ -222,6 +257,7 @@ impl IntegrationAuditPort for FileIntegrationAuditStore {
         tokio::task::spawn_blocking(move || inner.record_audit_sync(record))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 
     async fn recent_insight_decisions(
@@ -229,9 +265,12 @@ impl IntegrationAuditPort for FileIntegrationAuditStore {
         limit: usize,
     ) -> Result<Vec<IntegrationInsightAuditRecord>, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || Ok(inner.recent_audit_sync(limit)))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.recent_audit_sync(limit))
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 }
 
@@ -245,9 +284,12 @@ impl IntegrationCheckpointStorePort for FileIntegrationCheckpointStore {
     async fn load_checkpoint(&self, namespace: &str) -> Result<Option<String>, CoreError> {
         let inner = self.inner.clone();
         let namespace = namespace.to_string();
-        tokio::task::spawn_blocking(move || Ok(inner.load_checkpoint_sync(&namespace)))
-            .await
-            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::error::StorageError>(inner.load_checkpoint_sync(&namespace))
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+        .map_err(Into::into)
     }
 
     async fn store_checkpoint(&self, namespace: &str, cursor: String) -> Result<(), CoreError> {
@@ -256,5 +298,6 @@ impl IntegrationCheckpointStorePort for FileIntegrationCheckpointStore {
         tokio::task::spawn_blocking(move || inner.store_checkpoint_sync(&namespace, cursor))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+            .map_err(Into::into)
     }
 }

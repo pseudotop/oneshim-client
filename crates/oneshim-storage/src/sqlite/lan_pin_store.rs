@@ -1,22 +1,22 @@
 //! LAN peer TOFU pin store -- CRUD for `lan_peer_pins` table.
 
-use oneshim_core::error::CoreError;
+use crate::error::StorageError;
 
 use super::SqliteStorage;
 
 impl SqliteStorage {
     /// Get the stored pin for a peer device.
     /// Returns `Some((fingerprint, trust_revoked))` if found, `None` otherwise.
-    pub fn get_lan_pin(&self, device_id: &str) -> Result<Option<(String, bool)>, CoreError> {
+    pub fn get_lan_pin(&self, device_id: &str) -> Result<Option<(String, bool)>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
         let mut stmt = conn
             .prepare(
                 "SELECT cert_fingerprint, trust_revoked FROM lan_peer_pins WHERE device_id = ?",
             )
-            .map_err(|e| CoreError::Internal(format!("prepare get_lan_pin: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("prepare get_lan_pin: {e}")))?;
 
         let result = stmt
             .query_row([device_id], |row| {
@@ -25,18 +25,22 @@ impl SqliteStorage {
                 Ok((fingerprint, revoked))
             })
             .optional()
-            .map_err(|e| CoreError::Internal(format!("get_lan_pin: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("get_lan_pin: {e}")))?;
 
         Ok(result)
     }
 
     /// Insert or update a peer's TOFU pin.
     /// On conflict (existing device_id), updates the fingerprint and last_seen_at.
-    pub fn upsert_lan_pin(&self, device_id: &str, cert_fingerprint: &str) -> Result<(), CoreError> {
+    pub fn upsert_lan_pin(
+        &self,
+        device_id: &str,
+        cert_fingerprint: &str,
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
         conn.execute(
             "INSERT INTO lan_peer_pins (device_id, cert_fingerprint)
              VALUES (?, ?)
@@ -45,22 +49,22 @@ impl SqliteStorage {
                 last_seen_at = datetime('now')",
             rusqlite::params![device_id, cert_fingerprint],
         )
-        .map_err(|e| CoreError::Internal(format!("upsert_lan_pin: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("upsert_lan_pin: {e}")))?;
 
         Ok(())
     }
 
     /// Revoke trust for a peer device (TOFU violation).
-    pub fn revoke_lan_pin(&self, device_id: &str) -> Result<(), CoreError> {
+    pub fn revoke_lan_pin(&self, device_id: &str) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
         conn.execute(
             "UPDATE lan_peer_pins SET trust_revoked = 1 WHERE device_id = ?",
             [device_id],
         )
-        .map_err(|e| CoreError::Internal(format!("revoke_lan_pin: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("revoke_lan_pin: {e}")))?;
 
         Ok(())
     }

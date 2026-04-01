@@ -10,25 +10,26 @@ use std::time::Duration;
 use tracing::{debug, warn};
 
 use crate::auth::TokenManager;
+use crate::error::NetworkError;
 use crate::resilience::{extract_retry_after, jittered_backoff_delay};
 
 const DEFAULT_MAX_RETRIES: u32 = 3;
 
-fn is_retryable(error: &CoreError) -> bool {
+fn is_retryable(error: &NetworkError) -> bool {
     matches!(
         error,
-        CoreError::Network(_)
-            | CoreError::RequestTimeout { .. }
-            | CoreError::ServiceUnavailable(_)
-            | CoreError::RateLimit { .. }
+        NetworkError::Http(_)
+            | NetworkError::Timeout { .. }
+            | NetworkError::ServiceUnavailable(_)
+            | NetworkError::RateLimited { .. }
     )
 }
 
-fn map_reqwest_error(e: reqwest::Error, context: &str, timeout_ms: u64) -> CoreError {
+fn map_reqwest_error(e: reqwest::Error, context: &str, timeout_ms: u64) -> NetworkError {
     if e.is_timeout() {
-        CoreError::RequestTimeout { timeout_ms }
+        NetworkError::Timeout { timeout_ms }
     } else {
-        CoreError::Network(format!("{context}: {e}"))
+        NetworkError::Http(format!("{context}: {e}"))
     }
 }
 
@@ -48,7 +49,7 @@ pub struct HttpApiClient {
 pub fn build_reqwest_client(
     tls: &TlsConfig,
     timeout: Option<Duration>,
-) -> Result<reqwest::Client, CoreError> {
+) -> Result<reqwest::Client, NetworkError> {
     let mut builder = reqwest::Client::builder();
     if let Some(t) = timeout {
         builder = builder.timeout(t);
@@ -69,7 +70,7 @@ pub fn build_reqwest_client(
 
     builder
         .build()
-        .map_err(|e| CoreError::Network(format!("Failed to build HTTP client: {}", e)))
+        .map_err(|e| NetworkError::Http(format!("Failed to build HTTP client: {}", e)))
 }
 
 impl HttpApiClient {
@@ -78,11 +79,11 @@ impl HttpApiClient {
         base_url: &str,
         token_manager: Arc<TokenManager>,
         timeout: Duration,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, NetworkError> {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .map_err(|e| CoreError::Network(format!("Failed to build HTTP client: {}", e)))?;
+            .map_err(|e| NetworkError::Http(format!("Failed to build HTTP client: {}", e)))?;
 
         Ok(Self {
             client,
@@ -101,7 +102,7 @@ impl HttpApiClient {
         token_manager: Arc<TokenManager>,
         timeout: Duration,
         tls: &TlsConfig,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, NetworkError> {
         let client = build_reqwest_client(tls, Some(timeout))?;
         Ok(Self {
             client,
@@ -121,8 +122,12 @@ impl HttpApiClient {
         &self,
         method: reqwest::Method,
         path: &str,
-    ) -> Result<reqwest::RequestBuilder, CoreError> {
-        let token = self.token_manager.get_token().await?;
+    ) -> Result<reqwest::RequestBuilder, NetworkError> {
+        let token = self
+            .token_manager
+            .get_token()
+            .await
+            .map_err(NetworkError::Core)?;
         let url = format!("{}{}", self.base_url, path);
         Ok(self.client.request(method, &url).bearer_auth(token))
     }
@@ -130,7 +135,7 @@ impl HttpApiClient {
     async fn check_response(
         &self,
         resp: reqwest::Response,
-    ) -> Result<reqwest::Response, CoreError> {
+    ) -> Result<reqwest::Response, NetworkError> {
         let status = resp.status();
 
         if status.is_success() {
@@ -145,25 +150,27 @@ impl HttpApiClient {
         });
 
         match status_code {
-            401 => Err(CoreError::Auth(format!("Authentication failed: {text}"))),
-            404 => Err(CoreError::NotFound {
+            401 => Err(NetworkError::Auth(format!("Authentication failed: {text}"))),
+            404 => Err(NetworkError::NotFound {
                 resource_type: "API".to_string(),
                 id: text,
             }),
-            429 => Err(CoreError::RateLimit {
+            429 => Err(NetworkError::RateLimited {
                 retry_after_secs: retry_after,
             }),
-            503 => Err(CoreError::ServiceUnavailable(text)),
-            _ => Err(CoreError::Internal(format!("API error ({status}): {text}"))),
+            503 => Err(NetworkError::ServiceUnavailable(text)),
+            _ => Err(NetworkError::Internal(format!(
+                "API error ({status}): {text}"
+            ))),
         }
     }
 
-    async fn execute_with_retry<F, Fut, T>(&self, operation: F) -> Result<T, CoreError>
+    async fn execute_with_retry<F, Fut, T>(&self, operation: F) -> Result<T, NetworkError>
     where
         F: Fn() -> Fut,
-        Fut: std::future::Future<Output = Result<T, CoreError>>,
+        Fut: std::future::Future<Output = Result<T, NetworkError>>,
     {
-        let mut last_error = CoreError::Internal("request failure".to_string());
+        let mut last_error = NetworkError::Internal("request failure".to_string());
         for attempt in 0..=self.max_retries {
             match operation().await {
                 Ok(result) => return Ok(result),
@@ -173,7 +180,7 @@ impl HttpApiClient {
                     }
 
                     let delay = match &e {
-                        CoreError::RateLimit { retry_after_secs } => {
+                        NetworkError::RateLimited { retry_after_secs } => {
                             Duration::from_secs(*retry_after_secs)
                         }
                         _ => jittered_backoff_delay(
@@ -216,13 +223,14 @@ impl ApiClient for HttpApiClient {
 
             let resp = self.check_response(resp).await?;
             let session: SessionCreateResponse = resp.json().await.map_err(|e| {
-                CoreError::Internal(format!("Failed to parse session response: {e}"))
+                NetworkError::Internal(format!("Failed to parse session response: {e}"))
             })?;
 
             debug!("session create success: session_id={}", session.session_id);
             Ok(session)
         })
         .await
+        .map_err(CoreError::from)
     }
 
     async fn end_session(&self, session_id: &str) -> Result<(), CoreError> {
@@ -243,6 +251,7 @@ impl ApiClient for HttpApiClient {
             Ok(())
         })
         .await
+        .map_err(CoreError::from)
     }
 
     async fn upload_batch(&self, batch: &EventBatch) -> Result<(), CoreError> {
@@ -262,6 +271,7 @@ impl ApiClient for HttpApiClient {
             Ok(())
         })
         .await
+        .map_err(CoreError::from)
     }
 
     async fn upload_context(&self, upload: &ContextUpload) -> Result<(), CoreError> {
@@ -282,6 +292,7 @@ impl ApiClient for HttpApiClient {
             Ok(())
         })
         .await
+        .map_err(CoreError::from)
     }
 
     async fn send_feedback(&self, feedback: &SuggestionFeedback) -> Result<(), CoreError> {
@@ -305,6 +316,7 @@ impl ApiClient for HttpApiClient {
             Ok(())
         })
         .await
+        .map_err(CoreError::from)
     }
 
     async fn send_heartbeat(&self, session_id: &str) -> Result<(), CoreError> {
@@ -325,12 +337,14 @@ impl ApiClient for HttpApiClient {
             Ok(())
         })
         .await
+        .map_err(CoreError::from)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::NetworkError;
 
     #[test]
     fn build_reqwest_client_tls_disabled_succeeds() {
@@ -384,15 +398,15 @@ mod tests {
 
     #[test]
     fn is_retryable_errors() {
-        assert!(is_retryable(&CoreError::Network("test".to_string())));
-        assert!(is_retryable(&CoreError::ServiceUnavailable(
+        assert!(is_retryable(&NetworkError::Http("test".to_string())));
+        assert!(is_retryable(&NetworkError::ServiceUnavailable(
             "test".to_string()
         )));
-        assert!(is_retryable(&CoreError::RateLimit {
+        assert!(is_retryable(&NetworkError::RateLimited {
             retry_after_secs: 60
         }));
-        assert!(!is_retryable(&CoreError::Auth("test".to_string())));
-        assert!(!is_retryable(&CoreError::Internal("test".to_string())));
+        assert!(!is_retryable(&NetworkError::Auth("test".to_string())));
+        assert!(!is_retryable(&NetworkError::Internal("test".to_string())));
     }
 
     async fn setup_authed_client(
@@ -588,7 +602,10 @@ mod tests {
         let result = client.send_heartbeat("sess_1").await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, CoreError::ServiceUnavailable(_)));
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable(_)),
+            "err: {err:?}"
+        );
         mock.assert_async().await;
     }
 

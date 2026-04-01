@@ -78,9 +78,15 @@ foo/
 
 The `tests/mod.rs` file contains shared test infrastructure (mocks, fixture builders, constants). Individual test files are organized by functional area. This keeps `mod.rs` focused on production code while maintaining test discoverability through the module hierarchy.
 
-### 5. Split by responsibility, not by size
+### 5. SOLID principles take priority over line counts
 
-Sub-files are organized by functional responsibility, not arbitrary line counts:
+**A file should be split when it violates the Single Responsibility Principle (SRP), not because it exceeds a line count.** A well-structured 1,000-line file with one clear responsibility is better than three 300-line files with tangled concerns.
+
+The 500-line threshold is a **signal to review**, not a trigger to split:
+- **>500 lines → review for SRP violations.** If the file has one cohesive responsibility, leave it as-is.
+- **SRP violation at any size → split by responsibility.** Even a 200-line file with two unrelated concerns should be split.
+
+Sub-files are organized by functional responsibility:
 
 - **types/models**: Data structures, enums, DTOs
 - **helpers**: Private utility functions
@@ -88,7 +94,8 @@ Sub-files are organized by functional responsibility, not arbitrary line counts:
 
 ### 6. Threshold and exclusions
 
-- **Threshold**: 500 lines (soft guideline, not a hard rule)
+- **Threshold**: 500 lines (soft guideline — a review signal, not a split trigger)
+- **Priority**: SOLID compliance > line count. Do not split files mechanically by size alone.
 - **Excluded**: `main.rs` and similar binary entry points where sequential composition logic is the primary concern
 - **Not retroactive**: Files under 500 lines should not be split preemptively
 

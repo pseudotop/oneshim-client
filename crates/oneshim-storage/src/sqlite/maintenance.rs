@@ -1,4 +1,4 @@
-use oneshim_core::error::CoreError;
+use crate::error::StorageError;
 use std::sync::atomic::Ordering;
 use tracing::{debug, info};
 
@@ -9,15 +9,15 @@ use super::{
 };
 
 impl SqliteStorage {
-    pub fn list_backup_tags(&self) -> Result<Vec<super::TagRecord>, CoreError> {
+    pub fn list_backup_tags(&self) -> Result<Vec<super::TagRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT id, name, color, created_at FROM tags ORDER BY id")
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map([], |row| {
@@ -28,26 +28,27 @@ impl SqliteStorage {
                     created_at: row.get(3)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
 
-    pub fn list_backup_frame_tags(&self) -> Result<Vec<FrameTagLinkRecord>, CoreError> {
+    pub fn list_backup_frame_tags(&self) -> Result<Vec<FrameTagLinkRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT frame_id, tag_id, created_at FROM frame_tags ORDER BY frame_id, tag_id",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map([], |row| {
@@ -57,11 +58,12 @@ impl SqliteStorage {
                     created_at: row.get(2)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -72,17 +74,17 @@ impl SqliteStorage {
         name: &str,
         color: &str,
         created_at: &str,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT OR IGNORE INTO tags (id, name, color, created_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![id, name, color, created_at],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to save tag: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to save tag: {e}")))?;
 
         Ok(())
     }
@@ -92,17 +94,17 @@ impl SqliteStorage {
         frame_id: i64,
         tag_id: i64,
         created_at: &str,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT OR IGNORE INTO frame_tags (frame_id, tag_id, created_at) VALUES (?1, ?2, ?3)",
             rusqlite::params![frame_id, tag_id, created_at],
         )
-        .map_err(|e| CoreError::Internal(format!("frame-Failed to save tag: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("frame-Failed to save tag: {e}")))?;
 
         Ok(())
     }
@@ -114,11 +116,11 @@ impl SqliteStorage {
         timestamp: &str,
         app_name: Option<&str>,
         window_title: Option<&str>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let data = serde_json::json!({
             "app_name": app_name,
@@ -131,7 +133,7 @@ impl SqliteStorage {
              VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![event_id, event_type, timestamp, data],
         )
-        .map_err(|e| CoreError::Internal(format!("event save failure: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("event save failure: {e}")))?;
 
         Ok(())
     }
@@ -148,11 +150,11 @@ impl SqliteStorage {
         width: i32,
         height: i32,
         ocr_text: Option<&str>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let exists: bool = conn
             .query_row(
@@ -180,17 +182,17 @@ impl SqliteStorage {
                     ocr_text,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("frame save failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("frame save failure: {e}")))?;
         }
 
         Ok(())
     }
 
-    pub fn get_storage_stats_summary(&self) -> Result<StorageStatsSummaryRecord, CoreError> {
+    pub fn get_storage_stats_summary(&self) -> Result<StorageStatsSummaryRecord, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let frame_count: u64 = conn
             .query_row("SELECT COUNT(*) FROM frames", [], |row| row.get(0))
@@ -252,26 +254,26 @@ impl SqliteStorage {
         &self,
         from: &str,
         to: &str,
-    ) -> Result<Vec<String>, CoreError> {
+    ) -> Result<Vec<String>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT file_path FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2")
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
                 row.get::<_, Option<String>>(0)
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut paths = Vec::new();
         for row in rows {
             if let Some(path) = row
-                .map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?
                 .filter(|p| !p.is_empty())
             {
                 paths.push(path);
@@ -290,11 +292,11 @@ impl SqliteStorage {
         delete_metrics: bool,
         delete_processes: bool,
         delete_idle: bool,
-    ) -> Result<DeletedRangeCounts, CoreError> {
+    ) -> Result<DeletedRangeCounts, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut counts = DeletedRangeCounts::default();
 
@@ -304,7 +306,7 @@ impl SqliteStorage {
                     "DELETE FROM events WHERE timestamp >= ?1 AND timestamp <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("event delete failure: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("event delete failure: {e}")))?
                 as u64;
         }
 
@@ -314,7 +316,7 @@ impl SqliteStorage {
                     "DELETE FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("frame delete failure: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("frame delete failure: {e}")))?
                 as u64;
         }
 
@@ -324,7 +326,7 @@ impl SqliteStorage {
                     "DELETE FROM system_metrics WHERE timestamp >= ?1 AND timestamp <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to delete metrics: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to delete metrics: {e}")))?
                 as u64;
 
             let _ = conn.execute(
@@ -340,7 +342,7 @@ impl SqliteStorage {
                     rusqlite::params![from, to],
                 )
                 .map_err(|e| {
-                    CoreError::Internal(format!("Failed to delete process snapshots: {e}"))
+                    StorageError::Internal(format!("Failed to delete process snapshots: {e}"))
                 })? as u64;
         }
 
@@ -350,7 +352,7 @@ impl SqliteStorage {
                     "DELETE FROM idle_periods WHERE start_time >= ?1 AND start_time <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("idle record delete failure: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("idle record delete failure: {e}")))?
                 as u64;
         }
 
@@ -360,11 +362,11 @@ impl SqliteStorage {
     /// Atomically delete all user data from every known table inside a single
     /// SQLite transaction. On any failure the transaction auto-rolls-back so
     /// the database is never left in a partially-deleted state (GDPR compliance).
-    pub fn delete_all_data(&self) -> Result<(), CoreError> {
+    pub fn delete_all_data(&self) -> Result<(), StorageError> {
         let mut conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         // All tables created by V1-V17 migrations (excluding schema_version).
         // Order: child/referencing tables before parent tables to avoid FK issues
@@ -416,17 +418,17 @@ impl SqliteStorage {
 
         let tx = conn
             .transaction()
-            .map_err(|e| CoreError::Internal(format!("Failed to begin transaction: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to begin transaction: {e}")))?;
 
         for table in ALL_TABLES {
             tx.execute(&format!("DELETE FROM {table}"), [])
                 .map_err(|e| {
-                    CoreError::Internal(format!("GDPR delete failed on table '{table}': {e}"))
+                    StorageError::Internal(format!("GDPR delete failed on table '{table}': {e}"))
                 })?;
         }
 
         tx.commit()
-            .map_err(|e| CoreError::Internal(format!("Failed to commit GDPR deletion: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to commit GDPR deletion: {e}")))?;
 
         Ok(())
     }
@@ -435,11 +437,11 @@ impl SqliteStorage {
         &self,
         from: &str,
         to: &str,
-    ) -> Result<Vec<EventExportRecord>, CoreError> {
+    ) -> Result<Vec<EventExportRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -448,7 +450,7 @@ impl SqliteStorage {
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
@@ -460,11 +462,12 @@ impl SqliteStorage {
                     window_title: row.get(4)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -473,11 +476,11 @@ impl SqliteStorage {
         &self,
         from: &str,
         to: &str,
-    ) -> Result<Vec<MetricExportRecord>, CoreError> {
+    ) -> Result<Vec<MetricExportRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -487,7 +490,7 @@ impl SqliteStorage {
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
@@ -502,11 +505,12 @@ impl SqliteStorage {
                     network_download: row.get(7)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -515,11 +519,11 @@ impl SqliteStorage {
         &self,
         from: &str,
         to: &str,
-    ) -> Result<Vec<FrameExportRecord>, CoreError> {
+    ) -> Result<Vec<FrameExportRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -529,7 +533,7 @@ impl SqliteStorage {
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
@@ -545,11 +549,12 @@ impl SqliteStorage {
                     ocr_text: row.get(8)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -558,22 +563,22 @@ impl SqliteStorage {
         &self,
         count_sql: &str,
         pattern: Option<&str>,
-    ) -> Result<u64, CoreError> {
+    ) -> Result<u64, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = match pattern {
             Some(p) => conn
                 .query_row(count_sql, rusqlite::params![p], |row| row.get(0))
                 .map_err(|e| {
-                    CoreError::Internal(format!("Failed to count frame search results: {e}"))
+                    StorageError::Internal(format!("Failed to count frame search results: {e}"))
                 })?,
             None => conn
                 .query_row(count_sql, [], |row| row.get(0))
                 .map_err(|e| {
-                    CoreError::Internal(format!("Failed to count frame search results: {e}"))
+                    StorageError::Internal(format!("Failed to count frame search results: {e}"))
                 })?,
         };
 
@@ -586,15 +591,15 @@ impl SqliteStorage {
         pattern: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<SearchFrameRow>, CoreError> {
+    ) -> Result<Vec<SearchFrameRow>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(select_sql)
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         if let Some(p) = pattern {
             let rows = stmt
@@ -612,12 +617,12 @@ impl SqliteStorage {
                         })
                     },
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to query frames: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to query frames: {e}")))?;
 
             let mut records = Vec::new();
             for row in rows {
                 records.push(
-                    row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?,
+                    row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?,
                 );
             }
             Ok(records)
@@ -637,23 +642,23 @@ impl SqliteStorage {
                         })
                     },
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to query frames: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to query frames: {e}")))?;
 
             let mut records = Vec::new();
             for row in rows {
                 records.push(
-                    row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?,
+                    row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?,
                 );
             }
             Ok(records)
         }
     }
 
-    pub fn count_search_events(&self, pattern: &str) -> Result<u64, CoreError> {
+    pub fn count_search_events(&self, pattern: &str) -> Result<u64, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -663,7 +668,7 @@ impl SqliteStorage {
                 |row| row.get(0),
             )
             .map_err(|e| {
-                CoreError::Internal(format!("Failed to count event search results: {e}"))
+                StorageError::Internal(format!("Failed to count event search results: {e}"))
             })?;
 
         Ok(count as u64)
@@ -674,11 +679,11 @@ impl SqliteStorage {
         pattern: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<SearchEventRow>, CoreError> {
+    ) -> Result<Vec<SearchEventRow>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -688,7 +693,7 @@ impl SqliteStorage {
                  ORDER BY timestamp DESC
                  LIMIT ?2 OFFSET ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(
@@ -703,11 +708,12 @@ impl SqliteStorage {
                     })
                 },
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to query events: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to query events: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -716,14 +722,14 @@ impl SqliteStorage {
 
     /// Execute a PASSIVE WAL checkpoint. Non-blocking — does not wait for
     /// concurrent readers or writers to finish.
-    pub fn wal_checkpoint_passive(&self) -> Result<(), CoreError> {
+    pub fn wal_checkpoint_passive(&self) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE)")
-            .map_err(|e| CoreError::Internal(format!("WAL checkpoint PASSIVE failed: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("WAL checkpoint PASSIVE failed: {e}")))?;
 
         debug!("WAL checkpoint PASSIVE completed");
         Ok(())
@@ -731,11 +737,11 @@ impl SqliteStorage {
 
     /// Run VACUUM if freelist_count / page_count exceeds `threshold_percent`.
     /// Returns `true` when VACUUM was actually executed.
-    pub fn maybe_vacuum(&self, threshold_percent: u64) -> Result<bool, CoreError> {
+    pub fn maybe_vacuum(&self, threshold_percent: u64) -> Result<bool, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let freelist_count: u64 = conn
             .query_row("PRAGMA freelist_count", [], |row| row.get(0))
@@ -754,7 +760,7 @@ impl SqliteStorage {
                 "Running VACUUM: freelist={freelist_count} pages={page_count} ({free_pct}% free)"
             );
             conn.execute_batch("VACUUM")
-                .map_err(|e| CoreError::Internal(format!("VACUUM failed: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("VACUUM failed: {e}")))?;
             Ok(true)
         } else {
             debug!(
@@ -766,7 +772,7 @@ impl SqliteStorage {
 
     /// Incrementally merge up to `pages` FTS5 b-tree pages.
     /// No-op if the search_fts table does not exist.
-    pub fn fts_merge(&self, pages: u32) -> Result<(), CoreError> {
+    pub fn fts_merge(&self, pages: u32) -> Result<(), StorageError> {
         if !FTS_AVAILABLE.load(Ordering::Relaxed) {
             return Ok(());
         }
@@ -774,13 +780,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT INTO search_fts(search_fts, rank) VALUES('merge', ?1)",
             rusqlite::params![pages as i64],
         )
-        .map_err(|e| CoreError::Internal(format!("FTS5 merge failed: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("FTS5 merge failed: {e}")))?;
 
         debug!("FTS5 incremental merge completed ({pages} pages)");
         Ok(())
@@ -789,7 +795,7 @@ impl SqliteStorage {
     /// Full FTS5 optimize — merges all b-tree segments into one. Expensive
     /// but dramatically speeds up subsequent FTS queries.
     /// No-op if the search_fts table does not exist.
-    pub fn fts_optimize(&self) -> Result<(), CoreError> {
+    pub fn fts_optimize(&self) -> Result<(), StorageError> {
         if !FTS_AVAILABLE.load(Ordering::Relaxed) {
             return Ok(());
         }
@@ -797,24 +803,24 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute("INSERT INTO search_fts(search_fts) VALUES('optimize')", [])
-            .map_err(|e| CoreError::Internal(format!("FTS5 optimize failed: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("FTS5 optimize failed: {e}")))?;
 
         info!("FTS5 full optimize completed");
         Ok(())
     }
 
     /// Run ANALYZE to refresh query planner statistics for all tables.
-    pub fn run_analyze(&self) -> Result<(), CoreError> {
+    pub fn run_analyze(&self) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute_batch("ANALYZE")
-            .map_err(|e| CoreError::Internal(format!("ANALYZE failed: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("ANALYZE failed: {e}")))?;
 
         debug!("ANALYZE completed");
         Ok(())
@@ -822,9 +828,9 @@ impl SqliteStorage {
 
     /// Run ANALYZE using an already-held connection guard. Use this inside
     /// methods that have already locked `self.conn` to avoid deadlocking.
-    pub(super) fn run_analyze_with_conn(conn: &rusqlite::Connection) -> Result<(), CoreError> {
+    pub(super) fn run_analyze_with_conn(conn: &rusqlite::Connection) -> Result<(), StorageError> {
         conn.execute_batch("ANALYZE")
-            .map_err(|e| CoreError::Internal(format!("ANALYZE failed: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("ANALYZE failed: {e}")))?;
         debug!("ANALYZE (inline) completed");
         Ok(())
     }

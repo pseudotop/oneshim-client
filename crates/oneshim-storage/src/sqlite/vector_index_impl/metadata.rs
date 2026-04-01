@@ -1,28 +1,28 @@
 use oneshim_core::binary_quantizer::{BinaryCode, QuantileThresholds};
-use oneshim_core::error::CoreError;
 use oneshim_core::ports::vector_index::IndexMeta;
 use oneshim_core::quantization::{QuantizedVector, ScalarQuantizer};
 use rusqlite::params;
 
 use super::SqliteVectorIndex;
+use crate::error::StorageError;
 
 pub(super) async fn assign_to_cluster_impl(
     index: &SqliteVectorIndex,
     vector_id: i64,
     vector: &QuantizedVector,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     index.ensure_cache().await?;
 
     let cluster_id = {
         let cache = index.centroid_cache.read().await;
         let centroids = cache
             .as_ref()
-            .ok_or_else(|| CoreError::Internal("IVF index not built yet".to_string()))?;
+            .ok_or_else(|| StorageError::Internal("IVF index not built yet".to_string()))?;
 
         // Pre-validate dimensions once before the hot loop.
         if let Some(first) = centroids.first() {
             if first.vector.data.len() != vector.data.len() {
-                return Err(CoreError::InvalidArguments(format!(
+                return Err(StorageError::Config(format!(
                     "Dimension mismatch: centroid {} vs query {}",
                     first.vector.data.len(),
                     vector.data.len()
@@ -47,7 +47,9 @@ pub(super) async fn assign_to_cluster_impl(
                 "INSERT OR REPLACE INTO ivf_assignments (vector_id, cluster_id) VALUES (?1, ?2)",
                 params![vector_id, cluster_id as i64],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to assign vector to cluster: {e}")))?;
+            .map_err(|e| {
+                StorageError::Internal(format!("Failed to assign vector to cluster: {e}"))
+            })?;
             Ok(())
         })
         .await
@@ -57,7 +59,7 @@ pub(super) async fn store_binary_code_impl(
     index: &SqliteVectorIndex,
     vector_id: i64,
     code: &BinaryCode,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     let code_data = code.data.clone();
     index
         .with_conn(move |conn| {
@@ -66,14 +68,16 @@ pub(super) async fn store_binary_code_impl(
                 params![vector_id, code_data],
             )
             .map_err(|e| {
-                CoreError::Internal(format!("Failed to store binary code: {e}"))
+                StorageError::Internal(format!("Failed to store binary code: {e}"))
             })?;
             Ok(())
         })
         .await
 }
 
-pub(super) async fn get_index_meta_impl(index: &SqliteVectorIndex) -> Result<IndexMeta, CoreError> {
+pub(super) async fn get_index_meta_impl(
+    index: &SqliteVectorIndex,
+) -> Result<IndexMeta, StorageError> {
     index
         .with_conn(move |conn| {
             let get_meta = |key: &str| -> Option<String> {
@@ -118,7 +122,7 @@ pub(super) async fn get_index_meta_impl(index: &SqliteVectorIndex) -> Result<Ind
         .await
 }
 
-pub(super) async fn count_unindexed_impl(index: &SqliteVectorIndex) -> Result<u64, CoreError> {
+pub(super) async fn count_unindexed_impl(index: &SqliteVectorIndex) -> Result<u64, StorageError> {
     index
         .with_conn(move |conn| {
             let count: i64 = conn
@@ -130,7 +134,7 @@ pub(super) async fn count_unindexed_impl(index: &SqliteVectorIndex) -> Result<u6
                     |row| row.get(0),
                 )
                 .map_err(|e| {
-                    CoreError::Internal(format!("Failed to count unindexed vectors: {e}"))
+                    StorageError::Internal(format!("Failed to count unindexed vectors: {e}"))
                 })?;
             Ok(count as u64)
         })
@@ -139,7 +143,7 @@ pub(super) async fn count_unindexed_impl(index: &SqliteVectorIndex) -> Result<u6
 
 pub(super) async fn load_quantile_thresholds_impl(
     index: &SqliteVectorIndex,
-) -> Result<Option<QuantileThresholds>, CoreError> {
+) -> Result<Option<QuantileThresholds>, StorageError> {
     index
         .with_conn(move |conn| {
             let json_opt: Option<String> = conn
@@ -154,7 +158,7 @@ pub(super) async fn load_quantile_thresholds_impl(
                 Some(json) => {
                     let thresholds: QuantileThresholds =
                         serde_json::from_str(&json).map_err(|e| {
-                            CoreError::Internal(format!(
+                            StorageError::Internal(format!(
                                 "Failed to deserialize quantile thresholds: {e}"
                             ))
                         })?;

@@ -1,6 +1,6 @@
+use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 use crossbeam::queue::ArrayQueue;
-use oneshim_core::error::CoreError;
 use parking_lot::Mutex as ParkingMutex;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering, Ordering as AtomicOrdering};
@@ -135,11 +135,11 @@ impl FrameFileStorage {
         base_dir: PathBuf,
         max_storage_mb: u64,
         retention_days: u32,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, StorageError> {
         let frames_dir = base_dir.join("frames");
-        fs::create_dir_all(&frames_dir)
-            .await
-            .map_err(|e| CoreError::Internal(format!("Failed to create frame directory: {e}")))?;
+        fs::create_dir_all(&frames_dir).await.map_err(|e| {
+            StorageError::Internal(format!("Failed to create frame directory: {e}"))
+        })?;
 
         info!(
             "frame storage initialized: {} (max={}MB, retention={} days, buffer_pool={})",
@@ -167,11 +167,11 @@ impl FrameFileStorage {
         &self,
         timestamp: DateTime<Utc>,
         webp_data: &[u8],
-    ) -> Result<PathBuf, CoreError> {
+    ) -> Result<PathBuf, StorageError> {
         let free_mb = self.disk_cache.get_free_mb(&self.base_dir);
         if free_mb < DISK_SPACE_CRITICAL_MB {
             error!(free_mb, "disk space critical — skipping frame save");
-            return Err(CoreError::Storage("disk space critical".into()));
+            return Err(StorageError::Internal("disk space critical".into()));
         }
         if free_mb < DISK_SPACE_WARN_MB {
             warn!(
@@ -184,7 +184,7 @@ impl FrameFileStorage {
         let day_dir = self.base_dir.join("frames").join(&date_str);
         fs::create_dir_all(&day_dir)
             .await
-            .map_err(|e| CoreError::Internal(format!("Failed to create dated folder: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to create dated folder: {e}")))?;
 
         let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst) % 1000;
         let time_str = timestamp.format("%H-%M-%S").to_string();
@@ -193,7 +193,7 @@ impl FrameFileStorage {
 
         fs::write(&file_path, webp_data)
             .await
-            .map_err(|e| CoreError::Internal(format!("frame file save failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("frame file save failure: {e}")))?;
 
         let relative_path = PathBuf::from("frames").join(&date_str).join(&filename);
 
@@ -212,7 +212,7 @@ impl FrameFileStorage {
     pub async fn save_frames_batch(
         &self,
         frames: Vec<(DateTime<Utc>, Vec<u8>)>,
-    ) -> Vec<Result<PathBuf, CoreError>> {
+    ) -> Vec<Result<PathBuf, StorageError>> {
         let free_mb = self.disk_cache.get_free_mb(&self.base_dir);
         if free_mb < DISK_SPACE_CRITICAL_MB {
             error!(
@@ -222,7 +222,7 @@ impl FrameFileStorage {
             );
             return frames
                 .iter()
-                .map(|_| Err(CoreError::Storage("disk space critical".into())))
+                .map(|_| Err(StorageError::Internal("disk space critical".into())))
                 .collect();
         }
 
@@ -237,7 +237,7 @@ impl FrameFileStorage {
                 let day_dir = base_dir.join("frames").join(&date_str);
 
                 fs::create_dir_all(&day_dir).await.map_err(|e| {
-                    CoreError::Internal(format!("Failed to create dated folder: {e}"))
+                    StorageError::Internal(format!("Failed to create dated folder: {e}"))
                 })?;
 
                 let time_str = timestamp.format("%H-%M-%S").to_string();
@@ -246,7 +246,7 @@ impl FrameFileStorage {
 
                 fs::write(&file_path, &webp_data)
                     .await
-                    .map_err(|e| CoreError::Internal(format!("frame file save failure: {e}")))?;
+                    .map_err(|e| StorageError::Internal(format!("frame file save failure: {e}")))?;
 
                 let relative_path = PathBuf::from("frames").join(&date_str).join(&filename);
 
@@ -258,7 +258,7 @@ impl FrameFileStorage {
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result),
-                Err(e) => results.push(Err(CoreError::Internal(format!("Task failed: {e}")))),
+                Err(e) => results.push(Err(StorageError::Internal(format!("Task failed: {e}")))),
             }
         }
 
@@ -266,11 +266,11 @@ impl FrameFileStorage {
     }
 
     /// # Arguments
-    pub async fn load_frame(&self, relative_path: &Path) -> Result<Vec<u8>, CoreError> {
+    pub async fn load_frame(&self, relative_path: &Path) -> Result<Vec<u8>, StorageError> {
         let full_path = self.base_dir.join(relative_path);
 
         if !full_path.exists() {
-            return Err(CoreError::NotFound {
+            return Err(StorageError::NotFound {
                 resource_type: "Frame".to_string(),
                 id: relative_path.display().to_string(),
             });
@@ -280,7 +280,7 @@ impl FrameFileStorage {
 
         let data = fs::read(&full_path)
             .await
-            .map_err(|e| CoreError::Internal(format!("frame file read failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("frame file read failure: {e}")))?;
 
         buffer.extend_from_slice(&data);
         let result = buffer.clone();
@@ -290,7 +290,7 @@ impl FrameFileStorage {
         Ok(result)
     }
 
-    pub async fn load_latest_frame(&self) -> Result<Option<(Vec<u8>, String)>, CoreError> {
+    pub async fn load_latest_frame(&self) -> Result<Option<(Vec<u8>, String)>, StorageError> {
         let frames_dir = self.base_dir.join("frames");
         if !frames_dir.exists() {
             return Ok(None);
@@ -308,12 +308,12 @@ impl FrameFileStorage {
             let mut files = Vec::new();
             let mut entries = fs::read_dir(&day_path)
                 .await
-                .map_err(|e| CoreError::Internal(format!("frame folder read failure: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("frame folder read failure: {e}")))?;
 
             while let Some(entry) = entries
                 .next_entry()
                 .await
-                .map_err(|e| CoreError::Internal(format!("Failed to read frame entry: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to read frame entry: {e}")))?
             {
                 let path = entry.path();
                 if path.is_file() {
@@ -348,7 +348,10 @@ impl FrameFileStorage {
         Ok(None)
     }
 
-    pub async fn load_frames_batch(&self, paths: Vec<PathBuf>) -> Vec<Result<Vec<u8>, CoreError>> {
+    pub async fn load_frames_batch(
+        &self,
+        paths: Vec<PathBuf>,
+    ) -> Vec<Result<Vec<u8>, StorageError>> {
         let mut handles = Vec::with_capacity(paths.len());
 
         for path in paths {
@@ -359,7 +362,7 @@ impl FrameFileStorage {
                 let full_path = base_dir.join(&path);
 
                 if !full_path.exists() {
-                    return Err(CoreError::NotFound {
+                    return Err(StorageError::NotFound {
                         resource_type: "Frame".to_string(),
                         id: path.display().to_string(),
                     });
@@ -369,7 +372,7 @@ impl FrameFileStorage {
 
                 let data = fs::read(&full_path)
                     .await
-                    .map_err(|e| CoreError::Internal(format!("frame file read failure: {e}")))?;
+                    .map_err(|e| StorageError::Internal(format!("frame file read failure: {e}")))?;
 
                 buffer.extend_from_slice(&data);
                 let result = buffer.clone();
@@ -384,7 +387,7 @@ impl FrameFileStorage {
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result),
-                Err(e) => results.push(Err(CoreError::Internal(format!("Task failed: {e}")))),
+                Err(e) => results.push(Err(StorageError::Internal(format!("Task failed: {e}")))),
             }
         }
 
@@ -392,7 +395,7 @@ impl FrameFileStorage {
     }
 
     /// # Returns
-    pub async fn enforce_retention(&self) -> Result<usize, CoreError> {
+    pub async fn enforce_retention(&self) -> Result<usize, StorageError> {
         let frames_dir = self.base_dir.join("frames");
 
         if !frames_dir.exists() {
@@ -405,13 +408,13 @@ impl FrameFileStorage {
 
         let mut entries = fs::read_dir(&frames_dir)
             .await
-            .map_err(|e| CoreError::Internal(format!("Failed to read frames directory: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to read frames directory: {e}")))?;
 
         let mut dirs_to_delete = Vec::new();
         while let Some(entry) = entries
             .next_entry()
             .await
-            .map_err(|e| CoreError::Internal(format!("Failed to read directory entry: {e}")))?
+            .map_err(|e| StorageError::Internal(format!("Failed to read directory entry: {e}")))?
         {
             let path = entry.path();
 
@@ -461,7 +464,7 @@ impl FrameFileStorage {
         Ok(deleted_count)
     }
 
-    pub async fn total_size_mb(&self) -> Result<u64, CoreError> {
+    pub async fn total_size_mb(&self) -> Result<u64, StorageError> {
         let frames_dir = self.base_dir.join("frames");
 
         if !frames_dir.exists() {
@@ -472,7 +475,7 @@ impl FrameFileStorage {
         Ok(size_bytes / 1024 / 1024)
     }
 
-    pub async fn enforce_storage_limit(&self) -> Result<usize, CoreError> {
+    pub async fn enforce_storage_limit(&self) -> Result<usize, StorageError> {
         let frames_dir = self.base_dir.join("frames");
 
         if !frames_dir.exists() {
@@ -520,7 +523,7 @@ impl FrameFileStorage {
     /// individual directory removal failures are logged as warnings but do not
     /// abort the overall operation, and the returned count reflects only the
     /// directories that were successfully removed.
-    pub async fn delete_all_files(&self) -> Result<usize, CoreError> {
+    pub async fn delete_all_files(&self) -> Result<usize, StorageError> {
         let frames_dir = self.base_dir.join("frames");
         if !frames_dir.exists() {
             return Ok(0);
@@ -607,22 +610,22 @@ async fn count_files_in_dir(path: &Path) -> usize {
     count
 }
 
-async fn calculate_dir_size(path: &Path) -> Result<u64, CoreError> {
+async fn calculate_dir_size(path: &Path) -> Result<u64, StorageError> {
     let mut total = 0u64;
 
     let mut entries = fs::read_dir(path)
         .await
-        .map_err(|e| CoreError::Internal(format!("Failed to read directory: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to read directory: {e}")))?;
 
     while let Some(entry) = entries
         .next_entry()
         .await
-        .map_err(|e| CoreError::Internal(format!("Failed to read entry: {e}")))?
+        .map_err(|e| StorageError::Internal(format!("Failed to read entry: {e}")))?
     {
         let path = entry.path();
         let metadata = fs::metadata(&path)
             .await
-            .map_err(|e| CoreError::Internal(format!("Failed to read metadata: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to read metadata: {e}")))?;
 
         if metadata.is_file() {
             total += metadata.len();
@@ -634,7 +637,7 @@ async fn calculate_dir_size(path: &Path) -> Result<u64, CoreError> {
     Ok(total)
 }
 
-async fn list_date_dirs(frames_dir: &Path) -> Result<Vec<String>, CoreError> {
+async fn list_date_dirs(frames_dir: &Path) -> Result<Vec<String>, StorageError> {
     let mut dirs = Vec::with_capacity(365);
 
     if !frames_dir.exists() {
@@ -643,12 +646,12 @@ async fn list_date_dirs(frames_dir: &Path) -> Result<Vec<String>, CoreError> {
 
     let mut entries = fs::read_dir(frames_dir)
         .await
-        .map_err(|e| CoreError::Internal(format!("Failed to read frames directory: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to read frames directory: {e}")))?;
 
     while let Some(entry) = entries
         .next_entry()
         .await
-        .map_err(|e| CoreError::Internal(format!("Failed to read entry: {e}")))?
+        .map_err(|e| StorageError::Internal(format!("Failed to read entry: {e}")))?
     {
         let path = entry.path();
         if path.is_dir() {

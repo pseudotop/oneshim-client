@@ -1,4 +1,5 @@
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
+use crate::error::NetworkError;
 use crossbeam::queue::SegQueue;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::{Event, EventBatch};
@@ -195,7 +196,7 @@ impl BatchUploader {
         }
     }
 
-    pub async fn flush(&self) -> Result<usize, CoreError> {
+    pub async fn flush(&self) -> Result<usize, NetworkError> {
         let current_size = self.queue_size.load(Ordering::Relaxed);
 
         if current_size == 0 {
@@ -267,7 +268,7 @@ impl BatchUploader {
                         self.circuit_breaker.record_failure();
                         self.failed_batches.fetch_add(1, Ordering::Relaxed);
                         self.requeue_failed_events(batch.events);
-                        return Err(e);
+                        return Err(e.into());
                     }
                 }
             }
@@ -307,7 +308,7 @@ impl oneshim_core::ports::batch_sink::BatchSink for BatchUploader {
     }
 
     async fn flush(&self) -> Result<usize, CoreError> {
-        BatchUploader::flush(self).await
+        BatchUploader::flush(self).await.map_err(Into::into)
     }
 
     fn take_dropped_since_last(&self) -> usize {

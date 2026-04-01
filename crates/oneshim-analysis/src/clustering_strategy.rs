@@ -23,10 +23,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use oneshim_core::error::CoreError;
 use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::{euclidean_distance, RegimeFeatures};
 use tracing::{debug, warn};
+
+use crate::error::AnalysisError;
 
 /// Result of a clustering operation.
 #[derive(Debug, Clone)]
@@ -58,7 +59,7 @@ pub struct ClusterAssignment {
 /// `oneshim-analysis`. Both `HdbscanDetector` and `KmeansDetector` implement it.
 pub trait ClusteringStrategy: Send + Sync {
     /// Detect regimes from feature vectors.
-    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, CoreError>;
+    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, AnalysisError>;
 
     /// Classify a single new point against existing clusters (nearest-centroid).
     fn classify(&self, point: &RegimeFeatures) -> Option<ClusterAssignment>;
@@ -68,7 +69,7 @@ pub trait ClusteringStrategy: Send + Sync {
         &self,
         features: &[RegimeFeatures],
         constraints: &[ClusterConstraint],
-    ) -> Result<ClusteringResult, CoreError>;
+    ) -> Result<ClusteringResult, AnalysisError>;
 
     /// Human-readable algorithm name for config/logging.
     fn algorithm_name(&self) -> &str;

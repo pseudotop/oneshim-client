@@ -8,13 +8,14 @@ use tracing::{debug, info, warn};
 
 use super::edge_intelligence::enum_to_sql_str;
 use super::SqliteStorage;
+use crate::error::StorageError;
 
 impl SqliteStorage {
-    pub fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
+    pub fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -22,7 +23,7 @@ impl SqliteStorage {
                 rusqlite::params![from, to],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to count events: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to count events: {e}")))?;
 
         Ok(count as u64)
     }
@@ -112,7 +113,7 @@ impl SqliteStorage {
     /// Duplicate `event_id` values are silently ignored by `INSERT OR IGNORE`,
     /// so the returned count may exceed the number of rows actually written.
     /// 실제 삽입된 행 수가 아닌 입력 슬라이스의 길이를 반환한다는 점에 주의한다.
-    pub fn save_events_batch(&self, events: &[Event]) -> Result<usize, CoreError> {
+    pub fn save_events_batch(&self, events: &[Event]) -> Result<usize, StorageError> {
         if events.is_empty() {
             return Ok(0);
         }
@@ -120,32 +121,34 @@ impl SqliteStorage {
         let mut conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let tx = conn
             .transaction()
-            .map_err(|e| CoreError::Internal(format!("Failed to start transaction: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to start transaction: {e}")))?;
 
         {
             let mut stmt = tx
                 .prepare_cached(
                     "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
             for event in events {
                 let event_id = Self::extract_event_id(event);
                 let event_type = Self::extract_event_type(event);
                 let timestamp = Self::extract_timestamp(event).to_rfc3339();
-                let data = serde_json::to_string(event)?;
+                let data = serde_json::to_string(event).map_err(|e| {
+                    StorageError::Internal(format!("event serialization failed: {e}"))
+                })?;
 
                 stmt.execute(rusqlite::params![event_id, event_type, timestamp, data])
-                    .map_err(|e| CoreError::Internal(format!("batch save failure: {e}")))?;
+                    .map_err(|e| StorageError::Internal(format!("batch save failure: {e}")))?;
             }
         }
 
         tx.commit()
-            .map_err(|e| CoreError::Internal(format!("Failed to commit transaction: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to commit transaction: {e}")))?;
 
         // Refresh query planner statistics after large batch inserts (>100 events).
         // Uses the already-held MutexGuard — do NOT re-lock self.conn.
@@ -173,11 +176,12 @@ impl StorageService for SqliteStorage {
                 "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
                 rusqlite::params![event_id, event_type, timestamp, data],
             )
-            .map_err(|e| CoreError::Internal(format!("event save failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("event save failure: {e}")))?;
             debug!("event save: {event_id}");
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn get_events(
@@ -194,14 +198,14 @@ impl StorageService for SqliteStorage {
                 .prepare_cached(
                     "SELECT data FROM events WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp DESC LIMIT ?3",
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
             let events = stmt
                 .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
                     let data: String = row.get(0)?;
                     Ok(data)
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?
                 .filter_map(|r| r.ok())
                 .filter_map(|data| {
                     serde_json::from_str::<Event>(&data)
@@ -215,6 +219,7 @@ impl StorageService for SqliteStorage {
             Ok(events)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn get_pending_events(&self, limit: usize) -> Result<Vec<Event>, CoreError> {
@@ -223,14 +228,14 @@ impl StorageService for SqliteStorage {
                 .prepare_cached(
                     "SELECT data FROM events WHERE is_sent = 0 ORDER BY timestamp ASC LIMIT ?1",
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
             let events = stmt
                 .query_map(rusqlite::params![limit as i64], |row| {
                     let data: String = row.get(0)?;
                     Ok(data)
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?
                 .filter_map(|r| r.ok())
                 .filter_map(|data| {
                     serde_json::from_str::<Event>(&data)
@@ -244,6 +249,7 @@ impl StorageService for SqliteStorage {
             Ok(events)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn mark_as_sent(&self, event_ids: &[String]) -> Result<(), CoreError> {
@@ -273,12 +279,13 @@ impl StorageService for SqliteStorage {
                 params.iter().map(|p| p.as_ref()).collect();
 
             conn.execute(&sql, param_refs.as_slice())
-                .map_err(|e| CoreError::Internal(format!("Failed to mark as sent: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to mark as sent: {e}")))?;
 
             debug!("{}items event sent completed", ids.len());
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn mark_unsent_as_sent_before(&self, before: DateTime<Utc>) -> Result<usize, CoreError> {
@@ -290,7 +297,9 @@ impl StorageService for SqliteStorage {
                     "UPDATE events SET is_sent = 1 WHERE is_sent = 0 AND timestamp < ?1",
                     rusqlite::params![cutoff],
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to mark unsent as sent: {e}")))?;
+                .map_err(|e| {
+                    StorageError::Internal(format!("Failed to mark unsent as sent: {e}"))
+                })?;
 
             if updated > 0 {
                 debug!("{updated} unsent events marked as sent");
@@ -298,6 +307,7 @@ impl StorageService for SqliteStorage {
             Ok(updated)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn enforce_retention(&self) -> Result<usize, CoreError> {
@@ -311,7 +321,7 @@ impl StorageService for SqliteStorage {
                     rusqlite::params![cutoff],
                 )
                 .map_err(|e| {
-                    CoreError::Internal(format!("Failed to apply retention policy: {e}"))
+                    StorageError::Internal(format!("Failed to apply retention policy: {e}"))
                 })?;
 
             if deleted > 0 {
@@ -323,6 +333,7 @@ impl StorageService for SqliteStorage {
             Ok(deleted)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn update_segment_llm_summary(
@@ -337,10 +348,13 @@ impl StorageService for SqliteStorage {
                 "UPDATE activity_segments SET llm_summary = ?1 WHERE id = ?2",
                 rusqlite::params![summary, id],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to update segment summary: {e}")))?;
+            .map_err(|e| {
+                StorageError::Internal(format!("Failed to update segment summary: {e}"))
+            })?;
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn save_suggestion(&self, suggestion: &Suggestion) -> Result<(), CoreError> {
@@ -367,11 +381,12 @@ impl StorageService for SqliteStorage {
                     suggestion.expires_at.map(|t| t.to_rfc3339()),
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to save suggestion: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to save suggestion: {e}")))?;
             debug!(id = %suggestion.suggestion_id, "suggestion persisted to SQLite");
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 }
 

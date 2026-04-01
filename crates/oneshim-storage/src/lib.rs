@@ -8,6 +8,9 @@
 
 //! # oneshim-storage
 
+pub mod error;
+pub use error::StorageError;
+
 pub mod encryption;
 pub mod env_secret_store;
 pub mod file_secret_store;

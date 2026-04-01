@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use tracing::{debug, info, warn};
 
-use oneshim_core::error::CoreError;
+use crate::error::AutomationError;
 use oneshim_core::models::intent::{
     AutomationIntent, IntentConfig, IntentResult, UiElement, VerificationResult,
 };
@@ -32,7 +32,7 @@ impl IntentResolver {
     pub async fn resolve_and_execute(
         &self,
         intent: &AutomationIntent,
-    ) -> Result<(bool, Option<UiElement>), CoreError> {
+    ) -> Result<(bool, Option<UiElement>), AutomationError> {
         match intent {
             AutomationIntent::ClickElement {
                 text,
@@ -49,7 +49,7 @@ impl IntentResolver {
                     .into_iter()
                     .find(|e| e.confidence >= self.config.min_confidence)
                     .ok_or_else(|| {
-                        CoreError::ElementNotFound(format!(
+                        AutomationError::ElementNotFound(format!(
                             "신뢰도 {:.0}% 이상의 요소를 찾지 못함 (text={:?}, role={:?})",
                             self.config.min_confidence * 100.0,
                             text,
@@ -116,7 +116,7 @@ impl IntentResolver {
 
                     if start.elapsed() >= timeout {
                         warn!(text, timeout_ms, "text waiting timeout");
-                        return Err(CoreError::ExecutionTimeout {
+                        return Err(AutomationError::ExecutionTimeout {
                             timeout_ms: *timeout_ms,
                         });
                     }
@@ -192,7 +192,10 @@ impl IntentExecutor {
         Self::new(resolver, config)
     }
 
-    pub async fn execute(&self, intent: &AutomationIntent) -> Result<IntentResult, CoreError> {
+    pub async fn execute(
+        &self,
+        intent: &AutomationIntent,
+    ) -> Result<IntentResult, AutomationError> {
         let start = Instant::now();
         let mut retry_count = 0u32;
         let mut last_error: Option<String> = None;
@@ -257,6 +260,7 @@ impl IntentExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::automation::AutomationAction;
     use oneshim_core::models::intent::{ElementBounds, FinderSource};
 
@@ -505,7 +509,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            CoreError::ExecutionTimeout { .. }
+            AutomationError::ExecutionTimeout { .. }
         ));
     }
 
@@ -536,7 +540,10 @@ mod tests {
         };
         let result = resolver.resolve_and_execute(&intent).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), CoreError::ElementNotFound(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            AutomationError::ElementNotFound(_)
+        ));
     }
 
     #[tokio::test]

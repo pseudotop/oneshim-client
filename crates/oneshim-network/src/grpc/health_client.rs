@@ -30,7 +30,7 @@ pub struct GrpcHealthClient {
 impl GrpcHealthClient {
     pub async fn connect(config: GrpcConfig) -> Result<Self, CoreError> {
         let endpoints = config.all_endpoints();
-        let mut last_error = None;
+        let mut last_error: Option<crate::error::NetworkError> = None;
 
         for endpoint_url in &endpoints {
             debug!("gRPC Health client connection attempt: {}", endpoint_url);
@@ -52,7 +52,9 @@ impl GrpcHealthClient {
         }
 
         error!("all gRPC endpoint connection failure: {:?}", endpoints);
-        Err(last_error.unwrap_or_else(|| CoreError::Network("gRPC endpoint none".to_string())))
+        Err(last_error
+            .unwrap_or_else(|| crate::error::NetworkError::Http("gRPC endpoint none".to_string()))
+            .into())
     }
 
     /// Send a Ping RPC and return the server's response.
@@ -63,7 +65,7 @@ impl GrpcHealthClient {
 
         let response = self.client.ping(request).await.map_err(|status| {
             error!("Health ping failure: {}", status);
-            map_grpc_status_error("grpc health ping failed", status)
+            map_grpc_status_error("grpc health ping failed", status).into()
         })?;
 
         let inner = response.into_inner();

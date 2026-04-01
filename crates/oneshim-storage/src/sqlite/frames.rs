@@ -1,5 +1,5 @@
+use crate::error::StorageError;
 use chrono::{DateTime, Utc};
-use oneshim_core::error::CoreError;
 use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::frame::FrameMetadata;
 use tracing::debug;
@@ -7,11 +7,11 @@ use tracing::debug;
 use super::{FrameRecord, SqliteStorage};
 
 impl SqliteStorage {
-    pub fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
+    pub fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -19,16 +19,16 @@ impl SqliteStorage {
                 rusqlite::params![from, to],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to count frames: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to count frames: {e}")))?;
 
         Ok(count as u64)
     }
 
-    pub fn get_frame_file_path(&self, frame_id: i64) -> Result<Option<String>, CoreError> {
+    pub fn get_frame_file_path(&self, frame_id: i64) -> Result<Option<String>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result: Result<Option<String>, rusqlite::Error> = conn.query_row(
             "SELECT file_path FROM frames WHERE id = ?1",
@@ -39,7 +39,7 @@ impl SqliteStorage {
         match result {
             Ok(path) => Ok(path),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::Internal(format!(
+            Err(e) => Err(StorageError::Internal(format!(
                 "frame file path query failure: {e}"
             ))),
         }
@@ -51,7 +51,7 @@ impl SqliteStorage {
         metadata: &FrameMetadata,
         file_path: Option<&str>,
         ocr_text: Option<&str>,
-    ) -> Result<i64, CoreError> {
+    ) -> Result<i64, StorageError> {
         self.save_frame_metadata_with_bounds(metadata, file_path, ocr_text, None)
     }
 
@@ -62,11 +62,11 @@ impl SqliteStorage {
         file_path: Option<&str>,
         ocr_text: Option<&str>,
         bounds: Option<&WindowBounds>,
-    ) -> Result<i64, CoreError> {
+    ) -> Result<i64, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT INTO frames (timestamp, trigger_type, app_name, window_title, importance, resolution_w, resolution_h, has_image, file_path, ocr_text, window_x, window_y, window_width, window_height)
@@ -88,7 +88,7 @@ impl SqliteStorage {
                 bounds.map(|b| b.height as i32),
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to save frame metadata: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to save frame metadata: {e}")))?;
 
         let frame_id = conn.last_insert_rowid();
         debug!(
@@ -107,14 +107,14 @@ impl SqliteStorage {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
         limit: usize,
-    ) -> Result<Vec<FrameRecord>, CoreError> {
+    ) -> Result<Vec<FrameRecord>, StorageError> {
         let from_str = from.to_rfc3339();
         let to_str = to.to_rfc3339();
 
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare_cached(
@@ -124,7 +124,7 @@ impl SqliteStorage {
                  ORDER BY timestamp DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let frames = stmt
             .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
@@ -141,7 +141,7 @@ impl SqliteStorage {
                     ocr_text: row.get(9)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 

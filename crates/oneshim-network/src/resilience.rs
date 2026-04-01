@@ -1,9 +1,10 @@
 use std::time::Duration;
 
-use oneshim_core::error::CoreError;
 use rand::RngExt;
 use reqwest::header::RETRY_AFTER;
 use tokio::time::Instant;
+
+use crate::error::NetworkError;
 
 const DEFAULT_RETRY_AFTER_SECS: u64 = 60;
 const MAX_BACKOFF_EXPONENT: u32 = 10;
@@ -84,10 +85,12 @@ impl RetryBackoffGate {
         self.blocked_until = None;
     }
 
-    pub fn on_failure(&mut self, now: Instant, error: &CoreError) -> Duration {
+    pub fn on_failure(&mut self, now: Instant, error: &NetworkError) -> Duration {
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
         let delay = match error {
-            CoreError::RateLimit { retry_after_secs } => Duration::from_secs(*retry_after_secs),
+            NetworkError::RateLimited { retry_after_secs } => {
+                Duration::from_secs(*retry_after_secs)
+            }
             _ => jittered_backoff_delay(
                 self.consecutive_failures.saturating_sub(1),
                 self.policy.base_delay,
@@ -123,7 +126,7 @@ mod tests {
             Duration::from_millis(100),
         ));
         let now = Instant::now();
-        let delay = gate.on_failure(now, &CoreError::ServiceUnavailable("down".to_string()));
+        let delay = gate.on_failure(now, &NetworkError::ServiceUnavailable("down".to_string()));
         assert!(delay >= Duration::from_millis(10));
         assert!(!gate.is_ready(now));
         assert!(gate.is_ready(now + delay));
