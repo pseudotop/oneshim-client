@@ -100,7 +100,6 @@ pub async fn send_session_message(
     mgr.touch_session(&request.session_id).await;
 
     let user_content = request.message.clone();
-    let session_info = session.info(); // capture turn_count before spawn
     let msg = SessionMessage {
         role: MessageRole::User,
         content: request.message,
@@ -225,14 +224,9 @@ pub async fn send_session_message(
                 {
                     tracing::warn!("failed to persist messages: {e}");
                 }
-                // Update session usage
+                // Increment session usage (additive — SQL does +=)
                 let _ = ss
-                    .update_session_usage(
-                        &session_id,
-                        total_input,
-                        total_output,
-                        session_info.turn_count + 1,
-                    )
+                    .update_session_usage(&session_id, total_input, total_output)
                     .await;
             }
         }

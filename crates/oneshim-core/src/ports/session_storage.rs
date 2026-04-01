@@ -21,13 +21,12 @@ pub trait SessionStoragePort: Send + Sync {
     /// Mark session as terminated with current timestamp.
     async fn terminate_session(&self, session_id: &str) -> Result<(), CoreError>;
 
-    /// Update cumulative token usage and turn count.
+    /// Increment token usage and turn count by the given deltas.
     async fn update_session_usage(
         &self,
         session_id: &str,
         input_tokens: u64,
         output_tokens: u64,
-        turn_count: u32,
     ) -> Result<(), CoreError>;
 
     /// List sessions ordered by last_active DESC.

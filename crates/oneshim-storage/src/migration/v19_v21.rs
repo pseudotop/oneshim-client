@@ -66,8 +66,6 @@ pub fn migrate_v21(conn: &Connection) -> Result<(), rusqlite::Error> {
         CREATE INDEX IF NOT EXISTS idx_ai_messages_session
             ON ai_conversation_messages(session_id, seq);
 
-        PRAGMA foreign_keys = ON;
-
         INSERT OR IGNORE INTO schema_version (version) VALUES (21);",
     )?;
     Ok(())

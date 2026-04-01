@@ -20,7 +20,10 @@ fn parse_dt(s: &str) -> DateTime<Utc> {
     NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
         .map(|n| n.and_utc())
         .or_else(|_| DateTime::parse_from_rfc3339(s).map(|d| d.with_timezone(&Utc)))
-        .unwrap_or_else(|_| Utc::now())
+        .unwrap_or_else(|e| {
+            tracing::warn!("failed to parse datetime '{s}': {e}, using Utc::now()");
+            Utc::now()
+        })
 }
 
 /// Format `DateTime<Utc>` for SQLite TEXT storage.
@@ -121,16 +124,16 @@ impl SessionStoragePort for SqliteStorage {
         session_id: &str,
         input_tokens: u64,
         output_tokens: u64,
-        turn_count: u32,
     ) -> Result<(), CoreError> {
         let sid = session_id.to_string();
         self.with_conn(move |conn| {
             conn.execute(
                 "UPDATE ai_sessions
-                 SET total_input_tokens = ?1, total_output_tokens = ?2,
-                     turn_count = ?3, last_active = datetime('now')
-                 WHERE session_id = ?4",
-                rusqlite::params![input_tokens as i64, output_tokens as i64, turn_count, sid],
+                 SET total_input_tokens = total_input_tokens + ?1,
+                     total_output_tokens = total_output_tokens + ?2,
+                     turn_count = turn_count + 1, last_active = datetime('now')
+                 WHERE session_id = ?3",
+                rusqlite::params![input_tokens as i64, output_tokens as i64, sid],
             )
             .map_err(StorageError::Sqlite)?;
             Ok(())
@@ -186,37 +189,52 @@ impl SessionStoragePort for SqliteStorage {
         let sid = session_id.to_string();
         let msgs: Vec<MessageRecord> = messages.to_vec();
         self.with_conn(move |conn| {
-            let mut stmt = conn
-                .prepare(
-                    "INSERT INTO ai_conversation_messages
-                     (session_id, role, content, thinking, tool_use,
-                      usage_input, usage_output, created_at, seq)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                )
+            conn.execute_batch("BEGIN IMMEDIATE")
                 .map_err(StorageError::Sqlite)?;
+            let result = (|| -> Result<(), StorageError> {
+                let mut stmt = conn
+                    .prepare(
+                        "INSERT INTO ai_conversation_messages
+                         (session_id, role, content, thinking, tool_use,
+                          usage_input, usage_output, created_at, seq)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    )
+                    .map_err(StorageError::Sqlite)?;
 
-            for msg in &msgs {
-                let thinking = msg.thinking.as_ref().map(|t| {
-                    if t.len() > MAX_THINKING_LEN {
-                        format!("{}... [truncated]", &t[..MAX_THINKING_LEN])
-                    } else {
-                        t.clone()
-                    }
-                });
-                stmt.execute(rusqlite::params![
-                    sid,
-                    msg.role,
-                    msg.content,
-                    thinking,
-                    msg.tool_use,
-                    msg.usage_input.map(|v| v as i64),
-                    msg.usage_output.map(|v| v as i64),
-                    fmt_dt(&msg.created_at),
-                    msg.seq,
-                ])
-                .map_err(StorageError::Sqlite)?;
+                for msg in &msgs {
+                    let thinking = msg.thinking.as_ref().map(|t| {
+                        if t.len() > MAX_THINKING_LEN {
+                            format!("{}... [truncated]", &t[..MAX_THINKING_LEN])
+                        } else {
+                            t.clone()
+                        }
+                    });
+                    stmt.execute(rusqlite::params![
+                        sid,
+                        msg.role,
+                        msg.content,
+                        thinking,
+                        msg.tool_use,
+                        msg.usage_input.map(|v| v as i64),
+                        msg.usage_output.map(|v| v as i64),
+                        fmt_dt(&msg.created_at),
+                        msg.seq,
+                    ])
+                    .map_err(StorageError::Sqlite)?;
+                }
+                Ok(())
+            })();
+            match result {
+                Ok(()) => {
+                    conn.execute_batch("COMMIT")
+                        .map_err(StorageError::Sqlite)?;
+                    Ok(())
+                }
+                Err(e) => {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    Err(e)
+                }
             }
-            Ok(())
         })
         .await
         .map_err(CoreError::from)
@@ -299,7 +317,7 @@ impl SessionStoragePort for SqliteStorage {
                 .execute(
                     "DELETE FROM ai_sessions
                      WHERE terminated_at IS NULL
-                       AND state IN ('active', 'idle', 'starting', 'recovering')
+                       AND state IN ('active', 'idle', 'starting', 'recovering', 'failed')
                        AND last_active < datetime('now', '-' || ?1 || ' days')",
                     [days * 2],
                 )
@@ -478,14 +496,21 @@ mod tests {
         let storage = setup().await;
         storage.save_session(&make_session("s1")).await.unwrap();
         storage
-            .update_session_usage("s1", 100, 200, 5)
+            .update_session_usage("s1", 100, 200)
             .await
             .unwrap();
 
         let sessions = storage.list_sessions(10).await.unwrap();
         assert_eq!(sessions[0].total_input_tokens, 100);
         assert_eq!(sessions[0].total_output_tokens, 200);
-        assert_eq!(sessions[0].turn_count, 5);
+        assert_eq!(sessions[0].turn_count, 1); // auto-incremented by SQL
+
+        // Second call should accumulate
+        storage.update_session_usage("s1", 50, 30).await.unwrap();
+        let sessions = storage.list_sessions(10).await.unwrap();
+        assert_eq!(sessions[0].total_input_tokens, 150);
+        assert_eq!(sessions[0].total_output_tokens, 230);
+        assert_eq!(sessions[0].turn_count, 2);
     }
 
     #[tokio::test]

@@ -710,7 +710,7 @@ export default function Chat() {
         addToast('error', errorMessage(e, t('chat.delete_failed', 'Failed to delete the session.')), 5000)
       }
     },
-    [activeId, t],
+    [activeId, sessions, t],
   )
 
   const handleExport = useCallback(
@@ -1012,7 +1012,7 @@ export default function Chat() {
                 </div>
                 {isHistorical(s) ? (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-500">
-                    History
+                    {t('chat.history', 'History')}
                   </span>
                 ) : null}
                 <button
