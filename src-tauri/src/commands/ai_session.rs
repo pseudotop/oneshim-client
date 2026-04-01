@@ -219,7 +219,10 @@ pub async fn send_session_message(
                     created_at: now,
                     seq: seq + 1,
                 };
-                if let Err(e) = ss.save_messages(&session_id, &[user_msg, assistant_msg]).await {
+                if let Err(e) = ss
+                    .save_messages(&session_id, &[user_msg, assistant_msg])
+                    .await
+                {
                     tracing::warn!("failed to persist messages: {e}");
                 }
                 // Update session usage
@@ -296,8 +299,7 @@ pub async fn list_ai_sessions(
     if let Some(ref ss) = state.session_storage {
         let limit = state.config.ai_session.max_history_turns;
         if let Ok(persisted) = ss.list_sessions(limit).await {
-            let active_ids: HashSet<String> =
-                result.iter().map(|s| s.session_id.clone()).collect();
+            let active_ids: HashSet<String> = result.iter().map(|s| s.session_id.clone()).collect();
             for record in &persisted {
                 if !active_ids.contains(&record.session_id) {
                     result.push(ConversationSessionInfo::from(record));

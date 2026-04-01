@@ -166,9 +166,7 @@ impl SessionStoragePort for SqliteStorage {
                         total_output_tokens: row.get::<_, i64>(8)? as u64,
                         created_at: parse_dt(&row.get::<_, String>(9)?),
                         last_active: parse_dt(&row.get::<_, String>(10)?),
-                        terminated_at: row
-                            .get::<_, Option<String>>(11)?
-                            .map(|s| parse_dt(&s)),
+                        terminated_at: row.get::<_, Option<String>>(11)?.map(|s| parse_dt(&s)),
                     })
                 })
                 .map_err(StorageError::Sqlite)?;

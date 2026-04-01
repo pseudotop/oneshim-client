@@ -144,7 +144,9 @@ mod tests {
         assert_eq!(count, 0);
 
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM ai_conversation_messages", [], |r| r.get(0))
+            .query_row("SELECT COUNT(*) FROM ai_conversation_messages", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(count, 0);
     }
@@ -173,7 +175,8 @@ mod tests {
             [],
         ).unwrap();
 
-        conn.execute("DELETE FROM ai_sessions WHERE session_id = 's1'", []).unwrap();
+        conn.execute("DELETE FROM ai_sessions WHERE session_id = 's1'", [])
+            .unwrap();
 
         let count: i64 = conn
             .query_row(
