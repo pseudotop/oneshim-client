@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13-rc.3] - 2026-04-01
+
+### Fixed
+
+- Canvas resize observer, PieChart key uniqueness, DateRangePicker infinite loop
+  - HeatmapGhost: replace static window.innerWidth/Height with ResizeObserver
+    that keeps canvas resolution in sync with CSS layout size
+  - Reports PieChart: use name+duration composite key instead of name-only
+    (prevents duplicate key issues when app names collide)
+  - DateRangePicker: use ref pattern for onRangeChange callback to prevent
+    infinite re-render loop when parent passes inline arrow function
+    (Focus.tsx creates new Date objects each call → state change → re-render)
+
 ## [0.4.13-rc.2] - 2026-04-01
 
 ### Fixed
