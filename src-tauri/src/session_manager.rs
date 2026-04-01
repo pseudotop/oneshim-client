@@ -36,6 +36,8 @@ struct ManagedSession {
     created_at: Instant,
     last_active: Instant,
     retry_count: u32,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
 }
 
 /// Tauri event payload emitted on session state transitions.
@@ -181,6 +183,37 @@ impl SessionManagerImpl {
                 self.emit_state_change(session_id, previous, SessionState::Active, "user activity");
             }
         }
+    }
+
+    /// Accumulate token usage for a session from a completed response.
+    pub async fn accumulate_tokens(&self, session_id: &str, input: u64, output: u64) {
+        if let Some(managed) = self.sessions.write().await.get_mut(session_id) {
+            managed.total_input_tokens += input;
+            managed.total_output_tokens += output;
+        }
+    }
+
+    /// Check if the daily token budget is exhausted. Returns true if sending is allowed.
+    pub async fn check_token_budget(&self, _session_id: &str) -> bool {
+        let budget = self.config.daily_token_budget;
+        if budget == 0 {
+            return true; // unlimited
+        }
+        let sessions = self.sessions.read().await;
+        // Sum tokens across ALL sessions (daily budget is global)
+        let total: u64 = sessions
+            .values()
+            .map(|m| m.total_input_tokens + m.total_output_tokens)
+            .sum();
+        total < budget
+    }
+
+    /// Get total token usage across all sessions (for daily budget display).
+    pub async fn get_global_token_usage(&self) -> (u64, u64) {
+        let sessions = self.sessions.read().await;
+        sessions.values().fold((0, 0), |(ai, ao), m| {
+            (ai + m.total_input_tokens, ao + m.total_output_tokens)
+        })
     }
 
     /// Background task: check for idle sessions and terminate them.
@@ -383,6 +416,8 @@ impl SessionManager for SessionManagerImpl {
                     created_at: Instant::now(),
                     last_active: Instant::now(),
                     retry_count: 0,
+                    total_input_tokens: 0,
+                    total_output_tokens: 0,
                 };
                 self.admit_session(session_id, managed).await?;
 
@@ -483,6 +518,8 @@ impl SessionManager for SessionManagerImpl {
                     created_at: Instant::now(),
                     last_active: Instant::now(),
                     retry_count: 0,
+                    total_input_tokens: 0,
+                    total_output_tokens: 0,
                 };
                 self.admit_session(session_id, managed).await?;
 
@@ -516,6 +553,8 @@ impl SessionManager for SessionManagerImpl {
                     created_at: Instant::now(),
                     last_active: Instant::now(),
                     retry_count: 0,
+                    total_input_tokens: 0,
+                    total_output_tokens: 0,
                 };
                 self.admit_session(session_id, managed).await?;
 

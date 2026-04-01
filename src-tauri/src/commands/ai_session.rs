@@ -11,8 +11,8 @@ use serde::Deserialize;
 use tauri::{command, AppHandle, Emitter};
 
 use oneshim_core::models::ai_session::{
-    Attachment, ConversationSessionInfo, MessageContext, MessageRole, SessionConfig,
-    SessionMessage, SessionState, ToolDefinition,
+    Attachment, ConversationSessionInfo, MessageContext, MessageRole, OutboundMessage,
+    SessionConfig, SessionMessage, SessionState, ToolDefinition,
 };
 use oneshim_core::ports::conversation_session::SessionManager;
 
@@ -61,6 +61,11 @@ pub async fn send_session_message(
         .as_ref()
         .ok_or_else(|| "session manager not available".to_string())?;
 
+    // Check daily token budget before sending
+    if !mgr.check_token_budget(&request.session_id).await {
+        return Err("Daily token budget exhausted".to_string());
+    }
+
     let session = mgr
         .get_session(&request.session_id)
         .await
@@ -95,6 +100,15 @@ pub async fn send_session_message(
         while let Some(item) = stream.next().await {
             match item {
                 Ok(outbound) => {
+                    // Accumulate token usage from completed responses
+                    if let OutboundMessage::Result {
+                        usage: Some(ref u), ..
+                    } = outbound
+                    {
+                        mgr_clone
+                            .accumulate_tokens(&session_id, u.input_tokens, u.output_tokens)
+                            .await;
+                    }
                     if let Err(e) = app.emit(&event_name, &outbound) {
                         tracing::warn!(
                             session_id = %session_id,
@@ -171,4 +185,37 @@ pub async fn list_ai_sessions(
         .ok_or_else(|| "session manager not available".to_string())?;
 
     Ok(mgr.list_sessions().await)
+}
+
+/// Get token usage for the current day across all sessions.
+#[command]
+pub async fn get_token_usage(
+    state: tauri::State<'_, AppState>,
+) -> Result<TokenUsageResponse, String> {
+    let mgr = state
+        .session_manager
+        .as_ref()
+        .ok_or_else(|| "session manager not available".to_string())?;
+
+    let (input, output) = mgr.get_global_token_usage().await;
+    let budget = mgr.config.daily_token_budget;
+    Ok(TokenUsageResponse {
+        total_input_tokens: input,
+        total_output_tokens: output,
+        daily_budget: budget,
+        budget_remaining: if budget == 0 {
+            None
+        } else {
+            Some(budget.saturating_sub(input + output))
+        },
+    })
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenUsageResponse {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub daily_budget: u64,
+    pub budget_remaining: Option<u64>,
 }

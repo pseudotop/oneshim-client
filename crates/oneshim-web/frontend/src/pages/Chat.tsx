@@ -330,6 +330,7 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
+  const [tokenUsage, setTokenUsage] = useState<{ total: number; budget: number | null }>({ total: 0, budget: null })
   const [createError, setCreateError] = useState<string | null>(null)
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -353,6 +354,15 @@ export default function Chat() {
       setHttpSurfaceId(httpApiSurfaces[0].surface_id)
     }
   }, [httpApiSurfaces, httpSurfaceId])
+
+  // Refresh token usage after messages change
+  useEffect(() => {
+    ipc<{ totalInputTokens: number; totalOutputTokens: number; dailyBudget: number; budgetRemaining: number | null }>(
+      'get_token_usage',
+    )
+      .then((r) => setTokenUsage({ total: r.totalInputTokens + r.totalOutputTokens, budget: r.dailyBudget || null }))
+      .catch(() => {})
+  }, [messages])
 
   // Smart auto-scroll: RAF-throttled to avoid forced layout on every scroll event
   const handleScroll = useCallback(() => {
@@ -1003,6 +1013,19 @@ export default function Chat() {
                 {active?.model || active?.provider_name || 'Session'}
               </span>
               <span className={cn('text-[10px]', colors.text.secondary)}>({active?.transport})</span>
+              {tokenUsage.total > 0 && (
+                <span
+                  className={cn(
+                    'text-[10px]',
+                    tokenUsage.budget && tokenUsage.total > tokenUsage.budget * 0.9
+                      ? 'text-semantic-error'
+                      : 'text-content-tertiary',
+                  )}
+                >
+                  {tokenUsage.total.toLocaleString()} tokens
+                  {tokenUsage.budget ? ` / ${tokenUsage.budget.toLocaleString()}` : ''}
+                </span>
+              )}
               <div className="ml-auto flex items-center gap-1">
                 {searchOpen && (
                   <div className="flex items-center gap-1">
