@@ -24,6 +24,12 @@ pub struct AudioCapture {
     native_rate: Mutex<Option<u32>>,
 }
 
+impl Default for AudioCapture {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AudioCapture {
     pub fn new() -> Self {
         Self {
@@ -53,7 +59,10 @@ impl AudioCapture {
         let channels = config.channels() as usize;
 
         debug!(
-            device = ?device.name().unwrap_or_default(),
+            device = device
+                .description()
+                .map(|d| d.name().to_string())
+                .unwrap_or_default(),
             sample_rate = native_rate,
             channels,
             "starting audio capture"
@@ -104,7 +113,10 @@ impl AudioCapture {
                         let mono: Vec<f32> = data
                             .chunks(channels)
                             .map(|frame| {
-                                frame.iter().map(|&s| s as f32 / i16::MAX as f32).sum::<f32>()
+                                frame
+                                    .iter()
+                                    .map(|&s| s as f32 / i16::MAX as f32)
+                                    .sum::<f32>()
                                     / channels as f32
                             })
                             .collect();
@@ -142,7 +154,10 @@ impl AudioCapture {
         let raw_samples: Vec<f32> = std::mem::take(&mut *self.buffer.lock());
         let native_rate = (*self.native_rate.lock()).unwrap_or(TARGET_SAMPLE_RATE);
 
-        debug!(samples = raw_samples.len(), native_rate, "audio capture stopped");
+        debug!(
+            samples = raw_samples.len(),
+            native_rate, "audio capture stopped"
+        );
 
         if raw_samples.is_empty() {
             return Ok(AudioBuffer::new(Vec::new()));

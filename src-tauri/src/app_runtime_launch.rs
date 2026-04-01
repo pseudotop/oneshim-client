@@ -417,9 +417,7 @@ impl AppRuntimeLaunchBuilder {
         RuntimeBridgeSpawner::spawn_update_event_bridge(&handle, &self.app_handle, &update_control);
 
         // Audio capture and STT engine — wired when audio feature is enabled.
-        let audio_capture: Option<
-            Arc<dyn oneshim_core::ports::audio_capture::AudioCapturePort>,
-        > = {
+        let audio_capture: Option<Arc<dyn oneshim_core::ports::audio_capture::AudioCapturePort>> = {
             #[cfg(feature = "audio")]
             {
                 Some(Arc::new(oneshim_audio::AudioCapture::new()))
@@ -443,10 +441,8 @@ impl AppRuntimeLaunchBuilder {
                     std::path::PathBuf::from(&config.audio.whisper_model_path)
                 };
                 if model_path.exists() {
-                    match oneshim_audio::WhisperSttProvider::new(
-                        &model_path,
-                        config.audio.language,
-                    ) {
+                    match oneshim_audio::WhisperSttProvider::new(&model_path, config.audio.language)
+                    {
                         Ok(provider) => {
                             tracing::info!("Whisper STT loaded: {}", model_path.display());
                             Some(Arc::new(provider) as _)

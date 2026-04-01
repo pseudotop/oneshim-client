@@ -901,7 +901,7 @@ export default function Chat() {
     try {
       const result = await ipc<{ text: string }>('stop_and_transcribe')
       if (result.text) {
-        setInput((prev) => (prev ? prev + ' ' : '') + result.text)
+        setInput((prev) => (prev ? `${prev} ` : '') + result.text)
       }
     } catch (e) {
       addToast('error', errorMessage(e, t('chat.stt_error', 'Transcription failed')), 5000)
