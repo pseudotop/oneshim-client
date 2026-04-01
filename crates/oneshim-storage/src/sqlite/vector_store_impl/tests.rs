@@ -945,3 +945,57 @@ async fn store_quantized_rejects_empty_int8_vector() {
         "error should mention empty INT8 vector, got: {err_msg}"
     );
 }
+
+#[tokio::test]
+async fn store_quantized_dimension_mismatch_rejected() {
+    use oneshim_core::quantization::ScalarQuantizer;
+
+    let conn = setup_db();
+    let store = SqliteVectorStore::new(conn);
+
+    let f32_vec: Vec<f32> = vec![0.1, 0.2, 0.3]; // 3 dims
+    let qv = ScalarQuantizer::quantize(&[0.1, 0.2, 0.3, 0.4, 0.5]).unwrap(); // 5 dims
+    let meta = EmbeddingMetadata {
+        segment_id: "dim-mismatch".to_string(),
+        content_type: EmbeddingContentType::ContentActivity,
+        content_label: None,
+        original_text: "test".to_string(),
+        model_id: "test-model".to_string(),
+        timestamp: Utc::now(),
+    };
+
+    let result = store.store_quantized(f32_vec, &qv, meta, false).await;
+
+    assert!(result.is_err(), "mismatched dimensions should be rejected");
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(
+        err_msg.contains("dimension mismatch"),
+        "error should mention dimension mismatch, got: {err_msg}"
+    );
+}
+
+#[tokio::test]
+async fn store_quantized_skip_float32_bypasses_dimension_check() {
+    use oneshim_core::quantization::ScalarQuantizer;
+
+    let conn = setup_db();
+    let store = SqliteVectorStore::new(conn);
+
+    let f32_vec: Vec<f32> = vec![]; // empty — skip_float32 means this is ignored
+    let qv = ScalarQuantizer::quantize(&[0.1, 0.2, 0.3]).unwrap();
+    let meta = EmbeddingMetadata {
+        segment_id: "skip-f32".to_string(),
+        content_type: EmbeddingContentType::ContentActivity,
+        content_label: None,
+        original_text: "test".to_string(),
+        model_id: "test-model".to_string(),
+        timestamp: Utc::now(),
+    };
+
+    let result = store.store_quantized(f32_vec, &qv, meta, true).await;
+
+    assert!(
+        result.is_ok(),
+        "skip_float32=true should bypass dimension check"
+    );
+}

@@ -271,6 +271,15 @@ impl VectorStore for SqliteVectorStore {
             ));
         }
 
+        // Validate f32/INT8 dimension consistency when f32 is being stored.
+        if !skip_float32 && vector_f32.len() != vector_int8.data.len() {
+            return Err(CoreError::InvalidArguments(format!(
+                "Vector dimension mismatch: f32 has {}, INT8 has {}",
+                vector_f32.len(),
+                vector_int8.data.len()
+            )));
+        }
+
         // When skip_float32 is true, store an empty BLOB instead of the f32 data.
         // The column has a NOT NULL constraint (pre-existing schema), so we use
         // an empty vec rather than NULL. An empty BLOB is distinguishable from

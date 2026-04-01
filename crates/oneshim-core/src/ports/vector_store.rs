@@ -50,8 +50,8 @@ pub trait VectorStore: Send + Sync {
 
     /// Store a pre-quantized INT8 vector alongside its float32 original.
     ///
-    /// When `skip_float32` is `true`, the f32 BLOB column is set to NULL
-    /// to save storage (Phase A.5 float32 retention control).
+    /// When `skip_float32` is `true`, an empty BLOB is stored instead of
+    /// the f32 data to save storage (Phase A.5 float32 retention control).
     async fn store_quantized(
         &self,
         _vector_f32: Vec<f32>,
