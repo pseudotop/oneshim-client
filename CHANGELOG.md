@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13-rc.2] - 2026-04-01
+
+### Fixed
+
+- Add NaN/undefined guards across all frontend components
+  - PomodoroTimer: validate formatTime input + guard Invalid Date + default duration
+  - Dashboard: prevent division by zero in activity ratio (Math.max(1, ...))
+  - MetricsChart: null-coalesce memory values before division + toFixed guard
+  - ActivityHeatmap: add >= 0 bounds check for negative day/hour indices
+  - EventLog: guard importance multiplication with ?? 0
+  - Search: same importance guard pattern
+  - Reports: guard toFixed on active_ratio, avg_cpu, app.percentage, tooltip formatter
+  - ProcessList: guard cpu_usage.toFixed
+  - Coaching: guard percentage, current/target minutes rendering
+  - GoalProgressBar: guard percentage width + minutes display
+  - TimelineView: guard duration_mins multiplication
+
+  19 NaN/undefined/division-by-zero bugs fixed across 11 files.
+
 ## [0.4.13-rc.1] - 2026-04-01
 
 ### Added
