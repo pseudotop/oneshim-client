@@ -158,6 +158,33 @@ interface ChatMessage {
   error?: { code: string; message: string; retryable: boolean }
 }
 
+interface MessageRecord {
+  id: number | null
+  session_id: string
+  role: string
+  content: string
+  thinking: string | null
+  tool_use: string | null
+  usage_input: number | null
+  usage_output: number | null
+  created_at: string
+  seq: number
+}
+
+function recordToChat(r: MessageRecord): ChatMessage {
+  return {
+    role: r.role as ChatMessage['role'],
+    content: r.content,
+    timestamp: r.created_at,
+    thinking: r.thinking ? { content: r.thinking, done: true } : undefined,
+    tool_use: r.tool_use ? JSON.parse(r.tool_use) : undefined,
+    usage:
+      r.usage_input != null && r.usage_output != null
+        ? { input_tokens: r.usage_input, output_tokens: r.usage_output }
+        : undefined,
+  }
+}
+
 type AttachmentPayload =
   | { kind: 'image'; mime: string; data?: string | null; path?: string | null }
   | { kind: 'file'; path: string; mime?: string | null; data?: string | null }
@@ -310,6 +337,7 @@ function highlightText(text: string, query: string): React.ReactNode {
 
 export default function Chat() {
   const { t } = useTranslation()
+  const isHistorical = (s: SessionInfo) => s.state === 'terminated'
   const [providerCatalog, setProviderCatalog] = useState<ProviderSurfaceCatalog>(DEFAULT_PROVIDER_SURFACE_CATALOG)
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -607,12 +635,26 @@ export default function Chat() {
   }, [t])
 
   const handleSelectSession = useCallback(
-    (id: string) => {
-      // Save current messages to cache before switching
+    async (id: string) => {
       if (activeId) messagesCache.current.set(activeId, messages)
       setActiveId(id)
-      setMessages(messagesCache.current.get(id) ?? [])
-      // FIFO eviction when cache exceeds limit
+
+      const cached = messagesCache.current.get(id)
+      if (cached) {
+        setMessages(cached)
+      } else {
+        try {
+          const records = await ipc<MessageRecord[]>('load_session_messages', {
+            sessionId: id,
+          })
+          const loaded = records.map(recordToChat)
+          setMessages(loaded)
+          messagesCache.current.set(id, loaded)
+        } catch {
+          setMessages([])
+        }
+      }
+
       if (messagesCache.current.size > MAX_CACHED_SESSIONS) {
         const oldest = messagesCache.current.keys().next().value
         if (oldest) messagesCache.current.delete(oldest)
@@ -651,7 +693,12 @@ export default function Chat() {
   const handleDelete = useCallback(
     async (id: string) => {
       try {
-        await ipc('kill_ai_session', { sessionId: id })
+        const session = sessions.find((s) => s.session_id === id)
+        if (session && isHistorical(session)) {
+          await ipc('delete_session_history', { sessionId: id })
+        } else {
+          await ipc('kill_ai_session', { sessionId: id })
+        }
         setSessions((p) => p.filter((s) => s.session_id !== id))
         messagesCache.current.delete(id)
         if (activeId === id) {
@@ -831,7 +878,9 @@ export default function Chat() {
   const isTruncated = messages.length > MAX_VISIBLE_MESSAGES
   const visibleMessages = isTruncated ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages
   const createDisabled = creating || (transport === 'http_api' && !selectedHttpSurface)
-  const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid
+  const activeSession = sessions.find((s) => s.session_id === activeId)
+  const isReadOnly = activeSession ? isHistorical(activeSession) : false
+  const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid || isReadOnly
 
   return (
     <div className="flex h-full min-h-0">
@@ -961,6 +1010,11 @@ export default function Chat() {
                     {s.transport} -- {s.turn_count} {t('chat.turns')}
                   </p>
                 </div>
+                {isHistorical(s) ? (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-500">
+                    History
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1248,45 +1302,57 @@ export default function Chat() {
                 ))}
               </div>
             )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                handleSend()
-              }}
-              className={cn(
-                'flex items-end gap-2 border-muted border-t bg-surface-base px-4 py-3',
-                attachments.length > 0 && 'border-t-0 pt-1.5',
-              )}
-            >
-              <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
-              <Button variant="ghost" size="sm" type="button" onClick={() => fileInputRef.current?.click()}>
-                <Paperclip className={iconSize.sm} />
-              </Button>
-              <textarea
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSend()
-                  }
-                }}
-                placeholder={t('chat.input_placeholder')}
-                rows={1}
-                style={{ overflow: 'hidden' }}
+            {isReadOnly ? (
+              <div
                 className={cn(
-                  'flex-1 resize-none border bg-surface-base px-3 py-2 text-sm placeholder-content-tertiary',
-                  radius.md,
-                  interaction.focusRing,
-                  interaction.interactive,
-                  colors.text.primary,
-                  'max-h-32 border-DEFAULT focus:border-brand-signal',
+                  'flex items-center justify-center border-muted border-t bg-surface-base px-4 py-3 text-xs',
+                  colors.text.secondary,
                 )}
-              />
-              <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
-                <Send className={iconSize.sm} />
-              </Button>
-            </form>
+              >
+                {t('chat.read_only_notice', 'This session has ended. History is read-only.')}
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleSend()
+                }}
+                className={cn(
+                  'flex items-end gap-2 border-muted border-t bg-surface-base px-4 py-3',
+                  attachments.length > 0 && 'border-t-0 pt-1.5',
+                )}
+              >
+                <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
+                <Button variant="ghost" size="sm" type="button" onClick={() => fileInputRef.current?.click()}>
+                  <Paperclip className={iconSize.sm} />
+                </Button>
+                <textarea
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSend()
+                    }
+                  }}
+                  disabled={isReadOnly}
+                  placeholder={t('chat.input_placeholder')}
+                  rows={1}
+                  style={{ overflow: 'hidden' }}
+                  className={cn(
+                    'flex-1 resize-none border bg-surface-base px-3 py-2 text-sm placeholder-content-tertiary',
+                    radius.md,
+                    interaction.focusRing,
+                    interaction.interactive,
+                    colors.text.primary,
+                    'max-h-32 border-DEFAULT focus:border-brand-signal',
+                  )}
+                />
+                <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
+                  <Send className={iconSize.sm} />
+                </Button>
+              </form>
+            )}
           </>
         )}
       </div>
