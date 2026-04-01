@@ -11,6 +11,7 @@
 
 mod ai;
 mod ai_session;
+mod audio;
 mod ai_validation;
 mod analysis;
 mod coaching;
@@ -25,6 +26,7 @@ mod sync;
 
 pub use ai::*;
 pub use ai_session::*;
+pub use audio::*;
 pub use ai_validation::*;
 pub use analysis::*;
 pub use coaching::*;
