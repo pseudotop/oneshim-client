@@ -20,6 +20,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { fetchProviderSurfaces } from '../api/client'
+import type { ProviderSurfaceCatalog, ProviderSurfaceSpec } from '../api/contracts'
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 
 // Lazy-loaded syntax highlighter — only fetched when a fenced code block is rendered
@@ -230,14 +232,17 @@ const STATE_DOT: Record<string, string> = {
 }
 
 const MAX_CACHED_SESSIONS = 20
-const HTTP_API_SURFACES = sortProviderSurfaces(
-  DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.filter(
-    (surface) =>
-      surface.supports.llm &&
-      surface.execution_kind === 'direct_http' &&
-      surface.llm_transport?.auth_scheme !== 'aws_signature_v4',
-  ),
-)
+
+function filterHttpApiSurfaces(catalog: { surfaces: ProviderSurfaceSpec[] }) {
+  return sortProviderSurfaces(
+    catalog.surfaces.filter(
+      (surface) =>
+        surface.supports.llm &&
+        surface.execution_kind === 'direct_http' &&
+        surface.llm_transport?.auth_scheme !== 'aws_signature_v4',
+    ),
+  )
+}
 
 async function ipc<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
@@ -304,6 +309,7 @@ function highlightText(text: string, query: string): React.ReactNode {
 
 export default function Chat() {
   const { t } = useTranslation()
+  const [providerCatalog, setProviderCatalog] = useState<ProviderSurfaceCatalog>(DEFAULT_PROVIDER_SURFACE_CATALOG)
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -313,7 +319,7 @@ export default function Chat() {
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [httpSurfaceId, setHttpSurfaceId] = useState<string>(HTTP_API_SURFACES[0]?.surface_id ?? '')
+  const [httpSurfaceId, setHttpSurfaceId] = useState<string>('')
   const [modelOverride, setModelOverride] = useState('')
   const [showMessagePayload, setShowMessagePayload] = useState(false)
   const [contextRegime, setContextRegime] = useState('')
@@ -330,6 +336,22 @@ export default function Chat() {
   const rafRef = useRef<number | null>(null)
   const messagesCache = useRef<Map<string, ChatMessage[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch provider catalog dynamically, fall back to static import
+  useEffect(() => {
+    fetchProviderSurfaces()
+      .then(setProviderCatalog)
+      .catch(() => {}) // keep static fallback
+  }, [])
+
+  const httpApiSurfaces = useMemo(() => filterHttpApiSurfaces(providerCatalog), [providerCatalog])
+
+  // Set initial httpSurfaceId once surfaces are available
+  useEffect(() => {
+    if (httpApiSurfaces.length > 0 && !httpSurfaceId) {
+      setHttpSurfaceId(httpApiSurfaces[0].surface_id)
+    }
+  }, [httpApiSurfaces, httpSurfaceId])
 
   // Smart auto-scroll: RAF-throttled to avoid forced layout on every scroll event
   const handleScroll = useCallback(() => {
@@ -357,11 +379,11 @@ export default function Chat() {
   }, [])
 
   useEffect(() => {
-    if (HTTP_API_SURFACES.length === 0) return
-    if (!HTTP_API_SURFACES.some((surface) => surface.surface_id === httpSurfaceId)) {
-      setHttpSurfaceId(HTTP_API_SURFACES[0].surface_id)
+    if (httpApiSurfaces.length === 0) return
+    if (!httpApiSurfaces.some((surface) => surface.surface_id === httpSurfaceId)) {
+      setHttpSurfaceId(httpApiSurfaces[0].surface_id)
     }
-  }, [httpSurfaceId])
+  }, [httpApiSurfaces, httpSurfaceId])
 
   useEffect(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
@@ -378,8 +400,8 @@ export default function Chat() {
   }, [t])
 
   const selectedHttpSurface = useMemo(
-    () => HTTP_API_SURFACES.find((surface) => surface.surface_id === httpSurfaceId) ?? HTTP_API_SURFACES[0] ?? null,
-    [httpSurfaceId],
+    () => httpApiSurfaces.find((surface) => surface.surface_id === httpSurfaceId) ?? httpApiSurfaces[0] ?? null,
+    [httpApiSurfaces, httpSurfaceId],
   )
   const resolvedModel = useMemo(() => {
     const override = modelOverride.trim()
@@ -800,7 +822,7 @@ export default function Chat() {
                   onChange={(e) => setHttpSurfaceId(e.target.value)}
                   className="w-full text-xs"
                 >
-                  {HTTP_API_SURFACES.map((surface) => (
+                  {httpApiSurfaces.map((surface) => (
                     <option key={surface.surface_id} value={surface.surface_id}>
                       {surface.display_name}
                     </option>
