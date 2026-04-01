@@ -7,6 +7,7 @@ import {
   Download,
   Loader2,
   MessageSquarePlus,
+  Mic,
   Paperclip,
   Plus,
   RefreshCw,
@@ -358,6 +359,8 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
   const [tokenUsage, setTokenUsage] = useState<{ total: number; budget: number | null }>({ total: 0, budget: null })
   const [createError, setCreateError] = useState<string | null>(null)
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
@@ -880,6 +883,32 @@ export default function Chat() {
   const createDisabled = creating || (transport === 'http_api' && !selectedHttpSurface)
   const activeSession = sessions.find((s) => s.session_id === activeId)
   const isReadOnly = activeSession ? isHistorical(activeSession) : false
+
+  const handleMicDown = useCallback(async () => {
+    if (isReadOnly || recording || transcribing) return
+    try {
+      await ipc('start_audio_capture')
+      setRecording(true)
+    } catch (e) {
+      addToast('error', errorMessage(e, t('chat.mic_error', 'Microphone not available')), 5000)
+    }
+  }, [isReadOnly, recording, transcribing, t])
+
+  const handleMicUp = useCallback(async () => {
+    if (!recording) return
+    setRecording(false)
+    setTranscribing(true)
+    try {
+      const result = await ipc<{ text: string }>('stop_and_transcribe')
+      if (result.text) {
+        setInput((prev) => (prev ? prev + ' ' : '') + result.text)
+      }
+    } catch (e) {
+      addToast('error', errorMessage(e, t('chat.stt_error', 'Transcription failed')), 5000)
+    } finally {
+      setTranscribing(false)
+    }
+  }, [recording, t])
   const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid || isReadOnly
 
   return (
@@ -1348,6 +1377,28 @@ export default function Chat() {
                     'max-h-32 border-DEFAULT focus:border-brand-signal',
                   )}
                 />
+                <button
+                  type="button"
+                  onMouseDown={handleMicDown}
+                  onMouseUp={handleMicUp}
+                  onTouchStart={handleMicDown}
+                  onTouchEnd={handleMicUp}
+                  disabled={isReadOnly || sending || transcribing}
+                  className={cn(
+                    'flex items-center justify-center rounded-md p-2 transition-colors',
+                    recording
+                      ? 'animate-pulse bg-red-500 text-white'
+                      : 'text-content-secondary hover:bg-surface-hover',
+                    'disabled:opacity-40',
+                  )}
+                  title={t('chat.mic_tooltip', 'Hold to speak')}
+                >
+                  {transcribing ? (
+                    <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
+                  ) : (
+                    <Mic className={iconSize.sm} />
+                  )}
+                </button>
                 <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
                   <Send className={iconSize.sm} />
                 </Button>
