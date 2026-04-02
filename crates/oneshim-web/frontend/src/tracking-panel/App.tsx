@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb, Settings, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface CaptureState {
   paused: boolean
@@ -31,6 +32,7 @@ const EXPANDED_WIDTH = 320
 const EXPANDED_HEIGHT = 310
 
 export function App() {
+  const { t } = useTranslation()
   const [state, setState] = useState<CaptureState>({ paused: false, indicator_visible: true })
   const [conn, setConn] = useState<ConnectionStatus>({ server: false, llm: false, cli: false })
   const [expanded, setExpanded] = useState(false)
@@ -73,13 +75,13 @@ export function App() {
       .then(setState)
       .catch((e) => {
         console.warn('get_capture_status failed:', e)
-        showFeedback('Status unavailable')
+        showFeedback(t('trackingPanel.statusUnavailable'))
       })
     invoke<ConnectionStatus>('get_connection_status')
       .then(setConn)
       .catch((e) => {
         console.warn('get_connection_status failed:', e)
-        showFeedback('Connection status unavailable')
+        showFeedback(t('trackingPanel.connectionUnavailable'))
       })
 
     // Restore saved position
@@ -100,7 +102,7 @@ export function App() {
       unlistenCapture?.()
       unlistenConn?.()
     }
-  }, [showFeedback])
+  }, [showFeedback, t])
 
   // Save position on window move (debounced)
   useEffect(() => {
@@ -154,49 +156,49 @@ export function App() {
   const handleManualCapture = useCallback(async () => {
     try {
       await invoke('trigger_manual_capture')
-      showFeedback('Captured')
+      showFeedback(t('trackingPanel.captured'))
     } catch (e) {
       console.warn('trigger_manual_capture failed:', e)
-      showFeedback('Capture failed')
+      showFeedback(t('trackingPanel.captureFailed'))
     }
-  }, [showFeedback])
+  }, [showFeedback, t])
 
   const handleSceneAnalysis = useCallback(async () => {
     try {
-      showFeedback('Analyzing...')
+      showFeedback(t('trackingPanel.analyzing'))
       const result = await invoke<SceneAnalysisResult>('analyze_current_scene')
       setSceneResult(result)
-      showFeedback(`${result.app_name} — ${result.accessibility?.element_count ?? 0} elements`)
+      showFeedback(`${result.app_name} — ${result.accessibility?.element_count ?? 0} ${t('trackingPanel.elements')}`)
       // Auto-dismiss scene result after 10s
       setTimeout(() => setSceneResult(null), 10000)
     } catch (e) {
       console.warn('analyze_current_scene failed:', e)
-      showFeedback('Analysis failed')
+      showFeedback(t('trackingPanel.analysisFailed'))
     }
-  }, [showFeedback])
+  }, [showFeedback, t])
 
   const handleToggleFocus = useCallback(async () => {
     try {
       const status = await invoke<{ active: boolean }>('get_focus_mode_status')
       await invoke('toggle_focus_mode', { active: !status.active, durationMinutes: 25 })
-      showFeedback(status.active ? 'Focus off' : 'Focus 25m')
+      showFeedback(status.active ? t('trackingPanel.focusOff') : t('trackingPanel.focus25m'))
     } catch (e) {
       console.warn('toggle_focus_mode failed:', e)
-      showFeedback('Focus toggle failed')
+      showFeedback(t('trackingPanel.focusToggleFailed'))
     }
-  }, [showFeedback])
+  }, [showFeedback, t])
 
   const handleSuggestions = useCallback(async () => {
     try {
       const { emit } = await import('@tauri-apps/api/event')
       await emit('overlay:toggle-suggestions')
       await invoke('toggle_overlay_interactive', { interactive: true })
-      showFeedback('Suggestions panel opened')
+      showFeedback(t('trackingPanel.suggestionsOpened'))
     } catch (e) {
       console.warn('toggle_overlay_interactive failed:', e)
-      showFeedback('Suggestions unavailable')
+      showFeedback(t('trackingPanel.suggestionsUnavailable'))
     }
-  }, [showFeedback])
+  }, [showFeedback, t])
 
   if (!state.indicator_visible) return null
 
@@ -231,14 +233,14 @@ export function App() {
           <span className="h-2 w-2 shrink-0 rounded-full bg-status-error" title={`${connCount}/3 connected`} />
         )}
         <span data-tauri-drag-region className="flex-1 truncate">
-          {state.paused ? 'Paused' : (feedback ?? 'Capturing')}
+          {state.paused ? t('trackingPanel.paused') : (feedback ?? t('trackingPanel.capturing'))}
         </span>
 
         <button
           type="button"
           onClick={() => invoke('toggle_capture_pause')}
           className="rounded px-1.5 py-0.5 transition-colors hover:bg-white/20"
-          title={state.paused ? 'Resume' : 'Pause'}
+          title={state.paused ? t('trackingPanel.resume') : t('trackingPanel.pause')}
         >
           {state.paused ? '\u25B6' : '\u23F8'}
         </button>
@@ -246,7 +248,7 @@ export function App() {
           type="button"
           onClick={toggleExpanded}
           className="rounded px-1.5 py-0.5 transition-colors hover:bg-white/20"
-          title={expanded ? 'Collapse' : 'Expand'}
+          title={expanded ? t('trackingPanel.collapse') : t('trackingPanel.expand')}
         >
           {expanded ? '\u2501' : '\u229E'}
         </button>
@@ -254,7 +256,7 @@ export function App() {
           type="button"
           onClick={() => invoke('set_indicator_visible', { visible: false })}
           className="rounded px-1 py-0.5 transition-colors hover:bg-white/20"
-          title="Hide"
+          title={t('trackingPanel.hide')}
         >
           {'\u2715'}
         </button>
@@ -265,25 +267,41 @@ export function App() {
         <div data-tauri-drag-region className="flex cursor-move flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
           <ActionButton
             icon={<LayoutDashboard size={14} />}
-            label="Open Dashboard"
+            label={t('trackingPanel.openDashboard')}
             onClick={() => invoke('show_main_window')}
           />
-          <ActionButton icon={<Camera size={14} />} label="Manual Capture" onClick={handleManualCapture} />
-          <ActionButton icon={<Brain size={14} />} label="Scene Analysis" onClick={handleSceneAnalysis} />
-          <ActionButton icon={<Lightbulb size={14} />} label="AI Suggestions" onClick={handleSuggestions} />
-          <ActionButton icon={<Crosshair size={14} />} label="Focus Mode" onClick={handleToggleFocus} />
+          <ActionButton
+            icon={<Camera size={14} />}
+            label={t('trackingPanel.manualCapture')}
+            onClick={handleManualCapture}
+          />
+          <ActionButton
+            icon={<Brain size={14} />}
+            label={t('trackingPanel.sceneAnalysis')}
+            onClick={handleSceneAnalysis}
+          />
+          <ActionButton
+            icon={<Lightbulb size={14} />}
+            label={t('trackingPanel.aiSuggestions')}
+            onClick={handleSuggestions}
+          />
+          <ActionButton
+            icon={<Crosshair size={14} />}
+            label={t('trackingPanel.focusMode')}
+            onClick={handleToggleFocus}
+          />
 
           {/* Connection status + offline mode indicator */}
           <div data-tauri-drag-region className="mt-2 border-white/10 border-t pt-2">
             {isOffline && (
               <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-400/80">
                 <WifiOff size={10} />
-                <span>Offline — local capture + analysis available</span>
+                <span>{t('trackingPanel.offlineMessage')}</span>
               </div>
             )}
             <div data-tauri-drag-region className="flex items-center justify-between text-[10px] text-white/60">
               <div className="flex items-center gap-3">
-                <StatusDot connected={conn.server} label="Server" />
+                <StatusDot connected={conn.server} label={t('trackingPanel.server')} />
                 <StatusDot connected={conn.llm} label="LLM" />
                 <StatusDot connected={conn.cli} label="CLI" />
               </div>
@@ -291,7 +309,7 @@ export function App() {
                 type="button"
                 onClick={() => invoke('show_main_window')}
                 className="rounded p-0.5 transition-colors hover:bg-white/10"
-                title="Open Settings"
+                title={t('trackingPanel.openSettings')}
               >
                 <Settings size={10} />
               </button>
@@ -314,13 +332,15 @@ export function App() {
                 </button>
               </div>
               <div className="mt-1 flex gap-3 text-white/50">
-                <span>{sceneResult.accessibility?.element_count ?? 0} elements</span>
+                <span>
+                  {sceneResult.accessibility?.element_count ?? 0} {t('trackingPanel.elements')}
+                </span>
                 <span>{sceneResult.ocr_regions.length} OCR</span>
                 {sceneResult.work_type && <span>{sceneResult.work_type}</span>}
               </div>
               {sceneResult.accessibility?.focused_element && (
                 <div className="mt-0.5 truncate text-white/40">
-                  Focus: {sceneResult.accessibility.focused_element.role}
+                  {t('trackingPanel.focus')}: {sceneResult.accessibility.focused_element.role}
                   {sceneResult.accessibility.focused_element.label &&
                     ` "${sceneResult.accessibility.focused_element.label}"`}
                 </div>
@@ -344,6 +364,7 @@ function ActionButton({
   onClick?: () => void
   disabled?: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <button
       type="button"
@@ -352,7 +373,7 @@ function ActionButton({
       className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-white/80 transition-colors ${
         disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/10 active:bg-white/20'
       }`}
-      title={disabled ? 'Coming soon' : label}
+      title={disabled ? t('trackingPanel.comingSoon') : label}
     >
       <span className="flex w-5 items-center justify-center">{icon}</span>
       <span>{label}</span>
