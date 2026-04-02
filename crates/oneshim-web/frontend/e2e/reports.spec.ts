@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
 import { mockStaticJson } from './helpers/mock-api'
+import { expect, type Page, test } from './helpers/test'
 
 const reportsTitleName = i18nRegex('reports.title')
 const weekPeriodName = i18nRegex('reports.week')

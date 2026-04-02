@@ -61,6 +61,9 @@ pub struct AudioContext {
     pub downloading: Arc<AtomicBool>,
     /// Cancel flag for active download — set to true to abort.
     pub download_cancel: Arc<AtomicBool>,
+    /// VAD state: "idle", "listening", "speech", "transcribing".
+    /// Tracked at IPC layer — not inside VadDetector.
+    pub vad_state: Arc<parking_lot::Mutex<String>>,
 }
 
 /// Groups connectivity flags for server, LLM, and CLI connections.
@@ -339,6 +342,7 @@ mod tests {
                 model_dir: PathBuf::from("/tmp/test-models"),
                 downloading: Arc::new(AtomicBool::new(false)),
                 download_cancel: Arc::new(AtomicBool::new(false)),
+                vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
             },
         })
         .build();

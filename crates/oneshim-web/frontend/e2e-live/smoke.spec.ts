@@ -10,10 +10,11 @@
  *
  * Prerequisites: cargo run (or cargo tauri dev) must be running.
  */
-import { test, expect } from '@playwright/test'
-import { DEFAULT_WEB_PORT } from '../src/constants'
+
 import fs from 'node:fs'
 import path from 'node:path'
+import { expect, test } from '@playwright/test'
+import { DEFAULT_WEB_PORT } from '../src/constants'
 
 const port = Number(process.env.ONESHIM_PORT || DEFAULT_WEB_PORT)
 const API_BASE = `http://127.0.0.1:${port}/api`
@@ -88,9 +89,7 @@ test.describe('Frontend Rendering', () => {
     expect(body?.length).toBeGreaterThan(50)
 
     // Filter out known non-critical errors (e.g. favicon 404)
-    const criticalErrors = consoleErrors.filter(
-      (e) => !e.includes('favicon') && !e.includes('DevTools')
-    )
+    const criticalErrors = consoleErrors.filter((e) => !e.includes('favicon') && !e.includes('DevTools'))
     expect(criticalErrors).toEqual([])
   })
 

@@ -5,11 +5,11 @@
  * waits for the WebDriver server to become ready, and provides
  * lifecycle management (start/stop).
  */
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createConnection } from 'node:net'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -44,10 +44,7 @@ function killStaleProcesses(): void {
 /** Locate the built binary. Prefers debug build, falls back to release. */
 function findBinary(): string {
   const root = resolve(__dirname, '../../../..')
-  const candidates = [
-    resolve(root, 'target/debug/oneshim'),
-    resolve(root, 'target/release/oneshim'),
-  ]
+  const candidates = [resolve(root, 'target/debug/oneshim'), resolve(root, 'target/release/oneshim')]
   for (const bin of candidates) {
     if (existsSync(bin)) return bin
   }
@@ -68,8 +65,7 @@ export async function startApp(webdriverPort = 4445, timeoutSec = 30): Promise<v
     await new Promise((r) => setTimeout(r, 1000))
     if (await isPortInUse(webdriverPort)) {
       throw new Error(
-        `Port ${webdriverPort} still in use after cleanup.\n` +
-          `Fix: lsof -ti:${webdriverPort} | xargs kill -9`,
+        `Port ${webdriverPort} still in use after cleanup.\n` + `Fix: lsof -ti:${webdriverPort} | xargs kill -9`,
       )
     }
   }

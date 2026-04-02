@@ -1,5 +1,5 @@
-import { test, expect } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
+import { expect, test } from './helpers/test'
 
 const dashboardName = i18nRegex('nav.dashboard')
 const timelineName = i18nRegex('nav.timeline')

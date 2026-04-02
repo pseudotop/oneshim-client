@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
 import { mockStaticJson } from './helpers/mock-api'
+import { expect, type Page, test } from './helpers/test'
 
 const privacyTitleName = i18nRegex('privacy.title')
 const currentDataName = i18nRegex('privacy.currentData')

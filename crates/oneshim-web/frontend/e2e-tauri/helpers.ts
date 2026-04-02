@@ -4,12 +4,13 @@
  * Tauri IPC 커맨드 호출 — window.__TAURI_INTERNALS__.invoke() 래핑
  * WebdriverIO의 executeAsync로 브라우저 컨텍스트에서 실행
  */
-export async function invokeIpc<T = unknown>(
-  command: string,
-  args?: Record<string, unknown>
-): Promise<T> {
+export async function invokeIpc<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> {
   const result = await browser.executeAsync(
-    (cmd: string, cmdArgs: Record<string, unknown> | undefined, done: (r: { ok: boolean; data?: unknown; error?: string }) => void) => {
+    (
+      cmd: string,
+      cmdArgs: Record<string, unknown> | undefined,
+      done: (r: { ok: boolean; data?: unknown; error?: string }) => void,
+    ) => {
       const tauri = (window as any).__TAURI_INTERNALS__
       if (!tauri) {
         done({ ok: false, error: 'TAURI_INTERNALS not available' })
@@ -21,7 +22,7 @@ export async function invokeIpc<T = unknown>(
         .catch((err: unknown) => done({ ok: false, error: String(err) }))
     },
     command,
-    args
+    args,
   )
   if (!result.ok) {
     throw new Error(`IPC ${command} failed: ${result.error}`)
@@ -35,14 +36,14 @@ export async function fetchApiJson<T = unknown>(
     method?: string
     headers?: Record<string, string>
     body?: string
-  }
+  },
 ): Promise<T> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const result = await browser.executeAsync(
     (
       relativePath: string,
       requestInit: { method?: string; headers?: Record<string, string>; body?: string } | undefined,
-      done: (r: { ok: boolean; data?: unknown; error?: string }) => void
+      done: (r: { ok: boolean; data?: unknown; error?: string }) => void,
     ) => {
       const port = (window as any).__ONESHIM_WEB_PORT__ || 10090
       const url = `http://127.0.0.1:${port}/api${relativePath}`
@@ -74,7 +75,7 @@ export async function fetchApiJson<T = unknown>(
         .catch((err: unknown) => done({ ok: false, error: String(err) }))
     },
     normalizedPath,
-    init
+    init,
   )
   if (!result.ok) {
     throw new Error(`API ${normalizedPath} failed: ${result.error}`)
@@ -86,10 +87,7 @@ export async function fetchApiJson<T = unknown>(
  * SSE 이벤트 수신 대기 — /api/stream에서 특정 이벤트 타입 캡처
  * WebView 내부의 EventSource를 사용하므로 CSP connect-src 범위 내에서 동작
  */
-export async function waitForSseEvent(
-  eventType: string,
-  timeoutMs = 10000
-): Promise<Record<string, unknown>> {
+export async function waitForSseEvent(eventType: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
   const result = await browser.executeAsync(
     (type: string, timeout: number, done: (r: { ok: boolean; data?: unknown; error?: string }) => void) => {
       const port = (window as any).__ONESHIM_WEB_PORT__ || 10090
@@ -114,7 +112,7 @@ export async function waitForSseEvent(
       }
     },
     eventType,
-    timeoutMs
+    timeoutMs,
   )
   if (!result.ok) {
     throw new Error(result.error)

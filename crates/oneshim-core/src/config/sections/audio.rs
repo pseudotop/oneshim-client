@@ -1,4 +1,5 @@
 // 오디오 캡처 및 음성-텍스트 변환 설정
+use super::super::enums::MicInputMode;
 use super::super::enums::SttLanguage;
 use super::super::enums::SttProviderKind;
 use super::super::enums::WhisperModelSize;
@@ -14,6 +15,18 @@ fn default_cloud_stt_endpoint() -> String {
 
 fn default_cloud_timeout_secs() -> u32 {
     10
+}
+
+fn default_vad_threshold() -> f32 {
+    0.02
+}
+
+fn default_vad_silence_ms() -> u32 {
+    800
+}
+
+fn default_vad_min_speech_ms() -> u32 {
+    300
 }
 
 /// Audio capture and speech-to-text configuration.
@@ -46,6 +59,18 @@ pub struct AudioConfig {
     /// Timeout in seconds for cloud STT requests.
     #[serde(default = "default_cloud_timeout_secs")]
     pub cloud_timeout_secs: u32,
+    /// Mic input mode — Push-to-Talk (default) or Voice Activity Detection.
+    #[serde(default)]
+    pub mic_input_mode: MicInputMode,
+    /// RMS energy threshold for VAD speech detection (0.0–1.0).
+    #[serde(default = "default_vad_threshold")]
+    pub vad_threshold: f32,
+    /// Silence duration in ms to end an utterance.
+    #[serde(default = "default_vad_silence_ms")]
+    pub vad_silence_ms: u32,
+    /// Minimum speech duration in ms to trigger transcription.
+    #[serde(default = "default_vad_min_speech_ms")]
+    pub vad_min_speech_ms: u32,
 }
 
 impl Default for AudioConfig {
@@ -60,6 +85,10 @@ impl Default for AudioConfig {
             cloud_api_key: String::new(),
             cloud_stt_endpoint: default_cloud_stt_endpoint(),
             cloud_timeout_secs: default_cloud_timeout_secs(),
+            mic_input_mode: MicInputMode::default(),
+            vad_threshold: default_vad_threshold(),
+            vad_silence_ms: default_vad_silence_ms(),
+            vad_min_speech_ms: default_vad_min_speech_ms(),
         }
     }
 }
@@ -126,5 +155,34 @@ mod tests {
             serde_json::to_string(&SttProviderKind::Local).unwrap(),
             "\"local\""
         );
+    }
+
+    #[test]
+    fn mic_input_mode_serde_round_trip() {
+        assert_eq!(
+            serde_json::to_string(&MicInputMode::PushToTalk).unwrap(),
+            "\"push_to_talk\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MicInputMode::VoiceActivity).unwrap(),
+            "\"voice_activity\""
+        );
+        let restored: MicInputMode = serde_json::from_str("\"voice_activity\"").unwrap();
+        assert_eq!(restored, MicInputMode::VoiceActivity);
+    }
+
+    #[test]
+    fn mic_input_mode_default_is_ptt() {
+        assert_eq!(MicInputMode::default(), MicInputMode::PushToTalk);
+    }
+
+    #[test]
+    fn audio_config_missing_vad_fields_uses_defaults() {
+        let json = r#"{"enabled": true, "language": "ko"}"#;
+        let config: AudioConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.mic_input_mode, MicInputMode::PushToTalk);
+        assert!((config.vad_threshold - 0.02).abs() < f32::EPSILON);
+        assert_eq!(config.vad_silence_ms, 800);
+        assert_eq!(config.vad_min_speech_ms, 300);
     }
 }

@@ -62,6 +62,14 @@ impl AudioBuffer {
     }
 }
 
+/// Configuration for Voice Activity Detection (passed from config to AudioCapture).
+#[derive(Debug, Clone)]
+pub struct VadConfig {
+    pub threshold: f32,
+    pub silence_ms: u32,
+    pub min_speech_ms: u32,
+}
+
 /// STT transcription result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResult {
@@ -109,6 +117,12 @@ pub struct AudioStatus {
     pub stt_provider_loaded: bool,
     #[serde(default)]
     pub stt_provider: String,
+    /// Current mic input mode: "push_to_talk" or "voice_activity".
+    #[serde(default)]
+    pub mic_input_mode: String,
+    /// VAD state: "idle", "listening", "speech", "transcribing".
+    #[serde(default)]
+    pub vad_state: String,
 }
 
 #[cfg(test)]
@@ -162,7 +176,7 @@ mod tests {
         let json = serde_json::to_string(&ready).unwrap();
         assert!(json.contains("\"state\":\"ready\""));
         let restored: ModelDownloadStatus = serde_json::from_str(&json).unwrap();
-        matches!(restored, ModelDownloadStatus::Ready { .. });
+        assert!(matches!(restored, ModelDownloadStatus::Ready { .. }));
     }
 
     #[test]
@@ -191,11 +205,35 @@ mod tests {
             model_status: ModelDownloadStatus::NotInstalled,
             stt_provider_loaded: false,
             stt_provider: String::new(),
+            mic_input_mode: "push_to_talk".into(),
+            vad_state: "idle".into(),
         };
         let json = serde_json::to_string(&status).unwrap();
         let restored: AudioStatus = serde_json::from_str(&json).unwrap();
         assert!(restored.enabled);
         assert!(!restored.stt_provider_loaded);
+        assert_eq!(restored.mic_input_mode, "push_to_talk");
+        assert_eq!(restored.vad_state, "idle");
+    }
+
+    #[test]
+    fn audio_status_missing_vad_fields_uses_defaults() {
+        let json = r#"{"enabled":true,"selected_model":"base","model_status":{"state":"not_installed"},"stt_provider_loaded":false,"stt_provider":""}"#;
+        let status: AudioStatus = serde_json::from_str(json).unwrap();
+        assert_eq!(status.mic_input_mode, "");
+        assert_eq!(status.vad_state, "");
+    }
+
+    #[test]
+    fn vad_config_creation() {
+        let cfg = VadConfig {
+            threshold: 0.02,
+            silence_ms: 800,
+            min_speech_ms: 300,
+        };
+        assert!((cfg.threshold - 0.02).abs() < f32::EPSILON);
+        assert_eq!(cfg.silence_ms, 800);
+        assert_eq!(cfg.min_speech_ms, 300);
     }
 
     #[test]

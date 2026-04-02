@@ -208,7 +208,7 @@ mod tests {
         let dl = WhisperModelDownloader::new();
         let dir = tempdir().unwrap();
         let status = dl.model_status(WhisperModelSize::Base, dir.path());
-        matches!(status, ModelDownloadStatus::NotInstalled);
+        assert!(matches!(status, ModelDownloadStatus::NotInstalled));
     }
 
     #[test]

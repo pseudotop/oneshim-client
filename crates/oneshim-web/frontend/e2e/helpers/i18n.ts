@@ -35,13 +35,9 @@ function unique(values: string[]): string[] {
 }
 
 export function i18nTexts(...keys: string[]): string[] {
-  const resolved = keys.flatMap((key) =>
-    locales.map((locale) => getByDottedPath(locale, key))
-  )
+  const resolved = keys.flatMap((key) => locales.map((locale) => getByDottedPath(locale, key)))
 
-  const texts = unique(
-    resolved.filter((value): value is string => typeof value === 'string')
-  )
+  const texts = unique(resolved.filter((value): value is string => typeof value === 'string'))
 
   if (texts.length === 0) {
     throw new Error(`No i18n text found for keys: ${keys.join(', ')}`)
@@ -50,10 +46,7 @@ export function i18nTexts(...keys: string[]): string[] {
   return texts
 }
 
-export function i18nRegex(
-  keys: string | string[],
-  extraLiterals: string[] = []
-): RegExp {
+export function i18nRegex(keys: string | string[], extraLiterals: string[] = []): RegExp {
   const keyList = Array.isArray(keys) ? keys : [keys]
   const combined = unique([...i18nTexts(...keyList), ...extraLiterals])
 

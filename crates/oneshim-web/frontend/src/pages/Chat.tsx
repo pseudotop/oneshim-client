@@ -364,6 +364,8 @@ export default function Chat() {
   const recordingRef = useRef(false)
   const [audioAvailable, setAudioAvailable] = useState(true)
   const [audioTooltip, setAudioTooltip] = useState('Hold to speak')
+  const [micMode, setMicMode] = useState<'push_to_talk' | 'voice_activity'>('push_to_talk')
+  const [vadState, setVadState] = useState<'idle' | 'listening' | 'speech' | 'transcribing'>('idle')
   const [tokenUsage, setTokenUsage] = useState<{ total: number; budget: number | null }>({ total: 0, budget: null })
   const [createError, setCreateError] = useState<string | null>(null)
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
@@ -396,7 +398,7 @@ export default function Chat() {
     )
       .then((r) => setTokenUsage({ total: r.totalInputTokens + r.totalOutputTokens, budget: r.dailyBudget || null }))
       .catch(() => {})
-  }, [messages])
+  }, [])
 
   // Smart auto-scroll: RAF-throttled to avoid forced layout on every scroll event
   const handleScroll = useCallback(() => {
@@ -418,6 +420,8 @@ export default function Chat() {
         recordingRef.current = false
         ipc('stop_and_transcribe').catch(() => {})
       }
+      // Also stop VAD listening if active
+      ipc('stop_vad_listening').catch(() => {})
     }
   }, [])
 
@@ -425,7 +429,12 @@ export default function Chat() {
     ;(async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
-        const status = await invoke<{ enabled: boolean; model_status: { state: string }; stt_provider_loaded: boolean }>('get_audio_status')
+        const status = await invoke<{
+          enabled: boolean
+          model_status: { state: string }
+          stt_provider_loaded: boolean
+          mic_input_mode?: string
+        }>('get_audio_status')
         if (!status.enabled) {
           setAudioAvailable(false)
           setAudioTooltip(t('chat.audio_disabled', 'Audio disabled in Settings'))
@@ -434,13 +443,53 @@ export default function Chat() {
           setAudioTooltip(t('chat.model_needed', 'Download model in Settings'))
         } else {
           setAudioAvailable(true)
-          setAudioTooltip(t('chat.mic_tooltip', 'Hold to speak'))
+          const mode = (
+            status.mic_input_mode === 'voice_activity' ? 'voice_activity' : 'push_to_talk'
+          ) as typeof micMode
+          setMicMode(mode)
+          setAudioTooltip(
+            mode === 'voice_activity'
+              ? t('chat.mic_vad_tooltip', 'Click to toggle listening')
+              : t('chat.mic_tooltip', 'Hold to speak'),
+          )
         }
       } catch {
         // not in Tauri
       }
     })()
   }, [t])
+
+  // VAD event listeners
+  useEffect(() => {
+    if (micMode !== 'voice_activity') return
+    let cleanup: (() => void) | undefined
+    ;(async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event')
+        const unlisten1 = await listen<{ state: string }>('vad-state-changed', (event) => {
+          const s = event.payload.state as typeof vadState
+          setVadState(s)
+          if (s === 'transcribing') setTranscribing(true)
+          else setTranscribing(false)
+        })
+        const unlisten2 = await listen<{ text: string; duration_secs: number; processing_secs: number }>(
+          'vad-transcription-result',
+          (event) => {
+            if (event.payload.text) {
+              setInput((prev) => (prev ? `${prev} ` : '') + event.payload.text)
+            }
+          },
+        )
+        cleanup = () => {
+          unlisten1()
+          unlisten2()
+        }
+      } catch {
+        // not in Tauri
+      }
+    })()
+    return () => cleanup?.()
+  }, [micMode])
 
   useEffect(() => {
     if (isNearBottom.current) {
@@ -741,7 +790,7 @@ export default function Chat() {
         addToast('error', errorMessage(e, t('chat.delete_failed', 'Failed to delete the session.')), 5000)
       }
     },
-    [activeId, sessions, t],
+    [activeId, sessions, t, isHistorical],
   )
 
   const handleExport = useCallback(
@@ -912,23 +961,29 @@ export default function Chat() {
   const activeSession = sessions.find((s) => s.session_id === activeId)
   const isReadOnly = activeSession ? isHistorical(activeSession) : false
 
-  const handleMicDown = useCallback(async (e?: React.SyntheticEvent) => {
-    // Prevent synthesized mouse events from touch (avoids double-fire)
-    if (e?.nativeEvent instanceof TouchEvent) e.preventDefault()
-    if (isReadOnly || recordingRef.current || transcribing) return
-    // Set ref synchronously to guard against rapid fire / race with handleMicUp
-    recordingRef.current = true
-    setRecording(true)
-    try {
-      await ipc('start_audio_capture')
-    } catch (err) {
-      recordingRef.current = false
-      setRecording(false)
-      addToast('error', errorMessage(err, t('chat.mic_error', 'Microphone not available')), 5000)
-    }
-  }, [isReadOnly, transcribing, t])
+  // PTT mode: hold-to-speak handlers
+  const handleMicDown = useCallback(
+    async (e?: React.SyntheticEvent) => {
+      if (micMode === 'voice_activity') return // VAD uses click toggle
+      // Prevent synthesized mouse events from touch (avoids double-fire)
+      if (e?.nativeEvent instanceof TouchEvent) e.preventDefault()
+      if (isReadOnly || recordingRef.current || transcribing) return
+      // Set ref synchronously to guard against rapid fire / race with handleMicUp
+      recordingRef.current = true
+      setRecording(true)
+      try {
+        await ipc('start_audio_capture')
+      } catch (err) {
+        recordingRef.current = false
+        setRecording(false)
+        addToast('error', errorMessage(err, t('chat.mic_error', 'Microphone not available')), 5000)
+      }
+    },
+    [isReadOnly, transcribing, t, micMode],
+  )
 
   const handleMicUp = useCallback(async () => {
+    if (micMode === 'voice_activity') return // VAD uses click toggle
     if (!recordingRef.current) return
     recordingRef.current = false
     setRecording(false)
@@ -943,7 +998,26 @@ export default function Chat() {
     } finally {
       setTranscribing(false)
     }
-  }, [t])
+  }, [t, micMode])
+
+  // VAD mode: click to toggle listening
+  const handleVadToggle = useCallback(async () => {
+    if (isReadOnly || transcribing) return
+    if (vadState === 'idle') {
+      try {
+        await ipc('start_vad_listening')
+      } catch (err) {
+        addToast('error', errorMessage(err, t('chat.mic_error', 'Microphone not available')), 5000)
+      }
+    } else {
+      try {
+        await ipc('stop_vad_listening')
+        setVadState('idle')
+      } catch {
+        // ignore
+      }
+    }
+  }, [isReadOnly, transcribing, vadState, t])
   const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid || isReadOnly
 
   return (
@@ -1075,7 +1149,7 @@ export default function Chat() {
                   </p>
                 </div>
                 {isHistorical(s) ? (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-500">
+                  <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-700">
                     {t('chat.history', 'History')}
                   </span>
                 ) : null}
@@ -1412,30 +1486,57 @@ export default function Chat() {
                     'max-h-32 border-DEFAULT focus:border-brand-signal',
                   )}
                 />
-                <button
-                  type="button"
-                  onMouseDown={handleMicDown}
-                  onMouseUp={handleMicUp}
-                  onMouseLeave={handleMicUp}
-                  onTouchStart={handleMicDown}
-                  onTouchEnd={handleMicUp}
-                  onTouchCancel={handleMicUp}
-                  disabled={isReadOnly || sending || transcribing || !audioAvailable}
-                  className={cn(
-                    'flex items-center justify-center rounded-md p-2 transition-colors',
-                    recording
-                      ? 'animate-pulse bg-red-500 text-white'
-                      : 'text-content-secondary hover:bg-surface-hover',
-                    'disabled:opacity-40',
-                  )}
-                  title={audioTooltip}
-                >
-                  {transcribing ? (
-                    <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
-                  ) : (
-                    <Mic className={iconSize.sm} />
-                  )}
-                </button>
+                {micMode === 'voice_activity' ? (
+                  <button
+                    type="button"
+                    onClick={handleVadToggle}
+                    disabled={isReadOnly || sending || !audioAvailable}
+                    className={cn(
+                      'flex items-center justify-center rounded-md p-2 transition-colors',
+                      vadState === 'listening' && 'animate-pulse bg-blue-500 text-white',
+                      vadState === 'speech' && 'animate-pulse bg-red-500 text-white',
+                      vadState === 'transcribing' && 'bg-amber-500 text-white',
+                      vadState === 'idle' && 'text-content-secondary hover:bg-surface-hover',
+                      'disabled:opacity-40',
+                    )}
+                    title={
+                      vadState === 'idle'
+                        ? t('chat.mic_vad_tooltip', 'Click to toggle listening')
+                        : t('chat.mic_vad_stop', 'Click to stop listening')
+                    }
+                  >
+                    {vadState === 'transcribing' ? (
+                      <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
+                    ) : (
+                      <Mic className={iconSize.sm} />
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onMouseDown={handleMicDown}
+                    onMouseUp={handleMicUp}
+                    onMouseLeave={handleMicUp}
+                    onTouchStart={handleMicDown}
+                    onTouchEnd={handleMicUp}
+                    onTouchCancel={handleMicUp}
+                    disabled={isReadOnly || sending || transcribing || !audioAvailable}
+                    className={cn(
+                      'flex items-center justify-center rounded-md p-2 transition-colors',
+                      recording
+                        ? 'animate-pulse bg-red-500 text-white'
+                        : 'text-content-secondary hover:bg-surface-hover',
+                      'disabled:opacity-40',
+                    )}
+                    title={audioTooltip}
+                  >
+                    {transcribing ? (
+                      <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
+                    ) : (
+                      <Mic className={iconSize.sm} />
+                    )}
+                  </button>
+                )}
                 <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
                   <Send className={iconSize.sm} />
                 </Button>
