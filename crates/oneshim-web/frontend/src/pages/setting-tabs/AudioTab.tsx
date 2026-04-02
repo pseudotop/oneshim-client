@@ -100,6 +100,9 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
   const modelState = audioStatus?.model_status?.state ?? 'not_installed'
   const sttProvider = (audio?.stt_provider ?? 'local') as string
   const cloudApiKey = audio?.cloud_api_key ?? ''
+  const micInputMode = audio?.mic_input_mode ?? 'push_to_talk'
+  const vadThreshold = audio?.vad_threshold ?? 0.02
+  const vadSilenceMs = audio?.vad_silence_ms ?? 800
 
   const handleDownload = async () => {
     setDownloading(true)
@@ -245,6 +248,80 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
           <option value="ko">한국어</option>
         </select>
       </div>
+
+      {/* Input Mode */}
+      <div className="space-y-2">
+        <label className={cn(typography.label, colors.text.secondary)}>
+          {t('settings.audio.input_mode', 'Input Mode')}
+        </label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="mic_input_mode"
+              value="push_to_talk"
+              checked={micInputMode === 'push_to_talk'}
+              onChange={() => onAudioChange('mic_input_mode', 'push_to_talk')}
+            />
+            <span className={colors.text.primary}>{t('settings.audio.ptt', 'Push-to-Talk')}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="mic_input_mode"
+              value="voice_activity"
+              checked={micInputMode === 'voice_activity'}
+              onChange={() => onAudioChange('mic_input_mode', 'voice_activity')}
+            />
+            <span className={colors.text.primary}>{t('settings.audio.vad', 'Voice Activity')}</span>
+          </label>
+        </div>
+      </div>
+
+      {/* VAD Settings (shown when Voice Activity selected) */}
+      {micInputMode === 'voice_activity' && (
+        <div className="space-y-4 rounded-lg border border-muted p-4">
+          <div className="space-y-2">
+            <label className={cn(typography.label, colors.text.secondary)}>
+              {t('settings.audio.vad_sensitivity', 'VAD Sensitivity')}
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="0.005"
+                max="0.1"
+                step="0.005"
+                value={vadThreshold}
+                onChange={(e) => onAudioChange('vad_threshold', Number.parseFloat(e.target.value))}
+                className="flex-1"
+              />
+              <span className={cn('w-12 text-right text-sm tabular-nums', colors.text.secondary)}>
+                {vadThreshold.toFixed(3)}
+              </span>
+            </div>
+            <p className={cn(typography.caption, colors.text.tertiary)}>
+              {t('settings.audio.vad_sensitivity_hint', 'Lower = more sensitive. Increase if background noise triggers false detections.')}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label className={cn(typography.label, colors.text.secondary)}>
+              {t('settings.audio.vad_silence', 'Silence Duration (ms)')}
+            </label>
+            <input
+              type="number"
+              min="200"
+              max="3000"
+              step="100"
+              value={vadSilenceMs}
+              onChange={(e) => onAudioChange('vad_silence_ms', Number.parseInt(e.target.value, 10) || 800)}
+              className={cn('w-32 border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
+            />
+            <p className={cn(typography.caption, colors.text.tertiary)}>
+              {t('settings.audio.vad_silence_hint', 'How long to wait in silence before ending an utterance.')}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* STT Provider */}
       <div className="space-y-2">

@@ -126,6 +126,10 @@ export function makeDefaultFormData(overrides?: Partial<AppSettings>): AppSettin
       cloud_api_key: '',
       cloud_stt_endpoint: 'https://api.openai.com/v1/audio/transcriptions',
       cloud_timeout_secs: 10,
+      mic_input_mode: 'push_to_talk',
+      vad_threshold: 0.02,
+      vad_silence_ms: 800,
+      vad_min_speech_ms: 300,
     },
     ...overrides,
   }

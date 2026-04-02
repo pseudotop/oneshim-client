@@ -178,6 +178,10 @@ export interface AudioSettings {
   cloud_api_key: string
   cloud_stt_endpoint: string
   cloud_timeout_secs: number
+  mic_input_mode: string
+  vad_threshold: number
+  vad_silence_ms: number
+  vad_min_speech_ms: number
 }
 
 export interface AiSessionSettings {

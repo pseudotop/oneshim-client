@@ -551,6 +551,7 @@ impl AppRuntimeLaunchBuilder {
                 model_dir,
                 downloading: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 download_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
             },
         });
         #[cfg(feature = "server")]

@@ -265,6 +265,8 @@ fn main() {
             commands::audio::cancel_model_download,
             commands::audio::delete_whisper_model,
             commands::audio::reload_stt_engine,
+            commands::audio::start_vad_listening,
+            commands::audio::stop_vad_listening,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");
