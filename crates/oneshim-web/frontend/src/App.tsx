@@ -26,7 +26,7 @@ const Updates = lazy(() => import('./pages/Updates'))
 const DashboardDay = lazy(() => import('./pages/DashboardDay'))
 const RecalibrationPage = lazy(() => import('./pages/RecalibrationPage'))
 const Coaching = lazy(() => import('./pages/Coaching'))
-const Chat = lazy(() => import('./pages/Chat'))
+const Chat = lazy(() => import('./pages/chat'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
 
 function AppShell() {
