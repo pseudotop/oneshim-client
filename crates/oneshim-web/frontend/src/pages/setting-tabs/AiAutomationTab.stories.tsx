@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import AiAutomationTab from './AiAutomationTab'
+import AiAutomationTab from './ai-automation'
 import { makeDefaultFormData } from './stories-utils'
 
 const noop = () => {}
