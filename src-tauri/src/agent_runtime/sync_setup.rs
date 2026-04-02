@@ -101,10 +101,8 @@ pub(super) async fn build_sync_engine(
             #[cfg(feature = "lan-sync")]
             {
                 let config_dir = data_dir.clone();
-                match oneshim_network::sync::lan_tls::load_or_generate_cert(
-                    &config_dir,
-                    &device_id,
-                ) {
+                match oneshim_network::sync::lan_tls::load_or_generate_cert(&config_dir, &device_id)
+                {
                     Ok((cert_pem, key_pem, fingerprint)) => {
                         // Use block_on to await the async start in sync context
                         match tokio::runtime::Handle::current().block_on(
@@ -131,9 +129,7 @@ pub(super) async fn build_sync_engine(
             {
                 let _ = data_dir; // suppress unused warning
                 warn!("LAN sync requires 'lan-sync' feature; sync disabled");
-                Err(CoreError::Internal(
-                    "lan-sync feature not enabled".into(),
-                ))
+                Err(CoreError::Internal("lan-sync feature not enabled".into()))
             }
         }
     };

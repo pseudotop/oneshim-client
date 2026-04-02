@@ -7,6 +7,7 @@ import {
   Download,
   Loader2,
   MessageSquarePlus,
+  Mic,
   Paperclip,
   Plus,
   RefreshCw,
@@ -358,6 +359,9 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const recordingRef = useRef(false)
   const [tokenUsage, setTokenUsage] = useState<{ total: number; budget: number | null }>({ total: 0, budget: null })
   const [createError, setCreateError] = useState<string | null>(null)
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
@@ -404,10 +408,14 @@ export default function Chat() {
     })
   }, [])
 
-  // Clean up pending RAF on unmount
+  // Clean up pending RAF and active audio capture on unmount
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (recordingRef.current) {
+        recordingRef.current = false
+        ipc('stop_and_transcribe').catch(() => {})
+      }
     }
   }, [])
 
@@ -880,6 +888,39 @@ export default function Chat() {
   const createDisabled = creating || (transport === 'http_api' && !selectedHttpSurface)
   const activeSession = sessions.find((s) => s.session_id === activeId)
   const isReadOnly = activeSession ? isHistorical(activeSession) : false
+
+  const handleMicDown = useCallback(async (e?: React.SyntheticEvent) => {
+    // Prevent synthesized mouse events from touch (avoids double-fire)
+    if (e?.nativeEvent instanceof TouchEvent) e.preventDefault()
+    if (isReadOnly || recordingRef.current || transcribing) return
+    // Set ref synchronously to guard against rapid fire / race with handleMicUp
+    recordingRef.current = true
+    setRecording(true)
+    try {
+      await ipc('start_audio_capture')
+    } catch (err) {
+      recordingRef.current = false
+      setRecording(false)
+      addToast('error', errorMessage(err, t('chat.mic_error', 'Microphone not available')), 5000)
+    }
+  }, [isReadOnly, transcribing, t])
+
+  const handleMicUp = useCallback(async () => {
+    if (!recordingRef.current) return
+    recordingRef.current = false
+    setRecording(false)
+    setTranscribing(true)
+    try {
+      const result = await ipc<{ text: string }>('stop_and_transcribe')
+      if (result.text) {
+        setInput((prev) => (prev ? `${prev} ` : '') + result.text)
+      }
+    } catch (e) {
+      addToast('error', errorMessage(e, t('chat.stt_error', 'Transcription failed')), 5000)
+    } finally {
+      setTranscribing(false)
+    }
+  }, [t])
   const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid || isReadOnly
 
   return (
@@ -1348,6 +1389,30 @@ export default function Chat() {
                     'max-h-32 border-DEFAULT focus:border-brand-signal',
                   )}
                 />
+                <button
+                  type="button"
+                  onMouseDown={handleMicDown}
+                  onMouseUp={handleMicUp}
+                  onMouseLeave={handleMicUp}
+                  onTouchStart={handleMicDown}
+                  onTouchEnd={handleMicUp}
+                  onTouchCancel={handleMicUp}
+                  disabled={isReadOnly || sending || transcribing}
+                  className={cn(
+                    'flex items-center justify-center rounded-md p-2 transition-colors',
+                    recording
+                      ? 'animate-pulse bg-red-500 text-white'
+                      : 'text-content-secondary hover:bg-surface-hover',
+                    'disabled:opacity-40',
+                  )}
+                  title={t('chat.mic_tooltip', 'Hold to speak')}
+                >
+                  {transcribing ? (
+                    <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
+                  ) : (
+                    <Mic className={iconSize.sm} />
+                  )}
+                </button>
                 <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
                   <Send className={iconSize.sm} />
                 </Button>

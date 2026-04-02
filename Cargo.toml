@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/oneshim-api-contracts",
+    "crates/oneshim-audio",
     "crates/oneshim-lint",
     "crates/oneshim-core",
     "crates/oneshim-monitor",
@@ -78,6 +79,11 @@ rstar = "0.12"
 # 에러 처리
 thiserror = "2"
 anyhow = "1"
+
+# 오디오 캡처 + STT
+cpal = "0.17"
+rubato = "0.15"
+whisper-rs = "0.16"
 
 # 비동기 trait (dyn Trait + async fn 지원)
 async-trait = "0.1"
@@ -184,6 +190,7 @@ windows = { version = "0.61", features = ["Win32_UI_Accessibility", "Win32_Syste
 
 # 내부 크레이트
 oneshim-core = { path = "crates/oneshim-core" }
+oneshim-audio = { path = "crates/oneshim-audio" }
 oneshim-api-contracts = { path = "crates/oneshim-api-contracts" }
 oneshim-monitor = { path = "crates/oneshim-monitor" }
 oneshim-vision = { path = "crates/oneshim-vision" }

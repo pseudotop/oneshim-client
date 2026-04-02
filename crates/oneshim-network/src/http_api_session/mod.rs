@@ -84,7 +84,6 @@ struct PartialToolCall {
     arguments: String,
 }
 
-
 impl HttpApiSession {
     /// Create a new HTTP API session.
     pub fn new(init: HttpApiSessionInit) -> Self {

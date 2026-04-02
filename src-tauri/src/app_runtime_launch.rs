@@ -416,6 +416,67 @@ impl AppRuntimeLaunchBuilder {
         // Forward update status changes to Tauri frontend via broadcast → emit bridge.
         RuntimeBridgeSpawner::spawn_update_event_bridge(&handle, &self.app_handle, &update_control);
 
+        // Audio capture and STT engine — wired when audio feature + config enabled.
+        let audio_capture: Option<Arc<dyn oneshim_core::ports::audio_capture::AudioCapturePort>> = {
+            #[cfg(feature = "audio")]
+            {
+                if config.audio.enabled {
+                    Some(Arc::new(oneshim_audio::AudioCapture::new()))
+                } else {
+                    tracing::debug!("audio capture disabled by config");
+                    None
+                }
+            }
+            #[cfg(not(feature = "audio"))]
+            {
+                None
+            }
+        };
+
+        let stt_engine: Option<Arc<dyn oneshim_core::ports::stt_provider::SttProvider>> = {
+            #[cfg(feature = "stt")]
+            {
+                if !config.audio.enabled {
+                    None
+                } else {
+                    let model_path = if config.audio.whisper_model_path.is_empty() {
+                        self.app_handle
+                            .path()
+                            .resource_dir()
+                            .map(|d| d.join("ggml-base.bin"))
+                            .unwrap_or_default()
+                    } else {
+                        std::path::PathBuf::from(&config.audio.whisper_model_path)
+                    };
+                    if model_path.exists() {
+                        match oneshim_audio::WhisperSttProvider::new(
+                            &model_path,
+                            config.audio.language,
+                        ) {
+                            Ok(provider) => {
+                                tracing::info!("Whisper STT loaded: {}", model_path.display());
+                                Some(Arc::new(provider) as _)
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to load Whisper model: {e}");
+                                None
+                            }
+                        }
+                    } else {
+                        tracing::info!(
+                            "Whisper model not found at {}; STT disabled",
+                            model_path.display()
+                        );
+                        None
+                    }
+                }
+            }
+            #[cfg(not(feature = "stt"))]
+            {
+                None
+            }
+        };
+
         let state_builder = ManagedStateBuilder::new(AppState {
             runtime_handle: handle,
             config,
@@ -453,6 +514,10 @@ impl AppRuntimeLaunchBuilder {
             suggestion_manager,
             session_manager,
             session_storage: Some(sqlite_storage.clone()),
+            audio: crate::runtime_state::AudioContext {
+                capture: audio_capture,
+                stt_engine,
+            },
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

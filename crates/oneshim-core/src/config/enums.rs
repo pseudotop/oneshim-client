@@ -129,3 +129,13 @@ pub enum OverlayMode {
     /// Auto-switches based on regime (deep work -> Minimal, transition -> Rich).
     Adaptive,
 }
+
+/// Speech-to-text language hint for Whisper transcription.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SttLanguage {
+    #[default]
+    Auto,
+    En,
+    Ko,
+}

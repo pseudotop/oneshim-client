@@ -3,11 +3,13 @@ use oneshim_core::config::{AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
+use oneshim_core::ports::audio_capture::AudioCapturePort;
 use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::monitor::ActivityMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::session_storage::SessionStoragePort;
+use oneshim_core::ports::stt_provider::SttProvider;
 use oneshim_core::ports::vision::FrameProcessor;
 use oneshim_core::ports::work_classifier::WorkTypeClassifier;
 use oneshim_storage::frame_storage::FrameFileStorage;
@@ -43,6 +45,13 @@ pub struct CaptureContext {
     pub consent_manager: Option<Arc<ConsentManager>>,
     /// Work type classifier for scene analysis (A2).
     pub work_classifier: Option<Arc<dyn WorkTypeClassifier>>,
+}
+
+/// Audio capture and STT engine for voice input.
+#[allow(dead_code)]
+pub struct AudioContext {
+    pub capture: Option<Arc<dyn AudioCapturePort>>,
+    pub stt_engine: Option<Arc<dyn SttProvider>>,
 }
 
 /// Groups connectivity flags for server, LLM, and CLI connections.
@@ -93,6 +102,8 @@ pub struct AppState {
     pub session_manager: Option<Arc<SessionManagerImpl>>,
     /// Persisted session storage for AI chat history (fire-and-forget writes).
     pub session_storage: Option<Arc<dyn SessionStoragePort>>,
+    /// Audio capture and STT engine for voice input (P1 Audio STT).
+    pub audio: AudioContext,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -312,6 +323,10 @@ mod tests {
             suggestion_manager: None,
             session_manager: None,
             session_storage: None,
+            audio: AudioContext {
+                capture: None,
+                stt_engine: None,
+            },
         })
         .build();
 

@@ -2,6 +2,7 @@ pub mod activity;
 pub mod ai_session;
 pub mod analysis;
 pub mod app_registry;
+pub mod audio;
 pub mod audit;
 pub mod automation;
 pub mod coaching;

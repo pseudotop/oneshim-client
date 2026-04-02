@@ -58,10 +58,7 @@ pub(super) fn build_anthropic_tools(tools: &[ToolDefinition]) -> Vec<serde_json:
 /// - `content_block_delta` -> text chunk
 /// - `message_stop` -> stream completion
 /// - `message_delta` -> usage info (optional)
-pub(super) fn parse_anthropic_sse_event(
-    event_type: &str,
-    data: &str,
-) -> Option<OutboundMessage> {
+pub(super) fn parse_anthropic_sse_event(event_type: &str, data: &str) -> Option<OutboundMessage> {
     match event_type {
         "content_block_start" => {
             let val: serde_json::Value = serde_json::from_str(data).ok()?;

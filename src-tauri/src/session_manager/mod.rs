@@ -15,9 +15,7 @@ use tracing::{info, warn};
 
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::ai_session::{
-    ConversationSessionInfo, SessionConfig, SessionState,
-};
+use oneshim_core::models::ai_session::{ConversationSessionInfo, SessionConfig, SessionState};
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::conversation_session::{ConversationSession, SessionManager};
 use oneshim_core::ports::secret_store::SecretStore;

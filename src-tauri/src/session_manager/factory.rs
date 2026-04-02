@@ -85,10 +85,7 @@ impl SessionManagerImpl {
             probed_surfaces
                 .iter()
                 .find(|surface| {
-                    runtime_ready_for_surface(
-                        &surface.detected.surface_id,
-                        surface.auth_status,
-                    )
+                    runtime_ready_for_surface(&surface.detected.surface_id, surface.auth_status)
                 })
                 .map(|surface| surface.detected.clone())
                 .or_else(|| {
@@ -148,9 +145,7 @@ impl SessionManagerImpl {
         default_tools: &DefaultTools,
     ) -> Result<Arc<dyn ConversationSession>, CoreError> {
         let surface_id = config.surface_id.as_deref().ok_or_else(|| {
-            CoreError::InvalidArguments(
-                "surface_id is required for HttpApi sessions".to_string(),
-            )
+            CoreError::InvalidArguments("surface_id is required for HttpApi sessions".to_string())
         })?;
 
         // Resolve surface spec from the provider catalog.
