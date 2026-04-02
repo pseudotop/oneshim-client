@@ -362,6 +362,8 @@ export default function Chat() {
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const recordingRef = useRef(false)
+  const [audioAvailable, setAudioAvailable] = useState(true)
+  const [audioTooltip, setAudioTooltip] = useState('Hold to speak')
   const [tokenUsage, setTokenUsage] = useState<{ total: number; budget: number | null }>({ total: 0, budget: null })
   const [createError, setCreateError] = useState<string | null>(null)
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
@@ -418,6 +420,27 @@ export default function Chat() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const status = await invoke<{ enabled: boolean; model_status: { state: string }; stt_provider_loaded: boolean }>('get_audio_status')
+        if (!status.enabled) {
+          setAudioAvailable(false)
+          setAudioTooltip(t('chat.audio_disabled', 'Audio disabled in Settings'))
+        } else if (status.model_status.state !== 'ready') {
+          setAudioAvailable(false)
+          setAudioTooltip(t('chat.model_needed', 'Download model in Settings'))
+        } else {
+          setAudioAvailable(true)
+          setAudioTooltip(t('chat.mic_tooltip', 'Hold to speak'))
+        }
+      } catch {
+        // not in Tauri
+      }
+    })()
+  }, [t])
 
   useEffect(() => {
     if (isNearBottom.current) {
@@ -1397,7 +1420,7 @@ export default function Chat() {
                   onTouchStart={handleMicDown}
                   onTouchEnd={handleMicUp}
                   onTouchCancel={handleMicUp}
-                  disabled={isReadOnly || sending || transcribing}
+                  disabled={isReadOnly || sending || transcribing || !audioAvailable}
                   className={cn(
                     'flex items-center justify-center rounded-md p-2 transition-colors',
                     recording
@@ -1405,7 +1428,7 @@ export default function Chat() {
                       : 'text-content-secondary hover:bg-surface-hover',
                     'disabled:opacity-40',
                   )}
-                  title={t('chat.mic_tooltip', 'Hold to speak')}
+                  title={audioTooltip}
                 >
                   {transcribing ? (
                     <Loader2 className={cn(iconSize.sm, 'animate-spin')} />

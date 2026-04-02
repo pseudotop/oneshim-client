@@ -72,6 +72,7 @@ const MonitoringTab = lazy(() => import('./setting-tabs/MonitoringTab'))
 const AiAutomationTab = lazy(() => import('./setting-tabs/AiAutomationTab'))
 const DataStorageTab = lazy(() => import('./setting-tabs/DataStorageTab'))
 const CoachingGoalsTab = lazy(() => import('./setting-tabs/CoachingGoalsTab'))
+const AudioTab = lazy(() => import('./setting-tabs/AudioTab'))
 const AdvancedTab = lazy(() => import('./setting-tabs/AdvancedTab'))
 
 import {
@@ -1289,6 +1290,7 @@ export default function Settings() {
     { id: 'ai-automation', label: t('settings.tabs.aiAutomation') },
     { id: 'data', label: t('settings.tabs.dataStorage') },
     { id: 'coaching', label: t('settings.tabs.coaching', 'Coaching Goals') },
+    { id: 'audio', label: t('settings.tabs.audio', 'Audio') },
     { id: 'advanced', label: t('settings.tabs.advanced', 'Advanced') },
   ]
 
@@ -1501,6 +1503,20 @@ export default function Settings() {
           {activeTab === 'coaching' && (
             <div id="settings-panel-coaching" role="tabpanel" aria-labelledby="settings-tab-coaching">
               <CoachingGoalsTab />
+            </div>
+          )}
+
+          {activeTab === 'audio' && (
+            <div id="settings-panel-audio" role="tabpanel" aria-labelledby="settings-tab-audio">
+              <AudioTab
+                formData={formData}
+                onAudioChange={(field, value) => {
+                  setFormData((prev) => {
+                    if (!prev) return prev
+                    return { ...prev, audio: { ...prev.audio, [field]: value } }
+                  })
+                }}
+              />
             </div>
           )}
 

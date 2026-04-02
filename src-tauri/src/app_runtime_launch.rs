@@ -1,7 +1,7 @@
 use anyhow::Result;
 use oneshim_core::consent::ConsentManager;
 use std::sync::Arc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tracing::info;
 
 use crate::agent_runtime::AgentRuntimeBuilder;
@@ -417,6 +417,13 @@ impl AppRuntimeLaunchBuilder {
         RuntimeBridgeSpawner::spawn_update_event_bridge(&handle, &self.app_handle, &update_control);
 
         // Audio capture and STT engine — wired when audio feature + config enabled.
+        let model_dir: std::path::PathBuf = self
+            .app_handle
+            .path()
+            .app_data_dir()
+            .map(|d| d.join("models"))
+            .unwrap_or_else(|_| std::path::PathBuf::from("models"));
+
         let audio_capture: Option<Arc<dyn oneshim_core::ports::audio_capture::AudioCapturePort>> = {
             #[cfg(feature = "audio")]
             {
@@ -439,12 +446,22 @@ impl AppRuntimeLaunchBuilder {
                 if !config.audio.enabled {
                     None
                 } else {
+                    // Try model_dir first (when download feature available), then legacy whisper_model_path
                     let model_path = if config.audio.whisper_model_path.is_empty() {
-                        self.app_handle
-                            .path()
-                            .resource_dir()
-                            .map(|d| d.join("ggml-base.bin"))
-                            .unwrap_or_default()
+                        #[cfg(feature = "download")]
+                        {
+                            model_dir.join(oneshim_audio::model_downloader::model_filename(
+                                config.audio.model_size,
+                            ))
+                        }
+                        #[cfg(not(feature = "download"))]
+                        {
+                            self.app_handle
+                                .path()
+                                .resource_dir()
+                                .map(|d| d.join("ggml-base.bin"))
+                                .unwrap_or_default()
+                        }
                     } else {
                         std::path::PathBuf::from(&config.audio.whisper_model_path)
                     };
@@ -472,6 +489,19 @@ impl AppRuntimeLaunchBuilder {
                 }
             }
             #[cfg(not(feature = "stt"))]
+            {
+                None
+            }
+        };
+
+        let model_downloader: Option<
+            Arc<dyn oneshim_core::ports::model_downloader::ModelDownloader>,
+        > = {
+            #[cfg(feature = "download")]
+            {
+                Some(Arc::new(oneshim_audio::WhisperModelDownloader::new()))
+            }
+            #[cfg(not(feature = "download"))]
             {
                 None
             }
@@ -516,7 +546,11 @@ impl AppRuntimeLaunchBuilder {
             session_storage: Some(sqlite_storage.clone()),
             audio: crate::runtime_state::AudioContext {
                 capture: audio_capture,
-                stt_engine,
+                stt_engine: Arc::new(tokio::sync::RwLock::new(stt_engine)),
+                model_downloader,
+                model_dir,
+                downloading: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                download_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             },
         });
         #[cfg(feature = "server")]
