@@ -163,7 +163,10 @@ Port traits defined inside adapter crates are only allowed when:
 - `WebStorage` is canonical in `oneshim-core/src/ports/web_storage.rs`.
 - `oneshim-web/src/storage_port.rs` remains only as a crate-local re-export shim and is not a canonical port definition.
 
-**Concrete type leaks**: Adapter crate state structs (e.g., `AppState`) MUST reference port traits via `Arc<dyn PortTrait>`, never concrete adapter types from other crates.
+**Concrete type leaks**: As the default rule, adapter crate state structs that act as cross-crate
+boundaries MUST reference port traits via `Arc<dyn PortTrait>`, never concrete adapter types from
+other crates. Tauri-managed entry-point state in `oneshim-app` has a narrower framework-specific
+rule; see [ADR-014](./ADR-014-tauri-managed-state-boundary.md).
 
 ```rust
 // ❌ Wrong — leaks concrete type from another adapter

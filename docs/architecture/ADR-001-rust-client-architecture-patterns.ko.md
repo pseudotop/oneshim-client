@@ -164,7 +164,11 @@ oneshim-lint          ← standalone tooling package
 - `WebStorage`의 canonical 정의는 `oneshim-core/src/ports/web_storage.rs`에 있다.
 - `oneshim-web/src/storage_port.rs`는 crate 내부 편의를 위한 re-export shim일 뿐, port 정의 위치가 아니다.
 
-**구체 타입 누수 금지**: adapter crate의 state struct(`AppState` 등)는 다른 crate의 concrete adapter 타입 대신 `Arc<dyn PortTrait>` 형태의 port trait만 참조해야 한다.
+**구체 타입 누수 금지**: 기본 원칙으로, cross-crate 경계 역할을 하는 adapter crate의
+state struct(`AppState` 등)는 다른 crate의 concrete adapter 타입 대신
+`Arc<dyn PortTrait>` 형태의 port trait만 참조해야 한다. `oneshim-app`의
+Tauri-managed entry-point state에는 더 좁은 framework-specific 규칙이 있으며,
+이는 [ADR-014](./ADR-014-tauri-managed-state-boundary.ko.md)에서 다룬다.
 
 ```rust
 // ❌ 잘못된 예 — 다른 adapter의 concrete type 누수
