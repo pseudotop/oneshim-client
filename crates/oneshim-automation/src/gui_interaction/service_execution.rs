@@ -17,6 +17,7 @@ use super::{
     DEFAULT_TICKET_TTL_SECS, FOCUS_DRIFT_MAX_RETRIES, FOCUS_DRIFT_RETRY_DELAY_MS,
     TICKET_EXPIRY_GRACE_SECS,
 };
+use tracing::debug;
 
 use super::service::GuiInteractionService;
 
@@ -332,7 +333,9 @@ impl GuiInteractionService {
         };
 
         if let Some(handle_id) = overlay_handle_id {
-            let _ = self.overlay_driver.clear_highlights(&handle_id).await;
+            if let Err(e) = self.overlay_driver.clear_highlights(&handle_id).await {
+                debug!("clear_highlights failed: {e}");
+            }
         }
 
         self.publish_event(

@@ -78,9 +78,15 @@ pub async fn toggle_capture_pause(
 
     let payload =
         serde_json::json!({ "paused": new_paused, "indicator_visible": indicator_visible });
-    let _ = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload);
-    let _ = app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
-    let _ = crate::tray::sync_tray_state(&app, new_paused, indicator_visible);
+    if let Err(e) = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload) {
+        debug!("emit magic-overlay failed: {e}");
+    }
+    if let Err(e) = app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload) {
+        debug!("emit tracking-panel failed: {e}");
+    }
+    if let Err(e) = crate::tray::sync_tray_state(&app, new_paused, indicator_visible) {
+        debug!("sync_tray_state failed: {e}");
+    }
 
     #[cfg(target_os = "macos")]
     if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>() {
@@ -103,17 +109,25 @@ pub async fn set_indicator_visible(
     let paused = state.capture_paused.load(Ordering::Relaxed);
 
     let payload = serde_json::json!({ "paused": paused, "indicator_visible": visible });
-    let _ = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload);
-    let _ = app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
+    if let Err(e) = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload) {
+        debug!("emit magic-overlay failed: {e}");
+    }
+    if let Err(e) = app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload) {
+        debug!("emit tracking-panel failed: {e}");
+    }
 
     if let Some(panel) = app.get_webview_window("tracking-panel") {
         if visible {
-            let _ = panel.show();
-        } else {
-            let _ = panel.hide();
+            if let Err(e) = panel.show() {
+                debug!("window show failed: {e}");
+            }
+        } else if let Err(e) = panel.hide() {
+            debug!("window hide failed: {e}");
         }
     }
-    let _ = crate::tray::sync_tray_state(&app, paused, visible);
+    if let Err(e) = crate::tray::sync_tray_state(&app, paused, visible) {
+        debug!("sync_tray_state failed: {e}");
+    }
 
     #[cfg(target_os = "macos")]
     if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>() {
@@ -141,8 +155,12 @@ pub async fn get_connection_status(
 #[command]
 pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.set_focus();
+        if let Err(e) = window.show() {
+            debug!("window show failed: {e}");
+        }
+        if let Err(e) = window.set_focus() {
+            debug!("set_focus failed: {e}");
+        }
         Ok(())
     } else {
         Err("main window not found".to_string())

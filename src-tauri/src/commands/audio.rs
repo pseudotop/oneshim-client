@@ -56,6 +56,7 @@ use std::sync::atomic::Ordering;
 
 use oneshim_core::config::WhisperModelSize;
 use oneshim_core::models::audio::{AudioStatus, ModelDownloadStatus, VadConfig};
+use tracing::debug;
 
 /// Get combined audio subsystem status (reads live config via config_manager).
 #[command]
@@ -112,7 +113,9 @@ pub async fn download_whisper_model(
     let app_handle = app.clone();
     tokio::spawn(async move {
         while let Some(progress) = rx.recv().await {
-            let _ = app_handle.emit("audio-model-progress", &progress);
+            if let Err(e) = app_handle.emit("audio-model-progress", &progress) {
+                debug!("emit audio-model-progress failed: {e}");
+            }
         }
     });
 
@@ -194,7 +197,9 @@ pub async fn start_vad_listening(
     // Signal callback — called on audio thread when speech ends.
     // Lightweight: just sends () to the channel.
     let on_speech_signal = Arc::new(move || {
-        let _ = tx.send(());
+        if let Err(e) = tx.send(()) {
+            debug!("channel send failed: {e}");
+        }
     });
 
     capture
@@ -288,7 +293,11 @@ pub async fn start_vad_listening(
                 );
             } else {
                 *vad_state.lock() = "idle".into();
-                let _ = app_clone.emit("vad-state-changed", serde_json::json!({"state": "idle"}));
+                if let Err(e) =
+                    app_clone.emit("vad-state-changed", serde_json::json!({"state": "idle"}))
+                {
+                    debug!("emit vad-state-changed failed: {e}");
+                }
                 break;
             }
         }
@@ -311,7 +320,9 @@ pub async fn stop_vad_listening(
 
     capture.stop_vad().map_err(|e| e.to_string())?;
     *state.audio().vad_state.lock() = "idle".into();
-    let _ = app.emit("vad-state-changed", serde_json::json!({"state": "idle"}));
+    if let Err(e) = app.emit("vad-state-changed", serde_json::json!({"state": "idle"})) {
+        debug!("emit vad-state-changed failed: {e}");
+    }
     Ok(())
 }
 

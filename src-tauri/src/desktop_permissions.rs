@@ -13,6 +13,7 @@ use objc2::runtime::{AnyClass, AnyObject, Bool};
 use std::sync::{Arc, Mutex};
 #[cfg(target_os = "macos")]
 use std::time::Duration;
+use tracing::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -336,7 +337,9 @@ fn macos_notification_authorization_status<R: Runtime>(
 fn send_once<T>(sender: &Arc<Mutex<Option<std::sync::mpsc::SyncSender<T>>>>, value: T) {
     if let Ok(mut guard) = sender.lock() {
         if let Some(sender) = guard.take() {
-            let _ = sender.send(value);
+            if let Err(e) = sender.send(value) {
+                debug!("channel send failed: {e}");
+            }
         }
     }
 }

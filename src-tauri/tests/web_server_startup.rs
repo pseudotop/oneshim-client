@@ -12,6 +12,7 @@ use oneshim_web::WebServer;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::sync::{oneshot, watch};
+use tracing::debug;
 
 #[tokio::test]
 async fn web_server_starts_responds_and_shuts_down() {
@@ -70,7 +71,9 @@ async fn web_server_starts_responds_and_shuts_down() {
     );
 
     // Graceful shutdown
-    let _ = shutdown_tx.send(true);
+    if let Err(e) = shutdown_tx.send(true) {
+        debug!("channel send failed: {e}");
+    }
     let server_result = tokio::time::timeout(std::time::Duration::from_secs(5), server_handle)
         .await
         .expect("timed out waiting for server shutdown")

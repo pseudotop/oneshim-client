@@ -161,7 +161,9 @@ impl MagicOverlayHandle {
             .map_err(|e| format!("Failed to create overlay window: {e}"))?;
 
         // Default: click-through. User presses Cmd+Shift+O to make interactive.
-        let _ = window.set_ignore_cursor_events(true);
+        if let Err(e) = window.set_ignore_cursor_events(true) {
+            debug!("set_ignore_cursor_events failed: {e}");
+        }
 
         info!("MagicOverlay window created");
         Ok(())
@@ -192,7 +194,9 @@ impl MagicOverlayHandle {
 
         // Show the window
         if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-            let _ = window.show();
+            if let Err(e) = window.show() {
+                debug!("window show failed: {e}");
+            }
         }
 
         let mut state = self.state.write().await;
@@ -255,7 +259,9 @@ impl MagicOverlayHandle {
     /// Clear the focus highlight from the overlay.
     #[allow(dead_code)] // retained for future IPC command usage
     pub fn clear_focus_highlight(&self) {
-        let _ = self.app_handle.emit("overlay:clear-focus", ());
+        if let Err(e) = self.app_handle.emit("overlay:clear-focus", ()) {
+            debug!("emit overlay:clear-focus failed: {e}");
+        }
     }
 
     /// Emit a full UiScene to the detection overlay. Clears any active
@@ -290,7 +296,9 @@ impl MagicOverlayHandle {
             elements,
         };
 
-        let _ = self.ensure_window();
+        if let Err(e) = self.ensure_window() {
+            debug!("ensure_window failed: {e}");
+        }
         if let Err(e) = self.app_handle.emit("overlay:detection-update", &payload) {
             warn!("failed to emit overlay:detection-update: {e}");
         }
@@ -307,7 +315,9 @@ impl MagicOverlayHandle {
     /// Clear the detection overlay.
     #[allow(dead_code)]
     pub async fn clear_detection_scene(&self) {
-        let _ = self.app_handle.emit("overlay:detection-clear", ());
+        if let Err(e) = self.app_handle.emit("overlay:detection-clear", ()) {
+            debug!("emit overlay:detection-clear failed: {e}");
+        }
         let mut state = self.state.write().await;
         state.detection_active = false;
         debug!("detection overlay cleared");
@@ -369,13 +379,21 @@ impl MagicOverlayHandle {
     pub fn set_interactive(&self, interactive: bool) {
         if interactive {
             // Ensure overlay window exists and is visible when making interactive
-            let _ = self.ensure_window();
+            if let Err(e) = self.ensure_window() {
+                debug!("ensure_window failed: {e}");
+            }
             if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-                let _ = window.show();
-                let _ = window.set_ignore_cursor_events(false);
+                if let Err(e) = window.show() {
+                    debug!("window show failed: {e}");
+                }
+                if let Err(e) = window.set_ignore_cursor_events(false) {
+                    debug!("set_ignore_cursor_events failed: {e}");
+                }
             }
         } else if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-            let _ = window.set_ignore_cursor_events(true);
+            if let Err(e) = window.set_ignore_cursor_events(true) {
+                debug!("set_ignore_cursor_events failed: {e}");
+            }
         }
         debug!("Overlay interactive={interactive}");
     }
@@ -398,7 +416,9 @@ impl MagicOverlayHandle {
 
     /// Toggle the suggestions panel from keyboard shortcut (Cmd+Shift+S).
     pub fn emit_toggle_suggestions(&self) {
-        let _ = self.app_handle.emit("overlay:toggle-suggestions", ());
+        if let Err(e) = self.app_handle.emit("overlay:toggle-suggestions", ()) {
+            debug!("emit overlay:toggle-suggestions failed: {e}");
+        }
     }
 
     /// Emit a brief capture feedback flash to the overlay.

@@ -66,6 +66,7 @@ use tokio::sync::{broadcast, oneshot, watch};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tracing::debug;
 use tracing::{error, info, warn};
 
 pub use oneshim_api_contracts::stream::{
@@ -451,7 +452,9 @@ impl WebServer {
                         shared_port.store(port, Ordering::Relaxed);
                     }
                     if let Some(port_tx) = bound_port_notifier.take() {
-                        let _ = port_tx.send(port);
+                        if let Err(e) = port_tx.send(port) {
+                            debug!("channel send failed: {e}");
+                        }
                     }
                     info!("server started: http://{}", addr);
 

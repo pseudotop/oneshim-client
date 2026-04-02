@@ -13,6 +13,7 @@ use oneshim_vision::{delta, encoder, encoder::WebPQuality, thumbnail};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
+use tracing::debug;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -261,7 +262,9 @@ fn test_storage_memory() {
             })
             .collect();
 
-        let _ = storage.save_events_batch(&events);
+        if let Err(e) = storage.save_events_batch(&events) {
+            debug!("save_events_batch failed: {e}");
+        }
 
         let metadata = FrameMetadata {
             timestamp: chrono::Utc::now(),
@@ -271,11 +274,19 @@ fn test_storage_memory() {
             resolution: (1920, 1080),
             importance: 0.5,
         };
-        let _ = storage.save_frame_metadata(&metadata, Some(&format!("frames/{}.webp", i)), None);
+        if let Err(e) =
+            storage.save_frame_metadata(&metadata, Some(&format!("frames/{}.webp", i)), None)
+        {
+            debug!("save_frame_metadata failed: {e}");
+        }
 
         let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        let _ = storage.get_or_create_focus_metrics(&date);
-        let _ = storage.increment_focus_metrics(&date, 1, 1, 0, 0, 0);
+        if let Err(e) = storage.get_or_create_focus_metrics(&date) {
+            debug!("get_or_create_focus_metrics failed: {e}");
+        }
+        if let Err(e) = storage.increment_focus_metrics(&date, 1, 1, 0, 0, 0) {
+            debug!("increment_focus_metrics failed: {e}");
+        }
 
         if i % SAMPLE_INTERVAL == 0 {
             snapshots.push(MemorySnapshot {
@@ -351,7 +362,9 @@ fn test_combined_memory() {
                 })
             })
             .collect();
-        let _ = storage.save_events_batch(&events);
+        if let Err(e) = storage.save_events_batch(&events) {
+            debug!("save_events_batch failed: {e}");
+        }
 
         if last_sample.elapsed() >= Duration::from_secs(1) {
             snapshots.push(MemorySnapshot {

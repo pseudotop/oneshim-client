@@ -169,7 +169,9 @@ pub(super) async fn handle_frame_capture(
                 warn!("frame data save failure: {e}");
             }
 
-            let _ = sqlite.increment_session_counters(session_id, 0, 1, 0).await;
+            if let Err(e) = sqlite.increment_session_counters(session_id, 0, 1, 0).await {
+                debug!("increment_session_counters failed: {e}");
+            }
 
             (ocr_text, ocr_regions)
         }

@@ -53,7 +53,9 @@ impl ConnectivityManager {
         self.force_offline.store(force, Ordering::Relaxed);
         if force {
             self.is_online.store(false, Ordering::Relaxed);
-            let _ = self.status_tx.send(ConnectionStatus::Disconnected);
+            if let Err(e) = self.status_tx.send(ConnectionStatus::Disconnected) {
+                debug!("channel send failed: {e}");
+            }
             info!("force offline mode enabled");
         }
     }
@@ -96,7 +98,9 @@ impl ConnectivityManager {
             } else {
                 debug!("reconnect success - Connected state restore");
             }
-            let _ = self.status_tx.send(ConnectionStatus::Connected);
+            if let Err(e) = self.status_tx.send(ConnectionStatus::Connected) {
+                debug!("channel send failed: {e}");
+            }
         }
     }
 
@@ -115,10 +119,12 @@ impl ConnectivityManager {
                     "Consecutive {} failures - switching to offline mode (queued events are saved locally)",
                     count
                 );
-                let _ = self.status_tx.send(ConnectionStatus::Disconnected);
+                if let Err(e) = self.status_tx.send(ConnectionStatus::Disconnected) {
+                    debug!("channel send failed: {e}");
+                }
             }
-        } else {
-            let _ = self.status_tx.send(ConnectionStatus::Reconnecting);
+        } else if let Err(e) = self.status_tx.send(ConnectionStatus::Reconnecting) {
+            debug!("channel send failed: {e}");
         }
     }
 

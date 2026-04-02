@@ -101,7 +101,9 @@ impl ModelDownloader for WhisperModelDownloader {
             // Check cancellation
             if cancelled.load(Ordering::Relaxed) {
                 drop(file);
-                let _ = std::fs::remove_file(&part_path);
+                if let Err(e) = std::fs::remove_file(&part_path) {
+                    debug!("remove_file failed: {e}");
+                }
                 return Err(CoreError::AudioCapture("download cancelled".into()));
             }
 
@@ -184,7 +186,9 @@ impl ModelDownloader for WhisperModelDownloader {
         }
         // Also clean up any .part file
         let part = dest_dir.join(format!("{}.part", model_filename(model)));
-        let _ = std::fs::remove_file(&part);
+        if let Err(e) = std::fs::remove_file(&part) {
+            debug!("remove_file failed: {e}");
+        }
         debug!(model = ?model, "model deleted");
         Ok(())
     }

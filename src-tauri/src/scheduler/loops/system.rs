@@ -46,7 +46,9 @@ impl Scheduler {
                                         memory_used: metrics.memory_used,
                                         memory_total: metrics.memory_total,
                                     };
-                                    let _ = tx.send(RealtimeEvent::Metrics(update));
+                                    if let Err(e) = tx.send(RealtimeEvent::Metrics(update)) {
+                                        debug!("channel send failed: {e}");
+                                    }
                                 }
 
                                 if let Some(ref notif) = notif2 {

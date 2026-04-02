@@ -10,6 +10,7 @@ use oneshim_core::ports::integration::{IntegrationSessionPort, IntegrationSessio
 use tokio::sync::RwLock;
 
 use super::transport::{IntegrationTransportClient, IntegrationTransportConnectRequest};
+use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct IntegrationSessionRuntimeProfile {
@@ -107,7 +108,9 @@ impl IntegrationSessionCoordinator {
         let mut guard = self.state.write().await;
         *guard = Some(state.clone());
         drop(guard);
-        let _ = self.persist_state(state).await;
+        if let Err(e) = self.persist_state(state).await {
+            debug!("persist_state failed: {e}");
+        }
     }
 
     async fn persist_state(&self, state: IntegrationSessionState) -> Result<(), CoreError> {

@@ -60,7 +60,9 @@ pub async fn wait_for_callback(
                     let desc = params.get("error_description").cloned().unwrap_or_default();
                     warn!("OAuth callback error: {err} — {desc}");
                     if let Some(sender) = guard.take() {
-                        let _ = sender.send(Err(format!("{err}: {desc}")));
+                        if let Err(e) = sender.send(Err(format!("{err}: {desc}"))) {
+                            debug!("channel send failed: {e:?}");
+                        }
                     }
                     return Html(error_html(err, &desc));
                 }
@@ -70,7 +72,9 @@ pub async fn wait_for_callback(
                 if state != expected {
                     warn!("OAuth callback state mismatch");
                     if let Some(sender) = guard.take() {
-                        let _ = sender.send(Err("state mismatch".into()));
+                        if let Err(e) = sender.send(Err("state mismatch".into())) {
+                            debug!("channel send failed: {e:?}");
+                        }
                     }
                     return Html(error_html(
                         "state_mismatch",
@@ -83,7 +87,9 @@ pub async fn wait_for_callback(
                     Some(c) => c.clone(),
                     None => {
                         if let Some(sender) = guard.take() {
-                            let _ = sender.send(Err("missing code parameter".into()));
+                            if let Err(e) = sender.send(Err("missing code parameter".into())) {
+                                debug!("channel send failed: {e:?}");
+                            }
                         }
                         return Html(error_html(
                             "missing_code",
@@ -94,7 +100,9 @@ pub async fn wait_for_callback(
 
                 debug!("OAuth callback received (code length: {})", code.len());
                 if let Some(sender) = guard.take() {
-                    let _ = sender.send(Ok(CallbackResult { code, state }));
+                    if let Err(e) = sender.send(Ok(CallbackResult { code, state })) {
+                        debug!("channel send failed: {e:?}");
+                    }
                 }
 
                 Html(success_html())
@@ -118,7 +126,9 @@ pub async fn wait_for_callback(
     let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
 
     let server = axum::serve(listener, app).with_graceful_shutdown(async move {
-        let _ = shutdown_rx.await;
+        if let Err(e) = shutdown_rx.await {
+            debug!("operation failed: {e}");
+        }
     });
 
     // Run server in background
@@ -160,9 +170,13 @@ pub async fn wait_for_callback(
 
     // Shut down the server
     if let Some(tx) = shutdown_tx.lock().await.take() {
-        let _ = tx.send(());
+        if let Err(e) = tx.send(()) {
+            debug!("channel send failed: {e:?}");
+        }
     }
-    let _ = server_handle.await;
+    if let Err(e) = server_handle.await {
+        debug!("operation failed: {e}");
+    }
 
     result
 }

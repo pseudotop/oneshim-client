@@ -89,7 +89,9 @@ impl WsClient {
                     }
                 }
                 Ok(Message::Close(_)) => {
-                    let _ = tx.send(WsMessage::Close).await;
+                    if let Err(e) = tx.send(WsMessage::Close).await {
+                        debug!("channel send failed: {e}");
+                    }
                     break;
                 }
                 Ok(_) => {} // Ping/Pong

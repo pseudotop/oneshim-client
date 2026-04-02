@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
@@ -94,7 +94,9 @@ impl SessionManagerImpl {
                 new_state: new,
                 reason: reason.to_string(),
             };
-            let _ = handle.emit("session-state-changed", &event);
+            if let Err(e) = handle.emit("session-state-changed", &event) {
+                debug!("emit session-state-changed failed: {e}");
+            }
         }
     }
 
@@ -191,7 +193,9 @@ impl SessionManagerImpl {
 
         for (id, reason) in to_reap {
             info!(session_id = %id, reason, "reaping session");
-            let _ = self.kill_session_with_reason(&id, reason).await;
+            if let Err(e) = self.kill_session_with_reason(&id, reason).await {
+                debug!("kill_session_with_reason failed: {e}");
+            }
         }
     }
 

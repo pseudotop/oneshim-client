@@ -279,7 +279,9 @@ impl OAuthPort for OAuthClient {
         let mut flows = self.active_flows.lock().await;
         if let Some(flow) = flows.get_mut(flow_id) {
             if let Some(tx) = flow.cancel_tx.take() {
-                let _ = tx.send(());
+                if let Err(e) = tx.send(()) {
+                    debug!("channel send failed: {e:?}");
+                }
             }
             flow.status = OAuthFlowStatus::Cancelled;
         }
@@ -328,7 +330,9 @@ impl OAuthPort for OAuthClient {
         for id in flow_ids {
             if let Some(mut flow) = flows.remove(&id) {
                 if let Some(tx) = flow.cancel_tx.take() {
-                    let _ = tx.send(());
+                    if let Err(e) = tx.send(()) {
+                        debug!("channel send failed: {e:?}");
+                    }
                 }
             }
         }

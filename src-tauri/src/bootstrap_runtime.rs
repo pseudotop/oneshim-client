@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::runtime::{Handle, Runtime};
 use tokio::sync::watch;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::bootstrap_preflight::BootstrapPreflightCoordinator;
 #[cfg(feature = "server")]
@@ -27,9 +27,13 @@ impl ManagedBackgroundRuntime {
     }
 
     pub(crate) fn shutdown_blocking(&self) {
-        let _ = self.shutdown_tx.send(true);
+        if let Err(e) = self.shutdown_tx.send(true) {
+            debug!("channel send failed: {e}");
+        }
         if let Some(join_handle) = self.join_handle.lock().expect("join handle lock").take() {
-            let _ = join_handle.join();
+            if let Err(e) = join_handle.join() {
+                debug!("join failed: {e:?}");
+            }
         }
     }
 }

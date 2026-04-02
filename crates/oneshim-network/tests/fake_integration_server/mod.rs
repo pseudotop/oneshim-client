@@ -25,6 +25,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::Message;
+use tracing::debug;
 
 const SESSION_ID: &str = "session-fake-001";
 const PROMPT_EVENT_TYPE: &str = "io.oneshim.integration.prompt.v1";
@@ -98,7 +99,9 @@ impl FakeIntegrationServer {
         tokio::spawn(async move {
             axum::serve(http_listener, router)
                 .with_graceful_shutdown(async {
-                    let _ = http_shutdown_rx.await;
+                    if let Err(e) = http_shutdown_rx.await {
+                        debug!("operation failed: {e}");
+                    }
                 })
                 .await
                 .expect("fake integration server run failed");
@@ -225,10 +228,14 @@ impl FakeIntegrationServer {
 impl Drop for FakeIntegrationServer {
     fn drop(&mut self) {
         if let Some(tx) = self.http_shutdown_tx.take() {
-            let _ = tx.send(());
+            if let Err(e) = tx.send(()) {
+                debug!("channel send failed: {e}");
+            }
         }
         if let Some(tx) = self.websocket_shutdown_tx.take() {
-            let _ = tx.send(());
+            if let Err(e) = tx.send(()) {
+                debug!("channel send failed: {e}");
+            }
         }
     }
 }

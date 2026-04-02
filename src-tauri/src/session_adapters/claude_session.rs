@@ -25,6 +25,7 @@ use crate::session_adapters::prompt_payload::{
     extract_native_response_schema, render_message_payload,
 };
 use crate::subprocess_provider::{classify_subprocess_error, DetectedSubprocessCli};
+use tracing::debug;
 
 pub struct ClaudeSubprocessSession {
     session_id: String,
@@ -131,7 +132,9 @@ impl ConversationSession for ClaudeSubprocessSession {
             let mut emitted_terminal_error = false;
             let stderr_task = tokio::spawn(async move {
                 let mut stderr_buf = String::new();
-                let _ = stderr.read_to_string(&mut stderr_buf).await;
+                if let Err(e) = stderr.read_to_string(&mut stderr_buf).await {
+                    debug!("read_to_string failed: {e}");
+                }
                 stderr_buf
             });
 
@@ -181,7 +184,9 @@ impl ConversationSession for ClaudeSubprocessSession {
             }
 
             if force_kill {
-                let _ = child.kill().await;
+                if let Err(e) = child.kill().await {
+                    debug!("process kill failed: {e}");
+                }
             }
 
             let status = child.wait().await.map_err(CoreError::Io)?;

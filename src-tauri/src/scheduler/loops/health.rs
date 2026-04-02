@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tracing::info;
+use tracing::{debug, info};
 
 /// Adapter-side health flags — written by adapters on success/failure.
 pub(crate) struct AdapterHealthFlags {
@@ -46,13 +46,19 @@ pub(crate) fn spawn_health_check_loop(
                         let payload = serde_json::json!({
                             "server": srv, "llm": llm, "cli": cli
                         });
-                        let _ = app_handle.emit_to("magic-overlay", "overlay:connection-changed", &payload);
-                        let _ = app_handle.emit_to("tracking-panel", "overlay:connection-changed", &payload);
+                        if let Err(e) = app_handle.emit_to("magic-overlay", "overlay:connection-changed", &payload) {
+                            debug!("emit magic-overlay failed: {e}");
+                        }
+                        if let Err(e) = app_handle.emit_to("tracking-panel", "overlay:connection-changed", &payload) {
+                            debug!("emit tracking-panel failed: {e}");
+                        }
 
                         if let Some(state) = app_handle.try_state::<crate::runtime_state::AppState>() {
                             let paused = state.capture_paused.load(Ordering::Relaxed);
                             let visible = state.indicator_visible.load(Ordering::Relaxed);
-                            let _ = crate::tray::sync_tray_state(&app_handle, paused, visible);
+                            if let Err(e) = crate::tray::sync_tray_state(&app_handle, paused, visible) {
+                                debug!("sync_tray_state failed: {e}");
+                            }
                         }
                         info!(server = srv, llm = llm, cli = cli, "connection status changed");
                     }

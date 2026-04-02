@@ -24,7 +24,7 @@ pub use classify::classify_keycode;
 use crate::input_activity::InputActivityCollector;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tracing::info;
+use tracing::{debug, info};
 
 /// Handle to a running platform key event observer.
 ///
@@ -65,7 +65,9 @@ impl KeyHook {
             // AtomicBool and give the thread a bounded time to exit.
             // On macOS, CFRunLoopStop is called from within the tap callback
             // when `running` becomes false.
-            let _ = handle.join();
+            if let Err(e) = handle.join() {
+                debug!("join failed: {e:?}");
+            }
         }
         info!("key-category hook stopped");
     }

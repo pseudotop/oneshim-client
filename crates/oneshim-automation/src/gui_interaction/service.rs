@@ -24,6 +24,7 @@ use super::{
     CLEANUP_INTERVAL_SECS, DEFAULT_MAX_CANDIDATES, DEFAULT_MIN_CONFIDENCE,
     DEFAULT_SESSION_TTL_SECS, GUI_EVENT_CHANNEL_CAPACITY, GUI_HMAC_SECRET_ENV,
 };
+use tracing::debug;
 
 pub struct GuiInteractionService {
     pub(super) scene_finder: Arc<dyn ElementFinder>,
@@ -282,7 +283,9 @@ impl GuiInteractionService {
         };
 
         if let Some(handle_id) = previous_handle_id {
-            let _ = self.overlay_driver.clear_highlights(&handle_id).await;
+            if let Err(e) = self.overlay_driver.clear_highlights(&handle_id).await {
+                debug!("clear_highlights failed: {e}");
+            }
         }
 
         let handle = self
@@ -337,7 +340,9 @@ impl GuiInteractionService {
         };
 
         if let Some(handle_id) = overlay_handle_id {
-            let _ = self.overlay_driver.clear_highlights(&handle_id).await;
+            if let Err(e) = self.overlay_driver.clear_highlights(&handle_id).await {
+                debug!("clear_highlights failed: {e}");
+            }
         }
 
         tracing::info!(session_id, "GUI session cancelled");
@@ -410,7 +415,9 @@ impl GuiInteractionService {
         };
 
         for handle_id in orphaned_overlay_ids {
-            let _ = self.overlay_driver.clear_highlights(&handle_id).await;
+            if let Err(e) = self.overlay_driver.clear_highlights(&handle_id).await {
+                debug!("clear_highlights failed: {e}");
+            }
         }
 
         if !expired_ids.is_empty() {

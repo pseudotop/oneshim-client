@@ -6,7 +6,7 @@ use oneshim_core::models::embedding::{SearchFilters, SearchResult};
 use oneshim_core::ports::vector_index::VectorIndex;
 use oneshim_core::quantization::{QuantizedVector, ScalarQuantizer};
 use rusqlite::params;
-use tracing::info;
+use tracing::{debug, info};
 
 use super::{metadata, search, SqliteVectorIndex};
 use crate::error::StorageError;
@@ -174,10 +174,14 @@ impl VectorIndex for SqliteVectorIndex {
             ).map_err(|e| StorageError::Internal(format!("Failed to update vector count meta: {e}")))?;
 
             // WAL checkpoint
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+            if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)") {
+                debug!("execute_batch failed: {e}");
+            }
 
             // Refresh query planner statistics after bulk index writes
-            let _ = conn.execute_batch("ANALYZE");
+            if let Err(e) = conn.execute_batch("ANALYZE") {
+                debug!("execute_batch failed: {e}");
+            }
 
             info!(
                 "IVF index built: {} clusters, {} vectors",
@@ -296,10 +300,14 @@ impl VectorIndex for SqliteVectorIndex {
                 params![now],
             ).map_err(|e| StorageError::Internal(format!("Failed to update binary build time: {e}")))?;
 
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+            if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)") {
+                debug!("execute_batch failed: {e}");
+            }
 
             // Refresh query planner statistics after bulk binary code writes
-            let _ = conn.execute_batch("ANALYZE");
+            if let Err(e) = conn.execute_batch("ANALYZE") {
+                debug!("execute_batch failed: {e}");
+            }
 
             info!("Binary codes built for {} vectors", count);
             Ok(count)

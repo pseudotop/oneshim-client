@@ -199,7 +199,9 @@ impl LanPeerServer {
             let handle = tokio::task::spawn(async move {
                 // Shutdown listener: wait for the oneshot then trigger graceful shutdown
                 tokio::spawn(async move {
-                    let _ = shutdown_rx.await;
+                    if let Err(e) = shutdown_rx.await {
+                        debug!("operation failed: {e}");
+                    }
                     shutdown_handle.graceful_shutdown(Some(Duration::from_secs(2)));
                 });
 
@@ -229,7 +231,9 @@ impl LanPeerServer {
             let handle = tokio::task::spawn(async move {
                 let serve_result = axum::serve(listener, app)
                     .with_graceful_shutdown(async {
-                        let _ = shutdown_rx.await;
+                        if let Err(e) = shutdown_rx.await {
+                            debug!("operation failed: {e}");
+                        }
                     })
                     .await;
 
@@ -271,7 +275,9 @@ impl LanPeerServer {
 
         // Signal graceful shutdown
         if let Some(tx) = self.shutdown_tx.take() {
-            let _ = tx.send(());
+            if let Err(e) = tx.send(()) {
+                debug!("channel send failed: {e}");
+            }
         }
 
         // Give the server task a grace period before aborting.

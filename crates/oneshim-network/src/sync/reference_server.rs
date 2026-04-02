@@ -88,10 +88,14 @@ impl ReferenceServerHandle {
     /// Gracefully shut down the server.
     pub async fn shutdown(mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
-            let _ = tx.send(());
+            if let Err(e) = tx.send(()) {
+                debug!("channel send failed: {e:?}");
+            }
         }
         if let Some(handle) = self.server_handle.take() {
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle).await;
+            if let Err(e) = tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
+                debug!("timeout failed: {e}");
+            }
         }
     }
 }
@@ -131,7 +135,9 @@ pub async fn run_reference_server(
     let server_handle = tokio::spawn(async move {
         let result = axum::serve(listener, app)
             .with_graceful_shutdown(async {
-                let _ = shutdown_rx.await;
+                if let Err(e) = shutdown_rx.await {
+                    debug!("operation failed: {e}");
+                }
             })
             .await;
         if let Err(e) = result {

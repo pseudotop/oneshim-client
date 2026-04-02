@@ -85,7 +85,7 @@ mod web_server_runtime;
 mod workflow_intelligence;
 
 use tauri::{Manager, RunEvent};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
@@ -297,8 +297,12 @@ fn main() {
         RunEvent::Reopen { .. } => {
             // macOS dock 아이콘 클릭 시 메인 윈도우 표시
             if let Some(w) = app_handle.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
+                if let Err(e) = w.show() {
+                    debug!("window show failed: {e}");
+                }
+                if let Err(e) = w.set_focus() {
+                    debug!("set_focus failed: {e}");
+                }
             }
         }
         _ => {}

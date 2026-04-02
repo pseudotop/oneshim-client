@@ -63,7 +63,9 @@ pub fn run_x11_record_hook(collector: Arc<InputActivityCollector>, running: Arc<
         Some(s) => s,
         None => {
             warn!("failed to capture xinput stdout");
-            let _ = child.kill();
+            if let Err(e) = child.kill() {
+                debug!("process kill failed: {e}");
+            }
             return;
         }
     };
@@ -116,8 +118,12 @@ pub fn run_x11_record_hook(collector: Arc<InputActivityCollector>, running: Arc<
     }
 
     // Clean up the child process
-    let _ = child.kill();
-    let _ = child.wait();
+    if let Err(e) = child.kill() {
+        debug!("process kill failed: {e}");
+    }
+    if let Err(e) = child.wait() {
+        debug!("process wait failed: {e}");
+    }
 
     debug!("X11 key observer exited");
 }

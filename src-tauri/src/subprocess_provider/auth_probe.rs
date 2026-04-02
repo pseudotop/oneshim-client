@@ -9,6 +9,7 @@ use super::{
     catalog_subprocess_transport, truncate_for_error, DetectedSubprocessCli, ProbedSubprocessCli,
     SubprocessCliAuthStatus, CLI_AUTH_PROBE_TIMEOUT_SECS,
 };
+use tracing::debug;
 
 #[derive(Clone, Copy)]
 pub(super) struct SubprocessAuthProbeRuntime {
@@ -184,15 +185,23 @@ fn run_probe_command_with_timeout(
             }
             Ok(None) => {
                 if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    if let Err(e) = child.kill() {
+                        debug!("process kill failed: {e}");
+                    }
+                    if let Err(e) = child.wait() {
+                        debug!("process wait failed: {e}");
+                    }
                     return Err(format!("probe_timeout:{}ms", timeout.as_millis()));
                 }
                 thread::sleep(Duration::from_millis(50));
             }
             Err(err) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                if let Err(e) = child.kill() {
+                    debug!("process kill failed: {e}");
+                }
+                if let Err(e) = child.wait() {
+                    debug!("process wait failed: {e}");
+                }
                 return Err(format!("probe_failed:{err}"));
             }
         }

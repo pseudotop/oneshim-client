@@ -2,6 +2,7 @@ use oneshim_api_contracts::data::{DeleteRangeRequest, DeleteResult};
 
 use crate::error::ApiError;
 use crate::services::web_contexts::StorageWebContext;
+use tracing::debug;
 
 #[derive(Clone)]
 pub struct DataCommandService {
@@ -37,7 +38,9 @@ impl DataCommandService {
 
                 for path in paths {
                     let full_path = frames_dir.join(&path);
-                    let _ = std::fs::remove_file(full_path);
+                    if let Err(e) = std::fs::remove_file(full_path) {
+                        debug!("remove_file failed: {e}");
+                    }
                 }
             }
         }
@@ -80,7 +83,9 @@ impl DataCommandService {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_file() {
-                            let _ = std::fs::remove_file(&path);
+                            if let Err(e) = std::fs::remove_file(&path) {
+                                debug!("remove_file failed: {e}");
+                            }
                         }
                     }
                 }
