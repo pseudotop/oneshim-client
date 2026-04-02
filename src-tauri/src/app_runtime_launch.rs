@@ -12,7 +12,11 @@ use crate::capture_services::SharedCaptureServices;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
 use crate::runtime_bridges::RuntimeBridgeSpawner;
-use crate::runtime_state::{AppState, CaptureContext, ConnectionStatus, ManagedStateBuilder};
+use crate::runtime_state::{
+    AiSessionRuntimeState, AppState, AudioContext, AudioRuntimeState, CaptureContext,
+    ConfigRuntimeState, ConnectionStatus, DetectionRuntimeState, ManagedStateBuilder,
+    SuggestionRuntimeState,
+};
 use crate::scheduler::shared_regime_state::SharedRegimeState;
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerLaunchContext;
@@ -466,53 +470,14 @@ impl AppRuntimeLaunchBuilder {
             }
         };
 
-        let state_builder = ManagedStateBuilder::new(AppState {
-            runtime_handle: handle,
-            background_runtime,
-            config,
-            web_port,
-            storage: sqlite_storage.clone(),
-            config_manager,
-            update_control: Some(update_control),
-            update_action_tx,
-            automation_controller,
-            shutdown_tx,
-            recluster_requested: recluster_requested.clone(),
-            magic_overlay: Some(magic_overlay),
-            coaching_engine: Some(
-                coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
-            ),
-            capture_paused,
-            indicator_visible,
-            detection_active,
-            connection: ConnectionStatus {
-                server_connected,
-                llm_connected,
-                cli_connected,
-            },
-            focus_mode,
-            capture: CaptureContext {
-                frame_processor: shared_capture_services
-                    .as_ref()
-                    .map(|services| services.frame_processor.clone()),
-                frame_storage: shared_capture_services
-                    .as_ref()
-                    .map(|services| services.frame_storage.clone()),
-                activity_monitor: shared_capture_services
-                    .as_ref()
-                    .map(|services| services.activity_monitor.clone()),
-                accessibility_extractor: shared_capture_services
-                    .as_ref()
-                    .and_then(|services| services.accessibility_extractor.clone()),
-                consent_manager: Some(capture_consent_manager),
-                work_classifier: Some(Arc::new(
-                    oneshim_vision::work_classifier::RuleBasedClassifier,
-                )),
-            },
-            suggestion_manager,
-            session_manager: session_manager.as_ref().map(|(sm, _)| sm.clone()),
-            session_storage: Some(sqlite_storage.clone()),
-            audio: crate::runtime_state::AudioContext {
+        let ai_session_runtime_state = AiSessionRuntimeState::new(
+            session_manager.as_ref().map(|(sm, _)| sm.clone()),
+            Some(sqlite_storage.clone()),
+            config.ai_session.max_history_turns,
+        );
+        let audio_runtime_state = AudioRuntimeState::new(
+            config_manager.clone(),
+            AudioContext {
                 capture: audio_capture,
                 stt_engine: Arc::new(tokio::sync::RwLock::new(stt_engine)),
                 model_downloader,
@@ -521,7 +486,66 @@ impl AppRuntimeLaunchBuilder {
                 download_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
             },
-        });
+        );
+        let config_runtime_state =
+            ConfigRuntimeState::new(config_manager.clone(), web_port.clone());
+        let suggestion_runtime_state =
+            SuggestionRuntimeState::new(suggestion_manager.clone(), Some(magic_overlay.clone()));
+        let detection_runtime_state = DetectionRuntimeState::new(
+            detection_active.clone(),
+            automation_controller
+                .as_ref()
+                .and_then(|controller| controller.scene_finder().cloned()),
+            Some(magic_overlay.clone()),
+        );
+
+        let state_builder = ManagedStateBuilder::new(
+            AppState {
+                runtime_handle: handle,
+                background_runtime,
+                config,
+                storage: sqlite_storage.clone(),
+                update_control: Some(update_control),
+                update_action_tx,
+                shutdown_tx,
+                recluster_requested: recluster_requested.clone(),
+                magic_overlay: Some(magic_overlay),
+                coaching_engine: Some(
+                    coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
+                ),
+                capture_paused,
+                indicator_visible,
+                connection: ConnectionStatus {
+                    server_connected,
+                    llm_connected,
+                    cli_connected,
+                },
+                focus_mode,
+                capture: CaptureContext {
+                    frame_processor: shared_capture_services
+                        .as_ref()
+                        .map(|services| services.frame_processor.clone()),
+                    frame_storage: shared_capture_services
+                        .as_ref()
+                        .map(|services| services.frame_storage.clone()),
+                    activity_monitor: shared_capture_services
+                        .as_ref()
+                        .map(|services| services.activity_monitor.clone()),
+                    accessibility_extractor: shared_capture_services
+                        .as_ref()
+                        .and_then(|services| services.accessibility_extractor.clone()),
+                    consent_manager: Some(capture_consent_manager),
+                    work_classifier: Some(Arc::new(
+                        oneshim_vision::work_classifier::RuleBasedClassifier,
+                    )),
+                },
+            },
+            config_runtime_state,
+        )
+        .with_ai_session_runtime(ai_session_runtime_state)
+        .with_audio_runtime(audio_runtime_state)
+        .with_suggestion_runtime(suggestion_runtime_state)
+        .with_detection_runtime(detection_runtime_state);
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);
 

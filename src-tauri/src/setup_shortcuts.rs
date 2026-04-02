@@ -116,8 +116,10 @@ fn register_suggestions_shortcut(app: &App) {
                 if event.state == ShortcutState::Pressed {
                     let handle = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
-                        if let Some(state) = handle.try_state::<crate::runtime_state::AppState>() {
-                            if let Some(ref overlay) = state.magic_overlay {
+                        if let Some(state) =
+                            handle.try_state::<crate::runtime_state::SuggestionRuntimeState>()
+                        {
+                            if let Some(overlay) = state.overlay() {
                                 overlay.emit_toggle_suggestions();
                                 overlay.set_interactive(true);
                             }
@@ -142,22 +144,19 @@ fn register_detection_shortcut(app: &App) {
                 if event.state == ShortcutState::Pressed {
                     let handle = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
-                        let state: tauri::State<'_, crate::runtime_state::AppState> =
+                        let state: tauri::State<'_, crate::runtime_state::DetectionRuntimeState> =
                             handle.state();
-                        let was_active = state
-                            .detection_active
-                            .fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
-                        let now_active = !was_active;
+                        let now_active = state.toggle_active();
 
                         if now_active {
                             tracing::info!("detection overlay toggled ON via shortcut");
-                            if let Some(ref overlay) = state.magic_overlay {
+                            if let Some(overlay) = state.overlay() {
                                 overlay.set_interactive(true);
                             }
                             crate::commands::detection::spawn_detection_analysis_from_state(&state);
                         } else {
                             tracing::info!("detection overlay toggled OFF via shortcut");
-                            if let Some(ref overlay) = state.magic_overlay {
+                            if let Some(overlay) = state.overlay() {
                                 overlay.clear_detection_scene().await;
                                 overlay.set_interactive(false);
                             }
@@ -180,12 +179,9 @@ fn register_detection_refresh_shortcut(app: &App) {
                 if event.state == ShortcutState::Pressed {
                     let handle = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
-                        let state: tauri::State<'_, crate::runtime_state::AppState> =
+                        let state: tauri::State<'_, crate::runtime_state::DetectionRuntimeState> =
                             handle.state();
-                        if state
-                            .detection_active
-                            .load(std::sync::atomic::Ordering::Relaxed)
-                        {
+                        if state.is_active() {
                             tracing::info!("detection overlay refresh via shortcut");
                             crate::commands::detection::spawn_detection_analysis_from_state(&state);
                         }

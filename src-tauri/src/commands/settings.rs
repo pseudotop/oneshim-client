@@ -1,7 +1,6 @@
-use std::sync::atomic::Ordering;
 use tauri::command;
 
-use crate::runtime_state::AppState;
+use crate::runtime_state::ConfigRuntimeState;
 
 use super::deep_merge;
 
@@ -80,7 +79,7 @@ fn redact_sensitive_fields(config: &mut serde_json::Value) {
 #[command]
 pub async fn update_setting(
     config_json: String,
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, ConfigRuntimeState>,
 ) -> Result<(), String> {
     let patch: serde_json::Value = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
 
@@ -103,7 +102,7 @@ pub async fn update_setting(
     // Deep-merge allowed keys into current config.
     // This preserves existing sub-keys that the patch does not mention,
     // preventing silent resets to struct defaults (e.g. privacy.pii_filter_level).
-    let current = state.config_manager.get();
+    let current = state.config_manager().get();
     let mut current_val = serde_json::to_value(&current).map_err(|e| e.to_string())?;
 
     if let (Some(base), Some(patch)) = (current_val.as_object_mut(), patch.as_object()) {
@@ -118,7 +117,7 @@ pub async fn update_setting(
     let new_config: oneshim_core::config::AppConfig =
         serde_json::from_value(current_val).map_err(|e| e.to_string())?;
     state
-        .config_manager
+        .config_manager()
         .update(new_config)
         .map_err(|e| e.to_string())
 }
@@ -161,8 +160,8 @@ pub async fn get_allowed_setting_keys() -> Vec<String> {
 
 /// 웹 서버 포트 조회 — 프론트엔드 API base URL 결정용
 #[command]
-pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, String> {
-    Ok(state.web_port.load(Ordering::Relaxed))
+pub async fn get_web_port(state: tauri::State<'_, ConfigRuntimeState>) -> Result<u16, String> {
+    Ok(state.web_port())
 }
 
 #[cfg(test)]

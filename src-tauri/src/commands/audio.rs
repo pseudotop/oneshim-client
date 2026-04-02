@@ -6,13 +6,13 @@ use tauri::{command, Emitter};
 
 use oneshim_core::models::audio::TranscriptionResult;
 
-use crate::runtime_state::AppState;
+use crate::runtime_state::AudioRuntimeState;
 
 /// Start microphone capture (Push-to-Talk begin).
 #[command]
-pub async fn start_audio_capture(state: tauri::State<'_, AppState>) -> Result<(), String> {
+pub async fn start_audio_capture(state: tauri::State<'_, AudioRuntimeState>) -> Result<(), String> {
     let capture = state
-        .audio
+        .audio()
         .capture
         .as_ref()
         .ok_or_else(|| "audio capture not available".to_string())?;
@@ -22,16 +22,16 @@ pub async fn start_audio_capture(state: tauri::State<'_, AppState>) -> Result<()
 /// Stop capture and transcribe the recorded audio.
 #[command]
 pub async fn stop_and_transcribe(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AudioRuntimeState>,
 ) -> Result<TranscriptionResult, String> {
     let capture = state
-        .audio
+        .audio()
         .capture
         .as_ref()
         .ok_or_else(|| "audio capture not available".to_string())?;
 
     let stt = {
-        let guard = state.audio.stt_engine.read().await;
+        let guard = state.audio().stt_engine.read().await;
         guard
             .as_ref()
             .map(Arc::clone)
@@ -59,15 +59,17 @@ use oneshim_core::models::audio::{AudioStatus, ModelDownloadStatus, VadConfig};
 
 /// Get combined audio subsystem status (reads live config via config_manager).
 #[command]
-pub async fn get_audio_status(state: tauri::State<'_, AppState>) -> Result<AudioStatus, String> {
-    let live_config = state.config_manager.get();
+pub async fn get_audio_status(
+    state: tauri::State<'_, AudioRuntimeState>,
+) -> Result<AudioStatus, String> {
+    let live_config = state.config_manager().get();
     let audio_cfg = &live_config.audio;
-    let model_status = match &state.audio.model_downloader {
-        Some(dl) => dl.model_status(audio_cfg.model_size, &state.audio.model_dir),
+    let model_status = match &state.audio().model_downloader {
+        Some(dl) => dl.model_status(audio_cfg.model_size, &state.audio().model_dir),
         None => ModelDownloadStatus::NotInstalled,
     };
-    let stt_loaded = state.audio.stt_engine.read().await.is_some();
-    let vad_state = state.audio.vad_state.lock().clone();
+    let stt_loaded = state.audio().stt_engine.read().await.is_some();
+    let vad_state = state.audio().vad_state.lock().clone();
     Ok(AudioStatus {
         enabled: audio_cfg.enabled,
         selected_model: audio_cfg.model_size,
@@ -83,26 +85,26 @@ pub async fn get_audio_status(state: tauri::State<'_, AppState>) -> Result<Audio
 #[command]
 pub async fn download_whisper_model(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AudioRuntimeState>,
     model_size: WhisperModelSize,
 ) -> Result<(), String> {
     // Guard: reject if already downloading
-    if state.audio.downloading.swap(true, Ordering::SeqCst) {
+    if state.audio().downloading.swap(true, Ordering::SeqCst) {
         return Err("a download is already in progress".into());
     }
     // Reset cancel flag
-    state.audio.download_cancel.store(false, Ordering::SeqCst);
+    state.audio().download_cancel.store(false, Ordering::SeqCst);
 
-    let downloader = match state.audio.model_downloader.as_ref() {
+    let downloader = match state.audio().model_downloader.as_ref() {
         Some(dl) => dl.clone(),
         None => {
-            state.audio.downloading.store(false, Ordering::SeqCst);
+            state.audio().downloading.store(false, Ordering::SeqCst);
             return Err("model downloader not available".to_string());
         }
     };
-    let model_dir = state.audio.model_dir.clone();
-    let cancel = state.audio.download_cancel.clone();
-    let downloading = state.audio.downloading.clone();
+    let model_dir = state.audio().model_dir.clone();
+    let cancel = state.audio().download_cancel.clone();
+    let downloading = state.audio().downloading.clone();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -146,23 +148,25 @@ pub async fn download_whisper_model(
 
 /// Cancel an active model download.
 #[command]
-pub async fn cancel_model_download(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.audio.download_cancel.store(true, Ordering::SeqCst);
+pub async fn cancel_model_download(
+    state: tauri::State<'_, AudioRuntimeState>,
+) -> Result<(), String> {
+    state.audio().download_cancel.store(true, Ordering::SeqCst);
     Ok(())
 }
 
 /// Delete a downloaded Whisper model.
 #[command]
 pub async fn delete_whisper_model(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AudioRuntimeState>,
     model_size: WhisperModelSize,
 ) -> Result<(), String> {
     let dl = state
-        .audio
+        .audio()
         .model_downloader
         .as_ref()
         .ok_or_else(|| "model downloader not available".to_string())?;
-    dl.delete_model(model_size, &state.audio.model_dir)
+    dl.delete_model(model_size, &state.audio().model_dir)
         .map_err(|e| e.to_string())
 }
 
@@ -170,15 +174,15 @@ pub async fn delete_whisper_model(
 #[command]
 pub async fn start_vad_listening(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AudioRuntimeState>,
 ) -> Result<(), String> {
     let capture = state
-        .audio
+        .audio()
         .capture
         .as_ref()
         .ok_or_else(|| "audio capture not available".to_string())?;
 
-    let live_cfg = state.config_manager.get();
+    let live_cfg = state.config_manager().get();
     let config = VadConfig {
         threshold: live_cfg.audio.vad_threshold,
         silence_ms: live_cfg.audio.vad_silence_ms,
@@ -198,7 +202,7 @@ pub async fn start_vad_listening(
         .map_err(|e| e.to_string())?;
 
     // Update VAD state to "listening"
-    *state.audio.vad_state.lock() = "listening".into();
+    *state.audio().vad_state.lock() = "listening".into();
     let _ = app.emit(
         "vad-state-changed",
         serde_json::json!({"state": "listening"}),
@@ -206,8 +210,8 @@ pub async fn start_vad_listening(
 
     // Spawn receiver task to handle speech-ended signals
     let capture_clone = Arc::clone(capture);
-    let stt_engine = state.audio.stt_engine.clone();
-    let vad_state = state.audio.vad_state.clone();
+    let stt_engine = state.audio().stt_engine.clone();
+    let vad_state = state.audio().vad_state.clone();
     let app_clone = app.clone();
 
     tokio::spawn(async move {
@@ -297,26 +301,26 @@ pub async fn start_vad_listening(
 #[command]
 pub async fn stop_vad_listening(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AudioRuntimeState>,
 ) -> Result<(), String> {
     let capture = state
-        .audio
+        .audio()
         .capture
         .as_ref()
         .ok_or_else(|| "audio capture not available".to_string())?;
 
     capture.stop_vad().map_err(|e| e.to_string())?;
-    *state.audio.vad_state.lock() = "idle".into();
+    *state.audio().vad_state.lock() = "idle".into();
     let _ = app.emit("vad-state-changed", serde_json::json!({"state": "idle"}));
     Ok(())
 }
 
 /// Reload STT engine with current config — creates Local, Cloud, or Fallback provider.
 #[command]
-pub async fn reload_stt_engine(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+pub async fn reload_stt_engine(state: tauri::State<'_, AudioRuntimeState>) -> Result<bool, String> {
     use oneshim_core::config::SttProviderKind;
 
-    let live_config = state.config_manager.get();
+    let live_config = state.config_manager().get();
     let config = &live_config.audio;
 
     // Build local provider (if model available)
@@ -326,7 +330,7 @@ pub async fn reload_stt_engine(state: tauri::State<'_, AppState>) -> Result<bool
             #[cfg(feature = "download")]
             let model_path =
                 state
-                    .audio
+                    .audio()
                     .model_dir
                     .join(oneshim_audio::model_downloader::model_filename(
                         config.model_size,
@@ -397,7 +401,7 @@ pub async fn reload_stt_engine(state: tauri::State<'_, AppState>) -> Result<bool
         };
 
     let loaded = provider.is_some();
-    let mut guard = state.audio.stt_engine.write().await;
+    let mut guard = state.audio().stt_engine.write().await;
     *guard = provider;
 
     if loaded {

@@ -16,8 +16,15 @@ use oneshim_core::models::ai_session::{
 };
 use oneshim_core::ports::conversation_session::SessionManager;
 
-use crate::runtime_state::AppState;
-use crate::session_manager::SessionManagerImpl;
+use crate::runtime_state::AiSessionRuntimeState;
+
+fn require_session_manager_impl(
+    state: &AiSessionRuntimeState,
+) -> Result<Arc<crate::session_manager::SessionManagerImpl>, String> {
+    state
+        .manager_impl()
+        .ok_or_else(|| "session manager not available".to_string())
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,13 +40,10 @@ pub struct SendSessionMessageRequest {
 /// Create a new AI conversation session.
 #[command]
 pub async fn create_ai_session(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
     config: SessionConfig,
 ) -> Result<ConversationSessionInfo, String> {
-    let mgr = state
-        .session_manager
-        .as_ref()
-        .ok_or_else(|| "session manager not available".to_string())?;
+    let mgr = require_session_manager_impl(&state)?;
 
     let system_prompt = config.system_prompt.clone();
     let session = mgr
@@ -49,7 +53,7 @@ pub async fn create_ai_session(
     let info = session.info();
 
     // Fire-and-forget: persist session metadata
-    if let Some(ref ss) = state.session_storage {
+    if let Some(ss) = state.session_storage() {
         let record = SessionRecord {
             session_id: info.session_id.clone(),
             provider_name: info.provider_name.clone(),
@@ -77,13 +81,10 @@ pub async fn create_ai_session(
 #[command]
 pub async fn send_session_message(
     app: AppHandle,
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
     request: SendSessionMessageRequest,
 ) -> Result<(), String> {
-    let mgr = state
-        .session_manager
-        .as_ref()
-        .ok_or_else(|| "session manager not available".to_string())?;
+    let mgr = require_session_manager_impl(&state)?;
 
     // Check daily token budget before sending
     if !mgr.check_token_budget(&request.session_id).await {
@@ -108,8 +109,8 @@ pub async fn send_session_message(
         response_format: request.response_format,
     };
 
-    let mgr_clone: Arc<SessionManagerImpl> = mgr.clone();
-    let session_storage = state.session_storage.clone();
+    let mgr_clone = require_session_manager_impl(&state)?;
+    let session_storage = state.session_storage();
     let mut stream = match session.send_message(&msg).await {
         Ok(s) => s,
         Err(err) => {
@@ -237,20 +238,17 @@ pub async fn send_session_message(
 /// Terminate an active AI session.
 #[command]
 pub async fn kill_ai_session(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
 ) -> Result<(), String> {
-    let mgr = state
-        .session_manager
-        .as_ref()
-        .ok_or_else(|| "session manager not available".to_string())?;
+    let mgr = require_session_manager_impl(&state)?;
 
     mgr.kill_session(&session_id)
         .await
         .map_err(|e| e.to_string())?;
 
     // Fire-and-forget: mark terminated in DB
-    if let Some(ref ss) = state.session_storage {
+    if let Some(ss) = state.session_storage() {
         let _ = ss.terminate_session(&session_id).await;
     }
 
@@ -261,13 +259,10 @@ pub async fn kill_ai_session(
 /// returns the session info if successful. Fails when max retries exceeded.
 #[command]
 pub async fn retry_ai_session(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
 ) -> Result<ConversationSessionInfo, String> {
-    let mgr = state
-        .session_manager
-        .as_ref()
-        .ok_or_else(|| "session manager not available".to_string())?;
+    let mgr = require_session_manager_impl(&state)?;
 
     let session = mgr
         .recover_session(&session_id)
@@ -279,18 +274,18 @@ pub async fn retry_ai_session(
 /// List all AI sessions (active + persisted historical).
 #[command]
 pub async fn list_ai_sessions(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
 ) -> Result<Vec<ConversationSessionInfo>, String> {
     let mut result = vec![];
 
-    if let Some(mgr) = &state.session_manager {
+    if let Some(mgr) = state.manager_impl() {
         result.extend(mgr.list_sessions().await);
     }
 
     // Merge persisted (historical) sessions.
     // Reuse max_history_turns (default 100) as the session list limit.
-    if let Some(ref ss) = state.session_storage {
-        let limit = state.config.ai_session.max_history_turns;
+    if let Some(ss) = state.session_storage() {
+        let limit = state.max_history_turns();
         if let Ok(persisted) = ss.list_sessions(limit).await {
             let active_ids: HashSet<String> = result.iter().map(|s| s.session_id.clone()).collect();
             for record in &persisted {
@@ -307,14 +302,13 @@ pub async fn list_ai_sessions(
 /// Load conversation history for a session (active or persisted).
 #[command]
 pub async fn load_session_messages(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<Vec<MessageRecord>, String> {
     let ss = state
-        .session_storage
-        .as_ref()
+        .session_storage()
         .ok_or_else(|| "session storage not available".to_string())?;
 
     ss.load_messages(&session_id, limit.unwrap_or(100), offset.unwrap_or(0))
@@ -325,12 +319,11 @@ pub async fn load_session_messages(
 /// Delete a persisted session and all its messages.
 #[command]
 pub async fn delete_session_history(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
 ) -> Result<(), String> {
     let ss = state
-        .session_storage
-        .as_ref()
+        .session_storage()
         .ok_or_else(|| "session storage not available".to_string())?;
 
     ss.delete_session(&session_id)
@@ -341,15 +334,12 @@ pub async fn delete_session_history(
 /// Get token usage for the current day across all sessions.
 #[command]
 pub async fn get_token_usage(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AiSessionRuntimeState>,
 ) -> Result<TokenUsageResponse, String> {
-    let mgr = state
-        .session_manager
-        .as_ref()
-        .ok_or_else(|| "session manager not available".to_string())?;
+    let mgr = require_session_manager_impl(&state)?;
 
     let (input, output) = mgr.get_global_token_usage().await;
-    let budget = mgr.config.daily_token_budget;
+    let budget = state.daily_token_budget().unwrap_or(0);
     Ok(TokenUsageResponse {
         total_input_tokens: input,
         total_output_tokens: output,

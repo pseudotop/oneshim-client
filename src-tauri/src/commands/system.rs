@@ -12,7 +12,7 @@ use crate::feature_capabilities::{
     probe_provider_surface_endpoint as probe_provider_surface_endpoint_impl,
     FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
 };
-use crate::runtime_state::{AppState, SecretBackendCapabilities, SecretBackendState};
+use crate::runtime_state::{ConfigRuntimeState, SecretBackendCapabilities, SecretBackendState};
 
 const DEFAULT_LOG_LINE_LIMIT: usize = 200;
 const MAX_LOG_LINE_LIMIT: usize = 500;
@@ -212,8 +212,10 @@ fn emit_frontend_log(level: &str, surface: &str, message: String, context: Optio
 
 /// 자동화 상태 조회 — 사용자 설정 기반 반환
 #[command]
-pub async fn get_automation_status(state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.config_manager.get().automation.enabled)
+pub async fn get_automation_status(
+    state: tauri::State<'_, ConfigRuntimeState>,
+) -> Result<bool, String> {
+    Ok(state.config_manager().get().automation.enabled)
 }
 
 /// Secret backend capability snapshot for desktop runtime surfaces.

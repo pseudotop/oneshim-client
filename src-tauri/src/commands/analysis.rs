@@ -1,7 +1,7 @@
 use serde::Serialize;
 use tauri::command;
 
-use crate::runtime_state::AppState;
+use crate::runtime_state::ConfigRuntimeState;
 
 use super::deep_merge;
 
@@ -11,9 +11,9 @@ use super::deep_merge;
 /// If sensitive fields are added in the future, apply redact_sensitive_fields().
 #[command]
 pub async fn get_analysis_config(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, ConfigRuntimeState>,
 ) -> Result<oneshim_core::config::AnalysisConfig, String> {
-    let config = state.config_manager.get();
+    let config = state.config_manager().get();
     Ok(config.analysis.clone())
 }
 
@@ -45,11 +45,11 @@ pub(crate) fn validate_analysis_config(
 /// cycle, preventing TOCTOU races between concurrent callers.
 #[command]
 pub async fn update_analysis_config(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, ConfigRuntimeState>,
     patch: serde_json::Value,
 ) -> Result<oneshim_core::config::AnalysisConfig, String> {
     let updated = state
-        .config_manager
+        .config_manager()
         .update_with(|config| {
             // Deep-merge patch into current analysis section
             let mut analysis_json =
@@ -86,9 +86,9 @@ pub struct AnalysisStatusResponse {
 /// 분석 파이프라인 상태 조회 (enabled, provider 설정 여부 등)
 #[command]
 pub async fn get_analysis_status(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, ConfigRuntimeState>,
 ) -> Result<AnalysisStatusResponse, String> {
-    let config = state.config_manager.get();
+    let config = state.config_manager().get();
     let provider_name = config
         .ai_provider
         .llm_api
