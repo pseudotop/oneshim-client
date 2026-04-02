@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppMemoryRouter } from '../router/future'
 import { createMockTimelineResponse } from '../stories/mock-data'
 import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
-import SessionReplay from './SessionReplay'
+import SessionReplay from './session-replay'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: Infinity } },
