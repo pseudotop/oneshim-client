@@ -7,7 +7,6 @@ use tokio::sync::Mutex;
 use tracing::debug;
 
 use oneshim_core::config::AnalysisConfig;
-use oneshim_core::error::CoreError;
 use oneshim_core::models::event::Event;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::analysis_provider::AnalysisProvider;
@@ -17,6 +16,7 @@ use crate::assembler::{
     humanize_time_ago, ContextAssembler, CurrentActivity, RelevantHistoryEntry, SegmentStats,
     SessionMetrics,
 };
+use crate::error::AnalysisError;
 use crate::pattern_miner::{is_communication_app, PatternMiner};
 use crate::vector_retriever::VectorRetriever;
 
@@ -110,7 +110,7 @@ impl ContextAnalyzer {
     }
 
     /// Full periodic analysis: query events, mine patterns, call LLM.
-    pub async fn analyze(&self) -> Result<Vec<Suggestion>, CoreError> {
+    pub async fn analyze(&self) -> Result<Vec<Suggestion>, AnalysisError> {
         if !self.should_analyze().await {
             debug!("Analysis throttled — skipping");
             return Ok(vec![]);
@@ -198,7 +198,7 @@ impl ContextAnalyzer {
     }
 
     /// Lightweight check: only call full analysis if patterns changed.
-    pub async fn analyze_if_changed(&self) -> Result<Vec<Suggestion>, CoreError> {
+    pub async fn analyze_if_changed(&self) -> Result<Vec<Suggestion>, AnalysisError> {
         let now = Utc::now();
         let lookback = Duration::seconds(self.config.interval_secs as i64);
         let from = now - lookback;
@@ -235,7 +235,7 @@ impl ContextAnalyzer {
         app_name: &str,
         window_title: &str,
         ocr_text: Option<&str>,
-    ) -> Result<Vec<Suggestion>, CoreError> {
+    ) -> Result<Vec<Suggestion>, AnalysisError> {
         if !self.should_analyze().await {
             return Ok(vec![]);
         }
@@ -355,8 +355,8 @@ impl ContextAnalyzer {
             .collect();
 
         let total_work_mins = if ctx_events.len() >= 2 {
-            let first = ctx_events.first().unwrap().timestamp;
-            let last = ctx_events.last().unwrap().timestamp;
+            let first = ctx_events.first().expect("len >= 2").timestamp;
+            let last = ctx_events.last().expect("len >= 2").timestamp;
             ((last - first).num_minutes() as u32).max(1)
         } else {
             0
@@ -403,6 +403,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::DateTime;
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::event::ContextEvent;
     use oneshim_core::models::suggestion::{Priority, SuggestionSource, SuggestionType};
 

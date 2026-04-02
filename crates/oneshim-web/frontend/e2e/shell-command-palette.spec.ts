@@ -1,4 +1,4 @@
-import { test, expect } from './helpers/test'
+import { expect, test } from './helpers/test'
 
 async function openPalette(page: import('@playwright/test').Page) {
   await page.getByTestId('titlebar-search').click()

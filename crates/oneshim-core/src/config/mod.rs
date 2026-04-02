@@ -62,6 +62,8 @@ pub struct AppConfig {
     pub indicator: IndicatorConfig,
     #[serde(default)]
     pub suggestions: SuggestionConfig,
+    #[serde(default)]
+    pub audio: AudioConfig,
 }
 
 // AppConfig impl
@@ -116,6 +118,7 @@ impl AppConfig {
             coaching: CoachingConfig::default(),
             indicator: IndicatorConfig::default(),
             suggestions: SuggestionConfig::default(),
+            audio: AudioConfig::default(),
         }
     }
 

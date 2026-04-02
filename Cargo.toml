@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/oneshim-api-contracts",
+    "crates/oneshim-audio",
     "crates/oneshim-lint",
     "crates/oneshim-core",
     "crates/oneshim-monitor",
@@ -20,7 +21,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.4.12"
+version = "0.4.15-rc.1"
 license = "Apache-2.0"
 rust-version = "1.77.1"
 repository = "https://github.com/pseudotop/oneshim-client"
@@ -38,7 +39,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # HTTP 클라이언트 (native-tls로 ring 의존성 회피)
-reqwest = { version = "0.13", default-features = false, features = ["json", "gzip", "stream", "native-tls", "form"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "gzip", "stream", "native-tls", "form", "multipart"] }
 
 # SSE 수신 스트림 파서
 eventsource-stream = "0.2"
@@ -79,6 +80,11 @@ rstar = "0.12"
 thiserror = "2"
 anyhow = "1"
 
+# 오디오 캡처 + STT
+cpal = "0.17"
+rubato = "0.15"
+whisper-rs = "0.16"
+
 # 비동기 trait (dyn Trait + async fn 지원)
 async-trait = "0.1"
 async-stream = "0.3"
@@ -99,6 +105,7 @@ clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 futures = "0.3"
+futures-util = "0.3"
 semver = { version = "1", features = ["serde"] }
 sha2 = "0.10"
 hmac = "0.12"
@@ -184,6 +191,7 @@ windows = { version = "0.61", features = ["Win32_UI_Accessibility", "Win32_Syste
 
 # 내부 크레이트
 oneshim-core = { path = "crates/oneshim-core" }
+oneshim-audio = { path = "crates/oneshim-audio" }
 oneshim-api-contracts = { path = "crates/oneshim-api-contracts" }
 oneshim-monitor = { path = "crates/oneshim-monitor" }
 oneshim-vision = { path = "crates/oneshim-vision" }

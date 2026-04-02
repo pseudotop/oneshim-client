@@ -33,6 +33,7 @@ oneshim-suggestion = { workspace = true }
 oneshim-web = { workspace = true }
 oneshim-api-contracts = { workspace = true }
 oneshim-analysis = { workspace = true }
+oneshim-audio = { workspace = true, optional = true }
 oneshim-embedding = { workspace = true, optional = true }
 
 tokio = { workspace = true }
@@ -75,6 +76,10 @@ custom-protocol = ["tauri/custom-protocol"]
 analysis = ["dep:oneshim-network"]
 server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
+audio = ["dep:oneshim-audio"]
+stt = ["audio", "oneshim-audio/whisper"]
+cloud-stt = ["audio", "oneshim-audio/cloud-stt"]
+download = ["audio", "oneshim-audio/download"]
 embedding = ["dep:oneshim-embedding"]
 native-vision = ["oneshim-vision/native-vision"]
 hnsw = ["oneshim-analysis/hnsw"]

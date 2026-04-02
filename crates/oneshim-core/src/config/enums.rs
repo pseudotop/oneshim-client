@@ -129,3 +129,62 @@ pub enum OverlayMode {
     /// Auto-switches based on regime (deep work -> Minimal, transition -> Rich).
     Adaptive,
 }
+
+/// Speech-to-text language hint for Whisper transcription.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SttLanguage {
+    #[default]
+    Auto,
+    En,
+    Ko,
+}
+
+/// Available Whisper model variants for local STT.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WhisperModelSize {
+    Tiny,
+    #[default]
+    Base,
+    Small,
+    Medium,
+}
+
+impl WhisperModelSize {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Tiny => "Tiny (~75 MB)",
+            Self::Base => "Base (~142 MB)",
+            Self::Small => "Small (~466 MB)",
+            Self::Medium => "Medium (~1.5 GB)",
+        }
+    }
+}
+
+/// STT provider selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SttProviderKind {
+    #[default]
+    Local,
+    Cloud,
+}
+
+/// Mic input mode selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MicInputMode {
+    #[default]
+    PushToTalk,
+    VoiceActivity,
+}
+
+impl std::fmt::Display for MicInputMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PushToTalk => write!(f, "push_to_talk"),
+            Self::VoiceActivity => write!(f, "voice_activity"),
+        }
+    }
+}

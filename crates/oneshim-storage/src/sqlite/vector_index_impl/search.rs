@@ -5,6 +5,7 @@ use oneshim_core::quantization::{QuantizedVector, ScalarQuantizer};
 use tracing::debug;
 
 use super::{build_filter_conditions, score_and_rank, SqliteVectorIndex};
+use crate::error::StorageError;
 
 pub(super) async fn search_ivf_impl(
     index: &SqliteVectorIndex,
@@ -81,9 +82,9 @@ pub(super) async fn search_ivf_impl(
                  WHERE {where_clause} AND ev.vector_int8 IS NOT NULL"
             );
 
-            let mut stmt = conn
-                .prepare(&sql)
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare IVF search: {e}")))?;
+            let mut stmt = conn.prepare(&sql).map_err(|e| {
+                StorageError::Internal(format!("Failed to prepare IVF search: {e}"))
+            })?;
 
             let params_ref: Vec<&dyn rusqlite::types::ToSql> =
                 param_values.iter().map(|p| p.as_ref()).collect();
@@ -102,13 +103,14 @@ pub(super) async fn search_ivf_impl(
                         row.get::<_, String>(7)?,
                     ))
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to query IVF vectors: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to query IVF vectors: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
             Ok(score_and_rank(rows, &qv, limit, time_decay_hours))
         })
         .await
+        .map_err(CoreError::from)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -185,7 +187,7 @@ pub(super) async fn search_ivf_binary_impl(
             );
 
             let mut stmt = conn.prepare(&sql).map_err(|e| {
-                CoreError::Internal(format!("Failed to prepare binary search: {e}"))
+                StorageError::Internal(format!("Failed to prepare binary search: {e}"))
             })?;
 
             let params: Vec<Box<dyn rusqlite::types::ToSql>> = probe_ids
@@ -203,7 +205,7 @@ pub(super) async fn search_ivf_binary_impl(
                         BinaryQuantizer::hamming_distance(&qb, &BinaryCode { data: code_data });
                     Ok((vid, hamming))
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to query binary codes: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to query binary codes: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
@@ -240,9 +242,9 @@ pub(super) async fn search_ivf_binary_impl(
                  WHERE {where_clause} AND ev.vector_int8 IS NOT NULL"
             );
 
-            let mut stmt2 = conn
-                .prepare(&rerank_sql)
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare rerank query: {e}")))?;
+            let mut stmt2 = conn.prepare(&rerank_sql).map_err(|e| {
+                StorageError::Internal(format!("Failed to prepare rerank query: {e}"))
+            })?;
 
             let params_ref2: Vec<&dyn rusqlite::types::ToSql> =
                 param_values.iter().map(|p| p.as_ref()).collect();
@@ -261,11 +263,14 @@ pub(super) async fn search_ivf_binary_impl(
                         row.get::<_, String>(7)?,
                     ))
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to query rerank vectors: {e}")))?
+                .map_err(|e| {
+                    StorageError::Internal(format!("Failed to query rerank vectors: {e}"))
+                })?
                 .filter_map(|r| r.ok())
                 .collect();
 
             Ok(score_and_rank(rows, &qv, limit, time_decay_hours))
         })
         .await
+        .map_err(CoreError::from)
 }

@@ -1,4 +1,4 @@
-use oneshim_core::error::CoreError;
+use crate::error::StorageError;
 use oneshim_core::models::suggestion::SuggestionSource;
 #[allow(deprecated)]
 use oneshim_core::models::work_session::LocalSuggestion;
@@ -38,11 +38,11 @@ impl SqliteStorage {
     pub fn save_rule_suggestion_sync(
         &self,
         suggestion: &oneshim_core::models::suggestion::Suggestion,
-    ) -> Result<String, CoreError> {
+    ) -> Result<String, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT OR REPLACE INTO suggestions \
@@ -64,24 +64,24 @@ impl SqliteStorage {
                 suggestion.expires_at.map(|t| t.to_rfc3339()),
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to save suggestion: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to save suggestion: {e}")))?;
 
         debug!(id = %suggestion.suggestion_id, "rule-based suggestion persisted to SQLite");
         Ok(suggestion.suggestion_id.clone())
     }
 
     /// Mark a unified suggestion as shown by its string suggestion_id.
-    pub fn mark_unified_suggestion_shown(&self, suggestion_id: &str) -> Result<(), CoreError> {
+    pub fn mark_unified_suggestion_shown(&self, suggestion_id: &str) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE suggestions SET shown_at = datetime('now') WHERE suggestion_id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("suggestion shown record failure: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("suggestion shown record failure: {e}")))?;
 
         Ok(())
     }
@@ -91,11 +91,11 @@ impl SqliteStorage {
     // --------------------------------------------------------
 
     #[allow(deprecated)]
-    pub fn save_local_suggestion(&self, suggestion: &LocalSuggestion) -> Result<i64, CoreError> {
+    pub fn save_local_suggestion(&self, suggestion: &LocalSuggestion) -> Result<i64, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let (suggestion_type, payload) = Self::serialize_suggestion(suggestion);
 
@@ -103,54 +103,56 @@ impl SqliteStorage {
             "INSERT INTO local_suggestions (suggestion_type, payload) VALUES (?1, ?2)",
             rusqlite::params![suggestion_type, payload],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to save local suggestion: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to save local suggestion: {e}")))?;
 
         let id = conn.last_insert_rowid();
         debug!("suggestion save: id={}, type={}", id, suggestion_type);
         Ok(id)
     }
 
-    pub fn mark_suggestion_shown(&self, suggestion_id: i64) -> Result<(), CoreError> {
+    pub fn mark_suggestion_shown(&self, suggestion_id: i64) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET shown_at = datetime('now') WHERE id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("suggestion display record failure: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("suggestion display record failure: {e}")))?;
 
         Ok(())
     }
 
-    pub fn mark_suggestion_dismissed(&self, suggestion_id: i64) -> Result<(), CoreError> {
+    pub fn mark_suggestion_dismissed(&self, suggestion_id: i64) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET dismissed_at = datetime('now') WHERE id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to record suggestion dismissal: {e}")))?;
+        .map_err(|e| {
+            StorageError::Internal(format!("Failed to record suggestion dismissal: {e}"))
+        })?;
 
         Ok(())
     }
 
-    pub fn mark_suggestion_acted(&self, suggestion_id: i64) -> Result<(), CoreError> {
+    pub fn mark_suggestion_acted(&self, suggestion_id: i64) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET acted_at = datetime('now') WHERE id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("suggestion execution record failure: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("suggestion execution record failure: {e}")))?;
 
         Ok(())
     }
@@ -164,11 +166,11 @@ impl SqliteStorage {
     pub fn list_suggestions(
         &self,
         limit: usize,
-    ) -> Result<Vec<oneshim_core::models::storage_records::SuggestionRecord>, CoreError> {
+    ) -> Result<Vec<oneshim_core::models::storage_records::SuggestionRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -180,7 +182,7 @@ impl SqliteStorage {
                  ORDER BY created_at DESC \
                  LIMIT ?1",
             )
-            .map_err(|e| CoreError::Internal(format!("prepare failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("prepare failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![limit as i64], |row| {
@@ -202,29 +204,30 @@ impl SqliteStorage {
                     expires_at: row.get(14)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("query failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
 
     /// Dismiss a unified suggestion by its string `suggestion_id`.
     /// Returns `true` if a row was updated, `false` otherwise.
-    pub fn dismiss_unified_suggestion(&self, suggestion_id: &str) -> Result<bool, CoreError> {
+    pub fn dismiss_unified_suggestion(&self, suggestion_id: &str) -> Result<bool, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let changed = conn
             .execute(
                 "UPDATE suggestions SET dismissed_at = datetime('now') WHERE suggestion_id = ?1 AND dismissed_at IS NULL",
                 rusqlite::params![suggestion_id],
             )
-            .map_err(|e| CoreError::Internal(format!("dismiss failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("dismiss failure: {e}")))?;
 
         Ok(changed > 0)
     }
@@ -233,11 +236,11 @@ impl SqliteStorage {
         &self,
         cutoff: &str,
         limit: usize,
-    ) -> Result<Vec<LocalSuggestionRecord>, CoreError> {
+    ) -> Result<Vec<LocalSuggestionRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -247,18 +250,19 @@ impl SqliteStorage {
                  ORDER BY created_at DESC
                  LIMIT ?2",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(
                 rusqlite::params![cutoff, limit as i64],
                 map_local_suggestion_row,
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -267,11 +271,11 @@ impl SqliteStorage {
         &self,
         after_id: Option<i64>,
         limit: usize,
-    ) -> Result<Vec<LocalSuggestionRecord>, CoreError> {
+    ) -> Result<Vec<LocalSuggestionRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let sql = if after_id.is_some() {
             "SELECT id, suggestion_type, payload, created_at, shown_at, dismissed_at, acted_at
@@ -288,7 +292,7 @@ impl SqliteStorage {
 
         let mut stmt = conn
             .prepare(sql)
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = if let Some(after_id) = after_id {
             stmt.query_map(
@@ -298,11 +302,12 @@ impl SqliteStorage {
         } else {
             stmt.query_map(rusqlite::params![limit as i64], map_local_suggestion_row)
         }
-        .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -310,11 +315,11 @@ impl SqliteStorage {
     /// Check whether LLM_SERVER suggestions exist within the given lookback
     /// window. Used by the analysis loop to suppress local analysis when the
     /// server is actively sending suggestions.
-    pub fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError> {
+    pub fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let sql = "SELECT COUNT(*) FROM suggestions \
              WHERE source = ?1 \
@@ -328,7 +333,7 @@ impl SqliteStorage {
                 ],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("query failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
 
         Ok(count > 0)
     }

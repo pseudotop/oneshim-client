@@ -3,6 +3,7 @@
 
 use async_trait::async_trait;
 
+use crate::error::AutomationError;
 use oneshim_core::config::{SandboxConfig, SandboxProfile};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
@@ -106,12 +107,12 @@ impl Sandbox for WindowsSandbox {
 
             create_restricted_token(&token_restrictions)?;
 
-            Ok::<(), CoreError>(())
+            Ok::<(), AutomationError>(())
         })
         .await
         .map_err(|e| CoreError::SandboxExecution(format!("Thread join failed: {}", e)))?;
 
-        result?;
+        result.map_err(CoreError::from)?;
 
         tracing::info!(action = ?action, "Windows sandbox within execution completed");
         Ok(())
@@ -146,7 +147,7 @@ fn check_windows_sandbox_support() -> bool {
     cfg!(target_os = "windows")
 }
 
-fn create_job_object(limits: &JobObjectLimits) -> Result<(), CoreError> {
+fn create_job_object(limits: &JobObjectLimits) -> Result<(), AutomationError> {
     tracing::debug!(
         memory = limits.max_memory_bytes,
         cpu_ms = limits.max_cpu_time_ms,
@@ -156,7 +157,7 @@ fn create_job_object(limits: &JobObjectLimits) -> Result<(), CoreError> {
     Ok(())
 }
 
-fn create_restricted_token(restrictions: &TokenRestrictions) -> Result<(), CoreError> {
+fn create_restricted_token(restrictions: &TokenRestrictions) -> Result<(), AutomationError> {
     tracing::debug!(
         disable_admin = restrictions.disable_admin_sid,
         disable_most = restrictions.disable_most_sids,

@@ -27,6 +27,7 @@ const DEFAULT_BREAK_MINS = 5
 
 /** Format seconds as MM:SS */
 function formatTime(secs: number): string {
+  if (!Number.isFinite(secs) || secs < 0) return '00:00'
   const m = Math.floor(secs / 60)
   const s = secs % 60
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
@@ -177,9 +178,10 @@ export default function PomodoroTimer() {
 
   // Derive effective status + remaining from the session snapshot and local clock
   const computeLocal = useCallback((s: PomodoroSession) => {
-    const elapsed = Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000)
-    const workSecs = s.duration_minutes * 60
-    const breakSecs = s.break_minutes * 60
+    const startMs = new Date(s.started_at).getTime()
+    const elapsed = Number.isFinite(startMs) ? Math.floor((Date.now() - startMs) / 1000) : 0
+    const workSecs = (s.duration_minutes ?? DEFAULT_WORK_MINS) * 60
+    const breakSecs = (s.break_minutes ?? DEFAULT_BREAK_MINS) * 60
 
     if (s.status === 'cancelled') {
       return { status: 'cancelled' as PomodoroStatus, remaining: 0 }

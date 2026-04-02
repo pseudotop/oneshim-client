@@ -30,6 +30,7 @@ mod cli_subscription_bridge;
 mod commands;
 mod desktop_permissions;
 mod desktop_startup;
+mod fallback_stt;
 mod feature_capabilities;
 mod focus_analyzer;
 mod focus_mode;
@@ -218,6 +219,9 @@ fn main() {
             commands::ai_session::kill_ai_session,
             commands::ai_session::list_ai_sessions,
             commands::ai_session::retry_ai_session,
+            commands::ai_session::get_token_usage,
+            commands::ai_session::load_session_messages,
+            commands::ai_session::delete_session_history,
             commands::analysis::get_analysis_config,
             commands::analysis::update_analysis_config,
             commands::analysis::get_analysis_status,
@@ -258,6 +262,15 @@ fn main() {
             commands::suggestions::submit_suggestion_feedback,
             commands::detection::toggle_detection_overlay,
             commands::detection::refresh_detection_overlay,
+            commands::audio::start_audio_capture,
+            commands::audio::stop_and_transcribe,
+            commands::audio::get_audio_status,
+            commands::audio::download_whisper_model,
+            commands::audio::cancel_model_download,
+            commands::audio::delete_whisper_model,
+            commands::audio::reload_stt_engine,
+            commands::audio::start_vad_listening,
+            commands::audio::stop_vad_listening,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

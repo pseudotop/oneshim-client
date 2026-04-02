@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 use tracing::debug;
 
+use crate::error::StorageError;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::sync::{ChangeSet, PeerInfo};
 use oneshim_core::ports::sync_transport::SyncTransport;
@@ -33,10 +34,10 @@ impl FileSyncTransport {
         sync_folder: PathBuf,
         local_device_id: String,
         passphrase: String,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, StorageError> {
         // Ensure the sync folder exists
         std::fs::create_dir_all(&sync_folder).map_err(|e| {
-            CoreError::Internal(format!(
+            StorageError::Internal(format!(
                 "Failed to create sync folder {}: {e}",
                 sync_folder.display()
             ))
@@ -50,24 +51,24 @@ impl FileSyncTransport {
     }
 
     /// Derive AES-256 key from passphrase + salt via Argon2id.
-    fn derive_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CoreError> {
+    fn derive_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], StorageError> {
         let mut key = [0u8; 32];
         Argon2::default()
             .hash_password_into(passphrase.as_bytes(), salt, &mut key)
-            .map_err(|e| CoreError::Internal(format!("Argon2 KDF failed: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Argon2 KDF failed: {e}")))?;
         Ok(key)
     }
 
     /// Encrypt plaintext with AES-256-GCM.
     /// Returns: salt (16) || nonce (12) || ciphertext
-    fn encrypt(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, CoreError> {
+    fn encrypt(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, StorageError> {
         use aes_gcm::aead::rand_core::RngCore;
         let mut salt = [0u8; SALT_SIZE];
         OsRng.fill_bytes(&mut salt);
 
         let key = Self::derive_key(passphrase, &salt)?;
         let cipher = Aes256Gcm::new_from_slice(&key)
-            .map_err(|e| CoreError::Internal(format!("AES init: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("AES init: {e}")))?;
 
         let mut nonce_bytes = [0u8; NONCE_SIZE];
         OsRng.fill_bytes(&mut nonce_bytes);
@@ -75,7 +76,7 @@ impl FileSyncTransport {
 
         let ciphertext = cipher
             .encrypt(nonce, plaintext)
-            .map_err(|e| CoreError::Internal(format!("AES encrypt: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("AES encrypt: {e}")))?;
 
         let mut output = Vec::with_capacity(SALT_SIZE + NONCE_SIZE + ciphertext.len());
         output.extend_from_slice(&salt);
@@ -85,9 +86,11 @@ impl FileSyncTransport {
     }
 
     /// Decrypt: parse salt || nonce || ciphertext
-    fn decrypt(passphrase: &str, data: &[u8]) -> Result<Vec<u8>, CoreError> {
+    fn decrypt(passphrase: &str, data: &[u8]) -> Result<Vec<u8>, StorageError> {
         if data.len() < SALT_SIZE + NONCE_SIZE + 1 {
-            return Err(CoreError::Internal("encrypted data too short".to_string()));
+            return Err(StorageError::Internal(
+                "encrypted data too short".to_string(),
+            ));
         }
         let salt = &data[..SALT_SIZE];
         let nonce_bytes = &data[SALT_SIZE..SALT_SIZE + NONCE_SIZE];
@@ -95,11 +98,11 @@ impl FileSyncTransport {
 
         let key = Self::derive_key(passphrase, salt)?;
         let cipher = Aes256Gcm::new_from_slice(&key)
-            .map_err(|e| CoreError::Internal(format!("AES init: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("AES init: {e}")))?;
         let nonce = Nonce::from_slice(nonce_bytes);
 
         cipher.decrypt(nonce, ciphertext).map_err(|e| {
-            CoreError::Internal(format!("AES decrypt failed (wrong passphrase?): {e}"))
+            StorageError::Internal(format!("AES decrypt failed (wrong passphrase?): {e}"))
         })
     }
 

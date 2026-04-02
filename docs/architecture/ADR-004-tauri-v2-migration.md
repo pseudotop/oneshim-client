@@ -24,7 +24,7 @@ Remove iced and use Tauri v2 to wrap the existing React web dashboard in a nativ
 - Embed the existing `crates/oneshim-web/` React app via Tauri WebView.
 - IPC: `tauri::command` macro for Rust ↔ JavaScript communication.
 - System tray: `tauri::tray` API.
-- Auto-update: `tauri-plugin-updater`.
+- Auto-update: **`self_update`** (retained). The custom updater (`src-tauri/src/updater/`) provides SHA256 + Ed25519 verification, rollback, prerelease filtering, version floor enforcement, and a coordinator state machine — capabilities that `tauri-plugin-updater` does not cover. Migration was evaluated (2026-04-01) and rejected due to feature loss risk with no clear benefit.
 
 ## Consequences
 

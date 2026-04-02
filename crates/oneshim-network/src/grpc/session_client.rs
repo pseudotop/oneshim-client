@@ -19,7 +19,7 @@ pub struct GrpcSessionClient {
 impl GrpcSessionClient {
     pub async fn connect(config: GrpcConfig) -> Result<Self, CoreError> {
         let endpoints = config.all_endpoints();
-        let mut last_error = None;
+        let mut last_error: Option<crate::error::NetworkError> = None;
 
         for endpoint_url in &endpoints {
             info!(endpoint = %endpoint_url, "gRPC session client connection attempt");
@@ -38,7 +38,9 @@ impl GrpcSessionClient {
         }
 
         error!(endpoints = ?endpoints, "all gRPC endpoint connection failure");
-        Err(last_error.unwrap_or_else(|| CoreError::Network("gRPC endpoint none".to_string())))
+        Err(last_error
+            .unwrap_or_else(|| crate::error::NetworkError::Http("gRPC endpoint none".to_string()))
+            .into())
     }
 
     pub async fn create_session(
@@ -59,7 +61,10 @@ impl GrpcSessionClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC session create failure");
-                map_grpc_status_error("grpc session creation failed", status)
+                CoreError::from(map_grpc_status_error(
+                    "grpc session creation failed",
+                    status,
+                ))
             })?;
 
         Ok(response.into_inner())
@@ -74,7 +79,10 @@ impl GrpcSessionClient {
 
         self.client.end_session(request).await.map_err(|status| {
             error!(error = %status, "gRPC session ended failure");
-            map_grpc_status_error("grpc session termination failed", status)
+            CoreError::from(map_grpc_status_error(
+                "grpc session termination failed",
+                status,
+            ))
         })?;
 
         Ok(())
@@ -89,7 +97,10 @@ impl GrpcSessionClient {
 
         self.client.heartbeat(request).await.map_err(|status| {
             error!(error = %status, "gRPC heartbeat failure");
-            map_grpc_status_error("grpc session heartbeat failed", status)
+            CoreError::from(map_grpc_status_error(
+                "grpc session heartbeat failed",
+                status,
+            ))
         })?;
 
         Ok(())

@@ -19,6 +19,8 @@ use tracing::{debug, warn};
 
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
+
+use crate::error::NetworkError;
 use oneshim_core::models::ai_session::{
     truncate_chat_history, Attachment, ChatMessage, ChatRole, ContentBlock,
     ConversationSessionInfo, MessageContext, OutboundMessage, SessionMessage, SessionState,
@@ -105,9 +107,9 @@ impl LocalLlmSession {
 }
 
 /// Parse a single NDJSON line into an `OllamaChatChunk`.
-fn parse_ndjson_line(line: &str) -> Result<OllamaChatChunk, CoreError> {
+fn parse_ndjson_line(line: &str) -> Result<OllamaChatChunk, NetworkError> {
     serde_json::from_str(line).map_err(|e| {
-        CoreError::Internal(format!("failed to parse Ollama NDJSON chunk: {e}: {line}"))
+        NetworkError::Internal(format!("failed to parse Ollama NDJSON chunk: {e}: {line}"))
     })
 }
 

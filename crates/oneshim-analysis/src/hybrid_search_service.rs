@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tracing::debug;
 
-use oneshim_core::error::CoreError;
+use crate::error::AnalysisError;
 use oneshim_core::models::embedding::SearchResult;
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
 use oneshim_core::ports::text_search::TextSearchProvider;
@@ -82,7 +82,7 @@ impl HybridSearchService {
         query: &str,
         mode: SearchMode,
         limit: usize,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         let filtered_query = (self.pii_filter)(query);
 
         match mode {
@@ -97,7 +97,7 @@ impl HybridSearchService {
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         let query_vector = self.embedding_provider.embed(query).await?;
         let results = self.vector_store.search(&query_vector, limit, 0.0).await?;
         debug!(count = results.len(), "Vector search results");
@@ -109,7 +109,7 @@ impl HybridSearchService {
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         let fts_results = self.text_search.search_fts(query, limit).await?;
         debug!(count = fts_results.len(), "FTS5 keyword search results");
 
@@ -136,7 +136,7 @@ impl HybridSearchService {
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         let over_fetch = limit * 2;
 
         // Run both searches in parallel
@@ -216,6 +216,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::Utc;
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::embedding::{EmbeddingContentType, SearchResult as VectorResult};
     use oneshim_core::ports::text_search::TextSearchResult;
 

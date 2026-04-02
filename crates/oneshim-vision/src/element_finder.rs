@@ -7,6 +7,8 @@ use uuid::Uuid;
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{ElementBounds, FinderSource, UiElement};
+
+use crate::error::VisionError;
 use oneshim_core::models::ui_scene::{
     NormalizedBounds, UiScene, UiSceneElement, UI_SCENE_SCHEMA_VERSION,
 };
@@ -96,10 +98,10 @@ impl OcrElementFinder {
         &self,
         app_name: Option<&str>,
         screen_id: Option<&str>,
-    ) -> Result<UiScene, CoreError> {
+    ) -> Result<UiScene, VisionError> {
         let image_guard = self.last_image.read().await;
         let (image_data, image_format) = image_guard.as_ref().ok_or_else(|| {
-            CoreError::Internal("OCR finder: captured image is missing".to_string())
+            VisionError::Internal("OCR finder: captured image is missing".to_string())
         })?;
 
         self.analyze_scene_from_image_data(
@@ -117,15 +119,16 @@ impl OcrElementFinder {
         image_format: String,
         app_name: Option<&str>,
         screen_id: Option<&str>,
-    ) -> Result<UiScene, CoreError> {
+    ) -> Result<UiScene, VisionError> {
         let (screen_width, screen_height) = image::load_from_memory(&image_data)
             .map(|img| (img.width().max(1), img.height().max(1)))
-            .map_err(|e| CoreError::OcrError(format!("Failed to parse image size: {e}")))?;
+            .map_err(|e| VisionError::Ocr(format!("Failed to parse image size: {e}")))?;
 
         let ocr_results = self
             .ocr_provider
             .extract_elements(&image_data, &image_format)
-            .await?;
+            .await
+            .map_err(VisionError::from)?;
 
         let mut elements = Self::ocr_to_scene_elements(
             &ocr_results,
@@ -143,7 +146,7 @@ impl OcrElementFinder {
                 det.detect_rectangles(&img, screen_width, screen_height, 0.02, 100)
             })
             .await
-            .map_err(|e| CoreError::Internal(format!("spawn_blocking failed: {e}")))?;
+            .map_err(|e| VisionError::Internal(format!("spawn_blocking failed: {e}")))?;
 
             if let Ok(rects) = rects {
                 let merged = merge_rectangles(&rects, &elements, screen_width, screen_height);
@@ -265,7 +268,9 @@ impl ElementFinder for OcrElementFinder {
         app_name: Option<&str>,
         screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
-        OcrElementFinder::analyze_scene(self, app_name, screen_id).await
+        OcrElementFinder::analyze_scene(self, app_name, screen_id)
+            .await
+            .map_err(Into::into)
     }
 
     async fn analyze_scene_from_image(
@@ -277,6 +282,7 @@ impl ElementFinder for OcrElementFinder {
     ) -> Result<UiScene, CoreError> {
         self.analyze_scene_from_image_data(image_data, image_format, app_name, screen_id)
             .await
+            .map_err(Into::into)
     }
 
     fn name(&self) -> &str {

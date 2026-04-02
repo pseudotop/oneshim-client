@@ -6,6 +6,6 @@ use super::SqliteStorage;
 
 impl SessionContextStorePort for SqliteStorage {
     fn list_suggestions(&self, limit: usize) -> Result<Vec<SuggestionRecord>, CoreError> {
-        SqliteStorage::list_suggestions(self, limit)
+        SqliteStorage::list_suggestions(self, limit).map_err(CoreError::from)
     }
 }

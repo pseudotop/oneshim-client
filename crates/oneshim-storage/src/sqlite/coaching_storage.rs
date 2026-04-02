@@ -1,4 +1,4 @@
-use oneshim_core::error::CoreError;
+use crate::error::StorageError;
 use oneshim_core::models::coaching::CoachingEventRow;
 use std::collections::HashMap;
 
@@ -10,11 +10,11 @@ impl SqliteStorage {
         &self,
         limit: u32,
         offset: u32,
-    ) -> Result<Vec<CoachingEventRow>, CoreError> {
+    ) -> Result<Vec<CoachingEventRow>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -25,7 +25,7 @@ impl SqliteStorage {
                  ORDER BY shown_at DESC
                  LIMIT ?1 OFFSET ?2",
             )
-            .map_err(|e| CoreError::Internal(format!("prepare query_coaching_events: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("prepare query_coaching_events: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![limit, offset], |row| {
@@ -43,21 +43,21 @@ impl SqliteStorage {
                     feedback_score: row.get(10)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("query_coaching_events: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("query_coaching_events: {e}")))?;
 
         let mut results = Vec::new();
         for row in rows {
-            results.push(row.map_err(|e| CoreError::Internal(format!("row read: {e}")))?);
+            results.push(row.map_err(|e| StorageError::Internal(format!("row read: {e}")))?);
         }
         Ok(results)
     }
 
     /// Insert a coaching event record.
-    pub fn insert_coaching_event(&self, event: &CoachingEventRow) -> Result<(), CoreError> {
+    pub fn insert_coaching_event(&self, event: &CoachingEventRow) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
 
         conn.execute(
             "INSERT INTO coaching_events
@@ -79,7 +79,7 @@ impl SqliteStorage {
                 event.feedback_score,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("insert_coaching_event: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("insert_coaching_event: {e}")))?;
 
         Ok(())
     }
@@ -92,11 +92,11 @@ impl SqliteStorage {
         dismissed_at: Option<&str>,
         feedback_type: Option<&str>,
         feedback_score: Option<f64>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
 
         conn.execute(
             "UPDATE coaching_events
@@ -113,7 +113,7 @@ impl SqliteStorage {
                 feedback_score
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("update_coaching_event_feedback: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("update_coaching_event_feedback: {e}")))?;
 
         Ok(())
     }
@@ -123,31 +123,31 @@ impl SqliteStorage {
         &self,
         event_id: &str,
         personalized_text: &str,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
 
         conn.execute(
             "UPDATE coaching_events SET personalized_message = ?2 WHERE event_id = ?1",
             rusqlite::params![event_id, personalized_text],
         )
-        .map_err(|e| CoreError::Internal(format!("update_coaching_event_personalized: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("update_coaching_event_personalized: {e}")))?;
 
         Ok(())
     }
 
     /// Get all regime goals from the regime_goals table.
-    pub fn get_regime_goals(&self) -> Result<HashMap<String, u32>, CoreError> {
+    pub fn get_regime_goals(&self) -> Result<HashMap<String, u32>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT regime_label, daily_target_minutes FROM regime_goals")
-            .map_err(|e| CoreError::Internal(format!("prepare get_regime_goals: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("prepare get_regime_goals: {e}")))?;
 
         let rows = stmt
             .query_map([], |row| {
@@ -155,12 +155,12 @@ impl SqliteStorage {
                 let minutes: u32 = row.get(1)?;
                 Ok((label, minutes))
             })
-            .map_err(|e| CoreError::Internal(format!("get_regime_goals: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("get_regime_goals: {e}")))?;
 
         let mut goals = HashMap::new();
         for row in rows {
             let (label, minutes) =
-                row.map_err(|e| CoreError::Internal(format!("row read: {e}")))?;
+                row.map_err(|e| StorageError::Internal(format!("row read: {e}")))?;
             goals.insert(label, minutes);
         }
         Ok(goals)
@@ -171,11 +171,11 @@ impl SqliteStorage {
         &self,
         regime_label: &str,
         target_minutes: u32,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
 
         conn.execute(
             "INSERT INTO regime_goals (regime_label, daily_target_minutes, updated_at)
@@ -184,23 +184,23 @@ impl SqliteStorage {
              DO UPDATE SET daily_target_minutes = ?2, updated_at = datetime('now')",
             rusqlite::params![regime_label, target_minutes],
         )
-        .map_err(|e| CoreError::Internal(format!("set_regime_goal: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("set_regime_goal: {e}")))?;
 
         Ok(())
     }
 
     /// Delete a regime goal by label.
-    pub fn delete_regime_goal(&self, regime_label: &str) -> Result<(), CoreError> {
+    pub fn delete_regime_goal(&self, regime_label: &str) -> Result<(), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
 
         conn.execute(
             "DELETE FROM regime_goals WHERE regime_label = ?1",
             rusqlite::params![regime_label],
         )
-        .map_err(|e| CoreError::Internal(format!("delete_regime_goal: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("delete_regime_goal: {e}")))?;
 
         Ok(())
     }

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::error::StorageError;
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::secret_store::SecretStore;
@@ -26,19 +27,18 @@ impl FileSecretRegistry {
         }
     }
 
-    fn load_or_default(path: &Path) -> Result<Self, CoreError> {
+    fn load_or_default(path: &Path) -> Result<Self, StorageError> {
         match std::fs::read_to_string(path) {
-            Ok(contents) => serde_json::from_str(&contents).map_err(|e| {
-                CoreError::SecretStoreError(format!("file secret registry parse: {e}"))
-            }),
+            Ok(contents) => serde_json::from_str(&contents)
+                .map_err(|e| StorageError::SecretStore(format!("file secret registry parse: {e}"))),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Self::new()),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn save(&self, path: &Path) -> Result<(), CoreError> {
+    fn save(&self, path: &Path) -> Result<(), StorageError> {
         let serialized = serde_json::to_string_pretty(self).map_err(|e| {
-            CoreError::SecretStoreError(format!("file secret registry serialization: {e}"))
+            StorageError::SecretStore(format!("file secret registry serialization: {e}"))
         })?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -83,7 +83,7 @@ struct FileSecretInner {
 }
 
 impl FileSecretInner {
-    fn new(registry_path: PathBuf) -> Result<Self, CoreError> {
+    fn new(registry_path: PathBuf) -> Result<Self, StorageError> {
         if let Some(parent) = registry_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -94,7 +94,7 @@ impl FileSecretInner {
         })
     }
 
-    fn store_sync(&self, namespace: &str, key: &str, value: &str) -> Result<(), CoreError> {
+    fn store_sync(&self, namespace: &str, key: &str, value: &str) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.store(namespace, key, value);
         registry.save(&self.registry_path)
@@ -104,13 +104,13 @@ impl FileSecretInner {
         self.registry.lock().retrieve(namespace, key)
     }
 
-    fn delete_sync(&self, namespace: &str, key: &str) -> Result<(), CoreError> {
+    fn delete_sync(&self, namespace: &str, key: &str) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.delete(namespace, key);
         registry.save(&self.registry_path)
     }
 
-    fn delete_namespace_sync(&self, namespace: &str) -> Result<(), CoreError> {
+    fn delete_namespace_sync(&self, namespace: &str) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.delete_namespace(namespace);
         registry.save(&self.registry_path)
@@ -123,7 +123,7 @@ pub struct FileSecretStore {
 }
 
 impl FileSecretStore {
-    pub fn new(registry_path: PathBuf) -> Result<Self, CoreError> {
+    pub fn new(registry_path: PathBuf) -> Result<Self, StorageError> {
         Ok(Self {
             inner: Arc::new(FileSecretInner::new(registry_path)?),
         })
@@ -140,6 +140,7 @@ impl SecretStore for FileSecretStore {
         tokio::task::spawn_blocking(move || inner.store_sync(&namespace, &key, &value))
             .await
             .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(CoreError::from)
     }
 
     async fn retrieve(&self, namespace: &str, key: &str) -> Result<Option<String>, CoreError> {
@@ -158,6 +159,7 @@ impl SecretStore for FileSecretStore {
         tokio::task::spawn_blocking(move || inner.delete_sync(&namespace, &key))
             .await
             .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(CoreError::from)
     }
 
     async fn delete_namespace(&self, namespace: &str) -> Result<(), CoreError> {
@@ -166,6 +168,7 @@ impl SecretStore for FileSecretStore {
         tokio::task::spawn_blocking(move || inner.delete_namespace_sync(&namespace))
             .await
             .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(CoreError::from)
     }
 }
 

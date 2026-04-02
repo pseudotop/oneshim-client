@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::error::AutomationError;
 use oneshim_core::config::{SandboxConfig, SandboxProfile};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
@@ -135,12 +136,12 @@ impl Sandbox for LinuxSandbox {
 
             apply_resource_limits(&resource_limits)?;
 
-            Ok::<(), CoreError>(())
+            Ok::<(), AutomationError>(())
         })
         .await
         .map_err(|e| CoreError::SandboxExecution(format!("Thread join failed: {}", e)))?;
 
-        result?;
+        result.map_err(CoreError::from)?;
 
         tracing::info!(action = ?action, "Linux sandbox within execution completed");
         Ok(())
@@ -180,7 +181,7 @@ fn check_landlock_support() -> bool {
     std::path::Path::new("/sys/kernel/security/landlock").exists()
 }
 
-fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), CoreError> {
+fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), AutomationError> {
     tracing::debug!(
         read = rules.read_paths.len(),
         write = rules.write_paths.len(),
@@ -189,7 +190,7 @@ fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), CoreError> {
     Ok(())
 }
 
-fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), CoreError> {
+fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationError> {
     tracing::debug!(
         basic = allowlist.allow_basic,
         network = allowlist.allow_network,
@@ -199,7 +200,7 @@ fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), CoreError> {
     Ok(())
 }
 
-fn apply_resource_limits(limits: &ResourceLimits) -> Result<(), CoreError> {
+fn apply_resource_limits(limits: &ResourceLimits) -> Result<(), AutomationError> {
     if limits.max_memory_bytes > 0 {
         tracing::debug!(
             max_memory = limits.max_memory_bytes,

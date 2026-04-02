@@ -8,6 +8,9 @@
 
 //! # oneshim-monitor
 
+pub mod error;
+pub use error::MonitorError;
+
 pub mod activity;
 pub mod clipboard;
 pub mod file_access;

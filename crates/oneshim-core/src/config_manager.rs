@@ -64,12 +64,12 @@ impl ConfigManager {
     }
 
     pub fn get(&self) -> AppConfig {
-        self.config.read().unwrap().clone()
+        self.config.read().expect("config lock poisoned").clone()
     }
 
     pub fn update(&self, new_config: AppConfig) -> Result<(), CoreError> {
         {
-            let mut config = self.config.write().unwrap();
+            let mut config = self.config.write().expect("config lock poisoned");
             *config = new_config.clone();
         }
 
@@ -85,7 +85,7 @@ impl ConfigManager {
     where
         F: FnOnce(&mut AppConfig) -> Result<(), String>,
     {
-        let mut config = self.config.write().unwrap();
+        let mut config = self.config.write().expect("config lock poisoned");
         updater(&mut config).map_err(CoreError::Config)?;
         let snapshot = config.clone();
         // Persist while still holding the lock so no reader sees
@@ -101,7 +101,7 @@ impl ConfigManager {
 
     pub fn reload(&self) -> Result<(), CoreError> {
         let config = Self::load_from_file(&self.config_path)?;
-        let mut current = self.config.write().unwrap();
+        let mut current = self.config.write().expect("config lock poisoned");
         *current = config;
         info!("settings load complete");
         Ok(())

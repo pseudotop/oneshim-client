@@ -1,6 +1,6 @@
+use crate::error::VisionError;
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use image::{DynamicImage, GenericImageView};
-use oneshim_core::error::CoreError;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::debug;
 
@@ -48,7 +48,7 @@ static STATS_HIGH: CompressionStats = CompressionStats::new();
 static STATS_MEDIUM: CompressionStats = CompressionStats::new();
 static STATS_LOW: CompressionStats = CompressionStats::new();
 
-pub fn encode_webp(image: &DynamicImage, quality: WebPQuality) -> Result<Vec<u8>, CoreError> {
+pub fn encode_webp(image: &DynamicImage, quality: WebPQuality) -> Result<Vec<u8>, VisionError> {
     let rgba = image.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
     let raw_size = (w * h * 4) as usize;
@@ -75,7 +75,10 @@ pub fn encode_webp(image: &DynamicImage, quality: WebPQuality) -> Result<Vec<u8>
     Ok(encoded_vec)
 }
 
-pub fn encode_webp_base64(image: &DynamicImage, quality: WebPQuality) -> Result<String, CoreError> {
+pub fn encode_webp_base64(
+    image: &DynamicImage,
+    quality: WebPQuality,
+) -> Result<String, VisionError> {
     let bytes = encode_webp(image, quality)?;
     Ok(B64.encode(&bytes))
 }
@@ -83,7 +86,7 @@ pub fn encode_webp_base64(image: &DynamicImage, quality: WebPQuality) -> Result<
 pub fn encode_adaptive(
     image: &DynamicImage,
     max_bytes: usize,
-) -> Result<(Vec<u8>, WebPQuality), CoreError> {
+) -> Result<(Vec<u8>, WebPQuality), VisionError> {
     let (w, h) = image.dimensions();
     let raw_size = (w * h * 4) as usize;
 
@@ -137,7 +140,7 @@ fn estimate_quality_from_stats(target_ratio: f32) -> WebPQuality {
 pub fn encode_smart_adaptive(
     image: &DynamicImage,
     max_bytes: usize,
-) -> Result<(Vec<u8>, WebPQuality), CoreError> {
+) -> Result<(Vec<u8>, WebPQuality), VisionError> {
     let (w, h) = image.dimensions();
     let raw_size = (w * h * 4) as usize;
 

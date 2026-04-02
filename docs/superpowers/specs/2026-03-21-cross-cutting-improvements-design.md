@@ -1,10 +1,10 @@
 # Cross-Cutting Improvements — Design Spec
 
 > Created: 2026-03-21
-> Revised: 2026-03-21 (post-review)
+> Revised: 2026-04-01
 > Priority: P1
 > Effort: 4.5 days
-> Status: Proposed
+> Status: **Superseded** — 9/10 tasks implemented in prior sessions. Remaining gap (store_quantized boundary validation) addressed in `2026-04-01-store-quantized-boundary-validation.md`.
 > Scope: All crates (GDPR compliance, vector validation, observability)
 > Reference: ADR-001 (Rust Client Architecture Patterns)
 

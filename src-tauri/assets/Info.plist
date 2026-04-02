@@ -11,5 +11,9 @@
     <!-- Accessibility: active window detection via AX API -->
     <key>NSAccessibilityUsageDescription</key>
     <string>ONESHIM needs accessibility access to detect active windows and GUI elements for intelligent activity tracking.</string>
+
+    <!-- Microphone: Push-to-Talk voice input for AI chat -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>ONESHIM uses the microphone for voice-to-text input in the AI chat.</string>
 </dict>
 </plist>

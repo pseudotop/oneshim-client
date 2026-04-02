@@ -17,6 +17,7 @@ lan-sync = ["rcgen", "mdns-sd", "axum-server", "rustls-pemfile"]
 [dependencies]
 oneshim-core = { workspace = true }
 oneshim-api-contracts = { workspace = true }
+thiserror = { workspace = true }
 reqwest = { workspace = true }
 eventsource-stream = { workspace = true }
 tokio-tungstenite = { workspace = true }

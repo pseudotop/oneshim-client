@@ -27,13 +27,13 @@ export default memo(function GoalProgressBar({ goals }: GoalProgressBarProps) {
                 <div
                   className={`absolute inset-y-0 left-0 rounded-full ${motion.all}`}
                   style={{
-                    width: `${Math.min(goal.percentage, 100)}%`,
+                    width: `${Math.min(goal.percentage ?? 0, 100)}%`,
                     backgroundColor: goal.display_color,
                   }}
                 />
               </div>
               <span className="w-16 text-right text-content-tertiary text-xs">
-                {goal.current_minutes}/{goal.target_minutes}m
+                {goal.current_minutes ?? 0}/{goal.target_minutes ?? 0}m
               </span>
             </div>
           ))}

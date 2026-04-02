@@ -9,13 +9,14 @@ use oneshim_core::ports::storage::MetricsStorage;
 use tracing::{debug, info};
 
 use super::{HourlyMetricsRecord, SqliteStorage};
+use crate::error::StorageError;
 
 impl SqliteStorage {
-    pub fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError> {
+    pub fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -24,7 +25,7 @@ impl SqliteStorage {
                  ORDER BY started_at DESC
                  LIMIT ?1",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![limit as i64], |row| {
@@ -37,12 +38,12 @@ impl SqliteStorage {
                     row.get::<_, i64>(5)?,
                 ))
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut sessions = Vec::new();
         for row in rows {
             let (session_id, started_str, ended_str, events, frames, idle) =
-                row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?;
+                row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?;
 
             let started_at = DateTime::parse_from_rfc3339(&started_str)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -70,11 +71,11 @@ impl SqliteStorage {
     pub fn list_hourly_metrics_since(
         &self,
         from_hour: &str,
-    ) -> Result<Vec<HourlyMetricsRecord>, CoreError> {
+    ) -> Result<Vec<HourlyMetricsRecord>, StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -83,7 +84,7 @@ impl SqliteStorage {
                  WHERE hour >= ?1
                  ORDER BY hour ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from_hour], |row| {
@@ -96,11 +97,12 @@ impl SqliteStorage {
                     sample_count: row.get::<_, i64>(5)? as u64,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut result = Vec::new();
         for row in rows {
-            result.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+            result
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
 
         Ok(result)
@@ -141,7 +143,7 @@ impl MetricsStorage for SqliteStorage {
                     download,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to save system metrics: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to save system metrics: {e}")))?;
 
             debug!(
                 "system metrics saved: CPU {:.1}%, memory {}MB",
@@ -151,6 +153,7 @@ impl MetricsStorage for SqliteStorage {
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn get_metrics(
@@ -171,7 +174,7 @@ impl MetricsStorage for SqliteStorage {
                      ORDER BY timestamp DESC
                      LIMIT ?3",
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
             let metrics = stmt
                 .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
@@ -196,13 +199,14 @@ impl MetricsStorage for SqliteStorage {
                         }),
                     })
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
             Ok(metrics)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn aggregate_hourly_metrics(&self, hour: DateTime<Utc>) -> Result<(), CoreError> {
@@ -242,7 +246,7 @@ impl MetricsStorage for SqliteStorage {
                         rusqlite::params![hour_str, cpu_avg, cpu_max, memory_avg, memory_max, count],
                     )
                     .map_err(|e| {
-                        CoreError::Internal(format!("Failed to save hourly aggregate: {e}"))
+                        StorageError::Internal(format!("Failed to save hourly aggregate: {e}"))
                     })?;
                     debug!("hour: {} ({count}items )", hour_str);
                 }
@@ -254,6 +258,7 @@ impl MetricsStorage for SqliteStorage {
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn cleanup_old_metrics(&self, before: DateTime<Utc>) -> Result<usize, CoreError> {
@@ -265,7 +270,9 @@ impl MetricsStorage for SqliteStorage {
                     "DELETE FROM system_metrics WHERE timestamp < ?1",
                     rusqlite::params![cutoff],
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to delete stale metrics: {e}")))?;
+                .map_err(|e| {
+                    StorageError::Internal(format!("Failed to delete stale metrics: {e}"))
+                })?;
 
             if deleted > 0 {
                 info!("{deleted}items delete");
@@ -273,6 +280,7 @@ impl MetricsStorage for SqliteStorage {
             Ok(deleted)
         })
         .await
+        .map_err(Into::into)
     }
 
     // --------------------------------------------------------
@@ -288,12 +296,13 @@ impl MetricsStorage for SqliteStorage {
                 "INSERT INTO process_snapshots (timestamp, snapshot_data) VALUES (?1, ?2)",
                 rusqlite::params![timestamp, data],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to save process snapshot: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to save process snapshot: {e}")))?;
 
             debug!("process snapshot saved: {} processes", process_count);
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn get_process_snapshots(
@@ -313,7 +322,7 @@ impl MetricsStorage for SqliteStorage {
                      ORDER BY timestamp DESC
                      LIMIT ?3",
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
             let snapshots = stmt
                 .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
@@ -332,13 +341,14 @@ impl MetricsStorage for SqliteStorage {
                         processes,
                     })
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
             Ok(snapshots)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn cleanup_old_process_snapshots(
@@ -354,7 +364,7 @@ impl MetricsStorage for SqliteStorage {
                     rusqlite::params![cutoff],
                 )
                 .map_err(|e| {
-                    CoreError::Internal(format!("Failed to delete stale snapshots: {e}"))
+                    StorageError::Internal(format!("Failed to delete stale snapshots: {e}"))
                 })?;
 
             if deleted > 0 {
@@ -363,6 +373,7 @@ impl MetricsStorage for SqliteStorage {
             Ok(deleted)
         })
         .await
+        .map_err(Into::into)
     }
 
     // --------------------------------------------------------
@@ -376,13 +387,16 @@ impl MetricsStorage for SqliteStorage {
                 "INSERT INTO idle_periods (start_time) VALUES (?1)",
                 rusqlite::params![start_time_str],
             )
-            .map_err(|e| CoreError::Internal(format!("idle period started record failure: {e}")))?;
+            .map_err(|e| {
+                StorageError::Internal(format!("idle period started record failure: {e}"))
+            })?;
 
             let id = conn.last_insert_rowid();
             debug!("idle period started: id={}", id);
             Ok(id)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn end_idle_period(&self, id: i64, end_time: DateTime<Utc>) -> Result<(), CoreError> {
@@ -400,13 +414,14 @@ impl MetricsStorage for SqliteStorage {
                     |row| row.get(0),
                 )
                 .map_err(|e| {
-                    CoreError::Internal(format!("idle period ended record failure: {e}"))
+                    StorageError::Internal(format!("idle period ended record failure: {e}"))
                 })?;
 
             debug!("idle period ended: id={}, duration={}s", id, duration_secs);
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn get_ongoing_idle_period(&self) -> Result<Option<(i64, IdlePeriod)>, CoreError> {
@@ -433,12 +448,13 @@ impl MetricsStorage for SqliteStorage {
                     )))
                 }
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                Err(e) => Err(CoreError::Internal(format!(
+                Err(e) => Err(StorageError::Internal(format!(
                     "진행 중 idle period query failure: {e}"
                 ))),
             }
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn get_idle_periods(
@@ -456,7 +472,7 @@ impl MetricsStorage for SqliteStorage {
                      WHERE start_time >= ?1 AND start_time <= ?2
                      ORDER BY start_time DESC",
                 )
-                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("Failed to prepare query: {e}")))?;
 
             let periods = stmt
                 .query_map(rusqlite::params![from_str, to_str], |row| {
@@ -480,13 +496,14 @@ impl MetricsStorage for SqliteStorage {
                         duration_secs: duration.map(|d| d as u64),
                     })
                 })
-                .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+                .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
             Ok(periods)
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn cleanup_old_idle_periods(&self, before: DateTime<Utc>) -> Result<usize, CoreError> {
@@ -499,7 +516,7 @@ impl MetricsStorage for SqliteStorage {
                     rusqlite::params![cutoff],
                 )
                 .map_err(|e| {
-                    CoreError::Internal(format!("Failed to delete stale idle periods: {e}"))
+                    StorageError::Internal(format!("Failed to delete stale idle periods: {e}"))
                 })?;
 
             if deleted > 0 {
@@ -508,6 +525,7 @@ impl MetricsStorage for SqliteStorage {
             Ok(deleted)
         })
         .await
+        .map_err(Into::into)
     }
 
     // --------------------------------------------------------
@@ -539,12 +557,13 @@ impl MetricsStorage for SqliteStorage {
                     total_idle_secs,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to save session stats: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("Failed to save session stats: {e}")))?;
 
             debug!("session save: {}", session_id);
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn get_session(&self, session_id: &str) -> Result<Option<SessionStats>, CoreError> {
@@ -589,10 +608,13 @@ impl MetricsStorage for SqliteStorage {
                     }))
                 }
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                Err(e) => Err(CoreError::Internal(format!("session query failure: {e}"))),
+                Err(e) => Err(StorageError::Internal(format!(
+                    "session query failure: {e}"
+                ))),
             }
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn end_session(
@@ -608,12 +630,13 @@ impl MetricsStorage for SqliteStorage {
                 "UPDATE session_stats SET ended_at = ?1 WHERE session_id = ?2",
                 rusqlite::params![ended_at_str, session_id],
             )
-            .map_err(|e| CoreError::Internal(format!("session ended record failure: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("session ended record failure: {e}")))?;
 
             debug!("session ended: {}", session_id);
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn increment_session_counters(
@@ -635,11 +658,12 @@ impl MetricsStorage for SqliteStorage {
                 rusqlite::params![events as i64, frames as i64, idle_secs as i64, session_id],
             )
             .map_err(|e| {
-                CoreError::Internal(format!("Failed to increment session counter: {e}"))
+                StorageError::Internal(format!("Failed to increment session counter: {e}"))
             })?;
 
             Ok(())
         })
         .await
+        .map_err(Into::into)
     }
 }

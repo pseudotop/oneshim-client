@@ -36,94 +36,29 @@ struct StoredAuthMaterial {
     resource_indicator: Option<String>,
 }
 
+impl StoredAuthMaterial {
+    fn is_expired(&self) -> bool {
+        self.expires_at
+            .is_some_and(|expires_at| expires_at <= Utc::now())
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PendingDeviceAuthorization {
     flow: IntegrationDeviceAuthorizationFlow,
     device_code: String,
 }
 
-pub struct OidcDeviceFlowIntegrationAuthPort {
-    config: OidcDeviceFlowAuthConfig,
-    proof_factory: Arc<dyn IntegrationRequestProofFactory>,
+/// Manages stored authentication material (load/store/clear from SecretStore).
+struct AuthMaterialManager {
+    material: Arc<RwLock<Option<StoredAuthMaterial>>>,
     secret_store: Option<Arc<dyn SecretStore>>,
-    client: reqwest::Client,
-    auth_material: Arc<RwLock<Option<StoredAuthMaterial>>>,
-    pending_flows: Arc<RwLock<HashMap<String, PendingDeviceAuthorization>>>,
-    last_error: Arc<RwLock<Option<String>>>,
-    refresh_lock: Arc<Mutex<()>>,
+    resource_indicator: Option<String>,
 }
 
-impl OidcDeviceFlowIntegrationAuthPort {
-    pub fn new(
-        config: OidcDeviceFlowAuthConfig,
-        proof_factory: Arc<dyn IntegrationRequestProofFactory>,
-        secret_store: Option<Arc<dyn SecretStore>>,
-    ) -> Result<Self, CoreError> {
-        let client = reqwest::Client::builder()
-            .timeout(config.request_timeout)
-            .build()
-            .map_err(|error| {
-                CoreError::Network(format!(
-                    "failed to build integration OIDC auth HTTP client: {error}"
-                ))
-            })?;
-
-        Ok(Self {
-            config,
-            proof_factory,
-            secret_store,
-            client,
-            auth_material: Arc::new(RwLock::new(None)),
-            pending_flows: Arc::new(RwLock::new(HashMap::new())),
-            last_error: Arc::new(RwLock::new(None)),
-            refresh_lock: Arc::new(Mutex::new(())),
-        })
-    }
-
-    async fn refresh_access_token_if_needed(
-        &self,
-        refresh_token: &str,
-    ) -> Result<StoredAuthMaterial, CoreError> {
-        let _guard = self.refresh_lock.lock().await;
-
-        if let Some(material) = self.load_material().await? {
-            let is_expired = material
-                .expires_at
-                .is_some_and(|expires_at| expires_at <= Utc::now());
-            if !is_expired {
-                return Ok(material);
-            }
-
-            if let Some(current_refresh_token) = material.refresh_token.as_deref() {
-                return self.refresh_access_token(current_refresh_token).await;
-            }
-        }
-
-        self.refresh_access_token(refresh_token).await
-    }
-
-    async fn find_reusable_pending_flow(
-        &self,
-        requested_scopes: &[IntegrationCapabilityScope],
-        resource_indicator: Option<&str>,
-    ) -> Option<IntegrationDeviceAuthorizationFlow> {
-        let now = Utc::now();
-        let expected_resource_indicator = resource_indicator.map(str::to_string);
-        let mut pending_flows = self.pending_flows.write().await;
-        pending_flows.retain(|_, entry| entry.flow.expires_at > now);
-        pending_flows.values().find_map(|entry| {
-            let same_scopes = entry.flow.requested_scopes.len() == requested_scopes.len()
-                && requested_scopes
-                    .iter()
-                    .all(|scope| entry.flow.requested_scopes.contains(scope));
-            let same_resource_indicator =
-                entry.flow.resource_indicator == expected_resource_indicator;
-            (same_scopes && same_resource_indicator).then(|| entry.flow.clone())
-        })
-    }
-
+impl AuthMaterialManager {
     async fn load_material(&self) -> Result<Option<StoredAuthMaterial>, CoreError> {
-        if let Some(material) = self.auth_material.read().await.clone() {
+        if let Some(material) = self.material.read().await.clone() {
             return Ok(Some(material));
         }
 
@@ -160,9 +95,9 @@ impl OidcDeviceFlowIntegrationAuthPort {
             access_token,
             refresh_token,
             expires_at,
-            resource_indicator: self.config.resource_indicator.clone(),
+            resource_indicator: self.resource_indicator.clone(),
         };
-        *self.auth_material.write().await = Some(material.clone());
+        *self.material.write().await = Some(material.clone());
         Ok(Some(material))
     }
 
@@ -209,7 +144,7 @@ impl OidcDeviceFlowIntegrationAuthPort {
             }
         }
 
-        *self.auth_material.write().await = Some(material.clone());
+        *self.material.write().await = Some(material.clone());
         Ok(())
     }
 
@@ -234,8 +169,133 @@ impl OidcDeviceFlowIntegrationAuthPort {
                 )
                 .await?;
         }
-        *self.auth_material.write().await = None;
+        *self.material.write().await = None;
         Ok(())
+    }
+}
+
+/// Manages pending device authorization flows.
+struct PendingFlowManager {
+    inner: Arc<RwLock<HashMap<String, PendingDeviceAuthorization>>>,
+}
+
+impl PendingFlowManager {
+    async fn insert(&self, flow_id: String, entry: PendingDeviceAuthorization) {
+        self.inner.write().await.insert(flow_id, entry);
+    }
+
+    async fn remove(&self, flow_id: &str) -> Option<PendingDeviceAuthorization> {
+        self.inner.write().await.remove(flow_id)
+    }
+
+    async fn clear(&self) {
+        self.inner.write().await.clear();
+    }
+
+    async fn find_first_active(&self) -> Option<IntegrationDeviceAuthorizationFlow> {
+        let now = Utc::now();
+        self.inner
+            .read()
+            .await
+            .values()
+            .find(|entry| entry.flow.expires_at > now)
+            .map(|entry| entry.flow.clone())
+    }
+
+    async fn get(&self, flow_id: &str) -> Option<PendingDeviceAuthorization> {
+        self.inner.read().await.get(flow_id).cloned()
+    }
+
+    async fn increase_interval(&self, flow_id: &str, delta: u64) {
+        let mut guard = self.inner.write().await;
+        if let Some(flow) = guard.get_mut(flow_id) {
+            flow.flow.interval_secs = flow.flow.interval_secs.saturating_add(delta);
+        }
+    }
+
+    async fn find_reusable_pending_flow(
+        &self,
+        requested_scopes: &[IntegrationCapabilityScope],
+        resource_indicator: Option<&str>,
+    ) -> Option<IntegrationDeviceAuthorizationFlow> {
+        let now = Utc::now();
+        let expected_resource_indicator = resource_indicator.map(str::to_string);
+        let mut pending_flows = self.inner.write().await;
+        pending_flows.retain(|_, entry| entry.flow.expires_at > now);
+        pending_flows.values().find_map(|entry| {
+            let same_scopes = entry.flow.requested_scopes.len() == requested_scopes.len()
+                && requested_scopes
+                    .iter()
+                    .all(|scope| entry.flow.requested_scopes.contains(scope));
+            let same_resource_indicator =
+                entry.flow.resource_indicator == expected_resource_indicator;
+            (same_scopes && same_resource_indicator).then(|| entry.flow.clone())
+        })
+    }
+}
+
+pub struct OidcDeviceFlowIntegrationAuthPort {
+    config: OidcDeviceFlowAuthConfig,
+    proof_factory: Arc<dyn IntegrationRequestProofFactory>,
+    client: reqwest::Client,
+    auth: AuthMaterialManager,
+    flows: PendingFlowManager,
+    last_error: Arc<RwLock<Option<String>>>,
+    refresh_lock: Arc<Mutex<()>>,
+}
+
+impl OidcDeviceFlowIntegrationAuthPort {
+    pub fn new(
+        config: OidcDeviceFlowAuthConfig,
+        proof_factory: Arc<dyn IntegrationRequestProofFactory>,
+        secret_store: Option<Arc<dyn SecretStore>>,
+    ) -> Result<Self, CoreError> {
+        let client = reqwest::Client::builder()
+            .timeout(config.request_timeout)
+            .build()
+            .map_err(|error| {
+                CoreError::Network(format!(
+                    "failed to build integration OIDC auth HTTP client: {error}"
+                ))
+            })?;
+
+        let auth = AuthMaterialManager {
+            material: Arc::new(RwLock::new(None)),
+            secret_store,
+            resource_indicator: config.resource_indicator.clone(),
+        };
+        let flows = PendingFlowManager {
+            inner: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        Ok(Self {
+            config,
+            proof_factory,
+            client,
+            auth,
+            flows,
+            last_error: Arc::new(RwLock::new(None)),
+            refresh_lock: Arc::new(Mutex::new(())),
+        })
+    }
+
+    async fn refresh_access_token_if_needed(
+        &self,
+        refresh_token: &str,
+    ) -> Result<StoredAuthMaterial, CoreError> {
+        let _guard = self.refresh_lock.lock().await;
+
+        if let Some(material) = self.auth.load_material().await? {
+            if !material.is_expired() {
+                return Ok(material);
+            }
+
+            if let Some(current_refresh_token) = material.refresh_token.as_deref() {
+                return self.refresh_access_token(current_refresh_token).await;
+            }
+        }
+
+        self.refresh_access_token(refresh_token).await
     }
 
     fn combined_scope_string(
@@ -320,7 +380,7 @@ impl OidcDeviceFlowIntegrationAuthPort {
 
         if !response.status().is_success() {
             let body = response.text().await.unwrap_or_default();
-            self.clear_material().await?;
+            self.auth.clear_material().await?;
             return Err(CoreError::Auth(format!(
                 "integration refresh failed: {body}"
             )));
@@ -342,7 +402,7 @@ impl OidcDeviceFlowIntegrationAuthPort {
                 .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds as i64)),
             resource_indicator: self.config.resource_indicator.clone(),
         };
-        self.store_material(&material).await?;
+        self.auth.store_material(&material).await?;
         Ok(material)
     }
 }
@@ -354,12 +414,9 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
         requested_scopes: &[IntegrationCapabilityScope],
         resource_indicator: Option<&str>,
     ) -> Result<IntegrationAuthContext, CoreError> {
-        let material = self.load_material().await?;
+        let material = self.auth.load_material().await?;
         if let Some(material) = material {
-            let is_expired = material
-                .expires_at
-                .is_some_and(|expires_at| expires_at <= Utc::now());
-            let material = if is_expired {
+            let material = if material.is_expired() {
                 if let Some(refresh_token) = material.refresh_token.as_deref() {
                     self.refresh_access_token_if_needed(refresh_token).await?
                 } else {
@@ -392,11 +449,8 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
     }
 
     async fn current_auth_status(&self) -> Result<IntegrationAuthStatus, CoreError> {
-        if let Some(material) = self.load_material().await? {
-            let is_expired = material
-                .expires_at
-                .is_some_and(|expires_at| expires_at <= Utc::now());
-            let material = if is_expired {
+        if let Some(material) = self.auth.load_material().await? {
+            let material = if material.is_expired() {
                 if let Some(refresh_token) = material.refresh_token.as_deref() {
                     match self.refresh_access_token_if_needed(refresh_token).await {
                         Ok(refreshed) => {
@@ -426,27 +480,20 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
             } else {
                 material
             };
+            let expired = material.is_expired();
             return Ok(IntegrationAuthStatus {
                 profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
-                status: if material
-                    .expires_at
-                    .is_some_and(|expires_at| expires_at <= Utc::now())
-                {
+                status: if expired {
                     IntegrationAuthStatusKind::Expired
                 } else {
                     IntegrationAuthStatusKind::Ready
                 },
                 interactive: true,
-                authenticated: !material
-                    .expires_at
-                    .is_some_and(|expires_at| expires_at <= Utc::now()),
+                authenticated: !expired,
                 expires_at: material.expires_at,
                 resource_indicator: material.resource_indicator,
                 pending_flow: None,
-                message: if material
-                    .expires_at
-                    .is_some_and(|expires_at| expires_at <= Utc::now())
-                {
+                message: if expired {
                     Some(
                         "integration device authorization expired; re-authorize or refresh"
                             .to_string(),
@@ -457,13 +504,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
             });
         }
 
-        let pending_flow = self
-            .pending_flows
-            .read()
-            .await
-            .values()
-            .find(|entry| entry.flow.expires_at > Utc::now())
-            .map(|entry| entry.flow.clone());
+        let pending_flow = self.flows.find_first_active().await;
         if let Some(flow) = pending_flow {
             return Ok(IntegrationAuthStatus {
                 profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
@@ -498,6 +539,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
         resource_indicator: Option<&str>,
     ) -> Result<IntegrationDeviceAuthorizationFlow, CoreError> {
         if let Some(flow) = self
+            .flows
             .find_reusable_pending_flow(requested_scopes, resource_indicator)
             .await
         {
@@ -545,13 +587,15 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
             requested_scopes: requested_scopes.to_vec(),
             resource_indicator,
         };
-        self.pending_flows.write().await.insert(
-            flow_id,
-            PendingDeviceAuthorization {
-                flow: flow.clone(),
-                device_code: payload.device_code,
-            },
-        );
+        self.flows
+            .insert(
+                flow_id,
+                PendingDeviceAuthorization {
+                    flow: flow.clone(),
+                    device_code: payload.device_code,
+                },
+            )
+            .await;
         *self.last_error.write().await = None;
         Ok(flow)
     }
@@ -561,18 +605,16 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
         flow_id: &str,
     ) -> Result<IntegrationAuthStatus, CoreError> {
         let pending = self
-            .pending_flows
-            .read()
-            .await
+            .flows
             .get(flow_id)
-            .cloned()
+            .await
             .ok_or_else(|| CoreError::NotFound {
                 resource_type: "integration_device_authorization_flow".to_string(),
                 id: flow_id.to_string(),
             })?;
 
         if pending.flow.expires_at <= Utc::now() {
-            self.pending_flows.write().await.remove(flow_id);
+            self.flows.remove(flow_id).await;
             *self.last_error.write().await =
                 Some("integration device authorization flow expired".to_string());
             return Ok(IntegrationAuthStatus {
@@ -621,8 +663,8 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
                     .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds as i64)),
                 resource_indicator: pending.flow.resource_indicator.clone(),
             };
-            self.store_material(&material).await?;
-            self.pending_flows.write().await.remove(flow_id);
+            self.auth.store_material(&material).await?;
+            self.flows.remove(flow_id).await;
             *self.last_error.write().await = None;
             return self.current_auth_status().await;
         }
@@ -643,15 +685,12 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
                 self.current_auth_status().await
             }
             "slow_down" => {
-                let mut guard = self.pending_flows.write().await;
-                if let Some(flow) = guard.get_mut(flow_id) {
-                    flow.flow.interval_secs = flow.flow.interval_secs.saturating_add(5);
-                }
+                self.flows.increase_interval(flow_id, 5).await;
                 *self.last_error.write().await = Some(message);
                 self.current_auth_status().await
             }
             "access_denied" | "expired_token" | "invalid_grant" => {
-                self.pending_flows.write().await.remove(flow_id);
+                self.flows.remove(flow_id).await;
                 *self.last_error.write().await = Some(message.clone());
                 Ok(IntegrationAuthStatus {
                     profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
@@ -678,7 +717,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
     }
 
     async fn cancel_device_authorization(&self, flow_id: &str) -> Result<(), CoreError> {
-        let removed = self.pending_flows.write().await.remove(flow_id);
+        let removed = self.flows.remove(flow_id).await;
         if removed.is_none() {
             return Err(CoreError::NotFound {
                 resource_type: "integration_device_authorization_flow".to_string(),
@@ -690,8 +729,8 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
     }
 
     async fn reset_auth_state(&self) -> Result<(), CoreError> {
-        self.pending_flows.write().await.clear();
-        self.clear_material().await?;
+        self.flows.clear().await;
+        self.auth.clear_material().await?;
         *self.last_error.write().await = None;
         Ok(())
     }

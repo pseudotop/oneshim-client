@@ -1,4 +1,4 @@
-use oneshim_core::error::CoreError;
+use crate::error::StorageError;
 use tracing::info;
 
 use super::SqliteStorage;
@@ -11,11 +11,14 @@ impl SqliteStorage {
     /// identity. The table enforces `id = 1` (singleton row).
     ///
     /// Returns `(device_id, device_name)`.
-    pub fn ensure_device_identity(&self, device_name: &str) -> Result<(String, String), CoreError> {
+    pub fn ensure_device_identity(
+        &self,
+        device_name: &str,
+    ) -> Result<(String, String), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
         // Try to read existing identity first.
         let existing: Option<(String, String)> = conn
@@ -36,7 +39,7 @@ impl SqliteStorage {
             "INSERT INTO device_identity (id, device_id, device_name) VALUES (1, ?1, ?2)",
             rusqlite::params![device_id, device_name],
         )
-        .map_err(|e| CoreError::Internal(format!("Failed to insert device identity: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("Failed to insert device identity: {e}")))?;
 
         info!(
             device_id = %device_id,
@@ -51,14 +54,19 @@ impl SqliteStorage {
     /// a new one. This allows users to disassociate from their sync history.
     ///
     /// Returns the new `(device_id, device_name)`.
-    pub fn reset_device_identity(&self, device_name: &str) -> Result<(String, String), CoreError> {
+    pub fn reset_device_identity(
+        &self,
+        device_name: &str,
+    ) -> Result<(String, String), StorageError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
         conn.execute("DELETE FROM device_identity WHERE id = 1", [])
-            .map_err(|e| CoreError::Internal(format!("Failed to delete device identity: {e}")))?;
+            .map_err(|e| {
+                StorageError::Internal(format!("Failed to delete device identity: {e}"))
+            })?;
 
         drop(conn); // Release lock before calling ensure_device_identity
 

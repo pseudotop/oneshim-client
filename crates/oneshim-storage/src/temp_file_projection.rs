@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::error::StorageError;
 use async_trait::async_trait;
 use oneshim_core::config::AiProviderType;
 use oneshim_core::error::CoreError;
@@ -57,13 +58,13 @@ impl TempFileSecretProjection {
         )
     }
 
-    fn load_registry(&self) -> Result<HashMap<String, PathBuf>, CoreError> {
+    fn load_registry(&self) -> Result<HashMap<String, PathBuf>, StorageError> {
         if !self.registry_path.exists() {
             return Ok(HashMap::new());
         }
 
         let raw = std::fs::read_to_string(&self.registry_path).map_err(|e| {
-            CoreError::Internal(format!(
+            StorageError::Internal(format!(
                 "failed to read temp projection registry ({}): {}",
                 self.registry_path.display(),
                 e
@@ -71,7 +72,7 @@ impl TempFileSecretProjection {
         })?;
 
         let stored: HashMap<String, String> = serde_json::from_str(&raw).map_err(|e| {
-            CoreError::Internal(format!(
+            StorageError::Internal(format!(
                 "failed to parse temp projection registry ({}): {}",
                 self.registry_path.display(),
                 e
@@ -84,10 +85,10 @@ impl TempFileSecretProjection {
             .collect())
     }
 
-    fn save_registry(&self, registry: &HashMap<String, PathBuf>) -> Result<(), CoreError> {
+    fn save_registry(&self, registry: &HashMap<String, PathBuf>) -> Result<(), StorageError> {
         if let Some(parent) = self.registry_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                CoreError::Internal(format!(
+                StorageError::Internal(format!(
                     "failed to create temp projection registry dir ({}): {}",
                     parent.display(),
                     e
@@ -101,7 +102,7 @@ impl TempFileSecretProjection {
             .collect();
 
         let json = serde_json::to_string_pretty(&stored).map_err(|e| {
-            CoreError::Internal(format!(
+            StorageError::Internal(format!(
                 "failed to serialize temp projection registry ({}): {}",
                 self.registry_path.display(),
                 e
@@ -109,7 +110,7 @@ impl TempFileSecretProjection {
         })?;
 
         std::fs::write(&self.registry_path, json).map_err(|e| {
-            CoreError::Internal(format!(
+            StorageError::Internal(format!(
                 "failed to write temp projection registry ({}): {}",
                 self.registry_path.display(),
                 e
@@ -137,11 +138,11 @@ impl TempFileSecretProjection {
         format!("oneshim-{}-", normalized.trim_matches('-'))
     }
 
-    fn remove_file_if_exists(path: &Path) -> Result<(), CoreError> {
+    fn remove_file_if_exists(path: &Path) -> Result<(), StorageError> {
         match std::fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(CoreError::Internal(format!(
+            Err(err) => Err(StorageError::Internal(format!(
                 "failed to remove projected temp file ({}): {}",
                 path.display(),
                 err
@@ -153,9 +154,9 @@ impl TempFileSecretProjection {
 pub fn provider_api_key_temp_file_template(
     provider_type: AiProviderType,
     profile_id: &str,
-) -> Result<ProjectionTemplate, CoreError> {
+) -> Result<ProjectionTemplate, StorageError> {
     let projection = provider_projection_for_type(provider_type).ok_or_else(|| {
-        CoreError::Config(format!(
+        StorageError::Config(format!(
             "missing provider projection metadata for provider type '{provider_type:?}'"
         ))
     })?;
@@ -296,7 +297,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
         };
 
         Self::remove_file_if_exists(&path)?;
-        self.save_registry(&registry)
+        self.save_registry(&registry).map_err(CoreError::from)
     }
 }
 

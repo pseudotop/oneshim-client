@@ -7,6 +7,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::error::StorageError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
@@ -58,9 +59,9 @@ impl KeychainRegistry {
     }
 
     /// Atomic write: temp file + rename.
-    pub fn save(&self, path: &std::path::Path) -> Result<(), CoreError> {
+    pub fn save(&self, path: &std::path::Path) -> Result<(), StorageError> {
         let json = serde_json::to_string_pretty(self)
-            .map_err(|e| CoreError::SecretStoreError(format!("registry serialization: {e}")))?;
+            .map_err(|e| StorageError::SecretStore(format!("registry serialization: {e}")))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -114,7 +115,7 @@ pub struct NamespaceStatus {
 impl KeychainOps {
     /// Create ops with the given registry file path.
     /// The caller (setup.rs) resolves the config directory.
-    pub fn new(registry_path: PathBuf) -> Result<Self, CoreError> {
+    pub fn new(registry_path: PathBuf) -> Result<Self, StorageError> {
         if let Some(parent) = registry_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -126,17 +127,17 @@ impl KeychainOps {
         })
     }
 
-    fn entry(&self, namespace: &str, key: &str) -> Result<keyring::Entry, CoreError> {
+    fn entry(&self, namespace: &str, key: &str) -> Result<keyring::Entry, StorageError> {
         let user = format!("{namespace}.{key}");
         keyring::Entry::new(&self.service_name, &user)
-            .map_err(|e| CoreError::SecretStoreError(format!("keyring entry creation: {e}")))
+            .map_err(|e| StorageError::SecretStore(format!("keyring entry creation: {e}")))
     }
 
-    fn map_keyring_err(e: keyring::Error) -> CoreError {
-        CoreError::SecretStoreError(format!("keychain: {e}"))
+    fn map_keyring_err(e: keyring::Error) -> StorageError {
+        StorageError::SecretStore(format!("keychain: {e}"))
     }
 
-    pub fn store_sync(&self, namespace: &str, key: &str, value: &str) -> Result<(), CoreError> {
+    pub fn store_sync(&self, namespace: &str, key: &str, value: &str) -> Result<(), StorageError> {
         // 1. Write to keychain
         self.entry(namespace, key)?
             .set_password(value)
@@ -155,7 +156,11 @@ impl KeychainOps {
         Ok(())
     }
 
-    pub fn retrieve_sync(&self, namespace: &str, key: &str) -> Result<Option<String>, CoreError> {
+    pub fn retrieve_sync(
+        &self,
+        namespace: &str,
+        key: &str,
+    ) -> Result<Option<String>, StorageError> {
         match self.entry(namespace, key)?.get_password() {
             Ok(val) => Ok(Some(val)),
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -163,7 +168,7 @@ impl KeychainOps {
         }
     }
 
-    pub fn delete_sync(&self, namespace: &str, key: &str) -> Result<(), CoreError> {
+    pub fn delete_sync(&self, namespace: &str, key: &str) -> Result<(), StorageError> {
         match self.entry(namespace, key)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => {}
             Err(e) => return Err(Self::map_keyring_err(e)),
@@ -176,7 +181,7 @@ impl KeychainOps {
         Ok(())
     }
 
-    pub fn delete_namespace_sync(&self, namespace: &str) -> Result<(), CoreError> {
+    pub fn delete_namespace_sync(&self, namespace: &str) -> Result<(), StorageError> {
         // Build key set = registry keys ∪ KNOWN_OAUTH_KEYS
         let registry_keys = {
             let reg = self.registry.lock();
@@ -218,7 +223,7 @@ impl KeychainOps {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(CoreError::SecretStoreError(format!(
+            Err(StorageError::SecretStore(format!(
                 "partial delete_namespace failure: {}",
                 errors.join("; ")
             )))
@@ -294,6 +299,7 @@ impl SecretStore for KeychainSecretStore {
         tokio::task::spawn_blocking(move || ops.store_sync(&ns, &k, &v))
             .await
             .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(CoreError::from)
     }
 
     async fn retrieve(&self, namespace: &str, key: &str) -> Result<Option<String>, CoreError> {
@@ -303,6 +309,7 @@ impl SecretStore for KeychainSecretStore {
         tokio::task::spawn_blocking(move || ops.retrieve_sync(&ns, &k))
             .await
             .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(CoreError::from)
     }
 
     async fn delete(&self, namespace: &str, key: &str) -> Result<(), CoreError> {
@@ -312,6 +319,7 @@ impl SecretStore for KeychainSecretStore {
         tokio::task::spawn_blocking(move || ops.delete_sync(&ns, &k))
             .await
             .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(CoreError::from)
     }
 
     async fn delete_namespace(&self, namespace: &str) -> Result<(), CoreError> {
@@ -320,6 +328,7 @@ impl SecretStore for KeychainSecretStore {
         tokio::task::spawn_blocking(move || ops.delete_namespace_sync(&ns))
             .await
             .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(CoreError::from)
     }
 }
 

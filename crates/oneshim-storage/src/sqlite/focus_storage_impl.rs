@@ -24,18 +24,19 @@ impl FocusStorage for SqliteStorage {
             context_switches,
             interruption_count,
         )
+        .map_err(Into::into)
     }
 
     fn add_deep_work_secs(&self, session_id: i64, secs: u64) -> Result<(), CoreError> {
-        SqliteStorage::add_deep_work_secs(self, session_id, secs)
+        SqliteStorage::add_deep_work_secs(self, session_id, secs).map_err(Into::into)
     }
 
     fn record_interruption(&self, interruption: &Interruption) -> Result<i64, CoreError> {
-        SqliteStorage::record_interruption(self, interruption)
+        SqliteStorage::record_interruption(self, interruption).map_err(Into::into)
     }
 
     fn increment_work_session_interruption(&self, session_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::increment_work_session_interruption(self, session_id)
+        SqliteStorage::increment_work_session_interruption(self, session_id).map_err(Into::into)
     }
 
     fn record_interruption_resume(
@@ -44,10 +45,11 @@ impl FocusStorage for SqliteStorage {
         resumed_to_app: &str,
     ) -> Result<(), CoreError> {
         SqliteStorage::record_interruption_resume(self, interruption_id, resumed_to_app)
+            .map_err(Into::into)
     }
 
     fn end_work_session(&self, session_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::end_work_session(self, session_id)
+        SqliteStorage::end_work_session(self, session_id).map_err(Into::into)
     }
 
     fn start_work_session(
@@ -55,26 +57,26 @@ impl FocusStorage for SqliteStorage {
         primary_app: &str,
         category: AppCategory,
     ) -> Result<WorkSession, CoreError> {
-        SqliteStorage::start_work_session(self, primary_app, category)
+        SqliteStorage::start_work_session(self, primary_app, category).map_err(Into::into)
     }
 
     fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, CoreError> {
-        SqliteStorage::get_or_create_focus_metrics(self, date)
+        SqliteStorage::get_or_create_focus_metrics(self, date).map_err(Into::into)
     }
 
     fn update_focus_metrics(&self, date: &str, metrics: &FocusMetrics) -> Result<(), CoreError> {
-        SqliteStorage::update_focus_metrics(self, date, metrics)
+        SqliteStorage::update_focus_metrics(self, date, metrics).map_err(Into::into)
     }
 
     fn save_rule_suggestion(&self, suggestion: &Suggestion) -> Result<String, CoreError> {
-        SqliteStorage::save_rule_suggestion_sync(self, suggestion)
+        SqliteStorage::save_rule_suggestion_sync(self, suggestion).map_err(Into::into)
     }
 
     fn mark_suggestion_shown_by_id(&self, suggestion_id: &str) -> Result<(), CoreError> {
-        SqliteStorage::mark_unified_suggestion_shown(self, suggestion_id)
+        SqliteStorage::mark_unified_suggestion_shown(self, suggestion_id).map_err(Into::into)
     }
 
     fn get_pending_interruption(&self) -> Result<Option<Interruption>, CoreError> {
-        SqliteStorage::get_pending_interruption(self)
+        SqliteStorage::get_pending_interruption(self).map_err(Into::into)
     }
 }

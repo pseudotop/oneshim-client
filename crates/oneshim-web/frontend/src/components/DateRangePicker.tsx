@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { interaction, motion } from '../styles/tokens'
 import { cn } from '../utils/cn'
@@ -58,6 +58,10 @@ export default function DateRangePicker({
   const [customFrom, setCustomFrom] = useState(initialFrom || '')
   const [customTo, setCustomTo] = useState(initialTo || '')
 
+  // Stable ref prevents callback identity changes from re-triggering the effect
+  const onRangeChangeRef = useRef(onRangeChange)
+  onRangeChangeRef.current = onRangeChange
+
   useEffect(() => {
     let from: string | undefined
     let to: string | undefined
@@ -83,8 +87,8 @@ export default function DateRangePicker({
         break
     }
 
-    onRangeChange(from, to)
-  }, [preset, customFrom, customTo, onRangeChange])
+    onRangeChangeRef.current(from, to)
+  }, [preset, customFrom, customTo])
 
   const handlePresetClick = (newPreset: PresetRange) => {
     setPreset(newPreset)

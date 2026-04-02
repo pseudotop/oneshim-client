@@ -8,6 +8,7 @@ use tokio::sync::broadcast;
 use crate::controller::gate::{
     CommandExecutionGate, GUI_SESSION_POLICY_TOKEN, INTENT_HINT_POLICY_TOKEN,
 };
+use crate::error::AutomationError;
 use crate::gui_interaction::{
     GuiConfirmRequest, GuiCreateSessionRequest, GuiCreateSessionResponse, GuiExecutionRequest,
     GuiHighlightRequest, GuiInteractionError,
@@ -61,16 +62,16 @@ impl GatedInputDriver {
         }
     }
 
-    async fn dispatch_action(&self, action: AutomationAction) -> Result<(), CoreError> {
+    async fn dispatch_action(&self, action: AutomationAction) -> Result<(), AutomationError> {
         let command = self.build_command(action);
         let effective_timeout_ms = self.gate.effective_timeout_ms(&command).await;
         match self.gate.execute(&command).await? {
             CommandResult::Success => Ok(()),
-            CommandResult::Failed(message) => Err(CoreError::Internal(message)),
-            CommandResult::Timeout => Err(CoreError::ExecutionTimeout {
+            CommandResult::Failed(message) => Err(AutomationError::Internal(message)),
+            CommandResult::Timeout => Err(AutomationError::ExecutionTimeout {
                 timeout_ms: effective_timeout_ms.unwrap_or_default(),
             }),
-            CommandResult::Denied => Err(CoreError::PolicyDenied(
+            CommandResult::Denied => Err(AutomationError::PolicyDenied(
                 "Intent action denied by policy".to_string(),
             )),
         }
@@ -82,6 +83,7 @@ impl InputDriver for GatedInputDriver {
     async fn mouse_move(&self, x: i32, y: i32) -> Result<(), CoreError> {
         self.dispatch_action(AutomationAction::MouseMove { x, y })
             .await
+            .map_err(Into::into)
     }
 
     async fn mouse_click(&self, button: &str, x: i32, y: i32) -> Result<(), CoreError> {
@@ -91,6 +93,7 @@ impl InputDriver for GatedInputDriver {
             y,
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn type_text(&self, text: &str) -> Result<(), CoreError> {
@@ -98,6 +101,7 @@ impl InputDriver for GatedInputDriver {
             text: text.to_string(),
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn key_press(&self, key: &str) -> Result<(), CoreError> {
@@ -105,6 +109,7 @@ impl InputDriver for GatedInputDriver {
             key: key.to_string(),
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn key_release(&self, key: &str) -> Result<(), CoreError> {
@@ -112,6 +117,7 @@ impl InputDriver for GatedInputDriver {
             key: key.to_string(),
         })
         .await
+        .map_err(Into::into)
     }
 
     async fn hotkey(&self, keys: &[String]) -> Result<(), CoreError> {
@@ -119,6 +125,7 @@ impl InputDriver for GatedInputDriver {
             keys: keys.to_vec(),
         })
         .await
+        .map_err(Into::into)
     }
 
     fn platform(&self) -> &str {
@@ -130,7 +137,7 @@ impl AutomationController {
     pub(super) fn scoped_intent_executor(
         &self,
         cmd: &IntentCommand,
-    ) -> Result<crate::intent_resolver::IntentExecutor, CoreError> {
+    ) -> Result<crate::intent_resolver::IntentExecutor, AutomationError> {
         let template = self.require_intent_executor()?;
         if !CommandExecutionGate::uses_internal_policy_token(&cmd.policy_token) {
             // Intent-scoped external policy tokens do not have a stable low-level action scope,
@@ -148,7 +155,10 @@ impl AutomationController {
         Ok(template.with_overrides(Some(input_driver), cmd.config.clone()))
     }
 
-    pub async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {
+    pub async fn execute_intent(
+        &self,
+        cmd: &IntentCommand,
+    ) -> Result<IntentResult, AutomationError> {
         self.ensure_enabled()?;
         let executor = self.scoped_intent_executor(cmd)?;
 
@@ -185,7 +195,7 @@ impl AutomationController {
         command_id: &str,
         session_id: &str,
         intent_hint: &str,
-    ) -> Result<PlannedIntentResult, CoreError> {
+    ) -> Result<PlannedIntentResult, AutomationError> {
         self.ensure_enabled()?;
         let planner = self.require_intent_planner()?;
 

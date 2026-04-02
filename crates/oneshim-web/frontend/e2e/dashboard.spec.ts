@@ -1,11 +1,8 @@
-import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
 import { mockStaticJson } from './helpers/mock-api'
+import { expect, type Page, test } from './helpers/test'
 
-const dashboardHeadingName = i18nRegex('dashboard.title', [
-  'Dashboard preparing',
-  '대시보드 준비 중',
-])
+const dashboardHeadingName = i18nRegex('dashboard.title', ['Dashboard preparing', '대시보드 준비 중'])
 const activeTimeName = i18nRegex('dashboard.activeTime')
 const idleTimeName = i18nRegex('dashboard.idleTime')
 const capturesName = i18nRegex('dashboard.captures')

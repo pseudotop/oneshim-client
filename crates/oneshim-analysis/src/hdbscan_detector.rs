@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use oneshim_core::error::CoreError;
 use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::{euclidean_distance, RegimeFeatures};
 
@@ -15,6 +14,7 @@ use crate::clustering_strategy::{
     apply_link_constraints, filter_features, parse_constraints, reconstruct_labels,
     ClusterAssignment, ClusteringResult, ClusteringStrategy,
 };
+use crate::error::AnalysisError;
 
 /// HDBSCAN clustering detector for regime detection.
 ///
@@ -121,7 +121,7 @@ impl HdbscanDetector {
 
 #[cfg(feature = "hdbscan")]
 impl ClusteringStrategy for HdbscanDetector {
-    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, CoreError> {
+    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, AnalysisError> {
         if features.is_empty() {
             return Ok(ClusteringResult {
                 labels: vec![],
@@ -151,7 +151,7 @@ impl ClusteringStrategy for HdbscanDetector {
 
         let labels = clusterer
             .cluster()
-            .map_err(|e| CoreError::Analysis(format!("HDBSCAN clustering failed: {e:?}")))?;
+            .map_err(|e| AnalysisError::Clustering(format!("HDBSCAN clustering failed: {e:?}")))?;
 
         let result = Self::build_result(features, labels.clone());
         self.store_state(&result.centroids, &labels);
@@ -190,7 +190,7 @@ impl ClusteringStrategy for HdbscanDetector {
         &self,
         features: &[RegimeFeatures],
         constraints: &[ClusterConstraint],
-    ) -> Result<ClusteringResult, CoreError> {
+    ) -> Result<ClusteringResult, AnalysisError> {
         if features.is_empty() {
             return Ok(ClusteringResult {
                 labels: vec![],
@@ -241,8 +241,8 @@ impl ClusteringStrategy for HdbscanDetector {
 
 #[cfg(not(feature = "hdbscan"))]
 impl ClusteringStrategy for HdbscanDetector {
-    fn detect(&self, _features: &[RegimeFeatures]) -> Result<ClusteringResult, CoreError> {
-        Err(CoreError::Analysis(
+    fn detect(&self, _features: &[RegimeFeatures]) -> Result<ClusteringResult, AnalysisError> {
+        Err(AnalysisError::Clustering(
             "HDBSCAN feature is not enabled. Use k-means fallback.".to_string(),
         ))
     }
@@ -255,8 +255,8 @@ impl ClusteringStrategy for HdbscanDetector {
         &self,
         _features: &[RegimeFeatures],
         _constraints: &[ClusterConstraint],
-    ) -> Result<ClusteringResult, CoreError> {
-        Err(CoreError::Analysis(
+    ) -> Result<ClusteringResult, AnalysisError> {
+        Err(AnalysisError::Clustering(
             "HDBSCAN feature is not enabled. Use k-means fallback.".to_string(),
         ))
     }

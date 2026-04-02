@@ -6,7 +6,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-use oneshim_core::error::CoreError;
 use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::{euclidean_distance, RegimeFeatures};
 
@@ -14,6 +13,7 @@ use crate::clustering_strategy::{
     apply_link_constraints, filter_features, parse_constraints, reconstruct_labels,
     ClusterAssignment, ClusteringResult, ClusteringStrategy,
 };
+use crate::error::AnalysisError;
 use crate::regime_detector::RegimeDetector;
 
 /// K-means clustering adapter for `ClusteringStrategy`.
@@ -157,7 +157,7 @@ impl Default for KmeansDetector {
 }
 
 impl ClusteringStrategy for KmeansDetector {
-    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, CoreError> {
+    fn detect(&self, features: &[RegimeFeatures]) -> Result<ClusteringResult, AnalysisError> {
         let detector = self.build_detector();
         Ok(self.regimes_to_result(features, &detector))
     }
@@ -193,7 +193,7 @@ impl ClusteringStrategy for KmeansDetector {
         &self,
         features: &[RegimeFeatures],
         constraints: &[ClusterConstraint],
-    ) -> Result<ClusteringResult, CoreError> {
+    ) -> Result<ClusteringResult, AnalysisError> {
         if features.is_empty() {
             return Ok(ClusteringResult {
                 labels: vec![],

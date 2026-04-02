@@ -8,6 +8,9 @@
 
 //! # oneshim-vision
 
+pub mod error;
+pub use error::VisionError;
+
 pub mod accessibility;
 pub mod capture;
 pub mod delta;

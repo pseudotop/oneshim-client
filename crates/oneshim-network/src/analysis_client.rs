@@ -6,6 +6,8 @@ use oneshim_core::ports::analysis_provider::AnalysisProvider;
 use serde::Deserialize;
 use tracing::{debug, warn};
 
+use crate::error::NetworkError;
+
 /// Adapter implementing `AnalysisProvider` by calling a remote LLM API.
 /// Reuses the same multi-provider HTTP pattern as `RemoteLlmProvider`.
 pub struct AnalysisClient {
@@ -85,7 +87,7 @@ impl AnalysisClient {
     }
 
     /// Extract text content from provider-specific response format.
-    fn extract_text(&self, body: &serde_json::Value) -> Result<String, CoreError> {
+    fn extract_text(&self, body: &serde_json::Value) -> Result<String, NetworkError> {
         match self.provider_type {
             AiProviderType::Anthropic => body
                 .get("content")
@@ -94,7 +96,7 @@ impl AnalysisClient {
                 .and_then(|block| block.get("text"))
                 .and_then(|t| t.as_str())
                 .map(|s| s.to_string())
-                .ok_or_else(|| CoreError::Analysis("No text in Anthropic response".to_string())),
+                .ok_or_else(|| NetworkError::Analysis("No text in Anthropic response".to_string())),
             _ => {
                 // OpenAI / Generic / Ollama: choices[0].message.content
                 body.get("choices")
@@ -105,14 +107,14 @@ impl AnalysisClient {
                     .and_then(|t| t.as_str())
                     .map(|s| s.to_string())
                     .ok_or_else(|| {
-                        CoreError::Analysis("No text in OpenAI/Generic response".to_string())
+                        NetworkError::Analysis("No text in OpenAI/Generic response".to_string())
                     })
             }
         }
     }
 
     /// Parse candidates from JSON text extracted from LLM response.
-    fn parse_candidates(text: &str) -> Result<Vec<SuggestionCandidate>, CoreError> {
+    fn parse_candidates(text: &str) -> Result<Vec<SuggestionCandidate>, NetworkError> {
         // Strip markdown fences if present
         let trimmed = text.trim();
         let json_str = if trimmed.starts_with("```") {
@@ -127,18 +129,18 @@ impl AnalysisClient {
 
         // Find the JSON array in the text
         let start = json_str.find('[').ok_or_else(|| {
-            CoreError::Analysis(format!(
+            NetworkError::Analysis(format!(
                 "No JSON array found in LLM response: {}",
                 json_str.chars().take(200).collect::<String>()
             ))
         })?;
-        let end = json_str
-            .rfind(']')
-            .ok_or_else(|| CoreError::Analysis("No closing bracket in LLM response".to_string()))?;
+        let end = json_str.rfind(']').ok_or_else(|| {
+            NetworkError::Analysis("No closing bracket in LLM response".to_string())
+        })?;
 
         let array_str = &json_str[start..=end];
         serde_json::from_str(array_str).map_err(|e| {
-            CoreError::Analysis(format!(
+            NetworkError::Analysis(format!(
                 "Failed to parse suggestion candidates: {} (raw: {})",
                 e,
                 array_str.chars().take(200).collect::<String>()
@@ -220,25 +222,25 @@ impl AnalysisProvider for AnalysisClient {
         let response = builder
             .send()
             .await
-            .map_err(|e| CoreError::Analysis(format!("Analysis API request failed: {}", e)))?;
+            .map_err(|e| NetworkError::Analysis(format!("Analysis API request failed: {}", e)))?;
 
         let status = response.status();
-        let response_text = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Analysis(format!("Failed to read analysis response: {}", e)))?;
+        let response_text = response.text().await.map_err(|e| {
+            NetworkError::Analysis(format!("Failed to read analysis response: {}", e))
+        })?;
 
         if !status.is_success() {
             warn!(status = %status, "Analysis API error response");
-            return Err(CoreError::Analysis(format!(
+            return Err(NetworkError::Analysis(format!(
                 "Analysis API error ({}): {}",
                 status,
                 response_text.chars().take(200).collect::<String>()
-            )));
+            ))
+            .into());
         }
 
         let response_json: serde_json::Value = serde_json::from_str(&response_text)
-            .map_err(|e| CoreError::Analysis(format!("Invalid JSON response: {}", e)))?;
+            .map_err(|e| NetworkError::Analysis(format!("Invalid JSON response: {}", e)))?;
 
         let text = self.extract_text(&response_json)?;
         let candidates = Self::parse_candidates(&text)?;
@@ -293,30 +295,30 @@ impl AnalysisProvider for AnalysisClient {
         let response = builder
             .send()
             .await
-            .map_err(|e| CoreError::Analysis(format!("Summarize API request failed: {}", e)))?;
+            .map_err(|e| NetworkError::Analysis(format!("Summarize API request failed: {}", e)))?;
 
         let status = response.status();
-        let response_text = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Analysis(format!("Failed to read summary response: {}", e)))?;
+        let response_text = response.text().await.map_err(|e| {
+            NetworkError::Analysis(format!("Failed to read summary response: {}", e))
+        })?;
 
         if !status.is_success() {
             warn!(status = %status, "Summarize API error response");
-            return Err(CoreError::Analysis(format!(
+            return Err(NetworkError::Analysis(format!(
                 "Summarize API error ({}): {}",
                 status,
                 response_text.chars().take(200).collect::<String>()
-            )));
+            ))
+            .into());
         }
 
         let response_json: serde_json::Value = serde_json::from_str(&response_text)
-            .map_err(|e| CoreError::Analysis(format!("Invalid JSON response: {}", e)))?;
+            .map_err(|e| NetworkError::Analysis(format!("Invalid JSON response: {}", e)))?;
 
         let text = self.extract_text(&response_json)?;
 
         if text.trim().is_empty() {
-            return Err(CoreError::Analysis("Empty summary response".into()));
+            return Err(NetworkError::Analysis("Empty summary response".into()).into());
         }
 
         Ok(text.trim().to_string())
@@ -353,10 +355,10 @@ mod tests {
         let result = AnalysisClient::parse_candidates(text);
         assert!(result.is_err());
         match result.unwrap_err() {
-            CoreError::Analysis(msg) => {
+            NetworkError::Analysis(msg) => {
                 assert!(msg.contains("No JSON array found"));
             }
-            other => panic!("Expected CoreError::Analysis, got: {:?}", other),
+            other => panic!("Expected NetworkError::Analysis, got: {:?}", other),
         }
     }
 

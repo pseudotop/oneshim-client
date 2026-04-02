@@ -21,10 +21,10 @@ use super::{HttpsIntegrationTransportClient, HttpsIntegrationTransportConfig};
 /// Returns an opaque Arc so callers don't need to import the trait.
 pub fn build_proof_factory(
     supported_auth_schemes: &[IntegrationAuthScheme],
-    secret_store: Arc<dyn SecretStore>,
+    secret_store: Option<Arc<dyn SecretStore>>,
 ) -> Arc<dyn IntegrationRequestProofFactory> {
     if supported_auth_schemes.contains(&IntegrationAuthScheme::DpopBearer) {
-        Arc::new(Ed25519DpopProofFactory::new(Some(secret_store)))
+        Arc::new(Ed25519DpopProofFactory::new(secret_store))
     } else {
         Arc::new(NoopIntegrationRequestProofFactory)
     }
@@ -47,7 +47,7 @@ pub fn assemble_https_transport(
     request_timeout: Duration,
     auth: Arc<dyn IntegrationAuthPort>,
     supported_auth_schemes: &[IntegrationAuthScheme],
-    secret_store: Arc<dyn SecretStore>,
+    secret_store: Option<Arc<dyn SecretStore>>,
 ) -> Result<IntegrationTransportAssembly, CoreError> {
     let proof_factory = build_proof_factory(supported_auth_schemes, secret_store);
 

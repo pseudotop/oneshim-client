@@ -29,7 +29,7 @@ export default function ProcessList({ snapshot }: ProcessListProps) {
           </div>
           <div className="flex items-center space-x-4 text-right">
             <div>
-              <div className={cn('text-brand-text', typography.label)}>{proc.cpu_usage.toFixed(1)}%</div>
+              <div className={cn('text-brand-text', typography.label)}>{(proc.cpu_usage ?? 0).toFixed(1)}%</div>
               <div className={cn('text-content-tertiary', typography.caption)}>CPU</div>
             </div>
             <div>

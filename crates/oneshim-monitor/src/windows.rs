@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 
-use oneshim_core::error::CoreError;
+use crate::error::MonitorError;
 use oneshim_core::models::context::{MousePosition, WindowBounds, WindowInfo};
 use tracing::debug;
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
@@ -9,7 +9,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetForegroundWindow, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
 };
 
-pub fn get_active_window_windows() -> Result<Option<WindowInfo>, CoreError> {
+pub fn get_active_window_windows() -> Result<Option<WindowInfo>, MonitorError> {
     // SAFETY: GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId are
     // read-only Win32 queries with no preconditions. Null HWND is checked before
     // use. title_buf is a stack-allocated array with length passed to the API.

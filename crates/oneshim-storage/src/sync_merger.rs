@@ -11,6 +11,7 @@ use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
+use crate::error::StorageError;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::sync::{ChangeSet, ChangeSetKind, SyncResult};
 use oneshim_core::ports::change_merger::ChangeMerger;
@@ -49,7 +50,7 @@ impl SqliteSyncMerger {
     fn handle_deletion_event(
         conn: &Connection,
         origin_device_id: &str,
-    ) -> Result<usize, CoreError> {
+    ) -> Result<usize, StorageError> {
         let tables = [
             "activity_segments",
             "regimes",
@@ -63,7 +64,7 @@ impl SqliteSyncMerger {
             let sql = format!("DELETE FROM {table} WHERE origin_device_id = ?1");
             let deleted = conn
                 .execute(&sql, rusqlite::params![origin_device_id])
-                .map_err(|e| CoreError::Internal(format!("GDPR deletion on {table}: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("GDPR deletion on {table}: {e}")))?;
             total_deleted += deleted;
         }
         info!(
@@ -181,7 +182,7 @@ fn merge_segment(
     conn: &Connection,
     row: &serde_json::Value,
     result: &mut SyncResult,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     let id = json_str(row, "id")?;
     let exists: bool = conn
         .query_row(
@@ -189,7 +190,7 @@ fn merge_segment(
             rusqlite::params![id],
             |r| r.get(0),
         )
-        .map_err(|e| CoreError::Internal(format!("check segment: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("check segment: {e}")))?;
 
     if exists {
         result.skipped_dup += 1;
@@ -217,7 +218,7 @@ fn merge_segment(
             json_str(row, "origin_device_id")?,
         ],
     )
-    .map_err(|e| CoreError::Internal(format!("insert segment: {e}")))?;
+    .map_err(|e| StorageError::Internal(format!("insert segment: {e}")))?;
 
     result.applied += 1;
     Ok(())
@@ -227,7 +228,7 @@ fn merge_regime(
     conn: &Connection,
     row: &serde_json::Value,
     result: &mut SyncResult,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     let id = json_str(row, "id")?;
     let remote_hlc = extract_hlc(row)?;
 
@@ -266,7 +267,7 @@ fn merge_regime(
                     json_str(row, "origin_device_id")?,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("insert regime: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("insert regime: {e}")))?;
             result.applied += 1;
         }
         Some((lw, lc, ld)) => {
@@ -309,7 +310,7 @@ fn merge_regime(
                         json_str(row, "origin_device_id")?,
                     ],
                 )
-                .map_err(|e| CoreError::Internal(format!("update regime: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("update regime: {e}")))?;
 
                 let is_tombstone = json_i64_or_default(row, "is_deleted", 0) == 1;
                 if is_tombstone {
@@ -335,7 +336,7 @@ fn merge_override(
     conn: &Connection,
     row: &serde_json::Value,
     result: &mut SyncResult,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     let id = json_str(row, "override_id")?;
     let exists: bool = conn
         .query_row(
@@ -343,7 +344,7 @@ fn merge_override(
             rusqlite::params![id],
             |r| r.get(0),
         )
-        .map_err(|e| CoreError::Internal(format!("check override: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("check override: {e}")))?;
 
     if exists {
         result.skipped_dup += 1;
@@ -367,7 +368,7 @@ fn merge_override(
             json_str(row, "origin_device_id")?,
         ],
     )
-    .map_err(|e| CoreError::Internal(format!("insert override: {e}")))?;
+    .map_err(|e| StorageError::Internal(format!("insert override: {e}")))?;
     result.applied += 1;
     Ok(())
 }
@@ -376,7 +377,7 @@ fn merge_embedding(
     conn: &Connection,
     row: &serde_json::Value,
     result: &mut SyncResult,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     let segment_id = json_str(row, "segment_id")?;
     let model_id = json_str(row, "model_id")?;
     let remote_hlc = extract_hlc(row)?;
@@ -419,7 +420,7 @@ fn merge_embedding(
                     json_str(row, "origin_device_id")?,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("insert embedding: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("insert embedding: {e}")))?;
             result.applied += 1;
         }
         Some((local_id, lw, lc, ld)) => {
@@ -462,7 +463,7 @@ fn merge_embedding(
                         json_str(row, "origin_device_id")?,
                     ],
                 )
-                .map_err(|e| CoreError::Internal(format!("update embedding: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("update embedding: {e}")))?;
 
                 let is_tombstone = json_i64_or_default(row, "is_deleted", 0) == 1;
                 if is_tombstone {
@@ -483,7 +484,7 @@ fn merge_suggestion(
     conn: &Connection,
     row: &serde_json::Value,
     result: &mut SyncResult,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     let suggestion_id = json_str(row, "suggestion_id")?;
     let remote_hlc = extract_hlc(row)?;
     let remote_status = SqliteSyncMerger::suggestion_status_ordinal(row);
@@ -546,7 +547,7 @@ fn merge_suggestion(
                     json_str(row, "origin_device_id")?,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("insert suggestion: {e}")))?;
+            .map_err(|e| StorageError::Internal(format!("insert suggestion: {e}")))?;
             result.applied += 1;
         }
         Some((lw, lc, ld, shown, dismissed, acted)) => {
@@ -604,7 +605,7 @@ fn merge_suggestion(
                         json_str(row, "origin_device_id")?,
                     ],
                 )
-                .map_err(|e| CoreError::Internal(format!("update suggestion: {e}")))?;
+                .map_err(|e| StorageError::Internal(format!("update suggestion: {e}")))?;
                 result.applied += 1;
             } else {
                 result.skipped_lww += 1;
@@ -618,7 +619,7 @@ fn merge_param_snapshot(
     conn: &Connection,
     row: &serde_json::Value,
     result: &mut SyncResult,
-) -> Result<(), CoreError> {
+) -> Result<(), StorageError> {
     let id = json_str(row, "id")?;
     let exists: bool = conn
         .query_row(
@@ -626,7 +627,7 @@ fn merge_param_snapshot(
             rusqlite::params![id],
             |r| r.get(0),
         )
-        .map_err(|e| CoreError::Internal(format!("check param_snapshot: {e}")))?;
+        .map_err(|e| StorageError::Internal(format!("check param_snapshot: {e}")))?;
 
     if exists {
         result.skipped_dup += 1;
@@ -647,17 +648,17 @@ fn merge_param_snapshot(
             json_str(row, "origin_device_id")?,
         ],
     )
-    .map_err(|e| CoreError::Internal(format!("insert param_snapshot: {e}")))?;
+    .map_err(|e| StorageError::Internal(format!("insert param_snapshot: {e}")))?;
     result.applied += 1;
     Ok(())
 }
 
 // ── JSON extraction helpers ──
 
-fn json_str<'a>(v: &'a serde_json::Value, key: &str) -> Result<&'a str, CoreError> {
+fn json_str<'a>(v: &'a serde_json::Value, key: &str) -> Result<&'a str, StorageError> {
     v.get(key)
         .and_then(|v| v.as_str())
-        .ok_or_else(|| CoreError::Internal(format!("missing string field: {key}")))
+        .ok_or_else(|| StorageError::Internal(format!("missing string field: {key}")))
 }
 
 fn json_str_opt(v: &serde_json::Value, key: &str) -> Option<String> {
@@ -668,33 +669,33 @@ fn json_str_or_default<'a>(v: &'a serde_json::Value, key: &str, default: &'a str
     v.get(key).and_then(|v| v.as_str()).unwrap_or(default)
 }
 
-fn json_i64(v: &serde_json::Value, key: &str) -> Result<i64, CoreError> {
+fn json_i64(v: &serde_json::Value, key: &str) -> Result<i64, StorageError> {
     v.get(key)
         .and_then(|v| v.as_i64())
-        .ok_or_else(|| CoreError::Internal(format!("missing i64 field: {key}")))
+        .ok_or_else(|| StorageError::Internal(format!("missing i64 field: {key}")))
 }
 
 fn json_i64_or_default(v: &serde_json::Value, key: &str, default: i64) -> i64 {
     v.get(key).and_then(|v| v.as_i64()).unwrap_or(default)
 }
 
-fn json_u64(v: &serde_json::Value, key: &str) -> Result<u64, CoreError> {
+fn json_u64(v: &serde_json::Value, key: &str) -> Result<u64, StorageError> {
     v.get(key)
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| CoreError::Internal(format!("missing u64 field: {key}")))
+        .ok_or_else(|| StorageError::Internal(format!("missing u64 field: {key}")))
 }
 
-fn json_u32(v: &serde_json::Value, key: &str) -> Result<u32, CoreError> {
+fn json_u32(v: &serde_json::Value, key: &str) -> Result<u32, StorageError> {
     json_u64(v, key).map(|n| n as u32)
 }
 
-fn json_f64(v: &serde_json::Value, key: &str) -> Result<f64, CoreError> {
+fn json_f64(v: &serde_json::Value, key: &str) -> Result<f64, StorageError> {
     v.get(key)
         .and_then(|v| v.as_f64())
-        .ok_or_else(|| CoreError::Internal(format!("missing f64 field: {key}")))
+        .ok_or_else(|| StorageError::Internal(format!("missing f64 field: {key}")))
 }
 
-fn extract_hlc(row: &serde_json::Value) -> Result<Hlc, CoreError> {
+fn extract_hlc(row: &serde_json::Value) -> Result<Hlc, StorageError> {
     Ok(Hlc {
         wall_ms: json_u64(row, "hlc_wall_ms")?,
         counter: json_u32(row, "hlc_counter")?,

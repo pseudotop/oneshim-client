@@ -93,6 +93,12 @@ pub enum CoreError {
     #[error("Analysis error: {0}")]
     Analysis(String),
 
+    #[error("Audio capture error: {0}")]
+    AudioCapture(String),
+
+    #[error("Speech-to-text error: {0}")]
+    SpeechToText(String),
+
     #[error("Storage error: {0}")]
     Storage(String),
 }

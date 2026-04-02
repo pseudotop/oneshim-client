@@ -13,6 +13,8 @@ use oneshim_core::error::CoreError;
 use oneshim_core::ports::ann_index::AnnIndex;
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
+use crate::error::AnalysisError;
+
 // Compile-time proof that usearch::Index is Send + Sync.
 fn _assert_send_sync() {
     fn _check<T: Send + Sync>() {}
@@ -43,7 +45,7 @@ impl HnswAdapter {
     ///
     /// The index is configured for cosine similarity with I8 scalar
     /// quantization, connectivity 16, and an initial capacity of 50 000.
-    pub fn new(dimensions: usize, data_path: PathBuf) -> Result<Self, CoreError> {
+    pub fn new(dimensions: usize, data_path: PathBuf) -> Result<Self, AnalysisError> {
         let options = IndexOptions {
             dimensions,
             metric: MetricKind::Cos,
@@ -54,10 +56,10 @@ impl HnswAdapter {
             multi: false,
         };
         let index = Index::new(&options)
-            .map_err(|e| CoreError::Internal(format!("HNSW index creation failed: {e}")))?;
+            .map_err(|e| AnalysisError::VectorIndex(format!("HNSW index creation failed: {e}")))?;
         index
             .reserve(50_000)
-            .map_err(|e| CoreError::Internal(format!("HNSW reserve failed: {e}")))?;
+            .map_err(|e| AnalysisError::VectorIndex(format!("HNSW reserve failed: {e}")))?;
         Ok(Self {
             index: Arc::new(index),
             data_path,

@@ -1,4 +1,4 @@
-import { test, expect } from './helpers/test'
+import { expect, test } from './helpers/test'
 
 test.describe('Replay Actions', () => {
   test.beforeEach(async ({ page }) => {

@@ -1,31 +1,31 @@
-use oneshim_core::error::CoreError;
+use crate::error::NetworkError;
 use tonic::{Code, Status};
 
 const DEFAULT_RETRY_AFTER_SECS: u64 = 60;
 
-pub fn map_grpc_status_error(operation: &str, status: Status) -> CoreError {
+pub fn map_grpc_status_error(operation: &str, status: Status) -> NetworkError {
     let code = status.code();
     let message = status.message().to_string();
 
     match code {
         Code::Unauthenticated | Code::PermissionDenied => {
-            CoreError::Auth(format!("{operation}: {message}"))
+            NetworkError::Auth(format!("{operation}: {message}"))
         }
-        Code::NotFound => CoreError::NotFound {
+        Code::NotFound => NetworkError::NotFound {
             resource_type: operation.to_string(),
             id: message,
         },
         Code::InvalidArgument | Code::FailedPrecondition | Code::OutOfRange => {
-            CoreError::Validation {
+            NetworkError::Validation {
                 field: "grpc_request".to_string(),
                 message: format!("{operation}: {message} ({code})"),
             }
         }
-        Code::ResourceExhausted => CoreError::RateLimit {
+        Code::ResourceExhausted => NetworkError::RateLimited {
             retry_after_secs: extract_retry_after_secs(&status),
         },
-        Code::Unavailable => CoreError::ServiceUnavailable(format!("{operation}: {message}")),
-        _ => CoreError::Network(format!("{operation}: {message} ({code})")),
+        Code::Unavailable => NetworkError::ServiceUnavailable(format!("{operation}: {message}")),
+        _ => NetworkError::Http(format!("{operation}: {message} ({code})")),
     }
 }
 
@@ -54,7 +54,7 @@ mod tests {
     #[test]
     fn maps_unauthenticated_to_auth_error() {
         let err = map_grpc_status_error("grpc login", Status::unauthenticated("bad token"));
-        assert!(matches!(err, CoreError::Auth(_)));
+        assert!(matches!(err, NetworkError::Auth(_)));
     }
 
     #[test]
@@ -62,7 +62,7 @@ mod tests {
         let err = map_grpc_status_error("grpc upload", Status::invalid_argument("missing id"));
 
         match err {
-            CoreError::Validation { field, message } => {
+            NetworkError::Validation { field, message } => {
                 assert_eq!(field, "grpc_request");
                 assert!(message.contains("missing id"));
             }
@@ -75,7 +75,7 @@ mod tests {
         let err = map_grpc_status_error("grpc list", Status::resource_exhausted("busy"));
         assert!(matches!(
             err,
-            CoreError::RateLimit {
+            NetworkError::RateLimited {
                 retry_after_secs: DEFAULT_RETRY_AFTER_SECS
             }
         ));
@@ -84,6 +84,6 @@ mod tests {
     #[test]
     fn maps_unavailable_to_service_unavailable() {
         let err = map_grpc_status_error("grpc heartbeat", Status::unavailable("down"));
-        assert!(matches!(err, CoreError::ServiceUnavailable(_)));
+        assert!(matches!(err, NetworkError::ServiceUnavailable(_)));
     }
 }

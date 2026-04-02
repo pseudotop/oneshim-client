@@ -24,6 +24,7 @@ allowed_runtime_edges = {
     "oneshim-core": set(),
     "oneshim-api-contracts": {"oneshim-core"},
     "oneshim-lint": set(),
+    "oneshim-audio": {"oneshim-core"},
     "oneshim-monitor": {"oneshim-core"},
     "oneshim-vision": {"oneshim-core"},
     "oneshim-network": {"oneshim-core", "oneshim-api-contracts"},
@@ -36,6 +37,7 @@ allowed_runtime_edges = {
     "oneshim-app": {
         "oneshim-core",
         "oneshim-api-contracts",
+        "oneshim-audio",
         "oneshim-monitor",
         "oneshim-vision",
         "oneshim-network",

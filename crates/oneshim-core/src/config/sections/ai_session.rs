@@ -28,6 +28,9 @@ pub struct AiSessionConfig {
     pub max_output_tokens: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking: Option<serde_json::Value>,
+    /// Daily token budget (input + output combined). 0 = unlimited.
+    #[serde(default)]
+    pub daily_token_budget: u64,
 }
 
 impl Default for AiSessionConfig {
@@ -45,6 +48,7 @@ impl Default for AiSessionConfig {
             max_retries: default_max_retries(),
             max_output_tokens: default_max_output_tokens(),
             thinking: None,
+            daily_token_budget: 0,
         }
     }
 }

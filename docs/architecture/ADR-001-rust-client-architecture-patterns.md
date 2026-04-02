@@ -19,7 +19,7 @@ The ONESHIM server strictly governs DDD + Hexagonal Architecture through ADRs. T
 **Rule**: Library crates use `thiserror`, binary crate uses `anyhow`
 
 ```
-oneshim-core / monitor / vision / network
+oneshim-core / audio / monitor / vision / network
 storage / suggestion / automation / analysis
 embedding / web    → crate-local thiserror enums
 oneshim-api-contracts → contract crate (DTO-focused, no shared top-level facade required)
@@ -133,7 +133,7 @@ impl StorageService for MockStorageService {
 ### 6. Crate Dependency Direction (Immutable)
 
 ```
-oneshim-core           ← monitor / vision / storage / suggestion
+oneshim-core           ← audio / monitor / vision / storage / suggestion
                       ← automation / analysis / embedding
 oneshim-api-contracts ← web / network
 src-tauri (oneshim-app) ← all runtime crates (composition root only)
@@ -145,6 +145,7 @@ oneshim-lint          ← standalone tooling package
 **Runtime baseline**:
 - `oneshim-network` may depend on `oneshim-api-contracts`
 - `oneshim-web` may depend on `oneshim-api-contracts`
+- `oneshim-audio` may depend only on `oneshim-core`
 - `oneshim-app` (package in `src-tauri/`) is the only package allowed to aggregate multiple adapters directly
 - `oneshim-lint` is tooling-only and is outside the runtime graph
 

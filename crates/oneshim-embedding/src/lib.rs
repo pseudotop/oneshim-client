@@ -17,6 +17,9 @@
 //! that returns `CoreError::Internal` for every operation so that dependent
 //! crates can still compile.
 
+pub mod error;
+pub use error::EmbeddingError;
+
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
@@ -44,13 +47,13 @@ mod fastembed_impl {
         /// `model_name` is an `EmbeddingModel` variant name such as
         /// `"AllMiniLML6V2"`. If omitted or unrecognised the default model
         /// (`AllMiniLML6V2`, 384-dim) is used.
-        pub fn new(model_name: Option<&str>) -> Result<Self, CoreError> {
+        pub fn new(model_name: Option<&str>) -> Result<Self, EmbeddingError> {
             let (model_enum, id, dims) = resolve_model(model_name);
 
             let options = fastembed::InitOptions::new(model_enum).with_show_download_progress(true);
 
             let model = fastembed::TextEmbedding::try_new(options)
-                .map_err(|e| CoreError::Internal(format!("fastembed init failed: {e}")))?;
+                .map_err(|e| EmbeddingError::Internal(format!("fastembed init failed: {e}")))?;
 
             Ok(Self {
                 model: Arc::new(Mutex::new(model)),
@@ -191,7 +194,7 @@ mod stub_impl {
     }
 
     impl LocalEmbeddingProvider {
-        pub fn new(_model_name: Option<&str>) -> Result<Self, CoreError> {
+        pub fn new(_model_name: Option<&str>) -> Result<Self, EmbeddingError> {
             Ok(Self {
                 model_id: "stub-no-fastembed".to_owned(),
                 dimensions: 384,

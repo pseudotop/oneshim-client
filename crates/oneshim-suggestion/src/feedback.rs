@@ -1,9 +1,10 @@
 use chrono::Utc;
-use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::{FeedbackType, SuggestionFeedback};
 use oneshim_core::ports::api_client::ApiClient;
 use std::sync::Arc;
 use tracing::{debug, warn};
+
+use crate::error::SuggestionError;
 
 pub struct FeedbackSender {
     api_client: Arc<dyn ApiClient>,
@@ -18,7 +19,7 @@ impl FeedbackSender {
         &self,
         suggestion_id: &str,
         comment: Option<String>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), SuggestionError> {
         self.send_feedback(suggestion_id, FeedbackType::Accepted, comment)
             .await
     }
@@ -27,7 +28,7 @@ impl FeedbackSender {
         &self,
         suggestion_id: &str,
         comment: Option<String>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), SuggestionError> {
         self.send_feedback(suggestion_id, FeedbackType::Rejected, comment)
             .await
     }
@@ -36,7 +37,7 @@ impl FeedbackSender {
         &self,
         suggestion_id: &str,
         comment: Option<String>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), SuggestionError> {
         self.send_feedback(suggestion_id, FeedbackType::Deferred, comment)
             .await
     }
@@ -46,7 +47,7 @@ impl FeedbackSender {
         suggestion_id: &str,
         feedback_type: FeedbackType,
         comment: Option<String>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), SuggestionError> {
         let feedback = SuggestionFeedback {
             suggestion_id: suggestion_id.to_string(),
             feedback_type: feedback_type.clone(),
@@ -63,7 +64,7 @@ impl FeedbackSender {
             }
             Err(e) => {
                 warn!("feedback sent failure: {e}");
-                Err(e)
+                Err(SuggestionError::Core(e))
             }
         }
     }
@@ -72,6 +73,7 @@ impl FeedbackSender {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::event::EventBatch;
     use oneshim_core::models::frame::ContextUpload;
 

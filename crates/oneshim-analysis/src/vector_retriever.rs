@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use oneshim_core::error::CoreError;
+use crate::error::AnalysisError;
 use oneshim_core::models::embedding::{SearchFilters, SearchResult};
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
 use oneshim_core::ports::vector_store::VectorStore;
@@ -76,7 +76,7 @@ impl VectorRetriever {
         current_app: &str,
         current_title: &str,
         current_ocr: Option<&str>,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         let query_text = format!(
             "{} - {}{}",
             current_app,
@@ -110,10 +110,12 @@ impl VectorRetriever {
                     &SearchFilters::default(),
                 )
                 .await
+                .map_err(AnalysisError::Core)
         } else {
             self.vector_store
                 .search(&query_vector, self.max_results, self.time_decay_hours)
                 .await
+                .map_err(AnalysisError::Core)
         }
     }
 
@@ -126,7 +128,7 @@ impl VectorRetriever {
         &self,
         query: &str,
         filters: Option<SearchFilters>,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         self.search_natural_language_with_context(query, filters, None)
             .await
     }
@@ -140,7 +142,7 @@ impl VectorRetriever {
         query: &str,
         filters: Option<SearchFilters>,
         activity_context: Option<&ActivityContext>,
-    ) -> Result<Vec<SearchResult>, CoreError> {
+    ) -> Result<Vec<SearchResult>, AnalysisError> {
         let expanded = QueryExpander::expand(query, activity_context);
         let query_vector = self.embedding_provider.embed(&expanded).await?;
 
@@ -168,6 +170,7 @@ impl VectorRetriever {
                     &filters,
                 )
                 .await
+                .map_err(AnalysisError::Core)
         } else if let Some(filters) = filters {
             self.vector_store
                 .search_filtered(
@@ -177,10 +180,12 @@ impl VectorRetriever {
                     &filters,
                 )
                 .await
+                .map_err(AnalysisError::Core)
         } else {
             self.vector_store
                 .search(&query_vector, self.max_results, self.time_decay_hours)
                 .await
+                .map_err(AnalysisError::Core)
         }
     }
 }
@@ -190,6 +195,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::Utc;
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::embedding::{EmbeddingContentType, EmbeddingMetadata};
     use oneshim_core::models::tiered_memory::WorkType;
 

@@ -1,7 +1,7 @@
 # Crate Implementation Docs
 
-Detailed implementation reference for the ONESHIM Rust client's current 13-package workspace
-(12 packages under `crates/` plus the `src-tauri` binary package).
+Detailed implementation reference for the ONESHIM Rust client's current 14-package workspace
+(13 packages under `crates/` plus the `src-tauri` binary package).
 
 ## Crate Dependency Graph
 
@@ -11,7 +11,7 @@ Detailed implementation reference for the ONESHIM Rust client's current 13-packa
 │  runtime wiring, scheduler, desktop lifecycle, web server startup   │
 └──────────────────────────────────────────────────────────────────────┘
           │
-          ├── runtime adapters: analysis / automation / embedding / monitor
+          ├── runtime adapters: analysis / audio / automation / embedding / monitor
           ├── runtime adapters: network / storage / suggestion / vision / web
           └── shared contracts: oneshim-core / oneshim-api-contracts
 
@@ -23,6 +23,7 @@ oneshim-api-contracts
 
 Runtime adapter baseline (normal dependencies only)
   ├── oneshim-analysis   -> oneshim-core
+  ├── oneshim-audio      -> oneshim-core
   ├── oneshim-automation -> oneshim-core
   ├── oneshim-embedding  -> oneshim-core
   ├── oneshim-monitor    -> oneshim-core
@@ -42,6 +43,7 @@ Tooling package
 |--------|----------|------|------|
 | **oneshim-core** | `crates/oneshim-core` | Foundation layer: models, ports, errors, config | [Details](./oneshim-core.md) |
 | **oneshim-api-contracts** | `crates/oneshim-api-contracts` | Shared transport contract SSOT for web/integration DTOs | [Details](./oneshim-api-contracts.md) |
+| **oneshim-audio** | `crates/oneshim-audio` | Audio capture, STT providers, model download helpers | Pending dedicated crate doc |
 | **oneshim-monitor** | `crates/oneshim-monitor` | System monitoring adapter | [Details](./oneshim-monitor.md) |
 | **oneshim-vision** | `crates/oneshim-vision` | Edge capture, OCR, privacy filter, accessibility helpers | [Details](./oneshim-vision.md) |
 | **oneshim-network** | `crates/oneshim-network` | HTTP/SSE/WebSocket/gRPC/network adapters | [Details](./oneshim-network.md) |
@@ -73,7 +75,7 @@ Tooling package
 
 1. Normal runtime dependencies must target `oneshim-core`, or `oneshim-api-contracts` when sharing transport DTOs.
 2. Direct adapter aggregation is reserved for `oneshim-app` in `src-tauri/`.
-3. Current non-core normal dependency exceptions are `oneshim-network -> oneshim-api-contracts` and `oneshim-web -> oneshim-api-contracts`.
+3. Current non-core normal dependency exceptions are `oneshim-network -> oneshim-api-contracts` and `oneshim-web -> oneshim-api-contracts`; `oneshim-audio` remains a core-only adapter.
 4. Dev/build-only dependencies are tracked separately and are not treated as runtime architecture edges.
 5. CI enforces the current runtime baseline via `scripts/check-architecture-deps.sh`.
 

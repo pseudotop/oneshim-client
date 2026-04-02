@@ -6,7 +6,7 @@ use super::SqliteStorage;
 
 impl CoachingStoragePort for SqliteStorage {
     fn insert_coaching_event(&self, event: &CoachingEventRow) -> Result<(), CoreError> {
-        SqliteStorage::insert_coaching_event(self, event)
+        SqliteStorage::insert_coaching_event(self, event).map_err(CoreError::from)
     }
 
     fn update_coaching_event_personalized(
@@ -15,5 +15,6 @@ impl CoachingStoragePort for SqliteStorage {
         personalized_text: &str,
     ) -> Result<(), CoreError> {
         SqliteStorage::update_coaching_event_personalized(self, event_id, personalized_text)
+            .map_err(CoreError::from)
     }
 }

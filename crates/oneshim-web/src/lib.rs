@@ -368,9 +368,13 @@ impl WebServer {
                 .into_iter()
                 .flatten()
             })
-            .chain(std::iter::once("tauri://localhost".parse().unwrap()))
+            .chain(std::iter::once(
+                "tauri://localhost".parse().expect("static URL"),
+            ))
             // Vite dev server for cargo tauri dev
-            .chain(std::iter::once("http://localhost:5173".parse().unwrap()))
+            .chain(std::iter::once(
+                "http://localhost:5173".parse().expect("static URL"),
+            ))
             .collect();
 
         let cors = CorsLayer::new()

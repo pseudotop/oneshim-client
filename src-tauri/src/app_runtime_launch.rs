@@ -3,7 +3,7 @@ use oneshim_core::consent::ConsentManager;
 use oneshim_core::ports::coaching_storage::CoachingStoragePort;
 use oneshim_core::ports::session_context_store::SessionContextStorePort;
 use std::sync::Arc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tracing::info;
 
 use crate::agent_runtime::AgentRuntimeBuilder;
@@ -309,12 +309,21 @@ impl AppRuntimeLaunchBuilder {
         // to transition Active→Idle→Terminated for sessions that exceed the idle timeout.
         if let Some((ref sm, idle_reaper_interval)) = session_manager {
             let sm_clone = sm.clone();
+            let ss_clone: Arc<dyn oneshim_core::ports::session_storage::SessionStoragePort> =
+                sqlite_storage.clone();
+            let retention_days = config.ai_session.audit_retention_days;
             let mut shutdown_rx = reaper_shutdown_rx;
             handle.spawn(async move {
                 loop {
                     tokio::select! {
                         _ = tokio::time::sleep(idle_reaper_interval) => {
                             sm_clone.reap_idle_sessions().await;
+                            // Purge expired persisted sessions
+                            if let Ok(count) = ss_clone.purge_expired(retention_days).await {
+                                if count > 0 {
+                                    tracing::info!("purged {count} expired session records");
+                                }
+                            }
                         }
                         _ = shutdown_rx.changed() => break,
                     }
@@ -366,12 +375,103 @@ impl AppRuntimeLaunchBuilder {
         // Forward update status changes to Tauri frontend via broadcast → emit bridge.
         RuntimeBridgeSpawner::spawn_update_event_bridge(&handle, &self.app_handle, &update_control);
 
+        // Audio capture and STT engine — wired when audio feature + config enabled.
+        let model_dir: std::path::PathBuf = self
+            .app_handle
+            .path()
+            .app_data_dir()
+            .map(|d| d.join("models"))
+            .unwrap_or_else(|_| std::path::PathBuf::from("models"));
+
+        let audio_capture: Option<Arc<dyn oneshim_core::ports::audio_capture::AudioCapturePort>> = {
+            #[cfg(feature = "audio")]
+            {
+                if config.audio.enabled {
+                    Some(Arc::new(oneshim_audio::AudioCapture::new()))
+                } else {
+                    tracing::debug!("audio capture disabled by config");
+                    None
+                }
+            }
+            #[cfg(not(feature = "audio"))]
+            {
+                None
+            }
+        };
+
+        let stt_engine: Option<Arc<dyn oneshim_core::ports::stt_provider::SttProvider>> = {
+            #[cfg(feature = "stt")]
+            {
+                if !config.audio.enabled {
+                    None
+                } else {
+                    // Try model_dir first (when download feature available), then legacy whisper_model_path
+                    let model_path = if config.audio.whisper_model_path.is_empty() {
+                        #[cfg(feature = "download")]
+                        {
+                            model_dir.join(oneshim_audio::model_downloader::model_filename(
+                                config.audio.model_size,
+                            ))
+                        }
+                        #[cfg(not(feature = "download"))]
+                        {
+                            self.app_handle
+                                .path()
+                                .resource_dir()
+                                .map(|d| d.join("ggml-base.bin"))
+                                .unwrap_or_default()
+                        }
+                    } else {
+                        std::path::PathBuf::from(&config.audio.whisper_model_path)
+                    };
+                    if model_path.exists() {
+                        match oneshim_audio::WhisperSttProvider::new(
+                            &model_path,
+                            config.audio.language,
+                        ) {
+                            Ok(provider) => {
+                                tracing::info!("Whisper STT loaded: {}", model_path.display());
+                                Some(Arc::new(provider) as _)
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to load Whisper model: {e}");
+                                None
+                            }
+                        }
+                    } else {
+                        tracing::info!(
+                            "Whisper model not found at {}; STT disabled",
+                            model_path.display()
+                        );
+                        None
+                    }
+                }
+            }
+            #[cfg(not(feature = "stt"))]
+            {
+                None
+            }
+        };
+
+        let model_downloader: Option<
+            Arc<dyn oneshim_core::ports::model_downloader::ModelDownloader>,
+        > = {
+            #[cfg(feature = "download")]
+            {
+                Some(Arc::new(oneshim_audio::WhisperModelDownloader::new()))
+            }
+            #[cfg(not(feature = "download"))]
+            {
+                None
+            }
+        };
+
         let state_builder = ManagedStateBuilder::new(AppState {
             runtime_handle: handle,
             background_runtime,
             config,
             web_port,
-            storage: sqlite_storage,
+            storage: sqlite_storage.clone(),
             config_manager,
             update_control: Some(update_control),
             update_action_tx,
@@ -410,9 +510,17 @@ impl AppRuntimeLaunchBuilder {
                 )),
             },
             suggestion_manager,
-            session_manager: session_manager.as_ref().map(|(sm, _)| {
-                sm.clone() as Arc<dyn oneshim_core::ports::conversation_session::SessionManager>
-            }),
+            session_manager: session_manager.as_ref().map(|(sm, _)| sm.clone()),
+            session_storage: Some(sqlite_storage.clone()),
+            audio: crate::runtime_state::AudioContext {
+                capture: audio_capture,
+                stt_engine: Arc::new(tokio::sync::RwLock::new(stt_engine)),
+                model_downloader,
+                model_dir,
+                downloading: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                download_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
+            },
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

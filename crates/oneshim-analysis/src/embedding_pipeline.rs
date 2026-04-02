@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::error::AnalysisError;
 use chrono::{DateTime, Utc};
-use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{EmbeddingContentType, EmbeddingMetadata};
 use oneshim_core::models::tiered_memory::SegmentSummary;
 #[cfg(feature = "hnsw")]
@@ -87,7 +87,7 @@ impl EmbeddingPipeline {
     pub async fn process_content_activities(
         &self,
         segment: &SegmentSummary,
-    ) -> Result<usize, CoreError> {
+    ) -> Result<usize, AnalysisError> {
         let mut texts = Vec::new();
         let mut metadata = Vec::new();
 
@@ -143,7 +143,7 @@ impl EmbeddingPipeline {
         segment_id: &str,
         summary: &str,
         timestamp: DateTime<Utc>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), AnalysisError> {
         let filtered = (self.pii_filter)(summary);
         let vector = self.embedding_provider.embed(&filtered).await?;
 
@@ -201,6 +201,7 @@ impl EmbeddingPipeline {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use oneshim_core::error::CoreError;
     use oneshim_core::models::embedding::{SearchFilters, SearchResult};
     use oneshim_core::models::tiered_memory::{
         ContentActivity, ContentType, EngagementMetrics, TriggerReason, WorkType,

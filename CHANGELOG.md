@@ -7,6 +7,379 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.15-rc.1] - 2026-04-02
+
+### Added
+
+- P1 Audio STT — Push-to-Talk with local Whisper ([#283](https://github.com/pseudotop/oneshim-client/pull/283))
+  * feat(core): add AudioBuffer, TranscriptionResult models and error variants
+
+  Also applies cargo fmt to workspace.
+
+- Add Whisper model download manager UI (P2) ([#284](https://github.com/pseudotop/oneshim-client/pull/284))
+  - New ModelDownloader port trait + WhisperModelDownloader adapter (feature-gated: download)
+  - WhisperModelSize enum (tiny/base/small/medium) + AudioConfig.model_size field
+  - AudioContext refactored: RwLock<stt_engine> for hot-reload, download concurrency guard
+  - 5 new IPC commands: get_audio_status, download/cancel/delete model, reload_stt_engine
+  - Settings AudioTab: enable toggle, model selector, download progress, delete, language
+  - Chat mic button: context-aware tooltip based on audio/model status
+  - Streaming download with SHA-256 verification, cancellation, .part atomic rename
+  - "audio" added to settings allowlist
+
+- Add cloud STT fallback via OpenAI Whisper API (P3) ([#285](https://github.com/pseudotop/oneshim-client/pull/285))
+  - CloudSttProvider: reqwest multipart upload to OpenAI /v1/audio/transcriptions
+  - FallbackSttProvider: tries cloud, falls back to local on non-timeout errors
+  - AudioBuffer.to_wav_bytes(): manual WAV encoder (44-byte header + PCM16)
+  - SttProviderKind enum (Local/Cloud) + config fields (api_key, endpoint, timeout)
+  - reload_stt_engine: builds Local, Cloud, or Fallback provider based on config
+  - AudioTab: provider radio picker + API key password input (shown when Cloud)
+  - Timeout-aware: RequestTimeout does NOT trigger fallback (returns error directly)
+
+- Add Voice Activity Detection for hands-free STT (P4)
+  - VadDetector: energy-based RMS VAD with configurable threshold/silence/min-speech
+  - AudioCapture: start_vad/stop_vad/drain_speech_buffer with mutual exclusion vs PTT
+  - AudioCapturePort: VAD methods with default impls (backward compat)
+  - MicInputMode enum (PushToTalk/VoiceActivity) + 4 VAD config fields
+  - IPC: start_vad_listening/stop_vad_listening with vad-state-changed/transcription events
+  - Chat.tsx: mode-aware mic button (PTT hold vs VAD toggle) with state-driven icons
+  - AudioTab: input mode picker, sensitivity slider, silence duration setting
+  - 7 VadDetector unit tests (RMS, state transitions, min speech, reset)
+
+- Add tracking panel internationalization (30 keys, 5 locales)
+  Integrate react-i18next into tracking-panel overlay component.
+  All 28 hardcoded English strings replaced with t() calls,
+  plus 2 additional keys (ocr, focus) for scene analysis display.
+
+
+### Changed
+
+- Replace all production unwrap() with expect() or control flow
+  Eliminate 22 bare .unwrap() calls in production code across 9 files.
+  - Lock unwraps → expect("...lock poisoned") for clear panic messages
+  - Guarded option unwraps → expect("len >= 2") documenting invariants
+  - capture.rs → let-else pattern removing unwrap entirely
+  - Static URL parse → expect("static URL") for infallible literals
+
+- Add pre-release tech debt audit with corrected P0/P1 findings
+  P0 (36 panic!()) was false alarm — all in #[cfg(test)].
+  P0 (block_in_place) is documented ADR-001 deviation.
+  P1 (tokio::spawn) already managed by scheduler shutdown.
+  P1 (http_api_session split) already ADR-003 directory module.
+
+  Includes full verification spec docs with line-by-line evidence.
+
+
+### Fixed
+
+- Address deep review findings across P1-P4 audio subsystem
+  Critical fixes:
+  - VAD: add 400ms pre-buffer to capture speech onset before min_speech_ms confirmation
+  - download_whisper_model: reset downloading flag on early error (prevents permanent block)
+  - IPC commands: read live config via config_manager instead of frozen AppState.config
+
+  Important fixes:
+  - Chat unmount: also stop VAD listening to release microphone
+  - AudioTab: disable controls when audio is disabled
+  - VAD callback: extract shared build_vad_callback to eliminate F32/I16 code duplication
+  - Tests: add missing assert!() wrappers on matches!() expressions (2 tests)
+
+- Resolve lint errors and improve a11y in AudioTab
+  - Fix 6 noLabelWithoutControl errors: add htmlFor/id pairs for selects,
+    convert radio group wrappers from label to fieldset/legend
+  - Fix 4 useSortedClasses: auto-sorted by biome --write --unsafe
+  - Fix 1 format error in Chat.tsx
+  - All 11 lint errors resolved (0 errors, 1 warning remaining — nursery rule)
+
+## [0.4.14] - 2026-04-02
+
+### Changed
+
+- Extract AuthMaterialManager + PendingFlowManager from oidc_device_flow
+
+- Improve PendingFlowManager encapsulation
+  Replace direct self.flows.flows field access with proper methods
+  (insert, remove, get, clear, find_first_active, increase_interval).
+  Remove unused get_device_code method.
+
+## [0.4.14-rc.2] - 2026-04-02
+
+### Changed
+
+- Extract AuthMaterialManager + PendingFlowManager from oidc_device_flow
+
+- Improve PendingFlowManager encapsulation
+  Replace direct self.flows.flows field access with proper methods
+  (insert, remove, get, clear, find_first_active, increase_interval).
+  Remove unused get_device_code method.
+
+## [0.4.14-rc.1] - 2026-04-01
+
+### Added
+
+- Dynamic provider model catalog in Chat page
+  Replace static DEFAULT_PROVIDER_SURFACE_CATALOG import with dynamic fetch
+  via /ai/provider-surfaces endpoint (same pattern as Settings.tsx).
+
+  - Add fetchProviderSurfaces() call on mount with static fallback
+  - Convert HTTP_API_SURFACES module constant to useMemo (httpApiSurfaces)
+  - Add httpApiSurfaces to useEffect/useMemo dependency arrays
+  - Enables future runtime model discovery without rebuild
+
+- Add conversation export (JSON/Markdown) to Chat page
+  - Add handleExport() with JSON and Markdown format support
+  - JSON: structured payload with session metadata + full message history
+  - Markdown: human-readable format with thinking blocks, tool use, token usage
+  - Export button (Download icon) in session header, defaults to JSON
+  - Uses existing downloadBlob() utility
+
+- Add token budget tracking and rate limiting for AI sessions
+
+- Add session persistence models and SessionStoragePort trait
+  Add SessionRecord, MessageRecord structs with From<&SessionRecord> conversion
+  to ConversationSessionInfo. Add SessionStoragePort async trait for SQLite
+  persistence of AI chat sessions and messages.
+
+- Add migration v21 — ai_sessions + ai_conversation_messages tables
+
+- Implement SessionStoragePort for SqliteStorage with 9 tests
+
+- Wire session persistence + IPC commands for chat history
+  - Add session_storage field to AppState
+  - Persist session metadata on create, messages on stream completion
+  - Mark terminated on kill, purge expired in reap loop
+  - Add load_session_messages + delete_session_history IPC commands
+  - Merge persisted sessions into list_ai_sessions response
+
+- Load persisted chat history + read-only historical session mode
+
+
+### Changed
+
+- Split http_api_session into ADR-003 directory module
+  Convert 2381-line single file into directory module with 5 submodules:
+  - mod.rs: core struct, ConversationSession impl, dispatchers
+  - anthropic.rs: Anthropic-specific serialization + SSE parsing
+  - openai.rs: OpenAI Chat + Responses serialization + SSE parsing
+  - google.rs: Google Gemini serialization + SSE parsing
+  - content.rs: shared attachment/content helpers
+  - tests.rs: all tests (38 tests, 0 failures)
+
+- Split session_manager into ADR-003 directory module
+  Decompose 1233-line session_manager.rs into 4 focused files:
+  - mod.rs: SessionManagerImpl struct, lifecycle (create/kill/list/touch/reap, token budget)
+  - factory.rs: Provider routing (Subprocess/HttpApi/LocalLlm session creation)
+  - error_recovery.rs: Transient error detection, report_failure, recover_session
+  - tests.rs: All 22 unit tests
+
+  Zero behavior change — public API unchanged.
+
+- Split agent_runtime into ADR-003 directory module
+  Extract embedding pipeline, analysis pipeline, and sync engine setup
+  from the 889-line agent_runtime.rs God function into focused sub-modules.
+
+
+### Fixed
+
+- Address review findings — I-1~I-3 + M-1/M-2/M-4/M-6
+  - I-1: add sessions to handleDelete dependency array (stale closure)
+  - I-2: include 'failed' state in purge_expired orphan cleanup
+  - I-3: change update_session_usage to additive SQL (+=) instead of overwrite
+  - M-1: remove no-op PRAGMA foreign_keys from migration DDL
+  - M-2: add warn! log on datetime parse failure in parse_dt
+  - M-4: wrap save_messages in explicit BEGIN/COMMIT transaction
+  - M-6: apply i18n t() to History badge label
+
+## [0.4.13-rc.3] - 2026-04-01
+
+### Fixed
+
+- Canvas resize observer, PieChart key uniqueness, DateRangePicker infinite loop
+  - HeatmapGhost: replace static window.innerWidth/Height with ResizeObserver
+    that keeps canvas resolution in sync with CSS layout size
+  - Reports PieChart: use name+duration composite key instead of name-only
+    (prevents duplicate key issues when app names collide)
+  - DateRangePicker: use ref pattern for onRangeChange callback to prevent
+    infinite re-render loop when parent passes inline arrow function
+    (Focus.tsx creates new Date objects each call → state change → re-render)
+
+## [0.4.13-rc.2] - 2026-04-01
+
+### Fixed
+
+- Add NaN/undefined guards across all frontend components
+  - PomodoroTimer: validate formatTime input + guard Invalid Date + default duration
+  - Dashboard: prevent division by zero in activity ratio (Math.max(1, ...))
+  - MetricsChart: null-coalesce memory values before division + toFixed guard
+  - ActivityHeatmap: add >= 0 bounds check for negative day/hour indices
+  - EventLog: guard importance multiplication with ?? 0
+  - Search: same importance guard pattern
+  - Reports: guard toFixed on active_ratio, avg_cpu, app.percentage, tooltip formatter
+  - ProcessList: guard cpu_usage.toFixed
+  - Coaching: guard percentage, current/target minutes rendering
+  - GoalProgressBar: guard percentage width + minutes display
+  - TimelineView: guard duration_mins multiplication
+
+  19 NaN/undefined/division-by-zero bugs fixed across 11 files.
+
+## [0.4.13-rc.1] - 2026-04-01
+
+### Added
+
+- Add store_quantized() boundary validation for vector dimensions
+  Add f32/INT8 dimension consistency check at the storage boundary to
+  prevent silently storing mismatched vector representations. This was the
+  last remaining gap from the cross-cutting improvements spec (T6).
+
+- Cross-cutting hardening — empty-vector guard, warn logging, port contract tests
+  - Add empty-vector validation to VectorStore::store() (parity with store_quantized)
+  - Replace 7x silent filter_map(|r| r.ok()) with warn! logging in vector_store_impl
+  - Add 22 port contract tests covering 6 core storage traits:
+    VectorStore (6), StorageService (4), TextSearchProvider (3),
+    MetricsStorage (3), VectorIndex (3), FocusStorage (3)
+  - Panic audit: 0 production panic!/unwrap/expect found — no changes needed
+
+
+### Changed
+
+- Add error strategy ADR-001 §1 compliance spec
+  Per-crate thiserror enums for all 8 non-compliant library crates,
+  with From<CrateError> for CoreError conversion at port boundaries.
+
+- Address spec review — constructor returns + test migration
+  Add sections for constructor/builder error return types and
+  test migration strategy based on deep review findings.
+
+- Spec review iteration 2 — exhaustive match, GuiInteractionError, info loss
+  - Clarify exhaustive match required for From<CrateError> for CoreError
+    (no catch-all) vs catch-all acceptable for From<CoreError> for ApiError
+  - Fix anyhow conversion path (Error trait, not Display)
+  - Add GuiInteractionError to "does not change" (already compliant)
+  - Document information loss at conversion boundary as acceptable
+
+- Critical fix — bidirectional conversion via Core variant
+  Adapter crates hold port trait refs (Arc<dyn T>) and call methods
+  returning CoreError. After refactoring internal functions to return
+  CrateError, ? on port calls needs From<CoreError> for CrateError.
+
+- Fix example inconsistency — add Core variant to NetworkError enum
+  The first code example showed NetworkError::Core(e) in the From impl
+  match arm but omitted it from the enum definition. Now consistent
+  with the AnalysisError example.
+
+- Add error strategy implementation plan
+  9 tasks covering all 8 library crates + final verification.
+  Per-crate error enums with bidirectional CoreError conversion.
+
+- Plan review fixes — Validation field, OcrError absorption, Serialization
+  - NetworkError::Validation changed from String to { field, message }
+    to preserve context from gRPC error mapping
+  - OcrError absorption step expanded with sub-steps: change ocr.rs
+    function signatures, update local_ocr_provider.rs callers, remove enum
+  - Serialization mapping to CoreError::Internal is correct since
+    CoreError::Serialization takes serde_json::Error not String
+
+- Plan review fixes — thiserror deps + OAuthRefresh kind field
+
+- Introduce StorageError per ADR-001 §1
+  Add `StorageError` enum (thiserror) with `From<StorageError> for CoreError`
+  bridge. Migrate all internal non-port-trait functions across the storage crate
+  from `CoreError` to `StorageError`; port-trait impls keep `Result<T, CoreError>`
+  and auto-convert via `?` or `.map_err(Into::into)`. Fix call sites in
+  `src-tauri` (SchedulerStorage, FileSyncTransport::new) accordingly.
+
+- Introduce AnalysisError per ADR-001 §1
+  Add crate-specific AnalysisError enum (VectorIndex, Clustering, LlmService,
+  Internal, Core variants) with From<AnalysisError> for CoreError bridging.
+  Migrate all non-port-trait public methods off CoreError; port trait impls
+  (AnnIndex, VectorStore, EmbeddingProvider) and test mocks stay on CoreError.
+
+- Introduce NetworkError per ADR-001 §1
+
+- Introduce AutomationError per ADR-001 §1
+
+- Introduce MonitorError per ADR-001 §1
+  Add crate-specific MonitorError enum (Core + Internal variants) with
+  From<MonitorError> for CoreError. Platform helpers (macos/linux/windows)
+  now return MonitorError; ProcessMonitor port-trait impls in process.rs
+  keep CoreError and use .map_err(Into::into) for the conversion.
+
+- Introduce EmbeddingError per ADR-001 §1
+  Add crate-specific EmbeddingError enum (Core + Internal variants) with
+  From<EmbeddingError> for CoreError. LocalEmbeddingProvider::new()
+  constructors (fastembed and stub) now return EmbeddingError; EmbeddingProvider
+  port-trait impls (embed, embed_batch) keep CoreError as required by the
+  port signature.
+
+- Introduce SuggestionError per ADR-001 §1
+  Add crate-specific SuggestionError enum (Core + Internal variants) with
+  From<SuggestionError> for CoreError. No internal CoreError constructions
+  exist in this crate — the enum is scaffolded for future use and maintains
+  consistent ADR-001 §1 compliance across all adapter crates.
+
+- Introduce VisionError per ADR-001 §1
+  Add crate-specific VisionError enum (Core, PermissionDenied, Ocr,
+  ElementNotFound, Internal variants) with From<VisionError> for CoreError.
+  Replace the ad-hoc OcrError enum in ocr.rs with VisionError::Ocr(String).
+  Internal helpers (capture, encoder, thumbnail, ocr) now return VisionError;
+  FrameProcessor port-trait impls in processor.rs keep CoreError and rely on
+  the From impl for automatic conversion via the ? operator.
+
+- Retain self_update in ADR-004 — reject tauri-plugin-updater migration
+  The custom updater provides SHA256 + Ed25519 verification, rollback,
+  prerelease filtering, version floor enforcement, and coordinator state
+  machine. tauri-plugin-updater cannot cover these features. Migration
+  evaluated and rejected due to feature loss risk with no clear benefit.
+
+- ADR-003 — SOLID principles take priority over line counts
+  Clarify that 500-line threshold is a review signal, not a split trigger.
+  Files should only be split on SRP violations, not mechanical line counts.
+  A well-structured 1000-line file with one responsibility is preferred
+  over three 300-line files with tangled concerns.
+
+
+### Fixed
+
+- Session lifecycle correctness and automation false-success bugs ([#270](https://github.com/pseudotop/oneshim-client/pull/270))
+  * fix: session lifecycle correctness and automation false-success bugs
+
+  P1 fixes:
+  - Add ConversationSession::terminate() port, call before dropping state
+    so provider resources are released on kill_session
+  - Web AI handler now calls touch_session + report_failure, matching
+    Tauri path behavior (prevents mid-use reaping and silent failures)
+  - Fix max_concurrent_sessions TOCTOU race by using write lock for
+    admission check (was: read lock check, separate write lock insert)
+
+  P2 fixes:
+  - Duplicate preset creation now returns 409 Conflict instead of false Ok
+  - run_preset without controller returns error instead of success:true
+
+- Address Codex P1 final review — proof factory leak, handler LOC, error msgs ([#271](https://github.com/pseudotop/oneshim-client/pull/271))
+  - IntegrationRequestProofFactory no longer imported by src-tauri:
+    build_proof_factory() helper in transport_assembly creates it opaquely
+  - semantic_search handler reduced from 46 to 12 LOC via service execute()
+  - Embedding vs vector search error messages distinguished in service
+
+- Complete StorageError migration for integration_state_store
+
+- Complete NetworkError/VisionError migration (I4+I5)
+  Gaps I4 and I5 of the error-strategy refactoring:
+
+  * oneshim-network: BatchUploader::flush → Result<usize, NetworkError>;
+    local_llm_session::parse_ndjson_line → Result<…, NetworkError>.
+    Port trait impls (BatchSink) bridge via .map_err(Into::into).
+
+  * oneshim-vision: OcrElementFinder::analyze_scene and
+    analyze_scene_from_image_data → Result<…, VisionError>;
+    start_focus_listener / FocusEventListener::spawn (linux-atspi)
+    → Result<…, VisionError>.
+    Port trait impls (ElementFinder) bridge via .map_err(Into::into).
+    Fixed E0283 ambiguity in extract_elements call by using
+    VisionError::from instead of Into::into.
+    Fixed call site in automation_runtime.rs: analyze_scene wrapper
+    adds .map_err(Into::into); analyze_scene_from_image delegates to
+    the trait method (already CoreError, no conversion needed).
+
 ## [0.4.12] - 2026-03-31
 
 ### Fixed

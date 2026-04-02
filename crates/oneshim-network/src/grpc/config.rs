@@ -2,8 +2,9 @@ use std::fs;
 use std::time::Duration;
 
 use oneshim_core::config::GrpcConfig as CoreGrpcConfig;
-use oneshim_core::error::CoreError;
 use serde::{Deserialize, Serialize};
+
+use crate::error::NetworkError;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,9 +108,9 @@ impl GrpcConfig {
         }
     }
 
-    pub fn validate_transport_security(&self) -> Result<(), CoreError> {
+    pub fn validate_transport_security(&self) -> Result<(), NetworkError> {
         if self.mtls_enabled && !self.use_tls {
-            return Err(CoreError::Config(
+            return Err(NetworkError::Config(
                 "grpc.mtls_enabled requires grpc.use_tls=true".to_string(),
             ));
         }
@@ -124,13 +125,13 @@ impl GrpcConfig {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| {
-                CoreError::Config(
+                NetworkError::Config(
                     "grpc.tls_domain_name is required when grpc.use_tls=true".to_string(),
                 )
             })?;
 
         if domain.contains('/') {
-            return Err(CoreError::Config(
+            return Err(NetworkError::Config(
                 "grpc.tls_domain_name must be a hostname without path".to_string(),
             ));
         }
@@ -150,11 +151,11 @@ impl GrpcConfig {
         Ok(())
     }
 
-    pub fn build_endpoint(&self, endpoint_url: &str) -> Result<Endpoint, CoreError> {
+    pub fn build_endpoint(&self, endpoint_url: &str) -> Result<Endpoint, NetworkError> {
         self.validate_transport_security()?;
 
         let mut endpoint = Endpoint::from_shared(endpoint_url.to_string())
-            .map_err(|e| CoreError::Network(format!("invalid gRPC endpoint: {e}")))?
+            .map_err(|e| NetworkError::Http(format!("invalid gRPC endpoint: {e}")))?
             .connect_timeout(Duration::from_secs(self.connect_timeout_secs))
             .timeout(Duration::from_secs(self.request_timeout_secs));
 
@@ -164,7 +165,7 @@ impl GrpcConfig {
                 .as_deref()
                 .map(str::trim)
                 .ok_or_else(|| {
-                    CoreError::Config(
+                    NetworkError::Config(
                         "grpc.tls_domain_name is required when grpc.use_tls=true".to_string(),
                     )
                 })?;
@@ -174,7 +175,7 @@ impl GrpcConfig {
             if let Some(path) = self.tls_ca_cert_path.as_deref().map(str::trim) {
                 if !path.is_empty() {
                     let pem = fs::read(path).map_err(|e| {
-                        CoreError::Config(format!("failed to read grpc.tls_ca_cert_path: {e}"))
+                        NetworkError::Config(format!("failed to read grpc.tls_ca_cert_path: {e}"))
                     })?;
                     tls = tls.ca_certificate(Certificate::from_pem(pem));
                 }
@@ -185,7 +186,7 @@ impl GrpcConfig {
                     .tls_client_cert_path
                     .as_deref()
                     .ok_or_else(|| {
-                        CoreError::Config(
+                        NetworkError::Config(
                             "grpc.tls_client_cert_path is required when grpc.mtls_enabled=true"
                                 .to_string(),
                         )
@@ -195,7 +196,7 @@ impl GrpcConfig {
                     .tls_client_key_path
                     .as_deref()
                     .ok_or_else(|| {
-                        CoreError::Config(
+                        NetworkError::Config(
                             "grpc.tls_client_key_path is required when grpc.mtls_enabled=true"
                                 .to_string(),
                         )
@@ -203,29 +204,29 @@ impl GrpcConfig {
                     .trim();
 
                 let cert_pem = fs::read(cert_path).map_err(|e| {
-                    CoreError::Config(format!("failed to read grpc.tls_client_cert_path: {e}"))
+                    NetworkError::Config(format!("failed to read grpc.tls_client_cert_path: {e}"))
                 })?;
                 let key_pem = fs::read(key_path).map_err(|e| {
-                    CoreError::Config(format!("failed to read grpc.tls_client_key_path: {e}"))
+                    NetworkError::Config(format!("failed to read grpc.tls_client_key_path: {e}"))
                 })?;
 
                 tls = tls.identity(Identity::from_pem(cert_pem, key_pem));
             }
 
-            endpoint = endpoint
-                .tls_config(tls)
-                .map_err(|e| CoreError::Config(format!("invalid grpc tls configuration: {e}")))?;
+            endpoint = endpoint.tls_config(tls).map_err(|e| {
+                NetworkError::Config(format!("invalid grpc tls configuration: {e}"))
+            })?;
         }
 
         Ok(endpoint)
     }
 
-    pub async fn connect_channel(&self, endpoint_url: &str) -> Result<Channel, CoreError> {
+    pub async fn connect_channel(&self, endpoint_url: &str) -> Result<Channel, NetworkError> {
         let endpoint = self.build_endpoint(endpoint_url)?;
         endpoint
             .connect()
             .await
-            .map_err(|e| CoreError::Network(format!("gRPC connection failed: {e}")))
+            .map_err(|e| NetworkError::Http(format!("gRPC connection failed: {e}")))
     }
 
     pub fn all_endpoints(&self) -> Vec<String> {
@@ -267,14 +268,14 @@ fn default_use_tls() -> bool {
 }
 
 impl GrpcConfig {
-    fn required_path(&self, field: &str, value: Option<&str>) -> Result<(), CoreError> {
+    fn required_path(&self, field: &str, value: Option<&str>) -> Result<(), NetworkError> {
         let valid = value
             .map(str::trim)
             .map(|path| !path.is_empty())
             .unwrap_or(false);
 
         if !valid {
-            return Err(CoreError::Config(format!(
+            return Err(NetworkError::Config(format!(
                 "{field} is required when grpc.mtls_enabled=true"
             )));
         }

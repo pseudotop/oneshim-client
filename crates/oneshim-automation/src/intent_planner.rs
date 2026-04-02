@@ -1,3 +1,4 @@
+use crate::error::AutomationError;
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::AutomationIntent;
@@ -67,7 +68,7 @@ impl LlmIntentPlanner {
         &self,
         action: InterpretedAction,
         intent_hint: &str,
-    ) -> Result<AutomationIntent, CoreError> {
+    ) -> Result<AutomationIntent, AutomationError> {
         let action_type = action.action_type.to_lowercase();
         match action_type.as_str() {
             "click" => Ok(AutomationIntent::ClickElement {
@@ -83,7 +84,7 @@ impl LlmIntentPlanner {
             }),
             "hotkey" => Ok(AutomationIntent::ExecuteHotkey {
                 keys: parse_hotkey_keys(intent_hint).ok_or_else(|| {
-                    CoreError::InvalidArguments(
+                    AutomationError::InvalidArguments(
                         "단축키 의도는 'Ctrl+S' 형태 키 조합이 필요합니다".to_string(),
                     )
                 })?,
@@ -101,7 +102,7 @@ impl LlmIntentPlanner {
                     .or_else(|| extract_quoted_text(intent_hint))
                     .unwrap_or_else(|| intent_hint.to_string()),
             }),
-            other => Err(CoreError::InvalidArguments(format!(
+            other => Err(AutomationError::InvalidArguments(format!(
                 "지원하지 않는 action_type: {other}"
             ))),
         }
@@ -128,6 +129,7 @@ impl IntentPlanner for LlmIntentPlanner {
         };
 
         self.action_to_intent(interpreted, intent_hint)
+            .map_err(Into::into)
     }
 }
 

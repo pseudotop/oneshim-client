@@ -1,0 +1,661 @@
+//! HTTP API session adapter — direct Anthropic/OpenAI API calls with
+//! self-managed conversation history and SSE streaming responses.
+
+mod anthropic;
+mod content;
+mod google;
+mod openai;
+
+use anthropic::*;
+use content::*;
+use google::*;
+use openai::*;
+
+#[cfg(test)]
+mod tests;
+
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+
+use async_stream::try_stream;
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use eventsource_stream::Eventsource;
+use futures::stream::StreamExt;
+use tokio::sync::RwLock;
+use tracing::warn;
+
+use oneshim_api_contracts::provider_specs::{
+    self, ProviderAuthScheme, ProviderRequestShape, ProviderTransportKind, SurfaceCapabilityKind,
+};
+use oneshim_core::config::{AiProviderType, AiSessionConfig};
+use oneshim_core::error::CoreError;
+use oneshim_core::models::ai_session::{
+    truncate_chat_history, ChatMessage, ChatRole, ContentBlock, ConversationSessionInfo,
+    OutboundMessage, SessionMessage, SessionState, SessionTransport, ToolDefinition, ToolUseStatus,
+};
+use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
+use oneshim_core::ports::credential_source::CredentialSource;
+
+/// Direct HTTP API session adapter for Anthropic and OpenAI providers.
+///
+/// Manages conversation history locally and streams responses via SSE.
+pub struct HttpApiSession {
+    session_id: String,
+    surface_id: String,
+    model: String,
+    endpoint: String,
+    credential: CredentialSource,
+    provider_type: AiProviderType,
+    history: Arc<RwLock<Vec<ChatMessage>>>,
+    system_prompt: Option<String>,
+    default_tools: Option<Vec<ToolDefinition>>,
+    state: parking_lot::Mutex<SessionState>,
+    turn_count: AtomicU32,
+    created_at: DateTime<Utc>,
+    last_active: parking_lot::Mutex<Instant>,
+    http_client: reqwest::Client,
+    config: Arc<AiSessionConfig>,
+}
+
+pub struct HttpApiSessionInit {
+    pub surface_id: String,
+    pub model: String,
+    pub endpoint: String,
+    pub credential: CredentialSource,
+    pub provider_type: AiProviderType,
+    pub system_prompt: Option<String>,
+    pub config: Arc<AiSessionConfig>,
+    pub default_tools: Option<Vec<ToolDefinition>>,
+}
+
+#[derive(Debug, Default)]
+#[allow(dead_code)] // Fields read in Task 2-5 (vision, structured output, tool calling)
+struct RequestOptions<'a> {
+    response_format: Option<&'a serde_json::Value>,
+    tools: Option<&'a [ToolDefinition]>,
+}
+
+#[allow(dead_code)] // Used in Task 5 (tool calling SSE parsing)
+struct PartialToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+impl HttpApiSession {
+    /// Create a new HTTP API session.
+    pub fn new(init: HttpApiSessionInit) -> Self {
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let http_client = reqwest::Client::new();
+        let mut initial_history = Vec::new();
+
+        if let Some(ref prompt) = init.system_prompt {
+            initial_history.push(ChatMessage {
+                role: ChatRole::System,
+                content: prompt.clone(),
+                content_blocks: None,
+            });
+        }
+
+        Self {
+            session_id,
+            surface_id: init.surface_id,
+            model: init.model,
+            endpoint: init.endpoint,
+            credential: init.credential,
+            provider_type: init.provider_type,
+            history: Arc::new(RwLock::new(initial_history)),
+            system_prompt: init.system_prompt,
+            default_tools: init.default_tools,
+            state: parking_lot::Mutex::new(SessionState::Active),
+            turn_count: AtomicU32::new(0),
+            created_at: Utc::now(),
+            last_active: parking_lot::Mutex::new(Instant::now()),
+            http_client,
+            config: init.config,
+        }
+    }
+
+    /// Build provider-specific streaming request body from conversation history.
+    fn build_request_body(
+        &self,
+        messages: &[ChatMessage],
+        options: &RequestOptions<'_>,
+    ) -> Result<serde_json::Value, CoreError> {
+        let shape = provider_specs::resolved_request_shape(
+            self.provider_type,
+            Some(&self.surface_id),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+
+        match shape {
+            ProviderRequestShape::AnthropicMessages
+            | ProviderRequestShape::AnthropicVisionMessages => {
+                // Anthropic: system prompt is top-level, messages exclude system role
+                let api_messages: Vec<serde_json::Value> = messages
+                    .iter()
+                    .filter(|m| m.role != ChatRole::System)
+                    .map(|m| {
+                        let content = if let Some(ref blocks) = m.content_blocks {
+                            serde_json::Value::Array(serialize_anthropic_content(blocks))
+                        } else {
+                            serde_json::Value::String(m.content.clone())
+                        };
+                        serde_json::json!({ "role": m.role, "content": content })
+                    })
+                    .collect();
+
+                let mut body = serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": self.config.max_output_tokens,
+                    "stream": true,
+                    "messages": api_messages,
+                });
+
+                if let Some(ref prompt) = self.system_prompt {
+                    body["system"] = serde_json::Value::String(prompt.clone());
+                }
+
+                // Anthropic ignores response_format — no injection needed.
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["thinking"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_anthropic_tools(tools);
+                    if !tool_defs.is_empty() {
+                        body["tools"] = serde_json::Value::Array(tool_defs);
+                    }
+                }
+
+                Ok(body)
+            }
+            ProviderRequestShape::OpenAiChatCompletions
+            | ProviderRequestShape::OpenAiVisionChatCompletions => {
+                // OpenAI: system prompt is first message with role "system"
+                let api_messages: Vec<serde_json::Value> = messages
+                    .iter()
+                    .map(|m| {
+                        let content = if let Some(ref blocks) = m.content_blocks {
+                            serde_json::Value::Array(serialize_openai_content(blocks))
+                        } else {
+                            serde_json::Value::String(m.content.clone())
+                        };
+                        serde_json::json!({ "role": m.role, "content": content })
+                    })
+                    .collect();
+
+                let mut body = serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": self.config.max_output_tokens,
+                    "stream": true,
+                    "messages": api_messages,
+                });
+
+                if let Some(rf) = options.response_format {
+                    body["response_format"] = rf.clone();
+                }
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["reasoning"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_openai_tools(tools);
+                    if !tool_defs.is_empty() {
+                        body["tools"] = serde_json::Value::Array(tool_defs);
+                    }
+                }
+
+                Ok(body)
+            }
+            ProviderRequestShape::OpenAiResponses => {
+                let api_input: Vec<serde_json::Value> = messages
+                    .iter()
+                    .filter(|message| message.role != ChatRole::System)
+                    .map(|message| {
+                        let content = if let Some(ref blocks) = message.content_blocks {
+                            serde_json::Value::Array(serialize_openai_responses_content(blocks))
+                        } else {
+                            serde_json::Value::Array(vec![serde_json::json!({
+                                "type": "input_text",
+                                "text": message.content.clone()
+                            })])
+                        };
+                        serde_json::json!({
+                            "role": message.role,
+                            "content": content,
+                        })
+                    })
+                    .collect();
+
+                let mut body = serde_json::json!({
+                    "model": self.model,
+                    "max_output_tokens": self.config.max_output_tokens,
+                    "stream": true,
+                    "input": api_input,
+                });
+
+                if let Some(ref prompt) = self.system_prompt {
+                    body["instructions"] = serde_json::Value::String(prompt.clone());
+                }
+
+                if let Some(response_format) = options.response_format {
+                    body["text"] = serde_json::json!({
+                        "format": normalize_openai_responses_format(response_format)
+                    });
+                }
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["reasoning"] = thinking.clone();
+                }
+
+                if provider_specs::surface_supports_parameter(
+                    &self.surface_id,
+                    SurfaceCapabilityKind::Llm,
+                    "tools",
+                )
+                .unwrap_or(false)
+                {
+                    if let Some(tools) = options.tools {
+                        let tool_defs = build_openai_responses_tools(tools);
+                        if !tool_defs.is_empty() {
+                            body["tools"] = serde_json::Value::Array(tool_defs);
+                        }
+                    }
+                }
+
+                Ok(body)
+            }
+            ProviderRequestShape::GoogleGenerateContent => {
+                // Google Gemini: contents array, system_instruction, generationConfig
+                let api_contents: Vec<serde_json::Value> = messages
+                    .iter()
+                    .filter(|m| m.role != ChatRole::System)
+                    .map(|m| {
+                        let parts = if let Some(ref blocks) = m.content_blocks {
+                            serialize_google_parts(blocks)
+                        } else {
+                            vec![serde_json::json!({"text": m.content})]
+                        };
+                        serde_json::json!({
+                            "role": match m.role {
+                                ChatRole::User => "user",
+                                ChatRole::Assistant => "model",
+                                _ => "user",
+                            },
+                            "parts": parts,
+                        })
+                    })
+                    .collect();
+
+                let mut body = serde_json::json!({
+                    "contents": api_contents,
+                    "generationConfig": {
+                        "maxOutputTokens": self.config.max_output_tokens,
+                    },
+                });
+
+                if let Some(ref prompt) = self.system_prompt {
+                    body["system_instruction"] = serde_json::json!({"parts": [{"text": prompt}]});
+                }
+
+                if let Some(rf) = options.response_format {
+                    if let Some(schema) = rf
+                        .get("schema")
+                        .or_else(|| rf.get("json_schema").and_then(|js| js.get("schema")))
+                    {
+                        body["generationConfig"]["responseMimeType"] =
+                            serde_json::json!("application/json");
+                        body["generationConfig"]["responseSchema"] = schema.clone();
+                    }
+                }
+
+                if let Some(ref thinking) = self.config.thinking {
+                    body["generationConfig"]["thinking_config"] = thinking.clone();
+                }
+
+                if let Some(tools) = options.tools {
+                    let tool_defs = build_google_tools(tools);
+                    if let Some(arr) = tool_defs.as_array() {
+                        if !arr.is_empty()
+                            && !arr[0]
+                                .get("function_declarations")
+                                .and_then(|d| d.as_array())
+                                .map_or(true, |a| a.is_empty())
+                        {
+                            body["tools"] = tool_defs;
+                        }
+                    }
+                }
+
+                Ok(body)
+            }
+            _ => Err(CoreError::Internal(format!(
+                "unsupported request shape for HTTP API session: {shape:?}"
+            ))),
+        }
+    }
+
+    /// Resolve auth headers for the provider.
+    async fn apply_auth(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<reqwest::RequestBuilder, CoreError> {
+        let auth_scheme = provider_specs::resolved_auth_scheme(
+            self.provider_type,
+            Some(&self.surface_id),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+
+        let builder = match auth_scheme {
+            ProviderAuthScheme::None => builder,
+            ProviderAuthScheme::XApiKey => {
+                let token = self.credential.resolve_bearer_token().await?;
+                builder
+                    .header("x-api-key", &token)
+                    .header("anthropic-version", crate::ANTHROPIC_API_VERSION)
+            }
+            ProviderAuthScheme::XGoogApiKey => {
+                let token = self.credential.resolve_bearer_token().await?;
+                builder.header("x-goog-api-key", &token)
+            }
+            ProviderAuthScheme::Bearer => {
+                let token = self.credential.resolve_bearer_token().await?;
+                builder.header("Authorization", format!("Bearer {}", token))
+            }
+            ProviderAuthScheme::AwsSignatureV4 => {
+                return Err(CoreError::Internal(
+                    "AWS Signature V4 authentication is not yet supported for API sessions"
+                        .to_string(),
+                ));
+            }
+        };
+
+        Ok(builder)
+    }
+
+    /// Resolve the streaming endpoint URL.
+    ///
+    /// Google requires `streamGenerateContent?alt=sse` instead of `generateContent`.
+    fn streaming_endpoint(&self) -> String {
+        let shape = provider_specs::resolved_request_shape(
+            self.provider_type,
+            Some(&self.surface_id),
+            ProviderTransportKind::Llm,
+        );
+        if matches!(shape, Ok(ProviderRequestShape::GoogleGenerateContent)) {
+            self.endpoint
+                .replace(":generateContent", ":streamGenerateContent")
+                + if self.endpoint.contains('?') {
+                    "&alt=sse"
+                } else {
+                    "?alt=sse"
+                }
+        } else {
+            self.endpoint.clone()
+        }
+    }
+
+    /// Truncate history to keep the system prompt (first message) + last (max-1) messages.
+    #[cfg(test)]
+    fn truncate_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
+        truncate_chat_history(history, max_turns);
+    }
+}
+
+#[async_trait]
+impl ConversationSession for HttpApiSession {
+    async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
+        let shape = provider_specs::resolved_request_shape(
+            self.provider_type,
+            Some(&self.surface_id),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+        let message_content = render_message_content(message, &shape);
+
+        // Convert attachments to content blocks for multimodal messages
+        let content_blocks = {
+            let mut blocks = Vec::new();
+            if !message_content.trim().is_empty() {
+                blocks.push(ContentBlock::Text {
+                    text: message_content.clone(),
+                });
+            }
+            for att in &message.attachments {
+                if let Some(block) = native_content_block(&shape, att) {
+                    blocks.push(block);
+                }
+            }
+            let starts_with_non_text = blocks
+                .first()
+                .is_some_and(|block| !matches!(block, ContentBlock::Text { .. }));
+            if blocks.len() > 1 || starts_with_non_text {
+                Some(blocks)
+            } else {
+                None
+            }
+        };
+
+        let user_msg = ChatMessage {
+            role: ChatRole::User,
+            content: message_content,
+            content_blocks,
+        };
+
+        // Append user message to history
+        {
+            let mut history = self.history.write().await;
+            history.push(user_msg);
+        }
+
+        // Snapshot history for the request
+        let messages_snapshot = self.history.read().await.clone();
+        let effective_tools = message
+            .tools
+            .as_deref()
+            .or(self.default_tools.as_deref())
+            .filter(|tools| !tools.is_empty());
+        let request_body = self.build_request_body(
+            &messages_snapshot,
+            &RequestOptions {
+                response_format: message.response_format.as_ref(),
+                tools: effective_tools,
+            },
+        )?;
+
+        let streaming_url = self.streaming_endpoint();
+        let builder = self
+            .http_client
+            .post(&streaming_url)
+            .header("Content-Type", "application/json")
+            .json(&request_body);
+
+        let builder = self.apply_auth(builder).await.inspect_err(|_| {
+            *self.state.lock() = SessionState::Failed;
+        })?;
+
+        let response = builder.send().await.map_err(|e| {
+            *self.state.lock() = SessionState::Failed;
+            CoreError::Network(format!("HTTP API session request failed: {e}"))
+        })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "failed to read error body".to_string());
+            *self.state.lock() = SessionState::Failed;
+            return Err(CoreError::Network(format!(
+                "HTTP API error ({status}): {}",
+                body.chars().take(300).collect::<String>()
+            )));
+        }
+
+        let history = self.history.clone();
+        let max_turns = self.config.max_history_turns;
+        let turn_count = &self.turn_count;
+        turn_count.fetch_add(1, Ordering::Relaxed);
+        *self.last_active.lock() = Instant::now();
+
+        // Build the ResponseStream using SSE parsing
+        let stream: ResponseStream = Box::pin(try_stream! {
+            let mut accumulated = String::new();
+            let mut tool_calls: Vec<PartialToolCall> = Vec::new();
+
+            let is_anthropic = matches!(
+                shape,
+                ProviderRequestShape::AnthropicMessages
+                    | ProviderRequestShape::AnthropicVisionMessages
+            );
+            let is_google = matches!(shape, ProviderRequestShape::GoogleGenerateContent);
+
+            let byte_stream = response.bytes_stream();
+            let mut event_stream = byte_stream.eventsource();
+
+            while let Some(event_result) = event_stream.next().await {
+                match event_result {
+                    Ok(event) => {
+                        let parsed = if is_anthropic {
+                            parse_anthropic_sse_event(&event.event, &event.data)
+                        } else if is_google {
+                            parse_google_sse_event(&event.data)
+                        } else if matches!(shape, ProviderRequestShape::OpenAiResponses) {
+                            parse_openai_responses_sse_event(&event.event, &event.data)
+                        } else {
+                            parse_openai_chat_sse_event(&event.data)
+                        };
+
+                        if let Some(msg) = parsed {
+                            match &msg {
+                                OutboundMessage::ToolCallDelta { index, id, name, arguments_chunk } => {
+                                    let idx = *index as usize;
+                                    // Ensure vec is large enough
+                                    while tool_calls.len() <= idx {
+                                        tool_calls.push(PartialToolCall { id: String::new(), name: String::new(), arguments: String::new() });
+                                    }
+                                    if !id.is_empty() { tool_calls[idx].id.clone_from(id); }
+                                    if !name.is_empty() { tool_calls[idx].name.clone_from(name); }
+                                    if !arguments_chunk.is_empty() {
+                                        tool_calls[idx].arguments.push_str(arguments_chunk);
+                                    }
+                                    // ToolCallDelta is internal — don't yield to consumer
+                                    continue;
+                                }
+                                OutboundMessage::Text { content, .. } => {
+                                    accumulated.push_str(content);
+                                }
+                                OutboundMessage::Result { .. } => {
+                                    // Emit accumulated tool calls before saving text history
+                                    for tc in tool_calls.drain(..) {
+                                        if tc.name.is_empty() { continue; }
+                                        let parsed_args = serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
+                                        yield OutboundMessage::ToolUse {
+                                            tool: tc.name,
+                                            input: Some(parsed_args),
+                                            status: ToolUseStatus::Started,
+                                            result: None,
+                                        };
+                                    }
+
+                                    let assistant_msg = ChatMessage {
+                                        role: ChatRole::Assistant,
+                                        content: accumulated.clone(),
+                                        content_blocks: None,
+                                    };
+                                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
+                                    hist.push(assistant_msg);
+                                    truncate_chat_history(&mut hist, max_turns);
+                                }
+                                OutboundMessage::Thinking { .. } => {
+                                    // Stream to frontend but don't accumulate in history
+                                }
+                                _ => {}
+                            }
+                            yield msg;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("SSE stream error: {e}");
+                        // Append whatever we accumulated so far
+                        if !accumulated.is_empty() {
+                            let assistant_msg = ChatMessage {
+                                role: ChatRole::Assistant,
+                                content: accumulated.clone(),
+                                content_blocks: None,
+                            };
+                            let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
+                            hist.push(assistant_msg);
+                            truncate_chat_history(&mut hist, max_turns);
+                        }
+                        Err(CoreError::Network(format!("SSE stream error: {e}")))?;
+                    }
+                }
+            }
+
+            // If stream ended without a message_stop/[DONE] event, still save history
+            if !accumulated.is_empty() {
+                let has_result = {
+                    let hist: tokio::sync::RwLockReadGuard<'_, Vec<ChatMessage>> = history.read().await;
+                    hist.last().is_some_and(|m| m.role == ChatRole::Assistant)
+                };
+                if !has_result {
+                    let assistant_msg = ChatMessage {
+                        role: ChatRole::Assistant,
+                        content: accumulated.clone(),
+                        content_blocks: None,
+                    };
+                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
+                    hist.push(assistant_msg);
+                    truncate_chat_history(&mut hist, max_turns);
+
+                    yield OutboundMessage::Result {
+                        content: accumulated,
+                        done: true,
+                        usage: None,
+                    };
+                }
+            }
+        });
+
+        Ok(stream)
+    }
+
+    fn info(&self) -> ConversationSessionInfo {
+        let elapsed = self.last_active.lock().elapsed();
+        let last_active_utc = Utc::now() - chrono::Duration::from_std(elapsed).unwrap_or_default();
+        ConversationSessionInfo {
+            session_id: self.session_id.clone(),
+            provider_name: format!("{:?}", self.provider_type).to_lowercase(),
+            model: self.model.clone(),
+            state: *self.state.lock(),
+            transport: SessionTransport::HttpApi,
+            created_at: self.created_at,
+            last_active: last_active_utc,
+            turn_count: self.turn_count.load(Ordering::Relaxed),
+        }
+    }
+
+    fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    fn provider_name(&self) -> &str {
+        match self.provider_type {
+            AiProviderType::Anthropic => "anthropic",
+            AiProviderType::OpenAi => "openai",
+            AiProviderType::Google => "google",
+            AiProviderType::Ollama => "ollama",
+            AiProviderType::Bedrock => "bedrock",
+            AiProviderType::Copilot => "copilot",
+            AiProviderType::Generic => "generic",
+        }
+    }
+}

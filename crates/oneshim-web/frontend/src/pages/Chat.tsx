@@ -4,8 +4,10 @@ import {
   Check,
   ChevronDown,
   Copy,
+  Download,
   Loader2,
   MessageSquarePlus,
+  Mic,
   Paperclip,
   Plus,
   RefreshCw,
@@ -20,6 +22,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { downloadBlob, fetchProviderSurfaces } from '../api/client'
+import type { ProviderSurfaceCatalog, ProviderSurfaceSpec } from '../api/contracts'
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 
 // Lazy-loaded syntax highlighter — only fetched when a fenced code block is rendered
@@ -93,7 +97,7 @@ const LazySyntaxHighlighter = React.lazy(async () => {
   return { default: LazyHighlighterWrapper }
 })
 
-import { Alert, Button, Card, CardContent, Input, Select } from '../components/ui'
+import { Alert, Badge, Button, Card, CardContent, Input, Select } from '../components/ui'
 import { defaultSurfaceModel, sortProviderSurfaces } from '../features/providerSurfaces'
 import { addToast } from '../hooks/useToast'
 import { colors, iconSize, interaction, motion, radius, typography } from '../styles/tokens'
@@ -153,6 +157,33 @@ interface ChatMessage {
   tool_call_delta?: { index: number; id: string; name: string; arguments: string }
   usage?: { input_tokens: number; output_tokens: number }
   error?: { code: string; message: string; retryable: boolean }
+}
+
+interface MessageRecord {
+  id: number | null
+  session_id: string
+  role: string
+  content: string
+  thinking: string | null
+  tool_use: string | null
+  usage_input: number | null
+  usage_output: number | null
+  created_at: string
+  seq: number
+}
+
+function recordToChat(r: MessageRecord): ChatMessage {
+  return {
+    role: r.role as ChatMessage['role'],
+    content: r.content,
+    timestamp: r.created_at,
+    thinking: r.thinking ? { content: r.thinking, done: true } : undefined,
+    tool_use: r.tool_use ? JSON.parse(r.tool_use) : undefined,
+    usage:
+      r.usage_input != null && r.usage_output != null
+        ? { input_tokens: r.usage_input, output_tokens: r.usage_output }
+        : undefined,
+  }
 }
 
 type AttachmentPayload =
@@ -230,14 +261,17 @@ const STATE_DOT: Record<string, string> = {
 }
 
 const MAX_CACHED_SESSIONS = 20
-const HTTP_API_SURFACES = sortProviderSurfaces(
-  DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.filter(
-    (surface) =>
-      surface.supports.llm &&
-      surface.execution_kind === 'direct_http' &&
-      surface.llm_transport?.auth_scheme !== 'aws_signature_v4',
-  ),
-)
+
+function filterHttpApiSurfaces(catalog: { surfaces: ProviderSurfaceSpec[] }) {
+  return sortProviderSurfaces(
+    catalog.surfaces.filter(
+      (surface) =>
+        surface.supports.llm &&
+        surface.execution_kind === 'direct_http' &&
+        surface.llm_transport?.auth_scheme !== 'aws_signature_v4',
+    ),
+  )
+}
 
 async function ipc<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
@@ -304,6 +338,8 @@ function highlightText(text: string, query: string): React.ReactNode {
 
 export default function Chat() {
   const { t } = useTranslation()
+  const isHistorical = useCallback((s: SessionInfo) => s.state === 'terminated', [])
+  const [providerCatalog, setProviderCatalog] = useState<ProviderSurfaceCatalog>(DEFAULT_PROVIDER_SURFACE_CATALOG)
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -313,7 +349,7 @@ export default function Chat() {
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [httpSurfaceId, setHttpSurfaceId] = useState<string>(HTTP_API_SURFACES[0]?.surface_id ?? '')
+  const [httpSurfaceId, setHttpSurfaceId] = useState<string>('')
   const [modelOverride, setModelOverride] = useState('')
   const [showMessagePayload, setShowMessagePayload] = useState(false)
   const [contextRegime, setContextRegime] = useState('')
@@ -323,6 +359,14 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const recordingRef = useRef(false)
+  const [audioAvailable, setAudioAvailable] = useState(true)
+  const [audioTooltip, setAudioTooltip] = useState('Hold to speak')
+  const [micMode, setMicMode] = useState<'push_to_talk' | 'voice_activity'>('push_to_talk')
+  const [vadState, setVadState] = useState<'idle' | 'listening' | 'speech' | 'transcribing'>('idle')
+  const [tokenUsage, setTokenUsage] = useState<{ total: number; budget: number | null }>({ total: 0, budget: null })
   const [createError, setCreateError] = useState<string | null>(null)
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -330,6 +374,31 @@ export default function Chat() {
   const rafRef = useRef<number | null>(null)
   const messagesCache = useRef<Map<string, ChatMessage[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch provider catalog dynamically, fall back to static import
+  useEffect(() => {
+    fetchProviderSurfaces()
+      .then(setProviderCatalog)
+      .catch(() => {}) // keep static fallback
+  }, [])
+
+  const httpApiSurfaces = useMemo(() => filterHttpApiSurfaces(providerCatalog), [providerCatalog])
+
+  // Set initial httpSurfaceId once surfaces are available
+  useEffect(() => {
+    if (httpApiSurfaces.length > 0 && !httpSurfaceId) {
+      setHttpSurfaceId(httpApiSurfaces[0].surface_id)
+    }
+  }, [httpApiSurfaces, httpSurfaceId])
+
+  // Refresh token usage after messages change
+  useEffect(() => {
+    ipc<{ totalInputTokens: number; totalOutputTokens: number; dailyBudget: number; budgetRemaining: number | null }>(
+      'get_token_usage',
+    )
+      .then((r) => setTokenUsage({ total: r.totalInputTokens + r.totalOutputTokens, budget: r.dailyBudget || null }))
+      .catch(() => {})
+  }, [])
 
   // Smart auto-scroll: RAF-throttled to avoid forced layout on every scroll event
   const handleScroll = useCallback(() => {
@@ -343,12 +412,84 @@ export default function Chat() {
     })
   }, [])
 
-  // Clean up pending RAF on unmount
+  // Clean up pending RAF and active audio capture on unmount
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (recordingRef.current) {
+        recordingRef.current = false
+        ipc('stop_and_transcribe').catch(() => {})
+      }
+      // Also stop VAD listening if active
+      ipc('stop_vad_listening').catch(() => {})
     }
   }, [])
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const status = await invoke<{
+          enabled: boolean
+          model_status: { state: string }
+          stt_provider_loaded: boolean
+          mic_input_mode?: string
+        }>('get_audio_status')
+        if (!status.enabled) {
+          setAudioAvailable(false)
+          setAudioTooltip(t('chat.audio_disabled', 'Audio disabled in Settings'))
+        } else if (status.model_status.state !== 'ready') {
+          setAudioAvailable(false)
+          setAudioTooltip(t('chat.model_needed', 'Download model in Settings'))
+        } else {
+          setAudioAvailable(true)
+          const mode = (
+            status.mic_input_mode === 'voice_activity' ? 'voice_activity' : 'push_to_talk'
+          ) as typeof micMode
+          setMicMode(mode)
+          setAudioTooltip(
+            mode === 'voice_activity'
+              ? t('chat.mic_vad_tooltip', 'Click to toggle listening')
+              : t('chat.mic_tooltip', 'Hold to speak'),
+          )
+        }
+      } catch {
+        // not in Tauri
+      }
+    })()
+  }, [t])
+
+  // VAD event listeners
+  useEffect(() => {
+    if (micMode !== 'voice_activity') return
+    let cleanup: (() => void) | undefined
+    ;(async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event')
+        const unlisten1 = await listen<{ state: string }>('vad-state-changed', (event) => {
+          const s = event.payload.state as typeof vadState
+          setVadState(s)
+          if (s === 'transcribing') setTranscribing(true)
+          else setTranscribing(false)
+        })
+        const unlisten2 = await listen<{ text: string; duration_secs: number; processing_secs: number }>(
+          'vad-transcription-result',
+          (event) => {
+            if (event.payload.text) {
+              setInput((prev) => (prev ? `${prev} ` : '') + event.payload.text)
+            }
+          },
+        )
+        cleanup = () => {
+          unlisten1()
+          unlisten2()
+        }
+      } catch {
+        // not in Tauri
+      }
+    })()
+    return () => cleanup?.()
+  }, [micMode])
 
   useEffect(() => {
     if (isNearBottom.current) {
@@ -357,11 +498,11 @@ export default function Chat() {
   }, [])
 
   useEffect(() => {
-    if (HTTP_API_SURFACES.length === 0) return
-    if (!HTTP_API_SURFACES.some((surface) => surface.surface_id === httpSurfaceId)) {
-      setHttpSurfaceId(HTTP_API_SURFACES[0].surface_id)
+    if (httpApiSurfaces.length === 0) return
+    if (!httpApiSurfaces.some((surface) => surface.surface_id === httpSurfaceId)) {
+      setHttpSurfaceId(httpApiSurfaces[0].surface_id)
     }
-  }, [httpSurfaceId])
+  }, [httpApiSurfaces, httpSurfaceId])
 
   useEffect(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
@@ -378,8 +519,8 @@ export default function Chat() {
   }, [t])
 
   const selectedHttpSurface = useMemo(
-    () => HTTP_API_SURFACES.find((surface) => surface.surface_id === httpSurfaceId) ?? HTTP_API_SURFACES[0] ?? null,
-    [httpSurfaceId],
+    () => httpApiSurfaces.find((surface) => surface.surface_id === httpSurfaceId) ?? httpApiSurfaces[0] ?? null,
+    [httpApiSurfaces, httpSurfaceId],
   )
   const resolvedModel = useMemo(() => {
     const override = modelOverride.trim()
@@ -574,12 +715,26 @@ export default function Chat() {
   }, [t])
 
   const handleSelectSession = useCallback(
-    (id: string) => {
-      // Save current messages to cache before switching
+    async (id: string) => {
       if (activeId) messagesCache.current.set(activeId, messages)
       setActiveId(id)
-      setMessages(messagesCache.current.get(id) ?? [])
-      // FIFO eviction when cache exceeds limit
+
+      const cached = messagesCache.current.get(id)
+      if (cached) {
+        setMessages(cached)
+      } else {
+        try {
+          const records = await ipc<MessageRecord[]>('load_session_messages', {
+            sessionId: id,
+          })
+          const loaded = records.map(recordToChat)
+          setMessages(loaded)
+          messagesCache.current.set(id, loaded)
+        } catch {
+          setMessages([])
+        }
+      }
+
       if (messagesCache.current.size > MAX_CACHED_SESSIONS) {
         const oldest = messagesCache.current.keys().next().value
         if (oldest) messagesCache.current.delete(oldest)
@@ -618,7 +773,12 @@ export default function Chat() {
   const handleDelete = useCallback(
     async (id: string) => {
       try {
-        await ipc('kill_ai_session', { sessionId: id })
+        const session = sessions.find((s) => s.session_id === id)
+        if (session && isHistorical(session)) {
+          await ipc('delete_session_history', { sessionId: id })
+        } else {
+          await ipc('kill_ai_session', { sessionId: id })
+        }
         setSessions((p) => p.filter((s) => s.session_id !== id))
         messagesCache.current.delete(id)
         if (activeId === id) {
@@ -630,7 +790,65 @@ export default function Chat() {
         addToast('error', errorMessage(e, t('chat.delete_failed', 'Failed to delete the session.')), 5000)
       }
     },
-    [activeId, t],
+    [activeId, sessions, t, isHistorical],
+  )
+
+  const handleExport = useCallback(
+    (format: 'json' | 'markdown') => {
+      if (!activeId || messages.length === 0) return
+      const session = sessions.find((s) => s.session_id === activeId)
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+
+      if (format === 'json') {
+        const payload = {
+          session_id: activeId,
+          provider: session?.provider_name,
+          model: session?.model,
+          transport: session?.transport,
+          exported_at: new Date().toISOString(),
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            ...(m.usage && { usage: m.usage }),
+            ...(m.thinking?.content && { thinking: m.thinking.content }),
+            ...(m.tool_use && { tool_use: m.tool_use }),
+          })),
+        }
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+        downloadBlob(blob, `chat-${timestamp}.json`)
+      } else {
+        const lines: string[] = [
+          `# Chat Export`,
+          ``,
+          `- **Session**: ${activeId}`,
+          `- **Provider**: ${session?.provider_name ?? 'unknown'}`,
+          `- **Model**: ${session?.model ?? 'default'}`,
+          `- **Exported**: ${new Date().toISOString()}`,
+          ``,
+          `---`,
+          ``,
+        ]
+        for (const m of messages) {
+          const prefix = m.role === 'user' ? '## User' : m.role === 'assistant' ? '## Assistant' : '## System'
+          lines.push(`${prefix} (${m.timestamp})`, ``)
+          if (m.thinking?.content) {
+            lines.push(`<details><summary>Thinking</summary>`, ``, m.thinking.content, ``, `</details>`, ``)
+          }
+          lines.push(m.content, ``)
+          if (m.tool_use) {
+            lines.push(`> Tool: **${m.tool_use.tool}** (${m.tool_use.status})`, ``)
+          }
+          if (m.usage) {
+            lines.push(`*Tokens: ${m.usage.input_tokens} in / ${m.usage.output_tokens} out*`, ``)
+          }
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+        downloadBlob(blob, `chat-${timestamp}.md`)
+      }
+      addToast('success', t('chat.exported', 'Conversation exported'), 3000)
+    },
+    [activeId, messages, sessions, t],
   )
 
   const searchMatchCount = useMemo(() => {
@@ -740,7 +958,67 @@ export default function Chat() {
   const isTruncated = messages.length > MAX_VISIBLE_MESSAGES
   const visibleMessages = isTruncated ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages
   const createDisabled = creating || (transport === 'http_api' && !selectedHttpSurface)
-  const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid
+  const activeSession = sessions.find((s) => s.session_id === activeId)
+  const isReadOnly = activeSession ? isHistorical(activeSession) : false
+
+  // PTT mode: hold-to-speak handlers
+  const handleMicDown = useCallback(
+    async (e?: React.SyntheticEvent) => {
+      if (micMode === 'voice_activity') return // VAD uses click toggle
+      // Prevent synthesized mouse events from touch (avoids double-fire)
+      if (e?.nativeEvent instanceof TouchEvent) e.preventDefault()
+      if (isReadOnly || recordingRef.current || transcribing) return
+      // Set ref synchronously to guard against rapid fire / race with handleMicUp
+      recordingRef.current = true
+      setRecording(true)
+      try {
+        await ipc('start_audio_capture')
+      } catch (err) {
+        recordingRef.current = false
+        setRecording(false)
+        addToast('error', errorMessage(err, t('chat.mic_error', 'Microphone not available')), 5000)
+      }
+    },
+    [isReadOnly, transcribing, t, micMode],
+  )
+
+  const handleMicUp = useCallback(async () => {
+    if (micMode === 'voice_activity') return // VAD uses click toggle
+    if (!recordingRef.current) return
+    recordingRef.current = false
+    setRecording(false)
+    setTranscribing(true)
+    try {
+      const result = await ipc<{ text: string }>('stop_and_transcribe')
+      if (result.text) {
+        setInput((prev) => (prev ? `${prev} ` : '') + result.text)
+      }
+    } catch (e) {
+      addToast('error', errorMessage(e, t('chat.stt_error', 'Transcription failed')), 5000)
+    } finally {
+      setTranscribing(false)
+    }
+  }, [t, micMode])
+
+  // VAD mode: click to toggle listening
+  const handleVadToggle = useCallback(async () => {
+    if (isReadOnly || transcribing) return
+    if (vadState === 'idle') {
+      try {
+        await ipc('start_vad_listening')
+      } catch (err) {
+        addToast('error', errorMessage(err, t('chat.mic_error', 'Microphone not available')), 5000)
+      }
+    } else {
+      try {
+        await ipc('stop_vad_listening')
+        setVadState('idle')
+      } catch {
+        // ignore
+      }
+    }
+  }, [isReadOnly, transcribing, vadState, t])
+  const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid || isReadOnly
 
   return (
     <div className="flex h-full min-h-0">
@@ -800,7 +1078,7 @@ export default function Chat() {
                   onChange={(e) => setHttpSurfaceId(e.target.value)}
                   className="w-full text-xs"
                 >
-                  {HTTP_API_SURFACES.map((surface) => (
+                  {httpApiSurfaces.map((surface) => (
                     <option key={surface.surface_id} value={surface.surface_id}>
                       {surface.display_name}
                     </option>
@@ -870,6 +1148,11 @@ export default function Chat() {
                     {s.transport} -- {s.turn_count} {t('chat.turns')}
                   </p>
                 </div>
+                {isHistorical(s) ? (
+                  <Badge size="xs" className="bg-surface-muted text-content-secondary">
+                    {t('chat.history', 'History')}
+                  </Badge>
+                ) : null}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -922,6 +1205,19 @@ export default function Chat() {
                 {active?.model || active?.provider_name || 'Session'}
               </span>
               <span className={cn('text-[10px]', colors.text.secondary)}>({active?.transport})</span>
+              {tokenUsage.total > 0 && (
+                <span
+                  className={cn(
+                    'text-[10px]',
+                    tokenUsage.budget && tokenUsage.total > tokenUsage.budget * 0.9
+                      ? 'text-semantic-error'
+                      : 'text-content-tertiary',
+                  )}
+                >
+                  {tokenUsage.total.toLocaleString()} tokens
+                  {tokenUsage.budget ? ` / ${tokenUsage.budget.toLocaleString()}` : ''}
+                </span>
+              )}
               <div className="ml-auto flex items-center gap-1">
                 {searchOpen && (
                   <div className="flex items-center gap-1">
@@ -960,6 +1256,14 @@ export default function Chat() {
                   }}
                 >
                   <Search className={iconSize.xs} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExport('json')}
+                  title={t('chat.export_json', 'Export JSON')}
+                >
+                  <Download className={iconSize.xs} />
                 </Button>
                 {active?.state === 'failed' && (
                   <Button variant="ghost" size="sm" onClick={handleRetry} className="text-xs">
@@ -1136,45 +1440,115 @@ export default function Chat() {
                 ))}
               </div>
             )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                handleSend()
-              }}
-              className={cn(
-                'flex items-end gap-2 border-muted border-t bg-surface-base px-4 py-3',
-                attachments.length > 0 && 'border-t-0 pt-1.5',
-              )}
-            >
-              <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
-              <Button variant="ghost" size="sm" type="button" onClick={() => fileInputRef.current?.click()}>
-                <Paperclip className={iconSize.sm} />
-              </Button>
-              <textarea
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSend()
-                  }
-                }}
-                placeholder={t('chat.input_placeholder')}
-                rows={1}
-                style={{ overflow: 'hidden' }}
+            {isReadOnly ? (
+              <div
                 className={cn(
-                  'flex-1 resize-none border bg-surface-base px-3 py-2 text-sm placeholder-content-tertiary',
-                  radius.md,
-                  interaction.focusRing,
-                  interaction.interactive,
-                  colors.text.primary,
-                  'max-h-32 border-DEFAULT focus:border-brand-signal',
+                  'flex items-center justify-center border-muted border-t bg-surface-base px-4 py-3 text-xs',
+                  colors.text.secondary,
                 )}
-              />
-              <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
-                <Send className={iconSize.sm} />
-              </Button>
-            </form>
+              >
+                {t('chat.read_only_notice', 'This session has ended. History is read-only.')}
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleSend()
+                }}
+                className={cn(
+                  'flex items-end gap-2 border-muted border-t bg-surface-base px-4 py-3',
+                  attachments.length > 0 && 'border-t-0 pt-1.5',
+                )}
+              >
+                <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
+                <Button variant="ghost" size="sm" type="button" onClick={() => fileInputRef.current?.click()}>
+                  <Paperclip className={iconSize.sm} />
+                </Button>
+                <textarea
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSend()
+                    }
+                  }}
+                  disabled={isReadOnly}
+                  placeholder={t('chat.input_placeholder')}
+                  rows={1}
+                  style={{ overflow: 'hidden' }}
+                  className={cn(
+                    'flex-1 resize-none border bg-surface-base px-3 py-2 text-sm placeholder-content-tertiary',
+                    radius.md,
+                    interaction.focusRing,
+                    interaction.interactive,
+                    colors.text.primary,
+                    'max-h-32 border-DEFAULT focus:border-brand-signal',
+                  )}
+                />
+                {micMode === 'voice_activity' ? (
+                  <button
+                    type="button"
+                    onClick={handleVadToggle}
+                    disabled={isReadOnly || sending || !audioAvailable}
+                    className={cn(
+                      'flex items-center justify-center p-2',
+                      radius.md,
+                      interaction.interactive,
+                      interaction.focusRing,
+                      interaction.disabled,
+                      vadState === 'listening' &&
+                        'animate-pulse bg-status-connected text-content-inverse hover:opacity-90',
+                      vadState === 'speech' && 'animate-pulse bg-semantic-error text-content-inverse hover:opacity-90',
+                      vadState === 'transcribing' && 'bg-semantic-warning text-content-inverse hover:opacity-90',
+                      vadState === 'idle' && 'text-content-secondary hover:bg-surface-hover',
+                    )}
+                    title={
+                      vadState === 'idle'
+                        ? t('chat.mic_vad_tooltip', 'Click to toggle listening')
+                        : t('chat.mic_vad_stop', 'Click to stop listening')
+                    }
+                  >
+                    {vadState === 'transcribing' ? (
+                      <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
+                    ) : (
+                      <Mic className={iconSize.sm} />
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onMouseDown={handleMicDown}
+                    onMouseUp={handleMicUp}
+                    onMouseLeave={handleMicUp}
+                    onTouchStart={handleMicDown}
+                    onTouchEnd={handleMicUp}
+                    onTouchCancel={handleMicUp}
+                    disabled={isReadOnly || sending || transcribing || !audioAvailable}
+                    className={cn(
+                      'flex items-center justify-center p-2',
+                      radius.md,
+                      interaction.interactive,
+                      interaction.focusRing,
+                      interaction.disabled,
+                      transcribing && 'bg-semantic-warning text-content-inverse hover:opacity-90',
+                      recording && 'animate-pulse bg-semantic-error text-content-inverse hover:opacity-90',
+                      !recording && !transcribing && 'text-content-secondary hover:bg-surface-hover',
+                    )}
+                    title={audioTooltip}
+                  >
+                    {transcribing ? (
+                      <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
+                    ) : (
+                      <Mic className={iconSize.sm} />
+                    )}
+                  </button>
+                )}
+                <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
+                  <Send className={iconSize.sm} />
+                </Button>
+              </form>
+            )}
           </>
         )}
       </div>

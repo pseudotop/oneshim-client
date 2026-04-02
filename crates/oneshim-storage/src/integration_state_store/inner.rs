@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use chrono::Utc;
-use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
     IntegrationAckCursor, IntegrationEnvelope, IntegrationInboxItemStatus,
     IntegrationInsightAuditRecord, IntegrationOutboundPayload, IntegrationPromptReceipt,
@@ -9,6 +8,8 @@ use oneshim_core::models::integration::{
     StoredProactivePrompt,
 };
 use uuid::Uuid;
+
+use crate::error::StorageError;
 
 use super::{FileIntegrationStateRegistry, IntegrationStateStorePolicy, MAX_AUDIT_RECORDS};
 
@@ -22,7 +23,7 @@ impl FileIntegrationStateInner {
     pub(super) fn new(
         registry_path: PathBuf,
         policy: IntegrationStateStorePolicy,
-    ) -> Result<Self, CoreError> {
+    ) -> Result<Self, StorageError> {
         if let Some(parent) = registry_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -71,7 +72,7 @@ impl FileIntegrationStateInner {
         }
     }
 
-    fn save_registry(&self, registry: &FileIntegrationStateRegistry) -> Result<(), CoreError> {
+    fn save_registry(&self, registry: &FileIntegrationStateRegistry) -> Result<(), StorageError> {
         registry.save(&self.registry_path)
     }
 
@@ -82,13 +83,13 @@ impl FileIntegrationStateInner {
     pub(super) fn store_session_sync(
         &self,
         state: IntegrationSessionState,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.session = Some(state);
         self.save_registry(&registry)
     }
 
-    pub(super) fn clear_session_sync(&self) -> Result<(), CoreError> {
+    pub(super) fn clear_session_sync(&self) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.session = None;
         self.save_registry(&registry)
@@ -98,7 +99,7 @@ impl FileIntegrationStateInner {
         &self,
         envelope: IntegrationEnvelope,
         payload: IntegrationOutboundPayload,
-    ) -> Result<String, CoreError> {
+    ) -> Result<String, StorageError> {
         let mut registry = self.registry.lock();
         let queue_id = format!("integration_queue_{}", Uuid::new_v4());
         registry.outbox.push(QueuedIntegrationEgressMessage {
@@ -125,7 +126,7 @@ impl FileIntegrationStateInner {
         self.registry.lock().outbox.len()
     }
 
-    pub(super) fn delete_outbox_sync(&self, queue_ids: &[String]) -> Result<(), CoreError> {
+    pub(super) fn delete_outbox_sync(&self, queue_ids: &[String]) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry
             .outbox
@@ -140,7 +141,7 @@ impl FileIntegrationStateInner {
     pub(super) fn store_outbox_ack_cursor_sync(
         &self,
         cursor: IntegrationAckCursor,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.outbox_ack_cursor = Some(cursor);
         self.save_registry(&registry)
@@ -149,7 +150,7 @@ impl FileIntegrationStateInner {
     pub(super) fn upsert_inbox_sync(
         &self,
         prompts: Vec<StoredProactivePrompt>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         for prompt in prompts {
             if let Some(existing) = registry.inbox.get_mut(&prompt.prompt.prompt_id) {
@@ -209,12 +210,12 @@ impl FileIntegrationStateInner {
         prompt_id: &str,
         status: IntegrationInboxItemStatus,
         reason: Option<String>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         let prompt = registry
             .inbox
             .get_mut(prompt_id)
-            .ok_or_else(|| CoreError::NotFound {
+            .ok_or_else(|| StorageError::NotFound {
                 resource_type: "integration_prompt".to_string(),
                 id: prompt_id.to_string(),
             })?;
@@ -230,9 +231,9 @@ impl FileIntegrationStateInner {
         prompt_id: &str,
         envelope: IntegrationEnvelope,
         receipt: IntegrationPromptReceipt,
-    ) -> Result<String, CoreError> {
+    ) -> Result<String, StorageError> {
         if receipt.prompt_id != prompt_id {
-            return Err(CoreError::Validation {
+            return Err(StorageError::Validation {
                 field: "integration.prompt_receipt.prompt_id".to_string(),
                 message: "prompt receipt prompt_id does not match the stored prompt target"
                     .to_string(),
@@ -243,13 +244,13 @@ impl FileIntegrationStateInner {
         let prompt = registry
             .inbox
             .get_mut(prompt_id)
-            .ok_or_else(|| CoreError::NotFound {
+            .ok_or_else(|| StorageError::NotFound {
                 resource_type: "integration_prompt".to_string(),
                 id: prompt_id.to_string(),
             })?;
 
         if prompt.status != IntegrationInboxItemStatus::Pending {
-            return Err(CoreError::Validation {
+            return Err(StorageError::Validation {
                 field: "integration.prompt_receipt.status".to_string(),
                 message: format!(
                     "prompt receipts can only be recorded from the pending state, found {:?}",
@@ -281,12 +282,12 @@ impl FileIntegrationStateInner {
         &self,
         prompt_id: &str,
         presented_at: chrono::DateTime<Utc>,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         let prompt = registry
             .inbox
             .get_mut(prompt_id)
-            .ok_or_else(|| CoreError::NotFound {
+            .ok_or_else(|| StorageError::NotFound {
                 resource_type: "integration_prompt".to_string(),
                 id: prompt_id.to_string(),
             })?;
@@ -294,7 +295,7 @@ impl FileIntegrationStateInner {
         self.save_registry(&registry)
     }
 
-    pub(super) fn expire_inbox_sync(&self) -> Result<usize, CoreError> {
+    pub(super) fn expire_inbox_sync(&self) -> Result<usize, StorageError> {
         let now = Utc::now();
         let mut expired = 0usize;
         let mut registry = self.registry.lock();
@@ -324,7 +325,7 @@ impl FileIntegrationStateInner {
     pub(super) fn store_inbox_ack_cursor_sync(
         &self,
         cursor: IntegrationAckCursor,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.inbox_ack_cursor = Some(cursor);
         self.save_registry(&registry)
@@ -342,7 +343,7 @@ impl FileIntegrationStateInner {
         &self,
         namespace: &str,
         cursor: String,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry
             .producer_checkpoints
@@ -353,7 +354,7 @@ impl FileIntegrationStateInner {
     pub(super) fn record_audit_sync(
         &self,
         record: IntegrationInsightAuditRecord,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), StorageError> {
         let mut registry = self.registry.lock();
         registry.audit_records.push(record);
         if registry.audit_records.len() > MAX_AUDIT_RECORDS {

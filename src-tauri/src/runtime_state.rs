@@ -3,22 +3,27 @@ use oneshim_core::config::{AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
+use oneshim_core::ports::audio_capture::AudioCapturePort;
 use oneshim_core::ports::coaching::CoachingPort;
-use oneshim_core::ports::conversation_session::SessionManager;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
+use oneshim_core::ports::model_downloader::ModelDownloader;
 use oneshim_core::ports::monitor::ActivityMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
+use oneshim_core::ports::session_storage::SessionStoragePort;
+use oneshim_core::ports::stt_provider::SttProvider;
 use oneshim_core::ports::vision::FrameProcessor;
 use oneshim_core::ports::work_classifier::WorkTypeClassifier;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16};
 use std::sync::Arc;
 use tauri::{App, Manager};
 
 use crate::magic_overlay::MagicOverlayHandle;
+use crate::session_manager::SessionManagerImpl;
 
 #[cfg(feature = "server")]
 pub(crate) type OAuthCoordinator =
@@ -42,6 +47,23 @@ pub struct CaptureContext {
     pub consent_manager: Option<Arc<ConsentManager>>,
     /// Work type classifier for scene analysis (A2).
     pub work_classifier: Option<Arc<dyn WorkTypeClassifier>>,
+}
+
+/// Audio capture, STT engine, and model management for voice input.
+#[allow(dead_code)]
+pub struct AudioContext {
+    pub capture: Option<Arc<dyn AudioCapturePort>>,
+    /// RwLock allows hot-reload after model download.
+    pub stt_engine: Arc<tokio::sync::RwLock<Option<Arc<dyn SttProvider>>>>,
+    pub model_downloader: Option<Arc<dyn ModelDownloader>>,
+    pub model_dir: PathBuf,
+    /// Prevents concurrent downloads.
+    pub downloading: Arc<AtomicBool>,
+    /// Cancel flag for active download — set to true to abort.
+    pub download_cancel: Arc<AtomicBool>,
+    /// VAD state: "idle", "listening", "speech", "transcribing".
+    /// Tracked at IPC layer — not inside VadDetector.
+    pub vad_state: Arc<parking_lot::Mutex<String>>,
 }
 
 /// Groups connectivity flags for server, LLM, and CLI connections.
@@ -90,7 +112,11 @@ pub struct AppState {
     /// Suggestion manager for overlay panel (A3). Shares queue with SuggestionReceiver.
     pub suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
     /// AI conversation session manager for Tauri IPC commands.
-    pub session_manager: Option<Arc<dyn SessionManager>>,
+    pub session_manager: Option<Arc<SessionManagerImpl>>,
+    /// Persisted session storage for AI chat history (fire-and-forget writes).
+    pub session_storage: Option<Arc<dyn SessionStoragePort>>,
+    /// Audio capture and STT engine for voice input (P1 Audio STT).
+    pub audio: AudioContext,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -311,6 +337,16 @@ mod tests {
             },
             suggestion_manager: None,
             session_manager: None,
+            session_storage: None,
+            audio: AudioContext {
+                capture: None,
+                stt_engine: Arc::new(tokio::sync::RwLock::new(None)),
+                model_downloader: None,
+                model_dir: PathBuf::from("/tmp/test-models"),
+                downloading: Arc::new(AtomicBool::new(false)),
+                download_cancel: Arc::new(AtomicBool::new(false)),
+                vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
+            },
         })
         .build();
 

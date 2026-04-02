@@ -1,6 +1,6 @@
-import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
 import { mockDynamicJson, mockStaticJson } from './helpers/mock-api'
+import { expect, type Page, test } from './helpers/test'
 
 const searchTitleName = i18nRegex('search.title')
 const searchPlaceholderName = i18nRegex('search.placeholder')

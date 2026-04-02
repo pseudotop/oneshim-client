@@ -165,6 +165,23 @@ export interface AppSettings {
   coaching: CoachingSettings
   integration: IntegrationSettings
   sync: SyncSettings
+  audio: AudioSettings
+}
+
+export interface AudioSettings {
+  enabled: boolean
+  whisper_model_path: string
+  language: string
+  max_recording_secs: number
+  model_size: string
+  stt_provider: string
+  cloud_api_key: string
+  cloud_stt_endpoint: string
+  cloud_timeout_secs: number
+  mic_input_mode: string
+  vad_threshold: number
+  vad_silence_ms: number
+  vad_min_speech_ms: number
 }
 
 export interface AiSessionSettings {

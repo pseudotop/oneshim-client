@@ -1,8 +1,8 @@
+use crate::error::VisionError;
 use fast_image_resize::{images::Image as FirImage, ResizeAlg, ResizeOptions, Resizer};
 use image::{DynamicImage, RgbaImage};
 use lru::LruCache;
 use once_cell::sync::Lazy;
-use oneshim_core::error::CoreError;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use tracing::debug;
@@ -63,7 +63,7 @@ pub fn fast_resize(
     image: &DynamicImage,
     width: u32,
     height: u32,
-) -> Result<DynamicImage, CoreError> {
+) -> Result<DynamicImage, VisionError> {
     let (src_w, src_h) = (image.width(), image.height());
 
     if src_w == width && src_h == height {
@@ -71,10 +71,14 @@ pub fn fast_resize(
     }
 
     if src_w == 0 || src_h == 0 {
-        return Err(CoreError::Internal("Source image size is zero".to_string()));
+        return Err(VisionError::Internal(
+            "Source image size is zero".to_string(),
+        ));
     }
     if width == 0 || height == 0 {
-        return Err(CoreError::Internal("Target image size is zero".to_string()));
+        return Err(VisionError::Internal(
+            "Target image size is zero".to_string(),
+        ));
     }
     // Guard against buffer overflow inside fast_image_resize.
     // 32768 accommodates triple 6K displays (18048px) and 8K monitors.
@@ -88,12 +92,12 @@ pub fn fast_resize(
             target_h = height,
             "Source image exceeds max resize dimension"
         );
-        return Err(CoreError::Internal(format!(
+        return Err(VisionError::Internal(format!(
             "Source image too large for resize: {src_w}x{src_h} (max {MAX_DIM})"
         )));
     }
     if width > MAX_DIM || height > MAX_DIM {
-        return Err(CoreError::Internal(format!(
+        return Err(VisionError::Internal(format!(
             "Target size too large: {width}x{height} (max {MAX_DIM})"
         )));
     }
@@ -109,8 +113,9 @@ pub fn fast_resize(
                 src_w, src_h, width, height, hash
             );
 
-            let result = RgbaImage::from_raw(width, height, cached.clone())
-                .ok_or_else(|| CoreError::Internal("Failed to restore cached image".to_string()))?;
+            let result = RgbaImage::from_raw(width, height, cached.clone()).ok_or_else(|| {
+                VisionError::Internal("Failed to restore cached image".to_string())
+            })?;
 
             return Ok(DynamicImage::ImageRgba8(result));
         }
@@ -124,7 +129,7 @@ pub fn fast_resize(
         src_rgba.into_raw(),
         fast_image_resize::PixelType::U8x4,
     )
-    .map_err(|e| CoreError::Internal(format!("Failed to create source image: {e}")))?;
+    .map_err(|e| VisionError::Internal(format!("Failed to create source image: {e}")))?;
 
     let mut dst_image = FirImage::new(width, height, fast_image_resize::PixelType::U8x4);
 
@@ -135,7 +140,7 @@ pub fn fast_resize(
 
     resizer
         .resize(&src_image, &mut dst_image, &options)
-        .map_err(|e| CoreError::Internal(format!("Resize failed: {e}")))?;
+        .map_err(|e| VisionError::Internal(format!("Resize failed: {e}")))?;
 
     let raw_bytes = dst_image.into_vec();
 
@@ -145,7 +150,7 @@ pub fn fast_resize(
     }
 
     let result = RgbaImage::from_raw(width, height, raw_bytes)
-        .ok_or_else(|| CoreError::Internal("Failed to create result image".to_string()))?;
+        .ok_or_else(|| VisionError::Internal("Failed to create result image".to_string()))?;
 
     debug!(
         "Thumbnail created: {}x{} → {}x{} (hash={}, cache save)",
