@@ -24,6 +24,7 @@ use oneshim_core::ports::ann_index::AnnIndex;
 use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
+use oneshim_core::ports::coaching_storage::CoachingStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::overlay_driver::OverlayDriver;
 use oneshim_core::ports::storage::StorageService;
@@ -159,9 +160,8 @@ pub struct Scheduler {
     /// Analysis provider for LLM personalization of coaching messages (Phase 2).
     pub(super) analysis_provider:
         Option<Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>>,
-    /// Concrete SQLite storage for coaching event persistence (Phase 2).
-    /// The coaching storage methods are on `SqliteStorage` directly, not via a trait.
-    pub(super) coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    /// Focused coaching event persistence port (Phase 2).
+    pub(super) coaching_storage: Option<Arc<dyn CoachingStoragePort>>,
     /// Shared flag: when `true` the monitor loop skips capture/frame processing.
     pub(super) capture_paused: Arc<std::sync::atomic::AtomicBool>,
     /// Whether detection overlay is active. When `true`, the monitor loop
@@ -386,10 +386,7 @@ impl Scheduler {
     }
 
     #[allow(dead_code)]
-    pub fn with_coaching_storage(
-        mut self,
-        storage: Arc<oneshim_storage::sqlite::SqliteStorage>,
-    ) -> Self {
+    pub fn with_coaching_storage(mut self, storage: Arc<dyn CoachingStoragePort>) -> Self {
         self.coaching_storage = Some(storage);
         self
     }

@@ -1,5 +1,7 @@
 use anyhow::Result;
 use oneshim_core::config::AppConfig;
+use oneshim_core::ports::accessibility::AccessibilityExtractor;
+use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
 #[cfg(feature = "analysis")]
 use oneshim_network::analysis_client::AnalysisClient;
 #[cfg(feature = "server")]
@@ -17,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::capture_services::SharedCaptureServices;
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
 use crate::scheduler::SchedulerConfig;
@@ -25,10 +28,11 @@ use crate::scheduler::SchedulerConfig;
 pub(crate) struct AgentSupportContext {
     pub(crate) frame_storage: Arc<FrameFileStorage>,
     pub(crate) system_monitor: Arc<oneshim_monitor::system::SysInfoMonitor>,
-    pub(crate) process_monitor: Arc<dyn oneshim_core::ports::monitor::ProcessMonitor>,
-    pub(crate) activity_monitor: Arc<oneshim_monitor::activity::ActivityTracker>,
+    pub(crate) process_monitor: Arc<dyn ProcessMonitor>,
+    pub(crate) activity_monitor: Arc<dyn ActivityMonitor>,
     pub(crate) capture_trigger: Arc<dyn oneshim_core::ports::vision::CaptureTrigger>,
     pub(crate) frame_processor: Arc<dyn oneshim_core::ports::vision::FrameProcessor>,
+    pub(crate) accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
     pub(crate) scheduler_config: SchedulerConfig,
     pub(crate) batch_sink_opt: Option<Arc<dyn oneshim_core::ports::batch_sink::BatchSink>>,
     pub(crate) api_client_opt: Option<Arc<dyn oneshim_core::ports::api_client::ApiClient>>,
@@ -61,6 +65,7 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
     /// When set, the SuggestionReceiver will use this queue instead of creating its own.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    shared_capture_services: Option<Arc<SharedCaptureServices>>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -76,6 +81,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             storage: None,
             app_handle: None,
             shared_suggestion_queue: None,
+            shared_capture_services: None,
         }
     }
 
@@ -97,6 +103,14 @@ impl<'a> AgentSupportContextBuilder<'a> {
         queue: Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>,
     ) -> Self {
         self.shared_suggestion_queue = Some(queue);
+        self
+    }
+
+    pub(crate) fn with_shared_capture_services(
+        mut self,
+        services: Arc<SharedCaptureServices>,
+    ) -> Self {
+        self.shared_capture_services = Some(services);
         self
     }
 
@@ -143,32 +157,54 @@ impl<'a> AgentSupportContextBuilder<'a> {
     }
 
     pub(crate) async fn build(self) -> Result<AgentSupportContext> {
-        let frame_storage = Arc::new(
-            FrameFileStorage::new(
-                self.data_dir.to_path_buf(),
-                self.config.storage.max_storage_mb,
-                self.config.storage.retention_days,
+        let (
+            frame_storage,
+            process_monitor,
+            activity_monitor,
+            frame_processor,
+            accessibility_extractor,
+        ) = if let Some(ref shared) = self.shared_capture_services {
+            (
+                shared.frame_storage.clone(),
+                shared.process_monitor.clone(),
+                shared.activity_monitor.clone(),
+                shared.frame_processor.clone(),
+                shared.accessibility_extractor.clone(),
             )
-            .await?,
-        );
+        } else {
+            let frame_storage = Arc::new(
+                FrameFileStorage::new(
+                    self.data_dir.to_path_buf(),
+                    self.config.storage.max_storage_mb,
+                    self.config.storage.retention_days,
+                )
+                .await?,
+            );
+            let process_monitor: Arc<dyn ProcessMonitor> =
+                Arc::new(oneshim_monitor::process::ProcessTracker::new());
+            let activity_monitor: Arc<dyn ActivityMonitor> = Arc::new(
+                oneshim_monitor::activity::ActivityTracker::new(process_monitor.clone()),
+            );
+            let ocr_tessdata = std::env::var("ONESHIM_TESSDATA").ok().map(PathBuf::from);
+            let frame_processor: Arc<dyn oneshim_core::ports::vision::FrameProcessor> =
+                Arc::new(EdgeFrameProcessor::new(
+                    self.config.vision.thumbnail_width,
+                    self.config.vision.thumbnail_height,
+                    ocr_tessdata,
+                ));
+            (
+                frame_storage,
+                process_monitor,
+                activity_monitor,
+                frame_processor,
+                None,
+            )
+        };
 
         let system_monitor = Arc::new(oneshim_monitor::system::SysInfoMonitor::new());
-        let process_monitor: Arc<dyn oneshim_core::ports::monitor::ProcessMonitor> =
-            Arc::new(oneshim_monitor::process::ProcessTracker::new());
-        let activity_monitor = Arc::new(oneshim_monitor::activity::ActivityTracker::new(
-            process_monitor.clone(),
-        ));
-
         let capture_trigger: Arc<dyn oneshim_core::ports::vision::CaptureTrigger> = Arc::new(
             SmartCaptureTrigger::new(self.config.vision.capture_throttle_ms),
         );
-        let ocr_tessdata = std::env::var("ONESHIM_TESSDATA").ok().map(PathBuf::from);
-        let frame_processor: Arc<dyn oneshim_core::ports::vision::FrameProcessor> =
-            Arc::new(EdgeFrameProcessor::new(
-                self.config.vision.thumbnail_width,
-                self.config.vision.thumbnail_height,
-                ocr_tessdata,
-            ));
 
         let session_id = generate_session_id();
         #[cfg(feature = "server")]
@@ -248,6 +284,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             activity_monitor,
             capture_trigger,
             frame_processor,
+            accessibility_extractor,
             scheduler_config,
             batch_sink_opt,
             api_client_opt,

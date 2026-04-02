@@ -1,5 +1,6 @@
 mod calibration_store_impl;
 mod coaching_storage;
+mod coaching_storage_port_impl;
 mod device_identity;
 pub(crate) mod edge_intelligence;
 mod events;
@@ -11,6 +12,7 @@ mod lan_pin_store;
 mod maintenance;
 mod metrics;
 mod override_store_impl;
+mod session_context_store_impl;
 mod tags;
 pub mod vector_index_impl;
 pub mod vector_store_impl;

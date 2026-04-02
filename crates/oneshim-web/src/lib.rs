@@ -35,6 +35,7 @@ pub mod embedded;
 pub mod error;
 pub mod handlers;
 pub mod routes;
+pub mod runtime_bindings;
 pub mod services;
 pub mod storage_port;
 pub mod update_control;
@@ -72,6 +73,11 @@ pub use oneshim_api_contracts::stream::{
 };
 
 pub use oneshim_core::config::WebConfig as CoreWebConfig;
+pub use runtime_bindings::{
+    AnalysisRuntimeBindings, AutomationRuntimeBindings, CoreRuntimeBindings,
+    IntegrationRuntimeBindings, SecretRuntimeBindings, SessionRuntimeBindings,
+    WebServerRuntimeBindings,
+};
 
 const EVENT_CHANNEL_CAPACITY: usize = 256;
 
@@ -108,32 +114,6 @@ pub struct AppState {
     pub coaching_engine: Option<Arc<dyn CoachingPort>>,
     pub session_manager: Option<Arc<dyn SessionManager>>,
     pub pomodoro: Arc<std::sync::Mutex<Option<oneshim_core::models::pomodoro::PomodoroSession>>>,
-}
-
-#[derive(Clone, Default)]
-pub struct WebServerRuntimeBindings {
-    pub event_tx: Option<broadcast::Sender<RealtimeEvent>>,
-    pub frames_dir: Option<std::path::PathBuf>,
-    pub config_manager: Option<ConfigManager>,
-    pub default_secret_backend_kind: Option<CredentialBackendKind>,
-    pub secret_store: Option<Arc<dyn SecretStore>>,
-    pub secret_stores: Option<SecretStoreSet>,
-    pub audit_logger: Option<Arc<dyn AuditLogPort>>,
-    pub automation_controller: Option<Arc<dyn AutomationPort>>,
-    pub ai_runtime_status: Option<AiRuntimeStatus>,
-    pub integration_runtime_status: Option<IntegrationOutboundRuntimeStatus>,
-    pub integration_auth: Option<Arc<dyn IntegrationAuthPort>>,
-    pub integration_session: Option<Arc<dyn IntegrationSessionPort>>,
-    pub integration_outbox: Option<Arc<dyn IntegrationOutboxPort>>,
-    pub integration_inbox: Option<Arc<dyn IntegrationInboxPort>>,
-    pub integration_inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
-    pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
-    pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
-    pub update_control: Option<update_control::UpdateControl>,
-    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
-    pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
-    pub coaching_engine: Option<Arc<dyn CoachingPort>>,
-    pub session_manager: Option<Arc<dyn SessionManager>>,
 }
 
 pub struct WebServer {
@@ -291,70 +271,83 @@ impl WebServer {
     }
 
     pub fn with_runtime_bindings(mut self, bindings: WebServerRuntimeBindings) -> Self {
-        if let Some(event_tx) = bindings.event_tx {
+        let WebServerRuntimeBindings {
+            core,
+            secrets,
+            automation,
+            integration,
+            analysis,
+            session,
+        } = bindings;
+
+        if let Some(event_tx) = core.event_tx {
             self.state.event_tx = event_tx;
         }
-        if let Some(frames_dir) = bindings.frames_dir {
+        if let Some(frames_dir) = core.frames_dir {
             self.state.frames_dir = Some(frames_dir);
         }
-        if let Some(config_manager) = bindings.config_manager {
+        if let Some(config_manager) = core.config_manager {
             self.state.config_manager = Some(config_manager);
         }
-        if let Some(default_secret_backend_kind) = bindings.default_secret_backend_kind {
-            self.state.default_secret_backend_kind = default_secret_backend_kind;
-        }
-        if let Some(secret_store) = bindings.secret_store {
-            self.state.secret_store = Some(secret_store);
-        }
-        if let Some(secret_stores) = bindings.secret_stores {
-            self.state.secret_stores = Some(secret_stores);
-        }
-        if let Some(audit_logger) = bindings.audit_logger {
-            self.state.audit_logger = Some(audit_logger);
-        }
-        if let Some(automation_controller) = bindings.automation_controller {
-            self.state.automation_controller = Some(automation_controller);
-        }
-        if let Some(ai_runtime_status) = bindings.ai_runtime_status {
-            self.state.ai_runtime_status = Some(ai_runtime_status);
-        }
-        if let Some(integration_runtime_status) = bindings.integration_runtime_status {
-            self.state.integration_runtime_status = Some(integration_runtime_status);
-        }
-        if let Some(integration_auth) = bindings.integration_auth {
-            self.state.integration_auth = Some(integration_auth);
-        }
-        if let Some(integration_session) = bindings.integration_session {
-            self.state.integration_session = Some(integration_session);
-        }
-        if let Some(integration_outbox) = bindings.integration_outbox {
-            self.state.integration_outbox = Some(integration_outbox);
-        }
-        if let Some(integration_inbox) = bindings.integration_inbox {
-            self.state.integration_inbox = Some(integration_inbox);
-        }
-        if let Some(integration_inbox_store) = bindings.integration_inbox_store {
-            self.state.integration_inbox_store = Some(integration_inbox_store);
-        }
-        if let Some(integration_audit) = bindings.integration_audit {
-            self.state.integration_audit = Some(integration_audit);
-        }
-        if let Some(integration_runtime_telemetry) = bindings.integration_runtime_telemetry {
-            self.state.integration_runtime_telemetry = Some(integration_runtime_telemetry);
-        }
-        if let Some(update_control) = bindings.update_control {
+        if let Some(update_control) = core.update_control {
             self.state.update_control = Some(update_control);
         }
-        if let Some(override_store) = bindings.override_store {
+
+        if let Some(default_secret_backend_kind) = secrets.default_secret_backend_kind {
+            self.state.default_secret_backend_kind = default_secret_backend_kind;
+        }
+        if let Some(secret_store) = secrets.secret_store {
+            self.state.secret_store = Some(secret_store);
+        }
+        if let Some(secret_stores) = secrets.secret_stores {
+            self.state.secret_stores = Some(secret_stores);
+        }
+
+        if let Some(audit_logger) = automation.audit_logger {
+            self.state.audit_logger = Some(audit_logger);
+        }
+        if let Some(automation_controller) = automation.automation_controller {
+            self.state.automation_controller = Some(automation_controller);
+        }
+        if let Some(ai_runtime_status) = automation.ai_runtime_status {
+            self.state.ai_runtime_status = Some(ai_runtime_status);
+        }
+
+        if let Some(integration_runtime_status) = integration.integration_runtime_status {
+            self.state.integration_runtime_status = Some(integration_runtime_status);
+        }
+        if let Some(integration_auth) = integration.integration_auth {
+            self.state.integration_auth = Some(integration_auth);
+        }
+        if let Some(integration_session) = integration.integration_session {
+            self.state.integration_session = Some(integration_session);
+        }
+        if let Some(integration_outbox) = integration.integration_outbox {
+            self.state.integration_outbox = Some(integration_outbox);
+        }
+        if let Some(integration_inbox) = integration.integration_inbox {
+            self.state.integration_inbox = Some(integration_inbox);
+        }
+        if let Some(integration_inbox_store) = integration.integration_inbox_store {
+            self.state.integration_inbox_store = Some(integration_inbox_store);
+        }
+        if let Some(integration_audit) = integration.integration_audit {
+            self.state.integration_audit = Some(integration_audit);
+        }
+        if let Some(integration_runtime_telemetry) = integration.integration_runtime_telemetry {
+            self.state.integration_runtime_telemetry = Some(integration_runtime_telemetry);
+        }
+
+        if let Some(override_store) = analysis.override_store {
             self.state.override_store = Some(override_store);
         }
-        if let Some(recluster_requested) = bindings.recluster_requested {
+        if let Some(recluster_requested) = analysis.recluster_requested {
             self.state.recluster_requested = Some(recluster_requested);
         }
-        if let Some(coaching_engine) = bindings.coaching_engine {
+        if let Some(coaching_engine) = analysis.coaching_engine {
             self.state.coaching_engine = Some(coaching_engine);
         }
-        if let Some(session_manager) = bindings.session_manager {
+        if let Some(session_manager) = session.session_manager {
             self.state.session_manager = Some(session_manager);
         }
         self
@@ -656,11 +649,23 @@ mod tests {
 
         let server = WebServer::new(storage, WebConfig::default()).with_runtime_bindings(
             WebServerRuntimeBindings {
-                event_tx: Some(event_tx.clone()),
-                frames_dir: Some(frames_dir.clone()),
-                default_secret_backend_kind: Some(CredentialBackendKind::Env),
-                ai_runtime_status: Some(ai_runtime_status.clone()),
-                integration_runtime_status: Some(integration_runtime_status.clone()),
+                core: CoreRuntimeBindings {
+                    event_tx: Some(event_tx.clone()),
+                    frames_dir: Some(frames_dir.clone()),
+                    ..Default::default()
+                },
+                secrets: SecretRuntimeBindings {
+                    default_secret_backend_kind: Some(CredentialBackendKind::Env),
+                    ..Default::default()
+                },
+                automation: AutomationRuntimeBindings {
+                    ai_runtime_status: Some(ai_runtime_status.clone()),
+                    ..Default::default()
+                },
+                integration: IntegrationRuntimeBindings {
+                    integration_runtime_status: Some(integration_runtime_status.clone()),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         );

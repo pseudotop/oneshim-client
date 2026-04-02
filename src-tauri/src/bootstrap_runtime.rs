@@ -6,12 +6,39 @@ use oneshim_core::config_manager::ConfigManager;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::runtime::{Handle, Runtime};
+use tokio::sync::watch;
 use tracing::{info, warn};
 
 use crate::bootstrap_preflight::BootstrapPreflightCoordinator;
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerBootstrapContext;
+
+pub(crate) struct ManagedBackgroundRuntime {
+    handle: Handle,
+    shutdown_tx: watch::Sender<bool>,
+    join_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+impl ManagedBackgroundRuntime {
+    pub(crate) fn handle(&self) -> Handle {
+        self.handle.clone()
+    }
+
+    pub(crate) fn shutdown_blocking(&self) {
+        let _ = self.shutdown_tx.send(true);
+        if let Some(join_handle) = self.join_handle.lock().expect("join handle lock").take() {
+            let _ = join_handle.join();
+        }
+    }
+}
+
+impl Drop for ManagedBackgroundRuntime {
+    fn drop(&mut self) {
+        self.shutdown_blocking();
+    }
+}
 
 pub(crate) struct BootstrapRuntimeBundle {
     pub(crate) db_path: PathBuf,
@@ -19,6 +46,7 @@ pub(crate) struct BootstrapRuntimeBundle {
     pub(crate) config_manager: ConfigManager,
     pub(crate) config: AppConfig,
     pub(crate) runtime_handle: Handle,
+    pub(crate) background_runtime: Arc<ManagedBackgroundRuntime>,
     pub(crate) web_port: Arc<AtomicU16>,
     #[cfg(feature = "server")]
     pub(crate) server: ServerBootstrapContext,
@@ -75,7 +103,8 @@ impl BootstrapRuntimeBuilder {
         });
         info!("settings file: {:?}", config_manager.config_path());
 
-        let runtime_handle = spawn_background_runtime()?;
+        let background_runtime = spawn_background_runtime()?;
+        let runtime_handle = background_runtime.handle();
         let config = config_manager.get();
         let web_port = Arc::new(AtomicU16::new(config.web.port));
         BootstrapPreflightCoordinator::run(&config, &data_dir_path);
@@ -91,6 +120,7 @@ impl BootstrapRuntimeBuilder {
                 config_manager,
                 config,
                 runtime_handle,
+                background_runtime,
                 web_port,
                 server,
             })
@@ -104,6 +134,7 @@ impl BootstrapRuntimeBuilder {
                 config_manager,
                 config,
                 runtime_handle,
+                background_runtime,
                 web_port,
                 integration_runtime_status: IntegrationOutboundRuntimeStatus::default(),
             })
@@ -121,13 +152,24 @@ fn resolve_db_path(data_dir: Option<&Path>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("./oneshim.db"))
 }
 
-fn spawn_background_runtime() -> Result<Handle> {
+pub(crate) fn spawn_background_runtime() -> Result<Arc<ManagedBackgroundRuntime>> {
     let runtime = Runtime::new()?;
     let handle = runtime.handle().clone();
-    std::thread::spawn(move || {
-        runtime.block_on(std::future::pending::<()>());
+    let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+    let join_handle = std::thread::spawn(move || {
+        runtime.block_on(async move {
+            while !*shutdown_rx.borrow() {
+                if shutdown_rx.changed().await.is_err() {
+                    break;
+                }
+            }
+        });
     });
-    Ok(handle)
+    Ok(Arc::new(ManagedBackgroundRuntime {
+        handle,
+        shutdown_tx,
+        join_handle: Mutex::new(Some(join_handle)),
+    }))
 }
 
 #[cfg(test)]
@@ -157,5 +199,11 @@ mod tests {
             bundle.db_path,
             PathBuf::from("/tmp/bootstrap_override/oneshim.db")
         );
+    }
+
+    #[test]
+    fn managed_background_runtime_shuts_down_cleanly() {
+        let runtime = spawn_background_runtime().expect("background runtime");
+        runtime.shutdown_blocking();
     }
 }

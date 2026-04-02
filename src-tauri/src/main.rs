@@ -25,6 +25,7 @@ mod background_runtime;
 mod bootstrap_preflight;
 mod bootstrap_runtime;
 mod bridge_cli;
+mod capture_services;
 mod cli_subscription_bridge;
 mod commands;
 mod desktop_permissions;
@@ -66,6 +67,9 @@ mod session_adapters;
 mod session_context;
 mod session_manager;
 mod setup;
+mod setup_platform;
+mod setup_shortcuts;
+mod setup_windows;
 mod skill_loader;
 mod storage_runtime;
 mod subprocess_provider;
@@ -272,6 +276,7 @@ fn main() {
                 if state.shutdown_tx.send(true).is_err() {
                     warn!("shutdown signal send failed (receivers already dropped)");
                 }
+                state.background_runtime.shutdown_blocking();
             }
         }
         #[cfg(target_os = "macos")]

@@ -4,8 +4,6 @@
 //! background task that streams `OutboundMessage` events to the frontend via
 //! Tauri events on the channel `ai-session:<session_id>`.
 
-use std::sync::Arc;
-
 use futures::StreamExt;
 use serde::Deserialize;
 use tauri::{command, AppHandle, Emitter};
@@ -14,10 +12,8 @@ use oneshim_core::models::ai_session::{
     Attachment, ConversationSessionInfo, MessageContext, MessageRole, SessionConfig,
     SessionMessage, SessionState, ToolDefinition,
 };
-use oneshim_core::ports::conversation_session::SessionManager;
 
 use crate::runtime_state::AppState;
-use crate::session_manager::SessionManagerImpl;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,7 +74,7 @@ pub async fn send_session_message(
         response_format: request.response_format,
     };
 
-    let mgr_clone: Arc<SessionManagerImpl> = mgr.clone();
+    let mgr_clone = mgr.clone();
     let mut stream = match session.send_message(&msg).await {
         Ok(s) => s,
         Err(err) => {

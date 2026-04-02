@@ -4,6 +4,7 @@ use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::coaching::CoachingPort;
+use oneshim_core::ports::conversation_session::SessionManager;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::monitor::ActivityMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
@@ -18,7 +19,6 @@ use std::sync::Arc;
 use tauri::{App, Manager};
 
 use crate::magic_overlay::MagicOverlayHandle;
-use crate::session_manager::SessionManagerImpl;
 
 #[cfg(feature = "server")]
 pub(crate) type OAuthCoordinator =
@@ -58,6 +58,7 @@ pub struct ConnectionStatus {
 #[allow(dead_code)]
 pub struct AppState {
     pub runtime_handle: tokio::runtime::Handle,
+    pub background_runtime: Arc<crate::bootstrap_runtime::ManagedBackgroundRuntime>,
     pub config: AppConfig,
     pub web_port: Arc<AtomicU16>,
     pub storage: Arc<SqliteStorage>,
@@ -89,7 +90,7 @@ pub struct AppState {
     /// Suggestion manager for overlay panel (A3). Shares queue with SuggestionReceiver.
     pub suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
     /// AI conversation session manager for Tauri IPC commands.
-    pub session_manager: Option<Arc<SessionManagerImpl>>,
+    pub session_manager: Option<Arc<dyn SessionManager>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -278,6 +279,8 @@ mod tests {
 
         let registration = ManagedStateBuilder::new(AppState {
             runtime_handle: handle,
+            background_runtime: crate::bootstrap_runtime::spawn_background_runtime()
+                .expect("background runtime"),
             config: AppConfig::default_config(),
             web_port: Arc::new(AtomicU16::new(0)),
             storage,
