@@ -1,7 +1,7 @@
 use serde::Serialize;
 use tauri::command;
 
-use crate::runtime_state::AppState;
+use crate::runtime_state::SuggestionRuntimeState;
 
 #[derive(Serialize)]
 pub struct SuggestionViewDto {
@@ -25,12 +25,9 @@ fn source_label(source: &oneshim_core::models::suggestion::SuggestionSource) -> 
 
 #[command]
 pub async fn get_pending_suggestions(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, SuggestionRuntimeState>,
 ) -> Result<Vec<SuggestionViewDto>, String> {
-    let mgr = state
-        .suggestion_manager
-        .as_ref()
-        .ok_or("Suggestions not available")?;
+    let mgr = state.manager().ok_or("Suggestions not available")?;
 
     // Collect suggestions from queue into a Vec first, then drop the queue lock
     // BEFORE calling is_read() — is_read() acquires its own lock (read_ids),
@@ -71,13 +68,10 @@ pub async fn get_pending_suggestions(
 
 #[command]
 pub async fn get_suggestion_history(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, SuggestionRuntimeState>,
     limit: Option<u32>,
 ) -> Result<Vec<SuggestionViewDto>, String> {
-    let mgr = state
-        .suggestion_manager
-        .as_ref()
-        .ok_or("Suggestions not available")?;
+    let mgr = state.manager().ok_or("Suggestions not available")?;
 
     let history = mgr.history().lock().await;
     let entries = history.recent(limit.unwrap_or(20) as usize);
@@ -99,14 +93,11 @@ pub async fn get_suggestion_history(
 
 #[command]
 pub async fn submit_suggestion_feedback(
-    state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, SuggestionRuntimeState>,
     suggestion_id: String,
     action: String,
 ) -> Result<(), String> {
-    let mgr = state
-        .suggestion_manager
-        .as_ref()
-        .ok_or("Suggestions not available")?;
+    let mgr = state.manager().ok_or("Suggestions not available")?;
 
     // Send feedback to server
     match action.as_str() {
@@ -126,7 +117,7 @@ pub async fn submit_suggestion_feedback(
                 .await
                 .map_err(|e| e.to_string())?;
             // Notify overlay that suggestions changed (defer keeps item in queue)
-            if let Some(ref overlay) = state.magic_overlay {
+            if let Some(overlay) = state.overlay() {
                 let count = mgr.queue().lock().await.len();
                 overlay.emit_suggestions_changed(count);
             }
@@ -150,7 +141,7 @@ pub async fn submit_suggestion_feedback(
     }
 
     // Notify overlay that suggestions changed (item removed from queue)
-    if let Some(ref overlay) = state.magic_overlay {
+    if let Some(overlay) = state.overlay() {
         overlay.emit_suggestions_changed(remaining_count);
     }
 

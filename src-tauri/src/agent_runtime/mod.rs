@@ -7,6 +7,7 @@ use oneshim_core::config::AppConfig;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
+use oneshim_core::ports::coaching_storage::CoachingStoragePort;
 use oneshim_core::ports::storage::StorageService;
 #[cfg(feature = "server")]
 use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
@@ -19,6 +20,7 @@ use tokio::sync::{broadcast, watch};
 use tracing::{error, info};
 
 use crate::agent_runtime_support::AgentSupportContextBuilder;
+use crate::capture_services::SharedCaptureServices;
 use crate::focus_analyzer::FocusStorage;
 use crate::scheduler::shared_regime_state::SharedRegimeState;
 use crate::scheduler::{Scheduler, SchedulerStorage};
@@ -47,7 +49,7 @@ pub(crate) struct AgentRuntimeBundle {
     oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
     app_handle: AppHandle,
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
-    coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    coaching_storage: Option<Arc<dyn CoachingStoragePort>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
     overlay_driver: Option<Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver>>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
@@ -63,6 +65,7 @@ pub(crate) struct AgentRuntimeBundle {
     suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
     suggestions_enabled: bool,
     focus_mode: Option<Arc<crate::focus_mode::FocusModeState>>,
+    shared_capture_services: Option<Arc<SharedCaptureServices>>,
     /// Shared suggestion queue — SAME Arc as SuggestionManager's queue,
     /// so SSE-received suggestions are visible in IPC queries.
     shared_suggestion_queue:
@@ -91,10 +94,14 @@ impl AgentRuntimeBundle {
         )
         .with_storage(self.storage.clone())
         .with_app_handle(self.app_handle.clone());
+        if let Some(ref capture_services) = self.shared_capture_services {
+            builder = builder.with_shared_capture_services(capture_services.clone());
+        }
         if let Some(ref shared_queue) = self.shared_suggestion_queue {
             builder = builder.with_shared_suggestion_queue(shared_queue.clone());
         }
         let support = builder.build().await?;
+        let accessibility_extractor = support.accessibility_extractor.clone();
 
         let mut scheduler = Scheduler::new(
             support.scheduler_config,
@@ -252,7 +259,9 @@ impl AgentRuntimeBundle {
                 .unwrap_or(false);
 
             if text_config.enabled && text_config.accessibility_extraction && ax_consent_ok {
-                if let Some(extractor) = oneshim_vision::accessibility::create_extractor() {
+                if let Some(extractor) =
+                    accessibility_extractor.or_else(oneshim_vision::accessibility::create_extractor)
+                {
                     info!(
                         name = extractor.name(),
                         "Accessibility extractor enabled (Phase 2)"
@@ -290,7 +299,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
     app_handle: AppHandle,
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
-    coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    coaching_storage: Option<Arc<dyn CoachingStoragePort>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
     overlay_driver: Option<Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver>>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
@@ -306,6 +315,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
     suggestions_enabled: bool,
     focus_mode: Option<Arc<crate::focus_mode::FocusModeState>>,
+    shared_capture_services: Option<Arc<SharedCaptureServices>>,
     /// Shared suggestion queue — passed through to AgentSupportContextBuilder
     /// so the SuggestionReceiver uses the same queue as SuggestionManager.
     shared_suggestion_queue:
@@ -364,6 +374,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             suggestion_receiver: None,
             suggestions_enabled: false,
             focus_mode: None,
+            shared_capture_services: None,
             shared_suggestion_queue: None,
             shared_regime: None,
         }
@@ -374,6 +385,14 @@ impl<'a> AgentRuntimeBuilder<'a> {
         focus_mode: Arc<crate::focus_mode::FocusModeState>,
     ) -> Self {
         self.focus_mode = Some(focus_mode);
+        self
+    }
+
+    pub(crate) fn with_shared_capture_services(
+        mut self,
+        services: Arc<SharedCaptureServices>,
+    ) -> Self {
+        self.shared_capture_services = Some(services);
         self
     }
 
@@ -438,10 +457,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
-    pub(crate) fn with_coaching_storage(
-        mut self,
-        storage: Arc<oneshim_storage::sqlite::SqliteStorage>,
-    ) -> Self {
+    pub(crate) fn with_coaching_storage(mut self, storage: Arc<dyn CoachingStoragePort>) -> Self {
         self.coaching_storage = Some(storage);
         self
     }
@@ -570,6 +586,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             suggestion_receiver: self.suggestion_receiver,
             suggestions_enabled: self.suggestions_enabled,
             focus_mode: self.focus_mode,
+            shared_capture_services: self.shared_capture_services,
             shared_suggestion_queue: self.shared_suggestion_queue,
             shared_regime: self.shared_regime,
         }

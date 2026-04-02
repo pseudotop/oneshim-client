@@ -69,9 +69,18 @@ pub trait SessionManager: Send + Sync {
         session_id: &str,
     ) -> Result<Arc<dyn ConversationSession>, CoreError>;
 
+    /// Recover a failed session when retry budget remains.
+    async fn recover_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError>;
+
     /// Reset idle timer for a session (keeps it alive during active use).
     async fn touch_session(&self, session_id: &str);
 
     /// Report an adapter-level failure. Returns the resulting session state.
     async fn report_failure(&self, session_id: &str, error: &CoreError) -> SessionState;
+
+    /// Terminate all active sessions during app shutdown.
+    async fn shutdown_all(&self);
 }

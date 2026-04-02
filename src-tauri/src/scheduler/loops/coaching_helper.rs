@@ -3,6 +3,7 @@ use tracing::{debug, info, warn};
 
 use oneshim_analysis::CoachingEngine;
 use oneshim_core::models::coaching;
+use oneshim_core::ports::coaching_storage::CoachingStoragePort;
 
 use crate::magic_overlay::MagicOverlayHandle;
 
@@ -29,7 +30,7 @@ pub(super) struct CoachingEvalContext<'a> {
     pub(super) coaching_engine: &'a Arc<CoachingEngine>,
     pub(super) overlay: &'a Option<MagicOverlayHandle>,
     pub(super) notifier: &'a Option<Arc<crate::notification_manager::NotificationManager>>,
-    pub(super) coaching_storage: &'a Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    pub(super) coaching_storage: &'a Option<Arc<dyn CoachingStoragePort>>,
     pub(super) analysis_provider:
         &'a Option<Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>>,
     pub(super) regime_id: Option<&'a str>,

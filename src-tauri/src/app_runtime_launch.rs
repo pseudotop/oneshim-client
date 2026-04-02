@@ -1,15 +1,22 @@
 use anyhow::Result;
 use oneshim_core::consent::ConsentManager;
+use oneshim_core::ports::coaching_storage::CoachingStoragePort;
+use oneshim_core::ports::session_context_store::SessionContextStorePort;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tracing::info;
 
 use crate::agent_runtime::AgentRuntimeBuilder;
 use crate::bootstrap_runtime::BootstrapRuntimeBundle;
+use crate::capture_services::SharedCaptureServices;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
 use crate::runtime_bridges::RuntimeBridgeSpawner;
-use crate::runtime_state::{AppState, CaptureContext, ConnectionStatus, ManagedStateBuilder};
+use crate::runtime_state::{
+    AiSessionRuntimeState, AppState, AudioContext, AudioRuntimeState, CaptureContext,
+    ConfigRuntimeState, ConnectionStatus, DetectionRuntimeState, ManagedStateBuilder,
+    SuggestionRuntimeState,
+};
 use crate::scheduler::shared_regime_state::SharedRegimeState;
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerLaunchContext;
@@ -47,6 +54,7 @@ impl AppRuntimeLaunchBuilder {
             config_manager,
             config,
             runtime_handle: handle,
+            background_runtime,
             web_port,
             #[cfg(feature = "server")]
             server,
@@ -92,69 +100,20 @@ impl AppRuntimeLaunchBuilder {
         // Focus mode state — transient, not persisted across restarts.
         let focus_mode = Arc::new(crate::focus_mode::FocusModeState::new());
 
-        // Frame processor, frame storage, and activity monitor for IPC capture commands (A1, A2).
-        // These are INTENTIONALLY separate instances from the scheduler's copies.
-        //
-        // Why not share? The scheduler's instances are created inside AgentRuntimeBuilder
-        // and moved into the spawned async task — they are not accessible after spawn.
-        // Sharing would require either:
-        //   (a) creating instances before the builder and passing Arc to both, or
-        //   (b) exposing scheduler internals through a handle.
-        // Both approaches couple the IPC layer to scheduler lifetime/wiring.
-        //
-        // Tradeoffs of separate instances:
-        //   - FrameProcessor: stateless except for a Mutex<Option<prev_frame>> used for
-        //     delta encoding. IPC manual captures always use importance=1.0 (Full mode),
-        //     so delta state is irrelevant — no functional difference.
-        //   - FrameFileStorage: manages the same directory (data_dir/frames). Concurrent
-        //     writes are safe because file names are timestamp-based UUIDs.
-        //   - ActivityTracker: wraps ProcessTracker which queries OS APIs. No shared state.
-        //   - AccessibilityExtractor: stateless OS API wrapper.
-        //   - ConsentManager: reads the same consent.json file. Read-only from IPC.
-        let ipc_frame_storage: Option<Arc<oneshim_storage::frame_storage::FrameFileStorage>> =
-            match handle.block_on(oneshim_storage::frame_storage::FrameFileStorage::new(
-                data_dir_path.to_path_buf(),
-                config.storage.max_storage_mb,
-                config.storage.retention_days,
-            )) {
-                Ok(fs) => Some(Arc::new(fs)),
-                Err(e) => {
-                    tracing::warn!("IPC frame storage init failed: {e}");
+        // Shared capture services are reused by scheduler and IPC commands so capture
+        // semantics stay aligned across background monitoring and ad-hoc user actions.
+        let shared_capture_services =
+            match handle.block_on(SharedCaptureServices::build(&data_dir_path, &config)) {
+                Ok(services) => Some(Arc::new(services)),
+                Err(error) => {
+                    tracing::warn!("shared capture services init failed: {error}");
                     None
                 }
             };
-        let ipc_frame_processor: Option<Arc<dyn oneshim_core::ports::vision::FrameProcessor>> = {
-            let ocr_tessdata = std::env::var("ONESHIM_TESSDATA")
-                .ok()
-                .map(std::path::PathBuf::from);
-            Some(Arc::new(
-                oneshim_vision::processor::EdgeFrameProcessor::new(
-                    config.vision.thumbnail_width,
-                    config.vision.thumbnail_height,
-                    ocr_tessdata,
-                ),
-            ))
-        };
-        let ipc_activity_monitor: Option<Arc<dyn oneshim_core::ports::monitor::ActivityMonitor>> = {
-            let process_monitor: Arc<dyn oneshim_core::ports::monitor::ProcessMonitor> =
-                Arc::new(oneshim_monitor::process::ProcessTracker::new());
-            Some(Arc::new(oneshim_monitor::activity::ActivityTracker::new(
-                process_monitor,
-            )))
-        };
-
-        // Accessibility extractor for IPC scene analysis (A2).
-        // Create a separate instance so IPC can call extract_focused_element
-        // independently of the scheduler.
-        let ipc_accessibility_extractor: Option<
-            Arc<dyn oneshim_core::ports::accessibility::AccessibilityExtractor>,
-        > = oneshim_vision::accessibility::create_extractor();
-
-        // Consent manager for IPC — shared read-only instance for PII consent checks (A2).
-        let ipc_consent_manager: Option<Arc<oneshim_core::consent::ConsentManager>> =
-            Some(Arc::new(oneshim_core::consent::ConsentManager::new(
-                data_dir_path.join("consent.json"),
-            )));
+        let capture_consent_manager = shared_capture_services
+            .as_ref()
+            .map(|services| services.consent_manager.clone())
+            .unwrap_or_else(|| Arc::new(ConsentManager::new(data_dir_path.join("consent.json"))));
 
         // SuggestionManager for overlay panel (A3).
         // The queue Arc is created here and passed to BOTH the SuggestionManager
@@ -226,6 +185,7 @@ impl AppRuntimeLaunchBuilder {
         let coaching_engine = Arc::new(oneshim_analysis::CoachingEngine::new(
             config.coaching.clone(),
         ));
+        let coaching_storage: Arc<dyn CoachingStoragePort> = sqlite_storage.clone();
 
         // Create MagicOverlay handle (window created at startup in setup.rs)
         let magic_overlay =
@@ -239,7 +199,7 @@ impl AppRuntimeLaunchBuilder {
         let reaper_shutdown_rx = core_resources.background_runtime.shutdown_rx();
 
         let agent_runtime = {
-            let builder = AgentRuntimeBuilder::new(
+            let mut builder = AgentRuntimeBuilder::new(
                 sqlite_storage.clone(),
                 sqlite_storage.clone(),
                 sqlite_storage.clone(),
@@ -254,41 +214,43 @@ impl AppRuntimeLaunchBuilder {
                 oneshim_storage::sqlite::vector_store_impl::SqliteVectorStore::new(
                     sqlite_storage.connection_arc(),
                 ),
-            ))
-            .with_offline_mode(false)
-            .with_event_tx(
-                core_resources
-                    .background_runtime
-                    .agent_event_tx(config.web.enabled),
-            )
-            .with_calibration_writer(sqlite_storage.clone())
-            .with_calibration_reader(sqlite_storage.clone())
-            .with_override_store(sqlite_storage.clone())
-            .with_consent_manager(Arc::new(ConsentManager::new(
-                data_dir_path.join("consent.json"),
-            )))
-            .with_coaching_engine(coaching_engine.clone())
-            .with_coaching_storage(sqlite_storage.clone())
-            .with_magic_overlay(magic_overlay.clone())
-            .with_overlay_driver(Arc::new(
-                crate::magic_overlay_driver::MagicOverlayDriver::new(self.app_handle.clone()),
-            ))
-            .with_capture_paused(capture_paused.clone())
-            .with_detection_active(detection_active.clone())
-            .with_focus_mode(focus_mode.clone())
-            .with_shared_regime(shared_regime_state.clone())
-            .with_health_flags(
-                server_health_flag.clone(),
-                llm_health_flag.clone(),
-                cli_health_flag.clone(),
-            )
-            .with_connection_flags(
-                server_connected.clone(),
-                llm_connected.clone(),
-                cli_connected.clone(),
-            )
-            .with_tray_app_handle(self.app_handle.clone())
-            .with_suggestions_enabled(config.suggestions.enabled);
+            ));
+            if let Some(ref capture_services) = shared_capture_services {
+                builder = builder.with_shared_capture_services(capture_services.clone());
+            }
+            let builder = builder
+                .with_offline_mode(false)
+                .with_event_tx(
+                    core_resources
+                        .background_runtime
+                        .agent_event_tx(config.web.enabled),
+                )
+                .with_calibration_writer(sqlite_storage.clone())
+                .with_calibration_reader(sqlite_storage.clone())
+                .with_override_store(sqlite_storage.clone())
+                .with_consent_manager(capture_consent_manager.clone())
+                .with_coaching_engine(coaching_engine.clone())
+                .with_coaching_storage(coaching_storage.clone())
+                .with_magic_overlay(magic_overlay.clone())
+                .with_overlay_driver(Arc::new(
+                    crate::magic_overlay_driver::MagicOverlayDriver::new(self.app_handle.clone()),
+                ))
+                .with_capture_paused(capture_paused.clone())
+                .with_detection_active(detection_active.clone())
+                .with_focus_mode(focus_mode.clone())
+                .with_shared_regime(shared_regime_state.clone())
+                .with_health_flags(
+                    server_health_flag.clone(),
+                    llm_health_flag.clone(),
+                    cli_health_flag.clone(),
+                )
+                .with_connection_flags(
+                    server_connected.clone(),
+                    llm_connected.clone(),
+                    cli_connected.clone(),
+                )
+                .with_tray_app_handle(self.app_handle.clone())
+                .with_suggestions_enabled(config.suggestions.enabled);
             #[cfg(feature = "server")]
             let builder = builder.with_shared_suggestion_queue(shared_suggestion_queue);
             #[cfg(feature = "server")]
@@ -310,9 +272,12 @@ impl AppRuntimeLaunchBuilder {
             );
 
             let session_config = Arc::new(config.ai_session.clone());
+            let idle_reaper_interval =
+                std::time::Duration::from_secs(session_config.health_check_interval_secs);
+            let session_context_store: Arc<dyn SessionContextStorePort> = sqlite_storage.clone();
 
             let context_assembler = Arc::new(SessionContextAssembler::new(
-                sqlite_storage.clone(),
+                session_context_store,
                 Arc::new(config.clone()),
                 shared_regime_state.clone(),
             ));
@@ -341,23 +306,21 @@ impl AppRuntimeLaunchBuilder {
                 manager = manager.with_secret_store(store);
             }
             manager = manager.with_app_handle(self.app_handle.clone());
-            Some(Arc::new(manager))
+            Some((Arc::new(manager), idle_reaper_interval))
         };
 
         // Spawn idle reaper background task — periodically calls reap_idle_sessions
         // to transition Active→Idle→Terminated for sessions that exceed the idle timeout.
-        if let Some(ref sm) = session_manager {
+        if let Some((ref sm, idle_reaper_interval)) = session_manager {
             let sm_clone = sm.clone();
             let ss_clone: Arc<dyn oneshim_core::ports::session_storage::SessionStoragePort> =
                 sqlite_storage.clone();
             let retention_days = config.ai_session.audit_retention_days;
             let mut shutdown_rx = reaper_shutdown_rx;
             handle.spawn(async move {
-                let interval =
-                    std::time::Duration::from_secs(sm_clone.config.health_check_interval_secs);
                 loop {
                     tokio::select! {
-                        _ = tokio::time::sleep(interval) => {
+                        _ = tokio::time::sleep(idle_reaper_interval) => {
                             sm_clone.reap_idle_sessions().await;
                             // Purge expired persisted sessions
                             if let Ok(count) = ss_clone.purge_expired(retention_days).await {
@@ -395,7 +358,7 @@ impl AppRuntimeLaunchBuilder {
             .with_coaching_engine(
                 coaching_engine.clone() as Arc<dyn oneshim_core::ports::coaching::CoachingPort>
             );
-            if let Some(ref sm) = session_manager {
+            if let Some((ref sm, _)) = session_manager {
                 builder = builder.with_session_manager(sm.clone()
                     as Arc<dyn oneshim_core::ports::conversation_session::SessionManager>);
             }
@@ -507,44 +470,14 @@ impl AppRuntimeLaunchBuilder {
             }
         };
 
-        let state_builder = ManagedStateBuilder::new(AppState {
-            runtime_handle: handle,
-            config,
-            web_port,
-            storage: sqlite_storage.clone(),
-            config_manager,
-            update_control: Some(update_control),
-            update_action_tx,
-            automation_controller,
-            shutdown_tx,
-            recluster_requested: recluster_requested.clone(),
-            magic_overlay: Some(magic_overlay),
-            coaching_engine: Some(
-                coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
-            ),
-            capture_paused,
-            indicator_visible,
-            detection_active,
-            connection: ConnectionStatus {
-                server_connected,
-                llm_connected,
-                cli_connected,
-            },
-            focus_mode,
-            capture: CaptureContext {
-                frame_processor: ipc_frame_processor,
-                frame_storage: ipc_frame_storage,
-                activity_monitor: ipc_activity_monitor,
-                accessibility_extractor: ipc_accessibility_extractor,
-                consent_manager: ipc_consent_manager,
-                work_classifier: Some(Arc::new(
-                    oneshim_vision::work_classifier::RuleBasedClassifier,
-                )),
-            },
-            suggestion_manager,
-            session_manager,
-            session_storage: Some(sqlite_storage.clone()),
-            audio: crate::runtime_state::AudioContext {
+        let ai_session_runtime_state = AiSessionRuntimeState::new(
+            session_manager.as_ref().map(|(sm, _)| sm.clone()),
+            Some(sqlite_storage.clone()),
+            config.ai_session.max_history_turns,
+        );
+        let audio_runtime_state = AudioRuntimeState::new(
+            config_manager.clone(),
+            AudioContext {
                 capture: audio_capture,
                 stt_engine: Arc::new(tokio::sync::RwLock::new(stt_engine)),
                 model_downloader,
@@ -553,7 +486,66 @@ impl AppRuntimeLaunchBuilder {
                 download_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
             },
-        });
+        );
+        let config_runtime_state =
+            ConfigRuntimeState::new(config_manager.clone(), web_port.clone());
+        let suggestion_runtime_state =
+            SuggestionRuntimeState::new(suggestion_manager.clone(), Some(magic_overlay.clone()));
+        let detection_runtime_state = DetectionRuntimeState::new(
+            detection_active.clone(),
+            automation_controller
+                .as_ref()
+                .and_then(|controller| controller.scene_finder().cloned()),
+            Some(magic_overlay.clone()),
+        );
+
+        let state_builder = ManagedStateBuilder::new(
+            AppState {
+                runtime_handle: handle,
+                background_runtime,
+                config,
+                storage: sqlite_storage.clone(),
+                update_control: Some(update_control),
+                update_action_tx,
+                shutdown_tx,
+                recluster_requested: recluster_requested.clone(),
+                magic_overlay: Some(magic_overlay),
+                coaching_engine: Some(
+                    coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
+                ),
+                capture_paused,
+                indicator_visible,
+                connection: ConnectionStatus {
+                    server_connected,
+                    llm_connected,
+                    cli_connected,
+                },
+                focus_mode,
+                capture: CaptureContext {
+                    frame_processor: shared_capture_services
+                        .as_ref()
+                        .map(|services| services.frame_processor.clone()),
+                    frame_storage: shared_capture_services
+                        .as_ref()
+                        .map(|services| services.frame_storage.clone()),
+                    activity_monitor: shared_capture_services
+                        .as_ref()
+                        .map(|services| services.activity_monitor.clone()),
+                    accessibility_extractor: shared_capture_services
+                        .as_ref()
+                        .and_then(|services| services.accessibility_extractor.clone()),
+                    consent_manager: Some(capture_consent_manager),
+                    work_classifier: Some(Arc::new(
+                        oneshim_vision::work_classifier::RuleBasedClassifier,
+                    )),
+                },
+            },
+            config_runtime_state,
+        )
+        .with_ai_session_runtime(ai_session_runtime_state)
+        .with_audio_runtime(audio_runtime_state)
+        .with_suggestion_runtime(suggestion_runtime_state)
+        .with_detection_runtime(detection_runtime_state);
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);
 

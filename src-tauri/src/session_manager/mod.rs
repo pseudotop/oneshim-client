@@ -272,12 +272,23 @@ impl SessionManager for SessionManagerImpl {
             .ok_or_else(|| CoreError::Internal(format!("session not found: {session_id}")))
     }
 
+    async fn recover_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError> {
+        SessionManagerImpl::recover_session(self, session_id).await
+    }
+
     async fn touch_session(&self, session_id: &str) {
-        self.touch_session(session_id).await;
+        SessionManagerImpl::touch_session(self, session_id).await;
     }
 
     async fn report_failure(&self, session_id: &str, error: &CoreError) -> SessionState {
-        self.report_failure(session_id, error).await
+        SessionManagerImpl::report_failure(self, session_id, error).await
+    }
+
+    async fn shutdown_all(&self) {
+        SessionManagerImpl::shutdown_all(self).await;
     }
 }
 

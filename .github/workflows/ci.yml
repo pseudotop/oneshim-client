@@ -172,6 +172,9 @@ jobs:
       - name: Check formatting
         run: ./scripts/cargo-cache.sh fmt --all -- --check
 
+      - name: Verify architecture dependency direction
+        run: ./scripts/check-architecture-deps.sh
+
       - name: Verify web contract boundary
         run: ./scripts/verify-web-contract-boundary.sh
 

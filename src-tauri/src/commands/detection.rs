@@ -1,13 +1,8 @@
 use serde::Serialize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use tauri::State;
 use tracing::{info, warn};
 
-use oneshim_core::ports::element_finder::ElementFinder;
-
-use crate::magic_overlay::MagicOverlayHandle;
-use crate::runtime_state::AppState;
+use crate::runtime_state::DetectionRuntimeState;
 
 #[derive(Debug, Serialize)]
 pub struct ToggleDetectionResponse {
@@ -17,16 +12,16 @@ pub struct ToggleDetectionResponse {
 #[tauri::command]
 pub async fn toggle_detection_overlay(
     active: bool,
-    state: State<'_, AppState>,
+    state: State<'_, DetectionRuntimeState>,
 ) -> Result<ToggleDetectionResponse, String> {
-    state.detection_active.store(active, Ordering::Relaxed);
+    state.set_active(active);
 
     if active {
         info!("detection overlay activated — running scene analysis");
         spawn_detection_analysis_from_state(&state);
     } else {
         info!("detection overlay deactivated");
-        if let Some(ref overlay) = state.magic_overlay {
+        if let Some(overlay) = state.overlay() {
             overlay.clear_detection_scene().await;
         }
     }
@@ -35,8 +30,10 @@ pub async fn toggle_detection_overlay(
 }
 
 #[tauri::command]
-pub async fn refresh_detection_overlay(state: State<'_, AppState>) -> Result<(), String> {
-    if !state.detection_active.load(Ordering::Relaxed) {
+pub async fn refresh_detection_overlay(
+    state: State<'_, DetectionRuntimeState>,
+) -> Result<(), String> {
+    if !state.is_active() {
         return Err("detection overlay is not active".to_string());
     }
     info!("detection overlay manual refresh");
@@ -44,25 +41,19 @@ pub async fn refresh_detection_overlay(state: State<'_, AppState>) -> Result<(),
     Ok(())
 }
 
-/// Helper for global shortcut handler (setup.rs) and IPC commands.
-/// Clones only the Arc fields needed, not the entire AppState.
-pub fn spawn_detection_analysis_from_state(state: &AppState) {
-    let finder: Arc<dyn ElementFinder> = match state.automation_controller.as_ref() {
-        Some(controller) => match controller.scene_finder() {
-            Some(finder) => finder.clone(),
-            None => {
-                warn!("scene_finder not configured — cannot run detection");
-                return;
-            }
-        },
+/// Helper for global shortcut handlers and IPC commands.
+/// Clones only the detection-scoped resources needed for scene analysis.
+pub fn spawn_detection_analysis_from_state(state: &DetectionRuntimeState) {
+    let finder = match state.scene_finder() {
+        Some(finder) => finder,
         None => {
-            warn!("automation_controller not configured — cannot run detection");
+            warn!("scene_finder not configured — cannot run detection");
             return;
         }
     };
 
-    let overlay: MagicOverlayHandle = match state.magic_overlay.as_ref() {
-        Some(overlay) => overlay.clone(),
+    let overlay = match state.overlay() {
+        Some(overlay) => overlay,
         None => {
             warn!("magic_overlay not available — cannot show detection");
             return;

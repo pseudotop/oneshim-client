@@ -19,14 +19,12 @@ The ONESHIM server strictly governs DDD + Hexagonal Architecture through ADRs. T
 **Rule**: Library crates use `thiserror`, binary crate uses `anyhow`
 
 ```
-oneshim-core      → CoreError (thiserror)     ← Other crates wrap with #[from]
-oneshim-monitor   → MonitorError (thiserror)
-oneshim-vision    → VisionError (thiserror)
-oneshim-network   → NetworkError (thiserror)
-oneshim-storage   → StorageError (thiserror)
-oneshim-suggestion → SuggestionError (thiserror)
-oneshim-ui        → UiError (thiserror)
-oneshim-app       → anyhow::Result            ← Used only at top level
+oneshim-core / audio / monitor / vision / network
+storage / suggestion / automation / analysis
+embedding / web    → crate-local thiserror enums
+oneshim-api-contracts → contract crate (DTO-focused, no shared top-level facade required)
+oneshim-lint       → tooling binary (local CLI-style failure handling)
+oneshim-app        → anyhow::Result            ← Used only at top level (`src-tauri`)
 ```
 
 **Pattern**:
@@ -135,20 +133,23 @@ impl StorageService for MockStorageService {
 ### 6. Crate Dependency Direction (Immutable)
 
 ```
-oneshim-core  ←  oneshim-monitor
-              ←  oneshim-vision
-              ←  oneshim-network
-              ←  oneshim-storage
-              ←  oneshim-suggestion
-              ←  oneshim-automation
-              ←  oneshim-web          ←  oneshim-api-contracts
-              ←  oneshim-ui
-              ←  src-tauri            ←  (all runtime adapters)
+oneshim-core           ← audio / monitor / vision / storage / suggestion
+                      ← automation / analysis / embedding
+oneshim-api-contracts ← web / network
+src-tauri (oneshim-app) ← all runtime crates (composition root only)
+oneshim-lint          ← standalone tooling package
 ```
 
-**Forbidden**: Direct dependencies between adapter crates (e.g., oneshim-monitor → oneshim-storage). All cross-crate communication must go through `oneshim-core` traits.
+**Forbidden**: Direct runtime dependencies between adapter crates outside the approved baseline above (for example `oneshim-monitor -> oneshim-storage`). Cross-crate behavior should flow through `oneshim-core` ports, or through `oneshim-api-contracts` when the dependency is strictly transport-DTO sharing.
 
-**Exceptions**: Existing legacy adapter-to-adapter edges that are already present in the workspace remain explicit exceptions and must not expand without architecture review. The current delivery/composition baseline is constrained further by ADR-009.
+**Runtime baseline**:
+- `oneshim-network` may depend on `oneshim-api-contracts`
+- `oneshim-web` may depend on `oneshim-api-contracts`
+- `oneshim-audio` may depend only on `oneshim-core`
+- `oneshim-app` (package in `src-tauri/`) is the only package allowed to aggregate multiple adapters directly
+- `oneshim-lint` is tooling-only and is outside the runtime graph
+
+**Guardrail**: CI verifies normal workspace dependencies with `scripts/check-architecture-deps.sh`. Dev/build-only dependencies are intentionally excluded from that runtime check.
 
 ### 7. Port Location Rules
 
@@ -162,7 +163,10 @@ Port traits defined inside adapter crates are only allowed when:
 - `WebStorage` is canonical in `oneshim-core/src/ports/web_storage.rs`.
 - `oneshim-web/src/storage_port.rs` remains only as a crate-local re-export shim and is not a canonical port definition.
 
-**Concrete type leaks**: Adapter crate state structs (e.g., `AppState`) MUST reference port traits via `Arc<dyn PortTrait>`, never concrete adapter types from other crates.
+**Concrete type leaks**: As the default rule, adapter crate state structs that act as cross-crate
+boundaries MUST reference port traits via `Arc<dyn PortTrait>`, never concrete adapter types from
+other crates. Tauri-managed entry-point state in `oneshim-app` has a narrower framework-specific
+rule; see [ADR-014](./ADR-014-tauri-managed-state-boundary.md).
 
 ```rust
 // ❌ Wrong — leaks concrete type from another adapter

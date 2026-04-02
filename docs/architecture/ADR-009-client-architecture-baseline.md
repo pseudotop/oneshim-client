@@ -199,3 +199,4 @@ Any substantial change that touches client architecture should still answer:
 - [ADR-003: Directory Module Pattern for Large Source Files](./ADR-003-directory-module-pattern.md)
 - [ADR-007: Async Runtime Safety Patterns](./ADR-007-async-runtime-safety-patterns.md)
 - [ADR-008: Network Resilience Patterns](./ADR-008-network-resilience-patterns.md)
+- [ADR-014: Tauri Managed State Boundary](./ADR-014-tauri-managed-state-boundary.md)

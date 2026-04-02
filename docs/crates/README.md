@@ -1,74 +1,89 @@
 # Crate Implementation Docs
 
-Detailed implementation reference for the ONESHIM Rust client's 11-crate workspace.
+Detailed implementation reference for the ONESHIM Rust client's current 14-package workspace
+(13 packages under `crates/` plus the `src-tauri` binary package).
 
 ## Crate Dependency Graph
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    oneshim-app (binary entry)                  │
-│                 DI wiring, scheduler, lifecycle                │
-└─────────────────────────────────────────────────────────────────┘
-        │
-        ├───────────┬───────────┬───────────┬───────────┬─────────┐
-        ▼           ▼           ▼           ▼           ▼         ▼
-┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌────────────┐
-│  network  │ │suggestion │ │  storage  │ │  monitor  │ │   vision  │ │ automation │
-│ HTTP/SSE  │ │ queueing  │ │  SQLite   │ │ telemetry │ │ edge proc │ │ policy exec│
-│ gRPC/WS   │ │ feedback  │ │  WAL mode │ │ activity  │ │ PII filter│ │ sandbox    │
-└───────────┘ └───────────┘ └───────────┘ └───────────┘ └───────────┘ └────────────┘
-        │           │                                         │           │
-        └─────┬─────┘                                         │           │
-              ▼                                               ▼           │
-       ┌───────────┐       ┌───────────┐                ┌───────────┐    │
-       │    web    │       │    ui     │                │    ui     │    │
-       │ REST API  │       │ desktop UI│◀───────────────│           │    │
-       │ React FE  │       │ tray/menu │                └───────────┘    │
-       └───────────┘       └───────────┘                                  │
-              │                   │                                       │
-              └───────┬──────────┘                                        │
-                      ▼                                                   │
-┌─────────────────────────────────────────────────────────────────────────┘
-│                     oneshim-core (foundation)                           │
-│          domain models, port interfaces, errors, configuration          │
-└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│      src-tauri/ (package: oneshim-app, composition root)            │
+│  runtime wiring, scheduler, desktop lifecycle, web server startup   │
+└──────────────────────────────────────────────────────────────────────┘
+          │
+          ├── runtime adapters: analysis / audio / automation / embedding / monitor
+          ├── runtime adapters: network / storage / suggestion / vision / web
+          └── shared contracts: oneshim-core / oneshim-api-contracts
+
+oneshim-core
+  └── domain models, configuration, errors, and cross-crate ports
+
+oneshim-api-contracts
+  └── shared HTTP/integration DTO contract crate used by oneshim-web and oneshim-network
+
+Runtime adapter baseline (normal dependencies only)
+  ├── oneshim-analysis   -> oneshim-core
+  ├── oneshim-audio      -> oneshim-core
+  ├── oneshim-automation -> oneshim-core
+  ├── oneshim-embedding  -> oneshim-core
+  ├── oneshim-monitor    -> oneshim-core
+  ├── oneshim-storage    -> oneshim-core
+  ├── oneshim-suggestion -> oneshim-core
+  ├── oneshim-vision     -> oneshim-core
+  ├── oneshim-network    -> oneshim-core + oneshim-api-contracts
+  └── oneshim-web        -> oneshim-core + oneshim-api-contracts
+
+Tooling package
+  └── oneshim-lint (workspace-local lint/test helper, not part of the runtime graph)
 ```
 
-## Crate List
+## Active Workspace Packages
 
-| Crate | Role | Key Implementations | Docs |
-|-------|------|---------------------|------|
-| **oneshim-core** | Foundation layer | Models, ports, errors, config | [Details](./oneshim-core.md) |
-| **oneshim-api-contracts** | Transport contract SSOT | Shared web API DTOs, serialization defaults, and OpenAPI snapshot bridge inputs | [Details](./oneshim-api-contracts.md) |
-| **oneshim-network** | Network adapter | HTTP, SSE, WebSocket, compression, auth, gRPC, AI OCR/LLM clients | [Details](./oneshim-network.md) |
-| **oneshim-vision** | Edge image processing | Capture, delta, WebP, OCR, privacy filter, Privacy Gateway | [Details](./oneshim-vision.md) |
-| **oneshim-monitor** | System monitoring | CPU/memory/disk, active windows, idle detection, input activity | [Details](./oneshim-monitor.md) |
-| **oneshim-storage** | Local storage | SQLite, migrations, retention policy, edge intelligence | [Details](./oneshim-storage.md) |
-| **oneshim-suggestion** | Suggestion pipeline | Receive, priority queue, feedback, history | [Details](./oneshim-suggestion.md) |
-| **oneshim-ui** | Desktop UI | System tray, notifications, main window, theme, automation toggle | [Details](./oneshim-ui.md) |
-| **oneshim-web** | Local web dashboard | Axum REST API, React frontend, SSE | [Details](./oneshim-web.md) |
-| **oneshim-automation** | Automation control | Policy-based execution, audit logging, OS sandbox, intent resolution | [Details](./oneshim-automation.md) |
-| **oneshim-app** | Binary entry point | DI, 9-loop scheduler, FocusAnalyzer, auto-update | [Details](./oneshim-app.md) |
+| Package | Location | Role | Docs |
+|--------|----------|------|------|
+| **oneshim-core** | `crates/oneshim-core` | Foundation layer: models, ports, errors, config | [Details](./oneshim-core.md) |
+| **oneshim-api-contracts** | `crates/oneshim-api-contracts` | Shared transport contract SSOT for web/integration DTOs | [Details](./oneshim-api-contracts.md) |
+| **oneshim-audio** | `crates/oneshim-audio` | Audio capture, STT providers, model download helpers | Pending dedicated crate doc |
+| **oneshim-monitor** | `crates/oneshim-monitor` | System monitoring adapter | [Details](./oneshim-monitor.md) |
+| **oneshim-vision** | `crates/oneshim-vision` | Edge capture, OCR, privacy filter, accessibility helpers | [Details](./oneshim-vision.md) |
+| **oneshim-network** | `crates/oneshim-network` | HTTP/SSE/WebSocket/gRPC/network adapters | [Details](./oneshim-network.md) |
+| **oneshim-storage** | `crates/oneshim-storage` | SQLite persistence, retention, sync extraction/merge | [Details](./oneshim-storage.md) |
+| **oneshim-suggestion** | `crates/oneshim-suggestion` | Suggestion queue, history, feedback pipeline | [Details](./oneshim-suggestion.md) |
+| **oneshim-web** | `crates/oneshim-web` | Local web delivery layer: Axum + embedded frontend | [Details](./oneshim-web.md) |
+| **oneshim-automation** | `crates/oneshim-automation` | Policy, sandbox, audit, GUI automation execution | [Details](./oneshim-automation.md) |
+| **oneshim-analysis** | `crates/oneshim-analysis` | Analysis pipeline, coaching, regime/tiered-memory logic | Pending dedicated crate doc |
+| **oneshim-embedding** | `crates/oneshim-embedding` | Local embedding provider adapter | Pending dedicated crate doc |
+| **oneshim-lint** | `crates/oneshim-lint` | Workspace-local tooling and language/lint helpers | Pending dedicated crate doc |
+| **oneshim-app** | `src-tauri` | Binary package / composition root / desktop runtime orchestration | [Details](./oneshim-app.md) |
+
+## Historical Package Docs
+
+| Package | Status | Docs |
+|--------|--------|------|
+| **oneshim-ui** | Removed from the workspace during the iced -> Tauri migration; kept only as historical reference | [Historical](./oneshim-ui.md) |
 
 ## Architecture Principles
 
 ### Hexagonal Architecture (Ports & Adapters)
 
 - **Core**: `oneshim-core` defines all ports (traits) and domain models.
-- **Adapters**: The other 10 crates implement those ports.
-- **Dependency Rule**: Adapters depend on core; reverse dependencies are disallowed.
+- **Transport contract**: `oneshim-api-contracts` holds shared delivery/integration DTOs.
+- **Adapters**: Runtime adapter crates depend on `oneshim-core`; delivery/network crates may also depend on `oneshim-api-contracts`.
+- **Composition root**: `oneshim-app` (package in `src-tauri/`) is the only package that aggregates multiple runtime adapters directly.
 
 ### Cross-Crate Communication Rules
 
-1. No direct adapter-to-adapter imports.
-2. All interfaces are expressed through `oneshim-core` traits.
-3. Explicit exceptions: `suggestion -> network` (SSE intake), `ui -> suggestion` (display path).
+1. Normal runtime dependencies must target `oneshim-core`, or `oneshim-api-contracts` when sharing transport DTOs.
+2. Direct adapter aggregation is reserved for `oneshim-app` in `src-tauri/`.
+3. Current non-core normal dependency exceptions are `oneshim-network -> oneshim-api-contracts` and `oneshim-web -> oneshim-api-contracts`; `oneshim-audio` remains a core-only adapter.
+4. Dev/build-only dependencies are tracked separately and are not treated as runtime architecture edges.
+5. CI enforces the current runtime baseline via `scripts/check-architecture-deps.sh`.
 
 ### DI Pattern
 
 - Constructor injection with `Arc<dyn T>`
 - No DI framework; manual wiring
-- Wiring is handled in `oneshim-app/src/main.rs`
+- Wiring is handled in `src-tauri/src/main.rs`, `src-tauri/src/setup.rs`, and app-layer builders such as `app_runtime_launch.rs`, `agent_runtime.rs`, and `web_server_runtime.rs`
 
 ### Two-Layer Automation Action Model
 

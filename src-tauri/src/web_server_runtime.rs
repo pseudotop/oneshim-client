@@ -17,7 +17,11 @@ use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::UpdateControl;
-use oneshim_web::{AiRuntimeStatus, RealtimeEvent, WebServer, WebServerRuntimeBindings};
+use oneshim_web::{
+    AiRuntimeStatus, AnalysisRuntimeBindings, AutomationRuntimeBindings, CoreRuntimeBindings,
+    IntegrationRuntimeBindings, RealtimeEvent, SessionRuntimeBindings, WebServer,
+    WebServerRuntimeBindings,
+};
 use std::path::Path;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -180,13 +184,21 @@ impl WebServerSupportContext {
         ai_runtime_status: Option<AiRuntimeStatus>,
     ) -> WebServerRuntimeBindings {
         let runtime_bindings = WebServerRuntimeBindings {
-            event_tx: Some(event_tx),
-            frames_dir: Some(data_dir.to_path_buf()),
-            config_manager: Some(self.config_manager.clone()),
-            audit_logger: Some(audit_logger),
-            ai_runtime_status,
-            integration_runtime_status: Some(self.integration_runtime_status.clone()),
-            update_control: Some(self.update_control.clone()),
+            core: CoreRuntimeBindings {
+                event_tx: Some(event_tx),
+                frames_dir: Some(data_dir.to_path_buf()),
+                config_manager: Some(self.config_manager.clone()),
+                update_control: Some(self.update_control.clone()),
+            },
+            automation: AutomationRuntimeBindings {
+                audit_logger: Some(audit_logger),
+                ai_runtime_status,
+                ..Default::default()
+            },
+            integration: IntegrationRuntimeBindings {
+                integration_runtime_status: Some(self.integration_runtime_status.clone()),
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -194,17 +206,20 @@ impl WebServerSupportContext {
         {
             let mut runtime_bindings = runtime_bindings;
             if let Some(server) = self.server.as_ref() {
-                runtime_bindings.integration_auth = server.integration_auth.clone();
-                runtime_bindings.integration_session = server.integration_session.clone();
-                runtime_bindings.integration_outbox = server.integration_outbox.clone();
-                runtime_bindings.integration_inbox = server.integration_inbox.clone();
-                runtime_bindings.integration_inbox_store = server.integration_inbox_store.clone();
-                runtime_bindings.integration_audit = server.integration_audit.clone();
-                runtime_bindings.integration_runtime_telemetry =
+                runtime_bindings.integration.integration_auth = server.integration_auth.clone();
+                runtime_bindings.integration.integration_session =
+                    server.integration_session.clone();
+                runtime_bindings.integration.integration_outbox = server.integration_outbox.clone();
+                runtime_bindings.integration.integration_inbox = server.integration_inbox.clone();
+                runtime_bindings.integration.integration_inbox_store =
+                    server.integration_inbox_store.clone();
+                runtime_bindings.integration.integration_audit = server.integration_audit.clone();
+                runtime_bindings.integration.integration_runtime_telemetry =
                     server.integration_runtime_telemetry.clone();
-                runtime_bindings.secret_store = server.secret_store.clone();
-                runtime_bindings.secret_stores = server.secret_stores.clone();
-                runtime_bindings.default_secret_backend_kind = server.default_secret_backend_kind;
+                runtime_bindings.secrets.secret_store = server.secret_store.clone();
+                runtime_bindings.secrets.secret_stores = server.secret_stores.clone();
+                runtime_bindings.secrets.default_secret_backend_kind =
+                    server.default_secret_backend_kind;
             }
             runtime_bindings
         }
@@ -329,10 +344,14 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             Arc::new(AuditLogAdapter::new(web_audit_logger)),
             ai_runtime_status,
         );
-        runtime_bindings.override_store = self.override_store;
-        runtime_bindings.recluster_requested = self.recluster_requested;
-        runtime_bindings.coaching_engine = self.coaching_engine;
-        runtime_bindings.session_manager = self.session_manager;
+        runtime_bindings.analysis = AnalysisRuntimeBindings {
+            override_store: self.override_store,
+            recluster_requested: self.recluster_requested,
+            coaching_engine: self.coaching_engine,
+        };
+        runtime_bindings.session = SessionRuntimeBindings {
+            session_manager: self.session_manager,
+        };
 
         // Spawn GUI audit forwarder if the automation controller has a GUI service
         if let Some(ref controller) = automation_controller {
@@ -344,7 +363,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         let web_port_state = self.launch_context.web_port_state.clone();
         self.launch_context.runtime_handle.spawn(async move {
             if let Some(controller) = automation_controller {
-                runtime_bindings.automation_controller = Some(controller);
+                runtime_bindings.automation.automation_controller = Some(controller);
             }
             let web_server = WebServer::new(web_storage, web_config)
                 .with_bound_port_state(web_port_state)

@@ -25,6 +25,7 @@ mod background_runtime;
 mod bootstrap_preflight;
 mod bootstrap_runtime;
 mod bridge_cli;
+mod capture_services;
 mod cli_subscription_bridge;
 mod commands;
 mod desktop_permissions;
@@ -67,6 +68,9 @@ mod session_adapters;
 mod session_context;
 mod session_manager;
 mod setup;
+mod setup_platform;
+mod setup_shortcuts;
+mod setup_windows;
 mod skill_loader;
 mod storage_runtime;
 mod subprocess_provider;
@@ -276,15 +280,17 @@ fn main() {
             info!("Tauri exit: sending shutdown signal");
             if let Some(state) = app_handle.try_state::<runtime_state::AppState>() {
                 // Terminate all active AI sessions before shutdown.
-                if let Some(ref sm) = state.session_manager {
-                    let sm = sm.clone();
+                if let Some(ai_session_state) =
+                    app_handle.try_state::<runtime_state::AiSessionRuntimeState>()
+                {
                     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                        handle.block_on(async { sm.shutdown_all().await });
+                        handle.block_on(async { ai_session_state.shutdown_all().await });
                     }
                 }
                 if state.shutdown_tx.send(true).is_err() {
                     warn!("shutdown signal send failed (receivers already dropped)");
                 }
+                state.background_runtime.shutdown_blocking();
             }
         }
         #[cfg(target_os = "macos")]

@@ -10,8 +10,7 @@ use oneshim_core::models::ai_session::{
     SystemPromptContext, ToolDefinition, UserProfileSummary,
 };
 use oneshim_core::models::event::Event;
-use oneshim_core::ports::storage::StorageService;
-use oneshim_storage::sqlite::SqliteStorage;
+use oneshim_core::ports::session_context_store::SessionContextStorePort;
 use tracing::warn;
 
 use crate::scheduler::shared_regime_state::SharedRegimeState;
@@ -23,14 +22,14 @@ const RECENT_EVENTS_LIMIT: usize = 200;
 const SUGGESTION_HISTORY_LIMIT: usize = 100;
 
 pub struct SessionContextAssembler {
-    storage: Arc<SqliteStorage>,
+    storage: Arc<dyn SessionContextStorePort>,
     config: Arc<AppConfig>,
     regime_state: Arc<SharedRegimeState>,
 }
 
 impl SessionContextAssembler {
     pub fn new(
-        storage: Arc<SqliteStorage>,
+        storage: Arc<dyn SessionContextStorePort>,
         config: Arc<AppConfig>,
         regime_state: Arc<SharedRegimeState>,
     ) -> Self {
@@ -300,6 +299,7 @@ impl SessionContextAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_storage::sqlite::SqliteStorage;
 
     #[test]
     fn build_system_message_has_system_role() {

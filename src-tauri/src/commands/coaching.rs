@@ -1,7 +1,7 @@
 use serde::Serialize;
 use tauri::command;
 
-use crate::runtime_state::AppState;
+use crate::runtime_state::{AppState, ConfigRuntimeState};
 /// Dismiss a coaching overlay message with the given action.
 /// If "later", snoozes the profile for 15 minutes.
 #[command]
@@ -169,6 +169,7 @@ pub async fn get_goal_progress(
 #[command]
 pub async fn update_regime_goals(
     state: tauri::State<'_, AppState>,
+    config_state: tauri::State<'_, ConfigRuntimeState>,
     goals: std::collections::HashMap<String, u32>,
 ) -> Result<(), String> {
     if let Some(ref engine) = state.coaching_engine {
@@ -176,8 +177,8 @@ pub async fn update_regime_goals(
     }
 
     // Persist to config file
-    state
-        .config_manager
+    config_state
+        .config_manager()
         .update_with(|config| {
             config.coaching.regime_goals = goals.clone();
             Ok(())

@@ -1,10 +1,10 @@
-use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::{AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::audio_capture::AudioCapturePort;
 use oneshim_core::ports::coaching::CoachingPort;
+use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::model_downloader::ModelDownloader;
 use oneshim_core::ports::monitor::ActivityMonitor;
@@ -24,6 +24,7 @@ use tauri::{App, Manager};
 
 use crate::magic_overlay::MagicOverlayHandle;
 use crate::session_manager::SessionManagerImpl;
+use crate::suggestion_manager::SuggestionManager;
 
 #[cfg(feature = "server")]
 pub(crate) type OAuthCoordinator =
@@ -66,6 +67,206 @@ pub struct AudioContext {
     pub vad_state: Arc<parking_lot::Mutex<String>>,
 }
 
+impl AudioContext {
+    pub(crate) fn disabled(model_dir: PathBuf) -> Self {
+        Self {
+            capture: None,
+            stt_engine: Arc::new(tokio::sync::RwLock::new(None)),
+            model_downloader: None,
+            model_dir,
+            downloading: Arc::new(AtomicBool::new(false)),
+            download_cancel: Arc::new(AtomicBool::new(false)),
+            vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
+        }
+    }
+}
+
+/// Feature-scoped Tauri managed state for AI session commands and shutdown hooks.
+pub struct AiSessionRuntimeState {
+    manager: Option<Arc<SessionManagerImpl>>,
+    session_storage: Option<Arc<dyn SessionStoragePort>>,
+    max_history_turns: u32,
+}
+
+impl Default for AiSessionRuntimeState {
+    fn default() -> Self {
+        Self {
+            manager: None,
+            session_storage: None,
+            max_history_turns: 100,
+        }
+    }
+}
+
+impl AiSessionRuntimeState {
+    pub(crate) fn new(
+        manager: Option<Arc<SessionManagerImpl>>,
+        session_storage: Option<Arc<dyn SessionStoragePort>>,
+        max_history_turns: u32,
+    ) -> Self {
+        Self {
+            manager,
+            session_storage,
+            max_history_turns,
+        }
+    }
+
+    pub(crate) fn manager_impl(&self) -> Option<Arc<SessionManagerImpl>> {
+        self.manager.clone()
+    }
+
+    pub(crate) fn session_storage(&self) -> Option<Arc<dyn SessionStoragePort>> {
+        self.session_storage.clone()
+    }
+
+    pub(crate) fn daily_token_budget(&self) -> Option<u64> {
+        self.manager
+            .as_ref()
+            .map(|manager| manager.config.daily_token_budget)
+    }
+
+    pub(crate) fn max_history_turns(&self) -> u32 {
+        self.max_history_turns
+    }
+
+    pub(crate) async fn shutdown_all(&self) {
+        if let Some(manager) = &self.manager {
+            manager.shutdown_all().await;
+        }
+    }
+}
+
+/// Feature-scoped Tauri managed state for audio capture and STT commands.
+pub struct AudioRuntimeState {
+    config_manager: ConfigManager,
+    audio: AudioContext,
+}
+
+impl AudioRuntimeState {
+    pub(crate) fn new(config_manager: ConfigManager, audio: AudioContext) -> Self {
+        Self {
+            config_manager,
+            audio,
+        }
+    }
+
+    pub(crate) fn disabled(config_manager: ConfigManager) -> Self {
+        Self::new(
+            config_manager,
+            AudioContext::disabled(std::env::temp_dir().join("oneshim-audio-models")),
+        )
+    }
+
+    pub(crate) fn config_manager(&self) -> &ConfigManager {
+        &self.config_manager
+    }
+
+    pub(crate) fn audio(&self) -> &AudioContext {
+        &self.audio
+    }
+}
+
+/// Feature-scoped Tauri managed state for config-backed IPC commands.
+pub struct ConfigRuntimeState {
+    config_manager: ConfigManager,
+    web_port: Arc<AtomicU16>,
+}
+
+impl ConfigRuntimeState {
+    pub(crate) fn new(config_manager: ConfigManager, web_port: Arc<AtomicU16>) -> Self {
+        Self {
+            config_manager,
+            web_port,
+        }
+    }
+
+    pub(crate) fn config_manager(&self) -> &ConfigManager {
+        &self.config_manager
+    }
+
+    pub(crate) fn web_port(&self) -> u16 {
+        self.web_port.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// Feature-scoped Tauri managed state for overlay suggestion IPC and shortcuts.
+#[derive(Default)]
+pub struct SuggestionRuntimeState {
+    manager: Option<Arc<SuggestionManager>>,
+    overlay: Option<MagicOverlayHandle>,
+}
+
+impl SuggestionRuntimeState {
+    pub(crate) fn new(
+        manager: Option<Arc<SuggestionManager>>,
+        overlay: Option<MagicOverlayHandle>,
+    ) -> Self {
+        Self { manager, overlay }
+    }
+
+    pub(crate) fn manager(&self) -> Option<Arc<SuggestionManager>> {
+        self.manager.clone()
+    }
+
+    pub(crate) fn overlay(&self) -> Option<MagicOverlayHandle> {
+        self.overlay.clone()
+    }
+}
+
+/// Feature-scoped Tauri managed state for detection overlay IPC and shortcuts.
+pub struct DetectionRuntimeState {
+    active: Arc<AtomicBool>,
+    scene_finder: Option<Arc<dyn ElementFinder>>,
+    overlay: Option<MagicOverlayHandle>,
+}
+
+impl Default for DetectionRuntimeState {
+    fn default() -> Self {
+        Self {
+            active: Arc::new(AtomicBool::new(false)),
+            scene_finder: None,
+            overlay: None,
+        }
+    }
+}
+
+impl DetectionRuntimeState {
+    pub(crate) fn new(
+        active: Arc<AtomicBool>,
+        scene_finder: Option<Arc<dyn ElementFinder>>,
+        overlay: Option<MagicOverlayHandle>,
+    ) -> Self {
+        Self {
+            active,
+            scene_finder,
+            overlay,
+        }
+    }
+
+    pub(crate) fn set_active(&self, active: bool) {
+        self.active
+            .store(active, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub(crate) fn toggle_active(&self) -> bool {
+        !self
+            .active
+            .fetch_xor(true, std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.active.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn scene_finder(&self) -> Option<Arc<dyn ElementFinder>> {
+        self.scene_finder.clone()
+    }
+
+    pub(crate) fn overlay(&self) -> Option<MagicOverlayHandle> {
+        self.overlay.clone()
+    }
+}
+
 /// Groups connectivity flags for server, LLM, and CLI connections.
 #[allow(dead_code)]
 pub struct ConnectionStatus {
@@ -80,13 +281,11 @@ pub struct ConnectionStatus {
 #[allow(dead_code)]
 pub struct AppState {
     pub runtime_handle: tokio::runtime::Handle,
+    pub background_runtime: Arc<crate::bootstrap_runtime::ManagedBackgroundRuntime>,
     pub config: AppConfig,
-    pub web_port: Arc<AtomicU16>,
     pub storage: Arc<SqliteStorage>,
-    pub config_manager: ConfigManager,
     pub update_control: Option<UpdateControl>,
     pub update_action_tx: tokio::sync::mpsc::UnboundedSender<UpdateAction>,
-    pub automation_controller: Option<Arc<AutomationController>>,
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
     /// Shared flag for on-demand re-clustering requests from Tauri/REST.
     pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
@@ -100,22 +299,12 @@ pub struct AppState {
     pub capture_paused: Arc<AtomicBool>,
     /// Whether the tracking indicator border is visible.
     pub indicator_visible: Arc<AtomicBool>,
-    /// Whether detection overlay mode is active (toggled via Cmd+Shift+D).
-    pub detection_active: Arc<AtomicBool>,
     /// Connection status flags for server, LLM, and CLI.
     pub connection: ConnectionStatus,
     /// Focus mode state — transient, not persisted. Suppresses coaching + notifications.
     pub focus_mode: Arc<crate::focus_mode::FocusModeState>,
     /// Capture-related resources for IPC commands (A1, A2).
     pub capture: CaptureContext,
-    /// Suggestion manager for overlay panel (A3). Shares queue with SuggestionReceiver.
-    pub suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
-    /// AI conversation session manager for Tauri IPC commands.
-    pub session_manager: Option<Arc<SessionManagerImpl>>,
-    /// Persisted session storage for AI chat history (fire-and-forget writes).
-    pub session_storage: Option<Arc<dyn SessionStoragePort>>,
-    /// Audio capture and STT engine for voice input (P1 Audio STT).
-    pub audio: AudioContext,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -160,6 +349,11 @@ impl Default for ManagedStateCapabilityProfile {
 
 pub(crate) struct ManagedStateRegistration {
     pub(crate) app_state: AppState,
+    pub(crate) ai_session_runtime_state: AiSessionRuntimeState,
+    pub(crate) audio_runtime_state: AudioRuntimeState,
+    pub(crate) config_runtime_state: ConfigRuntimeState,
+    pub(crate) suggestion_runtime_state: SuggestionRuntimeState,
+    pub(crate) detection_runtime_state: DetectionRuntimeState,
     pub(crate) oauth_state: OAuthState,
     pub(crate) oauth_coordinator_state: OAuthCoordinatorState,
     pub(crate) secret_backend_state: SecretBackendState,
@@ -170,6 +364,11 @@ pub(crate) struct ManagedStateRegistration {
 
 pub(crate) struct ManagedStateBuilder {
     app_state: AppState,
+    ai_session_runtime_state: AiSessionRuntimeState,
+    audio_runtime_state: AudioRuntimeState,
+    config_runtime_state: ConfigRuntimeState,
+    suggestion_runtime_state: SuggestionRuntimeState,
+    detection_runtime_state: DetectionRuntimeState,
     oauth_state: OAuthState,
     oauth_coordinator_state: OAuthCoordinatorState,
     capability_profile: ManagedStateCapabilityProfile,
@@ -178,15 +377,51 @@ pub(crate) struct ManagedStateBuilder {
 }
 
 impl ManagedStateBuilder {
-    pub(crate) fn new(app_state: AppState) -> Self {
+    pub(crate) fn new(app_state: AppState, config_runtime_state: ConfigRuntimeState) -> Self {
+        let audio_runtime_state =
+            AudioRuntimeState::disabled(config_runtime_state.config_manager().clone());
         Self {
             app_state,
+            ai_session_runtime_state: AiSessionRuntimeState::default(),
+            audio_runtime_state,
+            config_runtime_state,
+            suggestion_runtime_state: SuggestionRuntimeState::default(),
+            detection_runtime_state: DetectionRuntimeState::default(),
             oauth_state: OAuthState(None),
             oauth_coordinator_state: OAuthCoordinatorState(None),
             capability_profile: ManagedStateCapabilityProfile::default(),
             integration_auth_state: IntegrationAuthState(None),
             integration_session_state: IntegrationSessionState(None),
         }
+    }
+
+    pub(crate) fn with_ai_session_runtime(
+        mut self,
+        ai_session_runtime_state: AiSessionRuntimeState,
+    ) -> Self {
+        self.ai_session_runtime_state = ai_session_runtime_state;
+        self
+    }
+
+    pub(crate) fn with_audio_runtime(mut self, audio_runtime_state: AudioRuntimeState) -> Self {
+        self.audio_runtime_state = audio_runtime_state;
+        self
+    }
+
+    pub(crate) fn with_suggestion_runtime(
+        mut self,
+        suggestion_runtime_state: SuggestionRuntimeState,
+    ) -> Self {
+        self.suggestion_runtime_state = suggestion_runtime_state;
+        self
+    }
+
+    pub(crate) fn with_detection_runtime(
+        mut self,
+        detection_runtime_state: DetectionRuntimeState,
+    ) -> Self {
+        self.detection_runtime_state = detection_runtime_state;
+        self
     }
 
     #[cfg(feature = "server")]
@@ -233,6 +468,11 @@ impl ManagedStateBuilder {
 
         ManagedStateRegistration {
             app_state: self.app_state,
+            ai_session_runtime_state: self.ai_session_runtime_state,
+            audio_runtime_state: self.audio_runtime_state,
+            config_runtime_state: self.config_runtime_state,
+            suggestion_runtime_state: self.suggestion_runtime_state,
+            detection_runtime_state: self.detection_runtime_state,
             oauth_state: self.oauth_state,
             oauth_coordinator_state: self.oauth_coordinator_state,
             secret_backend_state,
@@ -246,6 +486,11 @@ impl ManagedStateBuilder {
 impl ManagedStateRegistration {
     pub(crate) fn register_on(self, app: &mut App) {
         app.manage(self.app_state);
+        app.manage(self.ai_session_runtime_state);
+        app.manage(self.audio_runtime_state);
+        app.manage(self.config_runtime_state);
+        app.manage(self.suggestion_runtime_state);
+        app.manage(self.detection_runtime_state);
         app.manage(self.oauth_state);
         app.manage(self.oauth_coordinator_state);
         app.manage(self.secret_backend_state);
@@ -302,49 +547,39 @@ mod tests {
         let (update_action_tx, _update_action_rx) = mpsc::unbounded_channel::<UpdateAction>();
         let (shutdown_tx, _shutdown_rx) = tokio::sync::watch::channel(false);
 
-        let registration = ManagedStateBuilder::new(AppState {
-            runtime_handle: handle,
-            config: AppConfig::default_config(),
-            web_port: Arc::new(AtomicU16::new(0)),
-            storage,
-            config_manager,
-            update_control: None,
-            update_action_tx,
-            automation_controller: None,
-            shutdown_tx,
-            recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            magic_overlay: None,
-            coaching_engine: None,
-            capture_paused: Arc::new(AtomicBool::new(false)),
-            indicator_visible: Arc::new(AtomicBool::new(true)),
-            detection_active: Arc::new(AtomicBool::new(false)),
-            connection: ConnectionStatus {
-                server_connected: Arc::new(AtomicBool::new(false)),
-                llm_connected: Arc::new(AtomicBool::new(false)),
-                cli_connected: Arc::new(AtomicBool::new(false)),
+        let web_port = Arc::new(AtomicU16::new(0));
+        let registration = ManagedStateBuilder::new(
+            AppState {
+                runtime_handle: handle,
+                background_runtime: crate::bootstrap_runtime::spawn_background_runtime()
+                    .expect("background runtime"),
+                config: AppConfig::default_config(),
+                storage,
+                update_control: None,
+                update_action_tx,
+                shutdown_tx,
+                recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                magic_overlay: None,
+                coaching_engine: None,
+                capture_paused: Arc::new(AtomicBool::new(false)),
+                indicator_visible: Arc::new(AtomicBool::new(true)),
+                connection: ConnectionStatus {
+                    server_connected: Arc::new(AtomicBool::new(false)),
+                    llm_connected: Arc::new(AtomicBool::new(false)),
+                    cli_connected: Arc::new(AtomicBool::new(false)),
+                },
+                focus_mode: Arc::new(crate::focus_mode::FocusModeState::new()),
+                capture: CaptureContext {
+                    frame_processor: None,
+                    frame_storage: None,
+                    activity_monitor: None,
+                    accessibility_extractor: None,
+                    consent_manager: None,
+                    work_classifier: None,
+                },
             },
-            focus_mode: Arc::new(crate::focus_mode::FocusModeState::new()),
-            capture: CaptureContext {
-                frame_processor: None,
-                frame_storage: None,
-                activity_monitor: None,
-                accessibility_extractor: None,
-                consent_manager: None,
-                work_classifier: None,
-            },
-            suggestion_manager: None,
-            session_manager: None,
-            session_storage: None,
-            audio: AudioContext {
-                capture: None,
-                stt_engine: Arc::new(tokio::sync::RwLock::new(None)),
-                model_downloader: None,
-                model_dir: PathBuf::from("/tmp/test-models"),
-                downloading: Arc::new(AtomicBool::new(false)),
-                download_cancel: Arc::new(AtomicBool::new(false)),
-                vad_state: Arc::new(parking_lot::Mutex::new("idle".into())),
-            },
-        })
+            ConfigRuntimeState::new(config_manager, web_port),
+        )
         .build();
 
         assert_eq!(
