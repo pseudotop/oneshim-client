@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AudioSettings } from '../../api/contracts'
-import { Button, Spinner } from '../../components/ui'
+import { Badge, Button, Checkbox, Spinner } from '../../components/ui'
 import { colors, radius, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -150,15 +150,11 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
     <div className="space-y-6">
       <h3 className={cn(typography.h3, colors.text.primary)}>{t('settings.audio.title', 'Audio & Speech-to-Text')}</h3>
 
-      <label className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => onAudioChange('enabled', e.target.checked)}
-          className="h-4 w-4"
-        />
-        <span className={colors.text.primary}>{t('settings.audio.enable', 'Enable audio capture and STT')}</span>
-      </label>
+      <Checkbox
+        checked={enabled}
+        onChange={(e) => onAudioChange('enabled', e.target.checked)}
+        label={t('settings.audio.enable', 'Enable audio capture and STT')}
+      />
 
       <div className="space-y-2">
         <label htmlFor="audio-model-size" className={cn(typography.label, colors.text.secondary)}>
@@ -185,9 +181,9 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
         </span>
         <div className="flex items-center gap-3">
           {modelState === 'not_installed' && (
-            <span className="rounded bg-neutral-200 px-2 py-0.5 text-neutral-600 text-xs dark:bg-neutral-700 dark:text-neutral-300">
+            <Badge size="sm" className="bg-surface-muted text-content-secondary">
               {t('settings.audio.not_installed', 'Not installed')}
-            </span>
+            </Badge>
           )}
           {modelState === 'downloading' && audioStatus?.model_status.state === 'downloading' && (
             <div className="flex items-center gap-2">
@@ -200,14 +196,14 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
             </div>
           )}
           {modelState === 'ready' && (
-            <span className="rounded bg-green-100 px-2 py-0.5 text-green-700 text-xs dark:bg-green-900 dark:text-green-300">
+            <Badge color="success" size="sm">
               {t('settings.audio.ready', 'Ready')}
-            </span>
+            </Badge>
           )}
           {modelState === 'error' && audioStatus?.model_status.state === 'error' && (
-            <span className="rounded bg-red-100 px-2 py-0.5 text-red-700 text-xs dark:bg-red-900 dark:text-red-300">
+            <Badge color="error" size="sm">
               {audioStatus.model_status.message}
-            </span>
+            </Badge>
           )}
         </div>
       </div>

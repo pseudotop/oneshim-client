@@ -57,7 +57,7 @@ impl GrpcAuthClient {
 
         let response = self.client.get_token(request).await.map_err(|status| {
             error!(error = %status, "gRPC get_token failure");
-            map_grpc_status_error("grpc get_token failed", status).into()
+            CoreError::from(map_grpc_status_error("grpc get_token failed", status))
         })?;
 
         Ok(response.into_inner())
@@ -72,7 +72,7 @@ impl GrpcAuthClient {
 
         let response = self.client.refresh_token(request).await.map_err(|status| {
             error!(error = %status, "gRPC token refresh failure");
-            map_grpc_status_error("grpc token refresh failed", status).into()
+            CoreError::from(map_grpc_status_error("grpc token refresh failed", status))
         })?;
 
         Ok(response.into_inner())

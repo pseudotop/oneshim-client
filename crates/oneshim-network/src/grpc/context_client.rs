@@ -64,7 +64,7 @@ impl GrpcContextClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC batch upload failure");
-                map_grpc_status_error("grpc batch upload failed", status).into()
+                CoreError::from(map_grpc_status_error("grpc batch upload failed", status))
             })?;
 
         Ok(response.into_inner())
@@ -87,7 +87,10 @@ impl GrpcContextClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC suggestion stream subscribe failure");
-                map_grpc_status_error("grpc suggestion stream subscription failed", status).into()
+                CoreError::from(map_grpc_status_error(
+                    "grpc suggestion stream subscription failed",
+                    status,
+                ))
             })?;
 
         Ok(response.into_inner())
@@ -113,7 +116,10 @@ impl GrpcContextClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC feedback sent failure");
-                map_grpc_status_error("grpc feedback submission failed", status).into()
+                CoreError::from(map_grpc_status_error(
+                    "grpc feedback submission failed",
+                    status,
+                ))
             })?;
 
         Ok(())
