@@ -97,7 +97,7 @@ const LazySyntaxHighlighter = React.lazy(async () => {
   return { default: LazyHighlighterWrapper }
 })
 
-import { Alert, Button, Card, CardContent, Input, Select } from '../components/ui'
+import { Alert, Badge, Button, Card, CardContent, Input, Select } from '../components/ui'
 import { defaultSurfaceModel, sortProviderSurfaces } from '../features/providerSurfaces'
 import { addToast } from '../hooks/useToast'
 import { colors, iconSize, interaction, motion, radius, typography } from '../styles/tokens'
@@ -338,7 +338,7 @@ function highlightText(text: string, query: string): React.ReactNode {
 
 export default function Chat() {
   const { t } = useTranslation()
-  const isHistorical = (s: SessionInfo) => s.state === 'terminated'
+  const isHistorical = useCallback((s: SessionInfo) => s.state === 'terminated', [])
   const [providerCatalog, setProviderCatalog] = useState<ProviderSurfaceCatalog>(DEFAULT_PROVIDER_SURFACE_CATALOG)
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -1149,9 +1149,9 @@ export default function Chat() {
                   </p>
                 </div>
                 {isHistorical(s) ? (
-                  <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-700">
+                  <Badge size="xs" className="bg-surface-muted text-content-secondary">
                     {t('chat.history', 'History')}
-                  </span>
+                  </Badge>
                 ) : null}
                 <button
                   type="button"
@@ -1492,12 +1492,16 @@ export default function Chat() {
                     onClick={handleVadToggle}
                     disabled={isReadOnly || sending || !audioAvailable}
                     className={cn(
-                      'flex items-center justify-center rounded-md p-2 transition-colors',
-                      vadState === 'listening' && 'animate-pulse bg-blue-500 text-white',
-                      vadState === 'speech' && 'animate-pulse bg-red-500 text-white',
-                      vadState === 'transcribing' && 'bg-amber-500 text-white',
+                      'flex items-center justify-center p-2',
+                      radius.md,
+                      interaction.interactive,
+                      interaction.focusRing,
+                      interaction.disabled,
+                      vadState === 'listening' &&
+                        'animate-pulse bg-status-connected text-content-inverse hover:opacity-90',
+                      vadState === 'speech' && 'animate-pulse bg-semantic-error text-content-inverse hover:opacity-90',
+                      vadState === 'transcribing' && 'bg-semantic-warning text-content-inverse hover:opacity-90',
                       vadState === 'idle' && 'text-content-secondary hover:bg-surface-hover',
-                      'disabled:opacity-40',
                     )}
                     title={
                       vadState === 'idle'
@@ -1522,11 +1526,14 @@ export default function Chat() {
                     onTouchCancel={handleMicUp}
                     disabled={isReadOnly || sending || transcribing || !audioAvailable}
                     className={cn(
-                      'flex items-center justify-center rounded-md p-2 transition-colors',
-                      recording
-                        ? 'animate-pulse bg-red-500 text-white'
-                        : 'text-content-secondary hover:bg-surface-hover',
-                      'disabled:opacity-40',
+                      'flex items-center justify-center p-2',
+                      radius.md,
+                      interaction.interactive,
+                      interaction.focusRing,
+                      interaction.disabled,
+                      transcribing && 'bg-semantic-warning text-content-inverse hover:opacity-90',
+                      recording && 'animate-pulse bg-semantic-error text-content-inverse hover:opacity-90',
+                      !recording && !transcribing && 'text-content-secondary hover:bg-surface-hover',
                     )}
                     title={audioTooltip}
                   >

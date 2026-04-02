@@ -65,7 +65,7 @@ impl GrpcHealthClient {
 
         let response = self.client.ping(request).await.map_err(|status| {
             error!("Health ping failure: {}", status);
-            map_grpc_status_error("grpc health ping failed", status).into()
+            CoreError::from(map_grpc_status_error("grpc health ping failed", status))
         })?;
 
         let inner = response.into_inner();

@@ -61,7 +61,10 @@ impl GrpcSessionClient {
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC session create failure");
-                map_grpc_status_error("grpc session creation failed", status).into()
+                CoreError::from(map_grpc_status_error(
+                    "grpc session creation failed",
+                    status,
+                ))
             })?;
 
         Ok(response.into_inner())
@@ -76,7 +79,10 @@ impl GrpcSessionClient {
 
         self.client.end_session(request).await.map_err(|status| {
             error!(error = %status, "gRPC session ended failure");
-            map_grpc_status_error("grpc session termination failed", status).into()
+            CoreError::from(map_grpc_status_error(
+                "grpc session termination failed",
+                status,
+            ))
         })?;
 
         Ok(())
@@ -91,7 +97,10 @@ impl GrpcSessionClient {
 
         self.client.heartbeat(request).await.map_err(|status| {
             error!(error = %status, "gRPC heartbeat failure");
-            map_grpc_status_error("grpc session heartbeat failed", status).into()
+            CoreError::from(map_grpc_status_error(
+                "grpc session heartbeat failed",
+                status,
+            ))
         })?;
 
         Ok(())

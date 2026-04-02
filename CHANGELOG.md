@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.15-rc.1] - 2026-04-02
+
+### Added
+
+- P1 Audio STT — Push-to-Talk with local Whisper ([#283](https://github.com/pseudotop/oneshim-client/pull/283))
+  * feat(core): add AudioBuffer, TranscriptionResult models and error variants
+
+  Also applies cargo fmt to workspace.
+
+- Add Whisper model download manager UI (P2) ([#284](https://github.com/pseudotop/oneshim-client/pull/284))
+  - New ModelDownloader port trait + WhisperModelDownloader adapter (feature-gated: download)
+  - WhisperModelSize enum (tiny/base/small/medium) + AudioConfig.model_size field
+  - AudioContext refactored: RwLock<stt_engine> for hot-reload, download concurrency guard
+  - 5 new IPC commands: get_audio_status, download/cancel/delete model, reload_stt_engine
+  - Settings AudioTab: enable toggle, model selector, download progress, delete, language
+  - Chat mic button: context-aware tooltip based on audio/model status
+  - Streaming download with SHA-256 verification, cancellation, .part atomic rename
+  - "audio" added to settings allowlist
+
+- Add cloud STT fallback via OpenAI Whisper API (P3) ([#285](https://github.com/pseudotop/oneshim-client/pull/285))
+  - CloudSttProvider: reqwest multipart upload to OpenAI /v1/audio/transcriptions
+  - FallbackSttProvider: tries cloud, falls back to local on non-timeout errors
+  - AudioBuffer.to_wav_bytes(): manual WAV encoder (44-byte header + PCM16)
+  - SttProviderKind enum (Local/Cloud) + config fields (api_key, endpoint, timeout)
+  - reload_stt_engine: builds Local, Cloud, or Fallback provider based on config
+  - AudioTab: provider radio picker + API key password input (shown when Cloud)
+  - Timeout-aware: RequestTimeout does NOT trigger fallback (returns error directly)
+
+- Add Voice Activity Detection for hands-free STT (P4)
+  - VadDetector: energy-based RMS VAD with configurable threshold/silence/min-speech
+  - AudioCapture: start_vad/stop_vad/drain_speech_buffer with mutual exclusion vs PTT
+  - AudioCapturePort: VAD methods with default impls (backward compat)
+  - MicInputMode enum (PushToTalk/VoiceActivity) + 4 VAD config fields
+  - IPC: start_vad_listening/stop_vad_listening with vad-state-changed/transcription events
+  - Chat.tsx: mode-aware mic button (PTT hold vs VAD toggle) with state-driven icons
+  - AudioTab: input mode picker, sensitivity slider, silence duration setting
+  - 7 VadDetector unit tests (RMS, state transitions, min speech, reset)
+
+- Add tracking panel internationalization (30 keys, 5 locales)
+  Integrate react-i18next into tracking-panel overlay component.
+  All 28 hardcoded English strings replaced with t() calls,
+  plus 2 additional keys (ocr, focus) for scene analysis display.
+
+
+### Changed
+
+- Replace all production unwrap() with expect() or control flow
+  Eliminate 22 bare .unwrap() calls in production code across 9 files.
+  - Lock unwraps → expect("...lock poisoned") for clear panic messages
+  - Guarded option unwraps → expect("len >= 2") documenting invariants
+  - capture.rs → let-else pattern removing unwrap entirely
+  - Static URL parse → expect("static URL") for infallible literals
+
+- Add pre-release tech debt audit with corrected P0/P1 findings
+  P0 (36 panic!()) was false alarm — all in #[cfg(test)].
+  P0 (block_in_place) is documented ADR-001 deviation.
+  P1 (tokio::spawn) already managed by scheduler shutdown.
+  P1 (http_api_session split) already ADR-003 directory module.
+
+  Includes full verification spec docs with line-by-line evidence.
+
+
+### Fixed
+
+- Address deep review findings across P1-P4 audio subsystem
+  Critical fixes:
+  - VAD: add 400ms pre-buffer to capture speech onset before min_speech_ms confirmation
+  - download_whisper_model: reset downloading flag on early error (prevents permanent block)
+  - IPC commands: read live config via config_manager instead of frozen AppState.config
+
+  Important fixes:
+  - Chat unmount: also stop VAD listening to release microphone
+  - AudioTab: disable controls when audio is disabled
+  - VAD callback: extract shared build_vad_callback to eliminate F32/I16 code duplication
+  - Tests: add missing assert!() wrappers on matches!() expressions (2 tests)
+
+- Resolve lint errors and improve a11y in AudioTab
+  - Fix 6 noLabelWithoutControl errors: add htmlFor/id pairs for selects,
+    convert radio group wrappers from label to fieldset/legend
+  - Fix 4 useSortedClasses: auto-sorted by biome --write --unsafe
+  - Fix 1 format error in Chat.tsx
+  - All 11 lint errors resolved (0 errors, 1 warning remaining — nursery rule)
+
 ## [0.4.14] - 2026-04-02
 
 ### Changed

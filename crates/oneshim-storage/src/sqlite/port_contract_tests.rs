@@ -3,11 +3,10 @@
 
 use chrono::{Duration, Utc};
 use oneshim_core::error::CoreError;
-use oneshim_core::models::embedding::{EmbeddingContentType, EmbeddingMetadata, SearchFilters};
+use oneshim_core::models::embedding::{EmbeddingContentType, EmbeddingMetadata};
 use oneshim_core::models::event::{ContextEvent, Event};
 use oneshim_core::models::system::SystemMetrics;
 use oneshim_core::models::work_session::AppCategory;
-use oneshim_core::ports::focus_storage::FocusStorage;
 use oneshim_core::ports::storage::{MetricsStorage, StorageService};
 use oneshim_core::ports::text_search::TextSearchProvider;
 use oneshim_core::ports::vector_index::VectorIndex;

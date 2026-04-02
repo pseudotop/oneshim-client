@@ -141,7 +141,7 @@ impl Sandbox for LinuxSandbox {
         .await
         .map_err(|e| CoreError::SandboxExecution(format!("Thread join failed: {}", e)))?;
 
-        result.map_err(Into::into)?;
+        result.map_err(CoreError::from)?;
 
         tracing::info!(action = ?action, "Linux sandbox within execution completed");
         Ok(())
