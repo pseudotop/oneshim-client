@@ -176,7 +176,7 @@ mod tests {
         let json = serde_json::to_string(&ready).unwrap();
         assert!(json.contains("\"state\":\"ready\""));
         let restored: ModelDownloadStatus = serde_json::from_str(&json).unwrap();
-        matches!(restored, ModelDownloadStatus::Ready { .. });
+        assert!(matches!(restored, ModelDownloadStatus::Ready { .. }));
     }
 
     #[test]

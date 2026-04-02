@@ -166,7 +166,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
         <select
           value={modelSize}
           onChange={(e) => onAudioChange('model_size', e.target.value)}
-          disabled={downloading}
+          disabled={downloading || !enabled}
           className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
         >
           {(Object.entries(MODEL_LABELS) as [ModelSize, string][]).map(([key, label]) => (
@@ -241,6 +241,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
         <select
           value={language}
           onChange={(e) => onAudioChange('language', e.target.value)}
+          disabled={!enabled}
           className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
         >
           <option value="auto">Auto-detect</option>

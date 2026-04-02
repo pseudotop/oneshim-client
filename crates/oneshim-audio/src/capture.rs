@@ -243,52 +243,97 @@ impl AudioCapture {
         let vad_active = self.vad_active.clone();
 
         // VadDetector is owned by the closure — no mutex needed for VAD state.
-        let mut vad = VadDetector::new(config.threshold, config.silence_ms, config.min_speech_ms);
+        // Pre-buffer: retain last ~400ms of audio to capture speech onset before
+        // min_speech_ms confirmation. Uses VecDeque as a ring buffer.
+        let pre_buffer_samples = (native_rate as usize) * 400 / 1000; // 400ms at native rate
 
         let err_fn = |err: cpal::StreamError| {
             warn!("audio stream error: {err}");
         };
 
-        let stream = match stream_config.sample_format() {
-            SampleFormat::F32 => device.build_input_stream(
-                &stream_config.into(),
-                move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    if !vad_active.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    let mono: Vec<f32> = data
-                        .chunks(channels)
-                        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-                        .collect();
+        // Shared VAD callback logic extracted to avoid F32/I16 duplication (I7 fix).
+        #[allow(clippy::type_complexity)]
+        let build_vad_callback = |speech_buffer: Arc<Mutex<Vec<f32>>>,
+                                  vad_active: Arc<AtomicBool>,
+                                  on_signal: Arc<dyn Fn() + Send + Sync>|
+         -> Box<dyn FnMut(&[f32]) + Send> {
+            let mut vad =
+                VadDetector::new(config.threshold, config.silence_ms, config.min_speech_ms);
+            let mut pre_buf: std::collections::VecDeque<f32> =
+                std::collections::VecDeque::with_capacity(pre_buffer_samples);
+            let mut speech_active = false;
 
-                    let event = vad.process_chunk(&mono);
-                    match event {
-                        VadEvent::SpeechStarted | VadEvent::SpeechContinuing => {
-                            let mut buf = speech_buffer.lock();
-                            if buf.len() < MAX_BUFFER_SAMPLES {
-                                buf.extend_from_slice(&mono);
+            Box::new(move |mono: &[f32]| {
+                if !vad_active.load(Ordering::SeqCst) {
+                    return;
+                }
+
+                let event = vad.process_chunk(mono);
+                match event {
+                    VadEvent::SpeechStarted => {
+                        speech_active = true;
+                        // Flush pre-buffer into speech_buffer (captures onset audio)
+                        let mut buf = speech_buffer.lock();
+                        if buf.len() < MAX_BUFFER_SAMPLES {
+                            buf.extend(pre_buf.iter());
+                            buf.extend_from_slice(mono);
+                        }
+                        pre_buf.clear();
+                    }
+                    VadEvent::SpeechContinuing => {
+                        let mut buf = speech_buffer.lock();
+                        if buf.len() < MAX_BUFFER_SAMPLES {
+                            buf.extend_from_slice(mono);
+                        }
+                    }
+                    VadEvent::SpeechEnded => {
+                        speech_active = false;
+                        on_signal();
+                    }
+                    VadEvent::None => {
+                        if !speech_active {
+                            // Maintain rolling pre-buffer
+                            for &s in mono {
+                                if pre_buf.len() >= pre_buffer_samples {
+                                    pre_buf.pop_front();
+                                }
+                                pre_buf.push_back(s);
                             }
                         }
-                        VadEvent::SpeechEnded => {
-                            on_speech_signal();
-                        }
-                        VadEvent::None => {}
                     }
-                },
-                err_fn,
-                None,
-            ),
+                }
+            })
+        };
+
+        let stream = match stream_config.sample_format() {
+            SampleFormat::F32 => {
+                let mut cb = build_vad_callback(
+                    speech_buffer.clone(),
+                    vad_active.clone(),
+                    on_speech_signal.clone(),
+                );
+                device.build_input_stream(
+                    &stream_config.into(),
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let mono: Vec<f32> = data
+                            .chunks(channels)
+                            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+                            .collect();
+                        cb(&mono);
+                    },
+                    err_fn,
+                    None,
+                )
+            }
             SampleFormat::I16 => {
-                let speech_buffer = self.speech_buffer.clone();
-                let vad_active = self.vad_active.clone();
-                let mut vad =
-                    VadDetector::new(config.threshold, config.silence_ms, config.min_speech_ms);
+                let mut cb = build_vad_callback(
+                    self.speech_buffer.clone(),
+                    self.vad_active.clone(),
+                    on_speech_signal.clone(),
+                );
                 device.build_input_stream(
                     &stream_config.into(),
                     move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        if !vad_active.load(Ordering::SeqCst) {
-                            return;
-                        }
                         let mono: Vec<f32> = data
                             .chunks(channels)
                             .map(|frame| {
@@ -299,20 +344,7 @@ impl AudioCapture {
                                     / channels as f32
                             })
                             .collect();
-
-                        let event = vad.process_chunk(&mono);
-                        match event {
-                            VadEvent::SpeechStarted | VadEvent::SpeechContinuing => {
-                                let mut buf = speech_buffer.lock();
-                                if buf.len() < MAX_BUFFER_SAMPLES {
-                                    buf.extend_from_slice(&mono);
-                                }
-                            }
-                            VadEvent::SpeechEnded => {
-                                on_speech_signal();
-                            }
-                            VadEvent::None => {}
-                        }
+                        cb(&mono);
                     },
                     err_fn,
                     None,

@@ -420,6 +420,8 @@ export default function Chat() {
         recordingRef.current = false
         ipc('stop_and_transcribe').catch(() => {})
       }
+      // Also stop VAD listening if active
+      ipc('stop_vad_listening').catch(() => {})
     }
   }, [])
 

@@ -57,22 +57,24 @@ use std::sync::atomic::Ordering;
 use oneshim_core::config::WhisperModelSize;
 use oneshim_core::models::audio::{AudioStatus, ModelDownloadStatus, VadConfig};
 
-/// Get combined audio subsystem status.
+/// Get combined audio subsystem status (reads live config via config_manager).
 #[command]
 pub async fn get_audio_status(state: tauri::State<'_, AppState>) -> Result<AudioStatus, String> {
+    let live_config = state.config_manager.get();
+    let audio_cfg = &live_config.audio;
     let model_status = match &state.audio.model_downloader {
-        Some(dl) => dl.model_status(state.config.audio.model_size, &state.audio.model_dir),
+        Some(dl) => dl.model_status(audio_cfg.model_size, &state.audio.model_dir),
         None => ModelDownloadStatus::NotInstalled,
     };
     let stt_loaded = state.audio.stt_engine.read().await.is_some();
     let vad_state = state.audio.vad_state.lock().clone();
     Ok(AudioStatus {
-        enabled: state.config.audio.enabled,
-        selected_model: state.config.audio.model_size,
+        enabled: audio_cfg.enabled,
+        selected_model: audio_cfg.model_size,
         model_status,
         stt_provider_loaded: stt_loaded,
-        stt_provider: format!("{:?}", state.config.audio.stt_provider).to_lowercase(),
-        mic_input_mode: state.config.audio.mic_input_mode.to_string(),
+        stt_provider: format!("{:?}", audio_cfg.stt_provider).to_lowercase(),
+        mic_input_mode: format!("{:?}", audio_cfg.mic_input_mode).to_lowercase(),
         vad_state,
     })
 }
@@ -91,12 +93,13 @@ pub async fn download_whisper_model(
     // Reset cancel flag
     state.audio.download_cancel.store(false, Ordering::SeqCst);
 
-    let downloader = state
-        .audio
-        .model_downloader
-        .as_ref()
-        .ok_or_else(|| "model downloader not available".to_string())?
-        .clone();
+    let downloader = match state.audio.model_downloader.as_ref() {
+        Some(dl) => dl.clone(),
+        None => {
+            state.audio.downloading.store(false, Ordering::SeqCst);
+            return Err("model downloader not available".to_string());
+        }
+    };
     let model_dir = state.audio.model_dir.clone();
     let cancel = state.audio.download_cancel.clone();
     let downloading = state.audio.downloading.clone();
@@ -175,10 +178,11 @@ pub async fn start_vad_listening(
         .as_ref()
         .ok_or_else(|| "audio capture not available".to_string())?;
 
+    let live_cfg = state.config_manager.get();
     let config = VadConfig {
-        threshold: state.config.audio.vad_threshold,
-        silence_ms: state.config.audio.vad_silence_ms,
-        min_speech_ms: state.config.audio.vad_min_speech_ms,
+        threshold: live_cfg.audio.vad_threshold,
+        silence_ms: live_cfg.audio.vad_silence_ms,
+        min_speech_ms: live_cfg.audio.vad_min_speech_ms,
     };
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
@@ -312,7 +316,8 @@ pub async fn stop_vad_listening(
 pub async fn reload_stt_engine(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     use oneshim_core::config::SttProviderKind;
 
-    let config = &state.config.audio;
+    let live_config = state.config_manager.get();
+    let config = &live_config.audio;
 
     // Build local provider (if model available)
     let local_provider: Option<Arc<dyn oneshim_core::ports::stt_provider::SttProvider>> = {
