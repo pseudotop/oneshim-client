@@ -70,6 +70,7 @@ pub async fn get_audio_status(state: tauri::State<'_, AppState>) -> Result<Audio
         selected_model: state.config.audio.model_size,
         model_status,
         stt_provider_loaded: stt_loaded,
+        stt_provider: format!("{:?}", state.config.audio.stt_provider).to_lowercase(),
     })
 }
 
@@ -159,42 +160,96 @@ pub async fn delete_whisper_model(
         .map_err(|e| e.to_string())
 }
 
-/// Reload STT engine with current config model.
+/// Reload STT engine with current config — creates Local, Cloud, or Fallback provider.
 #[command]
 pub async fn reload_stt_engine(state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    #[cfg(feature = "download")]
-    let model_path = state
-        .audio
-        .model_dir
-        .join(oneshim_audio::model_downloader::model_filename(
-            state.config.audio.model_size,
-        ));
-    #[cfg(not(feature = "download"))]
-    let model_path = std::path::PathBuf::from(&state.config.audio.whisper_model_path);
+    use oneshim_core::config::SttProviderKind;
 
-    if !model_path.exists() {
-        let mut guard = state.audio.stt_engine.write().await;
-        *guard = None;
-        return Ok(false);
-    }
+    let config = &state.config.audio;
 
-    #[cfg(feature = "stt")]
-    {
-        match oneshim_audio::WhisperSttProvider::new(&model_path, state.config.audio.language) {
-            Ok(provider) => {
-                let mut guard = state.audio.stt_engine.write().await;
-                *guard = Some(Arc::new(provider) as _);
-                tracing::info!("STT engine reloaded: {}", model_path.display());
-                Ok(true)
-            }
-            Err(e) => {
-                tracing::warn!("Failed to reload STT: {e}");
-                Err(e.to_string())
+    // Build local provider (if model available)
+    let local_provider: Option<Arc<dyn oneshim_core::ports::stt_provider::SttProvider>> = {
+        #[cfg(feature = "stt")]
+        {
+            #[cfg(feature = "download")]
+            let model_path =
+                state
+                    .audio
+                    .model_dir
+                    .join(oneshim_audio::model_downloader::model_filename(
+                        config.model_size,
+                    ));
+            #[cfg(not(feature = "download"))]
+            let model_path = std::path::PathBuf::from(&config.whisper_model_path);
+
+            if model_path.exists() {
+                match oneshim_audio::WhisperSttProvider::new(&model_path, config.language) {
+                    Ok(p) => Some(Arc::new(p) as _),
+                    Err(e) => {
+                        tracing::warn!("Failed to load local Whisper: {e}");
+                        None
+                    }
+                }
+            } else {
+                None
             }
         }
+        #[cfg(not(feature = "stt"))]
+        {
+            None
+        }
+    };
+
+    // Build cloud provider (if key configured)
+    let cloud_provider: Option<Arc<dyn oneshim_core::ports::stt_provider::SttProvider>> = {
+        #[cfg(feature = "cloud-stt")]
+        {
+            if !config.cloud_api_key.is_empty() {
+                match oneshim_audio::CloudSttProvider::new(
+                    config.cloud_api_key.clone(),
+                    config.cloud_stt_endpoint.clone(),
+                    config.language,
+                    config.cloud_timeout_secs,
+                ) {
+                    Ok(p) => Some(Arc::new(p) as _),
+                    Err(e) => {
+                        tracing::warn!("Failed to create cloud STT: {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        }
+        #[cfg(not(feature = "cloud-stt"))]
+        {
+            None
+        }
+    };
+
+    // Assemble final provider based on config preference
+    let provider: Option<Arc<dyn oneshim_core::ports::stt_provider::SttProvider>> =
+        match config.stt_provider {
+            SttProviderKind::Cloud => match (cloud_provider, local_provider) {
+                (Some(cloud), Some(local)) => {
+                    Some(Arc::new(crate::fallback_stt::FallbackSttProvider::new(cloud, local)) as _)
+                }
+                (Some(cloud), None) => Some(cloud),
+                (None, Some(local)) => {
+                    tracing::warn!("Cloud STT unavailable, using local");
+                    Some(local)
+                }
+                (None, None) => None,
+            },
+            SttProviderKind::Local => local_provider,
+        };
+
+    let loaded = provider.is_some();
+    let mut guard = state.audio.stt_engine.write().await;
+    *guard = provider;
+
+    if loaded {
+        tracing::info!("STT engine reloaded (provider: {:?})", config.stt_provider);
     }
-    #[cfg(not(feature = "stt"))]
-    {
-        Ok(false)
-    }
+    Ok(loaded)
 }

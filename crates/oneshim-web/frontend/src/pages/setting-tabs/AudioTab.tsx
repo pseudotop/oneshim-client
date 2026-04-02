@@ -98,6 +98,8 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
   const modelSize = (audio?.model_size ?? 'base') as ModelSize
   const language = audio?.language ?? 'auto'
   const modelState = audioStatus?.model_status?.state ?? 'not_installed'
+  const sttProvider = (audio?.stt_provider ?? 'local') as string
+  const cloudApiKey = audio?.cloud_api_key ?? ''
 
   const handleDownload = async () => {
     setDownloading(true)
@@ -243,6 +245,55 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
           <option value="ko">한국어</option>
         </select>
       </div>
+
+      {/* STT Provider */}
+      <div className="space-y-2">
+        <label className={cn(typography.label, colors.text.secondary)}>
+          {t('settings.audio.stt_provider', 'STT Provider')}
+        </label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="stt_provider"
+              value="local"
+              checked={sttProvider === 'local'}
+              onChange={() => onAudioChange('stt_provider', 'local')}
+            />
+            <span className={colors.text.primary}>{t('settings.audio.local', 'Local (Whisper)')}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="stt_provider"
+              value="cloud"
+              checked={sttProvider === 'cloud'}
+              onChange={() => onAudioChange('stt_provider', 'cloud')}
+            />
+            <span className={colors.text.primary}>{t('settings.audio.cloud', 'Cloud (OpenAI)')}</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Cloud API Key (shown when Cloud selected) */}
+      {sttProvider === 'cloud' && (
+        <div className="space-y-2">
+          <label htmlFor="cloud-api-key" className={cn(typography.label, colors.text.secondary)}>
+            {t('settings.audio.api_key', 'OpenAI API Key')}
+          </label>
+          <input
+            id="cloud-api-key"
+            type="password"
+            value={cloudApiKey}
+            onChange={(e) => onAudioChange('cloud_api_key', e.target.value)}
+            placeholder="sk-..."
+            className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
+          />
+          <p className={cn(typography.caption, colors.text.tertiary)}>
+            {t('settings.audio.api_key_hint', 'Your API key is stored locally and sent directly to OpenAI.')}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

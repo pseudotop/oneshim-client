@@ -116,7 +116,17 @@ export function makeDefaultFormData(overrides?: Partial<AppSettings>): AppSettin
     coaching: { enabled: true, tone: 'Balanced', locale: 'en', overlay_mode: 'Minimal' },
     integration: { enabled: false, auth_profile_kind: 'None', request_timeout_secs: 30, sync_interval_secs: 60 },
     sync: { enabled: false, transport: 'None', interval_secs: 300, device_name: '', lan_advertise: false },
-    audio: { enabled: false, whisper_model_path: '', language: 'auto', max_recording_secs: 60, model_size: 'base' },
+    audio: {
+      enabled: false,
+      whisper_model_path: '',
+      language: 'auto',
+      max_recording_secs: 60,
+      model_size: 'base',
+      stt_provider: 'local',
+      cloud_api_key: '',
+      cloud_stt_endpoint: 'https://api.openai.com/v1/audio/transcriptions',
+      cloud_timeout_secs: 10,
+    },
     ...overrides,
   }
 }

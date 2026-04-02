@@ -174,6 +174,10 @@ export interface AudioSettings {
   language: string
   max_recording_secs: number
   model_size: string
+  stt_provider: string
+  cloud_api_key: string
+  cloud_stt_endpoint: string
+  cloud_timeout_secs: number
 }
 
 export interface AiSessionSettings {
