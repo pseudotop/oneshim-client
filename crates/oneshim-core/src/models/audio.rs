@@ -35,3 +35,29 @@ pub struct TranscriptionResult {
     pub duration_secs: f32,
     pub processing_secs: f32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_calculates_duration() {
+        let buf = AudioBuffer::new(vec![0.0; 16000]);
+        assert_eq!(buf.duration_secs, 1.0);
+        assert_eq!(buf.sample_rate, 16000);
+        assert!(!buf.is_empty());
+    }
+
+    #[test]
+    fn new_half_second() {
+        let buf = AudioBuffer::new(vec![0.0; 8000]);
+        assert!((buf.duration_secs - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn empty_buffer() {
+        let buf = AudioBuffer::new(vec![]);
+        assert!(buf.is_empty());
+        assert_eq!(buf.duration_secs, 0.0);
+    }
+}

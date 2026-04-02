@@ -15,6 +15,8 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::audio::AudioBuffer;
 
 const TARGET_SAMPLE_RATE: u32 = 16000;
+/// Hard cap: 120s at 48kHz mono = 5.76M samples (~23MB). Prevents unbounded growth.
+const MAX_BUFFER_SAMPLES: usize = 120 * 48_000;
 
 pub struct AudioCapture {
     buffer: Arc<Mutex<Vec<f32>>>,
@@ -73,7 +75,6 @@ impl AudioCapture {
 
         // Clear buffer for new recording
         self.buffer.lock().clear();
-        self.capturing.store(true, Ordering::SeqCst);
 
         let buffer = self.buffer.clone();
         let capturing = self.capturing.clone();
@@ -85,6 +86,7 @@ impl AudioCapture {
         // Callback: downmix to mono and accumulate raw samples (no resampling).
         // Resampling is done in stop() over the full buffer — avoids
         // SincFixedIn chunk-size constraint in variable-size callbacks.
+        // Buffer is capped at MAX_BUFFER_SAMPLES to prevent unbounded growth.
         let stream = match config.sample_format() {
             SampleFormat::F32 => device.build_input_stream(
                 &config.into(),
@@ -96,7 +98,10 @@ impl AudioCapture {
                         .chunks(channels)
                         .map(|frame| frame.iter().sum::<f32>() / channels as f32)
                         .collect();
-                    buffer.lock().extend_from_slice(&mono);
+                    let mut buf = buffer.lock();
+                    if buf.len() < MAX_BUFFER_SAMPLES {
+                        buf.extend_from_slice(&mono);
+                    }
                 },
                 err_fn,
                 None,
@@ -120,7 +125,10 @@ impl AudioCapture {
                                     / channels as f32
                             })
                             .collect();
-                        buffer.lock().extend_from_slice(&mono);
+                        let mut buf = buffer.lock();
+                        if buf.len() < MAX_BUFFER_SAMPLES {
+                            buf.extend_from_slice(&mono);
+                        }
                     },
                     err_fn,
                     None,
@@ -138,6 +146,10 @@ impl AudioCapture {
             .play()
             .map_err(|e| CoreError::AudioCapture(format!("play stream: {e}")))?;
 
+        // Set capturing = true only AFTER stream.play() succeeds.
+        // If build_input_stream or play() fails above, capturing stays false
+        // so start() can be retried (no permanent bricking).
+        self.capturing.store(true, Ordering::SeqCst);
         *self.stream.lock() = Some(stream);
         Ok(())
     }
@@ -176,6 +188,13 @@ impl AudioCapture {
     /// Whether currently capturing.
     pub fn is_capturing(&self) -> bool {
         self.capturing.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for AudioCapture {
+    fn drop(&mut self) {
+        self.capturing.store(false, Ordering::SeqCst);
+        // Stream is dropped automatically by Mutex<Option<Stream>>
     }
 }
 
@@ -220,7 +239,7 @@ fn resample(input: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>, Cor
     // Process in chunks of chunk_size
     let mut pos = 0;
     while pos + chunk_size <= input.len() {
-        let chunk = input[pos..pos + chunk_size].to_vec();
+        let chunk = &input[pos..pos + chunk_size];
         let resampled = resampler
             .process(&[chunk], None)
             .map_err(|e| CoreError::AudioCapture(format!("resample: {e}")))?;
@@ -260,6 +279,21 @@ mod tests {
         let buffer = capture.stop().unwrap();
         assert!(buffer.is_empty());
         assert_eq!(buffer.sample_rate, 16000);
+    }
+
+    #[test]
+    fn resample_identity_when_same_rate() {
+        // Inject samples at 16kHz — should bypass resampling entirely.
+        let capture = AudioCapture::new();
+        let input: Vec<f32> = (0..1600).map(|i| (i as f32 * 0.001).sin()).collect();
+        capture.buffer.lock().extend_from_slice(&input);
+        *capture.native_rate.lock() = Some(16000);
+        capture.capturing.store(true, Ordering::SeqCst);
+        let buf = capture.stop().unwrap();
+        assert_eq!(buf.samples.len(), 1600);
+        assert_eq!(buf.sample_rate, 16000);
+        // Samples should be identical (no resampling).
+        assert_eq!(buf.samples, input);
     }
 
     #[test]

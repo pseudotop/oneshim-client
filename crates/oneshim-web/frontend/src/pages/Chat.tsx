@@ -361,6 +361,7 @@ export default function Chat() {
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
+  const recordingRef = useRef(false)
   const [tokenUsage, setTokenUsage] = useState<{ total: number; budget: number | null }>({ total: 0, budget: null })
   const [createError, setCreateError] = useState<string | null>(null)
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null)
@@ -407,10 +408,14 @@ export default function Chat() {
     })
   }, [])
 
-  // Clean up pending RAF on unmount
+  // Clean up pending RAF and active audio capture on unmount
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (recordingRef.current) {
+        recordingRef.current = false
+        ipc('stop_and_transcribe').catch(() => {})
+      }
     }
   }, [])
 
@@ -884,18 +889,25 @@ export default function Chat() {
   const activeSession = sessions.find((s) => s.session_id === activeId)
   const isReadOnly = activeSession ? isHistorical(activeSession) : false
 
-  const handleMicDown = useCallback(async () => {
-    if (isReadOnly || recording || transcribing) return
+  const handleMicDown = useCallback(async (e?: React.SyntheticEvent) => {
+    // Prevent synthesized mouse events from touch (avoids double-fire)
+    if (e?.nativeEvent instanceof TouchEvent) e.preventDefault()
+    if (isReadOnly || recordingRef.current || transcribing) return
+    // Set ref synchronously to guard against rapid fire / race with handleMicUp
+    recordingRef.current = true
+    setRecording(true)
     try {
       await ipc('start_audio_capture')
-      setRecording(true)
-    } catch (e) {
-      addToast('error', errorMessage(e, t('chat.mic_error', 'Microphone not available')), 5000)
+    } catch (err) {
+      recordingRef.current = false
+      setRecording(false)
+      addToast('error', errorMessage(err, t('chat.mic_error', 'Microphone not available')), 5000)
     }
-  }, [isReadOnly, recording, transcribing, t])
+  }, [isReadOnly, transcribing, t])
 
   const handleMicUp = useCallback(async () => {
-    if (!recording) return
+    if (!recordingRef.current) return
+    recordingRef.current = false
     setRecording(false)
     setTranscribing(true)
     try {
@@ -908,7 +920,7 @@ export default function Chat() {
     } finally {
       setTranscribing(false)
     }
-  }, [recording, t])
+  }, [t])
   const sendDisabled = (!input.trim() && attachments.length === 0) || sending || payloadInvalid || isReadOnly
 
   return (
@@ -1381,8 +1393,10 @@ export default function Chat() {
                   type="button"
                   onMouseDown={handleMicDown}
                   onMouseUp={handleMicUp}
+                  onMouseLeave={handleMicUp}
                   onTouchStart={handleMicDown}
                   onTouchEnd={handleMicUp}
+                  onTouchCancel={handleMicUp}
                   disabled={isReadOnly || sending || transcribing}
                   className={cn(
                     'flex items-center justify-center rounded-md p-2 transition-colors',

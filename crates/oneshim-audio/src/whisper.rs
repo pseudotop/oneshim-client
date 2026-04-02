@@ -34,12 +34,16 @@ impl WhisperSttProvider {
             )));
         }
 
+        let model_str = model_path.to_str().ok_or_else(|| {
+            CoreError::SpeechToText(format!(
+                "model path contains invalid UTF-8: {}",
+                model_path.display()
+            ))
+        })?;
+
         info!(model = %model_path.display(), "loading Whisper model");
-        let ctx = WhisperContext::new_with_params(
-            model_path.to_str().unwrap_or_default(),
-            WhisperContextParameters::default(),
-        )
-        .map_err(|e| CoreError::SpeechToText(format!("failed to load model: {e}")))?;
+        let ctx = WhisperContext::new_with_params(model_str, WhisperContextParameters::default())
+            .map_err(|e| CoreError::SpeechToText(format!("failed to load model: {e}")))?;
 
         Ok(Self {
             ctx: Arc::new(Mutex::new(ctx)),
@@ -111,12 +115,13 @@ impl SttProvider for WhisperSttProvider {
                 .full_n_segments()
                 .map_err(|e| CoreError::SpeechToText(format!("get segments: {e}")))?;
 
-            let text = (0..n_segments)
+            let text: String = (0..n_segments)
                 .filter_map(|i| state.full_get_segment_text(i).ok())
                 .collect::<Vec<_>>()
                 .join(" ")
-                .trim()
-                .to_string();
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
 
             let detected_lang = state
                 .full_lang_id()
