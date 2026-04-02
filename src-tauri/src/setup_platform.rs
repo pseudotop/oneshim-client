@@ -1,4 +1,7 @@
-use tauri::{App, Manager};
+use tauri::App;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
+#[cfg(target_os = "macos")]
 use tracing::info;
 
 pub(crate) fn apply(app: &mut App) {
