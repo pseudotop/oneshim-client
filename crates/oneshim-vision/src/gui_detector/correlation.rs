@@ -69,7 +69,9 @@ impl GuiElementDetector {
             });
 
             if should_merge {
-                let prev = grouped.last_mut().unwrap();
+                let prev = grouped
+                    .last_mut()
+                    .expect("grouped is non-empty when merging");
                 // Merge bounding boxes
                 let min_x = prev.bbox.x.min(region.bbox.x);
                 let min_y = prev.bbox.y.min(region.bbox.y);

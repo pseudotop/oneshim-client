@@ -429,7 +429,7 @@ impl ClusteringStrategy for GmmDetector {
                 .iter()
                 .enumerate()
                 .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                .unwrap();
+                .expect("posteriors is non-empty");
             labels.push(best_j as i32);
             probabilities.push(best_p as f32);
         }
