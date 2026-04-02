@@ -25,6 +25,41 @@ impl AudioBuffer {
     pub fn is_empty(&self) -> bool {
         self.samples.is_empty()
     }
+
+    /// Encode PCM samples as a WAV byte buffer (16-bit, 16kHz, mono).
+    /// Used for uploading to cloud STT APIs that accept WAV format.
+    pub fn to_wav_bytes(&self) -> Vec<u8> {
+        let num_samples = self.samples.len();
+        let data_size = (num_samples * 2) as u32; // 16-bit = 2 bytes per sample
+        let file_size = 36 + data_size;
+
+        let mut buf = Vec::with_capacity(44 + data_size as usize);
+
+        // RIFF header
+        buf.extend_from_slice(b"RIFF");
+        buf.extend_from_slice(&file_size.to_le_bytes());
+        buf.extend_from_slice(b"WAVE");
+
+        // fmt sub-chunk
+        buf.extend_from_slice(b"fmt ");
+        buf.extend_from_slice(&16u32.to_le_bytes()); // sub-chunk size
+        buf.extend_from_slice(&1u16.to_le_bytes()); // PCM format
+        buf.extend_from_slice(&1u16.to_le_bytes()); // mono
+        buf.extend_from_slice(&16000u32.to_le_bytes()); // sample rate
+        buf.extend_from_slice(&32000u32.to_le_bytes()); // byte rate (16000 * 1 * 2)
+        buf.extend_from_slice(&2u16.to_le_bytes()); // block align (1 * 2)
+        buf.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+
+        // data sub-chunk
+        buf.extend_from_slice(b"data");
+        buf.extend_from_slice(&data_size.to_le_bytes());
+        for &sample in &self.samples {
+            let clamped = (sample.clamp(-1.0, 1.0) * 32767.0) as i16;
+            buf.extend_from_slice(&clamped.to_le_bytes());
+        }
+
+        buf
+    }
 }
 
 /// STT transcription result.
@@ -72,6 +107,8 @@ pub struct AudioStatus {
     pub selected_model: WhisperModelSize,
     pub model_status: ModelDownloadStatus,
     pub stt_provider_loaded: bool,
+    #[serde(default)]
+    pub stt_provider: String,
 }
 
 #[cfg(test)]
@@ -153,10 +190,53 @@ mod tests {
             selected_model: crate::config::WhisperModelSize::Base,
             model_status: ModelDownloadStatus::NotInstalled,
             stt_provider_loaded: false,
+            stt_provider: String::new(),
         };
         let json = serde_json::to_string(&status).unwrap();
         let restored: AudioStatus = serde_json::from_str(&json).unwrap();
         assert!(restored.enabled);
         assert!(!restored.stt_provider_loaded);
+    }
+
+    #[test]
+    fn to_wav_bytes_valid_header() {
+        let buf = AudioBuffer::new(vec![0.0; 16000]); // 1 second
+        let wav = buf.to_wav_bytes();
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(&wav[12..16], b"fmt ");
+        assert_eq!(&wav[36..40], b"data");
+        // Total: 44 header + 32000 data = 32044
+        assert_eq!(wav.len(), 44 + 32000);
+    }
+
+    #[test]
+    fn to_wav_bytes_pcm16_conversion() {
+        let buf = AudioBuffer::new(vec![1.0, -1.0, 0.0]);
+        let wav = buf.to_wav_bytes();
+        // PCM16 data starts at offset 44
+        let s1 = i16::from_le_bytes([wav[44], wav[45]]);
+        let s2 = i16::from_le_bytes([wav[46], wav[47]]);
+        let s3 = i16::from_le_bytes([wav[48], wav[49]]);
+        assert_eq!(s1, 32767); // 1.0 * 32767
+        assert_eq!(s2, -32767); // -1.0 * 32767
+        assert_eq!(s3, 0);
+    }
+
+    #[test]
+    fn to_wav_bytes_clamps_out_of_range() {
+        let buf = AudioBuffer::new(vec![2.0, -2.0]); // beyond [-1, 1]
+        let wav = buf.to_wav_bytes();
+        let s1 = i16::from_le_bytes([wav[44], wav[45]]);
+        let s2 = i16::from_le_bytes([wav[46], wav[47]]);
+        assert_eq!(s1, 32767); // clamped to 1.0
+        assert_eq!(s2, -32767); // clamped to -1.0
+    }
+
+    #[test]
+    fn to_wav_bytes_empty() {
+        let buf = AudioBuffer::new(vec![]);
+        let wav = buf.to_wav_bytes();
+        assert_eq!(wav.len(), 44); // header only
     }
 }

@@ -29,6 +29,7 @@ mod cli_subscription_bridge;
 mod commands;
 mod desktop_permissions;
 mod desktop_startup;
+mod fallback_stt;
 mod feature_capabilities;
 mod focus_analyzer;
 mod focus_mode;
