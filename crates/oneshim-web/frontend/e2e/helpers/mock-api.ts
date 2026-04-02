@@ -18,12 +18,7 @@ async function fulfillJson(route: Route, payload: unknown, status = 200): Promis
   })
 }
 
-export async function mockStaticJson(
-  page: Page,
-  pattern: RoutePattern,
-  payload: unknown,
-  status = 200
-): Promise<void> {
+export async function mockStaticJson(page: Page, pattern: RoutePattern, payload: unknown, status = 200): Promise<void> {
   await page.route(pattern, async (route) => {
     await fulfillJson(route, payload, status)
   })
@@ -33,7 +28,7 @@ export async function mockDynamicJson(
   page: Page,
   pattern: RoutePattern,
   resolver: JsonResolver,
-  status = 200
+  status = 200,
 ): Promise<void> {
   await page.route(pattern, async (route) => {
     const payload = await resolver(route.request())
@@ -346,7 +341,9 @@ const fallbackAutomationPresets = {
       name: 'Close Distracting Apps',
       description: 'Close a predefined set of distracting apps.',
       category: 'AppManagement',
-      steps: [{ name: 'Close social apps', intent: { action: 'apps.close_social' }, delay_ms: 0, stop_on_failure: true }],
+      steps: [
+        { name: 'Close social apps', intent: { action: 'apps.close_social' }, delay_ms: 0, stop_on_failure: true },
+      ],
       builtin: true,
       platform: null,
     },
@@ -355,7 +352,9 @@ const fallbackAutomationPresets = {
       name: 'Daily Review',
       description: 'Open the daily review checklist workflow.',
       category: 'Workflow',
-      steps: [{ name: 'Open review checklist', intent: { action: 'workflow.review' }, delay_ms: 0, stop_on_failure: true }],
+      steps: [
+        { name: 'Open review checklist', intent: { action: 'workflow.review' }, delay_ms: 0, stop_on_failure: true },
+      ],
       builtin: true,
       platform: null,
     },
@@ -373,7 +372,7 @@ const fallbackAutomationPresets = {
 
 export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
   await mockDynamicJson(page, '**/api/settings', (request) =>
-    request.method() === 'POST' ? request.postDataJSON() ?? fallbackSettings : fallbackSettings
+    request.method() === 'POST' ? (request.postDataJSON() ?? fallbackSettings) : fallbackSettings,
   )
   await mockStaticJson(page, '**/api/update/status**', fallbackUpdateStatus)
   await mockStaticJson(page, '**/api/storage/stats**', fallbackStorageStats)

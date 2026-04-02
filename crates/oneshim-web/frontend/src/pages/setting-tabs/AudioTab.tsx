@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Spinner } from '../../components/ui'
 import type { AudioSettings } from '../../api/contracts'
-import { cn } from '../../utils/cn'
+import { Button, Spinner } from '../../components/ui'
 import { colors, radius, typography } from '../../styles/tokens'
+import { cn } from '../../utils/cn'
 
 const ipc = async <T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
   const { invoke } = await import('@tauri-apps/api/core')
@@ -58,7 +58,11 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
     ;(async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event')
-        const unlisten1 = await listen<{ progress_pct: number | null; bytes_downloaded: number; total_bytes: number | null }>('audio-model-progress', (event) => {
+        const unlisten1 = await listen<{
+          progress_pct: number | null
+          bytes_downloaded: number
+          total_bytes: number | null
+        }>('audio-model-progress', (event) => {
           setAudioStatus((prev) =>
             prev
               ? {
@@ -123,7 +127,8 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
   }
 
   const handleDelete = async () => {
-    if (!confirm(t('settings.audio.delete_confirm', 'Delete the downloaded model? You can re-download it later.'))) return
+    if (!confirm(t('settings.audio.delete_confirm', 'Delete the downloaded model? You can re-download it later.')))
+      return
     try {
       await ipc('delete_whisper_model', { modelSize })
       fetchStatus()
@@ -143,9 +148,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
 
   return (
     <div className="space-y-6">
-      <h3 className={cn(typography.h3, colors.text.primary)}>
-        {t('settings.audio.title', 'Audio & Speech-to-Text')}
-      </h3>
+      <h3 className={cn(typography.h3, colors.text.primary)}>{t('settings.audio.title', 'Audio & Speech-to-Text')}</h3>
 
       <label className="flex items-center gap-3">
         <input
@@ -154,16 +157,15 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
           onChange={(e) => onAudioChange('enabled', e.target.checked)}
           className="h-4 w-4"
         />
-        <span className={colors.text.primary}>
-          {t('settings.audio.enable', 'Enable audio capture and STT')}
-        </span>
+        <span className={colors.text.primary}>{t('settings.audio.enable', 'Enable audio capture and STT')}</span>
       </label>
 
       <div className="space-y-2">
-        <label className={cn(typography.label, colors.text.secondary)}>
+        <label htmlFor="audio-model-size" className={cn(typography.label, colors.text.secondary)}>
           {t('settings.audio.model', 'Whisper Model')}
         </label>
         <select
+          id="audio-model-size"
           value={modelSize}
           onChange={(e) => onAudioChange('model_size', e.target.value)}
           disabled={downloading || !enabled}
@@ -183,7 +185,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
         </span>
         <div className="flex items-center gap-3">
           {modelState === 'not_installed' && (
-            <span className="rounded bg-neutral-200 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
+            <span className="rounded bg-neutral-200 px-2 py-0.5 text-neutral-600 text-xs dark:bg-neutral-700 dark:text-neutral-300">
               {t('settings.audio.not_installed', 'Not installed')}
             </span>
           )}
@@ -198,12 +200,12 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
             </div>
           )}
           {modelState === 'ready' && (
-            <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">
+            <span className="rounded bg-green-100 px-2 py-0.5 text-green-700 text-xs dark:bg-green-900 dark:text-green-300">
               {t('settings.audio.ready', 'Ready')}
             </span>
           )}
           {modelState === 'error' && audioStatus?.model_status.state === 'error' && (
-            <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900 dark:text-red-300">
+            <span className="rounded bg-red-100 px-2 py-0.5 text-red-700 text-xs dark:bg-red-900 dark:text-red-300">
               {audioStatus.model_status.message}
             </span>
           )}
@@ -235,10 +237,11 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
       </div>
 
       <div className="space-y-2">
-        <label className={cn(typography.label, colors.text.secondary)}>
+        <label htmlFor="audio-language" className={cn(typography.label, colors.text.secondary)}>
           {t('settings.audio.language', 'STT Language')}
         </label>
         <select
+          id="audio-language"
           value={language}
           onChange={(e) => onAudioChange('language', e.target.value)}
           disabled={!enabled}
@@ -251,10 +254,10 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
       </div>
 
       {/* Input Mode */}
-      <div className="space-y-2">
-        <label className={cn(typography.label, colors.text.secondary)}>
+      <fieldset className="space-y-2">
+        <legend className={cn(typography.label, colors.text.secondary)}>
           {t('settings.audio.input_mode', 'Input Mode')}
-        </label>
+        </legend>
         <div className="flex gap-4">
           <label className="flex items-center gap-2">
             <input
@@ -277,17 +280,18 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
             <span className={colors.text.primary}>{t('settings.audio.vad', 'Voice Activity')}</span>
           </label>
         </div>
-      </div>
+      </fieldset>
 
       {/* VAD Settings (shown when Voice Activity selected) */}
       {micInputMode === 'voice_activity' && (
         <div className="space-y-4 rounded-lg border border-muted p-4">
           <div className="space-y-2">
-            <label className={cn(typography.label, colors.text.secondary)}>
+            <label htmlFor="audio-vad-threshold" className={cn(typography.label, colors.text.secondary)}>
               {t('settings.audio.vad_sensitivity', 'VAD Sensitivity')}
             </label>
             <div className="flex items-center gap-3">
               <input
+                id="audio-vad-threshold"
                 type="range"
                 min="0.005"
                 max="0.1"
@@ -301,14 +305,18 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               </span>
             </div>
             <p className={cn(typography.caption, colors.text.tertiary)}>
-              {t('settings.audio.vad_sensitivity_hint', 'Lower = more sensitive. Increase if background noise triggers false detections.')}
+              {t(
+                'settings.audio.vad_sensitivity_hint',
+                'Lower = more sensitive. Increase if background noise triggers false detections.',
+              )}
             </p>
           </div>
           <div className="space-y-2">
-            <label className={cn(typography.label, colors.text.secondary)}>
+            <label htmlFor="audio-vad-silence" className={cn(typography.label, colors.text.secondary)}>
               {t('settings.audio.vad_silence', 'Silence Duration (ms)')}
             </label>
             <input
+              id="audio-vad-silence"
               type="number"
               min="200"
               max="3000"
@@ -325,10 +333,10 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
       )}
 
       {/* STT Provider */}
-      <div className="space-y-2">
-        <label className={cn(typography.label, colors.text.secondary)}>
+      <fieldset className="space-y-2">
+        <legend className={cn(typography.label, colors.text.secondary)}>
           {t('settings.audio.stt_provider', 'STT Provider')}
-        </label>
+        </legend>
         <div className="flex gap-4">
           <label className="flex items-center gap-2">
             <input
@@ -351,7 +359,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
             <span className={colors.text.primary}>{t('settings.audio.cloud', 'Cloud (OpenAI)')}</span>
           </label>
         </div>
-      </div>
+      </fieldset>
 
       {/* Cloud API Key (shown when Cloud selected) */}
       {sttProvider === 'cloud' && (

@@ -1,4 +1,4 @@
-import { test, expect } from './helpers/test'
+import { expect, test } from './helpers/test'
 
 test.describe('Cross-Page Actions', () => {
   test('P160: Cmd+K works from any page', async ({ page }) => {

@@ -1,5 +1,5 @@
 import type { ManualChunkMeta, OutputOptions } from 'rollup'
-import { mergeConfig, type InlineConfig } from 'vite'
+import { type InlineConfig, mergeConfig } from 'vite'
 
 const STORYBOOK_MOCKING_PLUGIN_NAMES = [
   'vite:storybook-inject-mocker-runtime',
@@ -16,9 +16,7 @@ function isNamedPlugin(plugin: unknown): plugin is { name: string } {
   )
 }
 
-function stripStorybookMockingPlugins(
-  plugins: InlineConfig['plugins'],
-): InlineConfig['plugins'] {
+function stripStorybookMockingPlugins(plugins: InlineConfig['plugins']): InlineConfig['plugins'] {
   if (!plugins) {
     return plugins
   }
@@ -113,13 +111,10 @@ function resolveStorybookChunk(id: string): string | undefined {
   return undefined
 }
 
-type ManualChunks =
-  | Record<string, string[]>
-  | ((id: string, meta: ManualChunkMeta) => string | void)
-  | undefined
+type ManualChunks = Record<string, string[]> | ((id: string, meta: ManualChunkMeta) => string | undefined) | undefined
 
 function createManualChunks(existingManualChunks: ManualChunks) {
-  return (id: string, meta: ManualChunkMeta): string | void => {
+  return (id: string, meta: ManualChunkMeta): string | undefined => {
     const storybookChunk = resolveStorybookChunk(id)
     if (storybookChunk) {
       return storybookChunk

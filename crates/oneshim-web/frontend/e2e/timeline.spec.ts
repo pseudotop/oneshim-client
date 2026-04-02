@@ -1,15 +1,11 @@
-import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
 import { mockStaticJson } from './helpers/mock-api'
+import { expect, type Page, test } from './helpers/test'
 
 const timelineHeadingName = i18nRegex('timeline.title')
 const timelineAppName = i18nRegex('timeline.app')
 const timelineImportanceName = i18nRegex('timeline.importance')
-const dateRangeButtonName = i18nRegex([
-  'dateRange.today',
-  'dateRange.week',
-  'dateRange.month',
-])
+const dateRangeButtonName = i18nRegex(['dateRange.today', 'dateRange.week', 'dateRange.month'])
 const timelineGridViewTitle = i18nRegex('timeline.gridView')
 const timelineListViewTitle = i18nRegex('timeline.listView')
 const capturesTextName = i18nRegex('timeline.captures')

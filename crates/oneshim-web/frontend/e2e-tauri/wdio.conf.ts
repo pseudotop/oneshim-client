@@ -48,11 +48,11 @@ export const config = {
   reporters: ['spec'],
 
   // App lifecycle management
-  onPrepare: async function () {
+  onPrepare: async () => {
     await startApp(WEBDRIVER_PORT)
   },
 
-  onComplete: function () {
+  onComplete: () => {
     stopApp()
   },
 }

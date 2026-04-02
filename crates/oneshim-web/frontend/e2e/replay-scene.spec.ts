@@ -1,6 +1,6 @@
-import { expect, test } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
 import { mockDynamicJson, mockStaticJson } from './helpers/mock-api'
+import { expect, test } from './helpers/test'
 
 const replayTitle = i18nRegex('replay.title')
 const hideOverlayLabel = i18nRegex('replay.hideOverlay')
@@ -12,7 +12,7 @@ function makeReplayTimeline() {
   const start = new Date(now.getTime() - 60_000)
   const frameTimestamp = start.toISOString()
   const svg = encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="100%" height="100%" fill="#dbeafe"/><text x="120" y="140" font-size="42">Replay Frame</text></svg>'
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="100%" height="100%" fill="#dbeafe"/><text x="120" y="140" font-size="42">Replay Frame</text></svg>',
   )
 
   return {
@@ -84,9 +84,7 @@ test.describe('Replay Scene Overlay', () => {
     await page.getByRole('button', { name: showOverlayLabel }).click()
 
     await page.locator('button[title="button"]').first().click()
-    await expect(
-      page.locator('div.text-sm.font-semibold', { hasText: 'Save' }).first()
-    ).toBeVisible()
+    await expect(page.locator('div.text-sm.font-semibold', { hasText: 'Save' }).first()).toBeVisible()
 
     await page.getByRole('button', { name: runSuggestedActionLabel }).click()
     await expect(page.getByText(/policy:|policy:/i)).toBeVisible()
@@ -122,7 +120,7 @@ test.describe('Replay Scene Overlay', () => {
       page,
       '**/api/automation/execute-scene-action',
       () => ({ error: 'policy blocked for test' }),
-      400
+      400,
     )
 
     await page.goto('/replay')
