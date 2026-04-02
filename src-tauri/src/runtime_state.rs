@@ -6,6 +6,7 @@ use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::audio_capture::AudioCapturePort;
 use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
+use oneshim_core::ports::model_downloader::ModelDownloader;
 use oneshim_core::ports::monitor::ActivityMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::session_storage::SessionStoragePort;
@@ -16,6 +17,7 @@ use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16};
 use std::sync::Arc;
 use tauri::{App, Manager};
@@ -47,11 +49,18 @@ pub struct CaptureContext {
     pub work_classifier: Option<Arc<dyn WorkTypeClassifier>>,
 }
 
-/// Audio capture and STT engine for voice input.
+/// Audio capture, STT engine, and model management for voice input.
 #[allow(dead_code)]
 pub struct AudioContext {
     pub capture: Option<Arc<dyn AudioCapturePort>>,
-    pub stt_engine: Option<Arc<dyn SttProvider>>,
+    /// RwLock allows hot-reload after model download.
+    pub stt_engine: Arc<tokio::sync::RwLock<Option<Arc<dyn SttProvider>>>>,
+    pub model_downloader: Option<Arc<dyn ModelDownloader>>,
+    pub model_dir: PathBuf,
+    /// Prevents concurrent downloads.
+    pub downloading: Arc<AtomicBool>,
+    /// Cancel flag for active download — set to true to abort.
+    pub download_cancel: Arc<AtomicBool>,
 }
 
 /// Groups connectivity flags for server, LLM, and CLI connections.
@@ -325,7 +334,11 @@ mod tests {
             session_storage: None,
             audio: AudioContext {
                 capture: None,
-                stt_engine: None,
+                stt_engine: Arc::new(tokio::sync::RwLock::new(None)),
+                model_downloader: None,
+                model_dir: PathBuf::from("/tmp/test-models"),
+                downloading: Arc::new(AtomicBool::new(false)),
+                download_cancel: Arc::new(AtomicBool::new(false)),
             },
         })
         .build();

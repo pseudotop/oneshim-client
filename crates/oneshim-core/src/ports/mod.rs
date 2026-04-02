@@ -21,6 +21,7 @@ pub mod input_driver;
 pub mod integration;
 pub mod intent_planner;
 pub mod llm_provider;
+pub mod model_downloader;
 pub mod monitor;
 pub mod notifier;
 pub mod oauth;

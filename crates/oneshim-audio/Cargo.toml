@@ -12,6 +12,7 @@ authors.workspace = true
 [features]
 default = []
 whisper = ["dep:whisper-rs"]
+download = ["dep:reqwest", "dep:sha2", "dep:futures-util"]
 
 [dependencies]
 oneshim-core = { workspace = true }
@@ -22,3 +23,9 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }
 async-trait = { workspace = true }
+reqwest = { workspace = true, features = ["stream"], optional = true }
+sha2 = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

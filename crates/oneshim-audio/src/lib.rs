@@ -8,7 +8,13 @@ mod capture;
 #[cfg(feature = "whisper")]
 mod whisper;
 
+#[cfg(feature = "download")]
+pub mod model_downloader;
+
 pub use capture::AudioCapture;
 
 #[cfg(feature = "whisper")]
 pub use whisper::WhisperSttProvider;
+
+#[cfg(feature = "download")]
+pub use model_downloader::WhisperModelDownloader;

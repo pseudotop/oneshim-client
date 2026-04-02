@@ -139,3 +139,25 @@ pub enum SttLanguage {
     En,
     Ko,
 }
+
+/// Available Whisper model variants for local STT.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WhisperModelSize {
+    Tiny,
+    #[default]
+    Base,
+    Small,
+    Medium,
+}
+
+impl WhisperModelSize {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Tiny => "Tiny (~75 MB)",
+            Self::Base => "Base (~142 MB)",
+            Self::Small => "Small (~466 MB)",
+            Self::Medium => "Medium (~1.5 GB)",
+        }
+    }
+}

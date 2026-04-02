@@ -1,5 +1,6 @@
 // 오디오 캡처 및 음성-텍스트 변환 설정
 use super::super::enums::SttLanguage;
+use super::super::enums::WhisperModelSize;
 use serde::{Deserialize, Serialize};
 
 fn default_max_recording_secs() -> u32 {
@@ -21,6 +22,9 @@ pub struct AudioConfig {
     /// Maximum recording duration in seconds.
     #[serde(default = "default_max_recording_secs")]
     pub max_recording_secs: u32,
+    /// Whisper model size selection.
+    #[serde(default)]
+    pub model_size: WhisperModelSize,
 }
 
 impl Default for AudioConfig {
@@ -30,6 +34,7 @@ impl Default for AudioConfig {
             whisper_model_path: String::new(),
             language: SttLanguage::Auto,
             max_recording_secs: default_max_recording_secs(),
+            model_size: WhisperModelSize::default(),
         }
     }
 }
@@ -45,6 +50,7 @@ mod tests {
             whisper_model_path: "/tmp/model.bin".into(),
             language: SttLanguage::Ko,
             max_recording_secs: 30,
+            model_size: WhisperModelSize::Small,
         };
         let json = serde_json::to_string(&config).unwrap();
         let restored: AudioConfig = serde_json::from_str(&json).unwrap();
@@ -64,5 +70,13 @@ mod tests {
 
         let restored: SttLanguage = serde_json::from_str("\"ko\"").unwrap();
         assert_eq!(restored, SttLanguage::Ko);
+    }
+
+    #[test]
+    fn audio_config_missing_model_size_uses_default() {
+        let json = r#"{"enabled": true, "language": "ko"}"#;
+        let config: AudioConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.model_size, WhisperModelSize::Base);
+        assert!(config.enabled);
     }
 }
