@@ -9,12 +9,13 @@ use tokio::sync::Mutex;
 /// Maximum number of read-status entries to track. More than enough for
 /// max 50 queue items + some history overlap. Using an LRU cache prevents
 /// unbounded growth when suggestions are continuously received.
+#[allow(dead_code)] // wired in app_runtime_launch; IPC commands access via AppState
 const READ_IDS_CAPACITY: usize = 200;
 
 /// Thin wrapper providing unified access to suggestion pipeline components.
 /// CRITICAL: `queue` and `history` must be the SAME Arc instances passed
 /// to SuggestionReceiver, so SSE-received suggestions appear in IPC queries.
-#[allow(dead_code)]
+#[allow(dead_code)] // wired in app_runtime_launch; IPC commands access via AppState
 pub struct SuggestionManager {
     queue: Arc<Mutex<SuggestionQueue>>,
     history: Arc<Mutex<SuggestionHistory>>,
@@ -22,7 +23,7 @@ pub struct SuggestionManager {
     read_ids: Mutex<LruCache<String, ()>>,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // wired in app_runtime_launch
 impl SuggestionManager {
     pub fn new(
         queue: Arc<Mutex<SuggestionQueue>>,

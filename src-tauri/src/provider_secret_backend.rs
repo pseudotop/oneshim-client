@@ -15,8 +15,8 @@ pub const ONESHIM_PROVIDER_SECRET_FILE_ENV: &str = "ONESHIM_PROVIDER_SECRET_FILE
 pub const FILE_SECRET_STORE_NAME: &str = "oneshim-secrets.json";
 const KEYCHAIN_REGISTRY_FILE_NAME: &str = "oneshim-keychain-registry.json";
 
-#[allow(dead_code)]
 #[derive(Clone)]
+#[allow(dead_code)] // fields exposed for diagnostic logging in future
 pub struct ProviderSecretBackendResolution {
     pub secret_store: Option<Arc<dyn SecretStore>>,
     pub backend_kind: CredentialBackendKind,

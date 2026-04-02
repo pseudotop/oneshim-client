@@ -19,7 +19,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Thread safety: `MainThreadBound<RefCell<Vec<BorderInner>>>` wraps the NSWindows.
 /// AtomicBool tracks visible/paused state from any thread.
 /// All native mutations dispatch to the main thread via `get_on_main`.
-#[allow(dead_code)]
 pub struct NativeBorderIndicator {
     #[cfg(target_os = "macos")]
     inner: dispatch2::MainThreadBound<std::cell::RefCell<Vec<macos::BorderInner>>>,
@@ -29,7 +28,6 @@ pub struct NativeBorderIndicator {
     paused: AtomicBool,
 }
 
-#[allow(dead_code)]
 impl NativeBorderIndicator {
     /// Create border indicators for all connected screens.
     /// Returns `None` if no screens are available.
@@ -192,5 +190,4 @@ impl Drop for NativeBorderIndicator {
 }
 
 /// Tauri managed state wrapper. Uses `Arc` for sharing with the screen monitor task.
-#[allow(dead_code)]
 pub struct NativeBorderState(pub std::sync::Arc<NativeBorderIndicator>);

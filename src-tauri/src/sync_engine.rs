@@ -16,7 +16,7 @@ use oneshim_core::ports::change_merger::ChangeMerger;
 use oneshim_core::ports::sync_transport::SyncTransport;
 use oneshim_core::sync::Hlc;
 
-#[allow(dead_code)]
+#[allow(dead_code)] // fields stored for cross-device sync lifecycle
 pub struct SyncEngine {
     extractor: Arc<dyn ChangeExtractor>,
     merger: Arc<dyn ChangeMerger>,
@@ -38,7 +38,6 @@ pub struct SyncEngine {
     deletion_pushed: AtomicBool,
 }
 
-#[allow(dead_code)]
 impl SyncEngine {
     /// Create a new SyncEngine.
     ///

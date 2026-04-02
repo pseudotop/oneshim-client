@@ -14,7 +14,6 @@ use oneshim_api_contracts::provider_specs::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code)]
 pub enum FeatureMaturity {
     Stable,
     Beta,

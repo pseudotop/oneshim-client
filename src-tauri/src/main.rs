@@ -96,7 +96,7 @@ use tracing_subscriber::EnvFilter;
 /// app exits rather than leaked.  The inner field is intentionally never
 /// read — its purpose is to keep the guard alive for the duration of the
 /// process.
-#[allow(dead_code)]
+#[allow(dead_code)] // RAII: inner guard kept alive for log flushing on Drop
 pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
 
 fn main() {
