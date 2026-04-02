@@ -48,12 +48,14 @@ impl ScreenCapture {
         let monitors = Monitor::all()
             .map_err(|e| VisionError::Internal(format!("Failed to query monitor list: {e}")))?;
 
-        // Single monitor or no bounds — primary capture
-        if monitors.len() <= 1 || bounds.is_none() {
+        // Single monitor — primary capture
+        if monitors.len() <= 1 {
             return self.capture_primary();
         }
 
-        let bounds = bounds.unwrap();
+        let Some(bounds) = bounds else {
+            return self.capture_primary();
+        };
         // Window center point
         let cx = bounds.x + (bounds.width as i32 / 2);
         let cy = bounds.y + (bounds.height as i32 / 2);

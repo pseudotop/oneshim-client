@@ -355,8 +355,8 @@ impl ContextAnalyzer {
             .collect();
 
         let total_work_mins = if ctx_events.len() >= 2 {
-            let first = ctx_events.first().unwrap().timestamp;
-            let last = ctx_events.last().unwrap().timestamp;
+            let first = ctx_events.first().expect("len >= 2").timestamp;
+            let last = ctx_events.last().expect("len >= 2").timestamp;
             ((last - first).num_minutes() as u32).max(1)
         } else {
             0

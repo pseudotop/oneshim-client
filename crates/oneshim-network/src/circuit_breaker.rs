@@ -69,7 +69,7 @@ impl CircuitBreaker {
 
     /// Check current state, transitioning Open→HalfOpen if cooldown elapsed.
     pub fn check(&self) -> CircuitState {
-        let mut inner = self.state.lock().unwrap();
+        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
         if let CircuitState::Open { until } = &inner.status {
             if Instant::now() >= *until {
                 inner.status = CircuitState::HalfOpen;
@@ -80,7 +80,7 @@ impl CircuitBreaker {
     }
 
     pub fn record_success(&self) {
-        let mut inner = self.state.lock().unwrap();
+        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
         let was_half_open = matches!(inner.status, CircuitState::HalfOpen);
         inner.consecutive_failures = 0;
         inner.current_cooldown = self.config.initial_cooldown;
@@ -91,7 +91,7 @@ impl CircuitBreaker {
     }
 
     pub fn record_failure(&self) {
-        let mut inner = self.state.lock().unwrap();
+        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
         inner.consecutive_failures += 1;
 
         match &inner.status {
@@ -123,11 +123,15 @@ impl CircuitBreaker {
     }
 
     pub fn state(&self) -> CircuitState {
-        self.state.lock().unwrap().status.clone()
+        self.state
+            .lock()
+            .expect("circuit breaker lock poisoned")
+            .status
+            .clone()
     }
 
     pub fn stats(&self) -> CircuitBreakerStats {
-        let inner = self.state.lock().unwrap();
+        let inner = self.state.lock().expect("circuit breaker lock poisoned");
         CircuitBreakerStats {
             state: match &inner.status {
                 CircuitState::Closed => "closed",
