@@ -35,6 +35,55 @@ pub async fn get_hourly_metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AppState;
+    use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
+    use axum::http::{Request, StatusCode};
+    use oneshim_core::config::CredentialBackendKind;
+    use oneshim_storage::sqlite::SqliteStorage;
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+
+    fn test_app_state() -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let (event_tx, _) = broadcast::channel(16);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            default_secret_backend_kind: CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            integration_runtime_status: None,
+            integration_auth: None,
+            integration_session: None,
+            integration_outbox: None,
+            integration_inbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
+            integration_runtime_telemetry: None,
+            update_control: None,
+            vector_store: None,
+            embedding_provider: None,
+            text_search: None,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
+            session_manager: None,
+            pomodoro: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    fn loopback_app(state: AppState) -> axum::Router {
+        crate::WebServer::build_router(state)
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))))
+    }
 
     #[test]
     fn metrics_response_memory_percent() {
@@ -50,5 +99,30 @@ mod tests {
             network_download: 0,
         };
         assert_eq!(response.memory_percent, 50.0);
+    }
+
+    #[tokio::test]
+    async fn get_detailed_metrics_returns_expected_shape() {
+        let app = loopback_app(test_app_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/metrics?limit=10")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("json parse");
+
+        // Empty database returns an empty JSON array
+        assert!(parsed.is_array());
+        assert_eq!(parsed.as_array().expect("array").len(), 0);
     }
 }

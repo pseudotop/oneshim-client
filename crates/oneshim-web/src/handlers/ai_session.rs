@@ -172,3 +172,290 @@ pub async fn send_message(
             .text("ping"),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppState;
+    use async_trait::async_trait;
+    use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
+    use axum::http::{Request, StatusCode};
+    use oneshim_core::config::CredentialBackendKind;
+    use oneshim_core::error::CoreError;
+    use oneshim_core::models::ai_session::{ConversationSessionInfo, SessionState};
+    use oneshim_core::ports::conversation_session::{ConversationSession, SessionManager};
+    use oneshim_storage::sqlite::SqliteStorage;
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use tokio::sync::{broadcast, Mutex};
+    use tower::ServiceExt;
+
+    // ── Mock SessionManager ──────────────────────────────────────
+
+    struct MockSessionManager {
+        sessions: Mutex<HashMap<String, ConversationSessionInfo>>,
+    }
+
+    impl MockSessionManager {
+        fn new() -> Self {
+            Self {
+                sessions: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    struct MockConversationSession {
+        info: ConversationSessionInfo,
+    }
+
+    #[async_trait]
+    impl ConversationSession for MockConversationSession {
+        async fn send_message(
+            &self,
+            _message: &SessionMessage,
+        ) -> Result<oneshim_core::ports::conversation_session::ResponseStream, CoreError> {
+            Err(CoreError::Internal("not implemented in mock".to_string()))
+        }
+
+        fn info(&self) -> ConversationSessionInfo {
+            self.info.clone()
+        }
+
+        fn session_id(&self) -> &str {
+            &self.info.session_id
+        }
+
+        fn provider_name(&self) -> &str {
+            &self.info.provider_name
+        }
+    }
+
+    #[async_trait]
+    impl SessionManager for MockSessionManager {
+        async fn create_session(
+            &self,
+            config: SessionConfig,
+        ) -> Result<Arc<dyn ConversationSession>, CoreError> {
+            let now = chrono::Utc::now();
+            let info = ConversationSessionInfo {
+                session_id: uuid::Uuid::new_v4().to_string(),
+                provider_name: "mock".to_string(),
+                model: config.model.unwrap_or_else(|| "mock-model".to_string()),
+                state: SessionState::Active,
+                transport: config.transport,
+                created_at: now,
+                last_active: now,
+                turn_count: 0,
+            };
+            self.sessions
+                .lock()
+                .await
+                .insert(info.session_id.clone(), info.clone());
+            Ok(Arc::new(MockConversationSession { info }))
+        }
+
+        async fn kill_session(&self, session_id: &str) -> Result<(), CoreError> {
+            self.sessions
+                .lock()
+                .await
+                .remove(session_id)
+                .map(|_| ())
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "session".to_string(),
+                    id: session_id.to_string(),
+                })
+        }
+
+        async fn list_sessions(&self) -> Vec<ConversationSessionInfo> {
+            self.sessions.lock().await.values().cloned().collect()
+        }
+
+        async fn get_session(
+            &self,
+            session_id: &str,
+        ) -> Result<Arc<dyn ConversationSession>, CoreError> {
+            let guard = self.sessions.lock().await;
+            let info = guard.get(session_id).ok_or_else(|| CoreError::NotFound {
+                resource_type: "session".to_string(),
+                id: session_id.to_string(),
+            })?;
+            Ok(Arc::new(MockConversationSession { info: info.clone() }))
+        }
+
+        async fn recover_session(
+            &self,
+            session_id: &str,
+        ) -> Result<Arc<dyn ConversationSession>, CoreError> {
+            self.get_session(session_id).await
+        }
+
+        async fn touch_session(&self, _session_id: &str) {}
+
+        async fn report_failure(&self, _session_id: &str, _error: &CoreError) -> SessionState {
+            SessionState::Failed
+        }
+
+        async fn shutdown_all(&self) {
+            self.sessions.lock().await.clear();
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    fn test_app_state() -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let (event_tx, _) = broadcast::channel(16);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            default_secret_backend_kind: CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            integration_runtime_status: None,
+            integration_auth: None,
+            integration_session: None,
+            integration_outbox: None,
+            integration_inbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
+            integration_runtime_telemetry: None,
+            update_control: None,
+            vector_store: None,
+            embedding_provider: None,
+            text_search: None,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
+            session_manager: None,
+            pomodoro: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    fn test_app_state_with_session_manager() -> AppState {
+        let mut state = test_app_state();
+        state.session_manager = Some(Arc::new(MockSessionManager::new()));
+        state
+    }
+
+    fn loopback_app(state: AppState) -> axum::Router {
+        crate::WebServer::build_router(state)
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))))
+    }
+
+    // ── Tests ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn list_sessions_returns_empty_initially() {
+        let app = loopback_app(test_app_state_with_session_manager());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ai/sessions")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("json parse");
+        assert!(parsed.is_array());
+        assert_eq!(parsed.as_array().expect("array").len(), 0);
+    }
+
+    #[tokio::test]
+    async fn create_session_with_valid_config() {
+        let app = loopback_app(test_app_state_with_session_manager());
+        let body = serde_json::json!({
+            "transport": "subprocess",
+            "tools_enabled": false
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ai/sessions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).expect("serialize")))
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("json parse");
+        assert!(parsed.get("session_id").is_some());
+        assert_eq!(parsed["state"], "active");
+        assert_eq!(parsed["transport"], "subprocess");
+    }
+
+    #[tokio::test]
+    async fn create_session_returns_error_on_invalid_transport() {
+        let app = loopback_app(test_app_state_with_session_manager());
+        let body = r#"{"transport": "carrier_pigeon", "tools_enabled": false}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ai/sessions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        // Axum rejects unrecognized enum values during deserialization → 422
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn get_session_returns_not_found_for_nonexistent() {
+        let app = loopback_app(test_app_state_with_session_manager());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ai/sessions/nonexistent-id-999")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn delete_session_returns_not_found_for_nonexistent() {
+        let app = loopback_app(test_app_state_with_session_manager());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/ai/sessions/nonexistent-id-999")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}

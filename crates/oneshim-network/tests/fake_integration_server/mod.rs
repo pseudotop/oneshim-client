@@ -229,12 +229,12 @@ impl Drop for FakeIntegrationServer {
     fn drop(&mut self) {
         if let Some(tx) = self.http_shutdown_tx.take() {
             if let Err(e) = tx.send(()) {
-                debug!("channel send failed: {e}");
+                debug!("channel send failed: {e:?}");
             }
         }
         if let Some(tx) = self.websocket_shutdown_tx.take() {
             if let Err(e) = tx.send(()) {
-                debug!("channel send failed: {e}");
+                debug!("channel send failed: {e:?}");
             }
         }
     }
