@@ -523,6 +523,16 @@ fn mask_user_paths(text: &str) -> String {
     result
 }
 
+/// Adapter implementing [`PiiSanitizer`] by delegating to this module's
+/// `sanitize_title_with_level` function.
+pub struct VisionPiiSanitizer;
+
+impl oneshim_core::ports::pii_sanitizer::PiiSanitizer for VisionPiiSanitizer {
+    fn sanitize_text(&self, text: &str, level: oneshim_core::config::PiiFilterLevel) -> String {
+        sanitize_title_with_level(text, level)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -842,5 +852,17 @@ mod tests {
             !result.contains("ghs_"),
             "raw ghs_ token still present: {result}"
         );
+    }
+
+    #[test]
+    fn vision_pii_sanitizer_trait_delegates() {
+        use oneshim_core::config::PiiFilterLevel;
+        use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+
+        let sanitizer = super::VisionPiiSanitizer;
+        let result =
+            sanitizer.sanitize_text("email: user@example.com path", PiiFilterLevel::Standard);
+        assert!(result.contains("[EMAIL]"));
+        assert!(!result.contains("user@example.com"));
     }
 }

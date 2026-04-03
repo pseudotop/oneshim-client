@@ -368,7 +368,9 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             let web_server = WebServer::new(web_storage, web_config)
                 .with_bound_port_state(web_port_state)
                 .with_bound_port_notifier(bound_port_tx)
-                .with_runtime_bindings(runtime_bindings);
+                .with_runtime_bindings(runtime_bindings)
+                .with_pii_sanitizer(Arc::new(oneshim_vision::privacy::VisionPiiSanitizer)
+                    as Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>);
             if let Err(error) = web_server.run(web_shutdown_rx).await {
                 error!("WebServer error: {error}");
             }

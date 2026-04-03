@@ -57,6 +57,7 @@ use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
     IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
 };
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -115,6 +116,9 @@ pub struct AppState {
     pub coaching_engine: Option<Arc<dyn CoachingPort>>,
     pub session_manager: Option<Arc<dyn SessionManager>>,
     pub pomodoro: Arc<std::sync::Mutex<Option<oneshim_core::models::pomodoro::PomodoroSession>>>,
+    pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pub latest_bug_report:
+        Arc<parking_lot::RwLock<Option<oneshim_api_contracts::bug_report::BugReportBundleDto>>>,
 }
 
 pub struct WebServer {
@@ -157,6 +161,8 @@ impl WebServer {
                 coaching_engine: None,
                 session_manager: None,
                 pomodoro: Arc::new(std::sync::Mutex::new(None)),
+                pii_sanitizer: None,
+                latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -203,6 +209,11 @@ impl WebServer {
 
     pub fn with_ai_runtime_status(mut self, status: AiRuntimeStatus) -> Self {
         self.state.ai_runtime_status = Some(status);
+        self
+    }
+
+    pub fn with_pii_sanitizer(mut self, sanitizer: Arc<dyn PiiSanitizer>) -> Self {
+        self.state.pii_sanitizer = Some(sanitizer);
         self
     }
 
@@ -782,6 +793,8 @@ mod tests {
             coaching_engine: None,
             session_manager: None,
             pomodoro: Arc::new(std::sync::Mutex::new(None)),
+            pii_sanitizer: None,
+            latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
         }
     }
 

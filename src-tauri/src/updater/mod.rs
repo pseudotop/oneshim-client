@@ -4,7 +4,8 @@ mod github;
 mod install;
 mod state;
 
-use oneshim_core::config::UpdateConfig;
+#[allow(unused_imports)] // UpdateChannel used in #[cfg(test)] only
+use oneshim_core::config::{UpdateChannel, UpdateConfig};
 use serde::Deserialize;
 use thiserror::Error;
 

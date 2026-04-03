@@ -222,6 +222,14 @@ pub fn api_routes() -> Router<AppState> {
             "/support/diagnostics",
             get(handlers::support::get_diagnostics),
         )
+        .route(
+            "/support/bug-report",
+            post(handlers::bug_report::create_bug_report_with_params),
+        )
+        .route(
+            "/support/bug-report/latest",
+            get(handlers::bug_report::get_latest_bug_report),
+        )
         .route("/update/status", get(handlers::update::get_update_status))
         .route("/update/action", post(handlers::update::post_update_action))
         .route("/update/stream", get(handlers::update::get_update_stream))
@@ -340,6 +348,8 @@ mod tests {
             coaching_engine: None,
             session_manager: None,
             pomodoro: Arc::new(Mutex::new(None)),
+            pii_sanitizer: None,
+            latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -376,6 +386,8 @@ mod tests {
             coaching_engine: None,
             session_manager: None,
             pomodoro: Arc::new(Mutex::new(None)),
+            pii_sanitizer: None,
+            latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }
