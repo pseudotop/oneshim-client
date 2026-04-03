@@ -25,6 +25,7 @@ use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
 use oneshim_core::ports::coaching_storage::CoachingStoragePort;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::overlay_driver::OverlayDriver;
 use oneshim_core::ports::storage::StorageService;
@@ -32,7 +33,6 @@ use oneshim_core::ports::vector_index::VectorIndex;
 use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
 #[cfg(feature = "server")]
 use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
-use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_web::RealtimeEvent;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
@@ -115,7 +115,7 @@ pub struct Scheduler {
     pub(super) frame_processor: Arc<dyn FrameProcessor>,
     pub(super) storage: Arc<dyn StorageService>,
     pub(super) sqlite_storage: Arc<dyn SchedulerStorage>,
-    pub(super) frame_storage: Option<Arc<FrameFileStorage>>,
+    pub(super) frame_storage: Option<Arc<dyn FrameStoragePort>>,
     pub(super) batch_sink: Option<Arc<dyn BatchSink>>,
     pub(super) api_client: Option<Arc<dyn ApiClient>>,
     pub(super) event_tx: Option<broadcast::Sender<RealtimeEvent>>,
@@ -210,7 +210,7 @@ impl Scheduler {
         frame_processor: Arc<dyn FrameProcessor>,
         storage: Arc<dyn StorageService>,
         sqlite_storage: Arc<dyn SchedulerStorage>,
-        frame_storage: Option<Arc<FrameFileStorage>>,
+        frame_storage: Option<Arc<dyn FrameStoragePort>>,
         batch_sink: Option<Arc<dyn BatchSink>>,
         api_client: Option<Arc<dyn ApiClient>>,
     ) -> Self {

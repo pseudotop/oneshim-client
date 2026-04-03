@@ -18,6 +18,7 @@ pub mod element_finder;
 pub mod embedding_provider;
 pub mod focus_probe;
 pub mod focus_storage;
+pub mod frame_storage;
 pub mod input_driver;
 pub mod integration;
 pub mod intent_planner;

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use oneshim_core::config::AppConfig;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
 #[cfg(feature = "analysis")]
 use oneshim_network::analysis_client::AnalysisClient;
@@ -26,7 +27,7 @@ use crate::scheduler::SchedulerConfig;
 
 #[allow(dead_code)] // suggestion_receiver is read only with feature = "server"
 pub(crate) struct AgentSupportContext {
-    pub(crate) frame_storage: Arc<FrameFileStorage>,
+    pub(crate) frame_storage: Arc<dyn FrameStoragePort>,
     pub(crate) system_monitor: Arc<oneshim_monitor::system::SysInfoMonitor>,
     pub(crate) process_monitor: Arc<dyn ProcessMonitor>,
     pub(crate) activity_monitor: Arc<dyn ActivityMonitor>,
@@ -172,7 +173,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
                 shared.accessibility_extractor.clone(),
             )
         } else {
-            let frame_storage = Arc::new(
+            let frame_storage: Arc<dyn FrameStoragePort> = Arc::new(
                 FrameFileStorage::new(
                     self.data_dir.to_path_buf(),
                     self.config.storage.max_storage_mb,

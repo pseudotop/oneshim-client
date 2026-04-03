@@ -5,6 +5,7 @@ use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::audio_capture::AudioCapturePort;
 use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::element_finder::ElementFinder;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::model_downloader::ModelDownloader;
 use oneshim_core::ports::monitor::ActivityMonitor;
@@ -13,7 +14,6 @@ use oneshim_core::ports::session_storage::SessionStoragePort;
 use oneshim_core::ports::stt_provider::SttProvider;
 use oneshim_core::ports::vision::FrameProcessor;
 use oneshim_core::ports::work_classifier::WorkTypeClassifier;
-use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use serde::Serialize;
@@ -38,7 +38,7 @@ pub struct CaptureContext {
     /// Frame processor for on-demand capture (A1, A2).
     pub frame_processor: Option<Arc<dyn FrameProcessor>>,
     /// Frame file storage for persisting captured images.
-    pub frame_storage: Option<Arc<FrameFileStorage>>,
+    pub frame_storage: Option<Arc<dyn FrameStoragePort>>,
     /// Activity monitor for current window context (A1, A2).
     pub activity_monitor: Option<Arc<dyn ActivityMonitor>>,
     /// Accessibility extractor for scene analysis (A2).

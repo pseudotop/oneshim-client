@@ -7,11 +7,11 @@ use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::frame::{ImagePayload, OcrRegion};
 use oneshim_core::models::storage_records::SegmentSummaryRecord;
 use oneshim_core::models::tiered_memory::{ContentActivity, SegmentSummary, TriggerReason};
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::vision::{CaptureRequest, FrameProcessor};
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
-use oneshim_storage::frame_storage::FrameFileStorage;
 
 use super::super::config::{base64_decode, SchedulerStorage};
 use crate::magic_overlay::MagicOverlayHandle;
@@ -117,7 +117,7 @@ pub(super) async fn handle_event_analysis(
 pub(super) async fn handle_frame_capture(
     capture_req: &CaptureRequest,
     processor: &Arc<dyn FrameProcessor>,
-    frame_storage: &Option<Arc<FrameFileStorage>>,
+    frame_storage: &Option<Arc<dyn FrameStoragePort>>,
     sqlite: &Arc<dyn SchedulerStorage>,
     session_id: &str,
 ) -> (Option<String>, Vec<OcrRegion>) {
