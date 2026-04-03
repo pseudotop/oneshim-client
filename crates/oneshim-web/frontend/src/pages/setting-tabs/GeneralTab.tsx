@@ -9,6 +9,7 @@ import {
   type UpdateAction,
   type UpdateStatus,
 } from '../../api/client'
+import BugReportWizard from '../../components/BugReportWizard'
 import LanguageSelector from '../../components/LanguageSelector'
 import {
   Alert,
@@ -31,8 +32,6 @@ import NotificationSettings from './NotificationSettings'
 import ScheduleSettings from './ScheduleSettings'
 import ToggleRow from './ToggleRow'
 import type { SettingsFormTabProps } from './types'
-
-declare const __APP_VERSION__: string
 
 const SUPPORT_DEVELOPER_DETAILS_KEY = 'oneshim-support-developer-details'
 
@@ -58,39 +57,6 @@ function formatTernary(value: boolean | null | undefined, yes: string, no: strin
   if (value === true) return yes
   if (value === false) return no
   return unknown
-}
-
-function buildIssueUrl(diagnostics: DiagnosticsBundleResponse | null): string {
-  const summary = diagnostics?.health
-  const params = new URLSearchParams({
-    title: `Bug report: ${__APP_VERSION__}`,
-    body: [
-      '## Summary',
-      '<!-- Describe the issue here -->',
-      '',
-      '## Environment',
-      `- App version: ${__APP_VERSION__}`,
-      `- Runtime: ${IS_TAURI ? 'tauri-desktop' : 'web'}`,
-      `- User agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'}`,
-      `- Diagnostics generated: ${diagnostics?.generated_at ?? 'unavailable'}`,
-      `- Storage OK: ${summary?.storage_ok ?? 'unknown'}`,
-      `- Frames dir exists: ${summary?.frames_dir_exists ?? 'unknown'}`,
-      `- Automation controller configured: ${summary?.automation_controller_configured ?? 'unknown'}`,
-      `- Update control configured: ${summary?.update_control_configured ?? 'unknown'}`,
-      '',
-      '## Reproduction',
-      '1. ',
-      '',
-      '## Expected',
-      '',
-      '## Actual',
-      '',
-      '## Notes',
-      '- Paste the copied diagnostics or developer logs below if they help.',
-    ].join('\n'),
-  })
-
-  return `https://github.com/pseudotop/oneshim-client/issues/new?${params.toString()}`
 }
 
 async function invokeDesktop<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -321,8 +287,8 @@ function ViewSetupGuideButton() {
 function SupportToolsCard() {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [reporting, setReporting] = useState(false)
   const [diagnostics, setDiagnostics] = useState<DiagnosticsBundleResponse | null>(null)
   const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogSnapshot | null>(null)
   const [supportError, setSupportError] = useState<string | null>(null)
@@ -412,27 +378,6 @@ function SupportToolsCard() {
     }
   }, [runtimeLogs, t])
 
-  const handleReportBug = useCallback(async () => {
-    setReporting(true)
-    let snapshot = diagnostics
-
-    try {
-      if (!snapshot) {
-        snapshot = await fetchSupportDiagnostics()
-        setDiagnostics(snapshot)
-      }
-    } catch (error) {
-      console.warn('fetchSupportDiagnostics failed before opening issue:', error)
-      addToast('warning', t('settings.supportIssueFallback'), 5000)
-    }
-
-    const opened = window.open(buildIssueUrl(snapshot ?? null), '_blank', 'noopener,noreferrer')
-    if (!opened) {
-      addToast('error', t('settings.supportOpenIssueFailed'), 5000)
-    }
-    setReporting(false)
-  }, [diagnostics, t])
-
   return (
     <>
       <Card variant="default" padding="lg">
@@ -445,12 +390,14 @@ function SupportToolsCard() {
             <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(true)}>
               {t('settings.supportOpenDetails')}
             </Button>
-            <Button type="button" variant="primary" size="sm" onClick={handleReportBug} isLoading={reporting}>
+            <Button type="button" variant="primary" size="sm" onClick={() => setWizardOpen(true)}>
               {t('settings.supportReportBug')}
             </Button>
           </div>
         </div>
       </Card>
+
+      <BugReportWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
 
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogContent size="lg" className="max-h-[85vh] overflow-hidden">
@@ -470,15 +417,6 @@ function SupportToolsCard() {
               </Button>
               <Button type="button" variant="secondary" size="sm" onClick={() => void handleCopyDiagnostics()}>
                 {t('settings.supportCopyDiagnostics')}
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                isLoading={reporting}
-                onClick={() => void handleReportBug()}
-              >
-                {t('settings.supportReportBug')}
               </Button>
             </div>
 
