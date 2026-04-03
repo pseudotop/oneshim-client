@@ -5,6 +5,7 @@ pub mod app_registry;
 pub mod audio;
 pub mod audit;
 pub mod automation;
+pub mod bug_report;
 pub mod coaching;
 pub mod context;
 pub mod daily_digest;
