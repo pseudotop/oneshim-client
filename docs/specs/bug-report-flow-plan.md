@@ -254,13 +254,22 @@ git commit -m "feat(vision): implement PiiSanitizer port on VisionPiiSanitizer"
 
 - [ ] **Step 1: Add Deserialize to existing support DTOs**
 
-In `crates/oneshim-api-contracts/src/support.rs`, add `Deserialize` to the derive macros of:
-- `DiagnosticsBundleDto`
-- `DiagnosticsHealthDto`
-- `RuntimeLogSnapshotDto`
-- `AuditEntryDto`
+Add `Deserialize` and `Clone` derives to existing DTOs that will be embedded in `BugReportBundleDto`:
 
-For example, change `#[derive(Debug, Serialize)]` to `#[derive(Debug, Serialize, Deserialize)]` for each.
+In `crates/oneshim-api-contracts/src/support.rs`:
+- `DiagnosticsBundleDto`: add `Deserialize, Clone`
+- `DiagnosticsHealthDto`: add `Deserialize, Clone`
+- `RuntimeLogSnapshotDto`: add `Deserialize, Clone`
+
+In `crates/oneshim-api-contracts/src/automation.rs`:
+- `AuditEntryDto`: add `Deserialize, Clone`
+
+In `crates/oneshim-api-contracts/src/settings.rs`:
+- `StorageStats`: add `Deserialize` (if not already present)
+
+For example, change `#[derive(Debug, Serialize)]` to `#[derive(Debug, Serialize, Deserialize, Clone)]` for each.
+
+**Note:** `AuditEntryDto` is defined in `automation.rs`, not `support.rs`. It has fields `schema_version`, `entry_id`, `timestamp`, `session_id`, `command_id`, `action_type`, `status`, `details: Option<String>`, `elapsed_ms: Option<u64>`.
 
 - [ ] **Step 2: Create bug_report.rs DTOs**
 
@@ -272,7 +281,7 @@ use serde::{Deserialize, Serialize};
 use crate::support::{DiagnosticsBundleDto, RuntimeLogSnapshotDto};
 
 /// Complete bug report bundle for export/sharing.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BugReportBundleDto {
     pub bug_id: String,
     pub diagnostics: DiagnosticsBundleDto,
@@ -283,7 +292,7 @@ pub struct BugReportBundleDto {
 }
 
 /// System hardware and software information.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfoDto {
     pub app_version: String,
     pub os_name: String,
@@ -297,7 +306,7 @@ pub struct SystemInfoDto {
 }
 
 /// Server connection status snapshot.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionStatusDto {
     pub server_reachable: bool,
     pub last_sync_at: Option<String>,
@@ -624,6 +633,7 @@ mod tests {
                 settings_snapshot: Default::default(),
                 storage_stats: None,
                 recent_audit_entries: vec![AuditEntryDto {
+                    schema_version: "1".to_string(),
                     entry_id: "1".to_string(),
                     timestamp: "t".to_string(),
                     session_id: "s".to_string(),
@@ -631,7 +641,7 @@ mod tests {
                     action_type: "test".to_string(),
                     status: "ok".to_string(),
                     details: Some("contact user@example.com".to_string()),
-                    execution_time_ms: None,
+                    elapsed_ms: None,
                 }],
                 recent_policy_events: vec![],
             },
@@ -823,20 +833,6 @@ use crate::error::ApiError;
 use crate::services::bug_report_service::BugReportService;
 use crate::services::web_contexts::BugReportContext;
 
-pub async fn create_bug_report(
-    State(ctx): State<BugReportContext>,
-) -> Result<Json<BugReportBundleDto>, ApiError> {
-    let latest = ctx.latest.clone();
-    let service = BugReportService::new(ctx);
-    let bundle = service.create_report(true, None).await;
-
-    if let Ok(mut guard) = latest.lock() {
-        *guard = Some(bundle.clone());
-    }
-
-    Ok(Json(bundle))
-}
-
 pub async fn create_bug_report_with_params(
     State(ctx): State<BugReportContext>,
     Json(params): Json<CreateBugReportRequest>,
@@ -902,14 +898,15 @@ In `crates/oneshim-web/src/routes.rs`, add inside `api_routes()`:
 ```rust
         .route(
             "/support/bug-report",
-            get(handlers::bug_report::create_bug_report)
-                .post(handlers::bug_report::create_bug_report_with_params),
+            post(handlers::bug_report::create_bug_report_with_params),
         )
         .route(
             "/support/bug-report/latest",
             get(handlers::bug_report::get_latest_bug_report),
         )
 ```
+
+**Note:** Also update `routes_compile` and `integration_routes_compile` tests in `routes.rs` to include the two new `AppState` fields: `pii_sanitizer: None` and `latest_bug_report: Arc::new(std::sync::Mutex::new(None))`.
 
 - [ ] **Step 6: Run tests and check**
 
@@ -1071,18 +1068,19 @@ export interface RuntimeLogSnapshot {
 ```typescript
 // crates/oneshim-web/frontend/src/api/bug-report.ts
 
-import { apiBase } from './client'
 import type { BugReportBundle } from './contracts'
 
+const BASE_URL = '/api'
+
 export async function createBugReport(
-  includeLog = true,
+  includeLogs = true,
   piiLevel?: string,
 ): Promise<BugReportBundle> {
-  const res = await fetch(`${apiBase}/support/bug-report`, {
+  const res = await fetch(`${BASE_URL}/support/bug-report`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      include_logs: includeLog,
+      include_logs: includeLogs,
       pii_level: piiLevel ?? null,
     }),
   })
