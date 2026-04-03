@@ -72,6 +72,55 @@ pub async fn get_gui_heatmap(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AppState;
+    use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
+    use axum::http::{Request, StatusCode};
+    use oneshim_core::config::CredentialBackendKind;
+    use oneshim_storage::sqlite::SqliteStorage;
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+
+    fn test_app_state() -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let (event_tx, _) = broadcast::channel(16);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            default_secret_backend_kind: CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            integration_runtime_status: None,
+            integration_auth: None,
+            integration_session: None,
+            integration_outbox: None,
+            integration_inbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
+            integration_runtime_telemetry: None,
+            update_control: None,
+            vector_store: None,
+            embedding_provider: None,
+            text_search: None,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
+            session_manager: None,
+            pomodoro: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    fn loopback_app(state: AppState) -> axum::Router {
+        crate::WebServer::build_router(state)
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))))
+    }
 
     #[test]
     fn summary_response_serializes() {
@@ -118,5 +167,60 @@ mod tests {
         assert!(json.contains("\"hour\":9"));
         assert!(json.contains("\"value\":42"));
         assert!(json.contains("\"max_value\":58"));
+    }
+
+    #[tokio::test]
+    async fn get_heatmap_returns_array_structure() {
+        let app = loopback_app(test_app_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/stats/heatmap?days=7")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("json parse");
+
+        // Should have from_date, to_date, cells, max_value
+        assert!(parsed.get("from_date").is_some());
+        assert!(parsed.get("to_date").is_some());
+        assert!(parsed.get("cells").is_some());
+        assert!(parsed.get("max_value").is_some());
+
+        // 7 days * 24 hours = 168 cells
+        let cells = parsed["cells"].as_array().expect("cells array");
+        assert_eq!(cells.len(), 168);
+    }
+
+    #[tokio::test]
+    async fn get_gui_heatmap_returns_structure() {
+        let app = loopback_app(test_app_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/stats/gui-heatmap")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("json parse");
+
+        // Empty database should return an empty array
+        assert!(parsed.is_array());
     }
 }

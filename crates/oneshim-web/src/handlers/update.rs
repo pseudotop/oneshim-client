@@ -132,4 +132,18 @@ mod tests {
 
         assert!(response.accepted);
     }
+
+    #[tokio::test]
+    async fn get_update_status_returns_expected_fields() {
+        let state = make_state_with_update_control().await;
+
+        let response = get_update_status(State(context_from_state(&state)))
+            .await
+            .expect("status endpoint should return payload")
+            .0;
+
+        // Default UpdateStatus should have Idle phase and no message
+        assert_eq!(response.phase, UpdatePhase::Idle);
+        assert!(response.message.is_none());
+    }
 }
