@@ -1,6 +1,7 @@
 use oneshim_api_contracts::bug_report::{BugReportBundleDto, ConnectionStatusDto, SystemInfoDto};
+use oneshim_api_contracts::support::RuntimeLogSnapshotDto;
 use oneshim_core::config::PiiFilterLevel;
-use oneshim_core::models::bug_report::BugId;
+use oneshim_core::models::bug_report::{BugId, RuntimeLogSnapshot};
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 
 use crate::error::ApiError;
@@ -35,7 +36,17 @@ impl BugReportService {
         let connection = self.collect_connection_status();
 
         let runtime_logs = if include_logs {
-            self.ctx.runtime_logs.clone()
+            if let Some(provider) = &self.ctx.runtime_log_provider {
+                match provider.snapshot(200).await {
+                    Ok(snap) => Some(runtime_log_snapshot_to_dto(snap)),
+                    Err(e) => {
+                        tracing::warn!("Failed to collect runtime logs: {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -58,16 +69,30 @@ impl BugReportService {
     }
 
     fn collect_system_info(&self) -> SystemInfoDto {
+        let static_info = self
+            .ctx
+            .system_info_provider
+            .as_ref()
+            .map(|p| p.system_info());
         SystemInfoDto {
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             os_name: std::env::consts::OS.to_string(),
-            os_version: String::new(),
+            os_version: static_info
+                .as_ref()
+                .map(|s| s.os_version.clone())
+                .unwrap_or_default(),
             arch: std::env::consts::ARCH.to_string(),
             runtime: "web".to_string(),
-            cpu_count: 0,
-            memory_total_mb: 0,
-            memory_available_mb: 0,
-            uptime_seconds: 0,
+            cpu_count: static_info.as_ref().map(|s| s.cpu_count).unwrap_or(0),
+            memory_total_mb: static_info
+                .as_ref()
+                .map(|s| s.memory_total_bytes / 1_048_576)
+                .unwrap_or(0),
+            memory_available_mb: static_info
+                .as_ref()
+                .map(|s| s.memory_available_bytes / 1_048_576)
+                .unwrap_or(0),
+            uptime_seconds: static_info.as_ref().map(|s| s.uptime_seconds).unwrap_or(0),
         }
     }
 
@@ -78,6 +103,16 @@ impl BugReportService {
             grpc_enabled: false,
             websocket_connected: false,
         }
+    }
+}
+
+fn runtime_log_snapshot_to_dto(snap: RuntimeLogSnapshot) -> RuntimeLogSnapshotDto {
+    RuntimeLogSnapshotDto {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        log_dir: snap.log_dir,
+        log_file: snap.log_file,
+        line_count: snap.line_count,
+        recent_text: snap.recent_text,
     }
 }
 

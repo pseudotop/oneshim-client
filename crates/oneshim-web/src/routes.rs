@@ -350,6 +350,8 @@ mod tests {
             pomodoro: Arc::new(Mutex::new(None)),
             pii_sanitizer: None,
             latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
+            runtime_log_provider: None,
+            system_info_provider: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -388,6 +390,8 @@ mod tests {
             pomodoro: Arc::new(Mutex::new(None)),
             pii_sanitizer: None,
             latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
+            runtime_log_provider: None,
+            system_info_provider: None,
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }

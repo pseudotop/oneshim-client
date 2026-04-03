@@ -95,6 +95,8 @@ pub(super) fn test_state_without_config_manager() -> AppState {
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
         pii_sanitizer: None,
         latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
+        runtime_log_provider: None,
+        system_info_provider: None,
     }
 }
 
@@ -134,6 +136,8 @@ pub(super) fn test_state_with_config_manager(
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
         pii_sanitizer: None,
         latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
+        runtime_log_provider: None,
+        system_info_provider: None,
     }
 }
 

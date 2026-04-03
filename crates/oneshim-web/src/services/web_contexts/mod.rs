@@ -4,13 +4,14 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 use oneshim_api_contracts::bug_report::BugReportBundleDto;
 use oneshim_api_contracts::stream::RealtimeEvent;
-use oneshim_api_contracts::support::RuntimeLogSnapshotDto;
 use oneshim_core::config::CredentialBackendKind;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+use oneshim_core::ports::runtime_log_provider::RuntimeLogProvider;
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
+use oneshim_core::ports::system_info_provider::SystemInfoProvider;
 
 use oneshim_core::ports::conversation_session::SessionManager;
 
@@ -317,7 +318,8 @@ impl FromRef<AppState> for AiSessionWebContext {
 pub struct BugReportContext {
     pub support: SupportDiagnosticsContext,
     pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
-    pub runtime_logs: Option<RuntimeLogSnapshotDto>,
+    pub runtime_log_provider: Option<Arc<dyn RuntimeLogProvider>>,
+    pub system_info_provider: Option<Arc<dyn SystemInfoProvider>>,
     pub latest: Arc<parking_lot::RwLock<Option<BugReportBundleDto>>>,
 }
 
@@ -326,7 +328,8 @@ impl FromRef<AppState> for BugReportContext {
         Self {
             support: SupportDiagnosticsContext::from_ref(state),
             pii_sanitizer: state.pii_sanitizer.clone(),
-            runtime_logs: None,
+            runtime_log_provider: state.runtime_log_provider.clone(),
+            system_info_provider: state.system_info_provider.clone(),
             latest: state.latest_bug_report.clone(),
         }
     }

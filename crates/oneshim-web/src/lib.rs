@@ -58,7 +58,9 @@ use oneshim_core::ports::integration::{
     IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
 };
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+use oneshim_core::ports::runtime_log_provider::RuntimeLogProvider;
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
+use oneshim_core::ports::system_info_provider::SystemInfoProvider;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -119,6 +121,8 @@ pub struct AppState {
     pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
     pub latest_bug_report:
         Arc<parking_lot::RwLock<Option<oneshim_api_contracts::bug_report::BugReportBundleDto>>>,
+    pub runtime_log_provider: Option<Arc<dyn RuntimeLogProvider>>,
+    pub system_info_provider: Option<Arc<dyn SystemInfoProvider>>,
 }
 
 pub struct WebServer {
@@ -163,6 +167,8 @@ impl WebServer {
                 pomodoro: Arc::new(std::sync::Mutex::new(None)),
                 pii_sanitizer: None,
                 latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
+                runtime_log_provider: None,
+                system_info_provider: None,
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -214,6 +220,16 @@ impl WebServer {
 
     pub fn with_pii_sanitizer(mut self, sanitizer: Arc<dyn PiiSanitizer>) -> Self {
         self.state.pii_sanitizer = Some(sanitizer);
+        self
+    }
+
+    pub fn with_runtime_log_provider(mut self, provider: Arc<dyn RuntimeLogProvider>) -> Self {
+        self.state.runtime_log_provider = Some(provider);
+        self
+    }
+
+    pub fn with_system_info_provider(mut self, provider: Arc<dyn SystemInfoProvider>) -> Self {
+        self.state.system_info_provider = Some(provider);
         self
     }
 
@@ -795,6 +811,8 @@ mod tests {
             pomodoro: Arc::new(std::sync::Mutex::new(None)),
             pii_sanitizer: None,
             latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
+            runtime_log_provider: None,
+            system_info_provider: None,
         }
     }
 

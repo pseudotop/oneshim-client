@@ -9,17 +9,12 @@ use oneshim_core::ports::runtime_log_provider::RuntimeLogProvider;
 
 use super::log_helpers;
 
-// Wired into AppState in a later task; suppress until then.
-#[allow(dead_code)]
 const MAX_LINE_LIMIT: usize = 500;
 
-// Wired into AppState in a later task; suppress until then.
-#[allow(dead_code)]
 pub struct TauriRuntimeLogProvider {
     log_dir: PathBuf,
 }
 
-#[allow(dead_code)]
 impl TauriRuntimeLogProvider {
     pub fn new(log_dir: PathBuf) -> Self {
         Self { log_dir }
