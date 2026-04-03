@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageStats {
     pub db_size_bytes: u64,
     pub frames_size_bytes: u64,
@@ -14,7 +14,7 @@ pub struct StorageStats {
     pub newest_data_date: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub retention_days: u32,
     pub max_storage_mb: u32,
@@ -60,7 +60,7 @@ pub struct AppSettings {
     pub sync: SyncSettings,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NotificationSettings {
     pub enabled: bool,
     pub idle_notification: bool,
@@ -71,7 +71,7 @@ pub struct NotificationSettings {
     pub high_usage_threshold: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettings {
     pub enabled: bool,
     pub check_interval_hours: u32,
@@ -96,7 +96,7 @@ impl Default for UpdateSettings {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TelemetrySettings {
     pub enabled: bool,
     pub crash_reports: bool,
@@ -104,7 +104,7 @@ pub struct TelemetrySettings {
     pub performance_metrics: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorControlSettings {
     pub process_monitoring: bool,
     pub input_activity: bool,
@@ -121,7 +121,7 @@ impl Default for MonitorControlSettings {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PrivacySettings {
     pub excluded_apps: Vec<String>,
     pub excluded_app_patterns: Vec<String>,
@@ -130,7 +130,7 @@ pub struct PrivacySettings {
     pub pii_filter_level: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduleSettings {
     pub active_hours_enabled: bool,
     pub active_start_hour: u8,
@@ -159,12 +159,12 @@ impl Default for ScheduleSettings {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AutomationSettings {
     pub enabled: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxSettings {
     pub enabled: bool,
     pub profile: String,
@@ -189,7 +189,7 @@ impl Default for SandboxSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderSettings {
     pub access_mode: String,
     pub ocr_provider: String,
@@ -214,7 +214,7 @@ pub struct AiProviderSettings {
     pub saved_profiles: Vec<SavedAiProviderProfile>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderProfileConfig {
     pub access_mode: String,
     pub ocr_provider: String,
@@ -235,7 +235,7 @@ pub struct AiProviderProfileConfig {
     pub llm_api: Option<ExternalApiSettings>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedAiProviderProfile {
     pub profile_id: String,
     pub name: String,
@@ -245,14 +245,14 @@ pub struct SavedAiProviderProfile {
     pub updated_at: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OcrValidationSettings {
     pub enabled: bool,
     pub min_confidence: f64,
     pub max_invalid_ratio: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SceneActionOverrideSettings {
     pub enabled: bool,
     pub reason: String,
@@ -261,7 +261,7 @@ pub struct SceneActionOverrideSettings {
     pub expires_at: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneIntelligenceSettings {
     pub enabled: bool,
     pub overlay_enabled: bool,
@@ -347,7 +347,7 @@ impl Default for SavedAiProviderProfile {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalApiSettings {
     pub endpoint: String,
     pub api_key_masked: String,
@@ -456,7 +456,7 @@ impl Default for AppSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiSessionSettings {
     pub max_concurrent_sessions: u32,
     pub idle_timeout_secs: u64,
@@ -489,12 +489,12 @@ impl Default for AiSessionSettings {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SuggestionSettings {
     pub enabled: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndicatorSettings {
     pub show_border: bool,
     pub show_panel: bool,
@@ -511,7 +511,7 @@ impl Default for IndicatorSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisSettings {
     pub enabled: bool,
     pub interval_secs: u64,
@@ -536,7 +536,7 @@ impl Default for AnalysisSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkSettings {
     pub server_base_url: String,
     pub request_timeout_ms: u64,
@@ -557,7 +557,7 @@ impl Default for NetworkSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoachingSettings {
     pub enabled: bool,
     pub tone: String,
@@ -576,7 +576,7 @@ impl Default for CoachingSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationSettings {
     pub enabled: bool,
     pub auth_profile_kind: String,
@@ -595,7 +595,7 @@ impl Default for IntegrationSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncSettings {
     pub enabled: bool,
     pub transport: String,

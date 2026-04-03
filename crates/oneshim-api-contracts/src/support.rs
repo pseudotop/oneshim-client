@@ -1,8 +1,8 @@
 use crate::automation::AuditEntryDto;
 use crate::settings::{AppSettings, StorageStats};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagnosticsHealthDto {
     pub storage_ok: bool,
     pub storage_error: Option<String>,
@@ -14,7 +14,7 @@ pub struct DiagnosticsHealthDto {
     pub update_control_configured: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagnosticsBundleDto {
     pub schema_version: String,
     pub generated_at: String,
@@ -25,7 +25,7 @@ pub struct DiagnosticsBundleDto {
     pub recent_policy_events: Vec<AuditEntryDto>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeLogSnapshotDto {
     pub generated_at: String,
     pub log_dir: String,

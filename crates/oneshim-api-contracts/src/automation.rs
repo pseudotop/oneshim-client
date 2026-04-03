@@ -18,7 +18,7 @@ pub struct AutomationStatusDto {
     pub pending_audit_entries: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntryDto {
     pub schema_version: String,
     pub entry_id: String,

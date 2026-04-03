@@ -14,6 +14,7 @@ pub mod ai_providers;
 pub mod automation;
 pub mod automation_gui;
 pub mod backup;
+pub mod bug_report;
 pub mod coaching;
 pub mod common;
 pub mod dashboard;
