@@ -316,13 +316,11 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)] // awaiting AdaptiveSearchCoordinator implementation
     pub fn with_vector_index(mut self, index: Arc<dyn VectorIndex>) -> Self {
         self.vector_index = Some(index);
         self
     }
 
-    #[allow(dead_code)] // awaiting AdaptiveSearchCoordinator implementation
     pub fn with_search_coordinator(
         mut self,
         coordinator: Arc<oneshim_analysis::AdaptiveSearchCoordinator>,
