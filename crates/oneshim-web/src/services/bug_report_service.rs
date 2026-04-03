@@ -151,6 +151,31 @@ fn sanitize_bundle(
     s.sync.device_name = sanitizer.sanitize_text(&s.sync.device_name, effective);
     s.network.server_base_url = sanitizer.sanitize_text(&s.network.server_base_url, effective);
     s.network.grpc_endpoint = sanitizer.sanitize_text(&s.network.grpc_endpoint, effective);
+
+    // Paths that likely contain OS usernames
+    for path in &mut s.sandbox.allowed_read_paths {
+        *path = sanitizer.sanitize_text(path, effective);
+    }
+    for path in &mut s.sandbox.allowed_write_paths {
+        *path = sanitizer.sanitize_text(path, effective);
+    }
+
+    // App exclusion lists can reveal installed software
+    for app in &mut s.privacy.excluded_apps {
+        *app = sanitizer.sanitize_text(app, effective);
+    }
+
+    // Scene action override may contain person name
+    s.ai_provider.scene_action_override.approved_by =
+        sanitizer.sanitize_text(&s.ai_provider.scene_action_override.approved_by, effective);
+
+    // External API endpoints
+    if let Some(ref mut api) = s.ai_provider.ocr_api {
+        api.endpoint = sanitizer.sanitize_text(&api.endpoint, effective);
+    }
+    if let Some(ref mut api) = s.ai_provider.llm_api {
+        api.endpoint = sanitizer.sanitize_text(&api.endpoint, effective);
+    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// Bug report identifier for support correlation.
 /// Format: `BUG-{12_hex_chars}` (16 chars total).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Custom `Deserialize` validates the format on deserialization.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BugId(String);
 
 impl BugId {
@@ -19,6 +20,13 @@ impl BugId {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for BugId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        BugId::new(s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -68,9 +76,18 @@ mod tests {
     }
 
     #[test]
-    fn deserializes_from_string() {
+    fn deserializes_valid_id() {
         let id: BugId = serde_json::from_str("\"BUG-a1b2c3d4e5f6\"").unwrap();
         assert_eq!(id.as_str(), "BUG-a1b2c3d4e5f6");
+    }
+
+    #[test]
+    fn deserialize_rejects_invalid() {
+        let result: Result<BugId, _> = serde_json::from_str("\"INVALID\"");
+        assert!(result.is_err());
+
+        let result: Result<BugId, _> = serde_json::from_str("\"BUG-ghijklmnopqr\"");
+        assert!(result.is_err());
     }
 
     #[test]
