@@ -1,6 +1,8 @@
 //! Anthropic-specific serialization and SSE parsing for HTTP API sessions.
 
-use oneshim_core::models::ai_session::{ContentBlock, OutboundMessage, TokenUsage, ToolDefinition};
+use oneshim_core::models::ai_session::{
+    ChatMessage, ChatRole, ContentBlock, OutboundMessage, TokenUsage, ToolDefinition,
+};
 use tracing::debug;
 
 use super::content::empty_tool_schema;
@@ -50,6 +52,57 @@ pub(super) fn build_anthropic_tools(tools: &[ToolDefinition]) -> Vec<serde_json:
             serde_json::json!({"name": t.name, "description": t.description, "input_schema": schema})
         })
         .collect()
+}
+
+/// Build the Anthropic Messages API request body.
+///
+/// System prompt is top-level; messages exclude the system role.
+pub(super) fn build_anthropic_request_body(
+    model: &str,
+    max_output_tokens: u32,
+    system_prompt: Option<&str>,
+    thinking: Option<&serde_json::Value>,
+    messages: &[ChatMessage],
+    tools: Option<&[ToolDefinition]>,
+) -> serde_json::Value {
+    let api_messages: Vec<serde_json::Value> = messages
+        .iter()
+        .filter(|m| m.role != ChatRole::System)
+        .map(|m| {
+            let content = if let Some(ref blocks) = m.content_blocks {
+                serde_json::Value::Array(serialize_anthropic_content(blocks))
+            } else {
+                serde_json::Value::String(m.content.clone())
+            };
+            serde_json::json!({ "role": m.role, "content": content })
+        })
+        .collect();
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "max_tokens": max_output_tokens,
+        "stream": true,
+        "messages": api_messages,
+    });
+
+    if let Some(prompt) = system_prompt {
+        body["system"] = serde_json::Value::String(prompt.to_string());
+    }
+
+    // Anthropic ignores response_format — no injection needed.
+
+    if let Some(thinking) = thinking {
+        body["thinking"] = thinking.clone();
+    }
+
+    if let Some(tools) = tools {
+        let tool_defs = build_anthropic_tools(tools);
+        if !tool_defs.is_empty() {
+            body["tools"] = serde_json::Value::Array(tool_defs);
+        }
+    }
+
+    body
 }
 
 /// Parse an Anthropic SSE event into an OutboundMessage.

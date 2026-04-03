@@ -1,3 +1,5 @@
+//! Port for projecting secrets into process-env, temp files, or bridge files for external tool consumption.
+
 use std::path::PathBuf;
 
 use async_trait::async_trait;

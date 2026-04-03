@@ -1,4 +1,4 @@
-//! Linux(Landlock+seccomp), macOS(Seatbelt), Windows(Job Objects)
+//! Platform-specific sandbox execution port for running automation actions in isolation.
 
 use async_trait::async_trait;
 

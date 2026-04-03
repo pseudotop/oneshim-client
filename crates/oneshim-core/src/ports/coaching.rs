@@ -1,3 +1,5 @@
+//! Port for accessing the coaching engine (goal tracking, nudges, feedback, snooze profiles).
+
 use async_trait::async_trait;
 use std::collections::HashMap;
 

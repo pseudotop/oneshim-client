@@ -1,3 +1,5 @@
+//! Transport port for moving changesets between devices during cross-device sync.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

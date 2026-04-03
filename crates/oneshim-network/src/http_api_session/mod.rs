@@ -27,7 +27,7 @@ use tokio::sync::RwLock;
 use tracing::warn;
 
 use oneshim_api_contracts::provider_specs::{
-    self, ProviderAuthScheme, ProviderRequestShape, ProviderTransportKind, SurfaceCapabilityKind,
+    self, ProviderAuthScheme, ProviderRequestShape, ProviderTransportKind,
 };
 use oneshim_core::config::{AiProviderType, AiSessionConfig};
 use oneshim_core::error::CoreError;
@@ -133,208 +133,43 @@ impl HttpApiSession {
 
         match shape {
             ProviderRequestShape::AnthropicMessages
-            | ProviderRequestShape::AnthropicVisionMessages => {
-                // Anthropic: system prompt is top-level, messages exclude system role
-                let api_messages: Vec<serde_json::Value> = messages
-                    .iter()
-                    .filter(|m| m.role != ChatRole::System)
-                    .map(|m| {
-                        let content = if let Some(ref blocks) = m.content_blocks {
-                            serde_json::Value::Array(serialize_anthropic_content(blocks))
-                        } else {
-                            serde_json::Value::String(m.content.clone())
-                        };
-                        serde_json::json!({ "role": m.role, "content": content })
-                    })
-                    .collect();
-
-                let mut body = serde_json::json!({
-                    "model": self.model,
-                    "max_tokens": self.config.max_output_tokens,
-                    "stream": true,
-                    "messages": api_messages,
-                });
-
-                if let Some(ref prompt) = self.system_prompt {
-                    body["system"] = serde_json::Value::String(prompt.clone());
-                }
-
-                // Anthropic ignores response_format — no injection needed.
-
-                if let Some(ref thinking) = self.config.thinking {
-                    body["thinking"] = thinking.clone();
-                }
-
-                if let Some(tools) = options.tools {
-                    let tool_defs = build_anthropic_tools(tools);
-                    if !tool_defs.is_empty() {
-                        body["tools"] = serde_json::Value::Array(tool_defs);
-                    }
-                }
-
-                Ok(body)
-            }
+            | ProviderRequestShape::AnthropicVisionMessages => Ok(build_anthropic_request_body(
+                &self.model,
+                self.config.max_output_tokens,
+                self.system_prompt.as_deref(),
+                self.config.thinking.as_ref(),
+                messages,
+                options.tools,
+            )),
             ProviderRequestShape::OpenAiChatCompletions
             | ProviderRequestShape::OpenAiVisionChatCompletions => {
-                // OpenAI: system prompt is first message with role "system"
-                let api_messages: Vec<serde_json::Value> = messages
-                    .iter()
-                    .map(|m| {
-                        let content = if let Some(ref blocks) = m.content_blocks {
-                            serde_json::Value::Array(serialize_openai_content(blocks))
-                        } else {
-                            serde_json::Value::String(m.content.clone())
-                        };
-                        serde_json::json!({ "role": m.role, "content": content })
-                    })
-                    .collect();
-
-                let mut body = serde_json::json!({
-                    "model": self.model,
-                    "max_tokens": self.config.max_output_tokens,
-                    "stream": true,
-                    "messages": api_messages,
-                });
-
-                if let Some(rf) = options.response_format {
-                    body["response_format"] = rf.clone();
-                }
-
-                if let Some(ref thinking) = self.config.thinking {
-                    body["reasoning"] = thinking.clone();
-                }
-
-                if let Some(tools) = options.tools {
-                    let tool_defs = build_openai_tools(tools);
-                    if !tool_defs.is_empty() {
-                        body["tools"] = serde_json::Value::Array(tool_defs);
-                    }
-                }
-
-                Ok(body)
+                Ok(build_openai_chat_request_body(
+                    &self.model,
+                    self.config.max_output_tokens,
+                    self.config.thinking.as_ref(),
+                    messages,
+                    options.response_format,
+                    options.tools,
+                ))
             }
-            ProviderRequestShape::OpenAiResponses => {
-                let api_input: Vec<serde_json::Value> = messages
-                    .iter()
-                    .filter(|message| message.role != ChatRole::System)
-                    .map(|message| {
-                        let content = if let Some(ref blocks) = message.content_blocks {
-                            serde_json::Value::Array(serialize_openai_responses_content(blocks))
-                        } else {
-                            serde_json::Value::Array(vec![serde_json::json!({
-                                "type": "input_text",
-                                "text": message.content.clone()
-                            })])
-                        };
-                        serde_json::json!({
-                            "role": message.role,
-                            "content": content,
-                        })
-                    })
-                    .collect();
-
-                let mut body = serde_json::json!({
-                    "model": self.model,
-                    "max_output_tokens": self.config.max_output_tokens,
-                    "stream": true,
-                    "input": api_input,
-                });
-
-                if let Some(ref prompt) = self.system_prompt {
-                    body["instructions"] = serde_json::Value::String(prompt.clone());
-                }
-
-                if let Some(response_format) = options.response_format {
-                    body["text"] = serde_json::json!({
-                        "format": normalize_openai_responses_format(response_format)
-                    });
-                }
-
-                if let Some(ref thinking) = self.config.thinking {
-                    body["reasoning"] = thinking.clone();
-                }
-
-                if provider_specs::surface_supports_parameter(
-                    &self.surface_id,
-                    SurfaceCapabilityKind::Llm,
-                    "tools",
-                )
-                .unwrap_or(false)
-                {
-                    if let Some(tools) = options.tools {
-                        let tool_defs = build_openai_responses_tools(tools);
-                        if !tool_defs.is_empty() {
-                            body["tools"] = serde_json::Value::Array(tool_defs);
-                        }
-                    }
-                }
-
-                Ok(body)
-            }
-            ProviderRequestShape::GoogleGenerateContent => {
-                // Google Gemini: contents array, system_instruction, generationConfig
-                let api_contents: Vec<serde_json::Value> = messages
-                    .iter()
-                    .filter(|m| m.role != ChatRole::System)
-                    .map(|m| {
-                        let parts = if let Some(ref blocks) = m.content_blocks {
-                            serialize_google_parts(blocks)
-                        } else {
-                            vec![serde_json::json!({"text": m.content})]
-                        };
-                        serde_json::json!({
-                            "role": match m.role {
-                                ChatRole::User => "user",
-                                ChatRole::Assistant => "model",
-                                _ => "user",
-                            },
-                            "parts": parts,
-                        })
-                    })
-                    .collect();
-
-                let mut body = serde_json::json!({
-                    "contents": api_contents,
-                    "generationConfig": {
-                        "maxOutputTokens": self.config.max_output_tokens,
-                    },
-                });
-
-                if let Some(ref prompt) = self.system_prompt {
-                    body["system_instruction"] = serde_json::json!({"parts": [{"text": prompt}]});
-                }
-
-                if let Some(rf) = options.response_format {
-                    if let Some(schema) = rf
-                        .get("schema")
-                        .or_else(|| rf.get("json_schema").and_then(|js| js.get("schema")))
-                    {
-                        body["generationConfig"]["responseMimeType"] =
-                            serde_json::json!("application/json");
-                        body["generationConfig"]["responseSchema"] = schema.clone();
-                    }
-                }
-
-                if let Some(ref thinking) = self.config.thinking {
-                    body["generationConfig"]["thinking_config"] = thinking.clone();
-                }
-
-                if let Some(tools) = options.tools {
-                    let tool_defs = build_google_tools(tools);
-                    if let Some(arr) = tool_defs.as_array() {
-                        if !arr.is_empty()
-                            && !arr[0]
-                                .get("function_declarations")
-                                .and_then(|d| d.as_array())
-                                .map_or(true, |a| a.is_empty())
-                        {
-                            body["tools"] = tool_defs;
-                        }
-                    }
-                }
-
-                Ok(body)
-            }
+            ProviderRequestShape::OpenAiResponses => Ok(build_openai_responses_request_body(
+                &self.model,
+                self.config.max_output_tokens,
+                self.system_prompt.as_deref(),
+                self.config.thinking.as_ref(),
+                &self.surface_id,
+                messages,
+                options.response_format,
+                options.tools,
+            )),
+            ProviderRequestShape::GoogleGenerateContent => Ok(build_google_request_body(
+                self.config.max_output_tokens,
+                self.system_prompt.as_deref(),
+                self.config.thinking.as_ref(),
+                messages,
+                options.response_format,
+                options.tools,
+            )),
             _ => Err(CoreError::Internal(format!(
                 "unsupported request shape for HTTP API session: {shape:?}"
             ))),
@@ -409,6 +244,55 @@ impl HttpApiSession {
     }
 }
 
+/// Convert a `SessionMessage` into a `ChatMessage` with optional multimodal content blocks.
+fn prepare_chat_message(message: &SessionMessage, shape: &ProviderRequestShape) -> ChatMessage {
+    let message_content = render_message_content(message, shape);
+
+    let content_blocks = {
+        let mut blocks = Vec::new();
+        if !message_content.trim().is_empty() {
+            blocks.push(ContentBlock::Text {
+                text: message_content.clone(),
+            });
+        }
+        for att in &message.attachments {
+            if let Some(block) = native_content_block(shape, att) {
+                blocks.push(block);
+            }
+        }
+        let starts_with_non_text = blocks
+            .first()
+            .is_some_and(|block| !matches!(block, ContentBlock::Text { .. }));
+        if blocks.len() > 1 || starts_with_non_text {
+            Some(blocks)
+        } else {
+            None
+        }
+    };
+
+    ChatMessage {
+        role: ChatRole::User,
+        content: message_content,
+        content_blocks,
+    }
+}
+
+/// Append an assistant response to conversation history and truncate to the configured limit.
+async fn save_assistant_response(
+    history: &RwLock<Vec<ChatMessage>>,
+    content: &str,
+    max_turns: u32,
+) {
+    let assistant_msg = ChatMessage {
+        role: ChatRole::Assistant,
+        content: content.to_owned(),
+        content_blocks: None,
+    };
+    let mut hist = history.write().await;
+    hist.push(assistant_msg);
+    truncate_chat_history(&mut hist, max_turns);
+}
+
 #[async_trait]
 impl ConversationSession for HttpApiSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
@@ -418,36 +302,8 @@ impl ConversationSession for HttpApiSession {
             ProviderTransportKind::Llm,
         )
         .map_err(CoreError::Internal)?;
-        let message_content = render_message_content(message, &shape);
 
-        // Convert attachments to content blocks for multimodal messages
-        let content_blocks = {
-            let mut blocks = Vec::new();
-            if !message_content.trim().is_empty() {
-                blocks.push(ContentBlock::Text {
-                    text: message_content.clone(),
-                });
-            }
-            for att in &message.attachments {
-                if let Some(block) = native_content_block(&shape, att) {
-                    blocks.push(block);
-                }
-            }
-            let starts_with_non_text = blocks
-                .first()
-                .is_some_and(|block| !matches!(block, ContentBlock::Text { .. }));
-            if blocks.len() > 1 || starts_with_non_text {
-                Some(blocks)
-            } else {
-                None
-            }
-        };
-
-        let user_msg = ChatMessage {
-            role: ChatRole::User,
-            content: message_content,
-            content_blocks,
-        };
+        let user_msg = prepare_chat_message(message, &shape);
 
         // Append user message to history
         {
@@ -565,14 +421,7 @@ impl ConversationSession for HttpApiSession {
                                         };
                                     }
 
-                                    let assistant_msg = ChatMessage {
-                                        role: ChatRole::Assistant,
-                                        content: accumulated.clone(),
-                                        content_blocks: None,
-                                    };
-                                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                                    hist.push(assistant_msg);
-                                    truncate_chat_history(&mut hist, max_turns);
+                                    save_assistant_response(&history, &accumulated, max_turns).await;
                                 }
                                 OutboundMessage::Thinking { .. } => {
                                     // Stream to frontend but don't accumulate in history
@@ -586,14 +435,7 @@ impl ConversationSession for HttpApiSession {
                         warn!("SSE stream error: {e}");
                         // Append whatever we accumulated so far
                         if !accumulated.is_empty() {
-                            let assistant_msg = ChatMessage {
-                                role: ChatRole::Assistant,
-                                content: accumulated.clone(),
-                                content_blocks: None,
-                            };
-                            let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                            hist.push(assistant_msg);
-                            truncate_chat_history(&mut hist, max_turns);
+                            save_assistant_response(&history, &accumulated, max_turns).await;
                         }
                         Err(CoreError::Network(format!("SSE stream error: {e}")))?;
                     }
@@ -607,14 +449,7 @@ impl ConversationSession for HttpApiSession {
                     hist.last().is_some_and(|m| m.role == ChatRole::Assistant)
                 };
                 if !has_result {
-                    let assistant_msg = ChatMessage {
-                        role: ChatRole::Assistant,
-                        content: accumulated.clone(),
-                        content_blocks: None,
-                    };
-                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                    hist.push(assistant_msg);
-                    truncate_chat_history(&mut hist, max_turns);
+                    save_assistant_response(&history, &accumulated, max_turns).await;
 
                     yield OutboundMessage::Result {
                         content: accumulated,

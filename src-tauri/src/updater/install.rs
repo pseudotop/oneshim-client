@@ -324,7 +324,7 @@ impl Updater {
 
     /// # Safety
     pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
-        use self_update::self_replace;
+        use self_replace;
 
         let current_exe = std::env::current_exe()?;
         self.install_and_restart_with_ops(

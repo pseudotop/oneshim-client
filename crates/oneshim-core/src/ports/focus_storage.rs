@@ -1,3 +1,5 @@
+//! Synchronous storage port for focus-analysis data (work sessions, interruptions, focus metrics).
+
 use crate::error::CoreError;
 use crate::models::suggestion::Suggestion;
 use crate::models::work_session::{AppCategory, FocusMetrics, Interruption, WorkSession};

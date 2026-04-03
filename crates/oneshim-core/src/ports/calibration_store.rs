@@ -1,3 +1,5 @@
+//! Read/write ports for calibration entries used by regime detection and noise filtering.
+
 use chrono::{DateTime, Utc};
 
 use crate::error::CoreError;

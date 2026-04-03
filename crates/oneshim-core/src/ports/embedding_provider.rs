@@ -1,3 +1,5 @@
+//! Port for generating vector embeddings from text via local or remote models.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

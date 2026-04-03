@@ -1,3 +1,5 @@
+//! Port for persisting and managing captured frame images on disk.
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;

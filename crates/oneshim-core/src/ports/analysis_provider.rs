@@ -1,3 +1,5 @@
+//! LLM-backed analysis port for context-to-suggestion and summarization pipelines.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;
