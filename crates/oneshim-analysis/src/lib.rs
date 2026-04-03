@@ -1,3 +1,8 @@
+//! # oneshim-analysis
+//!
+//! LLM analysis pipeline — segment summarization, behavioral regime
+//! classification, vector RAG retrieval, and proactive coaching engine.
+
 // Cast safety: statistical values, scores, durations — precision loss acceptable.
 #![allow(
     clippy::cast_precision_loss,

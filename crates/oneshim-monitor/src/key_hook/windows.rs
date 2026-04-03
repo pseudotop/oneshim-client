@@ -273,7 +273,9 @@ unsafe extern "system" fn raw_input_wnd_proc(
 /// `#[cfg(target_os = "windows")]` gating in `mod.rs`, but kept for safety).
 #[cfg(not(target_os = "windows"))]
 pub fn run_raw_input_hook(collector: Arc<InputActivityCollector>, running: Arc<AtomicBool>) {
-    let _ = (collector, running);
+    if let Err(e) = (collector, running) {
+        debug!("operation failed: {e}");
+    }
     warn!("Windows Raw Input key hook not yet implemented -- platform hook not active");
 }
 

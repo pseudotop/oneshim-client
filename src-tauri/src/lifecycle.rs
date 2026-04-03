@@ -1,5 +1,5 @@
 use tokio::sync::watch;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Grace period for second Ctrl+C to force exit.
 const FORCE_EXIT_GRACE_SECS: u64 = 3;
@@ -26,7 +26,9 @@ impl LifecycleManager {
 
     pub fn shutdown(&self) {
         info!("ended sent");
-        let _ = self.shutdown_tx.send(true);
+        if let Err(e) = self.shutdown_tx.send(true) {
+            debug!("channel send failed: {e}");
+        }
     }
 
     pub async fn wait_for_signal(&self) {

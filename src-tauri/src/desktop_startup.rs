@@ -1,6 +1,6 @@
 use tauri::{App, Manager};
 #[allow(unused_imports)]
-use tracing::info;
+use tracing::{debug, info};
 
 pub(crate) struct DesktopStartupCoordinator;
 
@@ -25,14 +25,22 @@ impl DesktopStartupCoordinator {
         if let Some(window) = app.get_webview_window("main") {
             #[cfg(not(target_os = "macos"))]
             {
-                let _ = window.set_decorations(false);
+                if let Err(e) = window.set_decorations(false) {
+                    debug!("set_decorations failed: {e}");
+                }
             }
 
             let port_js = format!("window.__ONESHIM_WEB_PORT__ = {};", frontend_web_port);
-            let _ = window.eval(&port_js);
+            if let Err(e) = window.eval(&port_js) {
+                debug!("eval failed: {e}");
+            }
 
-            let _ = window.show();
-            let _ = window.set_focus();
+            if let Err(e) = window.show() {
+                debug!("window show failed: {e}");
+            }
+            if let Err(e) = window.set_focus() {
+                debug!("set_focus failed: {e}");
+            }
             debug_assert!(
                 window.is_visible().unwrap_or(false),
                 "main window must be visible after desktop startup"

@@ -7,6 +7,7 @@ use oneshim_core::models::context::WindowInfo;
 use oneshim_core::models::gui::{ExecutionBinding, FocusSnapshot, FocusValidation};
 use oneshim_core::ports::focus_probe::FocusProbe;
 use oneshim_core::ports::monitor::ProcessMonitor;
+use tracing::debug;
 
 pub struct ProcessMonitorFocusProbe {
     process_monitor: Arc<dyn ProcessMonitor>,
@@ -111,7 +112,9 @@ fn encode_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         use std::fmt::Write as _;
-        let _ = write!(&mut out, "{byte:02x}");
+        if let Err(e) = write!(&mut out, "{byte:02x}") {
+            debug!("operation failed: {e}");
+        }
     }
     out
 }

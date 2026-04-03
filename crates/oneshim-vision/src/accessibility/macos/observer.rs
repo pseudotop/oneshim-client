@@ -96,7 +96,9 @@ impl FocusObserverHandle {
         if let Some(handle) = self.thread.take() {
             // The CFRunLoop will exit on its next iteration because
             // `running` is false and the 0.5s timeout will fire.
-            let _ = handle.join();
+            if let Err(e) = handle.join() {
+                debug!("join failed: {e:?}");
+            }
         }
     }
 

@@ -6,6 +6,7 @@ use oneshim_core::models::gui::GuiExecutionTicket;
 
 use super::types::GuiInteractionError;
 use crate::controller::AutomationAction;
+use tracing::debug;
 
 pub(super) type HmacSha256 = Hmac<Sha256>;
 
@@ -70,7 +71,9 @@ pub(super) fn encode_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         use std::fmt::Write as _;
-        let _ = write!(&mut out, "{byte:02x}");
+        if let Err(e) = write!(&mut out, "{byte:02x}") {
+            debug!("operation failed: {e}");
+        }
     }
     out
 }

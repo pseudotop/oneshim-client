@@ -1,3 +1,8 @@
+//! # oneshim-api-contracts
+//!
+//! Shared request/response type contracts between client crates.
+//! Ensures API contract consistency across the workspace.
+
 #![allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,

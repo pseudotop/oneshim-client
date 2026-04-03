@@ -4,7 +4,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager, Runtime,
 };
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::tray_icon::TrayIconState;
 
@@ -207,10 +207,16 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                         "paused": new_paused,
                         "indicator_visible": indicator_visible
                     });
-                    let _ = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload);
+                    if let Err(e) =
+                        app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload)
+                    {
+                        debug!("emit magic-overlay failed: {e}");
+                    }
                     let _ =
                         app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
-                    let _ = sync_tray_state(app, new_paused, indicator_visible);
+                    if let Err(e) = sync_tray_state(app, new_paused, indicator_visible) {
+                        debug!("sync_tray_state failed: {e}");
+                    }
                     #[cfg(target_os = "macos")]
                     if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>()
                     {
@@ -231,17 +237,25 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                         "paused": paused,
                         "indicator_visible": new_visible
                     });
-                    let _ = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload);
+                    if let Err(e) =
+                        app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload)
+                    {
+                        debug!("emit magic-overlay failed: {e}");
+                    }
                     let _ =
                         app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
                     if let Some(panel) = app.get_webview_window("tracking-panel") {
                         if new_visible {
-                            let _ = panel.show();
-                        } else {
-                            let _ = panel.hide();
+                            if let Err(e) = panel.show() {
+                                debug!("window show failed: {e}");
+                            }
+                        } else if let Err(e) = panel.hide() {
+                            debug!("window hide failed: {e}");
                         }
                     }
-                    let _ = sync_tray_state(app, paused, new_visible);
+                    if let Err(e) = sync_tray_state(app, paused, new_visible) {
+                        debug!("sync_tray_state failed: {e}");
+                    }
                     #[cfg(target_os = "macos")]
                     if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>()
                     {

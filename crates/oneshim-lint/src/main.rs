@@ -1,3 +1,8 @@
+//! # oneshim-lint
+//!
+//! Workspace lint tool (`language-check` binary). Validates coding conventions,
+//! naming patterns, and architecture rules across the workspace.
+
 #![allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,

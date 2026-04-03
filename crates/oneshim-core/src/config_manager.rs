@@ -46,7 +46,9 @@ impl ConfigManager {
                     );
                     let default_config = AppConfig::default_config();
                     // Overwrite the corrupt file so the next launch is clean.
-                    let _ = Self::save_to_file(&config_path, &default_config);
+                    if let Err(e) = Self::save_to_file(&config_path, &default_config) {
+                        debug!("save_to_file failed: {e}");
+                    }
                     default_config
                 }
             }

@@ -27,7 +27,6 @@ use chrono::Utc;
 /// separately. `GuiWorkTypeRefiner::refine()` is called from the analysis
 /// pipeline after it receives the `GuiActivitySummary` produced by this
 /// pipeline, not from the GUI pipeline itself.
-#[allow(dead_code)]
 pub(crate) struct GuiPipelineState {
     pub detector: GuiElementDetector,
     pub aggregator: GuiActivityAggregator,

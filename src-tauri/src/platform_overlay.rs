@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::debug;
 use uuid::Uuid;
 
 use oneshim_core::error::CoreError;
@@ -73,9 +74,15 @@ impl OverlayDriver for PlatformOverlayDriver {
             return Ok(());
         };
 
-        let _ = process.child.kill();
-        let _ = process.child.wait();
-        let _ = fs::remove_file(process.payload_path);
+        if let Err(e) = process.child.kill() {
+            debug!("process kill failed: {e}");
+        }
+        if let Err(e) = process.child.wait() {
+            debug!("process wait failed: {e}");
+        }
+        if let Err(e) = fs::remove_file(process.payload_path) {
+            debug!("remove_file failed: {e}");
+        }
 
         Ok(())
     }

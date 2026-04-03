@@ -34,7 +34,6 @@ pub(crate) type OAuthCoordinator = Option<()>;
 
 /// Groups frame processor, frame storage, activity monitor, accessibility
 /// extractor, and consent manager used by IPC capture commands (A1, A2).
-#[allow(dead_code)]
 pub struct CaptureContext {
     /// Frame processor for on-demand capture (A1, A2).
     pub frame_processor: Option<Arc<dyn FrameProcessor>>,
@@ -51,7 +50,6 @@ pub struct CaptureContext {
 }
 
 /// Audio capture, STT engine, and model management for voice input.
-#[allow(dead_code)]
 pub struct AudioContext {
     pub capture: Option<Arc<dyn AudioCapturePort>>,
     /// RwLock allows hot-reload after model download.
@@ -268,7 +266,6 @@ impl DetectionRuntimeState {
 }
 
 /// Groups connectivity flags for server, LLM, and CLI connections.
-#[allow(dead_code)]
 pub struct ConnectionStatus {
     /// Server API connectivity (REST or gRPC).
     pub server_connected: Arc<AtomicBool>,
@@ -278,7 +275,7 @@ pub struct ConnectionStatus {
     pub cli_connected: Arc<AtomicBool>,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // runtime_handle/update_control stored for future scheduler access
 pub struct AppState {
     pub runtime_handle: tokio::runtime::Handle,
     pub background_runtime: Arc<crate::bootstrap_runtime::ManagedBackgroundRuntime>,
@@ -309,7 +306,7 @@ pub struct AppState {
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Tauri managed state; inner accessed via pattern match in commands
 pub struct OAuthCoordinatorState(pub OAuthCoordinator);
 
 #[derive(Debug, Clone, Serialize)]
@@ -324,10 +321,9 @@ pub struct SecretBackendCapabilities {
 
 pub struct SecretBackendState(pub SecretBackendCapabilities);
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Tauri managed state; inner accessed via pattern match in commands
 pub struct IntegrationSessionState(pub Option<Arc<dyn IntegrationSessionPort>>);
 
-#[allow(dead_code)]
 pub struct IntegrationAuthState(pub Option<Arc<dyn IntegrationAuthPort>>);
 
 #[derive(Clone)]

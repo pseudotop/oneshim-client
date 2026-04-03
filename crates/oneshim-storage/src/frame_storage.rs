@@ -103,7 +103,9 @@ impl BufferPool {
     fn new(capacity: usize, buffer_size: usize) -> Self {
         let pool = ArrayQueue::new(capacity);
         for _ in 0..capacity {
-            let _ = pool.push(Vec::with_capacity(buffer_size));
+            if let Err(e) = pool.push(Vec::with_capacity(buffer_size)) {
+                debug!("push failed: {e:?}");
+            }
         }
         Self { pool }
     }
@@ -116,7 +118,9 @@ impl BufferPool {
 
     fn release(&self, mut buffer: Vec<u8>) {
         buffer.clear();
-        let _ = self.pool.push(buffer);
+        if let Err(e) = self.pool.push(buffer) {
+            debug!("push failed: {e:?}");
+        }
     }
 }
 

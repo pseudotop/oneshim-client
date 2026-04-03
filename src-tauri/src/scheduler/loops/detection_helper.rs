@@ -127,7 +127,9 @@ pub(super) async fn clear_focus_highlight(
     if state.prev_key.is_some() {
         if let Some(ref driver) = overlay_driver {
             if let Some(ref prev_id) = state.last_handle_id {
-                let _ = driver.clear_highlights(prev_id).await;
+                if let Err(e) = driver.clear_highlights(prev_id).await {
+                    debug!("clear_highlights failed: {e}");
+                }
             }
         }
         state.last_handle_id = None;

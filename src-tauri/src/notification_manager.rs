@@ -20,7 +20,7 @@ pub struct NotificationManager {
     state: RwLock<NotificationState>,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // API surface wired in scheduler notification loop
 impl NotificationManager {
     pub fn new(config: NotificationConfig, notifier: Arc<dyn DesktopNotifier>) -> Self {
         Self {

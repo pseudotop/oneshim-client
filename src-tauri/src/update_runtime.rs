@@ -71,7 +71,9 @@ impl<'a> UpdateRuntimeBuilder<'a> {
                             download_url,
                         });
                         guard.touch();
-                        let _ = startup_event_tx.send(guard.clone());
+                        if let Err(e) = startup_event_tx.send(guard.clone()) {
+                            debug!("channel send failed: {e}");
+                        }
                     }
                     Ok(Ok(UpdateCheckResult::UpToDate { .. })) => {
                         debug!("startup update check: up to date");

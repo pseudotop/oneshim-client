@@ -13,7 +13,7 @@ use oneshim_core::consent::ConsentManager;
 use oneshim_vision::privacy_gateway::{PrivacyGateway, SanitizedImage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
+#[allow(dead_code)] // Remote and OAuth variants pending provider integration
 pub enum ProviderSource {
     Local,
     Remote,

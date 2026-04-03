@@ -3,7 +3,7 @@ use oneshim_web::RealtimeEvent;
 use tauri::{AppHandle, Emitter};
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, watch};
-use tracing::info;
+use tracing::{debug, info};
 
 pub(crate) struct RuntimeBridgeSpawner;
 
@@ -14,7 +14,9 @@ impl RuntimeBridgeSpawner {
             let lifecycle = crate::lifecycle::LifecycleManager::default();
             lifecycle.wait_for_signal().await;
             info!("OS signal received — triggering shutdown");
-            let _ = signal_shutdown_tx.send(true);
+            if let Err(e) = signal_shutdown_tx.send(true) {
+                debug!("channel send failed: {e}");
+            }
         });
     }
 

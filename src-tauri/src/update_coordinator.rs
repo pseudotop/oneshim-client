@@ -6,7 +6,7 @@ use oneshim_web::update_control::{PendingUpdateInfo, UpdateAction, UpdatePhase, 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, RwLock};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 #[async_trait]
 pub trait UpdateExecutor: Send + Sync {
@@ -66,7 +66,9 @@ pub async fn run_update_coordinator(
         guard.pending = None;
         guard.touch();
         if let Some(tx) = &status_tx {
-            let _ = tx.send(guard.clone());
+            if let Err(e) = tx.send(guard.clone()) {
+                debug!("channel send failed: {e}");
+            }
         }
         return;
     }
@@ -95,7 +97,9 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
 ) {
     if let Some(tx) = &status_tx {
         let snapshot = state.read().await.clone();
-        let _ = tx.send(snapshot);
+        if let Err(e) = tx.send(snapshot) {
+            debug!("channel send failed: {e}");
+        }
     }
 
     // Initial check on startup
@@ -125,7 +129,9 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
                             guard.message = Some(format!("Failed to apply update: {}", e));
                             guard.touch();
                             if let Some(tx) = &status_tx {
-                                let _ = tx.send(guard.clone());
+                                if let Err(e) = tx.send(guard.clone()) {
+                                    debug!("channel send failed: {e}");
+                                }
                             }
                         }
                     }
@@ -136,7 +142,9 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
                         guard.pending = None;
                         guard.touch();
                         if let Some(tx) = &status_tx {
-                            let _ = tx.send(guard.clone());
+                            if let Err(e) = tx.send(guard.clone()) {
+                                debug!("channel send failed: {e}");
+                            }
                         }
                     }
                 }
@@ -169,7 +177,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
         guard.message = Some("No pending update to apply".to_string());
         guard.touch();
         if let Some(tx) = status_tx {
-            let _ = tx.send(guard.clone());
+            if let Err(e) = tx.send(guard.clone()) {
+                debug!("channel send failed: {e}");
+            }
         }
         return Ok(());
     };
@@ -180,7 +190,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
         guard.message = Some(format!("Installing version {}", pending.latest_version));
         guard.touch();
         if let Some(tx) = status_tx {
-            let _ = tx.send(guard.clone());
+            if let Err(e) = tx.send(guard.clone()) {
+                debug!("channel send failed: {e}");
+            }
         }
     }
 
@@ -193,7 +205,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
             guard.pending = None;
             guard.touch();
             if let Some(tx) = status_tx {
-                let _ = tx.send(guard.clone());
+                if let Err(e) = tx.send(guard.clone()) {
+                    debug!("channel send failed: {e}");
+                }
             }
             Ok(())
         }
@@ -204,7 +218,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
             guard.message = Some(format!("Update installation failed: {}", e));
             guard.touch();
             if let Some(tx) = status_tx {
-                let _ = tx.send(guard.clone());
+                if let Err(e) = tx.send(guard.clone()) {
+                    debug!("channel send failed: {e}");
+                }
             }
             Err(e)
         }
@@ -224,7 +240,9 @@ async fn run_check<E: UpdateExecutor>(
         guard.pending = None;
         guard.touch();
         if let Some(tx) = status_tx {
-            let _ = tx.send(guard.clone());
+            if let Err(e) = tx.send(guard.clone()) {
+                debug!("channel send failed: {e}");
+            }
         }
     }
 
@@ -237,7 +255,9 @@ async fn run_check<E: UpdateExecutor>(
             guard.pending = None;
             guard.touch();
             if let Some(tx) = status_tx {
-                let _ = tx.send(guard.clone());
+                if let Err(e) = tx.send(guard.clone()) {
+                    debug!("channel send failed: {e}");
+                }
             }
         }
         Ok(UpdateCheckResult::Available {
@@ -260,7 +280,9 @@ async fn run_check<E: UpdateExecutor>(
                 });
                 guard.touch();
                 if let Some(tx) = status_tx {
-                    let _ = tx.send(guard.clone());
+                    if let Err(e) = tx.send(guard.clone()) {
+                        debug!("channel send failed: {e}");
+                    }
                 }
             }
 
@@ -272,7 +294,9 @@ async fn run_check<E: UpdateExecutor>(
                     guard.message = Some(format!("Auto-install failed: {}", e));
                     guard.touch();
                     if let Some(tx) = status_tx {
-                        let _ = tx.send(guard.clone());
+                        if let Err(e) = tx.send(guard.clone()) {
+                            debug!("channel send failed: {e}");
+                        }
                     }
                 }
             }
@@ -284,7 +308,9 @@ async fn run_check<E: UpdateExecutor>(
             guard.pending = None;
             guard.touch();
             if let Some(tx) = status_tx {
-                let _ = tx.send(guard.clone());
+                if let Err(e) = tx.send(guard.clone()) {
+                    debug!("channel send failed: {e}");
+                }
             }
         }
         Err(e) => {
@@ -295,7 +321,9 @@ async fn run_check<E: UpdateExecutor>(
             guard.pending = None;
             guard.touch();
             if let Some(tx) = status_tx {
-                let _ = tx.send(guard.clone());
+                if let Err(e) = tx.send(guard.clone()) {
+                    debug!("channel send failed: {e}");
+                }
             }
         }
     }

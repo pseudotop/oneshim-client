@@ -11,6 +11,7 @@ use oneshim_core::ports::session_storage::SessionStoragePort;
 
 use super::SqliteStorage;
 use crate::error::StorageError;
+use tracing::debug;
 
 /// Max thinking content length persisted (10 KB).
 const MAX_THINKING_LEN: usize = 10_240;
@@ -230,7 +231,9 @@ impl SessionStoragePort for SqliteStorage {
                     Ok(())
                 }
                 Err(e) => {
-                    let _ = conn.execute_batch("ROLLBACK");
+                    if let Err(e) = conn.execute_batch("ROLLBACK") {
+                        debug!("execute_batch failed: {e}");
+                    }
                     Err(e)
                 }
             }

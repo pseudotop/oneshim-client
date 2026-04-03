@@ -232,7 +232,9 @@ mod windows {
                 return Ok(());
             }
 
-            let _ = RegDeleteValueW(hkey, value_wide.as_ptr());
+            if let Err(e) = RegDeleteValueW(hkey, value_wide.as_ptr()) {
+                debug!("as_ptr failed: {e}");
+            }
             RegCloseKey(hkey);
         }
 

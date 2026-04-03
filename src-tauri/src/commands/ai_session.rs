@@ -17,6 +17,7 @@ use oneshim_core::models::ai_session::{
 use oneshim_core::ports::conversation_session::SessionManager;
 
 use crate::runtime_state::AiSessionRuntimeState;
+use tracing::debug;
 
 fn require_session_manager_impl(
     state: &AiSessionRuntimeState,
@@ -184,7 +185,9 @@ pub async fn send_session_message(
                         message: err.to_string(),
                         retryable,
                     };
-                    let _ = app.emit(&event_name, &error_msg);
+                    if let Err(e) = app.emit(&event_name, &error_msg) {
+                        debug!("emit event failed: {e}");
+                    }
                     break;
                 }
             }
@@ -249,7 +252,9 @@ pub async fn kill_ai_session(
 
     // Fire-and-forget: mark terminated in DB
     if let Some(ss) = state.session_storage() {
-        let _ = ss.terminate_session(&session_id).await;
+        if let Err(e) = ss.terminate_session(&session_id).await {
+            debug!("terminate_session failed: {e}");
+        }
     }
 
     Ok(())

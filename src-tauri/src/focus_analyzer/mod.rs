@@ -47,7 +47,7 @@ impl FocusAnalyzer {
         Self::new(FocusAnalyzerConfig::default(), storage, notifier)
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // convenience wrapper used in tests
     pub async fn on_app_switch(&self, new_app: &str) {
         self.on_app_switch_with_context(new_app, "", None).await;
     }
@@ -262,7 +262,7 @@ impl FocusAnalyzer {
         );
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // convenience wrapper used in tests
     pub async fn on_idle_resume(&self) {
         let now = Utc::now();
         let playbook_signal = {

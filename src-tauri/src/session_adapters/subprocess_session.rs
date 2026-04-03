@@ -29,6 +29,7 @@ use crate::session_adapters::prompt_payload::{
 use crate::subprocess_provider::{
     append_model_flag, append_oneshot_flags, classify_subprocess_error, DetectedSubprocessCli,
 };
+use tracing::debug;
 
 pub struct GenericSubprocessSession {
     session_id: String,
@@ -281,7 +282,9 @@ impl GenericSubprocessSession {
             let deadline = tokio::time::Instant::now() + timeout;
             let stderr_task = tokio::spawn(async move {
                 let mut stderr_buf = String::new();
-                let _ = stderr.read_to_string(&mut stderr_buf).await;
+                if let Err(e) = stderr.read_to_string(&mut stderr_buf).await {
+                    debug!("read_to_string failed: {e}");
+                }
                 stderr_buf
             });
             let mut assistant_text = String::new();
@@ -328,7 +331,9 @@ impl GenericSubprocessSession {
                             message: err.to_string(),
                             retryable: false,
                         };
-                        let _ = child.kill().await;
+                        if let Err(e) = child.kill().await {
+                            debug!("process kill failed: {e}");
+                        }
                         break;
                     }
                     Err(_) => {
@@ -337,7 +342,9 @@ impl GenericSubprocessSession {
                             message: format!("Session response timeout ({}s)", timeout.as_secs()),
                             retryable: true,
                         };
-                        let _ = child.kill().await;
+                        if let Err(e) = child.kill().await {
+                            debug!("process kill failed: {e}");
+                        }
                         break;
                     }
                 }

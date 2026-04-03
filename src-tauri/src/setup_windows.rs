@@ -1,17 +1,22 @@
 use tauri::{App, Manager};
+use tracing::debug;
 
 pub(crate) fn prepare(app: &App) {
     let app_handle = app.handle().clone();
 
     // Create tracking panel window (starts hidden, auto-shown if indicator is configured visible)
-    let _ = crate::magic_overlay::create_tracking_panel(&app_handle);
+    if let Err(e) = crate::magic_overlay::create_tracking_panel(&app_handle) {
+        debug!("create_tracking_panel failed: {e}");
+    }
     if let Some(state) = app_handle.try_state::<crate::runtime_state::AppState>() {
         if state
             .indicator_visible
             .load(std::sync::atomic::Ordering::Relaxed)
         {
             if let Some(panel) = app_handle.get_webview_window("tracking-panel") {
-                let _ = panel.show();
+                if let Err(e) = panel.show() {
+                    debug!("window show failed: {e}");
+                }
             }
         }
     }
@@ -22,7 +27,9 @@ pub(crate) fn prepare(app: &App) {
     // window level blocks tracking panel drag on macOS.
     if let Some(state) = app_handle.try_state::<crate::runtime_state::AppState>() {
         if let Some(ref overlay) = state.magic_overlay {
-            let _ = overlay.ensure_window();
+            if let Err(e) = overlay.ensure_window() {
+                debug!("ensure_window failed: {e}");
+            }
         }
     }
 }

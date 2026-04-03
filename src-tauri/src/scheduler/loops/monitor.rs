@@ -311,7 +311,9 @@ impl Scheduler {
                                     warn!("event save failure: {e}");
                                 }
 
-                                let _ = sqlite1.increment_session_counters(&session1, 1, 0, 0).await;
+                                if let Err(e) = sqlite1.increment_session_counters(&session1, 1, 0, 0).await {
+                                    debug!("increment_session_counters failed: {e}");
+                                }
 
                                 if let Some(ref sink) = uploader1 {
                                     if let Some(upload_event) = egress1.prepare_event_for_upload(ctx_event) {

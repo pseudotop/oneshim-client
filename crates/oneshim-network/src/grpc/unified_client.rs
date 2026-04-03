@@ -95,7 +95,6 @@ impl UnifiedClient {
         Ok(())
     }
 
-    #[allow(dead_code)]
     async fn ensure_grpc_context(&self) -> Result<(), CoreError> {
         if self.grpc_context.read().await.is_some() {
             return Ok(());

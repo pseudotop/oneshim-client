@@ -19,7 +19,9 @@ impl OcrExtractor {
         let path_str = tessdata_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string());
-        let _ = TESSDATA_PATH.set(path_str);
+        if let Err(e) = TESSDATA_PATH.set(path_str) {
+            debug!("set failed: {e}");
+        }
 
         Self {
             tessdata_path,
