@@ -13,6 +13,7 @@ use objc2::runtime::{AnyClass, AnyObject, Bool};
 use std::sync::{Arc, Mutex};
 #[cfg(target_os = "macos")]
 use std::time::Duration;
+#[cfg(target_os = "macos")]
 use tracing::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

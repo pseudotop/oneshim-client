@@ -205,6 +205,7 @@ mod tests {
             repo_owner: "test-owner".to_string(),
             repo_name: "test-repo".to_string(),
             check_interval_hours: 24,
+            channel: UpdateChannel::default(),
             include_prerelease: false,
             auto_install: false,
             require_signature_verification: false,

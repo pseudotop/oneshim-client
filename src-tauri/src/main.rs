@@ -85,7 +85,9 @@ mod web_server_runtime;
 mod workflow_intelligence;
 
 use tauri::{Manager, RunEvent};
-use tracing::{debug, info, warn};
+#[cfg(target_os = "macos")]
+use tracing::debug;
+use tracing::{info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
