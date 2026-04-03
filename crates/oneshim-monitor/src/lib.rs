@@ -20,6 +20,7 @@ pub mod input_detail;
 pub mod key_hook;
 pub mod process;
 pub mod system;
+pub mod system_info;
 pub mod window_layout;
 
 #[cfg(target_os = "macos")]
