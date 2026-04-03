@@ -47,11 +47,13 @@ impl NativeBorderIndicator {
     }
 
     #[cfg(not(target_os = "macos"))]
+    #[allow(dead_code)]
     pub fn new() -> Option<Self> {
         None
     }
 
     /// Show border on all screens. No-op if already visible.
+    #[allow(dead_code)]
     pub fn show(&self) {
         if !self.visible.swap(true, Ordering::Relaxed) {
             #[cfg(target_os = "macos")]
@@ -64,6 +66,7 @@ impl NativeBorderIndicator {
     }
 
     /// Hide border on all screens. No-op if already hidden.
+    #[allow(dead_code)]
     pub fn hide(&self) {
         if self.visible.swap(false, Ordering::Relaxed) {
             #[cfg(target_os = "macos")]
@@ -76,6 +79,7 @@ impl NativeBorderIndicator {
     }
 
     /// Update paused state on all screens.
+    #[allow(dead_code)]
     pub fn set_paused(&self, paused: bool) {
         self.paused.store(paused, Ordering::Relaxed);
         #[cfg(target_os = "macos")]
@@ -190,4 +194,5 @@ impl Drop for NativeBorderIndicator {
 }
 
 /// Tauri managed state wrapper. Uses `Arc` for sharing with the screen monitor task.
+#[allow(dead_code)]
 pub struct NativeBorderState(pub std::sync::Arc<NativeBorderIndicator>);

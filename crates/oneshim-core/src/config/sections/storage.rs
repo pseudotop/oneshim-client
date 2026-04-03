@@ -94,6 +94,31 @@ impl Default for NotificationConfig {
     }
 }
 
+// ── UpdateChannel ──────────────────────────────────────────────────
+
+/// Update channel selection. Controls which GitHub Releases the updater
+/// considers when checking for new versions.
+///
+/// - `Stable`: only non-prerelease releases (`/releases/latest`)
+/// - `PreRelease`: RC and beta releases (`/releases?per_page=1`)
+/// - `Nightly`: nightly builds (future — currently behaves like PreRelease)
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateChannel {
+    #[default]
+    Stable,
+    #[serde(alias = "rc", alias = "beta")]
+    PreRelease,
+    Nightly,
+}
+
+impl UpdateChannel {
+    /// Whether this channel includes prerelease versions.
+    pub fn includes_prerelease(self) -> bool {
+        matches!(self, Self::PreRelease | Self::Nightly)
+    }
+}
+
 // ── UpdateConfig ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,7 +131,14 @@ pub struct UpdateConfig {
     pub repo_name: String,
     #[serde(default = "default_check_interval_hours")]
     pub check_interval_hours: u32,
+    /// Update channel selection. Replaces the legacy `include_prerelease` boolean.
+    /// Backward-compatible: old configs with `include_prerelease: true` are
+    /// migrated to `channel: pre_release` on load.
     #[serde(default)]
+    pub channel: UpdateChannel,
+    /// Legacy field — kept for backward-compatible deserialization only.
+    /// New code should use `channel` instead.
+    #[serde(default, skip_serializing)]
     pub include_prerelease: bool,
     #[serde(default)]
     pub auto_install: bool,
@@ -125,11 +157,24 @@ impl Default for UpdateConfig {
             repo_owner: default_repo_owner(),
             repo_name: default_repo_name(),
             check_interval_hours: default_check_interval_hours(),
+            channel: UpdateChannel::Stable,
             include_prerelease: false,
             auto_install: false,
             require_signature_verification: default_update_require_signature(),
             signature_public_key: default_update_signature_public_key(),
             min_allowed_version: None,
+        }
+    }
+}
+
+impl UpdateConfig {
+    /// Resolve the effective channel, migrating legacy `include_prerelease`
+    /// if `channel` is still at its default.
+    pub fn effective_channel(&self) -> UpdateChannel {
+        if self.channel == UpdateChannel::Stable && self.include_prerelease {
+            UpdateChannel::PreRelease
+        } else {
+            self.channel
         }
     }
 }

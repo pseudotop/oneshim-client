@@ -87,7 +87,7 @@ export interface SettingsFormResult {
   handleMonitorChange: (field: keyof MonitorControlSettings, value: boolean) => void
   handlePrivacyChange: (field: keyof PrivacySettingsType, value: boolean | string | string[]) => void
   handleScheduleChange: (field: keyof ScheduleSettingsType, value: boolean | number | string[]) => void
-  handleUpdateChange: (field: keyof AppSettings['update'], value: boolean | number) => void
+  handleUpdateChange: (field: keyof AppSettings['update'], value: boolean | number | string) => void
   handleAutomationChange: (field: keyof AutomationSettings, value: boolean) => void
   handleSandboxChange: (field: keyof SandboxSettings, value: boolean | string | number | string[]) => void
   handleAiProviderChange: (
@@ -473,7 +473,7 @@ export function useSettingsForm(data: SettingsDataResult): SettingsFormResult {
     setFormData((current) => (current ? { ...current, schedule: { ...current.schedule, [field]: value } } : current))
   }
 
-  const handleUpdateChange = (field: keyof AppSettings['update'], value: boolean | number) => {
+  const handleUpdateChange = (field: keyof AppSettings['update'], value: boolean | number | string) => {
     setFormData((current) => (current ? { ...current, update: { ...current.update, [field]: value } } : current))
   }
 

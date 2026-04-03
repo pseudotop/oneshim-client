@@ -132,9 +132,14 @@ export interface ScheduleSettings {
   pause_on_battery_saver: boolean
 }
 
+export type UpdateChannel = 'stable' | 'pre_release' | 'nightly'
+
 export interface UpdateSettings {
   enabled: boolean
   check_interval_hours: number
+  /** Update channel: stable, pre_release, or nightly */
+  channel: UpdateChannel
+  /** @deprecated Use channel instead */
   include_prerelease: boolean
   auto_install: boolean
 }

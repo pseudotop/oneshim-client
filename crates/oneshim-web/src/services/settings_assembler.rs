@@ -43,6 +43,7 @@ pub(crate) fn config_to_settings(
         update: UpdateSettings {
             enabled: config.update.enabled,
             check_interval_hours: config.update.check_interval_hours,
+            channel: format!("{:?}", config.update.effective_channel()).to_lowercase(),
             include_prerelease: config.update.include_prerelease,
             auto_install: config.update.auto_install,
         },

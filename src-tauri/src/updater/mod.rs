@@ -155,11 +155,12 @@ impl Updater {
     }
 
     /// Fetch the target release from GitHub.
-    /// When `include_prerelease` is true, queries `/releases` (all releases,
-    /// newest first) so that RC/beta tags are visible.
-    /// Otherwise, uses `/releases/latest` which only returns stable releases.
+    /// When the effective channel includes prereleases (PreRelease or Nightly),
+    /// queries `/releases` (all releases, newest first) so that RC/beta/nightly
+    /// tags are visible. Otherwise, uses `/releases/latest` (stable only).
     async fn fetch_target_release(&self, base_url: &str) -> Result<ReleaseInfo, UpdateError> {
-        let url = if self.config.include_prerelease {
+        let wants_prerelease = self.config.effective_channel().includes_prerelease();
+        let url = if wants_prerelease {
             format!(
                 "{}/repos/{}/{}/releases?per_page=1",
                 base_url, self.config.repo_owner, self.config.repo_name
@@ -180,7 +181,7 @@ impl Updater {
             )));
         }
 
-        if self.config.include_prerelease {
+        if wants_prerelease {
             let releases: Vec<ReleaseInfo> = response.json().await?;
             releases
                 .into_iter()
@@ -204,6 +205,7 @@ mod tests {
             repo_owner: "test-owner".to_string(),
             repo_name: "test-repo".to_string(),
             check_interval_hours: 24,
+            channel: UpdateChannel::default(),
             include_prerelease: false,
             auto_install: false,
             require_signature_verification: false,
