@@ -491,32 +491,46 @@ fn try_parse_ipv4(chars: &[char], start: usize, len: usize) -> Option<(usize, bo
 }
 
 fn mask_user_paths(text: &str) -> String {
-    let mut result = text.to_string();
+    let result = mask_user_paths_os(text, "/Users/", 7, '/');
+    let result = mask_user_paths_os(&result, "/home/", 6, '/');
+    mask_user_paths_os(&result, r"C:\Users\", 9, '\\')
+}
 
-    // macOS: /Users/username/
-    if let Some(start) = result.find("/Users/") {
-        let after = &result[start + 7..];
-        if let Some(end) = after.find('/') {
-            let username = &after[..end];
-            result = result.replace(&format!("/Users/{username}/"), "/Users/[USER]/");
-        }
-    }
+/// Replace OS-specific user path prefixes with `[USER]`, tracking offset to avoid
+/// re-matching replacement text.
+fn mask_user_paths_os(text: &str, prefix: &str, prefix_len: usize, sep: char) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut search_from = 0;
 
-    // Windows: C:\Users\username\
-    if let Some(start) = result.find(r"C:\Users\") {
-        let after = &result[start + 9..];
-        if let Some(end) = after.find('\\') {
-            let username = &after[..end];
-            result = result.replace(&format!(r"C:\Users\{username}\"), r"C:\Users\[USER]\");
-        }
-    }
-
-    // Linux: /home/username/
-    if let Some(start) = result.find("/home/") {
-        let after = &result[start + 6..];
-        if let Some(end) = after.find('/') {
-            let username = &after[..end];
-            result = result.replace(&format!("/home/{username}/"), "/home/[USER]/");
+    while search_from < text.len() {
+        match text[search_from..].find(prefix) {
+            Some(rel_start) => {
+                let abs_start = search_from + rel_start;
+                let after = &text[abs_start + prefix_len..];
+                if after.is_empty() {
+                    // prefix at end of string with no username — leave as-is
+                    result.push_str(&text[search_from..]);
+                    return result;
+                }
+                let end = after
+                    .find(|c: char| c == sep || c.is_whitespace())
+                    .unwrap_or(after.len());
+                if end == 0 {
+                    // prefix followed by separator or whitespace — no username
+                    result.push_str(&text[search_from..abs_start + prefix_len]);
+                    search_from = abs_start + prefix_len;
+                    continue;
+                }
+                // Emit text before the match + masked replacement
+                result.push_str(&text[search_from..abs_start]);
+                result.push_str(&prefix[..prefix_len]);
+                result.push_str("[USER]");
+                search_from = abs_start + prefix_len + end;
+            }
+            None => {
+                result.push_str(&text[search_from..]);
+                break;
+            }
         }
     }
 
@@ -686,6 +700,35 @@ mod tests {
         let result = mask_user_paths("/home/devuser/projects/secret.txt");
         assert!(result.contains("[USER]"));
         assert!(!result.contains("devuser"));
+    }
+
+    #[test]
+    fn mask_user_paths_no_trailing_separator() {
+        assert_eq!(mask_user_paths("/Users/alice"), "/Users/[USER]");
+        assert_eq!(mask_user_paths("/home/bob"), "/home/[USER]");
+        assert_eq!(mask_user_paths(r"C:\Users\carol"), r"C:\Users\[USER]");
+    }
+
+    #[test]
+    fn mask_user_paths_followed_by_space() {
+        assert_eq!(
+            mask_user_paths("path /Users/alice next"),
+            "path /Users/[USER] next"
+        );
+    }
+
+    #[test]
+    fn mask_user_paths_multiple_users() {
+        let input = "/Users/alice/docs and /Users/bob/file";
+        let result = mask_user_paths(input);
+        assert_eq!(result, "/Users/[USER]/docs and /Users/[USER]/file");
+    }
+
+    #[test]
+    fn mask_user_paths_idempotent_on_already_masked() {
+        let input = "/Users/[USER]/already-masked";
+        let result = mask_user_paths(input);
+        assert_eq!(result, "/Users/[USER]/already-masked");
     }
 
     #[test]
