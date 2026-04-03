@@ -35,3 +35,13 @@ pub enum AlertType {
     LowDisk,
     NetworkDisconnected,
 }
+
+/// Static system information for bug reports and diagnostics.
+#[derive(Debug, Clone)]
+pub struct StaticSystemInfo {
+    pub os_version: String,
+    pub cpu_count: usize,
+    pub memory_total_bytes: u64,
+    pub memory_available_bytes: u64,
+    pub uptime_seconds: u64,
+}
