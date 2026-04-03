@@ -57,7 +57,11 @@ pub async fn start_pomodoro(
         )));
     }
 
-    let mut guard = state.pomodoro.lock().expect("pomodoro lock poisoned");
+    let mut guard = state
+        .session
+        .pomodoro
+        .lock()
+        .expect("pomodoro lock poisoned");
 
     // Reject if a session is already active
     if let Some(existing) = guard.as_ref() {
@@ -82,7 +86,11 @@ pub async fn get_current_pomodoro(
 ) -> Result<Json<Option<PomodoroSessionResponse>>, ApiError> {
     debug!("GET /api/pomodoro/current");
 
-    let guard = state.pomodoro.lock().expect("pomodoro lock poisoned");
+    let guard = state
+        .session
+        .pomodoro
+        .lock()
+        .expect("pomodoro lock poisoned");
     let response = guard.as_ref().map(session_to_response);
     Ok(Json(response))
 }
@@ -93,7 +101,11 @@ pub async fn cancel_pomodoro(
 ) -> Result<Json<PomodoroSessionResponse>, ApiError> {
     debug!("POST /api/pomodoro/cancel");
 
-    let mut guard = state.pomodoro.lock().expect("pomodoro lock poisoned");
+    let mut guard = state
+        .session
+        .pomodoro
+        .lock()
+        .expect("pomodoro lock poisoned");
     let session = guard
         .as_mut()
         .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;
@@ -117,7 +129,11 @@ pub async fn complete_pomodoro(
 ) -> Result<Json<PomodoroSessionResponse>, ApiError> {
     debug!("POST /api/pomodoro/complete");
 
-    let mut guard = state.pomodoro.lock().expect("pomodoro lock poisoned");
+    let mut guard = state
+        .session
+        .pomodoro
+        .lock()
+        .expect("pomodoro lock poisoned");
     let session = guard
         .as_mut()
         .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;

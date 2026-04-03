@@ -96,3 +96,12 @@ mod tests {
         assert_eq!(format!("{id}"), "BUG-a1b2c3d4e5f6");
     }
 }
+
+/// Runtime log snapshot for bug report inclusion.
+#[derive(Debug, Clone)]
+pub struct RuntimeLogSnapshot {
+    pub log_dir: String,
+    pub log_file: Option<String>,
+    pub line_count: usize,
+    pub recent_text: String,
+}

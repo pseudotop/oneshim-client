@@ -13,9 +13,10 @@ pub async fn get_coaching_history(
     Query(params): Query<CoachingHistoryQuery>,
 ) -> Result<Json<Vec<CoachingEventResponse>>, ApiError> {
     let events = state
+        .core
         .storage
         .query_coaching_events(params.limit.unwrap_or(50), params.offset.unwrap_or(0))
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .map_err(|e: oneshim_core::error::CoreError| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(
         events
@@ -29,7 +30,7 @@ pub async fn get_coaching_history(
 pub async fn get_goals(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<GoalProgressResponse>>, ApiError> {
-    if let Some(ref engine) = state.coaching_engine {
+    if let Some(ref engine) = state.analysis.coaching_engine {
         let progress = engine.all_goal_progress_blocking();
         Ok(Json(
             progress
@@ -47,7 +48,7 @@ pub async fn update_goals(
     State(state): State<AppState>,
     Json(body): Json<UpdateGoalsRequest>,
 ) -> Result<Json<()>, ApiError> {
-    if let Some(ref engine) = state.coaching_engine {
+    if let Some(ref engine) = state.analysis.coaching_engine {
         engine.update_regime_goals_blocking(&body.goals);
     }
     Ok(Json(()))
@@ -61,7 +62,7 @@ mod tests {
     use axum::body::Body;
     use axum::extract::connect_info::MockConnectInfo;
     use axum::http::{Request, StatusCode};
-    use oneshim_core::config::CredentialBackendKind;
+
     use oneshim_core::models::coaching::GoalProgressView;
     use oneshim_core::ports::coaching::CoachingPort;
     use oneshim_storage::sqlite::SqliteStorage;
@@ -100,42 +101,12 @@ mod tests {
     fn test_app_state() -> AppState {
         let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
         let (event_tx, _) = broadcast::channel(16);
-        AppState {
-            storage,
-            frames_dir: None,
-            event_tx,
-            config_manager: None,
-            default_secret_backend_kind: CredentialBackendKind::Unavailable,
-            secret_store: None,
-            secret_stores: None,
-            audit_logger: None,
-            automation_controller: None,
-            ai_runtime_status: None,
-            integration_runtime_status: None,
-            integration_auth: None,
-            integration_session: None,
-            integration_outbox: None,
-            integration_inbox: None,
-            integration_inbox_store: None,
-            integration_audit: None,
-            integration_runtime_telemetry: None,
-            update_control: None,
-            vector_store: None,
-            embedding_provider: None,
-            text_search: None,
-            override_store: None,
-            recluster_requested: None,
-            coaching_engine: None,
-            session_manager: None,
-            pomodoro: Arc::new(std::sync::Mutex::new(None)),
-            pii_sanitizer: None,
-            latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
-        }
+        AppState::with_core(storage, event_tx)
     }
 
     fn test_app_state_with_coaching() -> AppState {
         let mut state = test_app_state();
-        state.coaching_engine = Some(Arc::new(MockCoachingEngine));
+        state.analysis.coaching_engine = Some(Arc::new(MockCoachingEngine));
         state
     }
 

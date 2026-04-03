@@ -4,13 +4,14 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 use oneshim_api_contracts::bug_report::BugReportBundleDto;
 use oneshim_api_contracts::stream::RealtimeEvent;
-use oneshim_api_contracts::support::RuntimeLogSnapshotDto;
 use oneshim_core::config::CredentialBackendKind;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+use oneshim_core::ports::runtime_log_provider::RuntimeLogProvider;
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
+use oneshim_core::ports::system_info_provider::SystemInfoProvider;
 
 use oneshim_core::ports::conversation_session::SessionManager;
 
@@ -29,8 +30,8 @@ pub struct StorageWebContext {
 impl StorageWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            storage: state.storage.clone(),
-            frames_dir: state.frames_dir.clone(),
+            storage: state.core.storage.clone(),
+            frames_dir: state.core.frames_dir.clone(),
         }
     }
 }
@@ -49,7 +50,7 @@ pub struct UpdateWebContext {
 impl UpdateWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            update_control: state.update_control.clone(),
+            update_control: state.core.update_control.clone(),
         }
     }
 }
@@ -68,7 +69,7 @@ pub struct ConfigWebContext {
 impl ConfigWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            config_manager: state.config_manager.clone(),
+            config_manager: state.core.config_manager.clone(),
         }
     }
 }
@@ -88,8 +89,8 @@ pub struct BackupWebContext {
 impl BackupWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            storage: state.storage.clone(),
-            config_manager: state.config_manager.clone(),
+            storage: state.core.storage.clone(),
+            config_manager: state.core.config_manager.clone(),
         }
     }
 }
@@ -114,13 +115,13 @@ pub struct SettingsWebContext {
 impl SettingsWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            storage: state.storage.clone(),
-            frames_dir: state.frames_dir.clone(),
-            config_manager: state.config_manager.clone(),
-            default_secret_backend_kind: state.default_secret_backend_kind,
-            secret_store: state.secret_store.clone(),
-            secret_stores: state.secret_stores.clone(),
-            audit_logger: state.audit_logger.clone(),
+            storage: state.core.storage.clone(),
+            frames_dir: state.core.frames_dir.clone(),
+            config_manager: state.core.config_manager.clone(),
+            default_secret_backend_kind: state.secrets.default_backend_kind,
+            secret_store: state.secrets.store.clone(),
+            secret_stores: state.secrets.stores.clone(),
+            audit_logger: state.automation.audit_logger.clone(),
         }
     }
 }
@@ -141,9 +142,9 @@ pub struct AiModelCatalogWebContext {
 impl AiModelCatalogWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            config_manager: state.config_manager.clone(),
-            secret_store: state.secret_store.clone(),
-            secret_stores: state.secret_stores.clone(),
+            config_manager: state.core.config_manager.clone(),
+            secret_store: state.secrets.store.clone(),
+            secret_stores: state.secrets.stores.clone(),
         }
     }
 }
@@ -168,11 +169,11 @@ impl SupportDiagnosticsContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
             settings: SettingsWebContext::from_state(state),
-            frames_dir: state.frames_dir.clone(),
-            config_manager_configured: state.config_manager.is_some(),
-            automation_controller_configured: state.automation_controller.is_some(),
-            update_control_configured: state.update_control.is_some(),
-            audit_logger: state.audit_logger.clone(),
+            frames_dir: state.core.frames_dir.clone(),
+            config_manager_configured: state.core.config_manager.is_some(),
+            automation_controller_configured: state.automation.controller.is_some(),
+            update_control_configured: state.core.update_control.is_some(),
+            audit_logger: state.automation.audit_logger.clone(),
         }
     }
 }
@@ -196,12 +197,12 @@ pub struct AutomationWebContext {
 impl AutomationWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            storage: state.storage.clone(),
-            frames_dir: state.frames_dir.clone(),
-            config_manager: state.config_manager.clone(),
-            audit_logger: state.audit_logger.clone(),
-            automation_controller: state.automation_controller.clone(),
-            ai_runtime_status: state.ai_runtime_status.clone(),
+            storage: state.core.storage.clone(),
+            frames_dir: state.core.frames_dir.clone(),
+            config_manager: state.core.config_manager.clone(),
+            audit_logger: state.automation.audit_logger.clone(),
+            automation_controller: state.automation.controller.clone(),
+            ai_runtime_status: state.automation.ai_runtime_status.clone(),
         }
     }
 }
@@ -220,7 +221,7 @@ pub struct AutomationGuiWebContext {
 impl AutomationGuiWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            automation_controller: state.automation_controller.clone(),
+            automation_controller: state.automation.controller.clone(),
         }
     }
 }
@@ -240,8 +241,8 @@ pub struct RealtimeStreamWebContext {
 impl RealtimeStreamWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            ai_runtime_status: state.ai_runtime_status.clone(),
-            event_tx: state.event_tx.clone(),
+            ai_runtime_status: state.automation.ai_runtime_status.clone(),
+            event_tx: state.core.event_tx.clone(),
         }
     }
 }
@@ -274,16 +275,16 @@ impl IntegrationWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
             config: IntegrationStatusConfigSnapshot::from_state(state),
-            automation_controller_configured: state.automation_controller.is_some(),
-            ai_runtime_status: state.ai_runtime_status.clone(),
-            runtime_status_seed: state.integration_runtime_status.clone().unwrap_or_default(),
-            auth: state.integration_auth.clone(),
-            session: state.integration_session.clone(),
-            outbox: state.integration_outbox.clone(),
-            inbox: state.integration_inbox.clone(),
-            inbox_store: state.integration_inbox_store.clone(),
-            audit: state.integration_audit.clone(),
-            telemetry: state.integration_runtime_telemetry.clone(),
+            automation_controller_configured: state.automation.controller.is_some(),
+            ai_runtime_status: state.automation.ai_runtime_status.clone(),
+            runtime_status_seed: state.integration.runtime_status.clone().unwrap_or_default(),
+            auth: state.integration.auth.clone(),
+            session: state.integration.session.clone(),
+            outbox: state.integration.outbox.clone(),
+            inbox: state.integration.inbox.clone(),
+            inbox_store: state.integration.inbox_store.clone(),
+            audit: state.integration.audit.clone(),
+            telemetry: state.integration.runtime_telemetry.clone(),
         }
     }
 }
@@ -302,7 +303,7 @@ pub struct AiSessionWebContext {
 impl AiSessionWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
-            session_manager: state.session_manager.clone(),
+            session_manager: state.session.manager.clone(),
         }
     }
 }
@@ -317,7 +318,8 @@ impl FromRef<AppState> for AiSessionWebContext {
 pub struct BugReportContext {
     pub support: SupportDiagnosticsContext,
     pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
-    pub runtime_logs: Option<RuntimeLogSnapshotDto>,
+    pub runtime_log_provider: Option<Arc<dyn RuntimeLogProvider>>,
+    pub system_info_provider: Option<Arc<dyn SystemInfoProvider>>,
     pub latest: Arc<parking_lot::RwLock<Option<BugReportBundleDto>>>,
 }
 
@@ -325,9 +327,10 @@ impl FromRef<AppState> for BugReportContext {
     fn from_ref(state: &AppState) -> Self {
         Self {
             support: SupportDiagnosticsContext::from_ref(state),
-            pii_sanitizer: state.pii_sanitizer.clone(),
-            runtime_logs: None,
-            latest: state.latest_bug_report.clone(),
+            pii_sanitizer: state.diagnostics.pii_sanitizer.clone(),
+            runtime_log_provider: state.diagnostics.runtime_log_provider.clone(),
+            system_info_provider: state.diagnostics.system_info_provider.clone(),
+            latest: state.diagnostics.latest_bug_report.clone(),
         }
     }
 }

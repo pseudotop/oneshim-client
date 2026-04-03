@@ -45,7 +45,7 @@ pub async fn execute(
 ) -> Result<Vec<SemanticSearchResult>, String> {
     match mode {
         "keyword" => {
-            let ts = state.text_search.as_ref().ok_or_else(|| {
+            let ts = state.analysis.text_search.as_ref().ok_or_else(|| {
                 "Keyword search is not available (text search provider not configured)".to_string()
             })?;
             keyword_search(ts, state, query, limit)
@@ -53,10 +53,10 @@ pub async fn execute(
                 .map_err(|e| format!("Keyword search failed: {e}"))
         }
         _ => {
-            let vs = state.vector_store.as_ref().ok_or_else(|| {
+            let vs = state.analysis.vector_store.as_ref().ok_or_else(|| {
                 "Semantic search is not available (embedding pipeline not configured)".to_string()
             })?;
-            let ep = state.embedding_provider.as_ref().ok_or_else(|| {
+            let ep = state.analysis.embedding_provider.as_ref().ok_or_else(|| {
                 "Semantic search is not available (embedding provider not configured)".to_string()
             })?;
             vector_search(vs, ep, state, query, limit, mode == "hybrid")
@@ -78,6 +78,7 @@ pub async fn keyword_search(
 
     let segment_ids: Vec<String> = fts_results.iter().map(|r| r.segment_id.clone()).collect();
     let segment_details = state
+        .core
         .storage
         .get_segment_details(&segment_ids)
         .unwrap_or_else(|e| {
@@ -131,7 +132,7 @@ pub async fn vector_search(
 
     // Hybrid: boost score for keyword matches
     let fts_boost_ids: HashSet<String> = if hybrid {
-        if let Some(ref text_search) = state.text_search {
+        if let Some(ref text_search) = state.analysis.text_search {
             match text_search.search_fts(&sanitized, limit).await {
                 Ok(fts_results) => fts_results.into_iter().map(|r| r.segment_id).collect(),
                 Err(e) => {
@@ -152,6 +153,7 @@ pub async fn vector_search(
         .map(|r| r.segment_id.clone())
         .collect();
     let segment_details = state
+        .core
         .storage
         .get_segment_details(&segment_ids)
         .unwrap_or_else(|e| {

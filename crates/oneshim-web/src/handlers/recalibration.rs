@@ -23,10 +23,10 @@ pub async fn create_override(
     State(state): State<AppState>,
     Json(body): Json<CreateOverrideRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let store = state
-        .override_store
-        .as_ref()
-        .ok_or_else(|| ApiError::ServiceUnavailable("Override store not configured".to_string()))?;
+    let store =
+        state.analysis.override_store.as_ref().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Override store not configured".to_string())
+        })?;
 
     let entry = RegimeOverride {
         override_id: uuid::Uuid::new_v4().to_string(),
@@ -49,10 +49,10 @@ pub async fn delete_override(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let store = state
-        .override_store
-        .as_ref()
-        .ok_or_else(|| ApiError::ServiceUnavailable("Override store not configured".to_string()))?;
+    let store =
+        state.analysis.override_store.as_ref().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Override store not configured".to_string())
+        })?;
 
     store.delete_override(&id).await?;
 
@@ -67,10 +67,10 @@ pub async fn list_overrides(
     State(state): State<AppState>,
     Query(query): Query<ListOverridesQuery>,
 ) -> Result<Json<Vec<RegimeOverride>>, ApiError> {
-    let store = state
-        .override_store
-        .as_ref()
-        .ok_or_else(|| ApiError::ServiceUnavailable("Override store not configured".to_string()))?;
+    let store =
+        state.analysis.override_store.as_ref().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Override store not configured".to_string())
+        })?;
 
     let from: DateTime<Utc> = query
         .from
@@ -98,10 +98,10 @@ pub async fn list_overrides(
 pub async fn trigger_recluster(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let flag = state
-        .recluster_requested
-        .as_ref()
-        .ok_or_else(|| ApiError::ServiceUnavailable("Recluster flag not configured".to_string()))?;
+    let flag =
+        state.analysis.recluster_requested.as_ref().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Recluster flag not configured".to_string())
+        })?;
 
     flag.store(true, std::sync::atomic::Ordering::Relaxed);
 

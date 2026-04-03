@@ -12,8 +12,11 @@ use oneshim_core::ports::integration::{
 };
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
+use oneshim_core::ports::runtime_log_provider::RuntimeLogProvider;
 #[cfg(feature = "server")]
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
+use oneshim_core::ports::system_info_provider::SystemInfoProvider;
+use oneshim_monitor::system_info::SysInfoProvider;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::UpdateControl;
@@ -31,6 +34,8 @@ use tokio::sync::{broadcast, watch};
 use tracing::{error, info, warn};
 
 use crate::automation_controller_builder::AutomationControllerBuilder;
+use crate::services::log_helpers;
+use crate::services::runtime_log_provider::TauriRuntimeLogProvider;
 
 pub(crate) struct WebServerLaunchResult {
     pub(crate) automation_controller: Option<Arc<AutomationController>>,
@@ -370,7 +375,13 @@ impl<'a> WebServerRuntimeBuilder<'a> {
                 .with_bound_port_notifier(bound_port_tx)
                 .with_runtime_bindings(runtime_bindings)
                 .with_pii_sanitizer(Arc::new(oneshim_vision::privacy::VisionPiiSanitizer)
-                    as Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>);
+                    as Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>)
+                .with_runtime_log_provider(Arc::new(TauriRuntimeLogProvider::new(
+                    log_helpers::runtime_log_dir(),
+                )) as Arc<dyn RuntimeLogProvider>)
+                .with_system_info_provider(
+                    Arc::new(SysInfoProvider::new()) as Arc<dyn SystemInfoProvider>
+                );
             if let Err(error) = web_server.run(web_shutdown_rx).await {
                 error!("WebServer error: {error}");
             }

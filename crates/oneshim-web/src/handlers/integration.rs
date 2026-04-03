@@ -500,80 +500,71 @@ mod tests {
             presented_at: None,
             dismiss_reason: None,
         }]));
-        AppState {
-            storage,
-            frames_dir: None,
-            event_tx,
-            config_manager: None,
-            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
-            secret_store: None,
-            secret_stores: None,
-            audit_logger: None,
-            automation_controller: None,
-            ai_runtime_status: None,
-            integration_runtime_status: Some(IntegrationOutboundRuntimeStatus {
-                enabled: true,
-                bootstrap_configured: true,
-                auth_source_configured: true,
-                auth_material_available: false,
-                runtime_configured: true,
-                resource_indicator_configured: true,
-                auth_profile_kind:
-                    oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken,
-                preferred_transports: vec![IntegrationTransportKind::WebSocket],
-                supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
-                outbox_pending_count: None,
-                inbox_pending_count: None,
-                outbox_ack_cursor: None,
-                inbox_ack_cursor: None,
-                auth_status: None,
-                current_session: None,
-                runtime_telemetry: None,
+        let mut state = AppState::with_core(storage, event_tx);
+        state.integration.runtime_status = Some(IntegrationOutboundRuntimeStatus {
+            enabled: true,
+            bootstrap_configured: true,
+            auth_source_configured: true,
+            auth_material_available: false,
+            runtime_configured: true,
+            resource_indicator_configured: true,
+            auth_profile_kind:
+                oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken,
+            preferred_transports: vec![IntegrationTransportKind::WebSocket],
+            supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+            outbox_pending_count: None,
+            inbox_pending_count: None,
+            outbox_ack_cursor: None,
+            inbox_ack_cursor: None,
+            auth_status: None,
+            current_session: None,
+            runtime_telemetry: None,
+        });
+        state.integration.auth = Some(Arc::new(TestAuthPort {
+            status: Arc::new(Mutex::new(IntegrationAuthStatus {
+                profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
+                status: IntegrationAuthStatusKind::Unauthenticated,
+                interactive: true,
+                authenticated: false,
+                expires_at: None,
+                resource_indicator: Some("https://integration.example.com".to_string()),
+                pending_flow: None,
+                message: Some("authorize the device".to_string()),
+            })),
+        }) as Arc<dyn IntegrationAuthPort>);
+        state.integration.session = Some(Arc::new(TestSessionPort(Some(IntegrationSessionState {
+            session_id: "session-1".to_string(),
+            device_id: "device-1".to_string(),
+            status: IntegrationSessionStatus::Connected,
+            transport_kind: IntegrationTransportKind::WebSocket,
+            auth_scheme: IntegrationAuthScheme::BearerToken,
+            connected_at: None,
+            last_heartbeat_at: None,
+            requested_scopes: vec![IntegrationCapabilityScope::InsightWrite],
+            granted_scopes: vec![IntegrationCapabilityScope::InsightWrite],
+            ack_cursors: Vec::new(),
+        }))) as Arc<dyn IntegrationSessionPort>);
+        state.integration.outbox = Some(Arc::new(TestOutbox {
+            pending_count: 3,
+            last_ack_cursor: Some(IntegrationAckCursor {
+                stream_id: "insights".to_string(),
+                cursor: "cursor-outbox".to_string(),
+                acknowledged_at: chrono::Utc::now(),
             }),
-            integration_auth: Some(Arc::new(TestAuthPort {
-                status: Arc::new(Mutex::new(IntegrationAuthStatus {
-                    profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
-                    status: IntegrationAuthStatusKind::Unauthenticated,
-                    interactive: true,
-                    authenticated: false,
-                    expires_at: None,
-                    resource_indicator: Some("https://integration.example.com".to_string()),
-                    pending_flow: None,
-                    message: Some("authorize the device".to_string()),
-                })),
-            }) as Arc<dyn IntegrationAuthPort>),
-            integration_session: Some(Arc::new(TestSessionPort(Some(IntegrationSessionState {
-                session_id: "session-1".to_string(),
-                device_id: "device-1".to_string(),
-                status: IntegrationSessionStatus::Connected,
-                transport_kind: IntegrationTransportKind::WebSocket,
-                auth_scheme: IntegrationAuthScheme::BearerToken,
-                connected_at: None,
-                last_heartbeat_at: None,
-                requested_scopes: vec![IntegrationCapabilityScope::InsightWrite],
-                granted_scopes: vec![IntegrationCapabilityScope::InsightWrite],
-                ack_cursors: Vec::new(),
-            }))) as Arc<dyn IntegrationSessionPort>),
-            integration_outbox: Some(Arc::new(TestOutbox {
-                pending_count: 3,
-                last_ack_cursor: Some(IntegrationAckCursor {
-                    stream_id: "insights".to_string(),
-                    cursor: "cursor-outbox".to_string(),
-                    acknowledged_at: chrono::Utc::now(),
-                }),
-            }) as Arc<dyn IntegrationOutboxPort>),
-            integration_inbox: Some(Arc::new(TestInboxPort {
-                prompts: inbox_prompts,
-            }) as Arc<dyn IntegrationInboxPort>),
-            integration_inbox_store: Some(Arc::new(TestInboxStore {
-                pending_count: 2,
-                last_ack_cursor: Some(IntegrationAckCursor {
-                    stream_id: "prompts".to_string(),
-                    cursor: "cursor-inbox".to_string(),
-                    acknowledged_at: chrono::Utc::now(),
-                }),
-            }) as Arc<dyn IntegrationInboxStorePort>),
-            integration_audit: Some(Arc::new(TestAuditPort(vec![IntegrationInsightAuditRecord {
+        }) as Arc<dyn IntegrationOutboxPort>);
+        state.integration.inbox = Some(Arc::new(TestInboxPort {
+            prompts: inbox_prompts,
+        }) as Arc<dyn IntegrationInboxPort>);
+        state.integration.inbox_store = Some(Arc::new(TestInboxStore {
+            pending_count: 2,
+            last_ack_cursor: Some(IntegrationAckCursor {
+                stream_id: "prompts".to_string(),
+                cursor: "cursor-inbox".to_string(),
+                acknowledged_at: chrono::Utc::now(),
+            }),
+        }) as Arc<dyn IntegrationInboxStorePort>);
+        state.integration.audit =
+            Some(Arc::new(TestAuditPort(vec![IntegrationInsightAuditRecord {
                 record_id: "audit-1".to_string(),
                 envelope_id: "env-1".to_string(),
                 packet_id: "packet-1".to_string(),
@@ -582,40 +573,27 @@ mod tests {
                 privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
                 capability_scope: IntegrationCapabilityScope::InsightWrite,
                 occurred_at: chrono::Utc::now(),
-            }])) as Arc<dyn IntegrationAuditPort>),
-            integration_runtime_telemetry: Some(Arc::new(TestTelemetryPort(
-                IntegrationRuntimeTelemetry {
-                    connect: IntegrationRuntimeLaneTelemetry {
-                        consecutive_failures: 2,
-                        last_success_at: None,
-                        last_failure_at: Some(chrono::Utc::now()),
-                        backoff_until: Some(chrono::Utc::now()),
-                        last_error: Some("connect failed".to_string()),
-                    },
-                    heartbeat: IntegrationRuntimeLaneTelemetry::default(),
-                    egress: IntegrationRuntimeLaneTelemetry {
-                        consecutive_failures: 0,
-                        last_success_at: Some(chrono::Utc::now()),
-                        last_failure_at: None,
-                        backoff_until: None,
-                        last_error: None,
-                    },
-                    inbox: IntegrationRuntimeLaneTelemetry::default(),
+            }])) as Arc<dyn IntegrationAuditPort>);
+        state.integration.runtime_telemetry =
+            Some(Arc::new(TestTelemetryPort(IntegrationRuntimeTelemetry {
+                connect: IntegrationRuntimeLaneTelemetry {
+                    consecutive_failures: 2,
+                    last_success_at: None,
+                    last_failure_at: Some(chrono::Utc::now()),
+                    backoff_until: Some(chrono::Utc::now()),
+                    last_error: Some("connect failed".to_string()),
                 },
-            ))
-                as Arc<dyn IntegrationRuntimeTelemetryPort>),
-            update_control: None,
-            vector_store: None,
-            embedding_provider: None,
-            text_search: None,
-            override_store: None,
-            recluster_requested: None,
-            coaching_engine: None,
-            session_manager: None,
-            pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
-            pii_sanitizer: None,
-            latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
-        }
+                heartbeat: IntegrationRuntimeLaneTelemetry::default(),
+                egress: IntegrationRuntimeLaneTelemetry {
+                    consecutive_failures: 0,
+                    last_success_at: Some(chrono::Utc::now()),
+                    last_failure_at: None,
+                    backoff_until: None,
+                    last_error: None,
+                },
+                inbox: IntegrationRuntimeLaneTelemetry::default(),
+            })) as Arc<dyn IntegrationRuntimeTelemetryPort>);
+        state
     }
 
     fn test_context() -> IntegrationWebContext {

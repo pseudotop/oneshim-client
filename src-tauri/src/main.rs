@@ -64,6 +64,7 @@ mod scheduler;
 mod secret_cli;
 #[cfg(feature = "server")]
 mod server_runtime_context;
+mod services;
 mod session_adapters;
 mod session_context;
 mod session_manager;
