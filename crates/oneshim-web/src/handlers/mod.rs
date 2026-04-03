@@ -3,6 +3,7 @@ pub mod ai_provider_surfaces;
 pub mod ai_session;
 pub mod automation;
 pub mod automation_gui;
+pub mod bug_report;
 pub mod daily_digest;
 pub mod dashboard;
 pub mod digests;

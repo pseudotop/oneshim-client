@@ -93,6 +93,8 @@ pub(super) fn test_state_without_config_manager() -> AppState {
         coaching_engine: None,
         session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        pii_sanitizer: None,
+        latest_bug_report: std::sync::Arc::new(std::sync::Mutex::new(None)),
     }
 }
 
@@ -130,6 +132,8 @@ pub(super) fn test_state_with_config_manager(
         coaching_engine: None,
         session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        pii_sanitizer: None,
+        latest_bug_report: std::sync::Arc::new(std::sync::Mutex::new(None)),
     }
 }
 
