@@ -175,7 +175,15 @@ export default function BugReportWizard({ open, onClose }: BugReportWizardProps)
             </Button>
           )}
           {step === 'share' && (
-            <Button type="button" variant="ghost" size="sm" onClick={() => setStep('review')}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setExporting(false)
+                setStep('review')
+              }}
+            >
               {t('settings.bugReportBack')}
             </Button>
           )}
