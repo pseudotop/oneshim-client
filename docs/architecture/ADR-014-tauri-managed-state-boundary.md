@@ -2,7 +2,7 @@
 
 # ADR-014: Tauri Managed State Boundary
 
-**Status**: Proposed
+**Status**: Approved
 **Date**: 2026-04-02
 **Scope**: `src-tauri/`, Tauri managed state, IPC command boundary, and composition-root wiring
 
