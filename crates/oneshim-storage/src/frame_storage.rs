@@ -1,6 +1,9 @@
 use crate::error::StorageError;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crossbeam::queue::ArrayQueue;
+use oneshim_core::error::CoreError;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use parking_lot::Mutex as ParkingMutex;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering, Ordering as AtomicOrdering};
@@ -593,6 +596,36 @@ impl FrameFileStorage {
             free_mb,
             healthy: free_mb >= DISK_SPACE_CRITICAL_MB,
         }
+    }
+}
+
+#[async_trait]
+impl FrameStoragePort for FrameFileStorage {
+    async fn save_frame(
+        &self,
+        timestamp: DateTime<Utc>,
+        data: &[u8],
+    ) -> Result<PathBuf, CoreError> {
+        self.save_frame(timestamp, data).await.map_err(Into::into)
+    }
+
+    async fn save_frames_batch(
+        &self,
+        frames: Vec<(DateTime<Utc>, Vec<u8>)>,
+    ) -> Vec<Result<PathBuf, CoreError>> {
+        self.save_frames_batch(frames)
+            .await
+            .into_iter()
+            .map(|r| r.map_err(Into::into))
+            .collect()
+    }
+
+    async fn enforce_retention(&self) -> Result<usize, CoreError> {
+        self.enforce_retention().await.map_err(Into::into)
+    }
+
+    async fn enforce_storage_limit(&self) -> Result<usize, CoreError> {
+        self.enforce_storage_limit().await.map_err(Into::into)
     }
 }
 

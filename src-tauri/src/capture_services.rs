@@ -5,13 +5,14 @@ use anyhow::Result;
 use oneshim_core::config::AppConfig;
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
 use oneshim_core::ports::vision::FrameProcessor;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
 
 pub(crate) struct SharedCaptureServices {
-    pub(crate) frame_storage: Arc<FrameFileStorage>,
+    pub(crate) frame_storage: Arc<dyn FrameStoragePort>,
     pub(crate) process_monitor: Arc<dyn ProcessMonitor>,
     pub(crate) activity_monitor: Arc<dyn ActivityMonitor>,
     pub(crate) frame_processor: Arc<dyn FrameProcessor>,

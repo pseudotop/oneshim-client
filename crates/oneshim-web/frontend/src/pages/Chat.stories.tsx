@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { AppMemoryRouter } from '../router/future'
 import { darkThemeGlobals, lightThemeGlobals, reviewStoryParameters } from '../stories/storybook-helpers'
-import Chat from './Chat'
+import Chat from './chat'
 
 const meta = {
   title: 'Pages/Chat',
