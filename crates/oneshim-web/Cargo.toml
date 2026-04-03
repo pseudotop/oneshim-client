@@ -34,10 +34,11 @@ thiserror = { workspace = true }
 # UUID
 uuid = { workspace = true }
 
-# Bug report ID generation
+# Bug report
 sha2 = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
+parking_lot = { workspace = true }
 
 # 웹 프레임워크
 axum = { workspace = true }

@@ -349,7 +349,7 @@ mod tests {
             session_manager: None,
             pomodoro: Arc::new(Mutex::new(None)),
             pii_sanitizer: None,
-            latest_bug_report: Arc::new(Mutex::new(None)),
+            latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -387,7 +387,7 @@ mod tests {
             session_manager: None,
             pomodoro: Arc::new(Mutex::new(None)),
             pii_sanitizer: None,
-            latest_bug_report: Arc::new(Mutex::new(None)),
+            latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }

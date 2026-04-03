@@ -86,7 +86,7 @@ mod tests {
             session_manager: None,
             pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
             pii_sanitizer: None,
-            latest_bug_report: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
         }
     }
 

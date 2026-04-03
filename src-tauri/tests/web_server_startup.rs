@@ -128,7 +128,7 @@ async fn web_server_router_resolves_focus_routes() {
         session_manager: None,
         pomodoro: Arc::new(std::sync::Mutex::new(None)),
         pii_sanitizer: None,
-        latest_bug_report: Arc::new(std::sync::Mutex::new(None)),
+        latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
     };
 
     let app = WebServer::build_router(state)

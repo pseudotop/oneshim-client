@@ -217,7 +217,7 @@ async fn update_settings_rejects_api_key_write_for_env_backend() {
         session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
         pii_sanitizer: None,
-        latest_bug_report: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
     };
 
     let mut settings = AppSettings::default();

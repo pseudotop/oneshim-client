@@ -7,7 +7,10 @@ pub struct BugId(String);
 
 impl BugId {
     pub fn new(id: String) -> Result<Self, &'static str> {
-        if id.starts_with("BUG-") && id.len() == 16 {
+        if id.starts_with("BUG-")
+            && id.len() == 16
+            && id[4..].chars().all(|c| c.is_ascii_hexdigit())
+        {
             Ok(Self(id))
         } else {
             Err("Bug ID must match format BUG-{12_hex_chars}")
@@ -44,6 +47,12 @@ mod tests {
     #[test]
     fn rejects_wrong_prefix() {
         assert!(BugId::new("ERR-a1b2c3d4e5f6".to_string()).is_err());
+    }
+
+    #[test]
+    fn rejects_non_hex_chars() {
+        assert!(BugId::new("BUG-ghijklmnopqr".to_string()).is_err());
+        assert!(BugId::new("BUG-<script>aaaa".to_string()).is_err());
     }
 
     #[test]

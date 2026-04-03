@@ -318,7 +318,7 @@ pub struct BugReportContext {
     pub support: SupportDiagnosticsContext,
     pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
     pub runtime_logs: Option<RuntimeLogSnapshotDto>,
-    pub latest: Arc<std::sync::Mutex<Option<BugReportBundleDto>>>,
+    pub latest: Arc<parking_lot::RwLock<Option<BugReportBundleDto>>>,
 }
 
 impl FromRef<AppState> for BugReportContext {

@@ -118,7 +118,7 @@ pub struct AppState {
     pub pomodoro: Arc<std::sync::Mutex<Option<oneshim_core::models::pomodoro::PomodoroSession>>>,
     pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
     pub latest_bug_report:
-        Arc<std::sync::Mutex<Option<oneshim_api_contracts::bug_report::BugReportBundleDto>>>,
+        Arc<parking_lot::RwLock<Option<oneshim_api_contracts::bug_report::BugReportBundleDto>>>,
 }
 
 pub struct WebServer {
@@ -162,7 +162,7 @@ impl WebServer {
                 session_manager: None,
                 pomodoro: Arc::new(std::sync::Mutex::new(None)),
                 pii_sanitizer: None,
-                latest_bug_report: Arc::new(std::sync::Mutex::new(None)),
+                latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -794,7 +794,7 @@ mod tests {
             session_manager: None,
             pomodoro: Arc::new(std::sync::Mutex::new(None)),
             pii_sanitizer: None,
-            latest_bug_report: Arc::new(std::sync::Mutex::new(None)),
+            latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
         }
     }
 

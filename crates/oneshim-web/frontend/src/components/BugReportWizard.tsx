@@ -102,11 +102,14 @@ export default function BugReportWizard({ open, onClose }: BugReportWizardProps)
     if (!bundle) return
     setExporting(true)
     try {
-      await invokeDesktop('export_bug_report', {
+      const result = await invokeDesktop<string | null>('export_bug_report', {
         bugId: bundle.bug_id,
         bundleJson: JSON.stringify(bundle),
       })
-      addToast('success', t('settings.bugReportExported'), 4000)
+      if (result) {
+        addToast('success', t('settings.bugReportExported'), 4000)
+      }
+      // null means user cancelled the save dialog — no toast needed
     } catch {
       addToast('error', t('settings.bugReportExportFailed'), 5000)
     } finally {
@@ -117,8 +120,11 @@ export default function BugReportWizard({ open, onClose }: BugReportWizardProps)
   const handleEmailSupport = useCallback(() => {
     if (!bundle) return
     const url = buildMailtoUrl(bundle.bug_id)
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }, [bundle])
+    const opened = window.open(url, '_blank', 'noopener,noreferrer')
+    if (!opened) {
+      addToast('error', t('settings.bugReportOpenFailed'), 5000)
+    }
+  }, [bundle, t])
 
   return (
     <Dialog open={open} onClose={handleClose}>

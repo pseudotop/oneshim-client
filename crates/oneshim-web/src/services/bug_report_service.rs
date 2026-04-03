@@ -3,6 +3,7 @@ use oneshim_core::config::PiiFilterLevel;
 use oneshim_core::models::bug_report::BugId;
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 
+use crate::error::ApiError;
 use crate::services::support_service::SupportDiagnosticsQueryService;
 use crate::services::web_contexts::BugReportContext;
 
@@ -15,11 +16,17 @@ impl BugReportService {
         Self { ctx }
     }
 
+    /// Create a bug report bundle. Returns `Err` if PII sanitizer is not wired,
+    /// refusing to produce a bundle without privacy protection.
     pub async fn create_report(
         &self,
         include_logs: bool,
         pii_level: Option<String>,
-    ) -> BugReportBundleDto {
+    ) -> Result<BugReportBundleDto, ApiError> {
+        let sanitizer = self.ctx.pii_sanitizer.as_ref().ok_or_else(|| {
+            ApiError::Internal("PII sanitizer not configured — cannot produce bug report".into())
+        })?;
+
         let diagnostics = SupportDiagnosticsQueryService::new(self.ctx.support.clone())
             .get_diagnostics()
             .await;
@@ -45,11 +52,9 @@ impl BugReportService {
             pii_filter_level: format!("{level:?}"),
         };
 
-        if let Some(ref sanitizer) = self.ctx.pii_sanitizer {
-            sanitize_bundle(&**sanitizer, &mut bundle, level);
-        }
+        sanitize_bundle(&**sanitizer, &mut bundle, level);
 
-        bundle
+        Ok(bundle)
     }
 
     fn collect_system_info(&self) -> SystemInfoDto {
@@ -140,6 +145,12 @@ fn sanitize_bundle(
     if let Some(ref mut err) = bundle.diagnostics.health.storage_error {
         *err = sanitizer.sanitize_text(err, effective);
     }
+
+    // Sanitize settings_snapshot fields that may contain user-identifying data
+    let s = &mut bundle.diagnostics.settings_snapshot;
+    s.sync.device_name = sanitizer.sanitize_text(&s.sync.device_name, effective);
+    s.network.server_base_url = sanitizer.sanitize_text(&s.network.server_base_url, effective);
+    s.network.grpc_endpoint = sanitizer.sanitize_text(&s.network.grpc_endpoint, effective);
 }
 
 #[cfg(test)]

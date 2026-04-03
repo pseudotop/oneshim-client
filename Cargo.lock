@@ -5592,6 +5592,7 @@ dependencies = [
  "oneshim-automation",
  "oneshim-core",
  "oneshim-storage",
+ "parking_lot",
  "rand 0.10.0",
  "reqwest 0.13.2",
  "rust-embed",

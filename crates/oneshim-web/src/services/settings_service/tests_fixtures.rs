@@ -94,7 +94,7 @@ pub(super) fn test_state_without_config_manager() -> AppState {
         session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
         pii_sanitizer: None,
-        latest_bug_report: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
     }
 }
 
@@ -133,7 +133,7 @@ pub(super) fn test_state_with_config_manager(
         session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
         pii_sanitizer: None,
-        latest_bug_report: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
     }
 }
 

@@ -14,9 +14,10 @@ pub async fn create_bug_report_with_params(
     let service = BugReportService::new(ctx);
     let bundle = service
         .create_report(params.include_logs, params.pii_level)
-        .await;
+        .await?;
 
-    if let Ok(mut guard) = latest.lock() {
+    {
+        let mut guard = latest.write();
         *guard = Some(bundle.clone());
     }
 
@@ -26,11 +27,7 @@ pub async fn create_bug_report_with_params(
 pub async fn get_latest_bug_report(
     State(ctx): State<BugReportContext>,
 ) -> Result<Json<BugReportBundleDto>, ApiError> {
-    let guard = ctx
-        .latest
-        .lock()
-        .map_err(|_| ApiError::Internal("lock poisoned".to_string()))?;
-
+    let guard = ctx.latest.read();
     match guard.as_ref() {
         Some(bundle) => Ok(Json(bundle.clone())),
         None => Err(ApiError::NotFound(
