@@ -1,3 +1,5 @@
+//! Query port for assembling AI chat session system context from stored suggestions.
+
 use crate::error::CoreError;
 use crate::models::storage_records::SuggestionRecord;
 use crate::ports::storage::StorageService;

@@ -1,3 +1,5 @@
+//! Full-text search port over activity segment content (backed by FTS5 or similar).
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 

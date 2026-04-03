@@ -1,3 +1,5 @@
+//! Synchronous storage port for the local web dashboard (events, frames, metrics, tags, exports).
+
 use chrono::{DateTime, Utc};
 
 use crate::error::CoreError;

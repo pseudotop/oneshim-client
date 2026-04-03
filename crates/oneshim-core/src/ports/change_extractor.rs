@@ -1,3 +1,5 @@
+//! Read-side sync port for extracting local changes into outbound changesets.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

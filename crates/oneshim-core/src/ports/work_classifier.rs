@@ -1,3 +1,5 @@
+//! Pure-logic port for classifying user activity into a work type category.
+
 use crate::models::tiered_memory::WorkType;
 
 /// Classify current user activity into a WorkType.

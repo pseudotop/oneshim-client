@@ -1,3 +1,5 @@
+//! Write-side sync port for merging inbound changesets with LWW conflict resolution.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

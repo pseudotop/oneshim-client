@@ -1,3 +1,5 @@
+//! Persistence port for coaching event records emitted by the scheduler.
+
 use crate::error::CoreError;
 use crate::models::coaching::CoachingEventRow;
 
