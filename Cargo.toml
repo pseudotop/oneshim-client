@@ -70,6 +70,7 @@ base64 = "0.22"
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-build = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-webdriver = "0.2"
 

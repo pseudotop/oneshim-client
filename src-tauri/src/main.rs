@@ -169,6 +169,7 @@ fn main() {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(LogWorkerGuard(worker_guard));
@@ -273,6 +274,7 @@ fn main() {
             commands::audio::reload_stt_engine,
             commands::audio::start_vad_listening,
             commands::audio::stop_vad_listening,
+            commands::bug_report::export_bug_report,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");
