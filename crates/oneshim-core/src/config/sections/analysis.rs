@@ -151,6 +151,10 @@ pub struct TieredMemoryConfig {
     #[serde(default)]
     pub clustering_algorithm: ClusteringAlgorithm,
 
+    /// Hours between automatic regime re-detection (0 = detection on every tick when data ready).
+    #[serde(default = "default_regime_detection_interval_hours")]
+    pub regime_detection_interval_hours: i64,
+
     /// Auto-tuning configuration (EMA stats + drift detection).
     #[serde(default)]
     pub auto_tuning: AutoTuningConfig,
@@ -168,6 +172,7 @@ impl Default for TieredMemoryConfig {
             max_segment_secs: default_max_segment_secs(),
             min_segment_secs: default_min_segment_secs(),
             clustering_algorithm: ClusteringAlgorithm::default(),
+            regime_detection_interval_hours: default_regime_detection_interval_hours(),
             auto_tuning: AutoTuningConfig::default(),
         }
     }
@@ -209,6 +214,9 @@ fn default_max_segment_secs() -> u64 {
 }
 fn default_min_segment_secs() -> u64 {
     120
+}
+fn default_regime_detection_interval_hours() -> i64 {
+    2
 }
 
 // ---------------------------------------------------------------------------

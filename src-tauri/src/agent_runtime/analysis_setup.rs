@@ -110,6 +110,7 @@ pub(super) fn build_analysis_pipeline(
                 )),
                 override_store,
                 recluster_requested,
+                regime_detection_interval_hours: tm_config.regime_detection_interval_hours,
                 last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 llm_summarizer: embedding.llm_summarizer.take(),
                 embedding_pipeline: embedding.embedding_pipeline.take(),
