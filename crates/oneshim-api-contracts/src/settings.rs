@@ -75,6 +75,11 @@ pub struct NotificationSettings {
 pub struct UpdateSettings {
     pub enabled: bool,
     pub check_interval_hours: u32,
+    /// Update channel: "stable", "pre_release", or "nightly".
+    #[serde(default)]
+    pub channel: String,
+    /// Legacy field — kept for backward compatibility. New code uses `channel`.
+    #[serde(default, skip_serializing)]
     pub include_prerelease: bool,
     pub auto_install: bool,
 }
@@ -84,6 +89,7 @@ impl Default for UpdateSettings {
         Self {
             enabled: true,
             check_interval_hours: 24,
+            channel: "stable".to_string(),
             include_prerelease: false,
             auto_install: false,
         }

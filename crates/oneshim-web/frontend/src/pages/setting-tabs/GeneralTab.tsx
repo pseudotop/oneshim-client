@@ -104,7 +104,7 @@ interface GeneralTabProps extends SettingsFormTabProps {
   onRootChange: (field: 'web_port' | 'allow_external', value: number | boolean) => void
   onNotificationChange: (field: keyof NotificationSettingsType, value: number | boolean) => void
   onScheduleChange: (field: keyof ScheduleSettingsType, value: boolean | number | string[]) => void
-  onUpdateChange: (field: keyof AppSettings['update'], value: boolean | number) => void
+  onUpdateChange: (field: keyof AppSettings['update'], value: boolean | number | string) => void
   onUpdateAction: (action: UpdateAction) => void
 }
 
@@ -203,17 +203,24 @@ export default function GeneralTab({
               />
             </div>
             <div className="flex items-end">
-              <label className="flex cursor-pointer items-center">
-                <Checkbox
-                  checked={formData.update.include_prerelease}
-                  onChange={(e) => onUpdateChange('include_prerelease', e.target.checked)}
-                  className="mr-3"
-                />
-                <div>
-                  <span className="text-content-strong">{t('settings.updateIncludePrerelease')}</span>
-                  <p className="text-content-secondary text-xs">{t('settings.updateIncludePrereleaseDesc')}</p>
-                </div>
-              </label>
+              <div>
+                <label className="mb-1 block text-content-strong text-sm" htmlFor="update-channel">
+                  {t('settings.updateChannel', 'Update channel')}
+                </label>
+                <select
+                  id="update-channel"
+                  value={formData.update.channel ?? 'stable'}
+                  onChange={(e) => onUpdateChange('channel', e.target.value)}
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-content text-sm"
+                >
+                  <option value="stable">{t('settings.channelStable', 'Stable')}</option>
+                  <option value="pre_release">{t('settings.channelPreRelease', 'Pre-release (RC)')}</option>
+                  <option value="nightly">{t('settings.channelNightly', 'Nightly')}</option>
+                </select>
+                <p className="mt-1 text-content-secondary text-xs">
+                  {t('settings.updateChannelDesc', 'Choose which releases to receive')}
+                </p>
+              </div>
             </div>
           </div>
 

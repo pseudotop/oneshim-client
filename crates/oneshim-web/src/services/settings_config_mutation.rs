@@ -43,7 +43,12 @@ fn apply_general_settings(config: &mut AppConfig, settings: &AppSettings) -> Res
     config.notification.high_usage_threshold = settings.notification.high_usage_threshold;
     config.update.enabled = settings.update.enabled;
     config.update.check_interval_hours = settings.update.check_interval_hours;
-    config.update.include_prerelease = settings.update.include_prerelease;
+    config.update.channel = match settings.update.channel.as_str() {
+        "pre_release" | "prerelease" => oneshim_core::config::UpdateChannel::PreRelease,
+        "nightly" => oneshim_core::config::UpdateChannel::Nightly,
+        _ => oneshim_core::config::UpdateChannel::Stable,
+    };
+    config.update.include_prerelease = config.update.channel.includes_prerelease();
     config.update.auto_install = settings.update.auto_install;
     config.telemetry.enabled = settings.telemetry.enabled;
     config.telemetry.crash_reports = settings.telemetry.crash_reports;

@@ -135,7 +135,7 @@ function makeDefaultSettings(): AppSettings {
     update: {
       enabled: true,
       check_interval_hours: 24,
-      include_prerelease: false,
+      include_prerelease: false, channel: "stable",
       auto_install: false,
     },
     telemetry: {
