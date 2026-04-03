@@ -21,6 +21,7 @@ pub fn get_or_generate_digest(
 ) -> Result<DailyDigest, String> {
     // 1. Check cache
     if let Some(cached) = state
+        .core
         .storage
         .get_daily_digest(date_str)
         .map_err(|e| format!("Failed to get daily digest: {e}"))?
@@ -30,6 +31,7 @@ pub fn get_or_generate_digest(
 
     // 2. Generate from segments
     let segment_records = state
+        .core
         .storage
         .get_segments_for_date(date_str)
         .map_err(|e| format!("Failed to get segments: {e}"))?;
@@ -37,7 +39,7 @@ pub fn get_or_generate_digest(
     let digest = build_daily_digest(&segment_records, date, state);
 
     // 3. Cache the result
-    if let Err(e) = state.storage.save_daily_digest(&digest) {
+    if let Err(e) = state.core.storage.save_daily_digest(&digest) {
         warn!("Failed to cache daily digest: {e}");
     }
 
@@ -148,6 +150,7 @@ fn compute_statistics(
         .format("%Y-%m-%d")
         .to_string();
     let comparison = state
+        .core
         .storage
         .get_daily_digest(&prev_date)
         .ok()

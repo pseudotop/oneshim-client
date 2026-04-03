@@ -173,77 +173,15 @@ fn make_controller() -> Arc<AutomationController> {
 fn make_state() -> AppState {
     let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
     let (event_tx, _) = broadcast::channel(16);
-    AppState {
-        storage,
-        frames_dir: None,
-        event_tx,
-        config_manager: None,
-        default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
-        secret_store: None,
-        secret_stores: None,
-        audit_logger: None,
-        automation_controller: Some(make_controller()),
-        ai_runtime_status: None,
-        integration_runtime_status: None,
-        integration_auth: None,
-        integration_session: None,
-        integration_outbox: None,
-        integration_inbox: None,
-        integration_inbox_store: None,
-        integration_audit: None,
-        integration_runtime_telemetry: None,
-        update_control: None,
-        vector_store: None,
-        embedding_provider: None,
-        text_search: None,
-        override_store: None,
-        recluster_requested: None,
-        coaching_engine: None,
-        session_manager: None,
-        pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
-        pii_sanitizer: None,
-        latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
-        runtime_log_provider: None,
-        system_info_provider: None,
-    }
+    let mut state = AppState::with_core(storage, event_tx);
+    state.automation.controller = Some(make_controller());
+    state
 }
 
 fn make_state_no_controller() -> AppState {
     let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
     let (event_tx, _) = broadcast::channel(16);
-    AppState {
-        storage,
-        frames_dir: None,
-        event_tx,
-        config_manager: None,
-        default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
-        secret_store: None,
-        secret_stores: None,
-        audit_logger: None,
-        automation_controller: None,
-        ai_runtime_status: None,
-        integration_runtime_status: None,
-        integration_auth: None,
-        integration_session: None,
-        integration_outbox: None,
-        integration_inbox: None,
-        integration_inbox_store: None,
-        integration_audit: None,
-        integration_runtime_telemetry: None,
-        update_control: None,
-        vector_store: None,
-        embedding_provider: None,
-        text_search: None,
-        override_store: None,
-        recluster_requested: None,
-        coaching_engine: None,
-        session_manager: None,
-        pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
-        pii_sanitizer: None,
-        latest_bug_report: std::sync::Arc::new(parking_lot::RwLock::new(None)),
-        runtime_log_provider: None,
-        system_info_provider: None,
-    }
+    AppState::with_core(storage, event_tx)
 }
 
 fn token_headers(token: &str) -> HeaderMap {

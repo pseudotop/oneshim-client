@@ -31,6 +31,7 @@
 //!   - `impl WebStorage for SqliteStorage` moved to `oneshim-storage::sqlite::web_storage_impl`
 //!   - `oneshim-storage` moved to `[dev-dependencies]` (test-only `SqliteStorage::open_in_memory`)
 
+pub mod app_state;
 pub mod embedded;
 pub mod error;
 pub mod handlers;
@@ -39,6 +40,8 @@ pub mod runtime_bindings;
 pub mod services;
 pub mod storage_port;
 pub mod update_control;
+
+pub use app_state::*;
 
 use crate::storage_port::WebStorage;
 use axum::extract::{ConnectInfo, Request, State};
@@ -51,11 +54,9 @@ use oneshim_core::config::{CredentialBackendKind, WebConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
-use oneshim_core::ports::coaching::CoachingPort;
-use oneshim_core::ports::conversation_session::SessionManager;
 use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
-    IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
+    IntegrationOutboxPort, IntegrationSessionPort,
 };
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use oneshim_core::ports::runtime_log_provider::RuntimeLogProvider;
@@ -88,43 +89,6 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
 const MAX_PORT_ATTEMPTS: u16 = 10;
 const INTEGRATION_TOKEN_HEADER: &str = "x-oneshim-integration-token";
 
-#[derive(Clone)]
-pub struct AppState {
-    pub storage: Arc<dyn WebStorage>,
-    pub frames_dir: Option<std::path::PathBuf>,
-    pub event_tx: broadcast::Sender<RealtimeEvent>,
-    pub config_manager: Option<ConfigManager>,
-    pub default_secret_backend_kind: CredentialBackendKind,
-    pub secret_store: Option<Arc<dyn SecretStore>>,
-    pub secret_stores: Option<SecretStoreSet>,
-    pub audit_logger: Option<Arc<dyn AuditLogPort>>,
-    pub automation_controller: Option<Arc<dyn AutomationPort>>,
-    pub ai_runtime_status: Option<AiRuntimeStatus>,
-    pub integration_runtime_status: Option<IntegrationOutboundRuntimeStatus>,
-    pub integration_auth: Option<Arc<dyn IntegrationAuthPort>>,
-    pub integration_session: Option<Arc<dyn IntegrationSessionPort>>,
-    pub integration_outbox: Option<Arc<dyn IntegrationOutboxPort>>,
-    pub integration_inbox: Option<Arc<dyn IntegrationInboxPort>>,
-    pub integration_inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
-    pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
-    pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
-    pub update_control: Option<update_control::UpdateControl>,
-    pub vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
-    pub embedding_provider:
-        Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
-    pub text_search: Option<Arc<dyn oneshim_core::ports::text_search::TextSearchProvider>>,
-    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
-    pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
-    pub coaching_engine: Option<Arc<dyn CoachingPort>>,
-    pub session_manager: Option<Arc<dyn SessionManager>>,
-    pub pomodoro: Arc<std::sync::Mutex<Option<oneshim_core::models::pomodoro::PomodoroSession>>>,
-    pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
-    pub latest_bug_report:
-        Arc<parking_lot::RwLock<Option<oneshim_api_contracts::bug_report::BugReportBundleDto>>>,
-    pub runtime_log_provider: Option<Arc<dyn RuntimeLogProvider>>,
-    pub system_info_provider: Option<Arc<dyn SystemInfoProvider>>,
-}
-
 pub struct WebServer {
     config: WebConfig,
     state: AppState,
@@ -137,51 +101,19 @@ impl WebServer {
         let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             config,
-            state: AppState {
-                storage,
-                frames_dir: None,
-                event_tx,
-                config_manager: None,
-                default_secret_backend_kind: CredentialBackendKind::Unavailable,
-                secret_store: None,
-                secret_stores: None,
-                audit_logger: None,
-                automation_controller: None,
-                ai_runtime_status: None,
-                integration_runtime_status: None,
-                integration_auth: None,
-                integration_session: None,
-                integration_outbox: None,
-                integration_inbox: None,
-                integration_inbox_store: None,
-                integration_audit: None,
-                integration_runtime_telemetry: None,
-                update_control: None,
-                vector_store: None,
-                embedding_provider: None,
-                text_search: None,
-                override_store: None,
-                recluster_requested: None,
-                coaching_engine: None,
-                session_manager: None,
-                pomodoro: Arc::new(std::sync::Mutex::new(None)),
-                pii_sanitizer: None,
-                latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
-                runtime_log_provider: None,
-                system_info_provider: None,
-            },
+            state: AppState::with_core(storage, event_tx),
             bound_port_state: None,
             bound_port_notifier: None,
         }
     }
 
     pub fn with_update_control(mut self, control: update_control::UpdateControl) -> Self {
-        self.state.update_control = Some(control);
+        self.state.core.update_control = Some(control);
         self
     }
 
     pub fn with_config_manager(mut self, config_manager: ConfigManager) -> Self {
-        self.state.config_manager = Some(config_manager);
+        self.state.core.config_manager = Some(config_manager);
         self
     }
 
@@ -189,47 +121,47 @@ impl WebServer {
         mut self,
         default_secret_backend_kind: CredentialBackendKind,
     ) -> Self {
-        self.state.default_secret_backend_kind = default_secret_backend_kind;
+        self.state.secrets.default_backend_kind = default_secret_backend_kind;
         self
     }
 
     pub fn with_secret_store(mut self, secret_store: Arc<dyn SecretStore>) -> Self {
-        self.state.secret_store = Some(secret_store);
+        self.state.secrets.store = Some(secret_store);
         self
     }
 
     pub fn with_secret_stores(mut self, secret_stores: SecretStoreSet) -> Self {
-        self.state.secret_stores = Some(secret_stores);
+        self.state.secrets.stores = Some(secret_stores);
         self
     }
 
     pub fn with_audit_logger(mut self, logger: Arc<dyn AuditLogPort>) -> Self {
-        self.state.audit_logger = Some(logger);
+        self.state.automation.audit_logger = Some(logger);
         self
     }
 
     pub fn with_automation_controller(mut self, controller: Arc<dyn AutomationPort>) -> Self {
-        self.state.automation_controller = Some(controller);
+        self.state.automation.controller = Some(controller);
         self
     }
 
     pub fn with_ai_runtime_status(mut self, status: AiRuntimeStatus) -> Self {
-        self.state.ai_runtime_status = Some(status);
+        self.state.automation.ai_runtime_status = Some(status);
         self
     }
 
     pub fn with_pii_sanitizer(mut self, sanitizer: Arc<dyn PiiSanitizer>) -> Self {
-        self.state.pii_sanitizer = Some(sanitizer);
+        self.state.diagnostics.pii_sanitizer = Some(sanitizer);
         self
     }
 
     pub fn with_runtime_log_provider(mut self, provider: Arc<dyn RuntimeLogProvider>) -> Self {
-        self.state.runtime_log_provider = Some(provider);
+        self.state.diagnostics.runtime_log_provider = Some(provider);
         self
     }
 
     pub fn with_system_info_provider(mut self, provider: Arc<dyn SystemInfoProvider>) -> Self {
-        self.state.system_info_provider = Some(provider);
+        self.state.diagnostics.system_info_provider = Some(provider);
         self
     }
 
@@ -237,27 +169,27 @@ impl WebServer {
         mut self,
         status: IntegrationOutboundRuntimeStatus,
     ) -> Self {
-        self.state.integration_runtime_status = Some(status);
+        self.state.integration.runtime_status = Some(status);
         self
     }
 
     pub fn with_integration_auth(mut self, auth: Arc<dyn IntegrationAuthPort>) -> Self {
-        self.state.integration_auth = Some(auth);
+        self.state.integration.auth = Some(auth);
         self
     }
 
     pub fn with_integration_session(mut self, session: Arc<dyn IntegrationSessionPort>) -> Self {
-        self.state.integration_session = Some(session);
+        self.state.integration.session = Some(session);
         self
     }
 
     pub fn with_integration_outbox(mut self, outbox: Arc<dyn IntegrationOutboxPort>) -> Self {
-        self.state.integration_outbox = Some(outbox);
+        self.state.integration.outbox = Some(outbox);
         self
     }
 
     pub fn with_integration_inbox(mut self, inbox: Arc<dyn IntegrationInboxPort>) -> Self {
-        self.state.integration_inbox = Some(inbox);
+        self.state.integration.inbox = Some(inbox);
         self
     }
 
@@ -265,26 +197,26 @@ impl WebServer {
         mut self,
         inbox_store: Arc<dyn IntegrationInboxStorePort>,
     ) -> Self {
-        self.state.integration_inbox_store = Some(inbox_store);
+        self.state.integration.inbox_store = Some(inbox_store);
         self
     }
 
     pub fn with_integration_audit(mut self, audit: Arc<dyn IntegrationAuditPort>) -> Self {
-        self.state.integration_audit = Some(audit);
+        self.state.integration.audit = Some(audit);
         self
     }
 
     pub fn event_sender(&self) -> broadcast::Sender<RealtimeEvent> {
-        self.state.event_tx.clone()
+        self.state.core.event_tx.clone()
     }
 
     pub fn with_event_tx(mut self, event_tx: broadcast::Sender<RealtimeEvent>) -> Self {
-        self.state.event_tx = event_tx;
+        self.state.core.event_tx = event_tx;
         self
     }
 
     pub fn with_frames_dir(mut self, dir: std::path::PathBuf) -> Self {
-        self.state.frames_dir = Some(dir);
+        self.state.core.frames_dir = Some(dir);
         self
     }
 
@@ -309,74 +241,74 @@ impl WebServer {
         } = bindings;
 
         if let Some(event_tx) = core.event_tx {
-            self.state.event_tx = event_tx;
+            self.state.core.event_tx = event_tx;
         }
         if let Some(frames_dir) = core.frames_dir {
-            self.state.frames_dir = Some(frames_dir);
+            self.state.core.frames_dir = Some(frames_dir);
         }
         if let Some(config_manager) = core.config_manager {
-            self.state.config_manager = Some(config_manager);
+            self.state.core.config_manager = Some(config_manager);
         }
         if let Some(update_control) = core.update_control {
-            self.state.update_control = Some(update_control);
+            self.state.core.update_control = Some(update_control);
         }
 
         if let Some(default_secret_backend_kind) = secrets.default_secret_backend_kind {
-            self.state.default_secret_backend_kind = default_secret_backend_kind;
+            self.state.secrets.default_backend_kind = default_secret_backend_kind;
         }
         if let Some(secret_store) = secrets.secret_store {
-            self.state.secret_store = Some(secret_store);
+            self.state.secrets.store = Some(secret_store);
         }
         if let Some(secret_stores) = secrets.secret_stores {
-            self.state.secret_stores = Some(secret_stores);
+            self.state.secrets.stores = Some(secret_stores);
         }
 
         if let Some(audit_logger) = automation.audit_logger {
-            self.state.audit_logger = Some(audit_logger);
+            self.state.automation.audit_logger = Some(audit_logger);
         }
         if let Some(automation_controller) = automation.automation_controller {
-            self.state.automation_controller = Some(automation_controller);
+            self.state.automation.controller = Some(automation_controller);
         }
         if let Some(ai_runtime_status) = automation.ai_runtime_status {
-            self.state.ai_runtime_status = Some(ai_runtime_status);
+            self.state.automation.ai_runtime_status = Some(ai_runtime_status);
         }
 
         if let Some(integration_runtime_status) = integration.integration_runtime_status {
-            self.state.integration_runtime_status = Some(integration_runtime_status);
+            self.state.integration.runtime_status = Some(integration_runtime_status);
         }
         if let Some(integration_auth) = integration.integration_auth {
-            self.state.integration_auth = Some(integration_auth);
+            self.state.integration.auth = Some(integration_auth);
         }
         if let Some(integration_session) = integration.integration_session {
-            self.state.integration_session = Some(integration_session);
+            self.state.integration.session = Some(integration_session);
         }
         if let Some(integration_outbox) = integration.integration_outbox {
-            self.state.integration_outbox = Some(integration_outbox);
+            self.state.integration.outbox = Some(integration_outbox);
         }
         if let Some(integration_inbox) = integration.integration_inbox {
-            self.state.integration_inbox = Some(integration_inbox);
+            self.state.integration.inbox = Some(integration_inbox);
         }
         if let Some(integration_inbox_store) = integration.integration_inbox_store {
-            self.state.integration_inbox_store = Some(integration_inbox_store);
+            self.state.integration.inbox_store = Some(integration_inbox_store);
         }
         if let Some(integration_audit) = integration.integration_audit {
-            self.state.integration_audit = Some(integration_audit);
+            self.state.integration.audit = Some(integration_audit);
         }
         if let Some(integration_runtime_telemetry) = integration.integration_runtime_telemetry {
-            self.state.integration_runtime_telemetry = Some(integration_runtime_telemetry);
+            self.state.integration.runtime_telemetry = Some(integration_runtime_telemetry);
         }
 
         if let Some(override_store) = analysis.override_store {
-            self.state.override_store = Some(override_store);
+            self.state.analysis.override_store = Some(override_store);
         }
         if let Some(recluster_requested) = analysis.recluster_requested {
-            self.state.recluster_requested = Some(recluster_requested);
+            self.state.analysis.recluster_requested = Some(recluster_requested);
         }
         if let Some(coaching_engine) = analysis.coaching_engine {
-            self.state.coaching_engine = Some(coaching_engine);
+            self.state.analysis.coaching_engine = Some(coaching_engine);
         }
         if let Some(session_manager) = session.session_manager {
-            self.state.session_manager = Some(session_manager);
+            self.state.session.manager = Some(session_manager);
         }
         self
     }
@@ -558,7 +490,7 @@ async fn require_integration_auth(
     request: Request,
     next: Next,
 ) -> Response {
-    let Some(config_manager) = state.config_manager.as_ref() else {
+    let Some(config_manager) = state.core.config_manager.as_ref() else {
         return crate::error::ApiError::ServiceUnavailable(
             "Integration API is unavailable because config management is not initialized."
                 .to_string(),
@@ -704,13 +636,13 @@ mod tests {
             },
         );
 
-        assert_eq!(server.state.event_tx.receiver_count(), 0);
-        assert_eq!(server.state.frames_dir.as_ref(), Some(&frames_dir));
+        assert_eq!(server.state.core.event_tx.receiver_count(), 0);
+        assert_eq!(server.state.core.frames_dir.as_ref(), Some(&frames_dir));
         assert_eq!(
-            server.state.default_secret_backend_kind,
+            server.state.secrets.default_backend_kind,
             CredentialBackendKind::Env
         );
-        let applied_ai_runtime_status = server.state.ai_runtime_status.as_ref().unwrap();
+        let applied_ai_runtime_status = server.state.automation.ai_runtime_status.as_ref().unwrap();
         assert_eq!(
             applied_ai_runtime_status.ocr_source,
             ai_runtime_status.ocr_source
@@ -720,7 +652,7 @@ mod tests {
             ai_runtime_status.llm_source
         );
         let applied_integration_runtime_status =
-            server.state.integration_runtime_status.as_ref().unwrap();
+            server.state.integration.runtime_status.as_ref().unwrap();
         assert_eq!(
             applied_integration_runtime_status.enabled,
             integration_runtime_status.enabled
@@ -781,39 +713,9 @@ mod tests {
     fn test_state_with_config_manager(config_manager: Option<ConfigManager>) -> AppState {
         let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
         let (event_tx, _) = broadcast::channel(16);
-        AppState {
-            storage,
-            frames_dir: None,
-            event_tx,
-            config_manager,
-            default_secret_backend_kind: CredentialBackendKind::Unavailable,
-            secret_store: None,
-            secret_stores: None,
-            audit_logger: None,
-            automation_controller: None,
-            ai_runtime_status: None,
-            integration_runtime_status: None,
-            integration_auth: None,
-            integration_session: None,
-            integration_outbox: None,
-            integration_inbox: None,
-            integration_inbox_store: None,
-            integration_audit: None,
-            integration_runtime_telemetry: None,
-            update_control: None,
-            vector_store: None,
-            embedding_provider: None,
-            text_search: None,
-            override_store: None,
-            recluster_requested: None,
-            coaching_engine: None,
-            session_manager: None,
-            pomodoro: Arc::new(std::sync::Mutex::new(None)),
-            pii_sanitizer: None,
-            latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
-            runtime_log_provider: None,
-            system_info_provider: None,
-        }
+        let mut state = AppState::with_core(storage, event_tx);
+        state.core.config_manager = config_manager;
+        state
     }
 
     fn config_manager_with_integration_token(token: &str) -> ConfigManager {

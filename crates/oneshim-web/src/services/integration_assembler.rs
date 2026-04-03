@@ -25,6 +25,7 @@ pub(crate) struct IntegrationStatusConfigSnapshot {
 impl IntegrationStatusConfigSnapshot {
     pub(crate) fn from_state(state: &AppState) -> Self {
         let Some(config) = state
+            .core
             .config_manager
             .as_ref()
             .map(|config_manager| config_manager.get())
