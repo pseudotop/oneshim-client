@@ -13,7 +13,7 @@ import { isSettingsTabId, type SettingsTabId } from './settings-utils'
 const GeneralTab = lazy(() => import('./setting-tabs/GeneralTab'))
 const PrivacyTab = lazy(() => import('./setting-tabs/PrivacyTab'))
 const MonitoringTab = lazy(() => import('./setting-tabs/MonitoringTab'))
-const AiAutomationTab = lazy(() => import('./setting-tabs/AiAutomationTab'))
+const AiAutomationTab = lazy(() => import('./setting-tabs/ai-automation'))
 const DataStorageTab = lazy(() => import('./setting-tabs/DataStorageTab'))
 const CoachingGoalsTab = lazy(() => import('./setting-tabs/CoachingGoalsTab'))
 const AudioTab = lazy(() => import('./setting-tabs/AudioTab'))
