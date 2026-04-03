@@ -1581,3 +1581,41 @@ export interface DiagnosticsBundleResponse {
   recent_audit_entries: AuditEntry[]
   recent_policy_events: AuditEntry[]
 }
+
+// --- Bug Report ---
+
+export interface BugReportBundle {
+  bug_id: string
+  diagnostics: DiagnosticsBundleResponse
+  system: SystemInfo
+  connection: ConnectionStatus
+  runtime_logs: RuntimeLogSnapshot | null
+  pii_filter_level: string
+}
+
+export interface SystemInfo {
+  app_version: string
+  os_name: string
+  os_version: string
+  arch: string
+  runtime: string
+  cpu_count: number
+  memory_total_mb: number
+  memory_available_mb: number
+  uptime_seconds: number
+}
+
+export interface ConnectionStatus {
+  server_reachable: boolean
+  last_sync_at: string | null
+  grpc_enabled: boolean
+  websocket_connected: boolean
+}
+
+export interface RuntimeLogSnapshot {
+  generated_at: string
+  log_dir: string
+  log_file: string | null
+  line_count: number
+  recent_text: string
+}
