@@ -19,6 +19,13 @@ pub struct AnalysisConfig {
     pub max_suggestions: usize,
     #[serde(default = "default_server_coexistence_lookback_secs")]
     pub server_coexistence_lookback_secs: u64,
+    /// Enable LLM-based work type refinement.
+    /// When true AND ai_provider.llm_api is configured, the LLM refiner
+    /// enhances rule-based WorkType classification with contextual analysis.
+    /// Independent of the embedding pipeline — does not require embedding.enabled.
+    /// Default: true (opt-out).
+    #[serde(default = "default_true")]
+    pub llm_work_type_enabled: bool,
     #[serde(default)]
     pub tiered_memory: TieredMemoryConfig,
     #[serde(default)]
@@ -39,6 +46,7 @@ impl Default for AnalysisConfig {
             min_confidence: default_min_confidence(),
             max_suggestions: default_max_suggestions(),
             server_coexistence_lookback_secs: default_server_coexistence_lookback_secs(),
+            llm_work_type_enabled: true,
             tiered_memory: TieredMemoryConfig::default(),
             embedding: EmbeddingConfig::default(),
             gui_intelligence: GuiIntelligenceConfig::default(),
@@ -352,6 +360,10 @@ fn default_min_segment_for_summary() -> u64 {
 }
 fn default_digest_day() -> Weekday {
     Weekday::Sun
+}
+
+fn default_true() -> bool {
+    true
 }
 
 // ---------------------------------------------------------------------------

@@ -771,4 +771,18 @@ mod tests {
             "sync_interval() must be non-zero"
         );
     }
+
+    #[test]
+    fn analysis_llm_work_type_enabled_defaults_true() {
+        let payload = json!({});
+        let config: AnalysisConfig = serde_json::from_value(payload).expect("must parse");
+        assert!(config.llm_work_type_enabled);
+    }
+
+    #[test]
+    fn analysis_llm_work_type_enabled_explicit_false() {
+        let payload = json!({"llm_work_type_enabled": false});
+        let config: AnalysisConfig = serde_json::from_value(payload).expect("must parse");
+        assert!(!config.llm_work_type_enabled);
+    }
 }
