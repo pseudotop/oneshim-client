@@ -1,7 +1,7 @@
 //! Google Gemini API serialization and SSE parsing for HTTP API sessions.
 
 use oneshim_core::models::ai_session::{
-    ContentBlock, OutboundMessage, TokenUsage, ToolDefinition, ToolUseStatus,
+    ChatMessage, ChatRole, ContentBlock, OutboundMessage, TokenUsage, ToolDefinition, ToolUseStatus,
 };
 
 use super::content::empty_tool_schema;
@@ -37,6 +37,79 @@ pub(super) fn build_google_tools(tools: &[ToolDefinition]) -> serde_json::Value 
         })
         .collect();
     serde_json::json!([{"function_declarations": decls}])
+}
+
+/// Build the Google Gemini API request body.
+///
+/// Uses `contents` array with `system_instruction` and `generationConfig`.
+pub(super) fn build_google_request_body(
+    max_output_tokens: u32,
+    system_prompt: Option<&str>,
+    thinking: Option<&serde_json::Value>,
+    messages: &[ChatMessage],
+    response_format: Option<&serde_json::Value>,
+    tools: Option<&[ToolDefinition]>,
+) -> serde_json::Value {
+    let api_contents: Vec<serde_json::Value> = messages
+        .iter()
+        .filter(|m| m.role != ChatRole::System)
+        .map(|m| {
+            let parts = if let Some(ref blocks) = m.content_blocks {
+                serialize_google_parts(blocks)
+            } else {
+                vec![serde_json::json!({"text": m.content})]
+            };
+            serde_json::json!({
+                "role": match m.role {
+                    ChatRole::User => "user",
+                    ChatRole::Assistant => "model",
+                    _ => "user",
+                },
+                "parts": parts,
+            })
+        })
+        .collect();
+
+    let mut body = serde_json::json!({
+        "contents": api_contents,
+        "generationConfig": {
+            "maxOutputTokens": max_output_tokens,
+        },
+    });
+
+    if let Some(prompt) = system_prompt {
+        body["system_instruction"] = serde_json::json!({"parts": [{"text": prompt}]});
+    }
+
+    if let Some(rf) = response_format {
+        if let Some(schema) = rf
+            .get("schema")
+            .or_else(|| rf.get("json_schema").and_then(|js| js.get("schema")))
+        {
+            body["generationConfig"]["responseMimeType"] = serde_json::json!("application/json");
+            body["generationConfig"]["responseSchema"] = schema.clone();
+        }
+    }
+
+    if let Some(thinking) = thinking {
+        body["generationConfig"]["thinking_config"] = thinking.clone();
+    }
+
+    if let Some(tools) = tools {
+        let tool_defs = build_google_tools(tools);
+        if let Some(arr) = tool_defs.as_array() {
+            if !arr.is_empty()
+                && !arr[0]
+                    .get("function_declarations")
+                    .and_then(|d| d.as_array())
+                    .map_or(true, |a| a.is_empty())
+            {
+                body["tools"] = tool_defs;
+            }
+        }
+    }
+
+    body
 }
 
 /// Parse a Google Gemini SSE event data payload into an OutboundMessage.

@@ -1,6 +1,9 @@
 //! OpenAI Chat Completions and Responses API serialization and SSE parsing.
 
-use oneshim_core::models::ai_session::{ContentBlock, OutboundMessage, TokenUsage, ToolDefinition};
+use oneshim_api_contracts::provider_specs::{self, SurfaceCapabilityKind};
+use oneshim_core::models::ai_session::{
+    ChatMessage, ChatRole, ContentBlock, OutboundMessage, TokenUsage, ToolDefinition,
+};
 
 use super::content::empty_tool_schema;
 
@@ -95,6 +98,122 @@ pub(super) fn normalize_openai_responses_format(
     }
 
     response_format.clone()
+}
+
+/// Build the OpenAI Chat Completions API request body.
+///
+/// System prompt is included as the first message with role "system".
+pub(super) fn build_openai_chat_request_body(
+    model: &str,
+    max_output_tokens: u32,
+    thinking: Option<&serde_json::Value>,
+    messages: &[ChatMessage],
+    response_format: Option<&serde_json::Value>,
+    tools: Option<&[ToolDefinition]>,
+) -> serde_json::Value {
+    let api_messages: Vec<serde_json::Value> = messages
+        .iter()
+        .map(|m| {
+            let content = if let Some(ref blocks) = m.content_blocks {
+                serde_json::Value::Array(serialize_openai_content(blocks))
+            } else {
+                serde_json::Value::String(m.content.clone())
+            };
+            serde_json::json!({ "role": m.role, "content": content })
+        })
+        .collect();
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "max_tokens": max_output_tokens,
+        "stream": true,
+        "messages": api_messages,
+    });
+
+    if let Some(rf) = response_format {
+        body["response_format"] = rf.clone();
+    }
+
+    if let Some(thinking) = thinking {
+        body["reasoning"] = thinking.clone();
+    }
+
+    if let Some(tools) = tools {
+        let tool_defs = build_openai_tools(tools);
+        if !tool_defs.is_empty() {
+            body["tools"] = serde_json::Value::Array(tool_defs);
+        }
+    }
+
+    body
+}
+
+/// Build the OpenAI Responses API request body.
+///
+/// System prompt becomes top-level `instructions`; messages use `input` array.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build_openai_responses_request_body(
+    model: &str,
+    max_output_tokens: u32,
+    system_prompt: Option<&str>,
+    thinking: Option<&serde_json::Value>,
+    surface_id: &str,
+    messages: &[ChatMessage],
+    response_format: Option<&serde_json::Value>,
+    tools: Option<&[ToolDefinition]>,
+) -> serde_json::Value {
+    let api_input: Vec<serde_json::Value> = messages
+        .iter()
+        .filter(|message| message.role != ChatRole::System)
+        .map(|message| {
+            let content = if let Some(ref blocks) = message.content_blocks {
+                serde_json::Value::Array(serialize_openai_responses_content(blocks))
+            } else {
+                serde_json::Value::Array(vec![serde_json::json!({
+                    "type": "input_text",
+                    "text": message.content.clone()
+                })])
+            };
+            serde_json::json!({
+                "role": message.role,
+                "content": content,
+            })
+        })
+        .collect();
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "max_output_tokens": max_output_tokens,
+        "stream": true,
+        "input": api_input,
+    });
+
+    if let Some(prompt) = system_prompt {
+        body["instructions"] = serde_json::Value::String(prompt.to_string());
+    }
+
+    if let Some(response_format) = response_format {
+        body["text"] = serde_json::json!({
+            "format": normalize_openai_responses_format(response_format)
+        });
+    }
+
+    if let Some(thinking) = thinking {
+        body["reasoning"] = thinking.clone();
+    }
+
+    if provider_specs::surface_supports_parameter(surface_id, SurfaceCapabilityKind::Llm, "tools")
+        .unwrap_or(false)
+    {
+        if let Some(tools) = tools {
+            let tool_defs = build_openai_responses_tools(tools);
+            if !tool_defs.is_empty() {
+                body["tools"] = serde_json::Value::Array(tool_defs);
+            }
+        }
+    }
+
+    body
 }
 
 /// Parse an OpenAI Chat Completions SSE event data payload into an OutboundMessage.
