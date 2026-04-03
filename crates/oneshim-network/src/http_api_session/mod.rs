@@ -244,6 +244,55 @@ impl HttpApiSession {
     }
 }
 
+/// Convert a `SessionMessage` into a `ChatMessage` with optional multimodal content blocks.
+fn prepare_chat_message(message: &SessionMessage, shape: &ProviderRequestShape) -> ChatMessage {
+    let message_content = render_message_content(message, shape);
+
+    let content_blocks = {
+        let mut blocks = Vec::new();
+        if !message_content.trim().is_empty() {
+            blocks.push(ContentBlock::Text {
+                text: message_content.clone(),
+            });
+        }
+        for att in &message.attachments {
+            if let Some(block) = native_content_block(shape, att) {
+                blocks.push(block);
+            }
+        }
+        let starts_with_non_text = blocks
+            .first()
+            .is_some_and(|block| !matches!(block, ContentBlock::Text { .. }));
+        if blocks.len() > 1 || starts_with_non_text {
+            Some(blocks)
+        } else {
+            None
+        }
+    };
+
+    ChatMessage {
+        role: ChatRole::User,
+        content: message_content,
+        content_blocks,
+    }
+}
+
+/// Append an assistant response to conversation history and truncate to the configured limit.
+async fn save_assistant_response(
+    history: &RwLock<Vec<ChatMessage>>,
+    content: &str,
+    max_turns: u32,
+) {
+    let assistant_msg = ChatMessage {
+        role: ChatRole::Assistant,
+        content: content.to_owned(),
+        content_blocks: None,
+    };
+    let mut hist = history.write().await;
+    hist.push(assistant_msg);
+    truncate_chat_history(&mut hist, max_turns);
+}
+
 #[async_trait]
 impl ConversationSession for HttpApiSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
@@ -253,36 +302,8 @@ impl ConversationSession for HttpApiSession {
             ProviderTransportKind::Llm,
         )
         .map_err(CoreError::Internal)?;
-        let message_content = render_message_content(message, &shape);
 
-        // Convert attachments to content blocks for multimodal messages
-        let content_blocks = {
-            let mut blocks = Vec::new();
-            if !message_content.trim().is_empty() {
-                blocks.push(ContentBlock::Text {
-                    text: message_content.clone(),
-                });
-            }
-            for att in &message.attachments {
-                if let Some(block) = native_content_block(&shape, att) {
-                    blocks.push(block);
-                }
-            }
-            let starts_with_non_text = blocks
-                .first()
-                .is_some_and(|block| !matches!(block, ContentBlock::Text { .. }));
-            if blocks.len() > 1 || starts_with_non_text {
-                Some(blocks)
-            } else {
-                None
-            }
-        };
-
-        let user_msg = ChatMessage {
-            role: ChatRole::User,
-            content: message_content,
-            content_blocks,
-        };
+        let user_msg = prepare_chat_message(message, &shape);
 
         // Append user message to history
         {
@@ -400,14 +421,7 @@ impl ConversationSession for HttpApiSession {
                                         };
                                     }
 
-                                    let assistant_msg = ChatMessage {
-                                        role: ChatRole::Assistant,
-                                        content: accumulated.clone(),
-                                        content_blocks: None,
-                                    };
-                                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                                    hist.push(assistant_msg);
-                                    truncate_chat_history(&mut hist, max_turns);
+                                    save_assistant_response(&history, &accumulated, max_turns).await;
                                 }
                                 OutboundMessage::Thinking { .. } => {
                                     // Stream to frontend but don't accumulate in history
@@ -421,14 +435,7 @@ impl ConversationSession for HttpApiSession {
                         warn!("SSE stream error: {e}");
                         // Append whatever we accumulated so far
                         if !accumulated.is_empty() {
-                            let assistant_msg = ChatMessage {
-                                role: ChatRole::Assistant,
-                                content: accumulated.clone(),
-                                content_blocks: None,
-                            };
-                            let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                            hist.push(assistant_msg);
-                            truncate_chat_history(&mut hist, max_turns);
+                            save_assistant_response(&history, &accumulated, max_turns).await;
                         }
                         Err(CoreError::Network(format!("SSE stream error: {e}")))?;
                     }
@@ -442,14 +449,7 @@ impl ConversationSession for HttpApiSession {
                     hist.last().is_some_and(|m| m.role == ChatRole::Assistant)
                 };
                 if !has_result {
-                    let assistant_msg = ChatMessage {
-                        role: ChatRole::Assistant,
-                        content: accumulated.clone(),
-                        content_blocks: None,
-                    };
-                    let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
-                    hist.push(assistant_msg);
-                    truncate_chat_history(&mut hist, max_turns);
+                    save_assistant_response(&history, &accumulated, max_turns).await;
 
                     yield OutboundMessage::Result {
                         content: accumulated,
