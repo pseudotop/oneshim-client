@@ -2,17 +2,18 @@ use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::api_client::{SseClient, SseEvent};
 use oneshim_core::ports::notifier::DesktopNotifier;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::error::SuggestionError;
-
 use crate::queue::SuggestionQueue;
+use crate::scorer::FeedbackScorer;
 
 pub struct SuggestionReceiver {
     sse_client: Arc<dyn SseClient>,
     notifier: Option<Arc<dyn DesktopNotifier>>,
     queue: Arc<Mutex<SuggestionQueue>>,
+    scorer: Arc<Mutex<FeedbackScorer>>,
 }
 
 impl SuggestionReceiver {
@@ -20,16 +21,18 @@ impl SuggestionReceiver {
         sse_client: Arc<dyn SseClient>,
         notifier: Option<Arc<dyn DesktopNotifier>>,
         queue: Arc<Mutex<SuggestionQueue>>,
+        scorer: Arc<Mutex<FeedbackScorer>>,
     ) -> Self {
         Self {
             sse_client,
             notifier,
             queue,
+            scorer,
         }
     }
 
     pub async fn run(&self, session_id: &str) -> Result<(), SuggestionError> {
-        let (tx, mut rx) = mpsc::channel::<SseEvent>(64);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SseEvent>(64);
 
         let sse = self.sse_client.clone();
         let sid = session_id.to_string();
@@ -72,14 +75,36 @@ impl SuggestionReceiver {
         Ok(())
     }
 
-    async fn handle_suggestion(&self, suggestion: Suggestion) {
+    async fn handle_suggestion(&self, mut suggestion: Suggestion) {
+        // 1. Feedback-based relevance adjustment
+        let should_queue = {
+            let scorer = self.scorer.lock().await;
+            scorer.adjust(
+                &suggestion.suggestion_type,
+                &suggestion.source,
+                &mut suggestion.relevance_score,
+            )
+        };
+        if !should_queue {
+            debug!(
+                id = %suggestion.suggestion_id,
+                relevance = suggestion.relevance_score,
+                "suggestion suppressed — relevance below threshold"
+            );
+            return;
+        }
+
+        // 2. Opportunistic expiry + dedup + push (single queue lock)
         let accepted = {
             let mut queue = self.queue.lock().await;
+            let expired_count = queue.remove_expired();
+            if expired_count > 0 {
+                debug!(expired_count, "expired suggestions removed from queue");
+            }
             queue.push(suggestion.clone())
         };
 
         if !accepted {
-            // Queue full and this suggestion has lower priority — skip notification
             return;
         }
 
@@ -164,10 +189,12 @@ mod tests {
             count: AtomicUsize::new(0),
         });
         let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let scorer = Arc::new(Mutex::new(FeedbackScorer::new()));
         let receiver = SuggestionReceiver::new(
             Arc::new(MockSseClient) as Arc<dyn SseClient>,
             Some(notifier.clone() as Arc<dyn DesktopNotifier>),
             queue.clone(),
+            scorer,
         );
 
         receiver.handle_suggestion(make_suggestion()).await;
@@ -179,14 +206,92 @@ mod tests {
     #[tokio::test]
     async fn handle_suggestion_works_without_notifier() {
         let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let scorer = Arc::new(Mutex::new(FeedbackScorer::new()));
         let receiver = SuggestionReceiver::new(
             Arc::new(MockSseClient) as Arc<dyn SseClient>,
             None,
             queue.clone(),
+            scorer,
         );
 
         receiver.handle_suggestion(make_suggestion()).await;
 
         assert_eq!(queue.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handle_suggestion_runs_expiry_before_push() {
+        let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let scorer = Arc::new(Mutex::new(FeedbackScorer::new()));
+        let receiver = SuggestionReceiver::new(
+            Arc::new(MockSseClient) as Arc<dyn SseClient>,
+            None,
+            queue.clone(),
+            scorer,
+        );
+
+        {
+            let mut q = queue.lock().await;
+            let mut expired = make_suggestion();
+            expired.suggestion_id = "expired-1".to_string();
+            expired.content = "expired content".to_string();
+            expired.expires_at = Some(chrono::Utc::now() - chrono::Duration::hours(1));
+            q.push(expired);
+            assert_eq!(q.len(), 1);
+        }
+
+        receiver.handle_suggestion(make_suggestion()).await;
+
+        let q = queue.lock().await;
+        assert_eq!(q.len(), 1);
+        assert_eq!(q.peek().unwrap().suggestion_id, "test-1");
+    }
+
+    #[tokio::test]
+    async fn handle_suggestion_skips_duplicate() {
+        let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let scorer = Arc::new(Mutex::new(FeedbackScorer::new()));
+        let receiver = SuggestionReceiver::new(
+            Arc::new(MockSseClient) as Arc<dyn SseClient>,
+            None,
+            queue.clone(),
+            scorer,
+        );
+
+        receiver.handle_suggestion(make_suggestion()).await;
+        receiver.handle_suggestion(make_suggestion()).await;
+
+        assert_eq!(queue.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handle_suggestion_suppresses_low_relevance() {
+        let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let scorer = Arc::new(Mutex::new(FeedbackScorer::new()));
+
+        {
+            let mut s = scorer.lock().await;
+            for _ in 0..10 {
+                s.record(
+                    SuggestionType::WorkGuidance,
+                    SuggestionSource::RuleBased,
+                    &oneshim_core::models::suggestion::FeedbackType::Rejected,
+                );
+            }
+        }
+
+        let receiver = SuggestionReceiver::new(
+            Arc::new(MockSseClient) as Arc<dyn SseClient>,
+            None,
+            queue.clone(),
+            scorer,
+        );
+
+        let mut suggestion = make_suggestion();
+        suggestion.relevance_score = 0.4;
+
+        receiver.handle_suggestion(suggestion).await;
+
+        assert_eq!(queue.lock().await.len(), 0);
     }
 }

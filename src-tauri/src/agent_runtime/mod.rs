@@ -70,6 +70,7 @@ pub(crate) struct AgentRuntimeBundle {
     /// so SSE-received suggestions are visible in IPC queries.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     /// SharedRegimeState passed through to the Scheduler so it shares the same
     /// instance as the SessionManager's context assembler.
     shared_regime: Option<Arc<SharedRegimeState>>,
@@ -99,6 +100,9 @@ impl AgentRuntimeBundle {
         }
         if let Some(ref shared_queue) = self.shared_suggestion_queue {
             builder = builder.with_shared_suggestion_queue(shared_queue.clone());
+        }
+        if let Some(ref shared_scorer) = self.shared_scorer {
+            builder = builder.with_shared_scorer(shared_scorer.clone());
         }
         let support = builder.build().await?;
         let accessibility_extractor = support.accessibility_extractor.clone();
@@ -395,6 +399,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     /// so the SuggestionReceiver uses the same queue as SuggestionManager.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     /// SharedRegimeState — passed through to the Scheduler so it shares the same
     /// instance as the SessionManager's context assembler.
     shared_regime: Option<Arc<SharedRegimeState>>,
@@ -451,6 +456,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_mode: None,
             shared_capture_services: None,
             shared_suggestion_queue: None,
+            shared_scorer: None,
             shared_regime: None,
         }
     }
@@ -619,6 +625,15 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    #[allow(dead_code)] // used when feature = "server"
+    pub(crate) fn with_shared_scorer(
+        mut self,
+        scorer: Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>,
+    ) -> Self {
+        self.shared_scorer = Some(scorer);
+        self
+    }
+
     pub(crate) fn with_shared_regime(mut self, regime: Arc<SharedRegimeState>) -> Self {
         self.shared_regime = Some(regime);
         self
@@ -663,6 +678,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_mode: self.focus_mode,
             shared_capture_services: self.shared_capture_services,
             shared_suggestion_queue: self.shared_suggestion_queue,
+            shared_scorer: self.shared_scorer,
             shared_regime: self.shared_regime,
         }
     }
