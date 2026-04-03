@@ -1,7 +1,4 @@
-use std::collections::VecDeque;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::Utc;
 use oneshim_api_contracts::support::RuntimeLogSnapshotDto;
@@ -13,87 +10,20 @@ use crate::feature_capabilities::{
     FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
 };
 use crate::runtime_state::{ConfigRuntimeState, SecretBackendCapabilities, SecretBackendState};
+use crate::services::log_helpers;
 
 const DEFAULT_LOG_LINE_LIMIT: usize = 200;
 const MAX_LOG_LINE_LIMIT: usize = 500;
 const MAX_FRONTEND_LOG_MESSAGE_LEN: usize = 4_000;
 const MAX_FRONTEND_LOG_CONTEXT_LEN: usize = 12_000;
 
-fn runtime_log_dir() -> PathBuf {
-    oneshim_core::config_manager::ConfigManager::data_dir()
-        .map(|d| d.join("logs"))
-        .unwrap_or_else(|_| PathBuf::from("logs"))
-}
-
-fn newest_log_file(log_dir: &Path) -> Result<Option<PathBuf>, String> {
-    if !log_dir.exists() {
-        return Ok(None);
-    }
-
-    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
-    let entries = std::fs::read_dir(log_dir).map_err(|err| {
-        format!(
-            "Failed to read runtime log directory '{}': {err}",
-            log_dir.display()
-        )
-    })?;
-
-    for entry in entries {
-        let entry =
-            entry.map_err(|err| format!("Failed to inspect runtime log directory entry: {err}"))?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let modified = entry
-            .metadata()
-            .and_then(|meta| meta.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-
-        match newest.as_ref() {
-            Some((current_modified, _)) if modified <= *current_modified => {}
-            _ => newest = Some((modified, path)),
-        }
-    }
-
-    Ok(newest.map(|(_, path)| path))
-}
-
-fn tail_log_file(path: &Path, line_limit: usize) -> Result<(usize, String), String> {
-    let file = File::open(path).map_err(|err| {
-        format!(
-            "Failed to open runtime log file '{}': {err}",
-            path.display()
-        )
-    })?;
-    let reader = BufReader::new(file);
-    let mut lines = VecDeque::with_capacity(line_limit);
-
-    for line in reader.lines() {
-        let line = line.map_err(|err| {
-            format!(
-                "Failed to read runtime log file '{}': {err}",
-                path.display()
-            )
-        })?;
-        if lines.len() == line_limit {
-            lines.pop_front();
-        }
-        lines.push_back(line);
-    }
-
-    let count = lines.len();
-    let recent_text = lines.into_iter().collect::<Vec<_>>().join("\n");
-    Ok((count, recent_text))
-}
-
 fn runtime_log_snapshot_from_dir(
     log_dir: &Path,
     line_limit: usize,
 ) -> Result<RuntimeLogSnapshotDto, String> {
-    let latest_log = newest_log_file(log_dir)?;
+    let latest_log = log_helpers::newest_log_file(log_dir)?;
     let (log_file, line_count, recent_text) = if let Some(path) = latest_log {
-        let (line_count, recent_text) = tail_log_file(&path, line_limit)?;
+        let (line_count, recent_text) = log_helpers::tail_log_file(&path, line_limit)?;
         (Some(path.display().to_string()), line_count, recent_text)
     } else {
         (None, 0, String::new())
@@ -252,7 +182,7 @@ pub async fn get_runtime_log_snapshot(
     let line_limit = line_limit
         .unwrap_or(DEFAULT_LOG_LINE_LIMIT)
         .clamp(10, MAX_LOG_LINE_LIMIT);
-    runtime_log_snapshot_from_dir(&runtime_log_dir(), line_limit)
+    runtime_log_snapshot_from_dir(&log_helpers::runtime_log_dir(), line_limit)
 }
 
 #[command]
@@ -290,6 +220,7 @@ pub async fn record_frontend_log(
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
     use std::thread;
     use std::time::Duration;
 
