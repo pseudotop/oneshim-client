@@ -537,3 +537,108 @@ fn spatial_index_proximity_fallback() {
     // Should find "target" via proximity (within 40px)
     assert!(result.is_some());
 }
+
+// --- Scored inference tests ---
+
+#[test]
+fn scored_title_bar_has_high_confidence() {
+    let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+    let bbox = BoundingBox {
+        x: 100,
+        y: 10, // top 1% → clearly title bar
+        width: 200,
+        height: 20,
+    };
+    let (etype, conf) = d.infer_element_type_scored("My App Window", &bbox);
+    assert_eq!(etype, GuiElementType::TitleBar);
+    assert!(
+        conf > 0.5,
+        "title bar confidence should be > 0.5, got {conf}"
+    );
+}
+
+#[test]
+fn scored_link_very_high_confidence() {
+    let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+    let bbox = BoundingBox {
+        x: 100,
+        y: 500, // middle of screen (no position signal)
+        width: 300,
+        height: 20,
+    };
+    let (etype, conf) = d.infer_element_type_scored("https://example.com", &bbox);
+    assert_eq!(etype, GuiElementType::Link);
+    assert!(conf > 0.6, "link confidence should be > 0.6, got {conf}");
+}
+
+#[test]
+fn scored_ambiguous_element_lower_confidence() {
+    let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+    // In tab bar region + short text → TabLabel vs ToolbarIcon compete
+    let bbox = BoundingBox {
+        x: 100,
+        y: 60, // between title bar (4%) and tab bar (9%)
+        width: 30,
+        height: 20,
+    };
+    let (_etype, conf) = d.infer_element_type_scored("OK", &bbox);
+    // Multiple signals match → confidence should be moderate, not 1.0
+    assert!(
+        conf < 0.9,
+        "ambiguous element confidence should be < 0.9, got {conf}"
+    );
+}
+
+#[test]
+fn scored_backward_compat_same_types() {
+    let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+    let cases = vec![
+        (
+            "Save",
+            BoundingBox {
+                x: 100,
+                y: 500,
+                width: 60,
+                height: 30,
+            },
+        ),
+        (
+            "https://test.com",
+            BoundingBox {
+                x: 100,
+                y: 500,
+                width: 200,
+                height: 20,
+            },
+        ),
+        (
+            "Ctrl+S",
+            BoundingBox {
+                x: 100,
+                y: 500,
+                width: 80,
+                height: 20,
+            },
+        ),
+    ];
+    for (text, bbox) in cases {
+        let old = d.infer_element_type(text, &bbox);
+        let (new, _conf) = d.infer_element_type_scored(text, &bbox);
+        assert_eq!(old, new, "scored inference should match old for '{text}'");
+    }
+}
+
+#[test]
+fn scored_build_gui_element_populates_type_confidence() {
+    let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+    let region = make_region("Save", 100, 500, 60, 30, 0.9);
+    let element = d.build_gui_element(&region);
+    assert_eq!(element.element_type, GuiElementType::Button);
+    assert!(
+        element.type_confidence > 0.0 && element.type_confidence <= 1.0,
+        "type_confidence should be in (0,1], got {}",
+        element.type_confidence
+    );
+    // OCR confidence should still be the region's value
+    assert!((element.confidence - 0.9).abs() < f32::EPSILON);
+}

@@ -79,11 +79,14 @@ impl GuiElementDetector {
 
     pub(super) fn build_gui_element(&self, region: &OcrRegion) -> GuiElement {
         let filtered_text = sanitize_title_with_level(&region.text, self.pii_filter_level);
+        let (element_type, type_confidence) =
+            self.infer_element_type_scored(&region.text, &region.bbox);
         GuiElement {
             text: filtered_text,
             bbox: region.bbox.clone(),
-            element_type: self.infer_element_type(&region.text, &region.bbox),
+            element_type,
             confidence: region.confidence,
+            type_confidence,
         }
     }
 }

@@ -7,62 +7,63 @@ use oneshim_core::models::gui_interaction::{GuiElement, GuiElementType};
 use super::{GuiElementDetector, TAB_LABEL_MAX_LEN};
 
 impl GuiElementDetector {
+    /// Infer element type using first-match heuristic rules (backward-compatible).
     pub fn infer_element_type(&self, text: &str, bbox: &BoundingBox) -> GuiElementType {
+        self.infer_element_type_scored(text, bbox).0
+    }
+
+    /// Multi-signal scored inference: evaluates all candidate types and returns
+    /// the highest-scoring type along with a classification confidence (0.0–1.0).
+    pub fn infer_element_type_scored(
+        &self,
+        text: &str,
+        bbox: &BoundingBox,
+    ) -> (GuiElementType, f32) {
         let lower = text.to_lowercase();
         let (screen_w, screen_h) = self.screen_resolution;
+        let word_count = text.split_whitespace().count();
 
-        // Proportional thresholds based on screen height
-        let title_bar_max_y = (screen_h as f64 * 0.04) as u32; // ~4% from top
-        let tab_bar_max_y = (screen_h as f64 * 0.09) as u32; // ~9% from top
-        let status_bar_min_y = (screen_h as f64 * 0.95) as u32; // ~95% from top
-
-        // Very top of screen — likely title bar or menu bar
-        if bbox.y < title_bar_max_y {
-            return GuiElementType::TitleBar;
-        }
-
-        // Toolbar icon: near top (below title bar, within 2× title bar height),
-        // small bounding box (<50×50), no text or very short text (1-2 chars)
+        let title_bar_max_y = (screen_h as f64 * 0.04) as u32;
+        let tab_bar_max_y = (screen_h as f64 * 0.09) as u32;
+        let status_bar_min_y = (screen_h as f64 * 0.95) as u32;
         let toolbar_max_y = title_bar_max_y * 2;
+        let scrollbar_narrow = 20u32;
+        let right_edge = screen_w.saturating_sub(scrollbar_narrow);
+        let bottom_edge = screen_h.saturating_sub(scrollbar_narrow);
+
+        // Collect (type, score) candidates from independent signals.
+        let mut scores: Vec<(GuiElementType, f32)> = Vec::with_capacity(12);
+
+        // --- Position signals ---
+        if bbox.y < title_bar_max_y {
+            scores.push((GuiElementType::TitleBar, 0.9));
+        }
         if bbox.y < toolbar_max_y
             && bbox.width < 50
             && bbox.height < 50
             && text.chars().count() <= 2
         {
-            return GuiElementType::ToolbarIcon;
+            scores.push((GuiElementType::ToolbarIcon, 0.8));
         }
-
-        // Tab-like text: short, near top but below title bar
         if bbox.y < tab_bar_max_y && text.len() < TAB_LABEL_MAX_LEN {
-            return GuiElementType::TabLabel;
+            scores.push((GuiElementType::TabLabel, 0.7));
         }
-
-        // Bottom of screen — likely status bar
         if bbox.y >= status_bar_min_y {
-            return GuiElementType::StatusBar;
+            scores.push((GuiElementType::StatusBar, 0.9));
         }
-
-        // Scroll bar: narrow element at far right or bottom edge
-        let scrollbar_narrow_threshold = 20;
-        let right_edge = screen_w.saturating_sub(scrollbar_narrow_threshold);
-        let bottom_edge = screen_h.saturating_sub(scrollbar_narrow_threshold);
-        if (bbox.x >= right_edge && bbox.width < scrollbar_narrow_threshold)
-            || (bbox.y >= bottom_edge && bbox.height < scrollbar_narrow_threshold)
+        if (bbox.x >= right_edge && bbox.width < scrollbar_narrow)
+            || (bbox.y >= bottom_edge && bbox.height < scrollbar_narrow)
         {
-            return GuiElementType::ScrollBar;
+            scores.push((GuiElementType::ScrollBar, 0.85));
         }
 
-        // URLs
+        // --- Text signals ---
         if lower.contains("http") || lower.contains("://") {
-            return GuiElementType::Link;
+            scores.push((GuiElementType::Link, 0.95));
         }
-
-        // Text with keyboard shortcut patterns (e.g., "Ctrl+S", "⌘N", "Alt+F4")
         if Self::looks_like_menu_item(text) {
-            return GuiElementType::MenuItem;
+            scores.push((GuiElementType::MenuItem, 0.9));
         }
-
-        // Common button labels
         if text.len() < 15
             && (lower.contains("save")
                 || lower.contains("cancel")
@@ -72,26 +73,37 @@ impl GuiElementDetector {
                 || lower.contains("apply")
                 || lower.contains("delete"))
         {
-            return GuiElementType::Button;
+            scores.push((GuiElementType::Button, 0.8));
         }
-
-        // Phase 2: tree items (indented text with tree-like prefixes)
-        if lower.starts_with("▸")
-            || lower.starts_with("▾")
-            || lower.starts_with("►")
-            || lower.starts_with("▼")
+        if lower.starts_with('\u{25B8}')
+            || lower.starts_with('\u{25BE}')
+            || lower.starts_with('\u{25BA}')
+            || lower.starts_with('\u{25BC}')
         {
-            return GuiElementType::TreeItem;
+            scores.push((GuiElementType::TreeItem, 0.75));
         }
 
-        // Text region: multi-word text (3+ words) that doesn't match any other
-        // pattern — fallback before Unknown
-        let word_count = text.split_whitespace().count();
+        // --- Fallback signals ---
         if word_count >= 3 {
-            return GuiElementType::TextRegion;
+            scores.push((GuiElementType::TextRegion, 0.4));
         }
+        // Unknown always present as baseline
+        scores.push((GuiElementType::Unknown, 0.1));
 
-        GuiElementType::Unknown
+        // Pick the highest score. On tie, first inserted wins (position-based priority).
+        scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let winner_score = scores[0].1;
+        let runner_up_score = scores.get(1).map_or(0.0, |s| s.1);
+        // Confidence: how dominant the winner is over the runner-up.
+        // Range: 0.5 (barely won) to 1.0 (no competition).
+        let confidence = if winner_score + runner_up_score > 0.0 {
+            (winner_score / (winner_score + runner_up_score)).max(0.5)
+        } else {
+            0.5
+        };
+
+        (scores[0].0.clone(), confidence)
     }
 
     /// Check if text looks like a menu item with a keyboard shortcut.

@@ -24,6 +24,13 @@ pub struct GuiElement {
     pub element_type: GuiElementType,
     /// OCR confidence.
     pub confidence: f32,
+    /// Classification confidence: how certain the inferred element type is (0.0–1.0).
+    #[serde(default = "default_type_confidence")]
+    pub type_confidence: f32,
+}
+
+fn default_type_confidence() -> f32 {
+    1.0
 }
 
 /// Inferred type of a GUI element based on OCR text and position heuristics.
@@ -141,6 +148,7 @@ mod tests {
             },
             element_type: GuiElementType::Button,
             confidence: 0.92,
+            type_confidence: 1.0,
         };
         let json = serde_json::to_string(&element).unwrap();
         let parsed: GuiElement = serde_json::from_str(&json).unwrap();
@@ -180,6 +188,7 @@ mod tests {
                 },
                 element_type: GuiElementType::MenuItem,
                 confidence: 0.88,
+                type_confidence: 1.0,
             },
             interaction_type: GuiInteractionType::Click,
             app_name: "Firefox".to_string(),
