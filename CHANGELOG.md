@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-04-03
+
+### Added
+
+- Add UpdateChannel enum (stable/pre_release/nightly)
+  Replaces boolean include_prerelease with UpdateChannel enum.
+  Backward-compatible: legacy configs with include_prerelease: true
+  are migrated via effective_channel() method.
+
+  - UpdateChannel::Stable — /releases/latest (default)
+  - UpdateChannel::PreRelease — /releases?per_page=1 (RC/beta)
+  - UpdateChannel::Nightly — same as PreRelease (future: dedicated filter)
+
+- Add BugId model and PiiSanitizer port trait
+
+- Implement PiiSanitizer port on VisionPiiSanitizer
+
+- Add bug report DTOs and Deserialize to existing support types
+
+- Add bug report API client, formatters, and types
+
+- Add bug report export IPC and PiiSanitizer DI wiring
+  Add tauri-plugin-dialog dependency for native save-file dialogs, create
+  export_bug_report IPC command, and wire VisionPiiSanitizer into WebServer.
+
+- Add BugReportService with ID generation and PII sanitization
+
+- Add bug report REST endpoints and BugReportContext
+
+- Add BugReportWizard 3-step dialog with i18n
+
+- Bug report follow-ups + AppState stratification ([#297](https://github.com/pseudotop/oneshim-client/pull/297))
+  * feat(core): add RuntimeLogProvider and SystemInfoProvider port traits
+
+
+### Changed
+
+- Add Bug Report Flow design specification
+  Research-informed spec covering:
+  - Bug ID generation (SHA-256 prefix, BUG-xxxxxxxxxxxx format)
+  - Two-channel reporting (GitHub Issue + Email with bundle)
+  - PII sanitization via PiiSanitizer port trait (hexagonal architecture)
+  - Dual-format clipboard (JSON + plain text)
+  - 3-step wizard UI with view-before-send preview
+  - GDPR compliance (Art. 5/6/7/17)
+
+  Reviewed and fixed: C1 (port pattern), C2 (no crypto in core),
+  I1-I5 (AppState wiring, Deserialize, tauri-plugin-dialog, eviction, diagram),
+  M1-M7 (all minor issues resolved).
+
+- Add Bug Report Flow implementation plan (10 tasks)
+  10-task plan covering:
+  T1: BugId model + PiiSanitizer port (oneshim-core)
+  T2: VisionPiiSanitizer impl (oneshim-vision)
+  T3: Bug report DTOs (oneshim-api-contracts)
+  T4: BugReportService (oneshim-web backend)
+  T5: AppState + BugReportContext + REST handlers
+  T6: Tauri IPC + DI wiring
+  T7: Frontend types + API client + formatters
+  T8: BugReportWizard component + i18n
+  T9: E2E tests
+  T10: Full workspace verification
+
+- P2 tech debt cleanup — SOLID fixes + port docs ([#298](https://github.com/pseudotop/oneshim-client/pull/298))
+  * refactor: extract audit logging from execute_scene_action into helpers
+
+  Extract ~100 lines of inline audit logging from the 217-line
+  execute_scene_action() into two focused helper functions:
+  - log_scene_action_policy_audit() — pre-execution policy events
+  - log_scene_action_result_audit() — post-execution result event
+
+  The main function now reads as clear orchestration:
+  validate → build intents → enforce policy → LOG POLICY → execute → LOG RESULT → respond
+
+
+### Fixed
+
+- Resolve CI failures — Biome format, clippy dead_code, missing channel field
+  - Fix Biome format: split multi-field lines, use single quotes (standalone.ts, stories-utils.ts)
+  - Add missing `channel` field to test_config() in updater/mod.rs
+  - Gate `tracing::debug` imports with `#[cfg(target_os = "macos")]` (desktop_permissions.rs, main.rs)
+  - Add `#[allow(dead_code)]` to NativeBorderIndicator methods used only on macOS
+
+- Resolve review issues — C1-C4, I1-I2
+  - C1: Fix AuditEntryDto field name (execution_time_ms → elapsed_ms), add schema_version
+  - C2: Add AuditEntryDto (automation.rs) + StorageStats to Deserialize/Clone list
+  - C3: Add Clone derive to all DTOs embedded in BugReportBundleDto
+  - C4: Fix frontend API to use BASE_URL constant (not apiBase import)
+  - I1: Remove GET from /support/bug-report (POST only, per spec)
+  - I2: Note about updating routes_compile tests with new AppState fields
+
+- Resolve edge-case review issues — C1, C2, I1, I3, M3, M4
+  Critical fixes:
+  - C1: Return error when PII sanitizer missing (refuse unsanitized export)
+  - C2: Sanitize settings_snapshot sensitive fields (device_name, server_base_url, grpc_endpoint)
+
+  Important fixes:
+  - I1: BugId::new() now validates hex-only characters (blocks XSS payloads)
+  - I3: latest_bug_report uses parking_lot::RwLock instead of std::sync::Mutex
+
+  Minor fixes:
+  - M3: handleExport distinguishes user cancel (None) from success
+  - M4: handleEmailSupport checks popup blocker and shows error toast
+
+- Second-pass review — extend PII coverage, validate BugId on deserialize
+
+- Reset exporting state on wizard Back navigation (M2)
+
 ## [0.4.16-rc.1] - 2026-04-03
 
 ### Added
