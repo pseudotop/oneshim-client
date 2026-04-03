@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-04-03
+
+### Added
+
+- Add FrameStoragePort abstraction (ADR-015)
+  Define FrameStoragePort trait in oneshim-core with 4 methods
+  (save_frame, save_frames_batch, enforce_retention, enforce_storage_limit).
+  Implement for FrameFileStorage in oneshim-storage.
+
+  Replace Arc<FrameFileStorage> with Arc<dyn FrameStoragePort> in 5 consumer
+  files (runtime_state, scheduler, capture_services, agent_runtime_support).
+  Wiring files retain concrete type for instantiation + diagnostic methods.
+
+  Includes ADR-015 documentation (en + ko).
+
+  cargo check + clippy + tests: clean.
+
+
+### Changed
+
+- Tighten architecture boundaries
+
+- Define tauri managed state boundary
+
+- Split tauri feature runtime state
+
+- Remove 11 stale #[allow(dead_code)] annotations
+  Items confirmed as actively used via reference analysis.
+  Remaining annotations have explanatory comments added.
+  67 → 56 annotations (production code, excluding tests).
+
+  cargo check + clippy: 0 warnings.
+
+- Add module-level documentation to 3 undocumented crates
+  api-contracts, analysis, lint — now 13/13 crates have //! docs.
+
+- Replace 143 fire-and-forget let _ = with debug logging
+  Converts single-line let _ = patterns to if let Err(e) = ... { debug!(...); }
+  across 51 files for better debuggability.
+
+  Remaining 90 sites are intentional: shutdown signals, unused bindings,
+  non-Result returns, and multi-line patterns.
+
+  220 → 90 let _ = sites. cargo check + clippy + fmt: clean.
+
+- Decompose Chat.tsx into directory module (13 files)
+  Split 1,782L monolithic component into chat/ directory:
+  - types.ts, constants.ts, utils.ts — shared definitions
+  - 4 custom hooks (useSessionSetup, useAudioCapture, useMessageStream, useSessionHandlers)
+  - 4 sub-components (ChatSidebar, ChatInput, MessageBubble, CopyButton)
+  - highlightText utility, index.tsx orchestrator
+
+  SRP violations resolved: session mgmt, message streaming, audio/VAD,
+  rendering, and advanced settings are now separate modules.
+
+  tsc + biome: clean. Zero behavior changes.
+
+- Decompose Settings.tsx + AiAutomationTab.tsx
+  Settings.tsx (1,557L → 308L):
+  - Extract useSettingsData hook (404L) — all query/fetch logic
+  - Extract useSettingsForm hook (984L) — form state, mutations, handlers
+  - Settings.tsx now pure tab orchestrator
+
+  AiAutomationTab.tsx (1,385L → 7 files):
+  - OcrEndpointConfig, LlmEndpointConfig, ProfileManager,
+    SandboxConfig, SceneIntelligenceConfig sub-components
+  - Shared types extracted to types.ts
+  - Main orchestrator in index.tsx
+
+  tsc + biome: clean. Zero behavior changes.
+
+- Decompose SessionReplay.tsx into directory module
+  Split 756L component into session-replay/ directory (5 files):
+  - SessionPlayback: timeline scrubber, frame card, metadata/tags
+  - SceneOverlay: scene viewport, element selection, action execution
+  - usePlaybackState hook: play/pause, speed, frame navigation
+  - Shared types extracted
+
+  Playback and scene rendering are now separate concerns.
+  tsc + biome: clean. Zero behavior changes.
+
+- Approve ADR-014 (Tauri managed state boundary)
+  Status Proposed → Approved. Pattern is already followed in
+  runtime_state.rs and setup modules since PR #289.
+
+
+### Fixed
+
+- Gate macos setup imports
+
+- Remove stale AiAutomationTab.tsx and fix lazy import path
+  Original 1,385L file was not deleted during ai-automation/ directory
+  module creation. Settings.tsx lazy import updated to point to
+  ./setting-tabs/ai-automation instead of ./setting-tabs/AiAutomationTab.
+
+- Use Debug format for oneshot send errors in fake integration server
+
 ## [0.4.15-rc.2] - 2026-04-03
 
 ### Added
