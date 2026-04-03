@@ -6,13 +6,14 @@ use oneshim_api_contracts::automation::{
 use oneshim_core::error::CoreError;
 use oneshim_core::models::audit::AuditLevel;
 use oneshim_core::models::intent::{builtin_presets, IntentCommand, IntentResult, WorkflowPreset};
+use oneshim_core::ports::audit_log::AuditLogPort;
 
 use crate::error::ApiError;
 use crate::services::web_contexts::AutomationWebContext;
 
 use super::helpers::{
     build_scene_action_intents, enforce_scene_action_privacy, read_scene_intelligence_config,
-    require_config_manager,
+    require_config_manager, SceneActionPolicyContext,
 };
 use super::AUTOMATION_SCENE_ACTION_SCHEMA_VERSION;
 
@@ -302,80 +303,8 @@ impl AutomationCommandService {
         let started_at = std::time::Instant::now();
 
         if let Some(logger) = self.ctx.audit_logger.as_ref() {
-            if policy_context.override_active {
-                logger
-                    .log_event(
-                        "policy.scene_action_override.applied",
-                        &req.session_id,
-                        &format!(
-                            "action_type={:?} element_id={} approved_by={:?} expires_at={:?}",
-                            req.action_type,
-                            req.element_id,
-                            policy_context.override_approved_by.as_deref(),
-                            policy_context
-                                .override_expires_at
-                                .as_ref()
-                                .map(|value| value.to_rfc3339()),
-                        ),
-                    )
-                    .await;
-            } else if policy_context.override_enabled || policy_context.override_issue.is_some() {
-                logger
-                    .log_event(
-                        "policy.scene_action_override.issue",
-                        &req.session_id,
-                        &format!(
-                            "action_type={:?} element_id={} issue={:?} enabled={} expires_at={:?}",
-                            req.action_type,
-                            req.element_id,
-                            policy_context.override_issue.as_deref(),
-                            policy_context.override_enabled,
-                            policy_context
-                                .override_expires_at
-                                .as_ref()
-                                .map(|value| value.to_rfc3339()),
-                        ),
-                    )
-                    .await;
-            }
-            if req.allow_sensitive_input.unwrap_or(false) {
-                logger
-                    .log_event(
-                        "policy.scene_action.allow_sensitive_input",
-                        &req.session_id,
-                        &format!(
-                            "action_type={:?} element_id={} policy={:?} override_active={}",
-                            req.action_type,
-                            req.element_id,
-                            policy_context.policy,
-                            policy_context.override_active,
-                        ),
-                    )
-                    .await;
-            }
-            logger.log_start_if(
-                AuditLevel::Detailed,
-                &command_id,
-                &req.session_id,
-                &format!(
-                    "scene_action frame_id={:?} scene_id={:?} element_id={} action_type={:?} policy={:?} pii_level={:?} override_enabled={} override_active={} override_reason={:?} override_approved_by={:?} override_expires_at={:?} override_issue={:?}",
-                    req.frame_id,
-                    req.scene_id,
-                    req.element_id,
-                    req.action_type,
-                    policy_context.policy,
-                    policy_context.pii_filter_level,
-                    policy_context.override_enabled,
-                    policy_context.override_active,
-                    policy_context.override_reason.as_deref(),
-                    policy_context.override_approved_by.as_deref(),
-                    policy_context
-                        .override_expires_at
-                        .as_ref()
-                        .map(|value| value.to_rfc3339()),
-                    policy_context.override_issue.as_deref()
-                ),
-            ).await;
+            log_scene_action_policy_audit(logger.as_ref(), &req, &policy_context, &command_id)
+                .await;
         }
 
         let mut last_result: Option<IntentResult> = None;
@@ -432,22 +361,15 @@ impl AutomationCommandService {
         let elapsed_ms = started_at.elapsed().as_millis() as u64;
 
         if let Some(logger) = self.ctx.audit_logger.as_ref() {
-            logger.log_complete_with_time(
-                AuditLevel::Detailed,
+            log_scene_action_result_audit(
+                logger.as_ref(),
+                &req,
+                &policy_context,
                 &command_id,
-                &req.session_id,
-                &format!(
-                    "scene_action_result success={} frame_id={:?} scene_id={:?} element_id={} policy={:?} override_active={} error={:?}",
-                    result.success,
-                    req.frame_id,
-                    req.scene_id,
-                    req.element_id,
-                    policy_context.policy,
-                    policy_context.override_active,
-                    result.error
-                ),
+                &result,
                 elapsed_ms,
-            ).await;
+            )
+            .await;
         }
 
         Ok(ExecuteSceneActionResponse {
@@ -466,6 +388,118 @@ impl AutomationCommandService {
             result,
         })
     }
+}
+
+/// Logs policy-enforcement audit events before scene action execution.
+///
+/// Records: override applied/issue, sensitive-input opt-in, and detailed start entry.
+async fn log_scene_action_policy_audit(
+    logger: &dyn AuditLogPort,
+    req: &ExecuteSceneActionRequest,
+    policy_context: &SceneActionPolicyContext,
+    command_id: &str,
+) {
+    if policy_context.override_active {
+        logger
+            .log_event(
+                "policy.scene_action_override.applied",
+                &req.session_id,
+                &format!(
+                    "action_type={:?} element_id={} approved_by={:?} expires_at={:?}",
+                    req.action_type,
+                    req.element_id,
+                    policy_context.override_approved_by.as_deref(),
+                    policy_context
+                        .override_expires_at
+                        .as_ref()
+                        .map(|value| value.to_rfc3339()),
+                ),
+            )
+            .await;
+    } else if policy_context.override_enabled || policy_context.override_issue.is_some() {
+        logger
+            .log_event(
+                "policy.scene_action_override.issue",
+                &req.session_id,
+                &format!(
+                    "action_type={:?} element_id={} issue={:?} enabled={} expires_at={:?}",
+                    req.action_type,
+                    req.element_id,
+                    policy_context.override_issue.as_deref(),
+                    policy_context.override_enabled,
+                    policy_context
+                        .override_expires_at
+                        .as_ref()
+                        .map(|value| value.to_rfc3339()),
+                ),
+            )
+            .await;
+    }
+    if req.allow_sensitive_input.unwrap_or(false) {
+        logger
+            .log_event(
+                "policy.scene_action.allow_sensitive_input",
+                &req.session_id,
+                &format!(
+                    "action_type={:?} element_id={} policy={:?} override_active={}",
+                    req.action_type,
+                    req.element_id,
+                    policy_context.policy,
+                    policy_context.override_active,
+                ),
+            )
+            .await;
+    }
+    logger.log_start_if(
+        AuditLevel::Detailed,
+        command_id,
+        &req.session_id,
+        &format!(
+            "scene_action frame_id={:?} scene_id={:?} element_id={} action_type={:?} policy={:?} pii_level={:?} override_enabled={} override_active={} override_reason={:?} override_approved_by={:?} override_expires_at={:?} override_issue={:?}",
+            req.frame_id,
+            req.scene_id,
+            req.element_id,
+            req.action_type,
+            policy_context.policy,
+            policy_context.pii_filter_level,
+            policy_context.override_enabled,
+            policy_context.override_active,
+            policy_context.override_reason.as_deref(),
+            policy_context.override_approved_by.as_deref(),
+            policy_context
+                .override_expires_at
+                .as_ref()
+                .map(|value| value.to_rfc3339()),
+            policy_context.override_issue.as_deref()
+        ),
+    ).await;
+}
+
+/// Logs execution-result audit event after scene action completes.
+async fn log_scene_action_result_audit(
+    logger: &dyn AuditLogPort,
+    req: &ExecuteSceneActionRequest,
+    policy_context: &SceneActionPolicyContext,
+    command_id: &str,
+    result: &IntentResult,
+    elapsed_ms: u64,
+) {
+    logger.log_complete_with_time(
+        AuditLevel::Detailed,
+        command_id,
+        &req.session_id,
+        &format!(
+            "scene_action_result success={} frame_id={:?} scene_id={:?} element_id={} policy={:?} override_active={} error={:?}",
+            result.success,
+            req.frame_id,
+            req.scene_id,
+            req.element_id,
+            policy_context.policy,
+            policy_context.override_active,
+            result.error
+        ),
+        elapsed_ms,
+    ).await;
 }
 
 #[cfg(test)]
