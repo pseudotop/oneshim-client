@@ -49,7 +49,7 @@ impl BugReportService {
             system,
             connection,
             runtime_logs,
-            pii_filter_level: format!("{level:?}"),
+            pii_filter_level: level,
         };
 
         sanitize_bundle(&**sanitizer, &mut bundle, level);
@@ -275,7 +275,7 @@ mod tests {
                 websocket_connected: false,
             },
             runtime_logs: None,
-            pii_filter_level: "Standard".to_string(),
+            pii_filter_level: PiiFilterLevel::Standard,
         };
 
         sanitize_bundle(&MockSanitizer, &mut bundle, PiiFilterLevel::Standard);
@@ -334,7 +334,7 @@ mod tests {
                 websocket_connected: false,
             },
             runtime_logs: None,
-            pii_filter_level: "Off".to_string(),
+            pii_filter_level: PiiFilterLevel::Off,
         };
 
         // Even with Off level, sanitize_bundle enforces Standard minimum

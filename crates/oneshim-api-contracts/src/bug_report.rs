@@ -1,3 +1,4 @@
+use oneshim_core::config::PiiFilterLevel;
 use serde::{Deserialize, Serialize};
 
 use crate::support::{DiagnosticsBundleDto, RuntimeLogSnapshotDto};
@@ -10,7 +11,7 @@ pub struct BugReportBundleDto {
     pub system: SystemInfoDto,
     pub connection: ConnectionStatusDto,
     pub runtime_logs: Option<RuntimeLogSnapshotDto>,
-    pub pii_filter_level: String,
+    pub pii_filter_level: PiiFilterLevel,
 }
 
 /// System hardware and software information.
@@ -87,5 +88,13 @@ mod tests {
         let req: CreateBugReportRequest = serde_json::from_str("{}").unwrap();
         assert!(req.include_logs);
         assert!(req.pii_level.is_none());
+    }
+
+    #[test]
+    fn pii_filter_level_serde_matches_debug() {
+        use oneshim_core::config::PiiFilterLevel;
+        let level = PiiFilterLevel::Standard;
+        let json = serde_json::to_value(&level).unwrap();
+        assert_eq!(json.as_str().unwrap(), format!("{level:?}"));
     }
 }
