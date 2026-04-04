@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.17-rc.1] - 2026-04-04
+
+### Added
+
+- Analysis wiring + suggestion + regime + GUI ML classification ([#301](https://github.com/pseudotop/oneshim-client/pull/301))
+  * feat: decouple LLM WorkType refiner from embedding pipeline
+
+  Add `analysis.llm_work_type_enabled` (default true) to AnalysisConfig.
+  The refiner now creates its own AnalysisClient independently — no longer
+  requires embedding.enabled or llm_summary_enabled. Users with
+  tiered_memory + llm_api + consent get automatic LLM work type refinement.
+
 ## [0.4.16] - 2026-04-03
 
 ### Added
