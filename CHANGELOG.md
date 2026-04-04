@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-04-05
+
+### Added
+
+- V0.4 final — suggestion UX, chat integration, domain stabilization, polish ([#324](https://github.com/pseudotop/oneshim-client/pull/324))
+  * feat: P1+P2 analysis wiring — confidence display, gRPC adapters, WS cleanup
+
 ## [0.4.19-rc.1] - 2026-04-05
 
 ### Added
