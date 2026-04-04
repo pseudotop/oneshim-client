@@ -1,7 +1,9 @@
+pub mod adaptive_scorer;
 mod guards;
 mod triggers;
+pub mod tunable_params;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use oneshim_core::config::CoachingConfig;
 use oneshim_core::models::coaching::{trigger_type_name, CoachingMessage, GoalProgressView};
 use std::collections::HashMap;
@@ -12,6 +14,9 @@ use tracing::debug;
 use crate::coaching_template::CoachingTemplateRegistry;
 use crate::feedback_tracker::FeedbackTracker;
 use crate::regime_goal_tracker::RegimeGoalTracker;
+
+pub use adaptive_scorer::{AdaptiveScorer, CoachingFeatures};
+pub use tunable_params::TunableParams;
 
 /// Central coaching orchestrator.
 ///
@@ -48,6 +53,17 @@ pub struct CoachingEngine {
 
     /// Last app name passed to evaluate() — used for implicit feedback.
     pub(super) last_app_name: RwLock<String>,
+
+    /// Auto-tunable parameters — adjusted by feedback, reset on restart.
+    pub(super) tunable_params: RwLock<TunableParams>,
+
+    /// Adaptive scorer — online logistic regression for should-show decisions.
+    /// Used when enough training data has accumulated (50+ feedback events).
+    pub(super) adaptive_scorer: RwLock<AdaptiveScorer>,
+    /// Last extracted features — cached for feedback update after display.
+    pub(super) last_features: RwLock<Option<CoachingFeatures>>,
+    /// Count of coaching messages shown today (for feature extraction).
+    pub(super) messages_shown_today: RwLock<u32>,
 }
 
 impl CoachingEngine {
@@ -70,6 +86,10 @@ impl CoachingEngine {
             context_switch_count: RwLock::new(0),
             context_switch_date: RwLock::new(chrono::Utc::now().date_naive()),
             last_app_name: RwLock::new(String::new()),
+            tunable_params: RwLock::new(TunableParams::default()),
+            adaptive_scorer: RwLock::new(AdaptiveScorer::default()),
+            last_features: RwLock::new(None),
+            messages_shown_today: RwLock::new(0),
         }
     }
 
@@ -145,16 +165,61 @@ impl CoachingEngine {
             return None;
         }
 
-        // 6. Effectiveness gate
+        // 6. Effectiveness gate (rule-based OR adaptive scorer)
         let profile_name = format!("{:?}", profile);
         let trigger_name = trigger_type_name(&trigger);
-        {
+
+        // Extract features for adaptive scoring
+        let goal_progress = {
+            let gt = self.goal_tracker.read().await;
+            gt.progress(regime_label)
+                .map(|p| p.percentage as f32 / 100.0)
+                .unwrap_or(0.0)
+        };
+        let context_switches = *self.context_switch_count.read().await;
+        let messages_today = *self.messages_shown_today.read().await;
+        let profile_eff = {
+            let ft = self.feedback_tracker.read().await;
+            ft.get_effectiveness(&profile_name, &trigger_name)
+                .map(|s| s.ratio())
+                .unwrap_or(0.5)
+        };
+        let hour = chrono::Utc::now().hour();
+        let features = CoachingFeatures::extract(
+            hour,
+            regime_duration_secs,
+            context_switches,
+            goal_progress,
+            profile_eff,
+            drift_detected,
+            messages_today,
+            avg_regime_duration_secs,
+        );
+
+        // Try adaptive scorer first (when ready), fall back to rule-based gating
+        let scorer = self.adaptive_scorer.read().await;
+        if scorer.is_ready() {
+            let p = scorer.predict(&features);
+            drop(scorer);
+            if p < 0.5 {
+                debug!(
+                    profile = %profile_name,
+                    p_helpful = p,
+                    "coaching suppressed: adaptive scorer"
+                );
+                return None;
+            }
+        } else {
+            drop(scorer);
             let mut ft = self.feedback_tracker.write().await;
             if !ft.should_show(&profile_name, &trigger_name) {
                 debug!(profile = %profile_name, "coaching suppressed: low effectiveness");
                 return None;
             }
         }
+
+        // Cache features for feedback update
+        *self.last_features.write().await = Some(features);
 
         // 7. Build variables
         let variables = self
@@ -166,8 +231,9 @@ impl CoachingEngine {
             self.templates
                 .select(&profile, &trigger, &config.tone, &config.locale, &variables);
 
-        // 9. Record alert timestamp
+        // 9. Record alert timestamp + increment daily counter
         self.record_alert(&profile).await;
+        *self.messages_shown_today.write().await += 1;
 
         // 10. Produce message
         let message_id = uuid::Uuid::new_v4().to_string();
@@ -192,6 +258,21 @@ impl CoachingEngine {
         let mut gt = self.goal_tracker.write().await;
         gt.update_goals(&config.regime_goals);
         *current = config;
+    }
+
+    /// Train the adaptive scorer with feedback from the last coaching message.
+    /// Called after explicit or implicit feedback is recorded.
+    pub async fn train_on_feedback(&self, positive: bool) {
+        let features = self.last_features.read().await.clone();
+        if let Some(features) = features {
+            let label = if positive { 1.0 } else { 0.0 };
+            self.adaptive_scorer.write().await.update(&features, label);
+            debug!(
+                positive,
+                train_count = self.adaptive_scorer.read().await.train_count(),
+                "adaptive scorer trained"
+            );
+        }
     }
 
     /// Record additional minutes for goal tracking (delegates to RegimeGoalTracker).
