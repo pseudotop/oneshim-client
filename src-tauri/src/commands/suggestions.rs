@@ -287,6 +287,7 @@ pub async fn request_chat_suggestions(
 
     // Drain stream and collect response text with a 60s timeout.
     // ResponseStream yields Result<OutboundMessage, CoreError>.
+    const MAX_RESPONSE_BYTES: usize = 1_048_576; // 1 MB safety limit
     let drain_result = timeout(Duration::from_secs(60), async {
         let mut text = String::new();
         while let Some(item) = stream.next().await {
@@ -304,6 +305,11 @@ pub async fn request_chat_suggestions(
                     return Err(format!("Stream error: {e}"));
                 }
                 _ => {}
+            }
+            // Guard: stop accumulating if response exceeds safety limit
+            if text.len() > MAX_RESPONSE_BYTES {
+                tracing::warn!("chat suggestion response exceeded 1 MB limit, truncating");
+                break;
             }
         }
         Ok::<String, String>(text)

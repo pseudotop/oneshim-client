@@ -102,6 +102,7 @@ pub async fn analyze_automation_scene(
 #[derive(Serialize)]
 pub struct PendingConfirmationDto {
     pub command_id: String,
+    pub nonce: String,
     pub process_name: String,
     pub args: Vec<String>,
     pub audit_level: String,
@@ -124,6 +125,7 @@ pub async fn get_pending_confirmations(
         .into_iter()
         .map(|c| PendingConfirmationDto {
             command_id: c.command_id,
+            nonce: c.nonce,
             process_name: c.process_name,
             args: c.args,
             audit_level: c.audit_level,
@@ -133,16 +135,18 @@ pub async fn get_pending_confirmations(
 }
 
 /// Submit user's confirmation decision for a pending automation command.
+/// The `nonce` must match the value from the original confirmation request.
 #[command]
 pub async fn confirm_automation_command(
     state: tauri::State<'_, AutomationRuntimeState>,
     command_id: String,
+    nonce: String,
     approved: bool,
 ) -> Result<(), String> {
     let controller = state.controller().ok_or("Automation not available")?;
 
     controller
-        .submit_confirmation(&command_id, approved)
+        .submit_confirmation(&command_id, &nonce, approved)
         .await
         .map_err(|e| e.to_string())
 }

@@ -51,6 +51,7 @@ export default function Chat() {
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
   const [createError, setCreateError] = useState<string | null>(null)
   const [requestingSuggestions, setRequestingSuggestions] = useState(false)
+  const [suggestionCooldown, setSuggestionCooldown] = useState(false)
 
   // ---- Message stream (SSE listener, scroll handling) ----
   const { messages, setMessages, sending, setSending, scrollRef, handleScroll } = useMessageStream(activeId)
@@ -149,8 +150,10 @@ export default function Chat() {
       const { invoke } = await import('@tauri-apps/api/core')
       const count = await invoke<number>('request_chat_suggestions', { sessionId: activeId })
       addToast('success', `${count} suggestion${count !== 1 ? 's' : ''} generated`)
+      setSuggestionCooldown(true)
+      setTimeout(() => setSuggestionCooldown(false), 5000)
     } catch (e) {
-      addToast('error', `Failed to get suggestions: ${e}`)
+      addToast('error', `Failed to get suggestions: ${errorMessage(e, 'Failed to get suggestions')}`)
     } finally {
       setRequestingSuggestions(false)
     }
@@ -535,7 +538,7 @@ export default function Chat() {
               sendDisabled={sendDisabled}
               onSend={handleSend}
               onRequestSuggestions={activeId ? handleRequestSuggestions : undefined}
-              requestingSuggestions={requestingSuggestions}
+              requestingSuggestions={requestingSuggestions || suggestionCooldown}
               audioAvailable={audioAvailable}
               audioTooltip={audioTooltip}
               micMode={micMode}

@@ -119,6 +119,12 @@ pub trait AutomationPort: Send + Sync {
     /// 사용자 승인 대기 중인 자동화 확인 목록 조회
     async fn list_pending_confirmations(&self) -> Result<Vec<PendingConfirmation>, CoreError>;
 
-    /// 사용자의 자동화 확인 응답 제출 (승인/거부)
-    async fn submit_confirmation(&self, command_id: &str, approved: bool) -> Result<(), CoreError>;
+    /// 사용자의 자동화 확인 응답 제출 (승인/거부).
+    /// `nonce`는 확인 생성 시 발급된 일회용 토큰으로, 불일치 시 거부됩니다.
+    async fn submit_confirmation(
+        &self,
+        command_id: &str,
+        nonce: &str,
+        approved: bool,
+    ) -> Result<(), CoreError>;
 }

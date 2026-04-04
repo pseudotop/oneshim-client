@@ -90,6 +90,7 @@ export interface DetectionScenePayload {
 
 export interface PendingConfirmationDto {
   command_id: string
+  nonce: string
   process_name: string
   args: string[]
   audit_level: string

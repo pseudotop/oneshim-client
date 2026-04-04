@@ -58,7 +58,11 @@ pub fn try_extract_suggestions(response_text: &str) -> Vec<Suggestion> {
         }
     };
 
-    // Convert to Suggestion structs
+    // Convert to Suggestion structs.
+    // Chat-extracted suggestions use lower confidence (0.5) and a 4-hour expiry
+    // because they bypass the server-side FeedbackScorer pipeline.
+    let now = Utc::now();
+    let expires = now + chrono::Duration::hours(4);
     parsed
         .suggestions
         .into_iter()
@@ -69,11 +73,11 @@ pub fn try_extract_suggestions(response_text: &str) -> Vec<Suggestion> {
                 suggestion_type: stype,
                 content: p.content,
                 priority: parse_priority(&p.priority),
-                confidence_score: 0.7,
+                confidence_score: 0.5,
                 relevance_score: 0.8,
                 is_actionable: true,
-                created_at: Utc::now(),
-                expires_at: None,
+                created_at: now,
+                expires_at: Some(expires),
                 source: SuggestionSource::LlmLocal,
                 reasoning: p.reasoning,
             })
@@ -136,6 +140,15 @@ Hope that helps!"#;
             Some("Based on your workflow")
         );
         assert_eq!(results[0].source, SuggestionSource::LlmLocal);
+        // Chat-extracted suggestions use reduced confidence and auto-expire
+        assert!(
+            (results[0].confidence_score - 0.5).abs() < f64::EPSILON,
+            "chat-extracted suggestions should have 0.5 confidence"
+        );
+        assert!(
+            results[0].expires_at.is_some(),
+            "chat-extracted suggestions should have an expiry"
+        );
     }
 
     #[test]
@@ -145,6 +158,7 @@ Hope that helps!"#;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].suggestion_type, SuggestionType::WorkGuidance);
         assert!(results[0].reasoning.is_none());
+        assert!(results[0].expires_at.is_some());
     }
 
     #[test]
