@@ -30,7 +30,14 @@ impl ManagedBackgroundRuntime {
         if let Err(e) = self.shutdown_tx.send(true) {
             debug!("channel send failed: {e}");
         }
-        if let Some(join_handle) = self.join_handle.lock().expect("join handle lock").take() {
+        let mut guard = match self.join_handle.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                warn!("join handle lock poisoned — recovering inner data");
+                poisoned.into_inner()
+            }
+        };
+        if let Some(join_handle) = guard.take() {
             if let Err(e) = join_handle.join() {
                 debug!("join failed: {e:?}");
             }

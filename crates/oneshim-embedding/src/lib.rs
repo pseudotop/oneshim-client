@@ -235,21 +235,174 @@ pub use stub_impl::LocalEmbeddingProvider;
 mod tests {
     use super::*;
 
-    #[cfg(feature = "fastembed-local")]
-    #[test]
-    fn resolve_model_defaults_to_quantized_minilm() {
-        let (_model, model_id, dimensions) = fastembed_impl::resolve_model(None);
-        assert_eq!(model_id, "all-MiniLM-L6-v2-Q");
-        assert_eq!(dimensions, 384);
-    }
+    // ── resolve_model parameterized tests (fastembed feature) ─────────────
 
     #[cfg(feature = "fastembed-local")]
-    #[test]
-    fn unknown_model_falls_back_to_quantized_minilm() {
-        let (_model, model_id, dimensions) = fastembed_impl::resolve_model(Some("bogus-model"));
-        assert_eq!(model_id, "all-MiniLM-L6-v2-Q");
-        assert_eq!(dimensions, 384);
+    mod resolve_model_tests {
+        use super::*;
+
+        /// Helper: assert resolve_model returns the expected (model_id, dimensions).
+        fn assert_resolves(input: Option<&str>, expected_id: &str, expected_dims: usize) {
+            let (_model, model_id, dimensions) = fastembed_impl::resolve_model(input);
+            assert_eq!(
+                model_id, expected_id,
+                "model_id mismatch for input {input:?}"
+            );
+            assert_eq!(
+                dimensions, expected_dims,
+                "dimensions mismatch for input {input:?}"
+            );
+        }
+
+        // ── Default (None) ───────────────────────────────────────────────
+
+        #[test]
+        fn none_defaults_to_quantized_minilm() {
+            assert_resolves(None, "all-MiniLM-L6-v2-Q", 384);
+        }
+
+        // ── Quantized variants (INT8) ────────────────────────────────────
+
+        #[test]
+        fn all_minilm_l6_v2_q_pascal() {
+            assert_resolves(Some("AllMiniLML6V2Q"), "all-MiniLM-L6-v2-Q", 384);
+        }
+
+        #[test]
+        fn all_minilm_l6_v2_q_kebab() {
+            assert_resolves(Some("all-MiniLM-L6-v2-Q"), "all-MiniLM-L6-v2-Q", 384);
+        }
+
+        #[test]
+        fn all_minilm_l12_v2_q_pascal() {
+            assert_resolves(Some("AllMiniLML12V2Q"), "all-MiniLM-L12-v2-Q", 384);
+        }
+
+        #[test]
+        fn all_minilm_l12_v2_q_kebab() {
+            assert_resolves(Some("all-MiniLM-L12-v2-Q"), "all-MiniLM-L12-v2-Q", 384);
+        }
+
+        #[test]
+        fn bge_small_en_v15_q_pascal() {
+            assert_resolves(Some("BGESmallENV15Q"), "bge-small-en-v1.5-Q", 384);
+        }
+
+        #[test]
+        fn bge_small_en_v15_q_kebab() {
+            assert_resolves(Some("bge-small-en-v1.5-Q"), "bge-small-en-v1.5-Q", 384);
+        }
+
+        #[test]
+        fn bge_base_en_v15_q_pascal() {
+            assert_resolves(Some("BGEBaseENV15Q"), "bge-base-en-v1.5-Q", 768);
+        }
+
+        #[test]
+        fn bge_base_en_v15_q_kebab() {
+            assert_resolves(Some("bge-base-en-v1.5-Q"), "bge-base-en-v1.5-Q", 768);
+        }
+
+        // ── Full-precision variants (FP32) ───────────────────────────────
+
+        #[test]
+        fn all_minilm_l6_v2_pascal() {
+            assert_resolves(Some("AllMiniLML6V2"), "all-MiniLM-L6-v2", 384);
+        }
+
+        #[test]
+        fn all_minilm_l6_v2_kebab() {
+            assert_resolves(Some("all-MiniLM-L6-v2"), "all-MiniLM-L6-v2", 384);
+        }
+
+        #[test]
+        fn all_minilm_l12_v2_pascal() {
+            assert_resolves(Some("AllMiniLML12V2"), "all-MiniLM-L12-v2", 384);
+        }
+
+        #[test]
+        fn all_minilm_l12_v2_kebab() {
+            assert_resolves(Some("all-MiniLM-L12-v2"), "all-MiniLM-L12-v2", 384);
+        }
+
+        #[test]
+        fn bge_small_en_v15_pascal() {
+            assert_resolves(Some("BGESmallENV15"), "bge-small-en-v1.5", 384);
+        }
+
+        #[test]
+        fn bge_small_en_v15_kebab() {
+            assert_resolves(Some("bge-small-en-v1.5"), "bge-small-en-v1.5", 384);
+        }
+
+        #[test]
+        fn bge_base_en_v15_pascal() {
+            assert_resolves(Some("BGEBaseENV15"), "bge-base-en-v1.5", 768);
+        }
+
+        #[test]
+        fn bge_base_en_v15_kebab() {
+            assert_resolves(Some("bge-base-en-v1.5"), "bge-base-en-v1.5", 768);
+        }
+
+        // ── Unknown / fallback ───────────────────────────────────────────
+
+        #[test]
+        fn unknown_model_falls_back_to_quantized_minilm() {
+            assert_resolves(Some("bogus-model"), "all-MiniLM-L6-v2-Q", 384);
+        }
+
+        #[test]
+        fn empty_string_falls_back_to_quantized_minilm() {
+            assert_resolves(Some(""), "all-MiniLM-L6-v2-Q", 384);
+        }
+
+        #[test]
+        fn case_sensitive_mismatch_falls_back() {
+            // "allminilml6v2q" is not a recognised name (lowercase)
+            assert_resolves(Some("allminilml6v2q"), "all-MiniLM-L6-v2-Q", 384);
+        }
+
+        // ── Dimension grouping ───────────────────────────────────────────
+
+        #[test]
+        fn all_384_dim_models() {
+            let names_384 = [
+                "AllMiniLML6V2Q",
+                "all-MiniLM-L6-v2-Q",
+                "AllMiniLML12V2Q",
+                "all-MiniLM-L12-v2-Q",
+                "BGESmallENV15Q",
+                "bge-small-en-v1.5-Q",
+                "AllMiniLML6V2",
+                "all-MiniLM-L6-v2",
+                "AllMiniLML12V2",
+                "all-MiniLM-L12-v2",
+                "BGESmallENV15",
+                "bge-small-en-v1.5",
+            ];
+            for name in names_384 {
+                let (_, _, dims) = fastembed_impl::resolve_model(Some(name));
+                assert_eq!(dims, 384, "expected 384 dims for {name}");
+            }
+        }
+
+        #[test]
+        fn all_768_dim_models() {
+            let names_768 = [
+                "BGEBaseENV15Q",
+                "bge-base-en-v1.5-Q",
+                "BGEBaseENV15",
+                "bge-base-en-v1.5",
+            ];
+            for name in names_768 {
+                let (_, _, dims) = fastembed_impl::resolve_model(Some(name));
+                assert_eq!(dims, 768, "expected 768 dims for {name}");
+            }
+        }
     }
+
+    // ── fastembed network-dependent tests (ignored) ──────────────────────
 
     #[cfg(feature = "fastembed-local")]
     mod fastembed_tests {
@@ -289,15 +442,148 @@ mod tests {
         }
     }
 
+    // ── Stub provider tests (no fastembed feature) ───────────────────────
+
     #[cfg(not(feature = "fastembed-local"))]
     mod stub_tests {
         use super::*;
+        use oneshim_core::ports::embedding_provider::EmbeddingProvider;
+
+        #[test]
+        fn stub_new_succeeds() {
+            let provider = LocalEmbeddingProvider::new(None);
+            assert!(provider.is_ok(), "stub constructor should always succeed");
+        }
+
+        #[test]
+        fn stub_new_with_any_model_name_succeeds() {
+            // Stub ignores the model_name parameter entirely.
+            let provider = LocalEmbeddingProvider::new(Some("AllMiniLML6V2"));
+            assert!(provider.is_ok());
+        }
+
+        #[test]
+        fn stub_dimensions_returns_384() {
+            let provider = LocalEmbeddingProvider::new(None).unwrap();
+            assert_eq!(provider.dimensions(), 384);
+        }
+
+        #[test]
+        fn stub_model_id_is_stub_identifier() {
+            let provider = LocalEmbeddingProvider::new(None).unwrap();
+            assert_eq!(provider.model_id(), "stub-no-fastembed");
+        }
 
         #[tokio::test]
         async fn stub_embed_returns_error() {
             let provider = LocalEmbeddingProvider::new(None).unwrap();
             let result = provider.embed("hello").await;
             assert!(result.is_err());
+            let err = result.unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("fastembed-local feature is not enabled"),
+                "error should explain the feature is disabled, got: {msg}"
+            );
+        }
+
+        #[tokio::test]
+        async fn stub_embed_batch_returns_error() {
+            let provider = LocalEmbeddingProvider::new(None).unwrap();
+            let texts = vec!["a".to_owned(), "b".to_owned()];
+            let result = provider.embed_batch(&texts).await;
+            assert!(result.is_err());
+            let msg = result.unwrap_err().to_string();
+            assert!(
+                msg.contains("fastembed-local feature is not enabled"),
+                "batch error should explain the feature is disabled, got: {msg}"
+            );
+        }
+
+        #[tokio::test]
+        async fn stub_embed_empty_text_still_returns_error() {
+            let provider = LocalEmbeddingProvider::new(None).unwrap();
+            let result = provider.embed("").await;
+            assert!(result.is_err(), "stub should error even on empty input");
+        }
+
+        #[tokio::test]
+        async fn stub_embed_batch_empty_slice_returns_error() {
+            let provider = LocalEmbeddingProvider::new(None).unwrap();
+            let result = provider.embed_batch(&[]).await;
+            assert!(result.is_err(), "stub should error even on empty batch");
+        }
+    }
+
+    // ── Error type tests (feature-independent) ──────────────────────────
+
+    mod error_tests {
+        use super::*;
+
+        #[test]
+        fn embedding_error_internal_display() {
+            let err = EmbeddingError::Internal("test failure".to_owned());
+            assert_eq!(err.to_string(), "internal error: test failure");
+        }
+
+        #[test]
+        fn embedding_error_from_core_error() {
+            let core = CoreError::Internal("core problem".to_owned());
+            let emb: EmbeddingError = core.into();
+            // The transparent variant should preserve the CoreError message.
+            assert!(
+                emb.to_string().contains("core problem"),
+                "should contain original message, got: {}",
+                emb
+            );
+        }
+
+        #[test]
+        fn embedding_error_into_core_error_internal() {
+            let emb = EmbeddingError::Internal("embed fail".to_owned());
+            let core: CoreError = emb.into();
+            assert!(matches!(core, CoreError::Internal(_)));
+            assert!(core.to_string().contains("embed fail"));
+        }
+
+        #[test]
+        fn embedding_error_into_core_error_roundtrip() {
+            // CoreError -> EmbeddingError -> CoreError preserves the variant.
+            let original = CoreError::Internal("roundtrip".to_owned());
+            let emb: EmbeddingError = original.into();
+            let back: CoreError = emb.into();
+            assert!(matches!(back, CoreError::Internal(_)));
+            assert!(back.to_string().contains("roundtrip"));
+        }
+
+        #[test]
+        fn embedding_error_internal_is_debug_printable() {
+            let err = EmbeddingError::Internal("debug check".to_owned());
+            let debug = format!("{err:?}");
+            assert!(
+                debug.contains("Internal"),
+                "Debug should contain variant name, got: {debug}"
+            );
+        }
+
+        #[test]
+        fn embedding_error_core_variant_is_debug_printable() {
+            let core = CoreError::Network("net err".to_owned());
+            let emb: EmbeddingError = core.into();
+            let debug = format!("{emb:?}");
+            assert!(
+                debug.contains("Core"),
+                "Debug should contain Core variant, got: {debug}"
+            );
+        }
+
+        #[test]
+        fn core_error_network_converts_to_embedding_error() {
+            let core = CoreError::Network("timeout".to_owned());
+            let emb: EmbeddingError = core.into();
+            // Converting back should preserve as CoreError (via transparent).
+            let back: CoreError = emb.into();
+            assert!(matches!(back, CoreError::Network(_)));
         }
     }
 }

@@ -5404,6 +5404,7 @@ name = "oneshim-lint"
 version = "0.4.17"
 dependencies = [
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
