@@ -15,3 +15,4 @@ pub mod history;
 pub mod presenter;
 pub mod queue;
 pub mod receiver;
+pub mod scorer;

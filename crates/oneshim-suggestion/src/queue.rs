@@ -1,6 +1,7 @@
 use oneshim_core::models::suggestion::Suggestion;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 struct PrioritizedSuggestion {
@@ -36,8 +37,24 @@ impl Ord for PrioritizedSuggestion {
     }
 }
 
+fn content_fingerprint(suggestion: &Suggestion) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    suggestion.suggestion_type.hash(&mut hasher);
+    let normalized: String = suggestion
+        .content
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let truncated = &normalized[..normalized.len().min(200)];
+    truncated.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub struct SuggestionQueue {
     items: BTreeSet<PrioritizedSuggestion>,
+    fingerprints: HashSet<u64>,
     max_size: usize,
 }
 
@@ -45,11 +62,21 @@ impl SuggestionQueue {
     pub fn new(max_size: usize) -> Self {
         Self {
             items: BTreeSet::new(),
+            fingerprints: HashSet::new(),
             max_size,
         }
     }
 
     pub fn push(&mut self, suggestion: Suggestion) -> bool {
+        let fp = content_fingerprint(&suggestion);
+        if self.fingerprints.contains(&fp) {
+            tracing::debug!(
+                rejected_id = %suggestion.suggestion_id,
+                "duplicate content fingerprint — rejected"
+            );
+            return false;
+        }
+
         let item = PrioritizedSuggestion { suggestion };
 
         if self.items.len() >= self.max_size {
@@ -57,6 +84,8 @@ impl SuggestionQueue {
                 if item < *last {
                     let last_clone = last.clone();
                     self.items.remove(&last_clone);
+                    self.fingerprints
+                        .remove(&content_fingerprint(&last_clone.suggestion));
                     tracing::warn!(
                         evicted_id = %last_clone.suggestion.suggestion_id,
                         evicted_priority = ?last_clone.suggestion.priority,
@@ -77,12 +106,15 @@ impl SuggestionQueue {
             }
         }
 
+        self.fingerprints.insert(fp);
         self.items.insert(item)
     }
 
     pub fn pop(&mut self) -> Option<Suggestion> {
         let first = self.items.iter().next()?.clone();
         self.items.remove(&first);
+        self.fingerprints
+            .remove(&content_fingerprint(&first.suggestion));
         Some(first.suggestion)
     }
 
@@ -111,6 +143,8 @@ impl SuggestionQueue {
             .cloned();
         if let Some(ref found) = item {
             self.items.remove(found);
+            self.fingerprints
+                .remove(&content_fingerprint(&found.suggestion));
             Some(found.suggestion.clone())
         } else {
             None
@@ -119,10 +153,24 @@ impl SuggestionQueue {
 
     pub fn clear(&mut self) {
         self.items.clear();
+        self.fingerprints.clear();
     }
 
     pub fn remove_expired(&mut self) -> usize {
         let now = chrono::Utc::now();
+        let expired_fps: Vec<u64> = self
+            .items
+            .iter()
+            .filter(|p| {
+                p.suggestion
+                    .expires_at
+                    .is_some_and(|expires| expires <= now)
+            })
+            .map(|p| content_fingerprint(&p.suggestion))
+            .collect();
+        for fp in &expired_fps {
+            self.fingerprints.remove(fp);
+        }
         let before = self.items.len();
         self.items.retain(|p| {
             p.suggestion
@@ -232,5 +280,86 @@ mod tests {
         assert_eq!(removed, 1);
         assert_eq!(queue.len(), 1);
         assert_eq!(queue.peek().unwrap().suggestion_id, "valid");
+    }
+
+    #[test]
+    fn duplicate_content_rejected() {
+        let mut queue = SuggestionQueue::new(50);
+        let s1 = make_suggestion("s1", Priority::High);
+        let mut s2 = make_suggestion("s2", Priority::Critical);
+        s2.content = s1.content.clone();
+        s2.suggestion_type = s1.suggestion_type.clone();
+        assert!(queue.push(s1));
+        assert!(!queue.push(s2));
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn different_content_accepted() {
+        let mut queue = SuggestionQueue::new(50);
+        let s1 = make_suggestion("s1", Priority::High);
+        let mut s2 = make_suggestion("s2", Priority::High);
+        s2.content = "different content".to_string();
+        assert!(queue.push(s1));
+        assert!(queue.push(s2));
+        assert_eq!(queue.len(), 2);
+    }
+
+    #[test]
+    fn fingerprint_removed_on_pop() {
+        let mut queue = SuggestionQueue::new(50);
+        let s1 = make_suggestion("s1", Priority::High);
+        let content = s1.content.clone();
+        let stype = s1.suggestion_type.clone();
+        queue.push(s1);
+        queue.pop();
+        let mut s2 = make_suggestion("s2", Priority::High);
+        s2.content = content;
+        s2.suggestion_type = stype;
+        assert!(queue.push(s2));
+    }
+
+    #[test]
+    fn fingerprint_removed_on_remove_by_id() {
+        let mut queue = SuggestionQueue::new(50);
+        let s1 = make_suggestion("s1", Priority::High);
+        let content = s1.content.clone();
+        let stype = s1.suggestion_type.clone();
+        queue.push(s1);
+        queue.remove_by_id("s1");
+        let mut s2 = make_suggestion("s2", Priority::High);
+        s2.content = content;
+        s2.suggestion_type = stype;
+        assert!(queue.push(s2));
+    }
+
+    #[test]
+    fn fingerprint_cleared_on_clear() {
+        let mut queue = SuggestionQueue::new(50);
+        let s1 = make_suggestion("s1", Priority::High);
+        let content = s1.content.clone();
+        let stype = s1.suggestion_type.clone();
+        queue.push(s1);
+        queue.clear();
+        let mut s2 = make_suggestion("s2", Priority::High);
+        s2.content = content;
+        s2.suggestion_type = stype;
+        assert!(queue.push(s2));
+    }
+
+    #[test]
+    fn fingerprint_removed_on_expired() {
+        let mut queue = SuggestionQueue::new(50);
+        let mut s1 = make_suggestion("s1", Priority::High);
+        s1.expires_at = Some(Utc::now() - chrono::Duration::hours(1));
+        let content = s1.content.clone();
+        let stype = s1.suggestion_type.clone();
+        queue.push(s1);
+        queue.remove_expired();
+        // Same content can re-enter after expiry removes the fingerprint
+        let mut s2 = make_suggestion("s2", Priority::High);
+        s2.content = content;
+        s2.suggestion_type = stype;
+        assert!(queue.push(s2));
     }
 }

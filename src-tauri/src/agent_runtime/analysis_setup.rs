@@ -57,15 +57,26 @@ pub(super) fn build_analysis_pipeline(
             let params = preset.default_params();
             let buf_cap = config.analysis.tiered_memory.buffer_capacity;
             let tm_config = &config.analysis.tiered_memory;
-            let llm_work_type_refiner = embedding
-                .llm_refiner_provider
-                .take()
-                .map(|provider| Arc::new(oneshim_analysis::LlmWorkTypeRefiner::new(provider)));
+            // Create LLM WorkType refiner independently of embedding pipeline.
+            // Uses its own AnalysisClient — stateless, no shared state concern.
+            let llm_work_type_refiner = if config.analysis.llm_work_type_enabled {
+                config.ai_provider.llm_api.as_ref().map(|llm_api| {
+                    let provider: Arc<
+                        dyn oneshim_core::ports::analysis_provider::AnalysisProvider,
+                    > = Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
+                        llm_api,
+                    ));
+                    info!("LLM WorkType refiner enabled");
+                    Arc::new(oneshim_analysis::LlmWorkTypeRefiner::new(provider))
+                })
+            } else {
+                None
+            };
+            // Note: tiered_memory.enabled and consent are gated by the outer block.
             if llm_work_type_refiner.is_none() {
                 info!(
                     "LLM WorkType refiner disabled — requires: \
-                     analysis.embedding.enabled=true, \
-                     analysis.embedding.llm_summary_enabled=true, \
+                     analysis.llm_work_type_enabled=true (default), \
                      and a configured ai_provider.llm_api"
                 );
             }
@@ -99,6 +110,7 @@ pub(super) fn build_analysis_pipeline(
                 )),
                 override_store,
                 recluster_requested,
+                regime_detection_interval_hours: tm_config.regime_detection_interval_hours,
                 last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 llm_summarizer: embedding.llm_summarizer.take(),
                 embedding_pipeline: embedding.embedding_pipeline.take(),

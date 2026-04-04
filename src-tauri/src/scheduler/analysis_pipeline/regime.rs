@@ -7,8 +7,8 @@ use tracing::{debug, info, warn};
 
 use super::super::AdaptiveTriggerState;
 
-/// Run regime detection at most once per day from calibration data,
-/// or on demand when `recluster_requested` flag is set.
+/// Run regime detection periodically (default: every 2h) or on demand
+/// when `recluster_requested` flag is set (drift or user-triggered).
 ///
 /// When a `RegimeAnalysisFacade` is available, constrained re-clustering is used
 /// (loading user overrides from `OverrideStore`). Otherwise falls back to the
@@ -21,10 +21,11 @@ pub(in crate::scheduler) async fn run_periodic_regime_detection(
         .recluster_requested
         .swap(false, std::sync::atomic::Ordering::Relaxed);
 
+    let interval = ts.regime_detection_interval_hours;
     let should_detect = on_demand
         || ts
             .last_detection_time
-            .map(|last| (now - last).num_hours() >= 24)
+            .map(|last| (now - last).num_hours() >= interval)
             .unwrap_or(true);
 
     if !should_detect {
@@ -74,6 +75,15 @@ pub(in crate::scheduler) async fn run_periodic_regime_detection(
                     }
                 })
                 .collect();
+
+            // Quality gate: skip detection if insufficient feature vectors
+            if features.len() < 50 {
+                debug!(
+                    count = features.len(),
+                    "regime detection skipped — insufficient samples (need 50)"
+                );
+                return;
+            }
 
             // Try constrained re-clustering via RegimeAnalysisFacade if available
             let has_strategy = ts.regime_analysis.is_some();

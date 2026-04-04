@@ -40,7 +40,7 @@ pub struct ContextAnalyzer {
     analysis_provider: Arc<dyn AnalysisProvider>,
     pattern_miner: PatternMiner,
     context_assembler: ContextAssembler,
-    vector_retriever: Option<VectorRetriever>,
+    vector_retriever: tokio::sync::RwLock<Option<VectorRetriever>>,
     config: AnalysisConfig,
     last_analysis_at: Mutex<Option<chrono::DateTime<Utc>>>,
     last_patterns_hash: Mutex<u64>,
@@ -65,7 +65,7 @@ impl ContextAnalyzer {
             analysis_provider,
             pattern_miner,
             context_assembler,
-            vector_retriever: None,
+            vector_retriever: tokio::sync::RwLock::new(None),
             config,
             last_analysis_at: Mutex::new(None),
             last_patterns_hash: Mutex::new(0),
@@ -88,7 +88,7 @@ impl ContextAnalyzer {
             analysis_provider,
             pattern_miner,
             context_assembler,
-            vector_retriever,
+            vector_retriever: tokio::sync::RwLock::new(vector_retriever),
             config,
             last_analysis_at: Mutex::new(None),
             last_patterns_hash: Mutex::new(0),
@@ -107,6 +107,12 @@ impl ContextAnalyzer {
     /// Called by the monitor loop so that `analyze()` includes extracted text in LLM context.
     pub async fn set_accessibility_text(&self, text: Option<String>) {
         *self.accessibility_text.write().await = text;
+    }
+
+    /// Inject a VectorRetriever after construction (called from agent_runtime
+    /// once embedding components are available).
+    pub async fn set_vector_retriever(&self, retriever: VectorRetriever) {
+        *self.vector_retriever.write().await = Some(retriever);
     }
 
     /// Full periodic analysis: query events, mine patterns, call LLM.
@@ -137,7 +143,8 @@ impl ContextAnalyzer {
         let metrics = Self::build_session_metrics(&events);
 
         // Retrieve relevant history via RAG if VectorRetriever is available
-        let relevant_history = if let Some(ref retriever) = self.vector_retriever {
+        let retriever_guard = self.vector_retriever.read().await;
+        let relevant_history = if let Some(ref retriever) = *retriever_guard {
             match retriever
                 .retrieve_for_context(
                     &current.app_name,

@@ -124,6 +124,10 @@ impl AppRuntimeLaunchBuilder {
             oneshim_suggestion::queue::SuggestionQueue::new(config.analysis.max_suggestions),
         ));
         #[cfg(feature = "server")]
+        let shared_scorer = Arc::new(tokio::sync::Mutex::new(
+            oneshim_suggestion::scorer::FeedbackScorer::new(),
+        ));
+        #[cfg(feature = "server")]
         let suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>> = {
             use oneshim_network::auth::TokenManager;
             use oneshim_network::http_client::HttpApiClient;
@@ -159,6 +163,7 @@ impl AppRuntimeLaunchBuilder {
                         shared_suggestion_queue.clone(),
                         history,
                         feedback,
+                        shared_scorer.clone(),
                     )))
                 }
                 _ => {
@@ -252,7 +257,9 @@ impl AppRuntimeLaunchBuilder {
                 .with_tray_app_handle(self.app_handle.clone())
                 .with_suggestions_enabled(config.suggestions.enabled);
             #[cfg(feature = "server")]
-            let builder = builder.with_shared_suggestion_queue(shared_suggestion_queue);
+            let builder = builder
+                .with_shared_suggestion_queue(shared_suggestion_queue)
+                .with_shared_scorer(shared_scorer);
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()

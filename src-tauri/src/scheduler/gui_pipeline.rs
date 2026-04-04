@@ -99,6 +99,7 @@ pub(crate) fn run_gui_tick(
                 },
                 element_type,
                 confidence: if focused_element.is_some() { 0.6 } else { 0.0 },
+                type_confidence: 1.0,
             }
         });
 
@@ -133,6 +134,7 @@ pub(crate) fn run_gui_tick(
                     },
                     element_type: GuiElementType::Unknown,
                     confidence: 0.0,
+                    type_confidence: 1.0,
                 },
                 interaction_type: GuiInteractionType::Type,
                 app_name: app_name.to_string(),
@@ -169,6 +171,7 @@ pub(crate) fn run_gui_tick(
                 },
                 element_type: GuiElementType::TextInput,
                 confidence: 0.5,
+                type_confidence: 1.0,
             },
             interaction_type: GuiInteractionType::Type,
             app_name: app_name.to_string(),

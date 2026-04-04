@@ -80,6 +80,8 @@ pub(crate) struct AdaptiveTriggerState {
     pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     /// Flag set by REST/Tauri to request on-demand re-clustering.
     pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
+    /// Configurable interval between automatic regime re-detection (hours).
+    pub regime_detection_interval_hours: i64,
     /// Flag: last drift observation result. Set by analysis pipeline,
     /// read-and-cleared by coaching evaluation in the monitor loop.
     pub last_drift_detected: Arc<std::sync::atomic::AtomicBool>,
@@ -316,13 +318,11 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)] // awaiting AdaptiveSearchCoordinator implementation
     pub fn with_vector_index(mut self, index: Arc<dyn VectorIndex>) -> Self {
         self.vector_index = Some(index);
         self
     }
 
-    #[allow(dead_code)] // awaiting AdaptiveSearchCoordinator implementation
     pub fn with_search_coordinator(
         mut self,
         coordinator: Arc<oneshim_analysis::AdaptiveSearchCoordinator>,

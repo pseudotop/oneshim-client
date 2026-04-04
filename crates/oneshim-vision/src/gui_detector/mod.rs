@@ -9,9 +9,12 @@
 mod correlation;
 mod inference;
 
+use std::sync::Arc;
+
 use oneshim_core::config::PiiFilterLevel;
 use oneshim_core::models::frame::OcrRegion;
 use oneshim_core::models::gui_interaction::GuiElement;
+use oneshim_core::ports::gui_element_classifier::GuiElementClassifier;
 
 use crate::privacy::sanitize_title_with_level;
 
@@ -40,6 +43,7 @@ pub struct GuiElementDetector {
     screen_resolution: (u32, u32),
     pii_filter_level: PiiFilterLevel,
     proximity_threshold_px: u32,
+    ml_classifier: Option<Arc<dyn GuiElementClassifier>>,
 }
 
 /// Backward-compatible type alias for Phase 1 callers.
@@ -52,6 +56,7 @@ impl GuiElementDetector {
             screen_resolution,
             pii_filter_level,
             proximity_threshold_px: DEFAULT_PROXIMITY_THRESHOLD_PX,
+            ml_classifier: None,
         }
     }
 
@@ -59,6 +64,17 @@ impl GuiElementDetector {
     pub fn with_proximity_threshold(mut self, px: u32) -> Self {
         self.proximity_threshold_px = px;
         self
+    }
+
+    /// Attach an ML classifier for element type refinement.
+    pub fn with_ml_classifier(mut self, classifier: Arc<dyn GuiElementClassifier>) -> Self {
+        self.ml_classifier = Some(classifier);
+        self
+    }
+
+    /// Returns a reference to the attached ML classifier (if any).
+    pub fn ml_classifier(&self) -> Option<&Arc<dyn GuiElementClassifier>> {
+        self.ml_classifier.as_ref()
     }
 
     /// Update the screen resolution used for proportional thresholds.
@@ -79,11 +95,14 @@ impl GuiElementDetector {
 
     pub(super) fn build_gui_element(&self, region: &OcrRegion) -> GuiElement {
         let filtered_text = sanitize_title_with_level(&region.text, self.pii_filter_level);
+        let (element_type, type_confidence) =
+            self.infer_element_type_scored(&region.text, &region.bbox);
         GuiElement {
             text: filtered_text,
             bbox: region.bbox.clone(),
-            element_type: self.infer_element_type(&region.text, &region.bbox),
+            element_type,
             confidence: region.confidence,
+            type_confidence,
         }
     }
 }

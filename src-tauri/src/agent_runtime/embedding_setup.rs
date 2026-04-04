@@ -7,9 +7,6 @@ use oneshim_core::config::AppConfig;
 pub(super) struct EmbeddingComponents {
     pub embedding_pipeline: Option<Arc<oneshim_analysis::EmbeddingPipeline>>,
     pub llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,
-    /// LLM-based analysis provider, reused by tiered-memory for WorkType refinement.
-    pub llm_refiner_provider:
-        Option<Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>>,
     /// EmbeddingProvider to wire into scheduler.
     pub embedding_provider:
         Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
@@ -26,9 +23,6 @@ pub(super) fn build_embedding_components(
 ) -> EmbeddingComponents {
     let mut embedding_pipeline_arc: Option<Arc<oneshim_analysis::EmbeddingPipeline>> = None;
     let mut llm_summarizer_arc: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>> = None;
-    let mut llm_refiner_provider: Option<
-        Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>,
-    > = None;
     let mut embedding_provider_out: Option<
         Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>,
     > = None;
@@ -110,7 +104,6 @@ pub(super) fn build_embedding_components(
                     > = Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
                         llm_api,
                     ));
-                    llm_refiner_provider = Some(analysis_provider.clone());
                     let pii_level_summ = config.privacy.pii_filter_level;
                     let pii_filter_summ: oneshim_analysis::PiiFilter =
                         Box::new(move |text: &str| {
@@ -144,7 +137,6 @@ pub(super) fn build_embedding_components(
     EmbeddingComponents {
         embedding_pipeline: embedding_pipeline_arc,
         llm_summarizer: llm_summarizer_arc,
-        llm_refiner_provider,
         embedding_provider: embedding_provider_out,
         vector_store: vector_store_out,
     }

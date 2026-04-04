@@ -58,6 +58,9 @@ flate2 = "1"
 zstd = "0.13"
 lz4_flex = "0.13"
 
+# ML inference (ONNX Runtime — already transitive via fastembed)
+ort = "2.0.0-rc.11"
+
 # 이미지 처리 (Edge Processing)
 image = "0.25"
 fast_image_resize = "6"

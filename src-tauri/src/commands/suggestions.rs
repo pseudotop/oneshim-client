@@ -116,9 +116,25 @@ pub async fn submit_suggestion_feedback(
                 .defer(&suggestion_id, None)
                 .await
                 .map_err(|e| e.to_string())?;
-            // Notify overlay that suggestions changed (defer keeps item in queue)
+            // Record deferred feedback for scoring.
+            // FeedbackSender::defer() does not lock queue — safe to acquire here.
+            let (suggestion_snapshot, count) = {
+                let queue = mgr.queue().lock().await;
+                let snapshot = queue
+                    .iter()
+                    .find(|s| s.suggestion_id == suggestion_id)
+                    .cloned();
+                let count = queue.len();
+                (snapshot, count)
+            }; // queue lock dropped
+            if let Some(suggestion) = suggestion_snapshot {
+                mgr.scorer().lock().await.record(
+                    suggestion.suggestion_type,
+                    suggestion.source,
+                    &oneshim_core::models::suggestion::FeedbackType::Deferred,
+                );
+            }
             if let Some(overlay) = state.overlay() {
-                let count = mgr.queue().lock().await.len();
                 overlay.emit_suggestions_changed(count);
             }
             return Ok(()); // defer keeps item in queue, no history transfer
@@ -137,6 +153,17 @@ pub async fn submit_suggestion_feedback(
     }; // queue lock dropped here
 
     if let Some(suggestion) = removed {
+        // Record feedback for relevance scoring
+        let feedback_type = match action.as_str() {
+            "accept" => oneshim_core::models::suggestion::FeedbackType::Accepted,
+            "reject" => oneshim_core::models::suggestion::FeedbackType::Rejected,
+            _ => unreachable!(), // defer returns early above
+        };
+        mgr.scorer().lock().await.record(
+            suggestion.suggestion_type.clone(),
+            suggestion.source.clone(),
+            &feedback_type,
+        );
         mgr.history().lock().await.add(suggestion);
     }
 

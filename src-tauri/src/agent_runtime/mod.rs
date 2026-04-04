@@ -70,6 +70,7 @@ pub(crate) struct AgentRuntimeBundle {
     /// so SSE-received suggestions are visible in IPC queries.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     /// SharedRegimeState passed through to the Scheduler so it shares the same
     /// instance as the SessionManager's context assembler.
     shared_regime: Option<Arc<SharedRegimeState>>,
@@ -100,6 +101,9 @@ impl AgentRuntimeBundle {
         if let Some(ref shared_queue) = self.shared_suggestion_queue {
             builder = builder.with_shared_suggestion_queue(shared_queue.clone());
         }
+        if let Some(ref shared_scorer) = self.shared_scorer {
+            builder = builder.with_shared_scorer(shared_scorer.clone());
+        }
         let support = builder.build().await?;
         let accessibility_extractor = support.accessibility_extractor.clone();
 
@@ -120,8 +124,8 @@ impl AgentRuntimeBundle {
         .with_notification_manager(support.notification_manager)
         .with_focus_analyzer(support.focus_analyzer);
 
-        if let Some(analyzer) = support.context_analyzer {
-            scheduler = scheduler.with_context_analyzer(analyzer);
+        if let Some(ref analyzer) = support.context_analyzer {
+            scheduler = scheduler.with_context_analyzer(analyzer.clone());
         }
 
         #[cfg(feature = "server")]
@@ -144,6 +148,81 @@ impl AgentRuntimeBundle {
             scheduler = scheduler
                 .with_vector_store(vs.clone())
                 .with_embedding_provider(ep.clone());
+        }
+
+        // --- Layer 2b: Vector index + adaptive search coordinator ---
+        let vector_index: Option<Arc<dyn oneshim_core::ports::vector_index::VectorIndex>> =
+            if embedding.vector_store.is_some() {
+                let conn = self.sqlite_storage_concrete.connection_arc();
+                Some(Arc::new(
+                    oneshim_storage::sqlite::vector_index_impl::SqliteVectorIndex::new(conn),
+                ))
+            } else {
+                None
+            };
+
+        let embedding_config = &self.config.analysis.embedding;
+        let search_coordinator: Option<Arc<oneshim_analysis::AdaptiveSearchCoordinator>> =
+            if let (Some(ref vs), Some(ref vi)) = (&embedding.vector_store, &vector_index) {
+                let sc = oneshim_analysis::SearchConfig {
+                    brute_force_threshold: 10_000,
+                    ivf_threshold: 100_000,
+                    hnsw_threshold: 5_000,
+                    oversample_factor: embedding_config.binary_oversample_factor,
+                    default_nprobe: embedding_config.ivf_nprobe,
+                    forced_strategy: match embedding_config.index_strategy.as_str() {
+                        "auto" => None,
+                        other => Some(other.to_string()),
+                    },
+                };
+                Some(Arc::new(oneshim_analysis::AdaptiveSearchCoordinator::new(
+                    vs.clone(),
+                    vi.clone(),
+                    sc,
+                )))
+            } else {
+                None
+            };
+
+        if let Some(ref vi) = vector_index {
+            scheduler = scheduler.with_vector_index(vi.clone());
+        }
+        if let Some(ref coord) = search_coordinator {
+            scheduler = scheduler.with_search_coordinator(coord.clone());
+        }
+
+        // Inject VectorRetriever into ContextAnalyzer (post-hoc, since analyzer
+        // is built before embedding components are available).
+        if let Some(ref analyzer) = support.context_analyzer {
+            if let (Some(ref ep), Some(ref vs)) =
+                (&embedding.embedding_provider, &embedding.vector_store)
+            {
+                let pii_level = self.config.privacy.pii_filter_level;
+                let pii_filter: oneshim_analysis::PiiFilter = Box::new(move |text: &str| {
+                    oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
+                });
+                let retriever = if let Some(ref coord) = search_coordinator {
+                    oneshim_analysis::VectorRetriever::with_coordinator(
+                        ep.clone(),
+                        vs.clone(),
+                        pii_filter,
+                        embedding_config.max_search_results,
+                        embedding_config.time_decay_hours,
+                        embedding_config.quantization_enabled,
+                        coord.clone(),
+                    )
+                } else {
+                    oneshim_analysis::VectorRetriever::new(
+                        ep.clone(),
+                        vs.clone(),
+                        pii_filter,
+                        embedding_config.max_search_results,
+                        embedding_config.time_decay_hours,
+                        embedding_config.quantization_enabled,
+                    )
+                };
+                analyzer.set_vector_retriever(retriever).await;
+            }
         }
 
         // --- Layer 3: Tiered-memory analysis pipeline ---
@@ -320,6 +399,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     /// so the SuggestionReceiver uses the same queue as SuggestionManager.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     /// SharedRegimeState — passed through to the Scheduler so it shares the same
     /// instance as the SessionManager's context assembler.
     shared_regime: Option<Arc<SharedRegimeState>>,
@@ -376,6 +456,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_mode: None,
             shared_capture_services: None,
             shared_suggestion_queue: None,
+            shared_scorer: None,
             shared_regime: None,
         }
     }
@@ -544,6 +625,15 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    #[allow(dead_code)] // used when feature = "server"
+    pub(crate) fn with_shared_scorer(
+        mut self,
+        scorer: Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>,
+    ) -> Self {
+        self.shared_scorer = Some(scorer);
+        self
+    }
+
     pub(crate) fn with_shared_regime(mut self, regime: Arc<SharedRegimeState>) -> Self {
         self.shared_regime = Some(regime);
         self
@@ -588,6 +678,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_mode: self.focus_mode,
             shared_capture_services: self.shared_capture_services,
             shared_suggestion_queue: self.shared_suggestion_queue,
+            shared_scorer: self.shared_scorer,
             shared_regime: self.shared_regime,
         }
     }

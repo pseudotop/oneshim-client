@@ -66,6 +66,7 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
     /// When set, the SuggestionReceiver will use this queue instead of creating its own.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     shared_capture_services: Option<Arc<SharedCaptureServices>>,
 }
 
@@ -82,6 +83,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             storage: None,
             app_handle: None,
             shared_suggestion_queue: None,
+            shared_scorer: None,
             shared_capture_services: None,
         }
     }
@@ -104,6 +106,14 @@ impl<'a> AgentSupportContextBuilder<'a> {
         queue: Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>,
     ) -> Self {
         self.shared_suggestion_queue = Some(queue);
+        self
+    }
+
+    pub(crate) fn with_shared_scorer(
+        mut self,
+        scorer: Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>,
+    ) -> Self {
+        self.shared_scorer = Some(scorer);
         self
     }
 
@@ -244,11 +254,17 @@ impl<'a> AgentSupportContextBuilder<'a> {
                         ),
                     ))
                 });
+                let scorer = self.shared_scorer.unwrap_or_else(|| {
+                    Arc::new(tokio::sync::Mutex::new(
+                        oneshim_suggestion::scorer::FeedbackScorer::new(),
+                    ))
+                });
                 Some(Arc::new(
                     oneshim_suggestion::receiver::SuggestionReceiver::new(
                         sse_client,
                         Some(notifier),
                         queue,
+                        scorer,
                     ),
                 ))
             } else {
