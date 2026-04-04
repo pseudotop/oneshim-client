@@ -5,6 +5,13 @@ import type { PendingConfirmationDto } from '../types'
 
 const AUTO_DENY_SECS = 30
 
+/** Strip Unicode control characters that could disguise the actual command. */
+function sanitizeArg(arg: string): string {
+  // C0 controls, DEL, C1 controls, zero-width chars, bidi overrides,
+  // line/paragraph separators, BOM
+  return arg.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202F\uFEFF]/g, '')
+}
+
 const auditBadgeColors: Record<string, string> = {
   Critical: 'bg-semantic-error/20 text-semantic-error',
   Elevated: 'bg-semantic-warning/20 text-semantic-warning',
@@ -56,6 +63,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
         const { invoke } = await import('@tauri-apps/api/core')
         await invoke('confirm_automation_command', {
           commandId: confirmation.command_id,
+          nonce: confirmation.nonce,
           approved,
         })
         onDismiss()
@@ -65,7 +73,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
         setSubmitting(false)
       }
     },
-    [confirmation.command_id, onDismiss, submitting],
+    [confirmation.command_id, confirmation.nonce, onDismiss, submitting],
   )
 
   const progressPct = (remaining / AUTO_DENY_SECS) * 100
@@ -96,7 +104,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
             <div className="flex items-start gap-2">
               <span className={cn(typography.caption, 'text-content-tertiary shrink-0 pt-0.5')}>Args</span>
               <code className="text-[11px] text-content-secondary break-all font-mono">
-                {confirmation.args.join(' ')}
+                {confirmation.args.map(sanitizeArg).join(' ')}
               </code>
             </div>
           )}

@@ -77,9 +77,14 @@ pub struct GuiExecutionResult {
 }
 
 /// Pending automation confirmation awaiting user approval/denial.
+///
+/// The `nonce` field is a random token generated when the confirmation is
+/// created. The frontend must echo this nonce back when submitting its
+/// decision so that only the intended UI frame can approve a command.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingConfirmation {
     pub command_id: String,
+    pub nonce: String,
     pub process_name: String,
     pub args: Vec<String>,
     pub audit_level: String,

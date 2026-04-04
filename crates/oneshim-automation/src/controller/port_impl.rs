@@ -128,9 +128,25 @@ impl AutomationPort for AutomationController {
         Ok(map.values().map(|(c, _)| c.clone()).collect())
     }
 
-    async fn submit_confirmation(&self, command_id: &str, approved: bool) -> Result<(), CoreError> {
+    async fn submit_confirmation(
+        &self,
+        command_id: &str,
+        nonce: &str,
+        approved: bool,
+    ) -> Result<(), CoreError> {
         let mut map = self.pending_confirmations.lock().await;
-        if let Some((_, sender)) = map.remove(command_id) {
+        if let Some((confirmation, sender)) = map.remove(command_id) {
+            // Verify the nonce matches to prevent unauthorised approval from
+            // arbitrary scripts running inside the WebView.
+            if confirmation.nonce != nonce {
+                // Re-insert so a legitimate caller can still respond.
+                map.insert(command_id.to_string(), (confirmation, sender));
+                return Err(CoreError::PermissionDenied(format!(
+                    "confirm automation command '{}': nonce mismatch",
+                    command_id
+                )));
+            }
+
             // Send the user's decision through the oneshot channel.
             // If the receiver has been dropped, that is not an error — the
             // command may have timed out already.

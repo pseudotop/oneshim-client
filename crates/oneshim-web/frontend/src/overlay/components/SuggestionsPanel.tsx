@@ -7,6 +7,12 @@ import { SuggestionItem } from './SuggestionItem'
 import { SuggestionStats } from './SuggestionStats'
 import { showToast } from './Toast'
 
+function errorMessage(e: unknown): string {
+  if (e instanceof Error && e.message.trim()) return e.message
+  if (typeof e === 'string' && e.trim()) return e
+  return 'Unknown error'
+}
+
 interface SuggestionsPanelProps {
   open: boolean
   suggestions: SuggestionViewDto[]
@@ -74,7 +80,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         await invoke('explain_suggestion_in_chat', { suggestionId: id })
         showToast('Opening in chat...', 'info')
       } catch (e) {
-        showToast(`${e}`, 'error')
+        showToast(errorMessage(e), 'error')
       }
       return
     }
@@ -91,7 +97,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     } catch (e) {
       console.warn('Feedback failed:', e)
       setError(null)
-      showToast(`Feedback failed: ${e}`, 'error')
+      showToast(`Feedback failed: ${errorMessage(e)}`, 'error')
     }
   }
 

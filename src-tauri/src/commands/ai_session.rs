@@ -128,6 +128,9 @@ pub async fn send_session_message(
     // Spawn a background task to drain the stream and emit events.
     let app_clone = app.clone();
     tokio::spawn(async move {
+        /// Safety limit: truncate response if accumulated content exceeds 1 MB.
+        const MAX_RESPONSE_BYTES: usize = 1_048_576;
+
         let mut assistant_content = String::new();
         let mut assistant_thinking: Option<String> = None;
         let mut assistant_tool_use: Option<String> = None;
@@ -166,6 +169,15 @@ pub async fn send_session_message(
                                 .await;
                         }
                         _ => {}
+                    }
+
+                    // Guard: stop accumulating if response exceeds safety limit
+                    if assistant_content.len() > MAX_RESPONSE_BYTES {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            "response exceeded 1 MB limit, truncating stream"
+                        );
+                        break;
                     }
 
                     if let Err(e) = app_clone.emit(&event_name, &outbound) {
