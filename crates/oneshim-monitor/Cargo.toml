@@ -28,3 +28,9 @@ windows-sys = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+criterion = { workspace = true }
+tokio = { workspace = true }
+
+[[bench]]
+name = "monitor_bench"
+harness = false
