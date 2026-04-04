@@ -193,7 +193,10 @@ impl Scheduler {
         let mut adaptive_trigger_state = self
             .adaptive_trigger
             .lock()
-            .expect("adaptive trigger lock")
+            .unwrap_or_else(|poisoned| {
+                warn!("adaptive trigger lock poisoned — recovering inner data");
+                poisoned.into_inner()
+            })
             .take();
 
         // Clone the LLM summarizer Arc (if present) before the adaptive trigger

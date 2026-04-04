@@ -595,6 +595,9 @@ fn collect_files_recursive(root: &Path, extensions: &HashSet<&str>, out: &mut Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    // ── extract_translation_keys (existing) ──────────────────────────
 
     #[test]
     fn extract_translation_keys_works() {
@@ -611,6 +614,8 @@ mod tests {
         assert!(keys.is_empty());
     }
 
+    // ── contains_human_text (existing + edge cases) ──────────────────
+
     #[test]
     fn contains_human_text_heuristic() {
         assert!(contains_human_text("Click to continue"));
@@ -618,6 +623,51 @@ mod tests {
         assert!(!contains_human_text("12345"));
         assert!(!contains_human_text("OK"));
     }
+
+    #[test]
+    fn contains_human_text_urls_rejected() {
+        assert!(!contains_human_text("http://example.com"));
+        assert!(!contains_human_text("https://example.com/path"));
+        assert!(!contains_human_text("/api/v1/users"));
+    }
+
+    #[test]
+    fn contains_human_text_short_strings_rejected() {
+        assert!(!contains_human_text(""));
+        assert!(!contains_human_text("X"));
+        assert!(!contains_human_text(" "));
+    }
+
+    #[test]
+    fn contains_human_text_short_uppercase_acronyms_rejected() {
+        assert!(!contains_human_text("ID"));
+        assert!(!contains_human_text("URL"));
+        assert!(!contains_human_text("HTTP"));
+    }
+
+    #[test]
+    fn contains_human_text_long_uppercase_accepted() {
+        // >4 chars uppercase is accepted
+        assert!(contains_human_text("HELLO"));
+        assert!(contains_human_text("SETTINGS"));
+    }
+
+    #[test]
+    fn contains_human_text_whitespace_trimmed() {
+        assert!(!contains_human_text("  "));
+        assert!(!contains_human_text("  1  "));
+        assert!(contains_human_text("  Hello World  "));
+    }
+
+    #[test]
+    fn contains_human_text_mixed_content() {
+        assert!(contains_human_text("Item #42"));
+        assert!(contains_human_text("v2.0 release"));
+        assert!(!contains_human_text("123-456"));
+        assert!(!contains_human_text("###"));
+    }
+
+    // ── flatten_json_keys (existing) ─────────────────────────────────
 
     #[test]
     fn flatten_json_keys_works() {
@@ -635,5 +685,360 @@ mod tests {
         assert!(keys.contains("common.save"));
         assert!(keys.contains("common.cancel"));
         assert!(keys.contains("dashboard.title"));
+    }
+
+    // ── parse_mode ───────────────────────────────────────────────────
+
+    #[test]
+    fn parse_mode_non_english() {
+        let args = vec!["non-english".to_string()];
+        assert_eq!(parse_mode(&args), Mode::NonEnglish);
+    }
+
+    #[test]
+    fn parse_mode_i18n() {
+        let args = vec!["i18n".to_string()];
+        assert_eq!(parse_mode(&args), Mode::I18n);
+    }
+
+    #[test]
+    fn parse_mode_explicit_all() {
+        let args = vec!["all".to_string()];
+        assert_eq!(parse_mode(&args), Mode::All);
+    }
+
+    #[test]
+    fn parse_mode_empty_args_defaults_to_all() {
+        let args: Vec<String> = vec![];
+        assert_eq!(parse_mode(&args), Mode::All);
+    }
+
+    #[test]
+    fn parse_mode_unknown_first_arg_defaults_to_all() {
+        let args = vec!["unknown-mode".to_string()];
+        assert_eq!(parse_mode(&args), Mode::All);
+    }
+
+    #[test]
+    fn parse_mode_flag_as_first_arg_defaults_to_all() {
+        let args = vec!["--strict-i18n".to_string()];
+        assert_eq!(parse_mode(&args), Mode::All);
+    }
+
+    #[test]
+    fn parse_mode_with_trailing_flags() {
+        let args = vec![
+            "non-english".to_string(),
+            "--strict-i18n".to_string(),
+            "--path".to_string(),
+            "src".to_string(),
+        ];
+        assert_eq!(parse_mode(&args), Mode::NonEnglish);
+    }
+
+    // ── detect_hardcoded_ui_literals ─────────────────────────────────
+
+    #[test]
+    fn detect_hardcoded_placeholder_attribute() {
+        let line = r#"<Input placeholder="Enter your name" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("placeholder"));
+    }
+
+    #[test]
+    fn detect_hardcoded_title_attribute() {
+        let line = r#"<div title="Click to expand details">"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("title"));
+    }
+
+    #[test]
+    fn detect_hardcoded_aria_label() {
+        let line = r#"<button aria-label="Close dialog">"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("aria-label"));
+    }
+
+    #[test]
+    fn detect_hardcoded_label_attribute() {
+        let line = r#"<Field label="Username" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("label"));
+    }
+
+    #[test]
+    fn detect_hardcoded_helper_text() {
+        let line = r#"<TextField helperText="Must be at least 8 characters" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("helperText"));
+    }
+
+    #[test]
+    fn detect_hardcoded_alt_attribute() {
+        let line = r#"<img alt="User avatar" src="pic.png" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("alt"));
+    }
+
+    #[test]
+    fn detect_hardcoded_tooltip_attribute() {
+        let line = r#"<Icon tooltip="Show more options" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("tooltip"));
+    }
+
+    #[test]
+    fn detect_hardcoded_multiple_attrs_on_same_line() {
+        let line = r#"<Input placeholder="Enter name" title="Name field" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 2);
+    }
+
+    #[test]
+    fn detect_hardcoded_skips_non_human_values() {
+        // URL in placeholder — not human text
+        let line = r#"<img alt="/icons/logo.svg" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detect_hardcoded_skips_short_acronym_values() {
+        let line = r#"<span title="ID" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detect_hardcoded_text_node_between_tags() {
+        let line = r#"<span>Submit form</span>"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("text node"));
+    }
+
+    #[test]
+    fn detect_hardcoded_text_node_skips_jsx_expression() {
+        // {variable} between tags should not be flagged
+        let line = r#"<span>{userName}</span>"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detect_hardcoded_text_node_skips_empty_content() {
+        let line = r#"<span></span>"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detect_hardcoded_text_node_skips_numeric_content() {
+        let line = r#"<span>42</span>"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detect_hardcoded_no_false_positive_on_data_attr() {
+        // data-placeholder is not in UI_ATTRS, should not trigger
+        let line = r#"<div data-placeholder="internal value" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detect_hardcoded_attr_preceded_by_alnum_skipped() {
+        // "myplaceholder=" should not match the "placeholder=" pattern
+        // because 'y' is alphanumeric and precedes it
+        let line = r#"<Input myplaceholder="Enter name" />"#;
+        let hits = detect_hardcoded_ui_literals(line);
+        assert!(hits.is_empty());
+    }
+
+    // ── load_locale_keys ─────────────────────────────────────────────
+
+    #[test]
+    fn load_locale_keys_valid_flat_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("en.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(f, r#"{{"save":"Save","cancel":"Cancel"}}"#).unwrap();
+
+        let keys = load_locale_keys(&path).unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains("save"));
+        assert!(keys.contains("cancel"));
+    }
+
+    #[test]
+    fn load_locale_keys_valid_nested_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("en.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(
+            f,
+            r#"{{"common":{{"save":"Save","cancel":"Cancel"}},"dashboard":{{"title":"Dashboard"}}}}"#
+        )
+        .unwrap();
+
+        let keys = load_locale_keys(&path).unwrap();
+        assert_eq!(keys.len(), 3);
+        assert!(keys.contains("common.save"));
+        assert!(keys.contains("common.cancel"));
+        assert!(keys.contains("dashboard.title"));
+    }
+
+    #[test]
+    fn load_locale_keys_deeply_nested_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("en.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(f, r#"{{"a":{{"b":{{"c":"deep"}}}}}}"#).unwrap();
+
+        let keys = load_locale_keys(&path).unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains("a.b.c"));
+    }
+
+    #[test]
+    fn load_locale_keys_file_not_found() {
+        let result = load_locale_keys(Path::new("/tmp/nonexistent-locale-file.json"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Failed to read locale file"));
+    }
+
+    #[test]
+    fn load_locale_keys_invalid_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(f, "{{not valid json}}").unwrap();
+
+        let result = load_locale_keys(&path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Failed to parse locale JSON"));
+    }
+
+    #[test]
+    fn load_locale_keys_empty_object() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(f, "{{}}").unwrap();
+
+        let keys = load_locale_keys(&path).unwrap();
+        assert!(keys.is_empty());
+    }
+
+    // ── collect_option_values ────────────────────────────────────────
+
+    #[test]
+    fn collect_option_values_single() {
+        let args: Vec<String> = vec!["--path", "src"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let vals = collect_option_values(&args, "--path");
+        assert_eq!(vals, vec!["src"]);
+    }
+
+    #[test]
+    fn collect_option_values_multiple() {
+        let args: Vec<String> = vec!["--ignore", "test", "--ignore", "dist"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let vals = collect_option_values(&args, "--ignore");
+        assert_eq!(vals, vec!["test", "dist"]);
+    }
+
+    #[test]
+    fn collect_option_values_none() {
+        let args: Vec<String> = vec!["--strict-i18n"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let vals = collect_option_values(&args, "--path");
+        assert!(vals.is_empty());
+    }
+
+    #[test]
+    fn collect_option_values_dangling_flag() {
+        // --path at end without a value
+        let args: Vec<String> = vec!["--path"].into_iter().map(String::from).collect();
+        let vals = collect_option_values(&args, "--path");
+        assert!(vals.is_empty());
+    }
+
+    // ── first_non_ascii ──────────────────────────────────────────────
+
+    #[test]
+    fn first_non_ascii_all_ascii() {
+        assert!(first_non_ascii("hello world 123!").is_none());
+    }
+
+    #[test]
+    fn first_non_ascii_cjk_character() {
+        let result = first_non_ascii("let x = '안녕';");
+        assert!(result.is_some());
+        let (_, ch) = result.unwrap();
+        assert_eq!(ch, '안');
+    }
+
+    #[test]
+    fn first_non_ascii_emoji() {
+        let result = first_non_ascii("// TODO 🚀");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn first_non_ascii_empty_string() {
+        assert!(first_non_ascii("").is_none());
+    }
+
+    // ── is_locale_file ───────────────────────────────────────────────
+
+    #[test]
+    fn is_locale_file_matches() {
+        assert!(is_locale_file(Path::new(
+            "crates/oneshim-web/frontend/src/i18n/locales/en.json"
+        )));
+    }
+
+    #[test]
+    fn is_locale_file_no_match() {
+        assert!(!is_locale_file(Path::new("crates/oneshim-core/src/lib.rs")));
+    }
+
+    // ── is_ignored ───────────────────────────────────────────────────
+
+    #[test]
+    fn is_ignored_matches() {
+        let ignores = vec!["node_modules".to_string(), "dist".to_string()];
+        assert!(is_ignored(
+            Path::new("frontend/node_modules/react/index.js"),
+            &ignores
+        ));
+    }
+
+    #[test]
+    fn is_ignored_no_match() {
+        let ignores = vec!["node_modules".to_string()];
+        assert!(!is_ignored(Path::new("src/main.rs"), &ignores));
+    }
+
+    #[test]
+    fn is_ignored_empty_list() {
+        assert!(!is_ignored(Path::new("anything.rs"), &[]));
     }
 }
