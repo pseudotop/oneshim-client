@@ -147,8 +147,11 @@ impl AppRuntimeLaunchBuilder {
                 _,
             > = {
                 use oneshim_network::grpc::{GrpcApiAdapter, GrpcConfig, UnifiedClient};
-                let grpc_config =
-                    GrpcConfig::from_core_with_rest(&config.grpc, &config.server.base_url);
+                let grpc_config = GrpcConfig::from_core_with_rest_tls(
+                    &config.grpc,
+                    &config.server.base_url,
+                    &config.tls,
+                );
                 match (
                     UnifiedClient::new(grpc_config, token_manager.clone()),
                     HttpApiClient::new_with_tls(

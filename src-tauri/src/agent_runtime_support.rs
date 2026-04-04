@@ -328,7 +328,8 @@ fn build_server_transports(config: &AppConfig, session_id: &str) -> Result<Serve
 
     #[cfg(feature = "grpc")]
     let (api_client, sse_client): (ApiClientPort, SseClientPort) = {
-        let grpc_config = GrpcConfig::from_core_with_rest(&config.grpc, &config.server.base_url);
+        let grpc_config =
+            GrpcConfig::from_core_with_rest_tls(&config.grpc, &config.server.base_url, &config.tls);
         let unified = Arc::new(UnifiedClient::new(grpc_config, token_manager.clone())?);
         let http_fallback = HttpApiClient::new_with_tls(
             &config.server.base_url,

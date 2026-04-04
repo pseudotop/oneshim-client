@@ -2,6 +2,7 @@ use std::fs;
 use std::time::Duration;
 
 use oneshim_core::config::GrpcConfig as CoreGrpcConfig;
+use oneshim_core::config::TlsConfig;
 use serde::{Deserialize, Serialize};
 
 use crate::error::NetworkError;
@@ -47,6 +48,12 @@ pub struct GrpcConfig {
 
     #[serde(default)]
     pub tls_client_key_path: Option<String>,
+
+    /// REST fallback TLS config — applied to the internal HttpApiClient.
+    /// When `Some`, credentials are sent with TLS enforcement (HTTPS-only).
+    /// When `None`, the non-TLS HttpApiClient constructor is used (test/dev only).
+    #[serde(default)]
+    pub rest_tls: Option<TlsConfig>,
 }
 
 impl Default for GrpcConfig {
@@ -65,6 +72,7 @@ impl Default for GrpcConfig {
             tls_ca_cert_path: None,
             tls_client_cert_path: None,
             tls_client_key_path: None,
+            rest_tls: None,
         }
     }
 }
@@ -85,6 +93,7 @@ impl From<CoreGrpcConfig> for GrpcConfig {
             tls_ca_cert_path: core.tls_ca_cert_path,
             tls_client_cert_path: core.tls_client_cert_path,
             tls_client_key_path: core.tls_client_key_path,
+            rest_tls: None,
         }
     }
 }
@@ -105,7 +114,23 @@ impl GrpcConfig {
             tls_ca_cert_path: core.tls_ca_cert_path.clone(),
             tls_client_cert_path: core.tls_client_cert_path.clone(),
             tls_client_key_path: core.tls_client_key_path.clone(),
+            rest_tls: None,
         }
+    }
+
+    /// Build from core config with REST endpoint and TLS configuration.
+    ///
+    /// The `rest_tls` config is applied to the internal HTTP client used for
+    /// REST fallback paths (login, feedback), ensuring credentials are sent
+    /// with TLS enforcement when the server requires HTTPS.
+    pub fn from_core_with_rest_tls(
+        core: &CoreGrpcConfig,
+        rest_endpoint: &str,
+        rest_tls: &TlsConfig,
+    ) -> Self {
+        let mut config = Self::from_core_with_rest(core, rest_endpoint);
+        config.rest_tls = Some(rest_tls.clone());
+        config
     }
 
     pub fn validate_transport_security(&self) -> Result<(), NetworkError> {
@@ -404,5 +429,36 @@ mod tests {
 
         let result = config.validate_transport_security();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_default_rest_tls_is_none() {
+        let config = GrpcConfig::default();
+        assert!(config.rest_tls.is_none());
+    }
+
+    #[test]
+    fn test_from_core_with_rest_tls() {
+        let core = CoreGrpcConfig::default();
+        let tls = TlsConfig {
+            enabled: true,
+            allow_self_signed: false,
+        };
+        let config = GrpcConfig::from_core_with_rest_tls(&core, "https://api.example.com", &tls);
+
+        assert_eq!(config.rest_endpoint, "https://api.example.com");
+        assert!(config.rest_tls.is_some());
+        let rest_tls = config.rest_tls.unwrap();
+        assert!(rest_tls.enabled);
+        assert!(!rest_tls.allow_self_signed);
+    }
+
+    #[test]
+    fn test_from_core_with_rest_has_no_tls() {
+        let core = CoreGrpcConfig::default();
+        let config = GrpcConfig::from_core_with_rest(&core, "http://localhost:8000");
+
+        assert_eq!(config.rest_endpoint, "http://localhost:8000");
+        assert!(config.rest_tls.is_none());
     }
 }
