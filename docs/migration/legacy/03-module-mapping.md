@@ -44,7 +44,7 @@
 | `monitoring/macos_monitor.py` (AppleScript) | `oneshim-monitor/macos.rs` (CoreGraphics FFI) |
 | `monitoring/windows_monitor.py` (Win32) | `oneshim-monitor/windows.rs` (windows-rs) |
 | `communication/api_service_impl.py` (aiohttp) | `oneshim-network/http_client.rs` (reqwest) |
-| `communication/websocket_service.py` | `oneshim-network/ws_client.rs` (tokio-tungstenite) |
+| `communication/websocket_service.py` | **Removed** — replaced by SSE + gRPC streaming |
 | `storage/sqlite_storage.py` (sqlite3) | `oneshim-storage/sqlite.rs` (rusqlite) |
 | `compression/adaptive_compressor.py` | `oneshim-network/compression.rs` |
 | `network/batch_uploader.py` | `oneshim-network/batch_uploader.rs` |

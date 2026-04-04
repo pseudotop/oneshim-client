@@ -426,6 +426,7 @@ impl Scheduler {
                                                 interaction_type: "Click",
                                                 bbox_json: None,
                                                 app_name: &app_name,
+                                                type_confidence: 1.0,
                                             };
 
                                             if let Err(e) = sqlite1.save_gui_interaction(&input) {

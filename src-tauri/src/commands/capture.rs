@@ -30,6 +30,8 @@ pub struct GuiElementDto {
     pub role: String,
     pub label: Option<String>,
     pub bounds: Option<(i32, i32, u32, u32)>,
+    /// Classification confidence for the inferred element type (0.0-1.0).
+    pub type_confidence: f32,
 }
 
 #[derive(Serialize)]
@@ -246,11 +248,13 @@ pub async fn analyze_current_scene(
                     width: r.width,
                     height: r.height,
                 };
-                let element_type = detector.infer_element_type(&r.text, &bbox);
+                let (element_type, type_confidence) =
+                    detector.infer_element_type_scored(&r.text, &bbox);
                 GuiElementDto {
                     role: format!("{element_type:?}"),
                     label: Some(r.text.clone()),
                     bounds: Some((r.x as i32, r.y as i32, r.width, r.height)),
+                    type_confidence,
                 }
             })
             .collect()

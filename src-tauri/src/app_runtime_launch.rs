@@ -131,30 +131,59 @@ impl AppRuntimeLaunchBuilder {
         let suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>> = {
             use oneshim_network::auth::TokenManager;
             use oneshim_network::http_client::HttpApiClient;
-            match (
+
+            let token_manager = Arc::new(
                 TokenManager::new_with_tls(
                     &config.server.base_url,
                     &config.tls,
                     Some(config.request_timeout()),
-                ),
+                )
+                .unwrap_or_else(|_| TokenManager::new(&config.server.base_url)),
+            );
+
+            #[cfg(feature = "grpc")]
+            let api_result: Result<
+                Arc<dyn oneshim_core::ports::api_client::ApiClient>,
+                _,
+            > = {
+                use oneshim_network::grpc::{GrpcApiAdapter, GrpcConfig, UnifiedClient};
+                let grpc_config =
+                    GrpcConfig::from_core_with_rest(&config.grpc, &config.server.base_url);
+                match (
+                    UnifiedClient::new(grpc_config, token_manager.clone()),
+                    HttpApiClient::new_with_tls(
+                        &config.server.base_url,
+                        token_manager.clone(),
+                        config.request_timeout(),
+                        &config.tls,
+                    ),
+                ) {
+                    (Ok(unified), Ok(http_fallback)) => Ok(Arc::new(GrpcApiAdapter::new(
+                        Arc::new(unified),
+                        http_fallback,
+                    ))),
+                    (Err(e), _) => Err(anyhow::anyhow!("UnifiedClient init failed: {e}")),
+                    (_, Err(e)) => Err(anyhow::anyhow!("HttpApiClient init failed: {e}")),
+                }
+            };
+
+            #[cfg(not(feature = "grpc"))]
+            let api_result: Result<
+                Arc<dyn oneshim_core::ports::api_client::ApiClient>,
+                _,
+            > = {
                 HttpApiClient::new_with_tls(
                     &config.server.base_url,
-                    // TokenManager is needed, create a fresh one
-                    Arc::new(
-                        TokenManager::new_with_tls(
-                            &config.server.base_url,
-                            &config.tls,
-                            Some(config.request_timeout()),
-                        )
-                        .unwrap_or_else(|_| TokenManager::new(&config.server.base_url)),
-                    ),
+                    token_manager,
                     config.request_timeout(),
                     &config.tls,
-                ),
-            ) {
-                (_, Ok(api_client)) => {
-                    let api: Arc<dyn oneshim_core::ports::api_client::ApiClient> =
-                        Arc::new(api_client);
+                )
+                .map(|c| Arc::new(c) as Arc<dyn oneshim_core::ports::api_client::ApiClient>)
+                .map_err(|e| anyhow::anyhow!("{e}"))
+            };
+
+            match api_result {
+                Ok(api) => {
                     let history = Arc::new(tokio::sync::Mutex::new(
                         oneshim_suggestion::history::SuggestionHistory::new(100),
                     ));
@@ -166,8 +195,8 @@ impl AppRuntimeLaunchBuilder {
                         shared_scorer.clone(),
                     )))
                 }
-                _ => {
-                    tracing::warn!("SuggestionManager init skipped: server transport unavailable");
+                Err(e) => {
+                    tracing::warn!("SuggestionManager init skipped: {e}");
                     None
                 }
             }

@@ -84,7 +84,6 @@
 
 ```
 [ ] oneshim-ui/views/settings.rs: 설정 화면
-[ ] oneshim-network/ws_client.rs: WebSocket (대화 모드)
 [ ] oneshim-suggestion/history.rs: 제안 이력 로컬 캐시
 [ ] oneshim-app/lifecycle.rs: 시작/종료, 리소스 정리
 [ ] oneshim-app/event_bus.rs: 내부 이벤트 (tokio::broadcast)

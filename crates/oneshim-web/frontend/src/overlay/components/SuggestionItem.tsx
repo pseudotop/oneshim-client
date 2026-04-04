@@ -64,7 +64,9 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
         >
           Later
         </button>
-        <span className="ml-auto text-[10px] text-content-tertiary">{item.source}</span>
+        <span className="ml-auto text-[10px] text-content-tertiary">
+          {Math.round(item.confidence_score * 100)}% &middot; {item.source}
+        </span>
       </div>
     </li>
   )

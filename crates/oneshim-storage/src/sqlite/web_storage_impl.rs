@@ -683,8 +683,8 @@ impl WebStorage for SqliteStorage {
             .lock()
             .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
         conn.execute(
-            "INSERT INTO gui_interactions (event_id, segment_id, timestamp, element_text, element_type, interaction_type, bbox_json, app_name)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO gui_interactions (event_id, segment_id, timestamp, element_text, element_type, interaction_type, bbox_json, app_name, type_confidence)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 input.event_id,
                 input.segment_id,
@@ -694,6 +694,7 @@ impl WebStorage for SqliteStorage {
                 input.interaction_type,
                 input.bbox_json,
                 input.app_name,
+                input.type_confidence,
             ],
         )
         .map_err(|e| CoreError::Internal(format!("Failed to save GUI interaction: {e}")))?;
@@ -711,7 +712,7 @@ impl WebStorage for SqliteStorage {
         let mut stmt = conn
             .prepare(
                 "SELECT id, event_id, segment_id, timestamp, element_text, element_type,
-                        interaction_type, bbox_json, app_name, created_at
+                        interaction_type, bbox_json, app_name, created_at, type_confidence
                  FROM gui_interactions
                  WHERE segment_id = ?1
                  ORDER BY timestamp ASC",
@@ -733,6 +734,7 @@ impl WebStorage for SqliteStorage {
                     bbox_json: row.get(7)?,
                     app_name: row.get(8)?,
                     created_at: row.get(9)?,
+                    type_confidence: row.get::<_, Option<f64>>(10)?.unwrap_or(1.0) as f32,
                 })
             })
             .map_err(|e| CoreError::Internal(format!("Failed to query GUI interactions: {e}")))?

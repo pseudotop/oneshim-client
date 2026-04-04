@@ -5,6 +5,7 @@
 //! - `mod.rs` — orchestrator (`run_migrations`, `get_version`, version constant)
 //! - `v01_v08.rs` — foundation tables (events, frames, metrics, sessions, tags, edge intelligence)
 //! - `v09_v18.rs` — tiered memory, vectors, sync, IVF index, coaching engine, trigram FTS, app_meta
+//! - `v19_v21.rs` — app_meta, session audit log, AI sessions, gui_interactions type_confidence
 
 #[cfg(test)]
 mod tests;
@@ -15,7 +16,7 @@ mod v19_v21;
 use rusqlite::Connection;
 use tracing::{error, info, warn};
 
-pub(crate) const CURRENT_VERSION: u32 = 21;
+pub(crate) const CURRENT_VERSION: u32 = 22;
 
 /// Back up the database file before running schema migrations.
 fn backup_if_needed(conn: &Connection, current_version: u32) -> Option<std::path::PathBuf> {
@@ -152,6 +153,9 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
     if current < 21 {
         run_migration_step(conn, 21, v19_v21::migrate_v21)?;
+    }
+    if current < 22 {
+        run_migration_step(conn, 22, v19_v21::migrate_v22)?;
     }
 
     Ok(())

@@ -61,6 +61,7 @@ export interface SuggestionViewDto {
   priority: string
   category: string | null
   source: string
+  confidence_score: number
   created_at: string
   is_read: boolean
 }

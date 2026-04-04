@@ -160,7 +160,6 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `sse_client.rs`: `SseStreamClient` — SSE stream + auto-reconnect (exponential backoff 1s→30s)
 - `compression.rs`: `AdaptiveCompressor` — auto selection of gzip/zstd/lz4
 - `batch_uploader.rs`: `BatchUploader` — Lock-free SegQueue + dynamic batch size + retry
-- `ws_client.rs`: WebSocket client (tokio-tungstenite)
 - `ai_llm_client/`: `RemoteLlmProvider` — directory module (ADR-003)
   - `mod.rs`: `RemoteLlmProvider` struct + `LlmProvider` impl + re-exports
   - `request.rs`: request building helpers per provider type
