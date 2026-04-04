@@ -211,6 +211,23 @@ impl SuggestionRuntimeState {
     }
 }
 
+/// Feature-scoped Tauri managed state for cross-device sync IPC commands.
+#[derive(Default)]
+pub struct SyncRuntimeState {
+    engine: Option<Arc<crate::sync_engine::SyncEngine>>,
+}
+
+#[allow(dead_code)] // wired when sync feature enabled in agent_runtime
+impl SyncRuntimeState {
+    pub(crate) fn new(engine: Option<Arc<crate::sync_engine::SyncEngine>>) -> Self {
+        Self { engine }
+    }
+
+    pub(crate) fn engine(&self) -> Option<Arc<crate::sync_engine::SyncEngine>> {
+        self.engine.clone()
+    }
+}
+
 /// Feature-scoped Tauri managed state for detection overlay IPC and shortcuts.
 pub struct DetectionRuntimeState {
     active: Arc<AtomicBool>,
@@ -350,6 +367,7 @@ pub(crate) struct ManagedStateRegistration {
     pub(crate) config_runtime_state: ConfigRuntimeState,
     pub(crate) suggestion_runtime_state: SuggestionRuntimeState,
     pub(crate) detection_runtime_state: DetectionRuntimeState,
+    pub(crate) sync_runtime_state: SyncRuntimeState,
     pub(crate) oauth_state: OAuthState,
     pub(crate) oauth_coordinator_state: OAuthCoordinatorState,
     pub(crate) secret_backend_state: SecretBackendState,
@@ -365,6 +383,7 @@ pub(crate) struct ManagedStateBuilder {
     config_runtime_state: ConfigRuntimeState,
     suggestion_runtime_state: SuggestionRuntimeState,
     detection_runtime_state: DetectionRuntimeState,
+    sync_runtime_state: SyncRuntimeState,
     oauth_state: OAuthState,
     oauth_coordinator_state: OAuthCoordinatorState,
     capability_profile: ManagedStateCapabilityProfile,
@@ -383,6 +402,7 @@ impl ManagedStateBuilder {
             config_runtime_state,
             suggestion_runtime_state: SuggestionRuntimeState::default(),
             detection_runtime_state: DetectionRuntimeState::default(),
+            sync_runtime_state: SyncRuntimeState::default(),
             oauth_state: OAuthState(None),
             oauth_coordinator_state: OAuthCoordinatorState(None),
             capability_profile: ManagedStateCapabilityProfile::default(),
@@ -469,6 +489,7 @@ impl ManagedStateBuilder {
             config_runtime_state: self.config_runtime_state,
             suggestion_runtime_state: self.suggestion_runtime_state,
             detection_runtime_state: self.detection_runtime_state,
+            sync_runtime_state: self.sync_runtime_state,
             oauth_state: self.oauth_state,
             oauth_coordinator_state: self.oauth_coordinator_state,
             secret_backend_state,
@@ -487,6 +508,7 @@ impl ManagedStateRegistration {
         app.manage(self.config_runtime_state);
         app.manage(self.suggestion_runtime_state);
         app.manage(self.detection_runtime_state);
+        app.manage(self.sync_runtime_state);
         app.manage(self.oauth_state);
         app.manage(self.oauth_coordinator_state);
         app.manage(self.secret_backend_state);
