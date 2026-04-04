@@ -72,9 +72,10 @@ impl CoachingEngine {
             }
         }
 
-        // 4. Regime overstay (duration > 1.2x average)
+        // 4. Regime overstay (duration > tunable ratio × average)
+        let overstay_pct = self.tunable_params.read().await.overstay_percent();
         if avg_regime_duration_secs > 0
-            && regime_duration_secs > avg_regime_duration_secs * 120 / 100
+            && regime_duration_secs > avg_regime_duration_secs * overstay_pct / 100
         {
             return Some(TriggerType::RegimeOverstay {
                 regime_label: regime_label.to_string(),
@@ -147,10 +148,10 @@ impl CoachingEngine {
             let dwell_secs = (Utc::now() - enter_time).num_seconds().max(0) as f64;
             let prev_id = self.current_regime_id.read().await;
             if let Some(ref label) = *prev_id {
+                let alpha = self.tunable_params.read().await.ema_alpha as f64;
                 let mut avgs = self.regime_avg_duration.write().await;
                 let ema = avgs.entry(label.clone()).or_insert(dwell_secs);
-                // EMA alpha 0.2: responsive but stable
-                *ema = *ema * 0.8 + dwell_secs * 0.2;
+                *ema = *ema * (1.0 - alpha) + dwell_secs * alpha;
             }
         }
         drop(entered);

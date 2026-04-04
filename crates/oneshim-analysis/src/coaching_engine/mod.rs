@@ -1,5 +1,6 @@
 mod guards;
 mod triggers;
+pub mod tunable_params;
 
 use chrono::{DateTime, Utc};
 use oneshim_core::config::CoachingConfig;
@@ -12,6 +13,8 @@ use tracing::debug;
 use crate::coaching_template::CoachingTemplateRegistry;
 use crate::feedback_tracker::FeedbackTracker;
 use crate::regime_goal_tracker::RegimeGoalTracker;
+
+pub use tunable_params::TunableParams;
 
 /// Central coaching orchestrator.
 ///
@@ -48,6 +51,9 @@ pub struct CoachingEngine {
 
     /// Last app name passed to evaluate() — used for implicit feedback.
     pub(super) last_app_name: RwLock<String>,
+
+    /// Auto-tunable parameters — adjusted by feedback, reset on restart.
+    pub(super) tunable_params: RwLock<TunableParams>,
 }
 
 impl CoachingEngine {
@@ -70,6 +76,7 @@ impl CoachingEngine {
             context_switch_count: RwLock::new(0),
             context_switch_date: RwLock::new(chrono::Utc::now().date_naive()),
             last_app_name: RwLock::new(String::new()),
+            tunable_params: RwLock::new(TunableParams::default()),
         }
     }
 

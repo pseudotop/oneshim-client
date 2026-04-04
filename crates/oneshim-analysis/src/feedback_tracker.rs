@@ -2,17 +2,7 @@ use chrono::{DateTime, Utc};
 use oneshim_core::models::coaching::FeedbackSignal;
 use std::collections::HashMap;
 
-/// Weight applied to explicit feedback signals (thumbs-up / thumbs-down).
-const EXPLICIT_WEIGHT: f32 = 3.0;
-
-/// Implicit evaluation window: 5 minutes (300 seconds).
-const IMPLICIT_WINDOW_SECS: i64 = 300;
-
-/// Minimum effectiveness ratio below which coaching frequency is reduced.
-const LOW_EFFECTIVENESS_THRESHOLD: f32 = 0.2;
-
-/// Minimum total shown count before effectiveness gating kicks in.
-const MIN_SHOWN_FOR_GATING: u32 = 5;
+use crate::coaching_engine::tunable_params::TunableParams;
 
 /// Aggregated effectiveness score for a (profile, trigger) pair.
 #[derive(Debug, Clone)]
@@ -65,8 +55,10 @@ pub struct FeedbackTracker {
     scores: HashMap<(String, String), EffectivenessScore>,
     /// message_id -> pending implicit evaluation.
     pending: HashMap<String, PendingEvaluation>,
-    /// Counter for 1-in-3 gating pattern (deterministic round-robin).
+    /// Counter for gating pattern (deterministic round-robin).
     gate_counter: u32,
+    /// Auto-tunable parameters — adjusted by feedback.
+    pub params: TunableParams,
 }
 
 impl FeedbackTracker {
@@ -75,6 +67,7 @@ impl FeedbackTracker {
             scores: HashMap::new(),
             pending: HashMap::new(),
             gate_counter: 0,
+            params: TunableParams::default(),
         }
     }
 
@@ -108,8 +101,9 @@ impl FeedbackTracker {
     }
 
     /// Record explicit feedback (thumbs-up or thumbs-down).
-    /// Removes from pending and updates score with weight 3.0.
+    /// Removes from pending and updates score with tunable weight.
     pub fn record_explicit(&mut self, message_id: &str, positive: bool) {
+        let weight = self.params.explicit_weight;
         if let Some(eval) = self.pending.remove(message_id) {
             let score = self
                 .scores
@@ -117,10 +111,12 @@ impl FeedbackTracker {
                 .or_insert_with(EffectivenessScore::new);
 
             if positive {
-                score.positive_signals += EXPLICIT_WEIGHT;
+                score.positive_signals += weight;
             } else {
-                score.negative_signals += EXPLICIT_WEIGHT;
+                score.negative_signals += weight;
             }
+
+            self.params.adjust_on_feedback(positive);
         }
     }
 
@@ -133,10 +129,11 @@ impl FeedbackTracker {
         now: DateTime<Utc>,
     ) {
         // Collect message IDs ready for evaluation
+        let window = self.params.implicit_window_secs;
         let ready_ids: Vec<String> = self
             .pending
             .iter()
-            .filter(|(_, eval)| (now - eval.shown_at).num_seconds() >= IMPLICIT_WINDOW_SECS)
+            .filter(|(_, eval)| (now - eval.shown_at).num_seconds() >= window)
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -184,15 +181,15 @@ impl FeedbackTracker {
             None => return true,
         };
 
-        if score.total_shown < MIN_SHOWN_FOR_GATING {
+        if score.total_shown < self.params.min_shown_for_gating {
             return true;
         }
 
-        #[allow(clippy::manual_is_multiple_of)] // MSRV 1.77.1: is_multiple_of() requires 1.83+
-        if score.ratio() < LOW_EFFECTIVENESS_THRESHOLD {
+        if score.ratio() < self.params.low_effectiveness_threshold {
             self.gate_counter += 1;
-            // Allow 1-in-3
-            return self.gate_counter % 3 == 0;
+            // gate_allow_ratio determines pass frequency (e.g., 0.33 → ~1-in-3)
+            let denominator = (1.0 / self.params.gate_allow_ratio).round() as u32;
+            return denominator > 0 && self.gate_counter % denominator == 0;
         }
 
         true
@@ -262,7 +259,10 @@ mod tests {
         let score = tracker
             .get_effectiveness("FocusGuard", "RegimeTransition")
             .unwrap();
-        assert_eq!(score.positive_signals, EXPLICIT_WEIGHT);
+        assert_eq!(
+            score.positive_signals,
+            TunableParams::default().explicit_weight
+        );
         assert_eq!(score.negative_signals, 0.0);
     }
 
@@ -276,7 +276,10 @@ mod tests {
             .get_effectiveness("TimeAware", "RegimeOverstay")
             .unwrap();
         assert_eq!(score.positive_signals, 0.0);
-        assert_eq!(score.negative_signals, EXPLICIT_WEIGHT);
+        assert_eq!(
+            score.negative_signals,
+            TunableParams::default().explicit_weight
+        );
     }
 
     #[test]
@@ -346,11 +349,11 @@ mod tests {
             .get_effectiveness("BadProfile", "BadTrigger")
             .unwrap();
         assert!(
-            score.ratio() < LOW_EFFECTIVENESS_THRESHOLD,
+            score.ratio() < TunableParams::default().low_effectiveness_threshold,
             "ratio should be below threshold: {}",
             score.ratio()
         );
-        assert!(score.total_shown >= MIN_SHOWN_FOR_GATING);
+        assert!(score.total_shown >= TunableParams::default().min_shown_for_gating);
 
         // With 1-in-3 gating, at least some calls should return false
         let mut false_count = 0;
@@ -370,9 +373,12 @@ mod tests {
             true_count > 0,
             "should_show should still allow 1-in-3 through"
         );
-        // Exact pattern: 1-in-3 = 3 true out of 9
-        assert_eq!(true_count, 3);
-        assert_eq!(false_count, 6);
+        // Auto-tuning adjusts gate_allow_ratio on negative feedback, so the
+        // exact pass count varies. Verify gating is active (not all pass).
+        assert!(
+            true_count <= 4,
+            "gating should suppress most messages, got {true_count}/9 passing"
+        );
     }
 
     #[test]
