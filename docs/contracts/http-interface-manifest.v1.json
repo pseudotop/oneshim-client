@@ -1,7 +1,7 @@
 {
   "schema_version": "http.interface.manifest.v1",
-  "document_version": 3,
-  "updated_at": "2026-03-20",
+  "document_version": 4,
+  "updated_at": "2026-04-04",
   "source": {
     "routes_file": "crates/oneshim-web/src/routes.rs",
     "contracts_crate": "crates/oneshim-api-contracts"
@@ -477,6 +477,14 @@
         {
           "method": "GET",
           "path": "/api/support/diagnostics"
+        },
+        {
+          "method": "POST",
+          "path": "/api/support/bug-report"
+        },
+        {
+          "method": "GET",
+          "path": "/api/support/bug-report/latest"
         }
       ]
     },
