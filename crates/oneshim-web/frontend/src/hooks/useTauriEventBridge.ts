@@ -99,6 +99,15 @@ export function useTauriEventBridge() {
         }
 
         if (
+          !(await registerListener('automation:quick-access', () => {
+            refreshAutomationStatus()
+            navigateTo('/automation')
+          }))
+        ) {
+          return
+        }
+
+        if (
           !(await registerListener('tray-approve-update', () => {
             refreshUpdateStatus()
             navigateTo('/updates')

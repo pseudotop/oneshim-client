@@ -66,6 +66,19 @@ impl Default for SandboxConfig {
 
 // ── AutomationConfig ───────────────────────────────────────────────
 
+/// Confirmation policy for automation (RPA) execution.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum AutomationConfirmPolicy {
+    /// Show confirmation dialog before every execution (safest).
+    #[default]
+    AlwaysConfirm,
+    /// Auto-execute presets marked as trusted; confirm others.
+    TrustedOnly,
+    /// Execute immediately without confirmation (power users only).
+    NeverConfirm,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AutomationConfig {
     #[serde(default)]
@@ -74,6 +87,8 @@ pub struct AutomationConfig {
     pub sandbox: SandboxConfig,
     #[serde(default)]
     pub custom_presets: Vec<crate::models::intent::WorkflowPreset>,
+    #[serde(default)]
+    pub confirmation_policy: AutomationConfirmPolicy,
 }
 
 // ── Private default helpers ─────────────────────────────────────────

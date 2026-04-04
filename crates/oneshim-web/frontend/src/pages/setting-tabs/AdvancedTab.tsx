@@ -177,6 +177,14 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
               min={1}
               max={20}
             />
+            <NumberField
+              id="regime-detection-interval"
+              label="Regime detection interval (hours)"
+              value={formData.analysis.tiered_memory?.regime_detection_interval_hours ?? 2}
+              onChange={(v) => onChange('analysis', 'regime_detection_interval_hours' as never, v)}
+              min={1}
+              max={24}
+            />
           </div>
           <ToggleRow
             label="Embedding"

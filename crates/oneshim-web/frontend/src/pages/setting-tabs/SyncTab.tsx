@@ -47,6 +47,9 @@ export default function SyncTab() {
 
   useEffect(() => {
     fetchStatus()
+    // Poll every 30s to catch background sync completions
+    const interval = setInterval(fetchStatus, 30_000)
+    return () => clearInterval(interval)
   }, [fetchStatus])
 
   const handleSync = async () => {

@@ -16,6 +16,9 @@ pub(crate) fn register_all(app: &App) {
 
     // Register detection overlay refresh shortcut (Cmd+Shift+R / Ctrl+Shift+R)
     register_detection_refresh_shortcut(app);
+
+    // Register automation quick-access shortcut (Cmd+Shift+A / Ctrl+Shift+A)
+    register_automation_shortcut(app);
 }
 
 /// Register Cmd+Shift+\ (macOS) / Ctrl+Shift+\ (Windows/Linux) to toggle
@@ -190,5 +193,25 @@ fn register_detection_refresh_shortcut(app: &App) {
             })
     {
         tracing::warn!("failed to register detection refresh shortcut: {e}");
+    }
+}
+
+/// Register Cmd+Shift+A (macOS) / Ctrl+Shift+A (Windows/Linux) to open
+/// the automation quick-access panel. Emits an event to the main window
+/// so the frontend can show the automation modal.
+fn register_automation_shortcut(app: &App) {
+    use tauri::Emitter;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    if let Err(e) =
+        app.global_shortcut()
+            .on_shortcut("CmdOrCtrl+Shift+A", |app_handle, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    info!("automation quick-access triggered via shortcut");
+                    let _ = app_handle.emit("automation:quick-access", ());
+                }
+            })
+    {
+        tracing::warn!("failed to register automation shortcut: {e}");
     }
 }

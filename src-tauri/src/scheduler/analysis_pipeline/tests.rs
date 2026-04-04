@@ -114,6 +114,7 @@ fn make_trigger_state() -> AdaptiveTriggerState {
         regime_analysis: None,
         override_store: None,
         recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        regime_detection_interval_hours: 2,
         last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         llm_summarizer: None,
         embedding_pipeline: None,
