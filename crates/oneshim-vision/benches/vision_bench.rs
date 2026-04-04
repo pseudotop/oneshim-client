@@ -2,6 +2,9 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use image::{DynamicImage, Rgba, RgbaImage};
+use oneshim_core::config::PiiFilterLevel;
+use oneshim_core::models::frame::BoundingBox;
+use oneshim_vision::gui_detector::GuiElementDetector;
 use oneshim_vision::{delta, encoder, encoder::WebPQuality, thumbnail};
 
 fn create_test_image(width: u32, height: u32, seed: u8) -> DynamicImage {
@@ -147,11 +150,92 @@ fn bench_pipeline(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_gui_inference(c: &mut Criterion) {
+    let mut group = c.benchmark_group("gui_inference");
+    let detector = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+
+    let cases = vec![
+        (
+            "title_bar",
+            "My App Window",
+            BoundingBox {
+                x: 100,
+                y: 10,
+                width: 200,
+                height: 20,
+            },
+        ),
+        (
+            "button",
+            "Save",
+            BoundingBox {
+                x: 500,
+                y: 500,
+                width: 60,
+                height: 30,
+            },
+        ),
+        (
+            "link",
+            "https://example.com/path",
+            BoundingBox {
+                x: 200,
+                y: 400,
+                width: 300,
+                height: 20,
+            },
+        ),
+        (
+            "menu_item",
+            "File  Ctrl+S",
+            BoundingBox {
+                x: 50,
+                y: 200,
+                width: 150,
+                height: 25,
+            },
+        ),
+        (
+            "text_region",
+            "This is a longer text block with multiple words",
+            BoundingBox {
+                x: 100,
+                y: 300,
+                width: 400,
+                height: 100,
+            },
+        ),
+        (
+            "unknown",
+            "X",
+            BoundingBox {
+                x: 960,
+                y: 540,
+                width: 20,
+                height: 20,
+            },
+        ),
+    ];
+
+    for (name, text, bbox) in &cases {
+        group.bench_with_input(
+            BenchmarkId::new("scored", *name),
+            &(text, bbox),
+            |b, (text, bbox)| {
+                b.iter(|| black_box(detector.infer_element_type_scored(text, bbox)));
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_delta,
     bench_thumbnail,
     bench_webp_encode,
-    bench_pipeline
+    bench_pipeline,
+    bench_gui_inference
 );
 criterion_main!(benches);
