@@ -6,7 +6,7 @@ import { SnoozePopover } from './SnoozePopover'
 
 interface SuggestionItemProps {
   item: SuggestionViewDto
-  onAction: (id: string, action: 'accept' | 'reject' | 'defer', snoozeMinutes?: number) => void
+  onAction: (id: string, action: 'accept' | 'reject' | 'defer' | 'explain', snoozeMinutes?: number) => void
 }
 
 const priorityClasses: Record<string, string> = {
@@ -77,6 +77,16 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
             />
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => onAction(item.id, 'explain')}
+          className={cn(
+            'rounded-md bg-brand/10 px-2 py-1 text-brand text-xs hover:bg-brand/20',
+            motion.colors,
+          )}
+        >
+          Explain
+        </button>
         <span className="ml-auto text-[10px] text-content-tertiary">
           {Math.round(item.confidence_score * 100)}% &middot; {item.source}
         </span>

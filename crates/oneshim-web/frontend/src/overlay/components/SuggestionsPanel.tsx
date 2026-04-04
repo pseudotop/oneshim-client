@@ -41,7 +41,17 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  async function handleAction(id: string, action: 'accept' | 'reject' | 'defer', snoozeMinutes?: number) {
+  async function handleAction(id: string, action: 'accept' | 'reject' | 'defer' | 'explain', snoozeMinutes?: number) {
+    if (action === 'explain') {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('explain_suggestion_in_chat', { suggestionId: id })
+        showToast('Opening in chat...', 'info')
+      } catch (e) {
+        showToast(`${e}`, 'error')
+      }
+      return
+    }
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       // Tauri v2 auto-converts camelCase JS -> snake_case Rust params

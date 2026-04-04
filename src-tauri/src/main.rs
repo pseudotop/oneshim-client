@@ -264,6 +264,8 @@ fn main() {
             commands::suggestions::get_pending_suggestions,
             commands::suggestions::get_suggestion_history,
             commands::suggestions::submit_suggestion_feedback,
+            commands::suggestions::request_chat_suggestions,
+            commands::suggestions::explain_suggestion_in_chat,
             commands::sync::get_sync_status,
             commands::sync::trigger_sync_cycle,
             commands::sync::discover_sync_peers,

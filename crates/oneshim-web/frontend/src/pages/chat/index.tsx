@@ -50,6 +50,7 @@ export default function Chat() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ name: string; type: string; data: string }>>([])
   const [createError, setCreateError] = useState<string | null>(null)
+  const [requestingSuggestions, setRequestingSuggestions] = useState(false)
 
   // ---- Message stream (SSE listener, scroll handling) ----
   const { messages, setMessages, sending, setSending, scrollRef, handleScroll } = useMessageStream(activeId)
@@ -91,6 +92,29 @@ export default function Chat() {
     if (payloadInvalid) setShowMessagePayload(true)
   }, [payloadInvalid])
 
+  // Task 7: Listen for auto-extracted suggestions from AI responses
+  useEffect(() => {
+    if (!activeId) return
+    let unlisten: (() => void) | null = null
+    ;(async () => {
+      const { listen } = await import('@tauri-apps/api/event')
+      unlisten = await listen<{ count: number; sessionId: string }>(
+        'chat:suggestions-extracted',
+        ({ payload }) => {
+          if (payload.sessionId === activeId) {
+            addToast(
+              'info',
+              `${payload.count} suggestion${payload.count !== 1 ? 's' : ''} added from this conversation`,
+            )
+          }
+        },
+      )
+    })()
+    return () => {
+      unlisten?.()
+    }
+  }, [activeId])
+
   // ---- Session handlers ----
   const {
     refresh,
@@ -117,6 +141,20 @@ export default function Chat() {
   const handleCreate = useCallback(() => {
     handleCreateInner(setCreating, setCreateError)
   }, [handleCreateInner])
+
+  const handleRequestSuggestions = useCallback(async () => {
+    if (!activeId) return
+    setRequestingSuggestions(true)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const count = await invoke<number>('request_chat_suggestions', { sessionId: activeId })
+      addToast('success', `${count} suggestion${count !== 1 ? 's' : ''} generated`)
+    } catch (e) {
+      addToast('error', `Failed to get suggestions: ${e}`)
+    } finally {
+      setRequestingSuggestions(false)
+    }
+  }, [activeId])
 
   // ---- Active session state ----
   const active = sessions.find((s) => s.session_id === activeId)
@@ -496,6 +534,8 @@ export default function Chat() {
               sending={sending}
               sendDisabled={sendDisabled}
               onSend={handleSend}
+              onRequestSuggestions={activeId ? handleRequestSuggestions : undefined}
+              requestingSuggestions={requestingSuggestions}
               audioAvailable={audioAvailable}
               audioTooltip={audioTooltip}
               micMode={micMode}

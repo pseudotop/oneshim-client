@@ -16,7 +16,7 @@ use oneshim_core::models::ai_session::{
 };
 use oneshim_core::ports::conversation_session::SessionManager;
 
-use crate::runtime_state::AiSessionRuntimeState;
+use crate::runtime_state::{AiSessionRuntimeState, SuggestionRuntimeState};
 use tracing::debug;
 
 fn require_session_manager_impl(
@@ -83,9 +83,11 @@ pub async fn create_ai_session(
 pub async fn send_session_message(
     app: AppHandle,
     state: tauri::State<'_, AiSessionRuntimeState>,
+    suggestion_state: tauri::State<'_, SuggestionRuntimeState>,
     request: SendSessionMessageRequest,
 ) -> Result<(), String> {
     let mgr = require_session_manager_impl(&state)?;
+    let suggestion_mgr = suggestion_state.manager();
 
     // Check daily token budget before sending
     if !mgr.check_token_budget(&request.session_id).await {
@@ -124,6 +126,7 @@ pub async fn send_session_message(
     let session_id = request.session_id;
 
     // Spawn a background task to drain the stream and emit events.
+    let app_clone = app.clone();
     tokio::spawn(async move {
         let mut assistant_content = String::new();
         let mut assistant_thinking: Option<String> = None;
@@ -165,7 +168,7 @@ pub async fn send_session_message(
                         _ => {}
                     }
 
-                    if let Err(e) = app.emit(&event_name, &outbound) {
+                    if let Err(e) = app_clone.emit(&event_name, &outbound) {
                         tracing::warn!(
                             session_id = %session_id,
                             "failed to emit ai-session event: {e}"
@@ -185,11 +188,43 @@ pub async fn send_session_message(
                         message: err.to_string(),
                         retryable,
                     };
-                    if let Err(e) = app.emit(&event_name, &error_msg) {
+                    if let Err(e) = app_clone.emit(&event_name, &error_msg) {
                         debug!("emit event failed: {e}");
                     }
                     break;
                 }
+            }
+        }
+
+        // Auto-extract suggestions from AI response
+        if let Some(ref sgn_mgr) = suggestion_mgr {
+            let extracted =
+                crate::commands::suggestion_parser::try_extract_suggestions(&assistant_content);
+            if !extracted.is_empty() {
+                let count = extracted.len();
+                let mut queue = sgn_mgr.queue().lock().await;
+                for suggestion in extracted {
+                    queue.push(suggestion);
+                }
+                let queue_count = queue.len();
+                drop(queue);
+
+                let _ = app_clone.emit(
+                    "chat:suggestions-extracted",
+                    serde_json::json!({ "count": count, "sessionId": session_id }),
+                );
+
+                // Also notify overlay
+                let _ = app_clone.emit(
+                    "overlay:suggestions-changed",
+                    serde_json::json!({ "count": queue_count }),
+                );
+
+                debug!(
+                    count,
+                    session_id = %session_id,
+                    "auto-extracted suggestions from chat response"
+                );
             }
         }
 

@@ -64,6 +64,7 @@ export interface SuggestionViewDto {
   confidence_score: number
   created_at: string
   is_read: boolean
+  reasoning: string | null
 }
 
 export interface DetectionElementPayload {

@@ -25,6 +25,7 @@ const sampleSuggestions: SuggestionViewDto[] = [
     confidence_score: 0.85,
     created_at: '2026-03-27T10:30:00Z',
     is_read: false,
+    reasoning: null,
   },
   {
     id: 'sug-2',
@@ -36,6 +37,7 @@ const sampleSuggestions: SuggestionViewDto[] = [
     confidence_score: 0.92,
     created_at: '2026-03-27T10:25:00Z',
     is_read: true,
+    reasoning: null,
   },
   {
     id: 'sug-3',
@@ -47,6 +49,7 @@ const sampleSuggestions: SuggestionViewDto[] = [
     confidence_score: 0.67,
     created_at: '2026-03-27T10:20:00Z',
     is_read: false,
+    reasoning: null,
   },
 ]
 
