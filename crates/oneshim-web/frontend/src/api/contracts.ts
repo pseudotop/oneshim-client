@@ -208,6 +208,10 @@ export interface IndicatorSettings {
   border_opacity: number
 }
 
+export interface TieredMemorySettings {
+  regime_detection_interval_hours: number
+}
+
 export interface AnalysisSettings {
   enabled: boolean
   interval_secs: number
@@ -216,6 +220,7 @@ export interface AnalysisSettings {
   embedding_enabled: boolean
   gui_intelligence_enabled: boolean
   text_intelligence_enabled: boolean
+  tiered_memory?: TieredMemorySettings
 }
 
 export interface NetworkSettings {

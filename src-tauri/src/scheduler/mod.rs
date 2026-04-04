@@ -189,6 +189,9 @@ pub struct Scheduler {
     /// Suggestion receiver for real-time SSE suggestion reception.
     #[cfg(feature = "server")]
     pub(super) suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    /// Suggestion manager -- provides deferred/retry queue access for maintenance loop.
+    #[cfg(feature = "server")]
+    pub(super) suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
     /// Whether suggestion reception is enabled (from SuggestionConfig).
     pub(super) suggestions_enabled: bool,
     /// Focus mode state — shared with IPC commands and scheduler loops (A4).
@@ -262,6 +265,8 @@ impl Scheduler {
             tray_app_handle: None,
             #[cfg(feature = "server")]
             suggestion_receiver: None,
+            #[cfg(feature = "server")]
+            suggestion_manager: None,
             suggestions_enabled: false,
             focus_mode: Arc::new(crate::focus_mode::FocusModeState::new()),
             shared_regime: None,
@@ -453,6 +458,15 @@ impl Scheduler {
 
     pub fn with_suggestions_enabled(mut self, enabled: bool) -> Self {
         self.suggestions_enabled = enabled;
+        self
+    }
+
+    #[cfg(feature = "server")]
+    pub fn with_suggestion_manager(
+        mut self,
+        manager: Arc<crate::suggestion_manager::SuggestionManager>,
+    ) -> Self {
+        self.suggestion_manager = Some(manager);
         self
     }
 

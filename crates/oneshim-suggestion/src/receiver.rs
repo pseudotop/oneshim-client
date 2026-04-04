@@ -9,11 +9,16 @@ use crate::error::SuggestionError;
 use crate::queue::SuggestionQueue;
 use crate::scorer::FeedbackScorer;
 
+/// Callback type invoked when a new suggestion is accepted into the queue.
+/// Parameter is the current queue size after the push.
+pub type OnNewSuggestion = Arc<dyn Fn(usize) + Send + Sync>;
+
 pub struct SuggestionReceiver {
     sse_client: Arc<dyn SseClient>,
     notifier: Option<Arc<dyn DesktopNotifier>>,
     queue: Arc<Mutex<SuggestionQueue>>,
     scorer: Arc<Mutex<FeedbackScorer>>,
+    on_new: Mutex<Option<OnNewSuggestion>>,
 }
 
 impl SuggestionReceiver {
@@ -28,7 +33,14 @@ impl SuggestionReceiver {
             notifier,
             queue,
             scorer,
+            on_new: Mutex::new(None),
         }
+    }
+
+    /// Set the on-new callback after construction.
+    /// Called when the overlay handle becomes available.
+    pub async fn set_on_new(&self, callback: OnNewSuggestion) {
+        *self.on_new.lock().await = Some(callback);
     }
 
     pub async fn run(&self, session_id: &str) -> Result<(), SuggestionError> {
@@ -95,13 +107,15 @@ impl SuggestionReceiver {
         }
 
         // 2. Opportunistic expiry + dedup + push (single queue lock)
-        let accepted = {
+        let (accepted, queue_count) = {
             let mut queue = self.queue.lock().await;
             let expired_count = queue.remove_expired();
             if expired_count > 0 {
                 debug!(expired_count, "expired suggestions removed from queue");
             }
-            queue.push(suggestion.clone())
+            let accepted = queue.push(suggestion.clone());
+            let count = queue.len();
+            (accepted, count)
         };
 
         if !accepted {
@@ -112,6 +126,11 @@ impl SuggestionReceiver {
             if let Err(e) = notifier.show_suggestion(&suggestion).await {
                 warn!("notification display failure: {e}");
             }
+        }
+
+        // Notify overlay of new suggestion (badge count update)
+        if let Some(on_new) = self.on_new.lock().await.as_ref() {
+            on_new(queue_count);
         }
     }
 
@@ -261,6 +280,33 @@ mod tests {
         receiver.handle_suggestion(make_suggestion()).await;
         receiver.handle_suggestion(make_suggestion()).await;
 
+        assert_eq!(queue.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handle_suggestion_fires_on_new_callback() {
+        let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let scorer = Arc::new(Mutex::new(FeedbackScorer::new()));
+        let notified_count = Arc::new(AtomicUsize::new(0));
+        let count_clone = notified_count.clone();
+
+        let receiver = SuggestionReceiver::new(
+            Arc::new(MockSseClient) as Arc<dyn SseClient>,
+            None,
+            queue.clone(),
+            scorer,
+        );
+
+        // Wire callback after construction (matches production pattern)
+        receiver
+            .set_on_new(Arc::new(move |count| {
+                count_clone.store(count, Ordering::SeqCst);
+            }))
+            .await;
+
+        receiver.handle_suggestion(make_suggestion()).await;
+
+        assert_eq!(notified_count.load(Ordering::SeqCst), 1);
         assert_eq!(queue.lock().await.len(), 1);
     }
 

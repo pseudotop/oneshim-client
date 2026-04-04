@@ -343,13 +343,29 @@ impl Scheduler {
             None
         };
 
-        // 15. Suggestion reception loop (SSE-based, server feature only)
+        // 15. Suggestion SSE + maintenance loops (server feature only)
         #[cfg(feature = "server")]
-        let suggestion_task = if self.suggestions_enabled {
+        let suggestion_sse_task = if self.suggestions_enabled {
             self.suggestion_receiver.as_ref().map(|receiver| {
-                super::suggestions::spawn_suggestion_loop(
+                super::suggestions::spawn_suggestion_sse_loop(
                     receiver.clone(),
                     session_id.clone(),
+                    shutdown_rx.clone(),
+                )
+            })
+        } else {
+            None
+        };
+
+        #[cfg(feature = "server")]
+        let suggestion_maintenance_task = if self.suggestions_enabled {
+            self.suggestion_manager.as_ref().map(|mgr| {
+                super::suggestions::spawn_suggestion_maintenance_loop(
+                    mgr.queue().clone(),
+                    mgr.deferred().clone(),
+                    mgr.retry_queue().clone(),
+                    mgr.feedback().clone(),
+                    None, // on_change wired via on_new callback on receiver
                     shutdown_rx.clone(),
                 )
             })
@@ -414,11 +430,20 @@ impl Scheduler {
             }
         }
         #[cfg(feature = "server")]
-        if let Some(task) = suggestion_task {
+        if let Some(task) = suggestion_sse_task {
             task.abort();
             if let Err(e) = task.await {
                 if !e.is_cancelled() {
-                    error!("suggestion loop panicked: {e}");
+                    error!("suggestion SSE loop panicked: {e}");
+                }
+            }
+        }
+        #[cfg(feature = "server")]
+        if let Some(task) = suggestion_maintenance_task {
+            task.abort();
+            if let Err(e) = task.await {
+                if !e.is_cancelled() {
+                    error!("suggestion maintenance loop panicked: {e}");
                 }
             }
         }

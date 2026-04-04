@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
+import { SuggestionHistory } from './SuggestionHistory'
 import { SuggestionItem } from './SuggestionItem'
+import { showToast } from './Toast'
 
 interface SuggestionsPanelProps {
   open: boolean
@@ -19,6 +21,7 @@ interface SuggestionsPanelProps {
  */
 export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: SuggestionsPanelProps) {
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active')
 
   useEffect(() => {
     if (!open) return
@@ -38,16 +41,21 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  async function handleAction(id: string, action: 'accept' | 'reject' | 'defer') {
+  async function handleAction(id: string, action: 'accept' | 'reject' | 'defer', snoozeMinutes?: number) {
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       // Tauri v2 auto-converts camelCase JS -> snake_case Rust params
-      await invoke('submit_suggestion_feedback', { suggestionId: id, action })
+      await invoke('submit_suggestion_feedback', { suggestionId: id, action, snoozeMinutes })
       setError(null)
       await Promise.resolve(onRefresh())
+      showToast(
+        action === 'accept' ? 'Suggestion accepted' : action === 'reject' ? 'Suggestion rejected' : 'Snoozed',
+        'success',
+      )
     } catch (e) {
       console.warn('Feedback failed:', e)
-      setError('Could not save suggestion feedback.')
+      setError(null)
+      showToast(`Feedback failed: ${e}`, 'error')
     }
   }
 
@@ -75,19 +83,51 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         </button>
       </div>
 
-      {/* List */}
+      {/* Tab bar */}
+      <div className="flex border-b border-content-inverse/5">
+        <button
+          type="button"
+          className={cn(
+            'flex-1 py-2 text-xs font-medium transition-colors',
+            activeTab === 'active'
+              ? 'text-brand border-b-2 border-brand'
+              : 'text-content-secondary hover:text-content-primary',
+          )}
+          onClick={() => setActiveTab('active')}
+        >
+          Active ({suggestions.length})
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'flex-1 py-2 text-xs font-medium transition-colors',
+            activeTab === 'history'
+              ? 'text-brand border-b-2 border-brand'
+              : 'text-content-secondary hover:text-content-primary',
+          )}
+          onClick={() => setActiveTab('history')}
+        >
+          History
+        </button>
+      </div>
+
+      {/* Content */}
       <div className="max-h-[calc(100vh-14rem)] overflow-y-auto">
         {error && (
           <div className="border-content-inverse/5 border-b px-4 py-2 text-semantic-error text-xs">{error}</div>
         )}
-        {suggestions.length > 0 ? (
-          <ul className="list-none">
-            {suggestions.map((s) => (
-              <SuggestionItem key={s.id} item={s} onAction={handleAction} />
-            ))}
-          </ul>
+        {activeTab === 'active' ? (
+          suggestions.length > 0 ? (
+            <ul className="list-none">
+              {suggestions.map((s) => (
+                <SuggestionItem key={s.id} item={s} onAction={handleAction} />
+              ))}
+            </ul>
+          ) : (
+            <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
+          )
         ) : (
-          <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
+          <SuggestionHistory />
         )}
       </div>
     </aside>

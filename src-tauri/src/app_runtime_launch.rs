@@ -190,12 +190,20 @@ impl AppRuntimeLaunchBuilder {
                     let history = Arc::new(tokio::sync::Mutex::new(
                         oneshim_suggestion::history::SuggestionHistory::new(100),
                     ));
-                    let feedback = oneshim_suggestion::feedback::FeedbackSender::new(api);
+                    let feedback = Arc::new(oneshim_suggestion::feedback::FeedbackSender::new(api));
+                    let deferred = Arc::new(tokio::sync::Mutex::new(
+                        oneshim_suggestion::deferred::DeferredManager::new(50),
+                    ));
+                    let retry_queue = Arc::new(tokio::sync::Mutex::new(
+                        oneshim_suggestion::feedback_retry::FeedbackRetryQueue::new(100, 5),
+                    ));
                     Some(Arc::new(crate::suggestion_manager::SuggestionManager::new(
                         shared_suggestion_queue.clone(),
                         history,
                         feedback,
                         shared_scorer.clone(),
+                        deferred,
+                        retry_queue,
                     )))
                 }
                 Err(e) => {
@@ -292,6 +300,12 @@ impl AppRuntimeLaunchBuilder {
             let builder = builder
                 .with_shared_suggestion_queue(shared_suggestion_queue)
                 .with_shared_scorer(shared_scorer);
+            #[cfg(feature = "server")]
+            let builder = if let Some(ref mgr) = suggestion_manager {
+                builder.with_suggestion_manager(mgr.clone())
+            } else {
+                builder
+            };
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()

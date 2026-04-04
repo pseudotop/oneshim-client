@@ -1,11 +1,12 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
+import { SnoozePopover } from './SnoozePopover'
 
 interface SuggestionItemProps {
   item: SuggestionViewDto
-  onAction: (id: string, action: 'accept' | 'reject' | 'defer') => void
+  onAction: (id: string, action: 'accept' | 'reject' | 'defer', snoozeMinutes?: number) => void
 }
 
 const priorityClasses: Record<string, string> = {
@@ -16,6 +17,7 @@ const priorityClasses: Record<string, string> = {
 }
 
 export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: SuggestionItemProps) {
+  const [showSnooze, setShowSnooze] = useState(false)
   const badgeClass = priorityClasses[item.priority] ?? priorityClasses.low
 
   return (
@@ -54,16 +56,27 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
         >
           Reject
         </button>
-        <button
-          type="button"
-          onClick={() => onAction(item.id, 'defer')}
-          className={cn(
-            'rounded-md bg-content-inverse/10 px-2 py-1 text-content-secondary text-xs hover:bg-content-inverse/15',
-            motion.colors,
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowSnooze(!showSnooze)}
+            className={cn(
+              'rounded-md bg-content-inverse/10 px-2 py-1 text-content-secondary text-xs hover:bg-content-inverse/15',
+              motion.colors,
+            )}
+          >
+            Later
+          </button>
+          {showSnooze && (
+            <SnoozePopover
+              onSelect={(minutes) => {
+                onAction(item.id, 'defer', minutes)
+                setShowSnooze(false)
+              }}
+              onCancel={() => setShowSnooze(false)}
+            />
           )}
-        >
-          Later
-        </button>
+        </div>
         <span className="ml-auto text-[10px] text-content-tertiary">
           {Math.round(item.confidence_score * 100)}% &middot; {item.source}
         </span>

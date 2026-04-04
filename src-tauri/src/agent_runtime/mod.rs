@@ -63,6 +63,9 @@ pub(crate) struct AgentRuntimeBundle {
     tray_app_handle: Option<tauri::AppHandle>,
     #[cfg(feature = "server")]
     suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    /// Suggestion manager — provides deferred/retry queue access for maintenance loop.
+    #[cfg(feature = "server")]
+    suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
     suggestions_enabled: bool,
     focus_mode: Option<Arc<crate::focus_mode::FocusModeState>>,
     shared_capture_services: Option<Arc<SharedCaptureServices>>,
@@ -263,6 +266,9 @@ impl AgentRuntimeBundle {
         if let Some(coaching_storage) = self.coaching_storage {
             scheduler = scheduler.with_coaching_storage(coaching_storage);
         }
+        // Clone before move — needed to wire on_new callback for SuggestionReceiver below.
+        #[cfg(feature = "server")]
+        let magic_overlay_for_suggestions = self.magic_overlay.clone();
         if let Some(overlay) = self.magic_overlay {
             scheduler = scheduler.with_magic_overlay(overlay);
         }
@@ -322,8 +328,23 @@ impl AgentRuntimeBundle {
         #[cfg(feature = "server")]
         {
             let receiver = support.suggestion_receiver.or(self.suggestion_receiver);
+            if let Some(ref receiver) = receiver {
+                // Wire on_new callback so SSE-received suggestions notify the overlay.
+                if let Some(overlay) = magic_overlay_for_suggestions {
+                    let overlay_clone = overlay.clone();
+                    receiver
+                        .set_on_new(Arc::new(move |count| {
+                            overlay_clone.emit_suggestions_changed(count);
+                        }))
+                        .await;
+                    info!("SuggestionReceiver on_new callback wired to MagicOverlay");
+                }
+            }
             if let Some(receiver) = receiver {
                 scheduler = scheduler.with_suggestion_receiver(receiver);
+            }
+            if let Some(mgr) = self.suggestion_manager {
+                scheduler = scheduler.with_suggestion_manager(mgr);
             }
         }
 
@@ -392,6 +413,8 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     tray_app_handle: Option<tauri::AppHandle>,
     #[cfg(feature = "server")]
     suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    #[cfg(feature = "server")]
+    suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
     suggestions_enabled: bool,
     focus_mode: Option<Arc<crate::focus_mode::FocusModeState>>,
     shared_capture_services: Option<Arc<SharedCaptureServices>>,
@@ -452,6 +475,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             tray_app_handle: None,
             #[cfg(feature = "server")]
             suggestion_receiver: None,
+            #[cfg(feature = "server")]
+            suggestion_manager: None,
             suggestions_enabled: false,
             focus_mode: None,
             shared_capture_services: None,
@@ -616,6 +641,15 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    #[cfg(feature = "server")]
+    pub(crate) fn with_suggestion_manager(
+        mut self,
+        manager: Arc<crate::suggestion_manager::SuggestionManager>,
+    ) -> Self {
+        self.suggestion_manager = Some(manager);
+        self
+    }
+
     #[allow(dead_code)] // used when feature = "server"
     pub(crate) fn with_shared_suggestion_queue(
         mut self,
@@ -674,6 +708,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             tray_app_handle: self.tray_app_handle,
             #[cfg(feature = "server")]
             suggestion_receiver: self.suggestion_receiver,
+            #[cfg(feature = "server")]
+            suggestion_manager: self.suggestion_manager,
             suggestions_enabled: self.suggestions_enabled,
             focus_mode: self.focus_mode,
             shared_capture_services: self.shared_capture_services,

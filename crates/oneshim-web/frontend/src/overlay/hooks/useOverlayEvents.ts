@@ -38,6 +38,7 @@ const initialState: OverlayState = {
   focusMode: false,
   suggestionsPanelOpen: false,
   suggestions: [],
+  suggestionBadgeCount: 0,
   captureFlashTimestamp: null,
   detectionScene: null,
   detectionSelectedId: null,
@@ -70,13 +71,26 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
       return { ...state, focusMode: action.payload }
     case 'capture-state-changed':
       return { ...state, captureState: action.payload }
-    case 'toggle-suggestions-panel':
+    case 'toggle-suggestions-panel': {
+      const isOpen = action.payload ?? !state.suggestionsPanelOpen
       return {
         ...state,
-        suggestionsPanelOpen: action.payload !== undefined ? action.payload : !state.suggestionsPanelOpen,
+        suggestionsPanelOpen: isOpen,
+        suggestionBadgeCount: isOpen ? 0 : state.suggestionBadgeCount,
       }
-    case 'set-suggestions':
-      return { ...state, suggestions: action.payload }
+    }
+    case 'set-suggestions': {
+      const newCount = action.payload.length
+      const oldCount = state.suggestions.length
+      const delta = Math.max(0, newCount - oldCount)
+      return {
+        ...state,
+        suggestions: action.payload,
+        suggestionBadgeCount: state.suggestionsPanelOpen
+          ? 0
+          : state.suggestionBadgeCount + delta,
+      }
+    }
     case 'remove-suggestion':
       return {
         ...state,
