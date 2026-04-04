@@ -340,7 +340,10 @@ impl Scheduler {
     }
 
     pub fn with_adaptive_trigger(self, state: AdaptiveTriggerState) -> Self {
-        *self.adaptive_trigger.lock().expect("adaptive trigger lock") = Some(state);
+        *self.adaptive_trigger.lock().unwrap_or_else(|poisoned| {
+            warn!("adaptive trigger lock poisoned — recovering inner data");
+            poisoned.into_inner()
+        }) = Some(state);
         self
     }
 

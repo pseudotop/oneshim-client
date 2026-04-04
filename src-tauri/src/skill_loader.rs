@@ -108,7 +108,10 @@ impl SkillLoader for FileSkillLoader {
     fn list_skills(&self) -> Vec<SkillMeta> {
         self.cache
             .read()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|e| {
+                warn!("skill cache read lock poisoned — recovering inner data");
+                e.into_inner()
+            })
             .values()
             .map(|s| s.meta.clone())
             .collect()
@@ -117,7 +120,10 @@ impl SkillLoader for FileSkillLoader {
     fn get_skill(&self, name: &str) -> Result<Skill, CoreError> {
         self.cache
             .read()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|e| {
+                warn!("skill cache read lock poisoned — recovering inner data");
+                e.into_inner()
+            })
             .get(name)
             .cloned()
             .ok_or_else(|| CoreError::NotFound {
@@ -140,7 +146,10 @@ impl SkillLoader for FileSkillLoader {
 
         debug!(count = all_skills.len(), "Skill scan complete");
 
-        let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
+        let mut cache = self.cache.write().unwrap_or_else(|e| {
+            warn!("skill cache write lock poisoned — recovering inner data");
+            e.into_inner()
+        });
         *cache = all_skills;
         Ok(())
     }

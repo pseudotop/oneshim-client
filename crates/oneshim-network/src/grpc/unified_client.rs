@@ -56,14 +56,16 @@ impl UnifiedClient {
         info!(
             use_grpc_auth = config.use_grpc_auth,
             use_grpc_context = config.use_grpc_context,
+            rest_tls = config.rest_tls.is_some(),
             "UnifiedClient initialize"
         );
 
-        let http_client = HttpApiClient::new(
-            &config.rest_endpoint,
-            token_manager.clone(),
-            Duration::from_secs(config.request_timeout_secs),
-        )?;
+        let timeout = Duration::from_secs(config.request_timeout_secs);
+        let http_client = if let Some(ref tls) = config.rest_tls {
+            HttpApiClient::new_with_tls(&config.rest_endpoint, token_manager.clone(), timeout, tls)?
+        } else {
+            HttpApiClient::new(&config.rest_endpoint, token_manager.clone(), timeout)?
+        };
 
         Ok(Self {
             config,

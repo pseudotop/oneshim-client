@@ -8,6 +8,8 @@
 //! ```
 
 #[cfg(feature = "grpc")]
+mod api_adapter;
+#[cfg(feature = "grpc")]
 mod auth_client;
 #[cfg(feature = "grpc")]
 mod config;
@@ -20,8 +22,12 @@ mod health_client;
 #[cfg(feature = "grpc")]
 mod session_client;
 #[cfg(feature = "grpc")]
+mod sse_adapter;
+#[cfg(feature = "grpc")]
 mod unified_client;
 
+#[cfg(feature = "grpc")]
+pub use api_adapter::GrpcApiAdapter;
 #[cfg(feature = "grpc")]
 pub use auth_client::GrpcAuthClient;
 #[cfg(feature = "grpc")]
@@ -34,6 +40,8 @@ pub use error_mapping::map_grpc_status_error;
 pub use health_client::GrpcHealthClient;
 #[cfg(feature = "grpc")]
 pub use session_client::GrpcSessionClient;
+#[cfg(feature = "grpc")]
+pub use sse_adapter::GrpcSseAdapter;
 #[cfg(feature = "grpc")]
 pub use unified_client::{
     AuthResponse, FeedbackAction, SessionResponse, Streaming, SuggestionEvent, UnifiedClient,

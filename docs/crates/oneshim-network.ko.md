@@ -20,7 +20,6 @@ oneshim-network/src/
 ├── auth.rs           # TokenManager - JWT 인증
 ├── http_client.rs    # HttpApiClient - REST API
 ├── sse_client.rs     # SseStreamClient - SSE 수신
-├── ws_client.rs      # WebSocket 클라이언트
 ├── compression.rs    # AdaptiveCompressor
 ├── batch_uploader.rs # BatchUploader - 배치 전송
 ├── ai_llm_client.rs  # RemoteLlmProvider — AI LLM 의도 해석

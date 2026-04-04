@@ -69,7 +69,6 @@ oneshim-client/
 │   │       ├── lib.rs
 │   │       ├── http_client.rs    # reqwest 기반 API 클라이언트
 │   │       ├── sse_client.rs     # SSE 수신 (eventsource-client)
-│   │       ├── ws_client.rs      # WebSocket (tokio-tungstenite)
 │   │       ├── auth.rs           # JWT 토큰 관리 (로그인/갱신)
 │   │       ├── batch_uploader.rs # 배치 업로드 + 재시도
 │   │       └── compression.rs    # 압축 (flate2, zstd, lz4)

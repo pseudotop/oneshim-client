@@ -11,6 +11,7 @@ pub struct SuggestionViewDto {
     pub priority: String,
     pub category: Option<String>,
     pub source: String,
+    pub confidence_score: f64,
     pub created_at: String,
     pub is_read: bool,
 }
@@ -43,6 +44,7 @@ pub async fn get_pending_suggestions(
                     s.content.clone(),
                     format!("{:?}", s.priority).to_lowercase(),
                     source_label(&s.source).to_string(),
+                    s.confidence_score,
                     s.created_at.to_rfc3339(),
                 )
             })
@@ -50,7 +52,7 @@ pub async fn get_pending_suggestions(
     }; // queue lock dropped here
 
     let mut results = Vec::with_capacity(snapshot.len());
-    for (id, title, body, priority, source, created_at) in snapshot {
+    for (id, title, body, priority, source, confidence_score, created_at) in snapshot {
         let is_read = mgr.is_read(&id).await;
         results.push(SuggestionViewDto {
             id,
@@ -59,6 +61,7 @@ pub async fn get_pending_suggestions(
             priority,
             category: None, // Suggestion has no category field
             source,
+            confidence_score,
             created_at,
             is_read,
         });
@@ -84,6 +87,7 @@ pub async fn get_suggestion_history(
             priority: format!("{:?}", entry.suggestion.priority).to_lowercase(),
             category: None,
             source: source_label(&entry.suggestion.source).to_string(),
+            confidence_score: entry.suggestion.confidence_score,
             created_at: entry.suggestion.created_at.to_rfc3339(),
             is_read: true, // history items are implicitly read
         })

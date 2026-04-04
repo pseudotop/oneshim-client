@@ -96,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tls_ca_cert_path: None,
         tls_client_cert_path: None,
         tls_client_key_path: None,
+        rest_tls: None,
     };
 
     let token_manager = Arc::new(TokenManager::new("http://127.0.0.1:8000"));

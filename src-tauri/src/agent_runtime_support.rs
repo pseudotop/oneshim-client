@@ -9,9 +9,11 @@ use oneshim_network::analysis_client::AnalysisClient;
 use oneshim_network::auth::TokenManager;
 #[cfg(feature = "server")]
 use oneshim_network::batch_uploader::BatchUploader;
+#[cfg(feature = "grpc")]
+use oneshim_network::grpc::{GrpcApiAdapter, GrpcConfig, GrpcSseAdapter, UnifiedClient};
 #[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
-#[cfg(feature = "server")]
+#[cfg(all(feature = "server", not(feature = "grpc")))]
 use oneshim_network::sse_client::SseStreamClient;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
@@ -46,7 +48,7 @@ pub(crate) struct AgentSupportContext {
 type BatchSinkPort = Arc<dyn oneshim_core::ports::batch_sink::BatchSink>;
 type ApiClientPort = Arc<dyn oneshim_core::ports::api_client::ApiClient>;
 #[cfg(feature = "server")]
-type SseClientPort = Arc<SseStreamClient>;
+type SseClientPort = Arc<dyn oneshim_core::ports::api_client::SseClient>;
 #[cfg(feature = "server")]
 type ServerTransportPorts = (
     Option<BatchSinkPort>,
@@ -323,27 +325,48 @@ fn build_server_transports(config: &AppConfig, session_id: &str) -> Result<Serve
         )
         .map_err(|e| anyhow::anyhow!("failed to build TLS-aware TokenManager: {e}"))?,
     );
-    let api_client = Arc::new(HttpApiClient::new_with_tls(
-        &config.server.base_url,
-        token_manager.clone(),
-        config.request_timeout(),
-        &config.tls,
-    )?);
+
+    #[cfg(feature = "grpc")]
+    let (api_client, sse_client): (ApiClientPort, SseClientPort) = {
+        let grpc_config =
+            GrpcConfig::from_core_with_rest_tls(&config.grpc, &config.server.base_url, &config.tls);
+        let unified = Arc::new(UnifiedClient::new(grpc_config, token_manager.clone())?);
+        let http_fallback = HttpApiClient::new_with_tls(
+            &config.server.base_url,
+            token_manager.clone(),
+            config.request_timeout(),
+            &config.tls,
+        )?;
+        (
+            Arc::new(GrpcApiAdapter::new(unified.clone(), http_fallback)),
+            Arc::new(GrpcSseAdapter::new(unified)) as SseClientPort,
+        )
+    };
+
+    #[cfg(not(feature = "grpc"))]
+    let (api_client, sse_client): (ApiClientPort, SseClientPort) = {
+        let http_client = HttpApiClient::new_with_tls(
+            &config.server.base_url,
+            token_manager.clone(),
+            config.request_timeout(),
+            &config.tls,
+        )?;
+        let sse_stream = SseStreamClient::new_with_tls(
+            &config.server.base_url,
+            token_manager,
+            config.server.sse_max_retry_secs,
+            &config.tls,
+        )
+        .map_err(|e| anyhow::anyhow!("failed to build SSE client: {e}"))?;
+        (Arc::new(http_client), Arc::new(sse_stream) as SseClientPort)
+    };
+
     let batch_uploader = Arc::new(BatchUploader::new(
         api_client.clone(),
         session_id.to_string(),
         100,
         3,
     ));
-    let sse_client = Arc::new(
-        SseStreamClient::new_with_tls(
-            &config.server.base_url,
-            token_manager,
-            config.server.sse_max_retry_secs,
-            &config.tls,
-        )
-        .map_err(|e| anyhow::anyhow!("failed to build SSE client: {e}"))?,
-    );
 
     Ok((Some(batch_uploader), Some(api_client), Some(sse_client)))
 }

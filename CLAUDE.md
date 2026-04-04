@@ -73,7 +73,7 @@ client-rust/
 │   └── research/       # Exploratory notes
 └── crates/
     ├── oneshim-core/       # Domain models + port traits + errors + config
-    ├── oneshim-network/    # JWT auth, HTTP/SSE/WebSocket, gRPC, batch upload
+    ├── oneshim-network/    # JWT auth, HTTP/SSE, gRPC, batch upload
     ├── oneshim-suggestion/ # Suggestion reception (SSE), priority queue, feedback, history
     ├── oneshim-storage/    # SQLite storage + schema migration
     ├── oneshim-monitor/    # System metrics (sysinfo), active window, activity tracking
@@ -160,7 +160,6 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `sse_client.rs`: `SseStreamClient` — SSE stream + auto-reconnect (exponential backoff 1s→30s)
 - `compression.rs`: `AdaptiveCompressor` — auto selection of gzip/zstd/lz4
 - `batch_uploader.rs`: `BatchUploader` — Lock-free SegQueue + dynamic batch size + retry
-- `ws_client.rs`: WebSocket client (tokio-tungstenite)
 - `ai_llm_client/`: `RemoteLlmProvider` — directory module (ADR-003)
   - `mod.rs`: `RemoteLlmProvider` struct + `LlmProvider` impl + re-exports
   - `request.rs`: request building helpers per provider type
@@ -203,6 +202,8 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `grpc/session_client.rs`: `GrpcSessionClient` — CreateSession, EndSession, Heartbeat
   - `grpc/context_client.rs`: `GrpcContextClient` — UploadBatch, SubscribeSuggestions, SendFeedback, ListSuggestions
   - `grpc/unified_client.rs`: `UnifiedClient` — gRPC + REST unified client, Feature Flag based switching
+  - `grpc/api_adapter.rs`: `GrpcApiAdapter` — `impl ApiClient` bridging UnifiedClient + HttpApiClient REST fallback
+  - `grpc/sse_adapter.rs`: `GrpcSseAdapter` — `impl SseClient` bridging gRPC streaming to SuggestionReceiver
 
 ### oneshim-suggestion (Suggestion Pipeline)
 - `receiver.rs`: SSE → `Suggestion` conversion + queue + notification
@@ -213,7 +214,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ### oneshim-storage (Local Storage)
 - `sqlite.rs`: `SqliteStorage` (impl StorageService) — WAL mode + PRAGMA optimizations
-- `migration.rs`: schema V1-V17 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching)
+- `migration.rs`: schema V1-V22 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching, app_meta, session_audit, ai_sessions, type_confidence)
 - `frame_storage.rs`: Frame image file storage + retention policy + buffer pool + parallel I/O
 - Retention Policy: 30 days, 500MB
 - Performance optimization: compound indexes, batch inserts, memory cache, ArrayQueue buffer pool
@@ -322,7 +323,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 | HTTP | reqwest | 0.13 |
 | Web Server | axum + tower-http | 0.8 / 0.6 |
 | SSE | eventsource-stream | 0.2 |
-| WebSocket | tokio-tungstenite | 0.28 |
+| Integration Transport | tokio-tungstenite | 0.28 |
 | **gRPC** | tonic + tonic-prost + prost | 0.14 / 0.14 / 0.14 |
 | DB | rusqlite | 0.38 (bundled, fallible_uint) |
 | Monitoring | sysinfo | 0.38 |

@@ -71,6 +71,24 @@ pub fn migrate_v21(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+pub fn migrate_v22(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Check if column already exists (idempotent guard)
+    let has_column = conn
+        .prepare("PRAGMA table_info(gui_interactions)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "type_confidence");
+
+    if !has_column {
+        conn.execute_batch(
+            "ALTER TABLE gui_interactions ADD COLUMN type_confidence REAL DEFAULT 1.0;",
+        )?;
+    }
+
+    conn.execute_batch("INSERT OR IGNORE INTO schema_version (version) VALUES (22);")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +202,86 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0, "CASCADE should delete messages");
+    }
+
+    /// Helper: create the V13 gui_interactions table prerequisite for V22.
+    fn setup_gui_interactions(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gui_interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL,
+                segment_id TEXT,
+                timestamp TEXT NOT NULL,
+                element_text TEXT,
+                element_type TEXT,
+                interaction_type TEXT NOT NULL,
+                bbox_json TEXT,
+                app_name TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn v22_adds_type_confidence_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_schema_version(&conn);
+        setup_gui_interactions(&conn);
+        migrate_v22(&conn).unwrap();
+
+        // Insert a row with the new column
+        conn.execute(
+            "INSERT INTO gui_interactions (event_id, timestamp, interaction_type, app_name, type_confidence)
+             VALUES ('evt-1', '2026-04-04T00:00:00Z', 'Click', 'TestApp', 0.85)",
+            [],
+        )
+        .unwrap();
+
+        let confidence: f64 = conn
+            .query_row(
+                "SELECT type_confidence FROM gui_interactions WHERE event_id = 'evt-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!((confidence - 0.85).abs() < 0.001);
+    }
+
+    #[test]
+    fn v22_existing_rows_get_default_confidence() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_schema_version(&conn);
+        setup_gui_interactions(&conn);
+
+        // Insert a row before migration (no type_confidence column)
+        conn.execute(
+            "INSERT INTO gui_interactions (event_id, timestamp, interaction_type, app_name)
+             VALUES ('evt-old', '2026-04-04T00:00:00Z', 'Click', 'OldApp')",
+            [],
+        )
+        .unwrap();
+
+        migrate_v22(&conn).unwrap();
+
+        // Existing rows should have DEFAULT 1.0
+        let confidence: f64 = conn
+            .query_row(
+                "SELECT type_confidence FROM gui_interactions WHERE event_id = 'evt-old'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!((confidence - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn v22_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_schema_version(&conn);
+        setup_gui_interactions(&conn);
+        migrate_v22(&conn).unwrap();
+        // Second run should succeed without error
+        migrate_v22(&conn).unwrap();
     }
 }
