@@ -26,3 +26,35 @@ pub trait EmbeddingProvider: Send + Sync {
     /// Identifier of the embedding model (used for versioning stored vectors).
     fn model_id(&self) -> &str;
 }
+
+/// No-op embedding provider that returns zero vectors.
+/// Used as fallback when both local and remote embedding are unavailable.
+#[derive(Debug)]
+pub struct NoOpEmbeddingProvider {
+    dimensions: usize,
+}
+
+impl NoOpEmbeddingProvider {
+    pub fn new(dimensions: usize) -> Self {
+        Self { dimensions }
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for NoOpEmbeddingProvider {
+    async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
+        Ok(vec![0.0; self.dimensions])
+    }
+
+    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
+        Ok(texts.iter().map(|_| vec![0.0; self.dimensions]).collect())
+    }
+
+    fn dimensions(&self) -> usize {
+        self.dimensions
+    }
+
+    fn model_id(&self) -> &str {
+        "noop"
+    }
+}

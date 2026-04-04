@@ -123,6 +123,29 @@ impl AppRuntimeLaunchBuilder {
         let shared_suggestion_queue = Arc::new(tokio::sync::Mutex::new(
             oneshim_suggestion::queue::SuggestionQueue::new(config.analysis.max_suggestions),
         ));
+
+        // Restore pending suggestions from SQLite into the queue.
+        #[cfg(feature = "server")]
+        {
+            let pending = sqlite_storage
+                .list_suggestions_by_state("pending", 50)
+                .unwrap_or_default();
+            if !pending.is_empty() {
+                let mut queue = handle.block_on(shared_suggestion_queue.lock());
+                let mut restored = 0usize;
+                for record in pending {
+                    if let Some(suggestion) = record.try_into_suggestion() {
+                        if queue.push(suggestion) {
+                            restored += 1;
+                        }
+                    }
+                }
+                if restored > 0 {
+                    tracing::info!(count = restored, "restored suggestions from storage");
+                }
+            }
+        }
+
         #[cfg(feature = "server")]
         let shared_scorer = Arc::new(tokio::sync::Mutex::new(
             oneshim_suggestion::scorer::FeedbackScorer::new(),

@@ -8,6 +8,7 @@ import type {
   GoalProgressItem,
   OverlayMode,
   OverlayState,
+  PendingConfirmationDto,
   SuggestionViewDto,
 } from '../types'
 
@@ -28,6 +29,8 @@ type OverlayAction =
   | { type: 'detection-update'; payload: DetectionScenePayload }
   | { type: 'detection-clear' }
   | { type: 'detection-select'; payload: string | null }
+  | { type: 'automation-confirm-request'; payload: PendingConfirmationDto }
+  | { type: 'automation-confirm-dismiss' }
 
 const initialState: OverlayState = {
   mode: 'minimal',
@@ -42,6 +45,7 @@ const initialState: OverlayState = {
   captureFlashTimestamp: null,
   detectionScene: null,
   detectionSelectedId: null,
+  pendingConfirmation: null,
 }
 
 function reducer(state: OverlayState, action: OverlayAction): OverlayState {
@@ -109,6 +113,10 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
       return { ...state, detectionScene: null, detectionSelectedId: null }
     case 'detection-select':
       return { ...state, detectionSelectedId: action.payload }
+    case 'automation-confirm-request':
+      return { ...state, pendingConfirmation: action.payload }
+    case 'automation-confirm-dismiss':
+      return { ...state, pendingConfirmation: null }
     default:
       return state
   }
@@ -183,7 +191,11 @@ export function useOverlayEvents() {
         dispatch({ type: 'detection-clear' })
       })
 
-      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13, u14]
+      const u15 = await listen<PendingConfirmationDto>('automation:confirm-request', (e) => {
+        dispatch({ type: 'automation-confirm-request', payload: e.payload })
+      })
+
+      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13, u14, u15]
 
       // Query actual backend state (overlay window may be created after state changes)
       try {

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
 import { SuggestionHistory } from './SuggestionHistory'
 import { SuggestionItem } from './SuggestionItem'
+import { SuggestionStats } from './SuggestionStats'
 import { showToast } from './Toast'
 
 interface SuggestionsPanelProps {
@@ -21,7 +22,32 @@ interface SuggestionsPanelProps {
  */
 export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: SuggestionsPanelProps) {
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active')
+  const [activeTab, setActiveTab] = useState<'active' | 'history' | 'stats'>('active')
+
+  // Source filter with localStorage persistence
+  const [sourceFilter, setSourceFilter] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('suggestion-source-filter')
+      return saved ? new Set(JSON.parse(saved) as string[]) : new Set(['server', 'local'])
+    } catch {
+      return new Set(['server', 'local'])
+    }
+  })
+
+  const filteredSuggestions = useMemo(
+    () => suggestions.filter((s) => sourceFilter.has(s.source)),
+    [suggestions, sourceFilter],
+  )
+
+  const toggleSource = (source: string) => {
+    setSourceFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(source)) next.delete(source)
+      else next.add(source)
+      localStorage.setItem('suggestion-source-filter', JSON.stringify([...next]))
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!open) return
@@ -119,6 +145,18 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         >
           History
         </button>
+        <button
+          type="button"
+          className={cn(
+            'flex-1 py-2 text-xs font-medium transition-colors',
+            activeTab === 'stats'
+              ? 'text-brand border-b-2 border-brand'
+              : 'text-content-secondary hover:text-content-primary',
+          )}
+          onClick={() => setActiveTab('stats')}
+        >
+          Stats
+        </button>
       </div>
 
       {/* Content */}
@@ -127,17 +165,39 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           <div className="border-content-inverse/5 border-b px-4 py-2 text-semantic-error text-xs">{error}</div>
         )}
         {activeTab === 'active' ? (
-          suggestions.length > 0 ? (
-            <ul className="list-none">
-              {suggestions.map((s) => (
-                <SuggestionItem key={s.id} item={s} onAction={handleAction} />
+          <>
+            {/* Source filter toggles */}
+            <div className="flex gap-1.5 px-3 py-1.5">
+              {['server', 'local'].map((src) => (
+                <button
+                  key={src}
+                  type="button"
+                  className={cn(
+                    'px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors',
+                    sourceFilter.has(src)
+                      ? 'bg-brand/20 text-brand'
+                      : 'bg-content-inverse/5 text-content-tertiary',
+                  )}
+                  onClick={() => toggleSource(src)}
+                >
+                  {src === 'server' ? 'Server' : 'Local'}
+                </button>
               ))}
-            </ul>
-          ) : (
-            <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
-          )
-        ) : (
+            </div>
+            {filteredSuggestions.length > 0 ? (
+              <ul className="list-none">
+                {filteredSuggestions.map((s) => (
+                  <SuggestionItem key={s.id} item={s} onAction={handleAction} />
+                ))}
+              </ul>
+            ) : (
+              <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
+            )}
+          </>
+        ) : activeTab === 'history' ? (
           <SuggestionHistory />
+        ) : (
+          <SuggestionStats />
         )}
       </div>
     </aside>

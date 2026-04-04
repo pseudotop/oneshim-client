@@ -10,7 +10,7 @@ use oneshim_core::models::ai_session::{
 use oneshim_core::ports::conversation_session::SessionManager;
 
 use crate::commands::suggestion_parser::try_extract_suggestions;
-use crate::runtime_state::{AiSessionRuntimeState, SuggestionRuntimeState};
+use crate::runtime_state::{AiSessionRuntimeState, AppState, SuggestionRuntimeState};
 
 #[derive(Serialize)]
 pub struct SuggestionViewDto {
@@ -529,4 +529,81 @@ pub async fn explain_suggestion_in_chat(
     let _ = app.emit("navigate:chat", serde_json::json!({ "sessionId": sid }));
 
     Ok(sid)
+}
+
+// ── Queue persistence ────────────────────────────────────────
+
+/// Save current suggestion queue and deferred items to SQLite for offline persistence.
+/// Queue items are saved with state="pending", deferred items with state="deferred".
+#[command]
+pub async fn save_suggestion_state(
+    suggestion_state: tauri::State<'_, SuggestionRuntimeState>,
+    app_state: tauri::State<'_, AppState>,
+) -> Result<u32, String> {
+    let mgr = suggestion_state
+        .manager()
+        .ok_or("suggestions not available")?;
+    let storage = &app_state.storage;
+
+    let mut saved = 0u32;
+
+    // Save queue items with state="pending"
+    let queue = mgr.queue().lock().await;
+    for suggestion in queue.iter() {
+        if let Err(e) = storage.save_suggestion_with_state(suggestion, "pending", None) {
+            tracing::warn!(id = %suggestion.suggestion_id, "failed to persist suggestion: {e}");
+        } else {
+            saved += 1;
+        }
+    }
+    drop(queue);
+
+    // Save deferred items with state="deferred" and resurface_at
+    let deferred = mgr.deferred().lock().await;
+    for entry in deferred.list_deferred() {
+        let resurface = entry.resurface_at.to_rfc3339();
+        if let Err(e) =
+            storage.save_suggestion_with_state(&entry.suggestion, "deferred", Some(&resurface))
+        {
+            tracing::warn!(id = %entry.suggestion.suggestion_id, "failed to persist deferred: {e}");
+        } else {
+            saved += 1;
+        }
+    }
+
+    Ok(saved)
+}
+
+// ── Suggestion statistics ────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct SuggestionStatsDto {
+    pub total: u32,
+    pub accepted: u32,
+    pub rejected: u32,
+    pub deferred: u32,
+    pub pending: u32,
+    pub acceptance_rate: f64,
+}
+
+/// Return aggregate statistics from the suggestion history (in-memory).
+#[command]
+pub async fn get_suggestion_stats(
+    state: tauri::State<'_, SuggestionRuntimeState>,
+) -> Result<SuggestionStatsDto, String> {
+    let mgr = state.manager().ok_or("suggestions not available")?;
+    let stats = mgr.history().lock().await.stats();
+    let rate = if stats.total > 0 {
+        (stats.accepted as f64 / stats.total as f64) * 100.0
+    } else {
+        0.0
+    };
+    Ok(SuggestionStatsDto {
+        total: stats.total,
+        accepted: stats.accepted,
+        rejected: stats.rejected,
+        deferred: stats.deferred,
+        pending: stats.pending,
+        acceptance_rate: (rate * 10.0).round() / 10.0,
+    })
 }

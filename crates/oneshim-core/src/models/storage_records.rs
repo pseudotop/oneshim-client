@@ -174,6 +174,59 @@ pub struct SuggestionRecord {
     pub expires_at: Option<String>,
 }
 
+impl SuggestionRecord {
+    /// Convert a storage record back into a domain `Suggestion`.
+    ///
+    /// Returns `None` if the `suggestion_type` string does not match a known
+    /// variant (SCREAMING_SNAKE_CASE as serialized by serde).
+    pub fn try_into_suggestion(self) -> Option<crate::models::suggestion::Suggestion> {
+        use crate::models::suggestion::*;
+
+        // Handle both SCREAMING_SNAKE_CASE (serde rename_all) and PascalCase
+        // (enum_to_sql_str via serde_json) representations in the database.
+        let suggestion_type = match self.suggestion_type.as_str() {
+            "WORK_GUIDANCE" | "WorkGuidance" => SuggestionType::WorkGuidance,
+            "EMAIL_DRAFT" | "EmailDraft" => SuggestionType::EmailDraft,
+            "PRODUCTIVITY_TIP" | "ProductivityTip" => SuggestionType::ProductivityTip,
+            "WORKFLOW_OPTIMIZATION" | "WorkflowOptimization" => {
+                SuggestionType::WorkflowOptimization
+            }
+            "CONTEXT_BASED" | "ContextBased" => SuggestionType::ContextBased,
+            _ => return None,
+        };
+        let priority = match self.priority.as_str() {
+            "LOW" | "Low" => Priority::Low,
+            "HIGH" | "High" => Priority::High,
+            "CRITICAL" | "Critical" => Priority::Critical,
+            _ => Priority::Medium,
+        };
+        let source = match self.source.as_str() {
+            SuggestionSource::LLM_SERVER_STR | "LlmServer" => SuggestionSource::LlmServer,
+            SuggestionSource::LLM_LOCAL_STR | "LlmLocal" => SuggestionSource::LlmLocal,
+            _ => SuggestionSource::RuleBased,
+        };
+        Some(Suggestion {
+            suggestion_id: self.suggestion_id,
+            suggestion_type,
+            content: self.content,
+            priority,
+            confidence_score: self.confidence_score,
+            relevance_score: self.relevance_score,
+            is_actionable: self.is_actionable,
+            created_at: chrono::DateTime::parse_from_rfc3339(&self.created_at)
+                .ok()?
+                .with_timezone(&chrono::Utc),
+            expires_at: self.expires_at.as_ref().and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .ok()
+                    .map(|d| d.with_timezone(&chrono::Utc))
+            }),
+            source,
+            reasoning: self.reasoning,
+        })
+    }
+}
+
 /// Summary of an activity segment for daily digest generation.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SegmentSummaryRecord {

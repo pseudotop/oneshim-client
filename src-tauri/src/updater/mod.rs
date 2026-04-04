@@ -873,4 +873,125 @@ mod tests {
         }
         assert_eq!(replace_calls, 2);
     }
+
+    // -------------------------------------------------------------------
+    // Task 8: Auto-Update Verification Tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn sha256_verification_correct_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("artifact.bin");
+        let content = b"oneshim release artifact payload v42";
+        std::fs::write(&file_path, content).unwrap();
+
+        let file_bytes = std::fs::read(&file_path).unwrap();
+        let computed_hash = Updater::sha256_hex(&file_bytes);
+
+        // Verify the hash is a valid 64-char hex string
+        assert_eq!(computed_hash.len(), 64);
+        assert!(computed_hash.chars().all(|c| c.is_ascii_hexdigit()));
+
+        // Computing again should yield the same hash (deterministic)
+        let hash_again = Updater::sha256_hex(&file_bytes);
+        assert_eq!(computed_hash, hash_again);
+    }
+
+    #[test]
+    fn sha256_verification_detects_corruption() {
+        let original = b"genuine release artifact";
+        let corrupted = b"corrupted release artifact";
+
+        let hash_original = Updater::sha256_hex(original);
+        let hash_corrupted = Updater::sha256_hex(corrupted);
+
+        assert_ne!(
+            hash_original, hash_corrupted,
+            "different content must produce different hashes"
+        );
+    }
+
+    #[test]
+    fn safe_archive_path_rejects_traversal() {
+        use std::path::Path;
+
+        // Paths with parent traversal must be rejected
+        assert!(
+            !Updater::is_safe_archive_path(Path::new("../../../etc/passwd")),
+            "parent traversal should be rejected"
+        );
+        assert!(
+            !Updater::is_safe_archive_path(Path::new("foo/../../bar")),
+            "embedded traversal should be rejected"
+        );
+        assert!(
+            !Updater::is_safe_archive_path(Path::new("../outside")),
+            "single-level traversal should be rejected"
+        );
+
+        // Safe paths must be accepted
+        assert!(
+            Updater::is_safe_archive_path(Path::new("bin/oneshim")),
+            "normal nested path should be accepted"
+        );
+        assert!(
+            Updater::is_safe_archive_path(Path::new("oneshim")),
+            "root-level file should be accepted"
+        );
+        assert!(
+            Updater::is_safe_archive_path(Path::new("./oneshim")),
+            "current-dir prefixed path should be accepted"
+        );
+        assert!(
+            Updater::is_safe_archive_path(Path::new("release/bin/oneshim")),
+            "deep nested path should be accepted"
+        );
+    }
+
+    #[test]
+    fn url_allowlist_accepts_github_rejects_unknown() {
+        // github.com and its subdomains are allowed
+        assert!(Updater::is_allowed_download_host("github.com"));
+        assert!(Updater::is_allowed_download_host("api.github.com"));
+        assert!(Updater::is_allowed_download_host(
+            "objects.githubusercontent.com"
+        ));
+        assert!(Updater::is_allowed_download_host("githubusercontent.com"));
+
+        // Unknown hosts must be rejected
+        assert!(!Updater::is_allowed_download_host("evil.com"));
+        assert!(!Updater::is_allowed_download_host("not-github.com"));
+        assert!(!Updater::is_allowed_download_host("github.com.evil.net"));
+        assert!(!Updater::is_allowed_download_host("malicious.example.org"));
+    }
+
+    #[test]
+    fn url_allowlist_full_url_validation() {
+        let updater = Updater::new(test_config());
+
+        // GitHub HTTPS URLs are accepted
+        assert!(updater
+            .validate_download_url(
+                "https://github.com/pseudotop/oneshim-client/releases/download/v1.0.0/asset.tar.gz"
+            )
+            .is_ok());
+        assert!(updater
+            .validate_download_url(
+                "https://objects.githubusercontent.com/github-releases/asset.tar.gz"
+            )
+            .is_ok());
+
+        // Evil domains are rejected
+        assert!(updater
+            .validate_download_url("https://evil.com/malware.tar.gz")
+            .is_err());
+        assert!(updater
+            .validate_download_url("https://not-github.com/fake.tar.gz")
+            .is_err());
+
+        // HTTP (non-HTTPS) is rejected for non-localhost
+        assert!(updater
+            .validate_download_url("http://github.com/asset.tar.gz")
+            .is_err());
+    }
 }

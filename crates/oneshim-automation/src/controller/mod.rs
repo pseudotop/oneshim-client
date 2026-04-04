@@ -9,6 +9,7 @@ pub use types::{
     PlannedIntentResult, WorkflowResult, WorkflowStepResult,
 };
 
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -22,6 +23,7 @@ use crate::intent_resolver::IntentExecutor;
 use crate::policy::PolicyClient;
 use gate::CommandExecutionGate;
 use oneshim_core::config::SandboxConfig;
+use oneshim_core::models::automation::PendingConfirmation;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::focus_probe::FocusProbe;
 use oneshim_core::ports::overlay_driver::OverlayDriver;
@@ -45,6 +47,14 @@ pub struct AutomationController {
     /// Health flag: `true` after a successful command, `false` on failure.
     /// Read by the health-check loop. `None` when no caller has wired a flag.
     pub(super) last_command_ok: Option<Arc<AtomicBool>>,
+    /// Pending confirmations awaiting user approval via overlay modal.
+    /// Key: command_id, Value: (confirmation data, oneshot sender for response).
+    #[allow(clippy::type_complexity)]
+    pub(super) pending_confirmations: Arc<
+        tokio::sync::Mutex<
+            HashMap<String, (PendingConfirmation, tokio::sync::oneshot::Sender<bool>)>,
+        >,
+    >,
 }
 
 impl AutomationController {
@@ -70,6 +80,7 @@ impl AutomationController {
             scene_finder: None,
             gui_service: None,
             last_command_ok: None,
+            pending_confirmations: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         }
     }
 

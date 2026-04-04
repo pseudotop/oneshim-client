@@ -406,3 +406,237 @@ async fn pull_from_offline_peer_returns_none() {
 
     transport.stop();
 }
+
+// -----------------------------------------------------------------------
+// Task 7: Sync Verification Tests
+// -----------------------------------------------------------------------
+
+/// Helper to create a changeset with a specific origin and watermark.
+fn changeset_with_watermark(origin: &str, wall_ms: u64, counter: u32) -> ChangeSet {
+    ChangeSet {
+        kind: ChangeSetKind::Data,
+        origin_device_id: origin.to_string(),
+        origin_device_name: format!("Device {origin}"),
+        watermark: Hlc {
+            wall_ms,
+            counter,
+            device_id: origin.to_string(),
+        },
+        segments: vec![serde_json::json!({"id": format!("seg-{origin}")})],
+        ..Default::default()
+    }
+}
+
+/// Helper to create a transport and inject a peer, returning (transport, peer_port).
+async fn start_pair(
+    id_a: &str,
+    id_b: &str,
+    passphrase: &str,
+) -> (LanSyncTransport, LanSyncTransport) {
+    let a = LanSyncTransport::start(
+        id_a.to_string(),
+        format!("Peer {id_a}"),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        format!("fp-{id_a}"),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+
+    let b = LanSyncTransport::start(
+        id_b.to_string(),
+        format!("Peer {id_b}"),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        format!("fp-{id_b}"),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+
+    let a_port = a.server_port();
+    let b_port = b.server_port();
+
+    // A knows about B
+    a.verified_peers.write().insert(
+        id_b.to_string(),
+        LanPeerInfo {
+            device_id: id_b.to_string(),
+            device_name: format!("Peer {id_b}"),
+            host: "127.0.0.1".to_string(),
+            port: b_port,
+            fingerprint: format!("fp-{id_b}"),
+            version: "1".to_string(),
+        },
+    );
+
+    // B knows about A
+    b.verified_peers.write().insert(
+        id_a.to_string(),
+        LanPeerInfo {
+            device_id: id_a.to_string(),
+            device_name: format!("Peer {id_a}"),
+            host: "127.0.0.1".to_string(),
+            port: a_port,
+            fingerprint: format!("fp-{id_a}"),
+            version: "1".to_string(),
+        },
+    );
+
+    // Yield to let both servers start accepting connections
+    tokio::task::yield_now().await;
+
+    (a, b)
+}
+
+#[tokio::test]
+async fn bidirectional_sync_roundtrip() {
+    let (a, b) = start_pair("bi-a", "bi-b", "bidir-pass").await;
+
+    // A pushes a changeset to B
+    let cs_a = changeset_with_watermark("bi-a", 1000, 1);
+    a.push(&cs_a).await.unwrap();
+
+    // B should have received A's data
+    let received_by_b = b.drain_received();
+    assert_eq!(
+        received_by_b.len(),
+        1,
+        "B should receive 1 changeset from A"
+    );
+    assert_eq!(received_by_b[0].origin_device_id, "bi-a");
+
+    // B pushes a different changeset to A
+    let cs_b = changeset_with_watermark("bi-b", 2000, 1);
+    b.push(&cs_b).await.unwrap();
+
+    // A should have received B's data
+    let received_by_a = a.drain_received();
+    assert_eq!(
+        received_by_a.len(),
+        1,
+        "A should receive 1 changeset from B"
+    );
+    assert_eq!(received_by_a[0].origin_device_id, "bi-b");
+
+    a.stop();
+    b.stop();
+}
+
+#[tokio::test]
+async fn watermark_filtering_skips_old_data() {
+    let passphrase = "watermark-test-pass";
+
+    // Provider enqueues a changeset at T=1000
+    let provider = LanSyncTransport::start(
+        "wm-provider".to_string(),
+        "Provider".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-prov".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+
+    let cs = changeset_with_watermark("wm-provider", 1000, 1);
+    provider.enqueue_outbound(cs);
+    let provider_port = provider.server_port();
+
+    // Consumer connects to the provider
+    let consumer = LanSyncTransport::start(
+        "wm-consumer".to_string(),
+        "Consumer".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-cons".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+
+    consumer.verified_peers.write().insert(
+        "wm-provider".to_string(),
+        LanPeerInfo {
+            device_id: "wm-provider".to_string(),
+            device_name: "Provider".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: provider_port,
+            fingerprint: "fp-prov".to_string(),
+            version: "1".to_string(),
+        },
+    );
+
+    tokio::task::yield_now().await;
+
+    // Pull with since before T=1000 should return the changeset
+    let since_before = Hlc {
+        wall_ms: 500,
+        counter: 0,
+        device_id: String::new(),
+    };
+    let pulled = consumer.pull(&since_before).await.unwrap();
+    assert!(
+        pulled.is_some(),
+        "pull with since before the watermark should return data"
+    );
+    assert_eq!(pulled.unwrap().origin_device_id, "wm-provider");
+
+    // Pull with since after T=1000 should return no data (204)
+    let since_after = Hlc {
+        wall_ms: 1001,
+        counter: 0,
+        device_id: String::new(),
+    };
+    let pulled_none = consumer.pull(&since_after).await.unwrap();
+    assert!(
+        pulled_none.is_none(),
+        "pull with since after the watermark should return no data"
+    );
+
+    provider.stop();
+    consumer.stop();
+}
+
+#[tokio::test]
+async fn concurrent_push_pull_no_data_loss() {
+    let (a, b) = start_pair("conc-a", "conc-b", "concurrent-pass").await;
+
+    // A and B push simultaneously
+    let cs_a = changeset_with_watermark("conc-a", 3000, 1);
+    let cs_b = changeset_with_watermark("conc-b", 3000, 2);
+
+    let (res_a, res_b) = tokio::join!(a.push(&cs_a), b.push(&cs_b));
+    res_a.unwrap();
+    res_b.unwrap();
+
+    // Both should have received each other's data
+    let received_by_a = a.drain_received();
+    let received_by_b = b.drain_received();
+
+    assert_eq!(
+        received_by_a.len(),
+        1,
+        "A should receive 1 changeset from B"
+    );
+    assert_eq!(received_by_a[0].origin_device_id, "conc-b");
+
+    assert_eq!(
+        received_by_b.len(),
+        1,
+        "B should receive 1 changeset from A"
+    );
+    assert_eq!(received_by_b[0].origin_device_id, "conc-a");
+
+    a.stop();
+    b.stop();
+}

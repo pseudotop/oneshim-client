@@ -1,4 +1,5 @@
 use crate::error::StorageError;
+use oneshim_core::models::storage_records::SuggestionRecord;
 use oneshim_core::models::suggestion::SuggestionSource;
 #[allow(deprecated)]
 use oneshim_core::models::work_session::LocalSuggestion;
@@ -336,6 +337,103 @@ impl SqliteStorage {
             .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
 
         Ok(count > 0)
+    }
+
+    // --------------------------------------------------------
+    // Queue persistence (V23): save/list by state
+    // --------------------------------------------------------
+
+    /// Save suggestion with explicit state for queue persistence.
+    pub fn save_suggestion_with_state(
+        &self,
+        suggestion: &oneshim_core::models::suggestion::Suggestion,
+        state: &str,
+        resurface_at: Option<&str>,
+    ) -> Result<(), StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        conn.execute(
+            "INSERT OR REPLACE INTO suggestions \
+             (suggestion_id, suggestion_type, source, content, priority, \
+              confidence_score, relevance_score, is_actionable, reasoning, \
+              created_at, expires_at, state, resurface_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                suggestion.suggestion_id,
+                enum_to_sql_str(&suggestion.suggestion_type),
+                suggestion.source.as_sql_str(),
+                suggestion.content,
+                enum_to_sql_str(&suggestion.priority),
+                suggestion.confidence_score,
+                suggestion.relevance_score,
+                suggestion.is_actionable as i32,
+                suggestion.reasoning,
+                suggestion.created_at.to_rfc3339(),
+                suggestion.expires_at.map(|d| d.to_rfc3339()),
+                state,
+                resurface_at,
+            ],
+        )
+        .map_err(|e| {
+            StorageError::Internal(format!("Failed to save suggestion with state: {e}"))
+        })?;
+
+        debug!(id = %suggestion.suggestion_id, state, "suggestion persisted with state");
+        Ok(())
+    }
+
+    /// List suggestions by state for queue restoration.
+    pub fn list_suggestions_by_state(
+        &self,
+        state: &str,
+        limit: usize,
+    ) -> Result<Vec<SuggestionRecord>, StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, suggestion_id, suggestion_type, source, content, priority, \
+                 confidence_score, relevance_score, is_actionable, reasoning, \
+                 shown_at, dismissed_at, acted_at, created_at, expires_at \
+                 FROM suggestions WHERE state = ?1 \
+                 ORDER BY created_at DESC LIMIT ?2",
+            )
+            .map_err(|e| StorageError::Internal(format!("prepare failure: {e}")))?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![state, limit as i64], |row| {
+                Ok(SuggestionRecord {
+                    id: row.get(0)?,
+                    suggestion_id: row.get(1)?,
+                    suggestion_type: row.get(2)?,
+                    source: row.get(3)?,
+                    content: row.get(4)?,
+                    priority: row.get(5)?,
+                    confidence_score: row.get(6)?,
+                    relevance_score: row.get(7)?,
+                    is_actionable: row.get::<_, i32>(8)? != 0,
+                    reasoning: row.get(9)?,
+                    shown_at: row.get(10)?,
+                    dismissed_at: row.get(11)?,
+                    acted_at: row.get(12)?,
+                    created_at: row.get(13)?,
+                    expires_at: row.get(14)?,
+                })
+            })
+            .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
+
+        let mut records = Vec::new();
+        for row in rows {
+            records
+                .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
+        }
+        Ok(records)
     }
 
     #[allow(deprecated)]

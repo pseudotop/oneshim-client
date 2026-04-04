@@ -88,6 +88,14 @@ export interface DetectionScenePayload {
   elements: DetectionElementPayload[]
 }
 
+export interface PendingConfirmationDto {
+  command_id: string
+  process_name: string
+  args: string[]
+  audit_level: string
+  requested_at: string
+}
+
 export interface SuggestionHistoryDto extends SuggestionViewDto {
   feedback: string | null
 }
@@ -111,4 +119,5 @@ export interface OverlayState {
   captureFlashTimestamp: string | null
   detectionScene: DetectionScenePayload | null
   detectionSelectedId: string | null
+  pendingConfirmation: PendingConfirmationDto | null
 }

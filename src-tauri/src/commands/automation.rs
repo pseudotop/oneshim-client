@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tauri::command;
 
@@ -94,4 +95,54 @@ pub async fn analyze_automation_scene(
         .map_err(|e| e.to_string())?;
 
     serde_json::to_string(&scene).map_err(|e| e.to_string())
+}
+
+// ── Confirmation flow ──
+
+#[derive(Serialize)]
+pub struct PendingConfirmationDto {
+    pub command_id: String,
+    pub process_name: String,
+    pub args: Vec<String>,
+    pub audit_level: String,
+    pub requested_at: DateTime<Utc>,
+}
+
+/// List pending automation confirmations awaiting user response.
+#[command]
+pub async fn get_pending_confirmations(
+    state: tauri::State<'_, AutomationRuntimeState>,
+) -> Result<Vec<PendingConfirmationDto>, String> {
+    let controller = state.controller().ok_or("Automation not available")?;
+
+    let confirmations = controller
+        .list_pending_confirmations()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(confirmations
+        .into_iter()
+        .map(|c| PendingConfirmationDto {
+            command_id: c.command_id,
+            process_name: c.process_name,
+            args: c.args,
+            audit_level: c.audit_level,
+            requested_at: c.requested_at,
+        })
+        .collect())
+}
+
+/// Submit user's confirmation decision for a pending automation command.
+#[command]
+pub async fn confirm_automation_command(
+    state: tauri::State<'_, AutomationRuntimeState>,
+    command_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    let controller = state.controller().ok_or("Automation not available")?;
+
+    controller
+        .submit_confirmation(&command_id, approved)
+        .await
+        .map_err(|e| e.to_string())
 }

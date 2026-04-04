@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { AutomationConfirmModal } from './components/AutomationConfirmModal'
 import { CaptureFlash } from './components/CaptureFlash'
 import CoachingPopup from './components/CoachingPopup'
 import DetectionHeader from './components/DetectionHeader'
@@ -113,6 +114,14 @@ export default function OverlayApp() {
 
       {/* Rich mode: attention heatmap ghost */}
       {isRich && <HeatmapGhost />}
+
+      {/* Automation confirmation modal */}
+      {state.pendingConfirmation && (
+        <AutomationConfirmModal
+          confirmation={state.pendingConfirmation}
+          onDismiss={() => dispatch({ type: 'automation-confirm-dismiss' })}
+        />
+      )}
 
       {/* Manual capture feedback flash */}
       <CaptureFlash timestamp={state.captureFlashTimestamp} />
