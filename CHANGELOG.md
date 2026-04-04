@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.17-rc.3] - 2026-04-04
+
+### Fixed
+
+- Add missing bug-report routes to HTTP manifest
+  The CI `Check (fmt + clippy)` step was failing because
+  `/support/bug-report` and `/support/bug-report/latest` routes existed in
+  routes.rs but were missing from the interface manifest.
+
 ## [0.4.17-rc.2] - 2026-04-04
 
 ### Added
