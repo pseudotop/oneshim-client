@@ -5371,8 +5371,10 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "criterion",
  "futures-core",
  "gethostname",
+ "parking_lot",
  "semver",
  "serde",
  "serde_json",
@@ -5388,6 +5390,7 @@ name = "oneshim-embedding"
 version = "0.4.17-rc.1"
 dependencies = [
  "async-trait",
+ "criterion",
  "fastembed",
  "oneshim-core",
  "thiserror 2.0.18",
@@ -5411,6 +5414,7 @@ dependencies = [
  "chrono",
  "core-foundation 0.10.1",
  "core-graphics",
+ "criterion",
  "oneshim-core",
  "serde",
  "sysinfo",
@@ -5506,6 +5510,7 @@ version = "0.4.17-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "criterion",
  "oneshim-core",
  "serde",
  "serde_json",

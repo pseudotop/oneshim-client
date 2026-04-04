@@ -179,6 +179,25 @@ impl SyncEngine {
         info!("GDPR deletion event pushed successfully");
         Ok(None)
     }
+
+    // ── Public accessors for IPC/REST ──────────────────────────────────
+
+    /// Device identity of this sync engine instance.
+    pub fn device_id(&self) -> &str {
+        &self.device_id
+    }
+
+    /// Human-readable device name.
+    pub fn device_name(&self) -> &str {
+        &self.device_name
+    }
+
+    /// Discover known peers via the configured transport.
+    pub async fn discover_peers(
+        &self,
+    ) -> Result<Vec<oneshim_core::models::sync::PeerInfo>, CoreError> {
+        self.transport.discover_peers().await
+    }
 }
 
 #[cfg(test)]
