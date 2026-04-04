@@ -211,6 +211,27 @@ impl SuggestionRuntimeState {
     }
 }
 
+/// Feature-scoped Tauri managed state for automation (RPA) IPC commands.
+#[derive(Default)]
+pub struct AutomationRuntimeState {
+    controller: Option<Arc<dyn oneshim_core::ports::automation::AutomationPort>>,
+}
+
+#[allow(dead_code)] // wired when automation controller is available
+impl AutomationRuntimeState {
+    pub(crate) fn new(
+        controller: Option<Arc<dyn oneshim_core::ports::automation::AutomationPort>>,
+    ) -> Self {
+        Self { controller }
+    }
+
+    pub(crate) fn controller(
+        &self,
+    ) -> Option<Arc<dyn oneshim_core::ports::automation::AutomationPort>> {
+        self.controller.clone()
+    }
+}
+
 /// Feature-scoped Tauri managed state for cross-device sync IPC commands.
 #[derive(Default)]
 pub struct SyncRuntimeState {
@@ -368,6 +389,7 @@ pub(crate) struct ManagedStateRegistration {
     pub(crate) suggestion_runtime_state: SuggestionRuntimeState,
     pub(crate) detection_runtime_state: DetectionRuntimeState,
     pub(crate) sync_runtime_state: SyncRuntimeState,
+    pub(crate) automation_runtime_state: AutomationRuntimeState,
     pub(crate) oauth_state: OAuthState,
     pub(crate) oauth_coordinator_state: OAuthCoordinatorState,
     pub(crate) secret_backend_state: SecretBackendState,
@@ -384,6 +406,7 @@ pub(crate) struct ManagedStateBuilder {
     suggestion_runtime_state: SuggestionRuntimeState,
     detection_runtime_state: DetectionRuntimeState,
     sync_runtime_state: SyncRuntimeState,
+    automation_runtime_state: AutomationRuntimeState,
     oauth_state: OAuthState,
     oauth_coordinator_state: OAuthCoordinatorState,
     capability_profile: ManagedStateCapabilityProfile,
@@ -403,6 +426,7 @@ impl ManagedStateBuilder {
             suggestion_runtime_state: SuggestionRuntimeState::default(),
             detection_runtime_state: DetectionRuntimeState::default(),
             sync_runtime_state: SyncRuntimeState::default(),
+            automation_runtime_state: AutomationRuntimeState::default(),
             oauth_state: OAuthState(None),
             oauth_coordinator_state: OAuthCoordinatorState(None),
             capability_profile: ManagedStateCapabilityProfile::default(),
@@ -490,6 +514,7 @@ impl ManagedStateBuilder {
             suggestion_runtime_state: self.suggestion_runtime_state,
             detection_runtime_state: self.detection_runtime_state,
             sync_runtime_state: self.sync_runtime_state,
+            automation_runtime_state: self.automation_runtime_state,
             oauth_state: self.oauth_state,
             oauth_coordinator_state: self.oauth_coordinator_state,
             secret_backend_state,
@@ -509,6 +534,7 @@ impl ManagedStateRegistration {
         app.manage(self.suggestion_runtime_state);
         app.manage(self.detection_runtime_state);
         app.manage(self.sync_runtime_state);
+        app.manage(self.automation_runtime_state);
         app.manage(self.oauth_state);
         app.manage(self.oauth_coordinator_state);
         app.manage(self.secret_backend_state);

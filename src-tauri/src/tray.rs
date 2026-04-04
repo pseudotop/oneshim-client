@@ -134,6 +134,7 @@ fn build_tray_menu<R: Runtime>(
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let automation =
         MenuItem::with_id(app, "automation", "Automation Settings", true, None::<&str>)?;
+    let run_preset = MenuItem::with_id(app, "run-preset", "Run Preset...", true, None::<&str>)?;
     let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
     let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -153,6 +154,7 @@ fn build_tray_menu<R: Runtime>(
             &PredefinedMenuItem::separator(app)?,
             &settings,
             &automation,
+            &run_preset,
             &approve,
             &defer,
             &PredefinedMenuItem::separator(app)?,
@@ -285,6 +287,11 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
             "automation" => {
                 focus_main_window(app);
                 app.emit_to("main", "tray-toggle-automation", ())
+                    .unwrap_or_default();
+            }
+            "run-preset" => {
+                focus_main_window(app);
+                app.emit_to("main", "automation:quick-access", ())
                     .unwrap_or_default();
             }
             "approve_update" => {
