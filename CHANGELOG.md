@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.18-rc.1] - 2026-04-04
+
+### Added
+
+- Add IPC commands for cross-device sync management ([#317](https://github.com/pseudotop/oneshim-client/pull/317))
+  * feat: decouple LLM WorkType refiner from embedding pipeline
+
+  Add `analysis.llm_work_type_enabled` (default true) to AnalysisConfig.
+  The refiner now creates its own AnalysisClient independently — no longer
+  requires embedding.enabled or llm_summary_enabled. Users with
+  tiered_memory + llm_api + consent get automatic LLM work type refinement.
+
+- IPC commands + Settings UI for cross-device sync ([#318](https://github.com/pseudotop/oneshim-client/pull/318))
+  * feat: decouple LLM WorkType refiner from embedding pipeline
+
+  Add `analysis.llm_work_type_enabled` (default true) to AnalysisConfig.
+  The refiner now creates its own AnalysisClient independently — no longer
+  requires embedding.enabled or llm_summary_enabled. Users with
+  tiered_memory + llm_api + consent get automatic LLM work type refinement.
+
+- Automation desktop UI + sync/coaching UX fixes + benchmarks + code quality ([#319](https://github.com/pseudotop/oneshim-client/pull/319))
+  * feat: decouple LLM WorkType refiner from embedding pipeline
+
+  Add `analysis.llm_work_type_enabled` (default true) to AnalysisConfig.
+  The refiner now creates its own AnalysisClient independently — no longer
+  requires embedding.enabled or llm_summary_enabled. Users with
+  tiered_memory + llm_api + consent get automatic LLM work type refinement.
+
+- V0.4.18 analysis wiring — confidence, gRPC adapters, test hardening ([#321](https://github.com/pseudotop/oneshim-client/pull/321))
+  * feat: P1+P2 analysis wiring — confidence display, gRPC adapters, WS cleanup
+
+
+### Changed
+
+- Config_manager parking_lot + STATUS.md update ([#316](https://github.com/pseudotop/oneshim-client/pull/316))
+  * feat: decouple LLM WorkType refiner from embedding pipeline
+
+  Add `analysis.llm_work_type_enabled` (default true) to AnalysisConfig.
+  The refiner now creates its own AnalysisClient independently — no longer
+  requires embedding.enabled or llm_summary_enabled. Users with
+  tiered_memory + llm_api + consent get automatic LLM work type refinement.
+
 ## [0.4.17] - 2026-04-04
 
 ### Fixed
