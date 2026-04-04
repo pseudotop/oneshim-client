@@ -84,7 +84,6 @@
 
 ```
 [ ] oneshim-ui/views/settings.rs: Settings screen
-[ ] oneshim-network/ws_client.rs: WebSocket (conversation mode)
 [ ] oneshim-suggestion/history.rs: Suggestion history local cache
 [ ] oneshim-app/lifecycle.rs: Start/shutdown, resource cleanup
 [ ] oneshim-app/event_bus.rs: Internal events (tokio::broadcast)

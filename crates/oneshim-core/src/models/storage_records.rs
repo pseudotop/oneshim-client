@@ -201,7 +201,7 @@ pub struct SegmentDetailRecord {
     pub regime_label: Option<String>,
 }
 
-/// Input DTO for inserting a GUI interaction event (V13).
+/// Input DTO for inserting a GUI interaction event (V13, extended V22).
 #[derive(Debug, Clone)]
 pub struct NewGuiInteraction<'a> {
     pub event_id: &'a str,
@@ -212,9 +212,12 @@ pub struct NewGuiInteraction<'a> {
     pub interaction_type: &'a str,
     pub bbox_json: Option<&'a str>,
     pub app_name: &'a str,
+    /// Classification confidence for the inferred element type (0.0-1.0).
+    /// Added in V22; defaults to 1.0 for backward compatibility.
+    pub type_confidence: f32,
 }
 
-/// A GUI interaction event record from the V13 gui_interactions table.
+/// A GUI interaction event record from the V13 gui_interactions table (extended V22).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GuiInteractionRecord {
     pub id: i64,
@@ -227,4 +230,12 @@ pub struct GuiInteractionRecord {
     pub bbox_json: Option<String>,
     pub app_name: String,
     pub created_at: String,
+    /// Classification confidence for the inferred element type (0.0-1.0).
+    /// Added in V22; defaults to 1.0 for rows created before V22.
+    #[serde(default = "default_type_confidence")]
+    pub type_confidence: f32,
+}
+
+fn default_type_confidence() -> f32 {
+    1.0
 }

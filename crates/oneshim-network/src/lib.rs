@@ -55,7 +55,6 @@ pub mod oauth;
 pub mod remote_embedding_client;
 pub mod resilience;
 pub mod sse_client;
-pub mod ws_client;
 
 pub mod sync;
 
