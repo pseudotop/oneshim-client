@@ -59,16 +59,22 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
     }
   }, [message.text, reset])
 
+  const [feedbackSent, setFeedbackSent] = useState<'positive' | 'negative' | null>(null)
+
   const feedback = useCallback(
     async (positive: boolean) => {
       await tauriInvoke('submit_coaching_feedback', {
         messageId: message.message_id,
         positive,
       })
+      setFeedbackSent(positive ? 'positive' : 'negative')
     },
     [message.message_id],
   )
 
+  // Dismiss sends the action to backend. Implicit feedback (regime/app change
+  // within 5 min) is evaluated separately by FeedbackTracker — no need to send
+  // explicit feedback on dismiss. Only thumbs-up/down count as explicit signals.
   const handleDismiss = useCallback(
     async (action: DismissAction) => {
       try {
@@ -134,24 +140,32 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             </button>
           </div>
 
-          {/* Thumbs feedback — subtle by default */}
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => void handleFeedback(true)}
-              className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-success hover:opacity-100`.trim()}
-              aria-label="Helpful"
-            >
-              <ThumbsUpIcon />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleFeedback(false)}
-              className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-error hover:opacity-100`.trim()}
-              aria-label="Not helpful"
-            >
-              <ThumbsDownIcon />
-            </button>
+          {/* Thumbs feedback — subtle by default, shows confirmation after submit */}
+          <div className="flex items-center gap-1">
+            {feedbackSent ? (
+              <span className={`text-[10px] ${feedbackSent === 'positive' ? 'text-semantic-success' : 'text-semantic-error'} ${motion.opacity}`}>
+                {feedbackSent === 'positive' ? 'Thanks! Learning...' : 'Got it, adjusting...'}
+              </span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleFeedback(true)}
+                  className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-success hover:opacity-100`.trim()}
+                  aria-label="Helpful"
+                >
+                  <ThumbsUpIcon />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleFeedback(false)}
+                  className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-error hover:opacity-100`.trim()}
+                  aria-label="Not helpful"
+                >
+                  <ThumbsDownIcon />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
