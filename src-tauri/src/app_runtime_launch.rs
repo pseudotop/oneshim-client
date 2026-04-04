@@ -123,6 +123,29 @@ impl AppRuntimeLaunchBuilder {
         let shared_suggestion_queue = Arc::new(tokio::sync::Mutex::new(
             oneshim_suggestion::queue::SuggestionQueue::new(config.analysis.max_suggestions),
         ));
+
+        // Restore pending suggestions from SQLite into the queue.
+        #[cfg(feature = "server")]
+        {
+            let pending = sqlite_storage
+                .list_suggestions_by_state("pending", 50)
+                .unwrap_or_default();
+            if !pending.is_empty() {
+                let mut queue = handle.block_on(shared_suggestion_queue.lock());
+                let mut restored = 0usize;
+                for record in pending {
+                    if let Some(suggestion) = record.try_into_suggestion() {
+                        if queue.push(suggestion) {
+                            restored += 1;
+                        }
+                    }
+                }
+                if restored > 0 {
+                    tracing::info!(count = restored, "restored suggestions from storage");
+                }
+            }
+        }
+
         #[cfg(feature = "server")]
         let shared_scorer = Arc::new(tokio::sync::Mutex::new(
             oneshim_suggestion::scorer::FeedbackScorer::new(),
@@ -190,12 +213,20 @@ impl AppRuntimeLaunchBuilder {
                     let history = Arc::new(tokio::sync::Mutex::new(
                         oneshim_suggestion::history::SuggestionHistory::new(100),
                     ));
-                    let feedback = oneshim_suggestion::feedback::FeedbackSender::new(api);
+                    let feedback = Arc::new(oneshim_suggestion::feedback::FeedbackSender::new(api));
+                    let deferred = Arc::new(tokio::sync::Mutex::new(
+                        oneshim_suggestion::deferred::DeferredManager::new(50),
+                    ));
+                    let retry_queue = Arc::new(tokio::sync::Mutex::new(
+                        oneshim_suggestion::feedback_retry::FeedbackRetryQueue::new(100, 5),
+                    ));
                     Some(Arc::new(crate::suggestion_manager::SuggestionManager::new(
                         shared_suggestion_queue.clone(),
                         history,
                         feedback,
                         shared_scorer.clone(),
+                        deferred,
+                        retry_queue,
                     )))
                 }
                 Err(e) => {
@@ -292,6 +323,12 @@ impl AppRuntimeLaunchBuilder {
             let builder = builder
                 .with_shared_suggestion_queue(shared_suggestion_queue)
                 .with_shared_scorer(shared_scorer);
+            #[cfg(feature = "server")]
+            let builder = if let Some(ref mgr) = suggestion_manager {
+                builder.with_suggestion_manager(mgr.clone())
+            } else {
+                builder
+            };
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()

@@ -64,6 +64,7 @@ export interface SuggestionViewDto {
   confidence_score: number
   created_at: string
   is_read: boolean
+  reasoning: string | null
 }
 
 export interface DetectionElementPayload {
@@ -87,6 +88,24 @@ export interface DetectionScenePayload {
   elements: DetectionElementPayload[]
 }
 
+export interface PendingConfirmationDto {
+  command_id: string
+  process_name: string
+  args: string[]
+  audit_level: string
+  requested_at: string
+}
+
+export interface SuggestionHistoryDto extends SuggestionViewDto {
+  feedback: string | null
+}
+
+export interface ToastItem {
+  id: string
+  message: string
+  type: 'success' | 'error' | 'info'
+}
+
 export interface OverlayState {
   mode: OverlayMode
   coaching: CoachingPayload | null
@@ -96,7 +115,9 @@ export interface OverlayState {
   captureState: CaptureStatePayload
   suggestionsPanelOpen: boolean
   suggestions: SuggestionViewDto[]
+  suggestionBadgeCount: number
   captureFlashTimestamp: string | null
   detectionScene: DetectionScenePayload | null
   detectionSelectedId: string | null
+  pendingConfirmation: PendingConfirmationDto | null
 }

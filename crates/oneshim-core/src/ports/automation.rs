@@ -7,7 +7,8 @@ use tokio::sync::broadcast;
 
 use crate::error::{CoreError, GuiInteractionError};
 use crate::models::automation::{
-    AutomationCommand, CommandResult, GuiExecutionResult, PlannedIntentResult, WorkflowResult,
+    AutomationCommand, CommandResult, GuiExecutionResult, PendingConfirmation, PlannedIntentResult,
+    WorkflowResult,
 };
 use crate::models::gui::{
     GuiConfirmRequest, GuiCreateSessionRequest, GuiCreateSessionResponse, GuiExecutionRequest,
@@ -112,4 +113,12 @@ pub trait AutomationPort: Send + Sync {
         session_id: &str,
         capability_token: &str,
     ) -> Result<broadcast::Receiver<GuiSessionEvent>, GuiInteractionError>;
+
+    // ── Confirmation flow ──
+
+    /// 사용자 승인 대기 중인 자동화 확인 목록 조회
+    async fn list_pending_confirmations(&self) -> Result<Vec<PendingConfirmation>, CoreError>;
+
+    /// 사용자의 자동화 확인 응답 제출 (승인/거부)
+    async fn submit_confirmation(&self, command_id: &str, approved: bool) -> Result<(), CoreError>;
 }

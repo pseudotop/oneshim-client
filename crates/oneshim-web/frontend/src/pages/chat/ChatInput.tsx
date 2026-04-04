@@ -1,4 +1,4 @@
-import { Loader2, Mic, Paperclip, Send, X } from 'lucide-react'
+import { Lightbulb, Loader2, Mic, Paperclip, Send, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -15,6 +15,9 @@ interface ChatInputProps {
   sending: boolean
   sendDisabled: boolean
   onSend: () => void
+  // Suggestion props
+  onRequestSuggestions?: () => void
+  requestingSuggestions?: boolean
   // Audio props
   audioAvailable: boolean
   audioTooltip: string
@@ -36,6 +39,8 @@ export function ChatInput({
   sending,
   sendDisabled,
   onSend,
+  onRequestSuggestions,
+  requestingSuggestions,
   audioAvailable,
   audioTooltip,
   micMode,
@@ -198,6 +203,23 @@ export function ChatInput({
             >
               {transcribing ? <Loader2 className={cn(iconSize.sm, 'animate-spin')} /> : <Mic className={iconSize.sm} />}
             </button>
+          )}
+          {onRequestSuggestions && (
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              disabled={sendDisabled || requestingSuggestions}
+              onClick={onRequestSuggestions}
+              title="Get AI suggestions"
+              className="shrink-0"
+            >
+              {requestingSuggestions ? (
+                <Loader2 className={cn(iconSize.sm, 'animate-spin')} />
+              ) : (
+                <Lightbulb className={iconSize.sm} />
+              )}
+            </Button>
           )}
           <Button variant="primary" size="sm" type="submit" disabled={sendDisabled}>
             <Send className={iconSize.sm} />

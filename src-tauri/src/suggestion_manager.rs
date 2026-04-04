@@ -1,5 +1,7 @@
 use lru::LruCache;
+use oneshim_suggestion::deferred::DeferredManager;
 use oneshim_suggestion::feedback::FeedbackSender;
+use oneshim_suggestion::feedback_retry::FeedbackRetryQueue;
 use oneshim_suggestion::history::SuggestionHistory;
 use oneshim_suggestion::queue::SuggestionQueue;
 use oneshim_suggestion::scorer::FeedbackScorer;
@@ -20,9 +22,11 @@ const READ_IDS_CAPACITY: usize = 200;
 pub struct SuggestionManager {
     queue: Arc<Mutex<SuggestionQueue>>,
     history: Arc<Mutex<SuggestionHistory>>,
-    feedback: FeedbackSender,
+    feedback: Arc<FeedbackSender>,
     read_ids: Mutex<LruCache<String, ()>>,
     scorer: Arc<Mutex<FeedbackScorer>>,
+    deferred: Arc<Mutex<DeferredManager>>,
+    retry_queue: Arc<Mutex<FeedbackRetryQueue>>,
 }
 
 #[allow(dead_code)] // wired in app_runtime_launch
@@ -30,8 +34,10 @@ impl SuggestionManager {
     pub fn new(
         queue: Arc<Mutex<SuggestionQueue>>,
         history: Arc<Mutex<SuggestionHistory>>,
-        feedback: FeedbackSender,
+        feedback: Arc<FeedbackSender>,
         scorer: Arc<Mutex<FeedbackScorer>>,
+        deferred: Arc<Mutex<DeferredManager>>,
+        retry_queue: Arc<Mutex<FeedbackRetryQueue>>,
     ) -> Self {
         Self {
             queue,
@@ -41,6 +47,8 @@ impl SuggestionManager {
                 NonZeroUsize::new(READ_IDS_CAPACITY).expect("non-zero capacity"),
             )),
             scorer,
+            deferred,
+            retry_queue,
         }
     }
 
@@ -52,8 +60,16 @@ impl SuggestionManager {
         &self.history
     }
 
-    pub fn feedback(&self) -> &FeedbackSender {
+    pub fn feedback(&self) -> &Arc<FeedbackSender> {
         &self.feedback
+    }
+
+    pub fn deferred(&self) -> &Arc<Mutex<DeferredManager>> {
+        &self.deferred
+    }
+
+    pub fn retry_queue(&self) -> &Arc<Mutex<FeedbackRetryQueue>> {
+        &self.retry_queue
     }
 
     pub fn scorer(&self) -> &Arc<Mutex<FeedbackScorer>> {

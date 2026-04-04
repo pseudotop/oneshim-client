@@ -1,11 +1,12 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
+import { SnoozePopover } from './SnoozePopover'
 
 interface SuggestionItemProps {
   item: SuggestionViewDto
-  onAction: (id: string, action: 'accept' | 'reject' | 'defer') => void
+  onAction: (id: string, action: 'accept' | 'reject' | 'defer' | 'explain', snoozeMinutes?: number) => void
 }
 
 const priorityClasses: Record<string, string> = {
@@ -16,6 +17,7 @@ const priorityClasses: Record<string, string> = {
 }
 
 export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: SuggestionItemProps) {
+  const [showSnooze, setShowSnooze] = useState(false)
   const badgeClass = priorityClasses[item.priority] ?? priorityClasses.low
 
   return (
@@ -54,15 +56,36 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
         >
           Reject
         </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowSnooze(!showSnooze)}
+            className={cn(
+              'rounded-md bg-content-inverse/10 px-2 py-1 text-content-secondary text-xs hover:bg-content-inverse/15',
+              motion.colors,
+            )}
+          >
+            Later
+          </button>
+          {showSnooze && (
+            <SnoozePopover
+              onSelect={(minutes) => {
+                onAction(item.id, 'defer', minutes)
+                setShowSnooze(false)
+              }}
+              onCancel={() => setShowSnooze(false)}
+            />
+          )}
+        </div>
         <button
           type="button"
-          onClick={() => onAction(item.id, 'defer')}
+          onClick={() => onAction(item.id, 'explain')}
           className={cn(
-            'rounded-md bg-content-inverse/10 px-2 py-1 text-content-secondary text-xs hover:bg-content-inverse/15',
+            'rounded-md bg-brand/10 px-2 py-1 text-brand text-xs hover:bg-brand/20',
             motion.colors,
           )}
         >
-          Later
+          Explain
         </button>
         <span className="ml-auto text-[10px] text-content-tertiary">
           {Math.round(item.confidence_score * 100)}% &middot; {item.source}

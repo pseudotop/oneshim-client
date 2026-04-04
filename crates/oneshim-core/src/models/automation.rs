@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::gui::{GuiExecutionOutcome, GuiExecutionTicket};
@@ -73,6 +74,16 @@ pub struct GuiExecutionResult {
     pub ticket: GuiExecutionTicket,
     pub result: IntentResult,
     pub outcome: GuiExecutionOutcome,
+}
+
+/// Pending automation confirmation awaiting user approval/denial.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingConfirmation {
+    pub command_id: String,
+    pub process_name: String,
+    pub args: Vec<String>,
+    pub audit_level: String,
+    pub requested_at: DateTime<Utc>,
 }
 
 #[cfg(test)]

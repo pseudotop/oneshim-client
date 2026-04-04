@@ -5,7 +5,8 @@ use tokio::sync::broadcast;
 
 use oneshim_core::error::{CoreError, GuiInteractionError};
 use oneshim_core::models::automation::{
-    AutomationCommand, CommandResult, GuiExecutionResult, PlannedIntentResult, WorkflowResult,
+    AutomationCommand, CommandResult, GuiExecutionResult, PendingConfirmation, PlannedIntentResult,
+    WorkflowResult,
 };
 use oneshim_core::models::gui::{
     GuiConfirmRequest, GuiCreateSessionRequest, GuiCreateSessionResponse, GuiExecutionRequest,
@@ -120,5 +121,26 @@ impl AutomationPort for AutomationController {
     ) -> Result<broadcast::Receiver<GuiSessionEvent>, GuiInteractionError> {
         self.gui_subscribe_events(session_id, capability_token)
             .await
+    }
+
+    async fn list_pending_confirmations(&self) -> Result<Vec<PendingConfirmation>, CoreError> {
+        let map = self.pending_confirmations.lock().await;
+        Ok(map.values().map(|(c, _)| c.clone()).collect())
+    }
+
+    async fn submit_confirmation(&self, command_id: &str, approved: bool) -> Result<(), CoreError> {
+        let mut map = self.pending_confirmations.lock().await;
+        if let Some((_, sender)) = map.remove(command_id) {
+            // Send the user's decision through the oneshot channel.
+            // If the receiver has been dropped, that is not an error — the
+            // command may have timed out already.
+            let _ = sender.send(approved);
+            Ok(())
+        } else {
+            Err(CoreError::NotFound {
+                resource_type: "PendingConfirmation".to_string(),
+                id: command_id.to_string(),
+            })
+        }
     }
 }

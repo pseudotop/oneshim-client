@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { AutomationConfirmModal } from './components/AutomationConfirmModal'
 import { CaptureFlash } from './components/CaptureFlash'
 import CoachingPopup from './components/CoachingPopup'
 import DetectionHeader from './components/DetectionHeader'
@@ -7,7 +8,9 @@ import FocusHighlight from './components/FocusHighlight'
 import { FocusModeIndicator } from './components/FocusModeIndicator'
 import GoalProgressBar from './components/GoalProgressBar'
 import HeatmapGhost from './components/HeatmapGhost'
+import { SuggestionBadge } from './components/SuggestionBadge'
 import { SuggestionsPanel } from './components/SuggestionsPanel'
+import { ToastContainer } from './components/Toast'
 import { useOverlayEvents } from './hooks/useOverlayEvents'
 import type { SuggestionViewDto } from './types'
 
@@ -57,6 +60,10 @@ export default function OverlayApp() {
     }
   }, [])
 
+  const handleBadgeClick = useCallback(() => {
+    dispatch({ type: 'toggle-suggestions-panel', payload: true })
+  }, [dispatch])
+
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       {/* Detection mode header */}
@@ -86,6 +93,14 @@ export default function OverlayApp() {
       {/* Coaching popup (shown when a message is active) */}
       {state.coaching && <CoachingPopup message={state.coaching} autoDismissSecs={state.coaching.auto_dismiss_secs} />}
 
+      {/* Suggestion badge (shown when panel is closed and there are new items) */}
+      {!state.suggestionsPanelOpen && (
+        <SuggestionBadge
+          count={state.suggestionBadgeCount}
+          onClick={handleBadgeClick}
+        />
+      )}
+
       {/* Suggestions panel (right side, slide in/out) */}
       <SuggestionsPanel
         open={state.suggestionsPanelOpen}
@@ -100,8 +115,19 @@ export default function OverlayApp() {
       {/* Rich mode: attention heatmap ghost */}
       {isRich && <HeatmapGhost />}
 
+      {/* Automation confirmation modal */}
+      {state.pendingConfirmation && (
+        <AutomationConfirmModal
+          confirmation={state.pendingConfirmation}
+          onDismiss={() => dispatch({ type: 'automation-confirm-dismiss' })}
+        />
+      )}
+
       {/* Manual capture feedback flash */}
       <CaptureFlash timestamp={state.captureFlashTimestamp} />
+
+      {/* Toast notifications */}
+      <ToastContainer />
     </div>
   )
 }

@@ -134,6 +134,15 @@ pub(super) fn build_embedding_components(
         }
     }
 
+    // If both local and remote fail, use NoOp fallback so the pipeline stays
+    // functional with degraded accuracy (zero vectors).
+    if embedding_provider_out.is_none() {
+        warn!("both local and remote embedding unavailable — using no-op fallback (vector features degraded)");
+        embedding_provider_out = Some(Arc::new(
+            oneshim_core::ports::embedding_provider::NoOpEmbeddingProvider::new(384),
+        ));
+    }
+
     EmbeddingComponents {
         embedding_pipeline: embedding_pipeline_arc,
         llm_summarizer: llm_summarizer_arc,

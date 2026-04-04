@@ -275,8 +275,8 @@ impl LanPeerServer {
 
         // Signal graceful shutdown
         if let Some(tx) = self.shutdown_tx.take() {
-            if let Err(e) = tx.send(()) {
-                debug!("channel send failed: {e}");
+            if let Err(_e) = tx.send(()) {
+                debug!("channel send failed: receiver dropped");
             }
         }
 

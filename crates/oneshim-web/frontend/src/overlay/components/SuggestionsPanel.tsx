@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
+import { SuggestionHistory } from './SuggestionHistory'
 import { SuggestionItem } from './SuggestionItem'
+import { SuggestionStats } from './SuggestionStats'
+import { showToast } from './Toast'
 
 interface SuggestionsPanelProps {
   open: boolean
@@ -19,6 +22,32 @@ interface SuggestionsPanelProps {
  */
 export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: SuggestionsPanelProps) {
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'active' | 'history' | 'stats'>('active')
+
+  // Source filter with localStorage persistence
+  const [sourceFilter, setSourceFilter] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('suggestion-source-filter')
+      return saved ? new Set(JSON.parse(saved) as string[]) : new Set(['server', 'local'])
+    } catch {
+      return new Set(['server', 'local'])
+    }
+  })
+
+  const filteredSuggestions = useMemo(
+    () => suggestions.filter((s) => sourceFilter.has(s.source)),
+    [suggestions, sourceFilter],
+  )
+
+  const toggleSource = (source: string) => {
+    setSourceFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(source)) next.delete(source)
+      else next.add(source)
+      localStorage.setItem('suggestion-source-filter', JSON.stringify([...next]))
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!open) return
@@ -38,16 +67,31 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  async function handleAction(id: string, action: 'accept' | 'reject' | 'defer') {
+  async function handleAction(id: string, action: 'accept' | 'reject' | 'defer' | 'explain', snoozeMinutes?: number) {
+    if (action === 'explain') {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('explain_suggestion_in_chat', { suggestionId: id })
+        showToast('Opening in chat...', 'info')
+      } catch (e) {
+        showToast(`${e}`, 'error')
+      }
+      return
+    }
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       // Tauri v2 auto-converts camelCase JS -> snake_case Rust params
-      await invoke('submit_suggestion_feedback', { suggestionId: id, action })
+      await invoke('submit_suggestion_feedback', { suggestionId: id, action, snoozeMinutes })
       setError(null)
       await Promise.resolve(onRefresh())
+      showToast(
+        action === 'accept' ? 'Suggestion accepted' : action === 'reject' ? 'Suggestion rejected' : 'Snoozed',
+        'success',
+      )
     } catch (e) {
       console.warn('Feedback failed:', e)
-      setError('Could not save suggestion feedback.')
+      setError(null)
+      showToast(`Feedback failed: ${e}`, 'error')
     }
   }
 
@@ -75,19 +119,85 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         </button>
       </div>
 
-      {/* List */}
+      {/* Tab bar */}
+      <div className="flex border-b border-content-inverse/5">
+        <button
+          type="button"
+          className={cn(
+            'flex-1 py-2 text-xs font-medium transition-colors',
+            activeTab === 'active'
+              ? 'text-brand border-b-2 border-brand'
+              : 'text-content-secondary hover:text-content-primary',
+          )}
+          onClick={() => setActiveTab('active')}
+        >
+          Active ({suggestions.length})
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'flex-1 py-2 text-xs font-medium transition-colors',
+            activeTab === 'history'
+              ? 'text-brand border-b-2 border-brand'
+              : 'text-content-secondary hover:text-content-primary',
+          )}
+          onClick={() => setActiveTab('history')}
+        >
+          History
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'flex-1 py-2 text-xs font-medium transition-colors',
+            activeTab === 'stats'
+              ? 'text-brand border-b-2 border-brand'
+              : 'text-content-secondary hover:text-content-primary',
+          )}
+          onClick={() => setActiveTab('stats')}
+        >
+          Stats
+        </button>
+      </div>
+
+      {/* Content */}
       <div className="max-h-[calc(100vh-14rem)] overflow-y-auto">
         {error && (
           <div className="border-content-inverse/5 border-b px-4 py-2 text-semantic-error text-xs">{error}</div>
         )}
-        {suggestions.length > 0 ? (
-          <ul className="list-none">
-            {suggestions.map((s) => (
-              <SuggestionItem key={s.id} item={s} onAction={handleAction} />
-            ))}
-          </ul>
+        {activeTab === 'active' ? (
+          <>
+            {/* Source filter toggles */}
+            <div className="flex gap-1.5 px-3 py-1.5">
+              {['server', 'local'].map((src) => (
+                <button
+                  key={src}
+                  type="button"
+                  className={cn(
+                    'px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors',
+                    sourceFilter.has(src)
+                      ? 'bg-brand/20 text-brand'
+                      : 'bg-content-inverse/5 text-content-tertiary',
+                  )}
+                  onClick={() => toggleSource(src)}
+                >
+                  {src === 'server' ? 'Server' : 'Local'}
+                </button>
+              ))}
+            </div>
+            {filteredSuggestions.length > 0 ? (
+              <ul className="list-none">
+                {filteredSuggestions.map((s) => (
+                  <SuggestionItem key={s.id} item={s} onAction={handleAction} />
+                ))}
+              </ul>
+            ) : (
+              <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
+            )}
+          </>
+        ) : activeTab === 'history' ? (
+          <SuggestionHistory />
         ) : (
-          <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
+          <SuggestionStats />
         )}
       </div>
     </aside>
