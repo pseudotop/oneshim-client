@@ -1,8 +1,9 @@
 use crate::config::AppConfig;
 use crate::error::CoreError;
+use parking_lot::RwLock;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 const CONFIG_FILE_NAME: &str = "config.json";
@@ -66,12 +67,12 @@ impl ConfigManager {
     }
 
     pub fn get(&self) -> AppConfig {
-        self.config.read().expect("config lock poisoned").clone()
+        self.config.read().clone()
     }
 
     pub fn update(&self, new_config: AppConfig) -> Result<(), CoreError> {
         {
-            let mut config = self.config.write().expect("config lock poisoned");
+            let mut config = self.config.write();
             *config = new_config.clone();
         }
 
@@ -87,7 +88,7 @@ impl ConfigManager {
     where
         F: FnOnce(&mut AppConfig) -> Result<(), String>,
     {
-        let mut config = self.config.write().expect("config lock poisoned");
+        let mut config = self.config.write();
         updater(&mut config).map_err(CoreError::Config)?;
         let snapshot = config.clone();
         // Persist while still holding the lock so no reader sees
@@ -103,7 +104,7 @@ impl ConfigManager {
 
     pub fn reload(&self) -> Result<(), CoreError> {
         let config = Self::load_from_file(&self.config_path)?;
-        let mut current = self.config.write().expect("config lock poisoned");
+        let mut current = self.config.write();
         *current = config;
         info!("settings load complete");
         Ok(())
