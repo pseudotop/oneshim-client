@@ -72,11 +72,20 @@ pub fn migrate_v21(conn: &Connection) -> Result<(), rusqlite::Error> {
 }
 
 pub fn migrate_v22(conn: &Connection) -> Result<(), rusqlite::Error> {
-    conn.execute_batch(
-        "ALTER TABLE gui_interactions ADD COLUMN type_confidence REAL DEFAULT 1.0;
+    // Check if column already exists (idempotent guard)
+    let has_column = conn
+        .prepare("PRAGMA table_info(gui_interactions)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "type_confidence");
 
-        INSERT OR IGNORE INTO schema_version (version) VALUES (22);",
-    )?;
+    if !has_column {
+        conn.execute_batch(
+            "ALTER TABLE gui_interactions ADD COLUMN type_confidence REAL DEFAULT 1.0;",
+        )?;
+    }
+
+    conn.execute_batch("INSERT OR IGNORE INTO schema_version (version) VALUES (22);")?;
     Ok(())
 }
 
@@ -264,5 +273,15 @@ mod tests {
             )
             .unwrap();
         assert!((confidence - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn v22_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        setup_schema_version(&conn);
+        setup_gui_interactions(&conn);
+        migrate_v22(&conn).unwrap();
+        // Second run should succeed without error
+        migrate_v22(&conn).unwrap();
     }
 }

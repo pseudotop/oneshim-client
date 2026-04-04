@@ -120,7 +120,10 @@ impl OnnxGuiClassifier {
             .ok()
             .and_then(|m| m.modified().ok());
 
-        let mut cached = self.loaded_mtime.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cached = self.loaded_mtime.lock().unwrap_or_else(|e| {
+            warn!("ml classifier mtime lock poisoned — recovering inner data");
+            e.into_inner()
+        });
 
         if current_mtime == *cached {
             return false;
@@ -128,7 +131,10 @@ impl OnnxGuiClassifier {
 
         match ort::session::Session::builder().and_then(|b| b.commit_from_file(&self.model_path)) {
             Ok(new_session) => {
-                let mut session = self.session.lock().unwrap_or_else(|e| e.into_inner());
+                let mut session = self.session.lock().unwrap_or_else(|e| {
+                    warn!("ml classifier session lock poisoned — recovering inner data");
+                    e.into_inner()
+                });
                 *session = new_session;
                 *cached = current_mtime;
                 info!(

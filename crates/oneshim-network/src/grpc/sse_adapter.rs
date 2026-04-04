@@ -193,6 +193,9 @@ mod tests {
             assert_eq!(s.source, SuggestionSource::LlmServer);
             assert!(s.reasoning.is_none());
             assert!(s.expires_at.is_none());
+            assert!(s.created_at <= chrono::Utc::now());
+            assert_eq!(s.suggestion_id, "test-123");
+            assert_eq!(s.content, "Do this thing");
         } else {
             panic!("expected Suggestion variant");
         }

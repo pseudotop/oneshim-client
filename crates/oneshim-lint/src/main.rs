@@ -608,6 +608,12 @@ mod tests {
     }
 
     #[test]
+    fn extract_translation_keys_unicode() {
+        let keys = extract_translation_keys("t('settings.édition')");
+        assert_eq!(keys, vec!["settings.édition"]);
+    }
+
+    #[test]
     fn extract_translation_keys_ignores_non_i18n_calls() {
         let line = r#"const value = set("x"); const n = get(1);"#;
         let keys = extract_translation_keys(line);
@@ -852,6 +858,12 @@ mod tests {
         let line = r#"<div data-placeholder="internal value" />"#;
         let hits = detect_hardcoded_ui_literals(line);
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detect_nested_jsx_tags() {
+        let hits = detect_hardcoded_ui_literals("<div><span>Submit</span></div>");
+        assert!(!hits.is_empty(), "should detect 'Submit' in nested tags");
     }
 
     #[test]

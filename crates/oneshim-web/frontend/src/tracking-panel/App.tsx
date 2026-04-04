@@ -22,7 +22,12 @@ interface SceneAnalysisResult {
   window_title: string
   accessibility?: { focused_element?: { role: string; label?: string }; element_count: number }
   ocr_regions: Array<{ text: string }>
-  gui_elements: Array<{ role: string }>
+  gui_elements: Array<{
+    role: string
+    label?: string
+    bounds?: [number, number, number, number]
+    type_confidence: number
+  }>
   work_type?: string
 }
 
