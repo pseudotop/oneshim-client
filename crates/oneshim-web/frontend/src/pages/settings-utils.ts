@@ -14,6 +14,7 @@ export type SettingsTabId =
   | 'ai-automation'
   | 'data'
   | 'coaching'
+  | 'sync'
   | 'audio'
   | 'advanced'
 
@@ -25,6 +26,7 @@ export function isSettingsTabId(value: string | null): value is SettingsTabId {
     value === 'ai-automation' ||
     value === 'data' ||
     value === 'coaching' ||
+    value === 'sync' ||
     value === 'audio' ||
     value === 'advanced'
   )

@@ -16,6 +16,7 @@ const MonitoringTab = lazy(() => import('./setting-tabs/MonitoringTab'))
 const AiAutomationTab = lazy(() => import('./setting-tabs/ai-automation'))
 const DataStorageTab = lazy(() => import('./setting-tabs/DataStorageTab'))
 const CoachingGoalsTab = lazy(() => import('./setting-tabs/CoachingGoalsTab'))
+const SyncTab = lazy(() => import('./setting-tabs/SyncTab'))
 const AudioTab = lazy(() => import('./setting-tabs/AudioTab'))
 const AdvancedTab = lazy(() => import('./setting-tabs/AdvancedTab'))
 
@@ -67,6 +68,7 @@ export default function Settings() {
     { id: 'ai-automation', label: t('settings.tabs.aiAutomation') },
     { id: 'data', label: t('settings.tabs.dataStorage') },
     { id: 'coaching', label: t('settings.tabs.coaching', 'Coaching Goals') },
+    { id: 'sync', label: t('settings.tabs.sync', 'Sync') },
     { id: 'audio', label: t('settings.tabs.audio', 'Audio') },
     { id: 'advanced', label: t('settings.tabs.advanced', 'Advanced') },
   ]
@@ -254,6 +256,12 @@ export default function Settings() {
           {activeTab === 'coaching' && (
             <div id="settings-panel-coaching" role="tabpanel" aria-labelledby="settings-tab-coaching">
               <CoachingGoalsTab />
+            </div>
+          )}
+
+          {activeTab === 'sync' && (
+            <div id="settings-panel-sync" role="tabpanel" aria-labelledby="settings-tab-sync">
+              <SyncTab />
             </div>
           )}
 
