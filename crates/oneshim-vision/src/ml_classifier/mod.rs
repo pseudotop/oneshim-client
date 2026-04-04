@@ -43,6 +43,8 @@ const LABELS: [GuiElementType; 12] = [
 /// (once per click, not per frame).
 pub struct OnnxGuiClassifier {
     session: Mutex<ort::session::Session>,
+    model_path: std::path::PathBuf,
+    loaded_mtime: Mutex<Option<std::time::SystemTime>>,
 }
 
 // Safety: ort::Session is Send but not Sync by default.
@@ -75,8 +77,14 @@ impl OnnxGuiClassifier {
             "model I/O"
         );
 
+        let mtime = std::fs::metadata(model_path)
+            .ok()
+            .and_then(|m| m.modified().ok());
+
         Ok(Some(Self {
             session: Mutex::new(session),
+            model_path: model_path.to_path_buf(),
+            loaded_mtime: Mutex::new(mtime),
         }))
     }
 
@@ -102,6 +110,42 @@ impl OnnxGuiClassifier {
             .map_err(|e| CoreError::Internal(format!("ort output extract: {e}")))?;
 
         Ok(data.to_vec())
+    }
+
+    /// Check if the model file has been modified since last load.
+    /// If so, reload the ONNX session with the new model.
+    /// Returns `true` if a reload occurred.
+    pub fn reload_if_changed(&self) -> bool {
+        let current_mtime = std::fs::metadata(&self.model_path)
+            .ok()
+            .and_then(|m| m.modified().ok());
+
+        let mut cached = self.loaded_mtime.lock().unwrap_or_else(|e| e.into_inner());
+
+        if current_mtime == *cached {
+            return false;
+        }
+
+        match ort::session::Session::builder().and_then(|b| b.commit_from_file(&self.model_path)) {
+            Ok(new_session) => {
+                let mut session = self.session.lock().unwrap_or_else(|e| e.into_inner());
+                *session = new_session;
+                *cached = current_mtime;
+                info!(
+                    path = ?self.model_path,
+                    "GUI classifier model hot-reloaded"
+                );
+                true
+            }
+            Err(e) => {
+                warn!(
+                    path = ?self.model_path,
+                    error = %e,
+                    "GUI classifier model reload failed — keeping previous model"
+                );
+                false
+            }
+        }
     }
 }
 
