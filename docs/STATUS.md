@@ -27,7 +27,11 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## Current Snapshot (2026-03-30)
+## Current Snapshot (2026-04-04)
+
+### Version
+
+v0.4.17
 
 ### Workflow Status
 
