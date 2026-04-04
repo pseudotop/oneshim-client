@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.20] - 2026-04-05
+
+### Security
+
+- Fix 6 MEDIUM vulnerabilities from comprehensive review ([#327](https://github.com/pseudotop/oneshim-client/pull/327))
+  1. Chat-extracted suggestions: lower confidence (0.5), add 4h expiry
+     to reduce trust in AI-injected content (queue dedup already applied)
+  2. Response size limit: 1MB MAX_RESPONSE_BYTES guard in stream drain
+     (ai_session.rs + request_chat_suggestions) prevents OOM
+  3. Automation confirmation nonce: require UUID nonce match in
+     confirm_automation_command to prevent WebView XSS escalation
+  4. Unicode control char sanitization: strip bidi overrides and
+     zero-width chars from automation args display in confirm modal
+  5. Suggestion request cooldown: 5s minimum between requests to
+     prevent token waste from button spam
+  6. Error message sanitization: use errorMessage() utility consistently
+     instead of raw error interpolation in toast notifications
+
+  2421 tests pass, 0 failures. Clippy clean.
+
 ## [0.4.20-rc.1] - 2026-04-05
 
 ### Security
