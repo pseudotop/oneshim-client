@@ -528,14 +528,14 @@ fn ensure_device_identity_persists_across_reopens() {
     let db_path = dir.path().join("test.db");
 
     let id1 = {
-        let storage = SqliteStorage::open(&db_path, 30).unwrap();
+        let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
         let (id, _) = storage.ensure_device_identity("Laptop").unwrap();
         id
     };
 
     // Reopen the database
     let id2 = {
-        let storage = SqliteStorage::open(&db_path, 30).unwrap();
+        let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
         let (id, name) = storage.ensure_device_identity("Different Name").unwrap();
         assert_eq!(name, "Laptop"); // Original name preserved
         id
@@ -686,7 +686,7 @@ fn in_memory_applies_temp_store_pragma() {
 fn disk_applies_wal_mode() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test_wal.db");
-    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
     let conn = storage.conn.lock().unwrap();
     let journal_mode: String = conn
         .query_row("PRAGMA journal_mode", [], |row| row.get(0))
@@ -698,7 +698,7 @@ fn disk_applies_wal_mode() {
 fn disk_applies_synchronous_normal() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test_sync.db");
-    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
     let conn = storage.conn.lock().unwrap();
     let synchronous: i64 = conn
         .query_row("PRAGMA synchronous", [], |row| row.get(0))
@@ -713,7 +713,7 @@ fn disk_applies_synchronous_normal() {
 fn disk_applies_journal_size_limit() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test_journal_limit.db");
-    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
     let conn = storage.conn.lock().unwrap();
     let limit: i64 = conn
         .query_row("PRAGMA journal_size_limit", [], |row| row.get(0))
@@ -749,7 +749,7 @@ fn pragma_optimize_runs_without_error() {
 fn pragma_optimize_runs_on_disk_without_error() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test_optimize.db");
-    let _storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let _storage = SqliteStorage::open(&db_path, 30, None).unwrap();
 }
 
 // ── Subtask C: FTS5 existence caching ────────────────────────────
@@ -776,7 +776,7 @@ fn gui_interactions_available_set_after_open_in_memory() {
 fn fts_available_set_after_disk_open() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test_fts_flag.db");
-    let _storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let _storage = SqliteStorage::open(&db_path, 30, None).unwrap();
     assert!(
         FTS_AVAILABLE.load(Ordering::Relaxed),
         "FTS_AVAILABLE should be true after disk open with migrations"
@@ -787,7 +787,7 @@ fn fts_available_set_after_disk_open() {
 fn gui_interactions_available_set_after_disk_open() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test_gui_flag.db");
-    let _storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let _storage = SqliteStorage::open(&db_path, 30, None).unwrap();
     assert!(
         GUI_INTERACTIONS_AVAILABLE.load(Ordering::Relaxed),
         "GUI_INTERACTIONS_AVAILABLE should be true after disk open with migrations"
@@ -818,4 +818,46 @@ fn meta_roundtrip() {
     // Delete and verify absence
     storage.delete_meta("onboarding_completed");
     assert_eq!(storage.get_meta("onboarding_completed"), None);
+}
+
+// ── SQLCipher encryption tests ──────────────────────────────
+
+#[test]
+fn sqlcipher_open_with_encryption_key() {
+    use crate::encryption::EncryptionKey;
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("encrypted.db");
+    let key = EncryptionKey::from_bytes([0x42; 32]);
+
+    // First open: creates encrypted database
+    {
+        let storage = SqliteStorage::open(&db_path, 30, Some(&key)).unwrap();
+        storage.set_meta("secret", "value");
+        assert_eq!(storage.get_meta("secret"), Some("value".to_string()));
+    }
+
+    // Reopen with same key: data persists
+    {
+        let storage = SqliteStorage::open(&db_path, 30, Some(&key)).unwrap();
+        assert_eq!(storage.get_meta("secret"), Some("value".to_string()));
+    }
+}
+
+#[test]
+fn sqlcipher_fallback_for_unencrypted_db() {
+    use crate::encryption::EncryptionKey;
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("plain.db");
+
+    // Create an unencrypted database first
+    {
+        let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
+        storage.set_meta("hello", "world");
+    }
+
+    // Reopen with an encryption key — should fall back to unencrypted
+    let key = EncryptionKey::from_bytes([0x42; 32]);
+    let storage = SqliteStorage::open(&db_path, 30, Some(&key)).unwrap();
+    // The fallback path reopens without encryption, so data is accessible
+    assert_eq!(storage.get_meta("hello"), Some("world".to_string()));
 }

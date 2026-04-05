@@ -1,4 +1,5 @@
 use anyhow::Result;
+use oneshim_storage::encryption::EncryptionKey;
 use oneshim_storage::sqlite::SqliteStorage;
 use std::path::Path;
 use std::sync::Arc;
@@ -6,6 +7,8 @@ use tracing::{info, warn};
 
 pub(crate) struct StorageRuntimeBundle {
     pub(crate) sqlite_storage: Arc<SqliteStorage>,
+    /// Shared encryption key for frame file encryption and other at-rest crypto.
+    pub(crate) encryption_key: Option<Arc<EncryptionKey>>,
 }
 
 pub(crate) struct StorageRuntimeBuilder<'a> {
@@ -39,16 +42,25 @@ impl<'a> StorageRuntimeBuilder<'a> {
                 }
             };
 
-        let sqlite_storage = Arc::new(SqliteStorage::open(self.db_path, self.retention_days)?);
+        let sqlite_storage = Arc::new(SqliteStorage::open(
+            self.db_path,
+            self.retention_days,
+            encryption_key.as_ref(),
+        )?);
         if encryption_key.is_some() {
             info!(
-                "SQLite initialized: {} (encryption key provisioned, SQLCipher pending)",
+                "SQLite initialized: {} (SQLCipher encrypted)",
                 self.db_path.display()
             );
         } else {
             info!("SQLite initialized: {} (plaintext)", self.db_path.display());
         }
 
-        Ok(StorageRuntimeBundle { sqlite_storage })
+        let encryption_key_arc = encryption_key.map(Arc::new);
+
+        Ok(StorageRuntimeBundle {
+            sqlite_storage,
+            encryption_key: encryption_key_arc,
+        })
     }
 }

@@ -76,6 +76,7 @@ impl AppRuntimeLaunchBuilder {
         let update_control = core_resources.update_runtime.update_control.clone();
         let update_action_tx = core_resources.update_runtime.update_action_tx.clone();
         let sqlite_storage = core_resources.storage_runtime.sqlite_storage.clone();
+        let encryption_key = core_resources.storage_runtime.encryption_key.clone();
         let event_tx = core_resources.background_runtime.event_tx();
         let shutdown_tx = core_resources.background_runtime.shutdown_tx();
 
@@ -102,14 +103,17 @@ impl AppRuntimeLaunchBuilder {
 
         // Shared capture services are reused by scheduler and IPC commands so capture
         // semantics stay aligned across background monitoring and ad-hoc user actions.
-        let shared_capture_services =
-            match handle.block_on(SharedCaptureServices::build(&data_dir_path, &config)) {
-                Ok(services) => Some(Arc::new(services)),
-                Err(error) => {
-                    tracing::warn!("shared capture services init failed: {error}");
-                    None
-                }
-            };
+        let shared_capture_services = match handle.block_on(SharedCaptureServices::build(
+            &data_dir_path,
+            &config,
+            encryption_key.clone(),
+        )) {
+            Ok(services) => Some(Arc::new(services)),
+            Err(error) => {
+                tracing::warn!("shared capture services init failed: {error}");
+                None
+            }
+        };
         let capture_consent_manager = shared_capture_services
             .as_ref()
             .map(|services| services.consent_manager.clone())

@@ -1,3 +1,4 @@
+use crate::encryption::EncryptionKey;
 use crate::error::StorageError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -134,26 +135,46 @@ pub struct FrameFileStorage {
     frame_counter: AtomicU32,
     buffer_pool: Arc<BufferPool>,
     disk_cache: DiskSpaceCache,
+    encryption_key: Option<Arc<EncryptionKey>>,
 }
 
 impl FrameFileStorage {
-    /// # Arguments
+    /// Create a new frame file storage.
+    ///
+    /// When `encryption_key` is `Some`, frame files are encrypted at rest using
+    /// AES-256-GCM before writing and decrypted after reading.
     pub async fn new(
         base_dir: PathBuf,
         max_storage_mb: u64,
         retention_days: u32,
+    ) -> Result<Self, StorageError> {
+        Self::with_encryption(base_dir, max_storage_mb, retention_days, None).await
+    }
+
+    /// Create a new frame file storage with optional encryption.
+    pub async fn with_encryption(
+        base_dir: PathBuf,
+        max_storage_mb: u64,
+        retention_days: u32,
+        encryption_key: Option<Arc<EncryptionKey>>,
     ) -> Result<Self, StorageError> {
         let frames_dir = base_dir.join("frames");
         fs::create_dir_all(&frames_dir).await.map_err(|e| {
             StorageError::Internal(format!("Failed to create frame directory: {e}"))
         })?;
 
+        let encrypted_label = if encryption_key.is_some() {
+            "encrypted"
+        } else {
+            "plaintext"
+        };
         info!(
-            "frame storage initialized: {} (max={}MB, retention={} days, buffer_pool={})",
+            "frame storage initialized: {} (max={}MB, retention={} days, buffer_pool={}, {})",
             frames_dir.display(),
             max_storage_mb,
             retention_days,
-            BUFFER_POOL_SIZE
+            BUFFER_POOL_SIZE,
+            encrypted_label
         );
 
         Ok(Self {
@@ -163,6 +184,7 @@ impl FrameFileStorage {
             frame_counter: AtomicU32::new(0),
             buffer_pool: Arc::new(BufferPool::new(BUFFER_POOL_SIZE, DEFAULT_BUFFER_SIZE)),
             disk_cache: DiskSpaceCache::new(),
+            encryption_key,
         })
     }
 
@@ -198,16 +220,23 @@ impl FrameFileStorage {
         let filename = format!("{time_str}-{counter:03}.webp");
         let file_path = day_dir.join(&filename);
 
-        fs::write(&file_path, webp_data)
+        let data_to_write = if let Some(ref key) = self.encryption_key {
+            key.encrypt(webp_data)?
+        } else {
+            webp_data.to_vec()
+        };
+
+        fs::write(&file_path, &data_to_write)
             .await
             .map_err(|e| StorageError::Internal(format!("frame file save failure: {e}")))?;
 
         let relative_path = PathBuf::from("frames").join(&date_str).join(&filename);
 
         debug!(
-            "frame save: {} ({}bytes)",
+            "frame save: {} ({}bytes raw, {}bytes on disk)",
             relative_path.display(),
-            webp_data.len()
+            webp_data.len(),
+            data_to_write.len()
         );
 
         Ok(relative_path)
@@ -238,6 +267,7 @@ impl FrameFileStorage {
         for (timestamp, webp_data) in frames {
             let base_dir = self.base_dir.clone();
             let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst) % 1000;
+            let enc_key = self.encryption_key.clone();
 
             handles.push(tokio::spawn(async move {
                 let date_str = timestamp.format("%Y-%m-%d").to_string();
@@ -251,7 +281,13 @@ impl FrameFileStorage {
                 let filename = format!("{time_str}-{counter:03}.webp");
                 let file_path = day_dir.join(&filename);
 
-                fs::write(&file_path, &webp_data)
+                let data_to_write = if let Some(ref key) = enc_key {
+                    key.encrypt(&webp_data)?
+                } else {
+                    webp_data
+                };
+
+                fs::write(&file_path, &data_to_write)
                     .await
                     .map_err(|e| StorageError::Internal(format!("frame file save failure: {e}")))?;
 
@@ -272,7 +308,7 @@ impl FrameFileStorage {
         results
     }
 
-    /// # Arguments
+    /// Load a frame from disk, decrypting if encryption is enabled.
     pub async fn load_frame(&self, relative_path: &Path) -> Result<Vec<u8>, StorageError> {
         let full_path = self.base_dir.join(relative_path);
 
@@ -285,9 +321,15 @@ impl FrameFileStorage {
 
         let mut buffer = self.buffer_pool.acquire();
 
-        let data = fs::read(&full_path)
+        let raw = fs::read(&full_path)
             .await
             .map_err(|e| StorageError::Internal(format!("frame file read failure: {e}")))?;
+
+        let data = if let Some(ref key) = self.encryption_key {
+            key.decrypt(&raw)?
+        } else {
+            raw
+        };
 
         buffer.extend_from_slice(&data);
         let result = buffer.clone();
@@ -364,6 +406,7 @@ impl FrameFileStorage {
         for path in paths {
             let base_dir = self.base_dir.clone();
             let buffer_pool = Arc::clone(&self.buffer_pool);
+            let enc_key = self.encryption_key.clone();
 
             handles.push(tokio::spawn(async move {
                 let full_path = base_dir.join(&path);
@@ -377,9 +420,15 @@ impl FrameFileStorage {
 
                 let mut buffer = buffer_pool.acquire();
 
-                let data = fs::read(&full_path)
+                let raw = fs::read(&full_path)
                     .await
                     .map_err(|e| StorageError::Internal(format!("frame file read failure: {e}")))?;
+
+                let data = if let Some(ref key) = enc_key {
+                    key.decrypt(&raw)?
+                } else {
+                    raw
+                };
 
                 buffer.extend_from_slice(&data);
                 let result = buffer.clone();
@@ -931,5 +980,107 @@ mod tests {
         let second = cache.get_free_mb(&path);
         // Both should return the same cached value
         assert_eq!(first, second);
+    }
+
+    // ── Encrypted frame storage tests ──────────────────────────────
+
+    async fn create_encrypted_test_storage() -> (FrameFileStorage, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let key = Arc::new(EncryptionKey::from_bytes([0x42; 32]));
+        let storage =
+            FrameFileStorage::with_encryption(temp_dir.path().to_path_buf(), 100, 7, Some(key))
+                .await
+                .unwrap();
+        (storage, temp_dir)
+    }
+
+    #[tokio::test]
+    async fn encrypted_save_and_load_frame() {
+        let (storage, _temp) = create_encrypted_test_storage().await;
+
+        let test_data = b"RIFF\x00\x00\x00\x00WEBPVP8 test data";
+        let timestamp = Utc::now();
+
+        let path = storage.save_frame(timestamp, test_data).await.unwrap();
+        let loaded = storage.load_frame(&path).await.unwrap();
+        assert_eq!(loaded, test_data);
+    }
+
+    #[tokio::test]
+    async fn encrypted_data_differs_from_plaintext() {
+        let (storage, temp) = create_encrypted_test_storage().await;
+
+        let test_data = b"sensitive frame content here";
+        let timestamp = Utc::now();
+
+        let rel_path = storage.save_frame(timestamp, test_data).await.unwrap();
+
+        // Read the raw bytes from disk (without decryption)
+        let full_path = temp.path().join(&rel_path);
+        let raw_on_disk = tokio::fs::read(&full_path).await.unwrap();
+
+        // On-disk data must NOT equal the plaintext (it's encrypted)
+        assert_ne!(raw_on_disk, test_data);
+        // On-disk data should be larger: 12 nonce + data + 16 auth tag
+        assert!(raw_on_disk.len() > test_data.len());
+    }
+
+    #[tokio::test]
+    async fn encrypted_batch_save_and_load() {
+        let (storage, _temp) = create_encrypted_test_storage().await;
+
+        let now = Utc::now();
+        let frames: Vec<_> = (0..5)
+            .map(|i| (now, format!("encrypted batch frame {i}").into_bytes()))
+            .collect();
+
+        let save_results = storage.save_frames_batch(frames.clone()).await;
+        let paths: Vec<_> = save_results.into_iter().filter_map(|r| r.ok()).collect();
+        assert_eq!(paths.len(), 5);
+
+        let load_results = storage.load_frames_batch(paths).await;
+        for (i, result) in load_results.into_iter().enumerate() {
+            let data = result.unwrap();
+            assert_eq!(data, format!("encrypted batch frame {i}").into_bytes());
+        }
+    }
+
+    #[tokio::test]
+    async fn encrypted_load_latest_frame() {
+        let (storage, _temp) = create_encrypted_test_storage().await;
+
+        let t1 = Utc::now() - chrono::Duration::seconds(1);
+        let t2 = Utc::now();
+
+        storage.save_frame(t1, b"older-encrypted").await.unwrap();
+        storage.save_frame(t2, b"newer-encrypted").await.unwrap();
+
+        let latest = storage.load_latest_frame().await.unwrap().unwrap();
+        assert_eq!(latest.0, b"newer-encrypted");
+    }
+
+    #[tokio::test]
+    async fn wrong_key_cannot_decrypt_frame() {
+        let temp_dir = TempDir::new().unwrap();
+        let key1 = Arc::new(EncryptionKey::from_bytes([0x42; 32]));
+        let key2 = Arc::new(EncryptionKey::from_bytes([0x43; 32]));
+
+        let storage1 =
+            FrameFileStorage::with_encryption(temp_dir.path().to_path_buf(), 100, 7, Some(key1))
+                .await
+                .unwrap();
+
+        let test_data = b"secret frame data";
+        let rel_path = storage1.save_frame(Utc::now(), test_data).await.unwrap();
+
+        // Create a second storage with a different key
+        let storage2 =
+            FrameFileStorage::with_encryption(temp_dir.path().to_path_buf(), 100, 7, Some(key2))
+                .await
+                .unwrap();
+
+        // Decryption with wrong key should fail
+        let result = storage2.load_frame(&rel_path).await;
+        assert!(result.is_err());
     }
 }

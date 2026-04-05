@@ -1,3 +1,30 @@
+//! Linux sandbox — rule construction for Landlock, seccomp, and resource limits.
+//!
+//! **Enforcement status: DEFERRED.**
+//!
+//! This module builds [`LandlockRules`], [`SeccompAllowlist`], and
+//! [`ResourceLimits`] from the [`SandboxConfig`], but the `apply_*` functions
+//! currently only *log* what they would do and return `Ok(())`.
+//!
+//! Actual kernel enforcement is deferred because:
+//!
+//! - **Landlock** requires kernel >= 5.13 and the ABI version determines which
+//!   access rights are available (v1 = filesystem only, v2 adds file refer,
+//!   v3 adds truncation). A runtime ABI probe + feature-gated ruleset builder
+//!   is needed to avoid hard failures on older kernels.
+//!
+//! - **seccomp-BPF** requires assembling a BPF filter program. Using
+//!   `libseccomp` bindings (e.g., `seccompiler` crate) is the safe path, but
+//!   it adds a native dependency and must handle multi-arch (x86_64 / aarch64)
+//!   syscall number tables.
+//!
+//! - **Resource limits** (`setrlimit(2)`) are straightforward but only meaningful
+//!   when applied to a child process, which requires the action execution model
+//!   to spawn a subprocess (as the macOS sandbox does with `sandbox-exec`).
+//!
+//! The rule *construction* logic is complete and tested so that when enforcement
+//! is implemented, only the `apply_*` functions need to be wired to real syscalls.
+
 use async_trait::async_trait;
 
 use crate::error::AutomationError;
@@ -6,6 +33,12 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
 use oneshim_core::ports::sandbox::{Sandbox, SandboxCapabilities};
 
+/// Linux sandbox adapter.
+///
+/// Detects Landlock availability at construction time by probing
+/// `/sys/kernel/security/landlock`. Even when Landlock is unavailable,
+/// seccomp and resource-limit rules are still constructed (but not yet
+/// enforced -- see module-level docs).
 pub struct LinuxSandbox {
     landlock_available: bool,
 }
@@ -181,35 +214,53 @@ fn check_landlock_support() -> bool {
     std::path::Path::new("/sys/kernel/security/landlock").exists()
 }
 
+/// Apply Landlock filesystem isolation rules.
+///
+/// **NOT YET ENFORCED** -- logs the rules and returns `Ok(())`.
+/// To implement: use `landlock::RulesetCreated` with ABI v1+ and call
+/// `restrict_self()` after adding path-based access rules.
 fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), AutomationError> {
     tracing::debug!(
         read = rules.read_paths.len(),
         write = rules.write_paths.len(),
-        "applying Landlock rules"
+        "applying Landlock rules (stub -- enforcement deferred)"
     );
     Ok(())
 }
 
+/// Apply seccomp-BPF syscall filtering.
+///
+/// **NOT YET ENFORCED** -- logs the allowlist and returns `Ok(())`.
+/// To implement: use `seccompiler` crate to build a BPF filter from the
+/// allowlist, handling arch-specific syscall numbers (x86_64 vs aarch64).
 fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationError> {
     tracing::debug!(
         basic = allowlist.allow_basic,
         network = allowlist.allow_network,
         process = allowlist.allow_process,
-        "applying seccomp filter"
+        "applying seccomp filter (stub -- enforcement deferred)"
     );
     Ok(())
 }
 
+/// Apply resource limits via `setrlimit(2)`.
+///
+/// **NOT YET ENFORCED** -- logs the limits and returns `Ok(())`.
+/// To implement: call `libc::setrlimit` with `RLIMIT_AS` (memory) and
+/// `RLIMIT_CPU` (CPU time) on the child process before exec.
 fn apply_resource_limits(limits: &ResourceLimits) -> Result<(), AutomationError> {
     if limits.max_memory_bytes > 0 {
         tracing::debug!(
             max_memory = limits.max_memory_bytes,
-            "setting RLIMIT_AS with setrlimit"
+            "setting RLIMIT_AS with setrlimit (stub -- enforcement deferred)"
         );
     }
     if limits.max_cpu_time_ms > 0 {
         let cpu_secs = limits.max_cpu_time_ms / 1000;
-        tracing::debug!(cpu_secs, "setrlimit RLIMIT_CPU settings");
+        tracing::debug!(
+            cpu_secs,
+            "setrlimit RLIMIT_CPU settings (stub -- enforcement deferred)"
+        );
     }
     Ok(())
 }

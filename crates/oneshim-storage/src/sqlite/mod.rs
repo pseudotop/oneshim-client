@@ -26,12 +26,13 @@ pub(crate) mod test_utils;
 #[cfg(test)]
 mod tests;
 
+use crate::encryption::EncryptionKey;
 use crate::error::StorageError;
 use rusqlite::Connection;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::migration;
 
@@ -78,9 +79,21 @@ pub struct SqliteStorage {
 }
 
 impl SqliteStorage {
-    pub fn open(path: &Path, retention_days: u32) -> Result<Self, StorageError> {
+    /// Open a disk-backed SQLite database.
+    ///
+    /// When `encryption_key` is `Some`, SQLCipher `PRAGMA key` is applied after
+    /// opening. If the database was previously unencrypted, the key verification
+    /// will fail and the database is reopened **without** encryption so that
+    /// existing data is not lost. A warning is logged in this case.
+    pub fn open(
+        path: &Path,
+        retention_days: u32,
+        encryption_key: Option<&EncryptionKey>,
+    ) -> Result<Self, StorageError> {
         let conn = Connection::open(path)
             .map_err(|e| StorageError::Internal(format!("Failed to open SQLite database: {e}")))?;
+
+        let conn = apply_sqlcipher_key(conn, path, encryption_key)?;
 
         configure_connection(&conn, true)?;
 
@@ -223,6 +236,46 @@ impl SqliteStorage {
     pub fn delete_meta(&self, key: &str) {
         if let Ok(conn) = self.conn.lock() {
             let _ = conn.execute("DELETE FROM app_meta WHERE key = ?1", [key]);
+        }
+    }
+}
+
+/// Apply SQLCipher `PRAGMA key` and verify the key works.
+///
+/// If the key is rejected (e.g. database was previously unencrypted), falls back
+/// to a fresh connection without encryption so existing data is preserved.
+fn apply_sqlcipher_key(
+    conn: Connection,
+    path: &Path,
+    encryption_key: Option<&EncryptionKey>,
+) -> Result<Connection, StorageError> {
+    let Some(key) = encryption_key else {
+        return Ok(conn);
+    };
+
+    // PRAGMA key must be the first statement after opening.
+    let pragma = format!("PRAGMA key = \"x'{}'\";", key.as_hex());
+    if let Err(e) = conn.execute_batch(&pragma) {
+        warn!("SQLCipher PRAGMA key execution failed: {e} — opening without encryption");
+        drop(conn);
+        let fallback = Connection::open(path).map_err(|e| {
+            StorageError::Internal(format!("Failed to reopen SQLite database: {e}"))
+        })?;
+        return Ok(fallback);
+    }
+
+    // Verify the key actually works by reading sqlite_master.
+    match conn.execute_batch("SELECT count(*) FROM sqlite_master;") {
+        Ok(()) => Ok(conn),
+        Err(_) => {
+            warn!(
+                "SQLCipher key verification failed — database may be unencrypted, reopening without encryption"
+            );
+            drop(conn);
+            let fallback = Connection::open(path).map_err(|e| {
+                StorageError::Internal(format!("Failed to reopen SQLite database: {e}"))
+            })?;
+            Ok(fallback)
         }
     }
 }

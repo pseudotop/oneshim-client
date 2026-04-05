@@ -583,8 +583,12 @@ mod tests {
         let handle = runtime.handle().clone();
         let temp_dir = TempDir::new().expect("temp dir");
         let storage = Arc::new(
-            oneshim_storage::sqlite::SqliteStorage::open(&temp_dir.path().join("state.db"), 1)
-                .expect("db"),
+            oneshim_storage::sqlite::SqliteStorage::open(
+                &temp_dir.path().join("state.db"),
+                1,
+                None,
+            )
+            .expect("db"),
         );
         let config_manager =
             ConfigManager::with_path(temp_dir.path().join("config.json")).expect("config manager");

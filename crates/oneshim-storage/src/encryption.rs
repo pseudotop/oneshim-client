@@ -33,8 +33,7 @@ impl EncryptionKey {
         Ok(key)
     }
 
-    /// 원시 바이트에서 키 생성 (테스트용)
-    #[cfg(test)]
+    /// 원시 바이트에서 키 생성
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }
@@ -47,6 +46,51 @@ impl EncryptionKey {
     /// 원시 바이트 참조
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+
+    /// AES-256-GCM으로 데이터 암호화.
+    /// 반환 형식: nonce(12 bytes) || ciphertext(+16 bytes auth tag)
+    pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, StorageError> {
+        use aes_gcm::aead::Aead;
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+
+        let cipher = Aes256Gcm::new_from_slice(&self.0)
+            .map_err(|e| StorageError::Encryption(format!("cipher init: {e}")))?;
+
+        let mut nonce_bytes = [0u8; 12];
+        getrandom::fill(&mut nonce_bytes)
+            .map_err(|e| StorageError::Encryption(format!("nonce generation: {e}")))?;
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext)
+            .map_err(|e| StorageError::Encryption(format!("encrypt: {e}")))?;
+
+        let mut result = Vec::with_capacity(12 + ciphertext.len());
+        result.extend_from_slice(&nonce_bytes);
+        result.extend(ciphertext);
+        Ok(result)
+    }
+
+    /// AES-256-GCM으로 encrypt()가 생성한 데이터 복호화.
+    pub fn decrypt(&self, data: &[u8]) -> Result<Vec<u8>, StorageError> {
+        if data.len() < 12 {
+            return Err(StorageError::Encryption(
+                "ciphertext too short (< 12 bytes)".into(),
+            ));
+        }
+
+        use aes_gcm::aead::Aead;
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+
+        let (nonce_bytes, ciphertext) = data.split_at(12);
+        let cipher = Aes256Gcm::new_from_slice(&self.0)
+            .map_err(|e| StorageError::Encryption(format!("cipher init: {e}")))?;
+        let nonce = Nonce::from_slice(nonce_bytes);
+
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| StorageError::Encryption(format!("decrypt: {e}")))
     }
 
     fn generate() -> Result<Self, StorageError> {
@@ -151,5 +195,84 @@ mod tests {
         let debug_str = format!("{key:?}");
         assert!(!debug_str.contains("AB"));
         assert!(debug_str.contains("redacted"));
+    }
+
+    #[test]
+    fn encrypt_decrypt_round_trip() {
+        let key = EncryptionKey::from_bytes([0x42; 32]);
+        let plaintext = b"Hello, ONESHIM frame data!";
+
+        let encrypted = key.encrypt(plaintext).unwrap();
+        // encrypted = 12-byte nonce + ciphertext + 16-byte auth tag
+        assert!(encrypted.len() > plaintext.len());
+        assert_ne!(&encrypted[12..], plaintext);
+
+        let decrypted = key.decrypt(&encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_produces_different_ciphertexts() {
+        let key = EncryptionKey::from_bytes([0x42; 32]);
+        let plaintext = b"same input";
+
+        let enc1 = key.encrypt(plaintext).unwrap();
+        let enc2 = key.encrypt(plaintext).unwrap();
+        // Different random nonces produce different ciphertexts
+        assert_ne!(enc1, enc2);
+
+        // Both decrypt to the same plaintext
+        assert_eq!(key.decrypt(&enc1).unwrap(), plaintext);
+        assert_eq!(key.decrypt(&enc2).unwrap(), plaintext);
+    }
+
+    #[test]
+    fn decrypt_with_wrong_key_fails() {
+        let key1 = EncryptionKey::from_bytes([0x42; 32]);
+        let key2 = EncryptionKey::from_bytes([0x43; 32]);
+        let plaintext = b"secret data";
+
+        let encrypted = key1.encrypt(plaintext).unwrap();
+        let result = key2.decrypt(&encrypted);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decrypt_too_short_data_fails() {
+        let key = EncryptionKey::from_bytes([0x42; 32]);
+        let result = key.decrypt(&[0u8; 5]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decrypt_corrupted_data_fails() {
+        let key = EncryptionKey::from_bytes([0x42; 32]);
+        let mut encrypted = key.encrypt(b"test data").unwrap();
+        // Corrupt a byte in the ciphertext region
+        if encrypted.len() > 15 {
+            encrypted[15] ^= 0xFF;
+        }
+        let result = key.decrypt(&encrypted);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn encrypt_empty_data() {
+        let key = EncryptionKey::from_bytes([0x42; 32]);
+        let encrypted = key.encrypt(b"").unwrap();
+        // 12 nonce + 16 auth tag = 28 bytes minimum
+        assert_eq!(encrypted.len(), 28);
+        let decrypted = key.decrypt(&encrypted).unwrap();
+        assert!(decrypted.is_empty());
+    }
+
+    #[test]
+    fn encrypt_large_data() {
+        let key = EncryptionKey::from_bytes([0x42; 32]);
+        let plaintext = vec![0xAB_u8; 1024 * 1024]; // 1 MB
+
+        let encrypted = key.encrypt(&plaintext).unwrap();
+        let decrypted = key.decrypt(&encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
     }
 }
