@@ -5,7 +5,7 @@
 //! Under high load, a 5-second grace window in `PolicyClient::validate_command()`
 //! absorbs clock skew. Tokens are single-use and HMAC-SHA256 signed.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 
 type HmacSha256 = Hmac<Sha256>;

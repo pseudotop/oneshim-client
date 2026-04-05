@@ -233,6 +233,29 @@ else
   echo ""
 fi
 
+# --- Dependency Security Gate ---
+echo "[Dependency Security]"
+if command -v gh >/dev/null 2>&1; then
+  # Check for open security advisories via dependabot alerts
+  ALERT_COUNT=$(gh api repos/{owner}/{repo}/dependabot/alerts --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
+  if [ "$ALERT_COUNT" -gt 0 ] && [ "$ALERT_COUNT" != "0" ]; then
+    fail "Open dependabot security alerts: $ALERT_COUNT — resolve before releasing"
+  else
+    pass "No open dependabot security alerts"
+  fi
+
+  # Check for open dependency PRs
+  OPEN_DEP_PRS=$(gh pr list --label dependencies --state open --json number --jq 'length' 2>/dev/null || echo "0")
+  if [ "$OPEN_DEP_PRS" -gt 0 ] && [ "$OPEN_DEP_PRS" != "0" ]; then
+    warn "Open dependency PRs: $OPEN_DEP_PRS — consider resolving before release"
+  else
+    pass "No open dependency PRs"
+  fi
+else
+  warn "gh CLI not available — skipping dependency security check"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Summary ==="
 if [ "$errors" -gt 0 ]; then

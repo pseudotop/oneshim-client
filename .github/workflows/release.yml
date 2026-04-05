@@ -231,6 +231,17 @@ jobs:
           print(f"Verified RC release {tag}: prerelease={release.get('prerelease')} assets={assets}")
           PY
 
+      - name: Check for open security advisories
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          ALERTS=$(gh api repos/${{ github.repository }}/dependabot/alerts --jq '[.[] | select(.state == "open" and .security_advisory.severity == "critical")] | length' 2>/dev/null || echo "0")
+          if [ "$ALERTS" -gt 0 ]; then
+            echo "::error::$ALERTS critical dependabot security alerts are open. Resolve before releasing."
+            exit 1
+          fi
+
       - name: Verify tauri.conf.json consistency
         run: |
           PRODUCT_NAME=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['productName'])")

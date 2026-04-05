@@ -146,7 +146,11 @@ impl ModelDownloader for WhisperModelDownloader {
         std::fs::rename(&part_path, &final_path)
             .map_err(|e| CoreError::AudioCapture(format!("rename part file: {e}")))?;
 
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = hasher.finalize().iter().fold(String::new(), |mut acc, b| {
+            use std::fmt::Write as _;
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
         info!(
             model = ?model,
             size = downloaded,

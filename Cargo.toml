@@ -111,8 +111,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 futures = "0.3"
 futures-util = "0.3"
 semver = { version = "1", features = ["serde"] }
-sha2 = "0.10"
-hmac = "0.12"
+sha2 = "0.11"
+hmac = "0.13"
 rand = "0.10"
 url = "2"
 ed25519-dalek = "2.1"
@@ -191,7 +191,7 @@ objc2-quartz-core = { version = "0.3", features = [
 
 # Windows 플랫폼 API
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_Foundation", "Win32_System_Threading", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Diagnostics_Debug", "Win32_Storage_FileSystem"] }
-windows = { version = "0.61", features = ["Win32_UI_Accessibility", "Win32_System_Com", "Win32_Foundation", "Win32_System_Variant", "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation"] }
+windows = { version = "0.62", features = ["Win32_UI_Accessibility", "Win32_System_Com", "Win32_Foundation", "Win32_System_Variant", "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation"] }
 
 # 내부 크레이트
 oneshim-core = { path = "crates/oneshim-core" }
