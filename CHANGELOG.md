@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.9] - 2026-04-05
+
+### Fixed
+
+- Install.sh dep check non-interactive safe (skip read on non-tty)
+  The Linux dependency check used read -p which fails in CI/non-interactive
+  environments. Guard with [[ -t 0 ]] to only prompt when stdin is a tty.
+
 ## [0.4.23-rc.8] - 2026-04-05
 
 ### Fixed
