@@ -74,6 +74,10 @@
       }
     },
     "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
       "nsis": {
         "headerImage": "nsis/header.bmp",
         "sidebarImage": "nsis/sidebar.bmp",

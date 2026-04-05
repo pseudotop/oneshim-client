@@ -170,6 +170,15 @@ function Add-InstallDirToUserPath {
     Write-Info "Added $Directory to user PATH"
 }
 
+# Check WebView2 runtime
+$wv2Key = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEF-ED47D884521F}"
+$wv2 = Get-ItemProperty -Path $wv2Key -ErrorAction SilentlyContinue
+if (-not $wv2) {
+    Write-WarnLine "WebView2 runtime not found. The NSIS installer will install it automatically."
+    Write-WarnLine "If installing from zip, download the bootstrapper from:"
+    Write-WarnLine "  https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+}
+
 $tag = Get-NormalizedTag -InputVersion $Version
 $baseUrl = if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
     if ($tag -eq "latest") {
