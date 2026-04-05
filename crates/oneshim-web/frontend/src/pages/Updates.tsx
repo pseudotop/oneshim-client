@@ -69,10 +69,10 @@ export default function Updates() {
     mutationFn: (updated: AppSettings) => updateSettings(updated),
     onSuccess: (data) => {
       queryClient.setQueryData(['settings'], data)
-      addToast({ type: 'success', message: t('updates.channelSaved', 'Update channel saved') })
+      addToast('success', t('updates.channelSaved', 'Update channel saved'))
     },
     onError: () => {
-      addToast({ type: 'error', message: t('updates.channelSaveFailed', 'Failed to save update channel') })
+      addToast('error', t('updates.channelSaveFailed', 'Failed to save update channel'))
     },
     onSettled: () => setSavingChannel(false),
   })
