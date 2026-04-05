@@ -27,7 +27,16 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## 현재 스냅샷 (2026-03-30)
+## 현재 스냅샷 (2026-04-05)
+
+### 버전
+
+v0.4.21
+
+### 워크스페이스
+
+- **크레이트**: 14개 (oneshim-audio 포함)
+- **SQLite 스키마**: V24
 
 ### 워크플로우 상태
 
@@ -40,7 +49,8 @@ cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 
 - `cargo check --workspace`: 통과
 - `cargo clippy --workspace --all-targets -- -D warnings`: 통과
-- `cargo test --workspace`: 통과
+- `cargo test --workspace`: 통과 — **2,995 통과, 0 실패, 20 무시**
+- `cargo fmt --check`: 통과
 - `pnpm lint` (`crates/oneshim-web/frontend`): 통과
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): 통과
 
@@ -48,6 +58,21 @@ cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 
 - 기본 non-ignored Rust 테스트 스위트에는 알려진 flaky 테스트가 없습니다.
 - `oneshim-embedding` fastembed 생성자/embed smoke 테스트는 모델 자산 다운로드가 필요하므로 기본값으로 `ignored` 유지합니다. 네트워크가 보장된 명시적 검증에서만 실행합니다.
+
+### 무시된 테스트 (Ignored Tests)
+
+20개 테스트가 외부 의존성 또는 긴 실행 시간으로 인해 `#[ignore]` 표시됨:
+
+| 크레이트 | 수량 | 사유 |
+|---------|------|------|
+| oneshim-vision | 6 | macOS 접근성 API (라이브 OS 권한 필요) |
+| oneshim-embedding | 3 | Hugging Face 모델 다운로드 |
+| oneshim-storage | 3 | 키체인 연동 (macOS 키체인 접근 필요) |
+| oneshim-network | 2 | 런타임 컨텍스트 필요 doc-test 예제 |
+| src-tauri | 5 | GitHub API e2e (2) + 장시간 메모리 프로파일 (3) |
+| oneshim-storage (doc) | 1 | 런타임 컨텍스트 필요 doc-test 예제 |
+
+무시된 테스트 명시적 실행: `cargo test --workspace -- --ignored`
 
 ### 릴리스 위생 Baseline
 

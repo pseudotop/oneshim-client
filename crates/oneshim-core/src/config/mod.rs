@@ -122,6 +122,13 @@ impl AppConfig {
         }
     }
 
+    /// Validate that all config sections have values within acceptable bounds.
+    pub fn validate_bounds(&self) -> Result<(), String> {
+        self.storage.validate_bounds()?;
+        self.vision.validate_bounds()?;
+        Ok(())
+    }
+
     pub fn request_timeout(&self) -> Duration {
         Duration::from_millis(self.server.request_timeout_ms)
     }
@@ -770,6 +777,85 @@ mod tests {
             config.sync_interval().as_millis() > 0,
             "sync_interval() must be non-zero"
         );
+    }
+
+    // ── Config bounds validation tests ────────────────────────────────
+
+    #[test]
+    fn storage_validate_bounds_rejects_zero_retention_days() {
+        let config = StorageConfig {
+            db_path: None,
+            retention_days: 0,
+            max_storage_mb: 500,
+        };
+        assert!(config.validate_bounds().is_err());
+    }
+
+    #[test]
+    fn storage_validate_bounds_rejects_low_max_storage_mb() {
+        let config = StorageConfig {
+            db_path: None,
+            retention_days: 30,
+            max_storage_mb: 5,
+        };
+        let err = config.validate_bounds().unwrap_err();
+        assert!(err.contains("max_storage_mb"));
+    }
+
+    #[test]
+    fn storage_validate_bounds_accepts_valid_config() {
+        let config = StorageConfig {
+            db_path: None,
+            retention_days: 1,
+            max_storage_mb: 10,
+        };
+        assert!(config.validate_bounds().is_ok());
+    }
+
+    #[test]
+    fn vision_validate_bounds_rejects_zero_throttle() {
+        let config = VisionConfig {
+            capture_enabled: true,
+            capture_throttle_ms: 0,
+            thumbnail_width: 480,
+            thumbnail_height: 270,
+            ocr_enabled: false,
+            privacy_mode: false,
+        };
+        assert!(config.validate_bounds().is_err());
+    }
+
+    #[test]
+    fn vision_validate_bounds_rejects_low_throttle() {
+        let config = VisionConfig {
+            capture_enabled: true,
+            capture_throttle_ms: 50,
+            thumbnail_width: 480,
+            thumbnail_height: 270,
+            ocr_enabled: false,
+            privacy_mode: false,
+        };
+        let err = config.validate_bounds().unwrap_err();
+        assert!(err.contains("capture_throttle_ms"));
+    }
+
+    #[test]
+    fn vision_validate_bounds_accepts_min_throttle() {
+        let config = VisionConfig {
+            capture_enabled: true,
+            capture_throttle_ms: 100,
+            thumbnail_width: 480,
+            thumbnail_height: 270,
+            ocr_enabled: false,
+            privacy_mode: false,
+        };
+        assert!(config.validate_bounds().is_ok());
+    }
+
+    #[test]
+    fn app_config_validate_bounds_default_passes() {
+        let config = AppConfig::default_config();
+        assert!(config.validate_bounds().is_ok());
     }
 
     #[test]

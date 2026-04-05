@@ -44,6 +44,16 @@ pub struct VisionConfig {
     pub privacy_mode: bool,
 }
 
+impl VisionConfig {
+    /// Validate that vision configuration values are within acceptable bounds.
+    pub fn validate_bounds(&self) -> Result<(), String> {
+        if self.capture_throttle_ms < 100 {
+            return Err("vision.capture_throttle_ms must be >= 100".to_string());
+        }
+        Ok(())
+    }
+}
+
 // ── ScheduleConfig ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
