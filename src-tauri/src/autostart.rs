@@ -1,4 +1,5 @@
 //! - macOS: `~/Library/LaunchAgents/com.oneshim.agent.plist`
+//! - Linux: `~/.config/systemd/user/oneshim.service` (systemd) or `~/.config/autostart/oneshim.desktop` (XDG fallback)
 
 #![allow(dead_code)]
 
@@ -15,9 +16,14 @@ pub fn enable_autostart() -> Result<(), String> {
         return windows::enable();
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
     {
-        tracing::warn!("auto-start: current");
+        linux::enable()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        tracing::warn!("auto-start: unsupported platform");
         Ok(())
     }
 }
@@ -33,9 +39,14 @@ pub fn disable_autostart() -> Result<(), String> {
         return windows::disable();
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
     {
-        tracing::warn!("auto-start disabled: current");
+        linux::disable()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        tracing::warn!("auto-start disabled: unsupported platform");
         Ok(())
     }
 }
@@ -51,9 +62,14 @@ pub fn is_autostart_enabled() -> Result<bool, String> {
         return windows::is_enabled();
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
     {
-        tracing::warn!("auto-start check: current");
+        linux::is_enabled()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        tracing::warn!("auto-start check: unsupported platform");
         Ok(false)
     }
 }
@@ -278,6 +294,169 @@ mod windows {
     }
 }
 
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::Command;
+    use tracing::{debug, warn};
+
+    /// Path for the systemd user service file.
+    pub fn service_path() -> Result<PathBuf, String> {
+        let home =
+            std::env::var("HOME").map_err(|_| "HOME environment variable not set".to_string())?;
+        Ok(PathBuf::from(home)
+            .join(".config")
+            .join("systemd")
+            .join("user")
+            .join("oneshim.service"))
+    }
+
+    /// Path for the XDG autostart desktop file (fallback).
+    pub fn desktop_path() -> Result<PathBuf, String> {
+        let home =
+            std::env::var("HOME").map_err(|_| "HOME environment variable not set".to_string())?;
+        Ok(PathBuf::from(home)
+            .join(".config")
+            .join("autostart")
+            .join("oneshim.desktop"))
+    }
+
+    fn binary_path() -> Result<String, String> {
+        std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .map_err(|e| format!("Failed to determine binary path: {e}"))
+    }
+
+    /// Generate a systemd user service unit file.
+    pub fn generate_service_file(program_path: &str) -> String {
+        format!(
+            "[Unit]\n\
+             Description=ONESHIM Desktop Agent\n\
+             After=graphical-session.target\n\
+             \n\
+             [Service]\n\
+             Type=simple\n\
+             ExecStart={program_path}\n\
+             Restart=on-failure\n\
+             RestartSec=5\n\
+             Environment=DISPLAY=:0\n\
+             \n\
+             [Install]\n\
+             WantedBy=default.target\n"
+        )
+    }
+
+    /// Generate an XDG autostart desktop file.
+    pub fn generate_desktop_file(program_path: &str) -> String {
+        format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=ONESHIM\n\
+             Comment=ONESHIM Desktop Agent\n\
+             Exec={program_path}\n\
+             Hidden=false\n\
+             X-GNOME-Autostart-enabled=true\n\
+             StartupNotify=false\n"
+        )
+    }
+
+    /// Check whether `systemctl` is available on the system.
+    pub fn has_systemctl() -> bool {
+        Command::new("systemctl")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    pub fn enable() -> Result<(), String> {
+        let bin = binary_path()?;
+
+        if has_systemctl() {
+            // Primary: systemd user service
+            let path = service_path()?;
+            let content = generate_service_file(&bin);
+
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create systemd user directory: {e}"))?;
+            }
+
+            fs::write(&path, content).map_err(|e| format!("Failed to write service file: {e}"))?;
+
+            // Reload systemd daemon to pick up the new unit
+            let _ = Command::new("systemctl")
+                .args(["--user", "daemon-reload"])
+                .output();
+
+            let output = Command::new("systemctl")
+                .args(["--user", "enable", "oneshim.service"])
+                .output()
+                .map_err(|e| format!("systemctl enable failed: {e}"))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                warn!("systemctl enable returned non-zero: {stderr}");
+            }
+
+            debug!("auto-start enabled via systemd user service");
+        } else {
+            // Fallback: XDG autostart desktop file
+            let path = desktop_path()?;
+            let content = generate_desktop_file(&bin);
+
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create autostart directory: {e}"))?;
+            }
+
+            fs::write(&path, content).map_err(|e| format!("Failed to write desktop file: {e}"))?;
+
+            debug!("auto-start enabled via XDG desktop file (systemd not available)");
+        }
+
+        Ok(())
+    }
+
+    pub fn disable() -> Result<(), String> {
+        // Disable systemd service if it exists
+        let svc_path = service_path()?;
+        if svc_path.exists() {
+            if has_systemctl() {
+                let _ = Command::new("systemctl")
+                    .args(["--user", "disable", "oneshim.service"])
+                    .output();
+                let _ = Command::new("systemctl")
+                    .args(["--user", "daemon-reload"])
+                    .output();
+            }
+            fs::remove_file(&svc_path)
+                .map_err(|e| format!("Failed to remove service file: {e}"))?;
+        }
+
+        // Remove XDG desktop file if it exists
+        let desk_path = desktop_path()?;
+        if desk_path.exists() {
+            fs::remove_file(&desk_path)
+                .map_err(|e| format!("Failed to remove desktop file: {e}"))?;
+        }
+
+        debug!("auto-start disabled");
+        Ok(())
+    }
+
+    pub fn is_enabled() -> Result<bool, String> {
+        let svc_path = service_path()?;
+        if svc_path.exists() {
+            return Ok(true);
+        }
+
+        let desk_path = desktop_path()?;
+        Ok(desk_path.exists())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,6 +491,52 @@ mod tests {
             assert!(plist.contains("<!DOCTYPE plist"));
             assert!(plist.contains("<plist version=\"1.0\">"));
             assert!(plist.trim().ends_with("</plist>"));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    mod linux_tests {
+        use super::*;
+
+        #[test]
+        fn service_file_contains_required_keys() {
+            let service = linux::generate_service_file("/usr/bin/oneshim");
+            assert!(service.contains("[Unit]"));
+            assert!(service.contains("[Service]"));
+            assert!(service.contains("[Install]"));
+            assert!(service.contains("ExecStart=/usr/bin/oneshim"));
+            assert!(service.contains("Type=simple"));
+            assert!(service.contains("WantedBy=default.target"));
+        }
+
+        #[test]
+        fn service_path_under_systemd_user() {
+            let path = linux::service_path().unwrap();
+            assert!(path.to_string_lossy().contains("systemd/user"));
+            assert!(path.to_string_lossy().ends_with("oneshim.service"));
+        }
+
+        #[test]
+        fn desktop_file_contains_required_keys() {
+            let desktop = linux::generate_desktop_file("/usr/bin/oneshim");
+            assert!(desktop.contains("[Desktop Entry]"));
+            assert!(desktop.contains("Type=Application"));
+            assert!(desktop.contains("Exec=/usr/bin/oneshim"));
+            assert!(desktop.contains("X-GNOME-Autostart-enabled=true"));
+        }
+
+        #[test]
+        fn desktop_path_under_autostart() {
+            let path = linux::desktop_path().unwrap();
+            assert!(path.to_string_lossy().contains(".config/autostart"));
+            assert!(path.to_string_lossy().ends_with("oneshim.desktop"));
+        }
+
+        #[test]
+        fn service_file_has_restart_policy() {
+            let service = linux::generate_service_file("/usr/bin/oneshim");
+            assert!(service.contains("Restart=on-failure"));
+            assert!(service.contains("RestartSec=5"));
         }
     }
 
