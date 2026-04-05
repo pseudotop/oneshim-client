@@ -218,11 +218,14 @@ if [[ "$OS_NAME" == "Linux" ]]; then
   if [[ -n "$MISSING" ]]; then
     warn "Missing required system packages:$MISSING"
     warn "Install with: sudo apt install$MISSING"
-    echo ""
-    read -p "Install now? [y/N] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      sudo apt install -y $MISSING
+    # Interactive prompt only if stdin is a terminal
+    if [[ -t 0 ]]; then
+      echo ""
+      read -p "Install now? [y/N] " -n 1 -r
+      echo
+      if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo apt install -y $MISSING
+      fi
     fi
   fi
 fi
