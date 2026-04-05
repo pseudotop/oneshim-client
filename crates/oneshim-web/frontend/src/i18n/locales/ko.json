@@ -109,7 +109,18 @@
     "policyTitle": "업데이트 보안 정책",
     "policyIntegrity": "설치 전 모든 아티팩트는 체크섬 검증을 통과해야 합니다.",
     "policySignature": "릴리즈 아티팩트는 Ed25519 서명 검증이 필수입니다.",
-    "policyRollback": "재시작 실패 시 이전 바이너리로 자동 롤백합니다."
+    "policyRollback": "재시작 실패 시 이전 바이너리로 자동 롤백합니다.",
+    "versionInfo": "버전 정보",
+    "releaseName": "릴리스",
+    "downloadInProgress": "업데이트 다운로드 중...",
+    "channelTitle": "업데이트 채널",
+    "channelStableDesc": "프로덕션 릴리스입니다. 대부분의 사용자에게 권장됩니다.",
+    "channelPreReleaseDesc": "안정 버전 승격 전 테스트용 릴리스 후보입니다.",
+    "channelNightlyDesc": "최신 빌드입니다. 실험적 기능이 포함될 수 있습니다.",
+    "active": "활성",
+    "savingChannel": "저장 중...",
+    "channelSaved": "업데이트 채널이 저장되었습니다",
+    "channelSaveFailed": "업데이트 채널 저장에 실패했습니다"
   },
   "timeline": {
     "title": "타임라인",

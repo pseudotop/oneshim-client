@@ -97,6 +97,12 @@ pub struct SyncConfig {
     /// Default: true (when transport == Lan).
     #[serde(default = "default_true")]
     pub lan_advertise: bool,
+
+    /// Whether to compress changeset payloads before encryption.
+    /// Reduces network bandwidth at the cost of a small CPU overhead.
+    /// Default: true.
+    #[serde(default = "default_true")]
+    pub compression_enabled: bool,
 }
 
 fn default_sync_interval_secs() -> u64 {
@@ -133,6 +139,7 @@ impl Default for SyncConfig {
             remote_auth: RemoteSyncAuth::default(),
             lan_port: 0,
             lan_advertise: true,
+            compression_enabled: true,
         }
     }
 }

@@ -109,7 +109,18 @@
     "policyTitle": "Update Security Policy",
     "policyIntegrity": "All artifacts must pass checksum verification before install.",
     "policySignature": "Ed25519 signature verification is required for release artifacts.",
-    "policyRollback": "Failed restarts trigger automatic rollback to the previous binary."
+    "policyRollback": "Failed restarts trigger automatic rollback to the previous binary.",
+    "versionInfo": "Version Information",
+    "releaseName": "Release",
+    "downloadInProgress": "Downloading update...",
+    "channelTitle": "Update Channel",
+    "channelStableDesc": "Production-ready releases. Recommended for most users.",
+    "channelPreReleaseDesc": "Release candidates for testing before stable promotion.",
+    "channelNightlyDesc": "Bleeding-edge builds. May contain experimental features.",
+    "active": "Active",
+    "savingChannel": "Saving...",
+    "channelSaved": "Update channel saved",
+    "channelSaveFailed": "Failed to save update channel"
   },
   "timeline": {
     "title": "Timeline",

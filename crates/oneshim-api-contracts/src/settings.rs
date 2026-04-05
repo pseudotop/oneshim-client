@@ -520,6 +520,8 @@ pub struct AnalysisSettings {
     pub embedding_enabled: bool,
     pub gui_intelligence_enabled: bool,
     pub text_intelligence_enabled: bool,
+    /// Whether the EMA-based auto-tuner (drift detection + re-clustering) is active.
+    pub auto_tuner_enabled: bool,
 }
 
 impl Default for AnalysisSettings {
@@ -532,6 +534,7 @@ impl Default for AnalysisSettings {
             embedding_enabled: true,
             gui_intelligence_enabled: true,
             text_intelligence_enabled: true,
+            auto_tuner_enabled: true,
         }
     }
 }
@@ -602,6 +605,8 @@ pub struct SyncSettings {
     pub interval_secs: u64,
     pub device_name: String,
     pub lan_advertise: bool,
+    /// Whether to compress changeset payloads before encryption.
+    pub compression_enabled: bool,
 }
 
 impl Default for SyncSettings {
@@ -612,6 +617,7 @@ impl Default for SyncSettings {
             interval_secs: 300,
             device_name: String::new(),
             lan_advertise: false,
+            compression_enabled: true,
         }
     }
 }

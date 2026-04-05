@@ -324,6 +324,7 @@ fn apply_extended_settings(config: &mut AppConfig, settings: &AppSettings) {
     config.analysis.embedding.enabled = settings.analysis.embedding_enabled;
     config.analysis.gui_intelligence.enabled = settings.analysis.gui_intelligence_enabled;
     config.analysis.text_intelligence.enabled = settings.analysis.text_intelligence_enabled;
+    config.analysis.tiered_memory.auto_tuning.enabled = settings.analysis.auto_tuner_enabled;
 
     // Network
     config.server.base_url = settings.network.server_base_url.clone();
@@ -356,4 +357,5 @@ fn apply_extended_settings(config: &mut AppConfig, settings: &AppSettings) {
     config.sync.interval_secs = settings.sync.interval_secs;
     config.sync.device_name = settings.sync.device_name.clone();
     config.sync.lan_advertise = settings.sync.lan_advertise;
+    config.sync.compression_enabled = settings.sync.compression_enabled;
 }
