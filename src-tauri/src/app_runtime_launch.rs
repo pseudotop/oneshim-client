@@ -428,8 +428,14 @@ impl AppRuntimeLaunchBuilder {
         // Creates a SEPARATE AuditLogger instance (not shared with web_server_runtime)
         // because the web server's logger is scoped to its own lifecycle and not exposed.
         let session_manager = {
+            let storage_for_audit = sqlite_storage.clone();
+            let persistence_cb: Arc<dyn oneshim_automation::audit::AuditPersistence> =
+                Arc::new(move |entry: &oneshim_core::models::audit::AuditEntry| {
+                    storage_for_audit.save_audit_entry(entry);
+                });
             let audit_logger = Arc::new(tokio::sync::RwLock::new(
-                oneshim_automation::audit::AuditLogger::new(500, 50),
+                oneshim_automation::audit::AuditLogger::new(500, 50)
+                    .with_persistence(persistence_cb),
             ));
             let audit_port: Arc<dyn oneshim_core::ports::audit_log::AuditLogPort> = Arc::new(
                 oneshim_automation::audit::AuditLogAdapter::new(audit_logger),

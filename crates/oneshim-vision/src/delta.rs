@@ -138,6 +138,9 @@ fn is_tile_changed_fast(
     avg_diff > CHANGE_THRESHOLD as u64
 }
 
+/// Compute delta with adjustable sensitivity threshold.
+/// Public API for consumers needing fine-grained change detection; currently exercised by tests.
+#[allow(dead_code)]
 pub fn compute_delta_adaptive(
     prev: &DynamicImage,
     curr: &DynamicImage,
@@ -352,6 +355,50 @@ mod tests {
             result_high.is_some()
                 || result_normal.is_some()
                 || (result_high.is_none() && result_normal.is_none())
+        );
+    }
+
+    #[test]
+    fn benchmark_delta_4k() {
+        use std::time::Instant;
+        let width = 3840u32;
+        let height = 2160u32;
+
+        // Create a base 4K image (solid gray)
+        let base = RgbaImage::from_pixel(width, height, image::Rgba([128, 128, 128, 255]));
+        let mut modified = base.clone();
+
+        // Modify a 200x200 region in the center to simulate a small UI change
+        let cx = width / 2;
+        let cy = height / 2;
+        for y in (cy - 100)..(cy + 100) {
+            for x in (cx - 100)..(cx + 100) {
+                modified.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+            }
+        }
+
+        let img_a = DynamicImage::ImageRgba8(base);
+        let img_b = DynamicImage::ImageRgba8(modified);
+
+        let start = Instant::now();
+        let result = compute_delta(&img_a, &img_b);
+        let elapsed = start.elapsed();
+
+        println!(
+            "4K delta detection: {:?} ({} changed tiles)",
+            elapsed,
+            result.as_ref().map_or(0, |r| r.changed_tiles)
+        );
+
+        assert!(result.is_some(), "should detect changed region");
+        let delta = result.unwrap();
+        assert!(delta.changed_tiles > 0);
+        // Most tiles should be unchanged — only center region differs
+        assert!(delta.changed_ratio < 0.1, "only a small region changed");
+        assert!(
+            elapsed.as_millis() < 500,
+            "4K delta should complete in <500ms, took {}ms",
+            elapsed.as_millis()
         );
     }
 

@@ -309,7 +309,14 @@ impl<'a> WebServerRuntimeBuilder<'a> {
 
     pub(crate) fn build_and_spawn(self) -> WebServerLaunchResult {
         let web_shutdown_rx = self.launch_context.shutdown_tx.subscribe();
-        let web_audit_logger = Arc::new(tokio::sync::RwLock::new(AuditLogger::default()));
+        let storage_for_audit = self.storage.clone();
+        let persistence_cb: std::sync::Arc<dyn oneshim_automation::audit::AuditPersistence> =
+            std::sync::Arc::new(move |entry: &oneshim_core::models::audit::AuditEntry| {
+                storage_for_audit.save_audit_entry(entry);
+            });
+        let web_audit_logger = Arc::new(tokio::sync::RwLock::new(
+            AuditLogger::default().with_persistence(persistence_cb),
+        ));
         let (bound_port_tx, bound_port_rx) = tokio::sync::oneshot::channel::<u16>();
 
         let automation_frame_storage = match self.launch_context.runtime_handle.block_on(async {

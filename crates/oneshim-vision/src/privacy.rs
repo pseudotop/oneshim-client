@@ -7,9 +7,11 @@ pub enum PiiMarker {
     Card,
     KoreanId,
     Ssn,
+    Iban,
     ApiKey,
     Ip,
     UserPath,
+    Passport,
 }
 
 pub fn sanitize_title_with_level(title: &str, level: PiiFilterLevel) -> String {
@@ -22,7 +24,10 @@ pub fn sanitize_title_with_level(title: &str, level: PiiFilterLevel) -> String {
             result
         }
         PiiFilterLevel::Standard => {
-            let mut result = sanitize_title_with_level(title, PiiFilterLevel::Basic);
+            // Run IBAN masking before Basic (phone masking) to avoid digit sequences
+            // in IBANs being consumed by the phone number detector.
+            let mut result = mask_iban(title);
+            result = sanitize_title_with_level(&result, PiiFilterLevel::Basic);
             result = mask_credit_cards(&result);
             result = mask_korean_id(&result);
             result = mask_ssn(&result);
@@ -33,6 +38,7 @@ pub fn sanitize_title_with_level(title: &str, level: PiiFilterLevel) -> String {
             let mut result = sanitize_title_with_level(title, PiiFilterLevel::Standard);
             result = mask_api_keys(&result);
             result = mask_ip_addresses(&result);
+            result = mask_passport(&result);
             result
         }
     }
@@ -61,6 +67,9 @@ pub fn detect_pii_markers_with_level(text: &str, level: PiiFilterLevel) -> Vec<P
     if marker_inserted(text, &masked, "[SSN]") {
         markers.push(PiiMarker::Ssn);
     }
+    if marker_inserted(text, &masked, "[IBAN]") {
+        markers.push(PiiMarker::Iban);
+    }
     if marker_inserted(text, &masked, "[API_KEY]") {
         markers.push(PiiMarker::ApiKey);
     }
@@ -69,6 +78,9 @@ pub fn detect_pii_markers_with_level(text: &str, level: PiiFilterLevel) -> Vec<P
     }
     if marker_inserted(text, &masked, "[USER]") {
         markers.push(PiiMarker::UserPath);
+    }
+    if marker_inserted(text, &masked, "[PASSPORT]") {
+        markers.push(PiiMarker::Passport);
     }
 
     markers
@@ -534,6 +546,110 @@ fn try_parse_ipv4(chars: &[char], start: usize, len: usize) -> Option<(usize, bo
     Some((i, octet_count == 4))
 }
 
+/// Mask IBAN numbers: 2 uppercase country letters + 2 check digits + 4 bank code + 7-30 alphanumeric
+/// characters. Masks as `XX99****...****` preserving the country code and check digits.
+fn mask_iban(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        if let Some((iban_end, prefix_len)) = try_parse_iban(&chars, i, len) {
+            // Preserve the country code + check digits (first 4 chars), mask the rest
+            let prefix: String = chars[i..i + prefix_len].iter().collect();
+            result.push_str(&prefix);
+            result.push_str("[IBAN]");
+            i = iban_end;
+            continue;
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    result
+}
+
+/// Try to parse an IBAN starting at `start`. Returns (end_index, prefix_length) if found.
+/// Pattern: 2 uppercase letters + 2 digits + 4 alphanumeric bank code + 7-30 more alphanumeric chars.
+fn try_parse_iban(chars: &[char], start: usize, len: usize) -> Option<(usize, usize)> {
+    // Need at least 15 chars for a minimal IBAN (e.g., NO93 8601 1117 947)
+    if start + 15 > len {
+        return None;
+    }
+    // Must not be preceded by an alphanumeric char (avoid matching mid-word)
+    if start > 0 && chars[start - 1].is_alphanumeric() {
+        return None;
+    }
+    // First 2 chars: uppercase letters (country code)
+    if !chars[start].is_ascii_uppercase() || !chars[start + 1].is_ascii_uppercase() {
+        return None;
+    }
+    // Next 2 chars: digits (check digits)
+    if !chars[start + 2].is_ascii_digit() || !chars[start + 3].is_ascii_digit() {
+        return None;
+    }
+
+    let prefix_len = 4; // country code + check digits
+    let mut i = start + 4;
+    let mut alnum_count = 0;
+
+    // Consume alphanumeric chars and optional spaces/dashes (formatted IBAN)
+    while i < len {
+        if chars[i].is_ascii_alphanumeric() {
+            alnum_count += 1;
+            i += 1;
+        } else if chars[i] == ' ' || chars[i] == '-' {
+            // Allow spaces/dashes in formatted IBANs
+            i += 1;
+        } else {
+            break;
+        }
+    }
+
+    // IBAN body (after country+check) must be 11-30 alphanumeric chars
+    if (11..=30).contains(&alnum_count) {
+        Some((i, prefix_len))
+    } else {
+        None
+    }
+}
+
+/// Mask passport numbers: a letter followed by 7-8 digits (common format across many countries).
+/// Only applied at Strict level due to high false positive risk.
+fn mask_passport(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        if chars[i].is_ascii_alphabetic() && i + 8 <= len {
+            // Must not be preceded by alphanumeric (avoid matching mid-word)
+            let preceded_by_alnum = i > 0 && chars[i - 1].is_alphanumeric();
+            if !preceded_by_alnum {
+                let mut j = i + 1;
+                let mut digit_count = 0;
+                while j < len && chars[j].is_ascii_digit() {
+                    digit_count += 1;
+                    j += 1;
+                }
+                // Must not be followed by alphanumeric
+                let followed_by_alnum = j < len && chars[j].is_alphanumeric();
+                if (7..=8).contains(&digit_count) && !followed_by_alnum {
+                    result.push_str("[PASSPORT]");
+                    i = j;
+                    continue;
+                }
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    result
+}
+
 fn mask_user_paths(text: &str) -> String {
     let result = mask_user_paths_os(text, "/Users/", 7, '/');
     let result = mask_user_paths_os(&result, "/home/", 6, '/');
@@ -975,6 +1091,119 @@ mod tests {
     fn detect_pii_markers_ssn() {
         let markers = detect_pii_markers_with_level("SSN: 987-65-4321", PiiFilterLevel::Standard);
         assert!(markers.contains(&PiiMarker::Ssn));
+    }
+
+    // ── IBAN masking tests ──────────────────────────────────────────────
+
+    #[test]
+    fn mask_iban_standard_level() {
+        let result = sanitize_title_with_level(
+            "IBAN: DE89370400440532013000 for payment",
+            PiiFilterLevel::Standard,
+        );
+        assert!(result.contains("[IBAN]"), "IBAN not masked: {result}");
+        assert!(
+            !result.contains("0532013000"),
+            "raw IBAN body still present: {result}"
+        );
+        // Country code + check digits preserved
+        assert!(
+            result.contains("DE89"),
+            "IBAN prefix should be preserved: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_iban_formatted_with_spaces() {
+        let result = sanitize_title_with_level(
+            "transfer to GB29 NWBK 6016 1331 9268 19",
+            PiiFilterLevel::Standard,
+        );
+        assert!(
+            result.contains("[IBAN]"),
+            "spaced IBAN not masked: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_iban_not_at_basic_level() {
+        let result =
+            sanitize_title_with_level("IBAN: DE89370400440532013000", PiiFilterLevel::Basic);
+        assert!(
+            !result.contains("[IBAN]"),
+            "IBAN should not be masked at Basic level: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_iban_too_short_not_matched() {
+        // Only 10 alnum chars after country+check — below minimum 11
+        let result = sanitize_title_with_level("code: AB12CDEF123456", PiiFilterLevel::Standard);
+        assert!(
+            !result.contains("[IBAN]"),
+            "short code should not be matched as IBAN: {result}"
+        );
+    }
+
+    #[test]
+    fn detect_pii_markers_iban() {
+        let markers = detect_pii_markers_with_level(
+            "IBAN: FR7630006000011234567890189",
+            PiiFilterLevel::Standard,
+        );
+        assert!(markers.contains(&PiiMarker::Iban));
+    }
+
+    // ── Passport masking tests ────────────────────────────────────────
+
+    #[test]
+    fn mask_passport_strict_level() {
+        let result =
+            sanitize_title_with_level("passport: A12345678 issued 2024", PiiFilterLevel::Strict);
+        assert!(
+            result.contains("[PASSPORT]"),
+            "passport not masked: {result}"
+        );
+        assert!(
+            !result.contains("A12345678"),
+            "raw passport still present: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_passport_seven_digits() {
+        let result = sanitize_title_with_level("doc M1234567 verified", PiiFilterLevel::Strict);
+        assert!(
+            result.contains("[PASSPORT]"),
+            "7-digit passport not masked: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_passport_not_at_standard_level() {
+        let result =
+            sanitize_title_with_level("passport: A12345678 issued 2024", PiiFilterLevel::Standard);
+        assert!(
+            !result.contains("[PASSPORT]"),
+            "passport should not be masked at Standard level: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_passport_mid_word_not_matched() {
+        // "ABC12345678" — preceded by letters, should not match
+        let result = sanitize_title_with_level("codeABC12345678 end", PiiFilterLevel::Strict);
+        assert!(
+            !result.contains("[PASSPORT]"),
+            "mid-word should not match passport: {result}"
+        );
+    }
+
+    #[test]
+    fn detect_pii_markers_passport() {
+        let markers =
+            detect_pii_markers_with_level("passport number: B87654321", PiiFilterLevel::Strict);
+        assert!(markers.contains(&PiiMarker::Passport));
     }
 
     #[test]

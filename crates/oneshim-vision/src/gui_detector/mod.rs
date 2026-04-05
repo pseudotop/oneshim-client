@@ -12,7 +12,7 @@ mod inference;
 use std::sync::Arc;
 
 use oneshim_core::config::PiiFilterLevel;
-use oneshim_core::models::frame::OcrRegion;
+use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use oneshim_core::models::gui_interaction::GuiElement;
 use oneshim_core::ports::gui_element_classifier::GuiElementClassifier;
 
@@ -93,6 +93,13 @@ impl GuiElementDetector {
         self.screen_resolution
     }
 
+    /// Build a `GuiElement` from an OCR region using heuristic inference.
+    ///
+    /// **Phase 2 TODO**: Add `build_gui_element_with_frame()` async variant that
+    /// accepts the frame image, crops the region bbox, and calls
+    /// `ml_classifier.classify_crop()` before falling back to heuristic inference.
+    /// The ML result should override heuristics when confidence > 0.7.
+    /// See `infer_element_type_scored()` doc comment for the full integration plan.
     pub(super) fn build_gui_element(&self, region: &OcrRegion) -> GuiElement {
         let filtered_text = sanitize_title_with_level(&region.text, self.pii_filter_level);
         let (element_type, type_confidence) =
@@ -104,6 +111,92 @@ impl GuiElementDetector {
             confidence: region.confidence,
             type_confidence,
         }
+    }
+
+    /// Async variant of `build_gui_element` that consults the ML classifier
+    /// when available and the frame image is provided.
+    ///
+    /// If the ML classifier is attached, ready, and returns a confident result
+    /// (confidence > 0.7), its prediction overrides the heuristic inference.
+    /// Otherwise falls back to the standard heuristic scoring.
+    pub async fn build_gui_element_with_frame(
+        &self,
+        region: &OcrRegion,
+        frame_rgba: Option<&[u8]>,
+        frame_width: u32,
+        frame_height: u32,
+    ) -> GuiElement {
+        let filtered_text = sanitize_title_with_level(&region.text, self.pii_filter_level);
+
+        // Try ML classifier if available and frame data is provided
+        if let (Some(classifier), Some(frame)) = (&self.ml_classifier, frame_rgba) {
+            if classifier.is_ready() {
+                if let Some(crop) =
+                    Self::crop_region_rgba(frame, frame_width, frame_height, &region.bbox)
+                {
+                    match classifier
+                        .classify_crop(&crop, region.bbox.width, region.bbox.height)
+                        .await
+                    {
+                        Ok(Some((ml_type, ml_conf))) if ml_conf > 0.7 => {
+                            return GuiElement {
+                                text: filtered_text,
+                                bbox: region.bbox.clone(),
+                                element_type: ml_type,
+                                confidence: region.confidence,
+                                type_confidence: ml_conf,
+                            };
+                        }
+                        Ok(_) => {
+                            // ML inconclusive or low confidence — fall through to heuristic
+                        }
+                        Err(e) => {
+                            tracing::debug!("ML classifier error, falling back to heuristic: {e}");
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: heuristic inference
+        let (element_type, type_confidence) =
+            self.infer_element_type_scored(&region.text, &region.bbox);
+        GuiElement {
+            text: filtered_text,
+            bbox: region.bbox.clone(),
+            element_type,
+            confidence: region.confidence,
+            type_confidence,
+        }
+    }
+
+    /// Crop a bounding box region from an RGBA frame buffer.
+    /// Returns None if the bbox extends outside the frame bounds.
+    fn crop_region_rgba(
+        frame_rgba: &[u8],
+        frame_width: u32,
+        frame_height: u32,
+        bbox: &BoundingBox,
+    ) -> Option<Vec<u8>> {
+        // Validate bbox is within frame bounds
+        if bbox.x + bbox.width > frame_width || bbox.y + bbox.height > frame_height {
+            return None;
+        }
+        let stride = (frame_width as usize) * 4; // RGBA = 4 bytes per pixel
+        let crop_stride = (bbox.width as usize) * 4;
+        let mut crop = Vec::with_capacity((bbox.width as usize) * (bbox.height as usize) * 4);
+
+        for row in 0..bbox.height as usize {
+            let src_offset = ((bbox.y as usize + row) * stride) + (bbox.x as usize * 4);
+            let src_end = src_offset + crop_stride;
+            if src_end <= frame_rgba.len() {
+                crop.extend_from_slice(&frame_rgba[src_offset..src_end]);
+            } else {
+                return None;
+            }
+        }
+
+        Some(crop)
     }
 }
 

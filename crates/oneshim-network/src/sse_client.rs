@@ -172,8 +172,32 @@ impl SseClient for SseStreamClient {
             loop {
                 match stream.next().await {
                     Some(Ok(msg)) => {
-                        if !msg.id.is_empty() {
-                            *self.last_event_id.lock() = Some(msg.id.clone());
+                        let event_id = if msg.id.is_empty() {
+                            None
+                        } else {
+                            Some(msg.id.clone())
+                        };
+
+                        // Gap detection: warn when numeric event IDs skip values
+                        if let (Some(ref last_str), Some(ref new_str)) =
+                            (&*self.last_event_id.lock(), &event_id)
+                        {
+                            if let (Ok(last_n), Ok(new_n)) =
+                                (last_str.parse::<u64>(), new_str.parse::<u64>())
+                            {
+                                if new_n > last_n + 1 {
+                                    warn!(
+                                        gap = new_n - last_n - 1,
+                                        last = last_n,
+                                        current = new_n,
+                                        "SSE event ID gap detected"
+                                    );
+                                }
+                            }
+                        }
+
+                        if let Some(ref id) = event_id {
+                            *self.last_event_id.lock() = Some(id.clone());
                         }
 
                         let event_type = if msg.event.is_empty() {

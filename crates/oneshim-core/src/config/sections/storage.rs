@@ -15,6 +15,19 @@ pub struct StorageConfig {
     pub max_storage_mb: u64,
 }
 
+impl StorageConfig {
+    /// Validate that storage configuration values are within acceptable bounds.
+    pub fn validate_bounds(&self) -> Result<(), String> {
+        if self.retention_days < 1 {
+            return Err("storage.retention_days must be >= 1".to_string());
+        }
+        if self.max_storage_mb < 10 {
+            return Err("storage.max_storage_mb must be >= 10".to_string());
+        }
+        Ok(())
+    }
+}
+
 // ── IntegrityConfig ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
