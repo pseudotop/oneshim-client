@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.21-rc.1] - 2026-04-05
+
+### Added
+
+- Complete Phase 1 suggestion UX gaps — deferred hydration + feedback retry wiring
+
+- Wire navigate:chat event handler for explain-in-chat navigation
+  Add navigate:chat Tauri event listener in useTauriEventBridge so clicking
+  "Explain" on a suggestion in the overlay navigates the web dashboard to
+  /chat with the target session auto-selected via ?sid= query parameter.
+
+  Completes Phase 2 #7 (suggestion context in chat).
+
+- Stabilize 4 YELLOW domains — confirmation wiring, embedding fallback, sync health, update verify
+  #9 Automation: Wire ConfirmationRequirement (Auto/Confirm/Block) into
+  execution gate. Confirmation callback emits Tauri event to overlay modal.
+  30-second timeout auto-denies. Block policy prevents execution entirely.
+
+  #10 Embedding: Add FallbackEmbeddingProvider that chains primary → noop
+  at request time. Transient local ONNX failures degrade gracefully.
+
+  #11 Sync: Add health tracking (last_sync_at, last_error) to SyncEngine.
+  Extend get_sync_status IPC with health fields. Document conflict
+  resolution strategy (HLC last-write-wins, GDPR deletion precedence).
+
+  #12 Update: Add verify_update IPC for dry-run integrity check. Returns
+  version, checksum/signature status, and estimated download size.
+
+- Phase 4 polish — auto-save on shutdown, 3-source filter, enhanced stats
+  #13 Offline mode: Auto-persist suggestion queue + deferred items to SQLite
+  on app exit (RunEvent::Exit). Uses try_lock for non-blocking best-effort
+  save. Restoration on startup was already implemented.
+
+  #14 Source filtering: Split RuleBased from "local" to distinct "rule"
+  source label. Frontend now shows 3 toggles (Server/Local/Rules) with
+  localStorage migration for existing users.
+
+  #15 Statistics: Add type distribution and per-source acceptance rates to
+  HistoryStats. Extended SuggestionStatsDto with by_type/by_source arrays.
+  Frontend shows type bar chart and source quality table.
+
 ## [0.4.20] - 2026-04-05
 
 ### Security
