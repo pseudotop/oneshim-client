@@ -1176,7 +1176,12 @@
   "suggestions": {
     "sourceServer": "服务器",
     "sourceLocal": "本地",
-    "sourceRules": "规则"
+    "sourceRules": "规则",
+    "suggestionLabel": "建议: {{title}}",
+    "accept": "接受",
+    "reject": "拒绝",
+    "later": "稍后",
+    "explain": "说明"
   },
   "suggestionStats": {
     "acceptanceRate": "接受率",

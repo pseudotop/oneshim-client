@@ -46,9 +46,42 @@ pub struct HttpApiClient {
 /// `tls.enabled=true` 이면 HTTPS 전용 모드(`https_only`)를 강제한다.
 /// `tls.allow_self_signed=true` 이면 자체 서명 인증서를 허용한다 (개발 전용).
 /// `timeout=None` 이면 전역 타임아웃 미적용 — SSE 등 장기 스트림 연결에 사용.
+/// Check if a URL refers to a loopback / localhost address.
+fn is_localhost(url: &str) -> bool {
+    // Strip scheme if present to get the host portion
+    let host_part = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+
+    // Handle IPv6 bracket notation: [::1]:port
+    let host = if host_part.starts_with('[') {
+        host_part
+            .find(']')
+            .map(|end| &host_part[..=end])
+            .unwrap_or(host_part)
+    } else {
+        host_part.split(':').next().unwrap_or(host_part)
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host == "127.0.0.1"
+        || host == "[::1]"
+        || host == "::1"
+}
+
 pub fn build_reqwest_client(
     tls: &TlsConfig,
     timeout: Option<Duration>,
+) -> Result<reqwest::Client, NetworkError> {
+    build_reqwest_client_for_url(tls, timeout, None)
+}
+
+/// Build a `reqwest::Client` with TLS policy. When `base_url` is provided,
+/// emits a warning if `allow_self_signed` is used against a non-localhost host.
+pub fn build_reqwest_client_for_url(
+    tls: &TlsConfig,
+    timeout: Option<Duration>,
+    base_url: Option<&str>,
 ) -> Result<reqwest::Client, NetworkError> {
     let mut builder = reqwest::Client::builder();
     if let Some(t) = timeout {
@@ -61,6 +94,12 @@ pub fn build_reqwest_client(
     }
 
     if tls.allow_self_signed {
+        if base_url.is_some_and(|u| !is_localhost(u)) {
+            warn!(
+                "allow_self_signed is enabled for non-localhost URL — \
+                 this disables all certificate validation"
+            );
+        }
         tracing::warn!(
             "TLS: allow_self_signed=true — 자체 서명 인증서 허용됨. 운영 환경에서 사용 금지!"
         );
@@ -75,6 +114,7 @@ pub fn build_reqwest_client(
 
 impl HttpApiClient {
     /// 기존 생성자 — TLS 미적용 (역호환성 보장, 테스트 전용)
+    #[deprecated(note = "Use new_with_tls() for TLS enforcement")]
     pub fn new(
         base_url: &str,
         token_manager: Arc<TokenManager>,
@@ -103,7 +143,7 @@ impl HttpApiClient {
         timeout: Duration,
         tls: &TlsConfig,
     ) -> Result<Self, NetworkError> {
-        let client = build_reqwest_client(tls, Some(timeout))?;
+        let client = build_reqwest_client_for_url(tls, Some(timeout), Some(base_url))?;
         Ok(Self {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -345,6 +385,17 @@ impl ApiClient for HttpApiClient {
 mod tests {
     use super::*;
     use crate::error::NetworkError;
+
+    #[test]
+    fn is_localhost_detects_loopback_variants() {
+        assert!(is_localhost("http://localhost:8000"));
+        assert!(is_localhost("https://localhost"));
+        assert!(is_localhost("http://127.0.0.1:9090"));
+        assert!(is_localhost("127.0.0.1"));
+        assert!(is_localhost("http://[::1]:50051"));
+        assert!(!is_localhost("http://api.example.com"));
+        assert!(!is_localhost("https://10.0.0.1:443"));
+    }
 
     #[test]
     fn build_reqwest_client_tls_disabled_succeeds() {

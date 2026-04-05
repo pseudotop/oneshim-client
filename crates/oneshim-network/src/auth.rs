@@ -39,6 +39,7 @@ impl TokenManager {
     ///
     /// This constructor is retained for backward compatibility and unit tests
     /// that talk to `mockito` HTTP servers.
+    #[deprecated(note = "Use new_with_tls() for TLS enforcement")]
     pub fn new(base_url: &str) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),

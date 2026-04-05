@@ -1,4 +1,5 @@
 import { memo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
@@ -17,11 +18,12 @@ const priorityClasses: Record<string, string> = {
 }
 
 export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: SuggestionItemProps) {
+  const { t } = useTranslation()
   const [showSnooze, setShowSnooze] = useState(false)
   const badgeClass = priorityClasses[item.priority] ?? priorityClasses.low
 
   return (
-    <li aria-label={`Suggestion: ${item.title}`} className="list-none border-content-inverse/5 border-b px-4 py-3">
+    <li aria-label={t('suggestions.suggestionLabel', { title: item.title })} className="list-none border-content-inverse/5 border-b px-4 py-3">
       <div className="flex items-start justify-between gap-2">
         <span className={cn('text-content text-sm leading-tight', typography.weight.medium)}>{item.title}</span>
         <span
@@ -44,7 +46,7 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
             motion.colors,
           )}
         >
-          Accept
+          {t('suggestions.accept')}
         </button>
         <button
           type="button"
@@ -54,7 +56,7 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
             motion.colors,
           )}
         >
-          Reject
+          {t('suggestions.reject')}
         </button>
         <div className="relative">
           <button
@@ -65,7 +67,7 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
               motion.colors,
             )}
           >
-            Later
+            {t('suggestions.later')}
           </button>
           {showSnooze && (
             <SnoozePopover
@@ -85,7 +87,7 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
             motion.colors,
           )}
         >
-          Explain
+          {t('suggestions.explain')}
         </button>
         <span className="ml-auto text-[10px] text-content-tertiary">
           {Math.round(item.confidence_score * 100)}% &middot; {item.source}

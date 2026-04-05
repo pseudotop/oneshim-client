@@ -44,7 +44,22 @@ impl FileSecretRegistry {
             std::fs::create_dir_all(parent)?;
         }
         let temp_path = path.with_extension("tmp");
-        std::fs::write(&temp_path, serialized)?;
+        std::fs::write(&temp_path, &serialized)?;
+
+        // Set owner-only permissions before atomic rename so the file is never
+        // world-readable on disk.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o600)).map_err(
+                |e| {
+                    StorageError::SecretStore(format!(
+                        "file secret store permission set failed: {e}"
+                    ))
+                },
+            )?;
+        }
+
         std::fs::rename(&temp_path, path)?;
         Ok(())
     }

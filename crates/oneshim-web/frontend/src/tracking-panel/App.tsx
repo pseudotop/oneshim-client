@@ -299,7 +299,7 @@ export function App() {
           {/* Connection status + offline mode indicator */}
           <div data-tauri-drag-region className="mt-2 border-white/10 border-t pt-2">
             {isOffline && (
-              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-400/80">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-semantic-warning">
                 <WifiOff size={10} />
                 <span>{t('trackingPanel.offlineMessage')}</span>
               </div>
@@ -389,7 +389,7 @@ function ActionButton({
 function StatusDot({ connected, label }: { connected: boolean; label: string }) {
   return (
     <span className="flex items-center gap-1">
-      <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-status-connected' : 'bg-status-error'}`} />
       {label}
     </span>
   )

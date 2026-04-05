@@ -86,6 +86,17 @@ impl EncryptionKey {
             )?;
         }
 
+        #[cfg(windows)]
+        {
+            // TODO: Set owner-only DACL using windows-sys SetNamedSecurityInfoW
+            // to restrict key file access to the current user (equivalent to
+            // Unix 0o600). For now the file inherits the parent directory's ACL,
+            // which is typically user-only under %LOCALAPPDATA%.
+            tracing::debug!(
+                "Windows: key file ACL not explicitly restricted — relying on parent directory ACL"
+            );
+        }
+
         Ok(())
     }
 }

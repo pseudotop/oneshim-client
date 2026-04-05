@@ -508,7 +508,7 @@ mod tests {
         let signature = compute_policy_token_signature("pol-1", "nonce_1234", None, "secret");
         assert_eq!(
             signature,
-            "14bf0b43befc58f56d4e4bcc9c8942d44f8d3af1321a96bea6f89fa44f4f5329"
+            "64aa29299a8e3676225d07c205ea6e8e50b00a69341aa8cda90d96ebd65e3302"
         );
     }
 

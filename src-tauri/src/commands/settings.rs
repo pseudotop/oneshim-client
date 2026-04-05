@@ -116,10 +116,58 @@ pub async fn update_setting(
 
     let new_config: oneshim_core::config::AppConfig =
         serde_json::from_value(current_val).map_err(|e| e.to_string())?;
+
+    validate_config_bounds(&new_config)?;
+
     state
         .config_manager()
         .update(new_config)
         .map_err(|e| e.to_string())
+}
+
+/// Validate numeric config bounds to prevent tight loops or resource exhaustion
+/// from WebView-supplied values.
+fn validate_config_bounds(config: &oneshim_core::config::AppConfig) -> Result<(), String> {
+    if config.monitor.poll_interval_ms < 1000 {
+        return Err(format!(
+            "monitor.poll_interval_ms must be >= 1000 (got {})",
+            config.monitor.poll_interval_ms
+        ));
+    }
+    if config.monitor.sync_interval_ms < 1000 {
+        return Err(format!(
+            "monitor.sync_interval_ms must be >= 1000 (got {})",
+            config.monitor.sync_interval_ms
+        ));
+    }
+    if config.monitor.heartbeat_interval_ms < 5000 {
+        return Err(format!(
+            "monitor.heartbeat_interval_ms must be >= 5000 (got {})",
+            config.monitor.heartbeat_interval_ms
+        ));
+    }
+    if config.vision.capture_throttle_ms < 1000 {
+        return Err(format!(
+            "vision.capture_throttle_ms must be >= 1000 (got {})",
+            config.vision.capture_throttle_ms
+        ));
+    }
+    if config.analysis.max_suggestions > 200 {
+        return Err(format!(
+            "analysis.max_suggestions must be <= 200 (got {})",
+            config.analysis.max_suggestions
+        ));
+    }
+    if config.analysis.throttle_secs < 10 {
+        return Err(format!(
+            "analysis.throttle_secs must be >= 10 (got {})",
+            config.analysis.throttle_secs
+        ));
+    }
+    if config.notification.idle_notification_mins == 0 {
+        return Err("notification.idle_notification_mins must be >= 1 (got 0)".to_string());
+    }
+    Ok(())
 }
 
 fn reject_forbidden_allowed_subpaths(patch: &serde_json::Value) -> Result<(), String> {
@@ -324,6 +372,30 @@ mod tests {
         assert!(sections.contains(&"ai_provider"));
         assert!(sections.contains(&"web"));
         assert!(sections.contains(&"grpc"));
+    }
+
+    // ── validate_config_bounds ─────────────────────────────────────
+
+    #[test]
+    fn validate_config_bounds_rejects_low_poll_interval() {
+        let mut config = oneshim_core::config::AppConfig::default_config();
+        config.monitor.poll_interval_ms = 500;
+        let err = validate_config_bounds(&config).unwrap_err();
+        assert!(err.contains("poll_interval_ms"), "err: {err}");
+    }
+
+    #[test]
+    fn validate_config_bounds_rejects_high_max_suggestions() {
+        let mut config = oneshim_core::config::AppConfig::default_config();
+        config.analysis.max_suggestions = 999;
+        let err = validate_config_bounds(&config).unwrap_err();
+        assert!(err.contains("max_suggestions"), "err: {err}");
+    }
+
+    #[test]
+    fn validate_config_bounds_accepts_defaults() {
+        let config = oneshim_core::config::AppConfig::default_config();
+        assert!(validate_config_bounds(&config).is_ok());
     }
 
     #[test]

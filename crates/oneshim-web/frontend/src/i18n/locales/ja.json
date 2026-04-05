@@ -1176,7 +1176,12 @@
   "suggestions": {
     "sourceServer": "サーバー",
     "sourceLocal": "ローカル",
-    "sourceRules": "ルール"
+    "sourceRules": "ルール",
+    "suggestionLabel": "提案: {{title}}",
+    "accept": "承認",
+    "reject": "拒否",
+    "later": "後で",
+    "explain": "説明"
   },
   "suggestionStats": {
     "acceptanceRate": "承認率",

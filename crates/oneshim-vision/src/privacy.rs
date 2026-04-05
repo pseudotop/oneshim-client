@@ -6,6 +6,7 @@ pub enum PiiMarker {
     Phone,
     Card,
     KoreanId,
+    Ssn,
     ApiKey,
     Ip,
     UserPath,
@@ -24,6 +25,7 @@ pub fn sanitize_title_with_level(title: &str, level: PiiFilterLevel) -> String {
             let mut result = sanitize_title_with_level(title, PiiFilterLevel::Basic);
             result = mask_credit_cards(&result);
             result = mask_korean_id(&result);
+            result = mask_ssn(&result);
             result = mask_user_paths(&result);
             result
         }
@@ -55,6 +57,9 @@ pub fn detect_pii_markers_with_level(text: &str, level: PiiFilterLevel) -> Vec<P
     }
     if marker_inserted(text, &masked, "[KR_ID]") {
         markers.push(PiiMarker::KoreanId);
+    }
+    if marker_inserted(text, &masked, "[SSN]") {
+        markers.push(PiiMarker::Ssn);
     }
     if marker_inserted(text, &masked, "[API_KEY]") {
         markers.push(PiiMarker::ApiKey);
@@ -298,6 +303,45 @@ fn mask_korean_id(text: &str) -> String {
             }
         }
     }
+    result
+}
+
+/// Mask US Social Security Numbers (SSN): `\d{3}-\d{2}-\d{4}` → `[SSN]`
+fn mask_ssn(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        // SSN pattern: exactly 3 digits, dash, 2 digits, dash, 4 digits
+        if i + 10 < len
+            && chars[i].is_ascii_digit()
+            && chars[i + 1].is_ascii_digit()
+            && chars[i + 2].is_ascii_digit()
+            && chars[i + 3] == '-'
+            && chars[i + 4].is_ascii_digit()
+            && chars[i + 5].is_ascii_digit()
+            && chars[i + 6] == '-'
+            && chars[i + 7].is_ascii_digit()
+            && chars[i + 8].is_ascii_digit()
+            && chars[i + 9].is_ascii_digit()
+            && chars[i + 10].is_ascii_digit()
+        {
+            // Ensure not preceded by a digit (avoid matching inside longer numbers)
+            let preceded_by_digit = i > 0 && chars[i - 1].is_ascii_digit();
+            // Ensure not followed by a digit
+            let followed_by_digit = i + 11 < len && chars[i + 11].is_ascii_digit();
+            if !preceded_by_digit && !followed_by_digit {
+                result.push_str("[SSN]");
+                i += 11;
+                continue;
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+
     result
 }
 
@@ -895,6 +939,42 @@ mod tests {
             !result.contains("ghs_"),
             "raw ghs_ token still present: {result}"
         );
+    }
+
+    #[test]
+    fn mask_ssn_standard_level() {
+        let result =
+            sanitize_title_with_level("SSN is 123-45-6789 on file", PiiFilterLevel::Standard);
+        assert!(result.contains("[SSN]"), "SSN not masked: {result}");
+        assert!(
+            !result.contains("123-45-6789"),
+            "raw SSN still present: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_ssn_not_at_basic_level() {
+        let result = sanitize_title_with_level("SSN is 123-45-6789 on file", PiiFilterLevel::Basic);
+        assert!(
+            !result.contains("[SSN]"),
+            "SSN should not be masked at Basic level: {result}"
+        );
+    }
+
+    #[test]
+    fn mask_ssn_does_not_match_longer_numbers() {
+        // Preceded or followed by digits should not match
+        let result = sanitize_title_with_level("code 1123-45-67890 test", PiiFilterLevel::Standard);
+        assert!(
+            !result.contains("[SSN]"),
+            "should not match embedded number: {result}"
+        );
+    }
+
+    #[test]
+    fn detect_pii_markers_ssn() {
+        let markers = detect_pii_markers_with_level("SSN: 987-65-4321", PiiFilterLevel::Standard);
+        assert!(markers.contains(&PiiMarker::Ssn));
     }
 
     #[test]

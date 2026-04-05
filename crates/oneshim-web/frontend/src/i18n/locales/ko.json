@@ -1321,7 +1321,12 @@
   "suggestions": {
     "sourceServer": "서버",
     "sourceLocal": "로컬",
-    "sourceRules": "규칙"
+    "sourceRules": "규칙",
+    "suggestionLabel": "제안: {{title}}",
+    "accept": "수락",
+    "reject": "거절",
+    "later": "나중에",
+    "explain": "설명"
   },
   "suggestionStats": {
     "acceptanceRate": "수락률",

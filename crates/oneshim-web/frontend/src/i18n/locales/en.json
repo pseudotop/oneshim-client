@@ -1321,7 +1321,12 @@
   "suggestions": {
     "sourceServer": "Server",
     "sourceLocal": "Local",
-    "sourceRules": "Rules"
+    "sourceRules": "Rules",
+    "suggestionLabel": "Suggestion: {{title}}",
+    "accept": "Accept",
+    "reject": "Reject",
+    "later": "Later",
+    "explain": "Explain"
   },
   "suggestionStats": {
     "acceptanceRate": "Acceptance Rate",
