@@ -245,7 +245,7 @@ export default function GeneralTab({
         </div>
       </Card>
 
-      {IS_TAURI && <ViewSetupGuideButton />}
+      <ViewSetupGuideButton />
       <SupportToolsCard />
     </div>
   )
@@ -260,8 +260,11 @@ function ViewSetupGuideButton() {
   const handleClick = useCallback(async () => {
     setLoading(true)
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('reset_onboarding')
+      if (IS_TAURI) {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('reset_onboarding')
+      }
+      // Both Tauri and standalone: reload triggers onboarding check in App.tsx
       window.location.reload()
     } catch {
       // Standalone / dev mode — no Tauri runtime
