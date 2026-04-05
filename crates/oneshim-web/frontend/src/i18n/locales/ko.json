@@ -1247,6 +1247,7 @@
     "addGoal": "목표 추가",
     "remove": "삭제",
     "perDay": "분/일",
+    "min": "분",
     "profiles": {
       "FocusGuard": "집중 가드",
       "TimeAware": "시간 인식",

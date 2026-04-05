@@ -60,6 +60,7 @@ pub struct CoachingMessage {
     /// Timestamp when the message was created.
     pub created_at: DateTime<Utc>,
     /// Human-readable explanation of why this message was triggered.
+    #[serde(default)]
     pub explanation: String,
 }
 

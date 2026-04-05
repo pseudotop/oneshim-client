@@ -1247,6 +1247,7 @@
     "addGoal": "Add Goal",
     "remove": "Remove",
     "perDay": "min/day",
+    "min": "min",
     "profiles": {
       "FocusGuard": "Focus Guard",
       "TimeAware": "Time Aware",
