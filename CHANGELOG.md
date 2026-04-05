@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.24-rc.1] - 2026-04-05
+
+### Added
+
+- Blackout hours capture blocking (Q3)
+  Gate SmartCaptureTrigger on ScheduleConfig active hours/days so
+  captures are suppressed outside the configured work window,
+  including overnight ranges (e.g. 22:00-06:00).
+
+- Linux systemd autostart (Q7)
+
+- Re-run onboarding from settings (Q1)
+  Remove IS_TAURI gate on ViewSetupGuideButton so the re-run setup guide
+  button is always visible in Settings General tab, not only in Tauri mode.
+  In Tauri, it resets onboarding via IPC then reloads; in standalone mode
+  it reloads directly.
+
+- Coaching explanation field and overlay (Q6)
+  Add human-readable explanation to CoachingMessage and OverlayCoachingPayload
+  so users understand why they received a coaching nudge. Each TriggerType
+  variant produces a contextual explanation referencing the profile name,
+  regime labels, and durations.
+
+- Coaching goals progress bars (Q5)
+
+- Today summary dashboard widget (Q2)
+  Add coaching stats today endpoint and TodaySummary component
+  showing active time, top app, nudge count, and current regime.
+
+- Timeline batch tagging (Q4)
+  Add POST /api/frames/batch-tags endpoint and multi-select mode
+  in Timeline page for batch tag application to selected frames.
+
+- Add i18n keys for timeline batch tagging (Q4)
+  Add select/cancel/selectAll/clearSelection/selectedCount/batchTagged
+  keys to en.json and ko.json for the multi-select batch tagging feature.
+
+
+### Changed
+
+- V0.4 complete roadmap — 15 phases to production-ready
+  Phase 1-8: Completed (v0.4.18→v0.4.23)
+  Phase 9-15: Remaining — user journey, coaching loop, platform parity,
+  ecosystem integration, AI/ML, advanced features, update UX.
+
+  v0.5.0 = GA release after customer feedback. v0.4.x = get to
+  production-ready level first.
+
+
+### Fixed
+
+- Add serde(default) to CoachingMessage.explanation + coaching.min i18n
+  Review fix I-1: prevent deserialization failure for pre-existing
+  CoachingMessage payloads missing the new explanation field.
+  Review fix M-1: add missing coaching.min i18n key (en: "min", ko: "분").
+
 ## [0.4.23] - 2026-04-05
 
 ### Fixed
