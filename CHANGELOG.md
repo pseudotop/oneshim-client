@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.6] - 2026-04-05
+
+### Fixed
+
+- Windows 0.62 IAsyncOperation API change (.get() → .GetResults())
+  windows crate 0.62 renamed IAsyncOperation::get() to GetResults().
+  Update all 5 call sites in native_ocr/windows.rs.
+
+  Also use bundled-sqlcipher (not vendored-openssl) + vcpkg pre-built
+  OpenSSL for Windows CI compatibility.
+
 ## [0.4.23-rc.5] - 2026-04-05
 
 ### Fixed
