@@ -359,6 +359,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Performance regression check — run in isolation: cargo test -p oneshim-vision benchmark_delta_4k -- --ignored
     fn benchmark_delta_4k() {
         use std::time::Instant;
         let width = 3840u32;

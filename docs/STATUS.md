@@ -36,7 +36,7 @@ v0.4.21
 ### Workspace
 
 - **Crates**: 14 (including oneshim-audio)
-- **SQLite schema**: V24
+- **SQLite schema**: V25
 
 ### Workflow Status
 
