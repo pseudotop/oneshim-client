@@ -1234,7 +1234,11 @@
     "thanksFeedback": "감사합니다! 학습 중...",
     "adjustingFeedback": "알겠습니다, 조정 중...",
     "dismissError": "코칭 메시지를 업데이트할 수 없습��다.",
-    "feedbackError": "피드백을 저장할 수 없습니다."
+    "feedbackError": "피드백을 저장할 수 없습니다.",
+    "dismissLabel": "코칭 메시지 닫기",
+    "laterLabel": "나중에 다시 알림",
+    "helpfulLabel": "도움이 됨",
+    "notHelpfulLabel": "도움이 안 됨"
   },
   "onboarding": {
     "step1Title": "ONESHIM에 오신 것을 환영합니다",
@@ -1372,7 +1376,10 @@
     "snooze2hr": "2시간",
     "snooze4hr": "4시간",
     "snoozeTomorrow": "내일 오전 9시",
-    "snoozeCancel": "취소"
+    "snoozeCancel": "취소",
+    "panelLabel": "제안 패널",
+    "closePanelLabel": "제안 패널 닫기",
+    "badgeNew": "새"
   },
   "suggestionStats": {
     "acceptanceRate": "수락률",
@@ -1442,5 +1449,16 @@
     "noPeers": "아직 발견된 피어가 없습니다. 다른 기기가 같은 네트워크에서 동기화를 활성화했는지 확인하세요.",
     "lastSync": "마지막",
     "neverSynced": "동기화한 적 없음"
+  },
+  "overlay": {
+    "focusMode": "집중 모드"
+  },
+  "detection": {
+    "mode": "감지 모드",
+    "elements": "요소",
+    "refresh": "새로고침",
+    "refreshLabel": "감지 새로고침",
+    "close": "닫기",
+    "closeLabel": "감지 오버레이 닫기"
   }
 }

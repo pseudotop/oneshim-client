@@ -1234,7 +1234,11 @@
     "thanksFeedback": "谢谢！学习中...",
     "adjustingFeedback": "了解，正在调整...",
     "dismissError": "无法更新教练消息。",
-    "feedbackError": "无法保存反馈。"
+    "feedbackError": "无法保存反馈。",
+    "dismissLabel": "关闭教练消息",
+    "laterLabel": "稍后提醒",
+    "helpfulLabel": "有帮助",
+    "notHelpfulLabel": "没有帮助"
   },
   "onboarding": {
     "step1Title": "欢迎使用 ONESHIM",
@@ -1372,7 +1376,10 @@
     "snooze2hr": "2小时",
     "snooze4hr": "4小时",
     "snoozeTomorrow": "明天上午9点",
-    "snoozeCancel": "取消"
+    "snoozeCancel": "取消",
+    "panelLabel": "建议面板",
+    "closePanelLabel": "关闭建议面板",
+    "badgeNew": "新"
   },
   "suggestionStats": {
     "acceptanceRate": "接受率",
@@ -1442,5 +1449,16 @@
     "noPeers": "尚未发现任何节点。请确保其他设备在同一网络中并已启用同步。",
     "lastSync": "上次",
     "neverSynced": "从未同步"
+  },
+  "overlay": {
+    "focusMode": "专注模式"
+  },
+  "detection": {
+    "mode": "检测模式",
+    "elements": "元素",
+    "refresh": "刷新",
+    "refreshLabel": "刷新检测",
+    "close": "关闭",
+    "closeLabel": "关闭检测叠加层"
   }
 }

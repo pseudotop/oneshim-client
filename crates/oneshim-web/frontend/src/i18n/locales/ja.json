@@ -1234,7 +1234,11 @@
     "thanksFeedback": "ありがとうございます！学習中...",
     "adjustingFeedback": "了解しました、調整中...",
     "dismissError": "コーチングメッセージを更新できませんでした。",
-    "feedbackError": "フィードバックを保存できませんでした。"
+    "feedbackError": "フィードバックを保存できませんでした。",
+    "dismissLabel": "コーチングメッセージを閉じる",
+    "laterLabel": "後でリマインド",
+    "helpfulLabel": "役に立った",
+    "notHelpfulLabel": "役に立たなかった"
   },
   "onboarding": {
     "step1Title": "ONESHIMへようこそ",
@@ -1372,7 +1376,10 @@
     "snooze2hr": "2時間",
     "snooze4hr": "4時間",
     "snoozeTomorrow": "明日の午前9時",
-    "snoozeCancel": "キャ���セル"
+    "snoozeCancel": "キャンセル",
+    "panelLabel": "提案パネル",
+    "closePanelLabel": "提案パネルを閉じる",
+    "badgeNew": "新着"
   },
   "suggestionStats": {
     "acceptanceRate": "承認率",
@@ -1442,5 +1449,16 @@
     "noPeers": "まだピアが発見されていません。他のデバイスが同じネットワーク上で同期を有効にしていることを確認してください。",
     "lastSync": "最終",
     "neverSynced": "未同期"
+  },
+  "overlay": {
+    "focusMode": "集中モード"
+  },
+  "detection": {
+    "mode": "検出モード",
+    "elements": "要素",
+    "refresh": "更新",
+    "refreshLabel": "検出を更新",
+    "close": "閉じる",
+    "closeLabel": "検出オーバーレイを閉じる"
   }
 }

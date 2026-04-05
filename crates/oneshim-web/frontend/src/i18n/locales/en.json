@@ -1234,7 +1234,11 @@
     "thanksFeedback": "Thanks! Learning...",
     "adjustingFeedback": "Got it, adjusting...",
     "dismissError": "Could not update the coaching message.",
-    "feedbackError": "Could not save feedback."
+    "feedbackError": "Could not save feedback.",
+    "dismissLabel": "Dismiss coaching message",
+    "laterLabel": "Remind me later",
+    "helpfulLabel": "Helpful",
+    "notHelpfulLabel": "Not helpful"
   },
   "onboarding": {
     "step1Title": "Welcome to ONESHIM",
@@ -1372,7 +1376,10 @@
     "snooze2hr": "2 hours",
     "snooze4hr": "4 hours",
     "snoozeTomorrow": "Tomorrow 9 AM",
-    "snoozeCancel": "Cancel"
+    "snoozeCancel": "Cancel",
+    "panelLabel": "Suggestions panel",
+    "closePanelLabel": "Close suggestions panel",
+    "badgeNew": "new"
   },
   "suggestionStats": {
     "acceptanceRate": "Acceptance Rate",
@@ -1442,5 +1449,16 @@
     "noPeers": "No peers discovered yet. Ensure other devices are on the same network with sync enabled.",
     "lastSync": "Last",
     "neverSynced": "Never synced"
+  },
+  "overlay": {
+    "focusMode": "Focus Mode"
+  },
+  "detection": {
+    "mode": "Detection Mode",
+    "elements": "elements",
+    "refresh": "Refresh",
+    "refreshLabel": "Refresh detection",
+    "close": "Close",
+    "closeLabel": "Close detection overlay"
   }
 }

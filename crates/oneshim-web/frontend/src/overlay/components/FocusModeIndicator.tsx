@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -7,6 +8,7 @@ interface FocusModeIndicatorProps {
 }
 
 export const FocusModeIndicator = memo(function FocusModeIndicator({ active }: FocusModeIndicatorProps) {
+  const { t } = useTranslation()
   if (!active) return null
 
   return (
@@ -18,7 +20,7 @@ export const FocusModeIndicator = memo(function FocusModeIndicator({ active }: F
           colors.text.inverse,
         )}
       >
-        Focus Mode
+        {t('overlay.focusMode', 'Focus Mode')}
       </div>
     </div>
   )

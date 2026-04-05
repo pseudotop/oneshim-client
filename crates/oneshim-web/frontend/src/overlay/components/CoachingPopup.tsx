@@ -125,7 +125,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             <button
               type="button"
               onClick={() => void handleDismiss('ok')}
-              aria-label="Dismiss coaching message"
+              aria-label={t('coaching.dismissLabel', 'Dismiss coaching message')}
               className={`rounded-md bg-content-inverse/10 px-3 py-1 text-xs ${typography.weight.medium} text-content-secondary ${motion.colors} hover:bg-content-inverse/20`}
             >
               {t('coaching.ok', 'OK')}
@@ -133,7 +133,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             <button
               type="button"
               onClick={() => void handleDismiss('later')}
-              aria-label="Remind me later"
+              aria-label={t('coaching.laterLabel', 'Remind me later')}
               className={`rounded-md bg-content-inverse/5 px-3 py-1 text-xs ${typography.weight.medium} text-content-tertiary ${motion.colors} hover:bg-content-inverse/10`}
             >
               {t('coaching.later', 'Later')}
@@ -152,7 +152,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
                   type="button"
                   onClick={() => void handleFeedback(true)}
                   className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-success hover:opacity-100`.trim()}
-                  aria-label="Helpful"
+                  aria-label={t('coaching.helpfulLabel', 'Helpful')}
                 >
                   <ThumbsUpIcon />
                 </button>
@@ -160,7 +160,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
                   type="button"
                   onClick={() => void handleFeedback(false)}
                   className={`rounded p-1.5 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-error hover:opacity-100`.trim()}
-                  aria-label="Not helpful"
+                  aria-label={t('coaching.notHelpfulLabel', 'Not helpful')}
                 >
                   <ThumbsDownIcon />
                 </button>

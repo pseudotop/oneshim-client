@@ -1234,7 +1234,11 @@
     "thanksFeedback": "¡Gracias! Aprendiendo...",
     "adjustingFeedback": "Entendido, ajustando...",
     "dismissError": "No se pudo actualizar el mensaje de coaching.",
-    "feedbackError": "No se pudo guardar el feedback."
+    "feedbackError": "No se pudo guardar el feedback.",
+    "dismissLabel": "Cerrar mensaje de coaching",
+    "laterLabel": "Recordar más tarde",
+    "helpfulLabel": "Útil",
+    "notHelpfulLabel": "No útil"
   },
   "onboarding": {
     "step1Title": "Bienvenido a ONESHIM",
@@ -1372,7 +1376,10 @@
     "snooze2hr": "2 horas",
     "snooze4hr": "4 horas",
     "snoozeTomorrow": "Manana 9 AM",
-    "snoozeCancel": "Cancelar"
+    "snoozeCancel": "Cancelar",
+    "panelLabel": "Panel de sugerencias",
+    "closePanelLabel": "Cerrar panel de sugerencias",
+    "badgeNew": "nuevo"
   },
   "suggestionStats": {
     "acceptanceRate": "Tasa de aceptación",
@@ -1442,5 +1449,16 @@
     "noPeers": "Aún no se han descubierto pares. Asegúrese de que otros dispositivos estén en la misma red con la sincronización habilitada.",
     "lastSync": "Última",
     "neverSynced": "Nunca sincronizado"
+  },
+  "overlay": {
+    "focusMode": "Modo de enfoque"
+  },
+  "detection": {
+    "mode": "Modo de detección",
+    "elements": "elementos",
+    "refresh": "Actualizar",
+    "refreshLabel": "Actualizar detección",
+    "close": "Cerrar",
+    "closeLabel": "Cerrar superposición de detección"
   }
 }
