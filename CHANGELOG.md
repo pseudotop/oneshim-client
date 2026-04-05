@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.4] - 2026-04-05
+
+### Fixed
+
+- Use runner pre-installed Perl instead of choco global install
+  GitHub Actions Windows runner has Strawberry Perl pre-installed but not
+  always on PATH. Resolve the path dynamically instead of installing
+  globally via choco. Only install NASM via choco if not already present.
+
+- Eliminate all global tool installs on Windows CI
+  Remove choco install nasm — use OPENSSL_RUST_USE_NASM=0 to build
+  OpenSSL without assembly optimizations. No runtime performance impact,
+  only minor build-time difference.
+
+  Windows CI now requires ZERO global tool installations:
+  - Perl: runner pre-installed (path resolved dynamically)
+  - MSVC: runner pre-installed
+  - NASM: not needed (no-asm mode)
+  - Rust: installed via dtolnay/rust-toolchain action (user-level)
+
+- Batteries-included installers — WebView2 bootstrap, deb deps, pre-check
+
 ## [0.4.23-rc.3] - 2026-04-05
 
 ### Fixed
