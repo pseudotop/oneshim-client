@@ -308,18 +308,22 @@ fn main() {
                     // Save pending queue items.
                     if let Ok(queue) = mgr.queue().try_lock() {
                         for suggestion in queue.iter() {
-                            let _ = storage.save_suggestion_with_state(suggestion, "pending", None);
+                            if let Err(e) = storage.save_suggestion_with_state(suggestion, "pending", None) {
+                                warn!(id = %suggestion.suggestion_id, "shutdown: failed to persist suggestion: {e}");
+                            }
                         }
                     }
                     // Save deferred items with their resurface time.
                     if let Ok(deferred) = mgr.deferred().try_lock() {
                         for entry in deferred.list_deferred() {
                             let resurface = entry.resurface_at.to_rfc3339();
-                            let _ = storage.save_suggestion_with_state(
+                            if let Err(e) = storage.save_suggestion_with_state(
                                 &entry.suggestion,
                                 "deferred",
                                 Some(&resurface),
-                            );
+                            ) {
+                                warn!(id = %entry.suggestion.suggestion_id, "shutdown: failed to persist deferred suggestion: {e}");
+                            }
                         }
                     }
                 }
