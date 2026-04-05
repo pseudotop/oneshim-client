@@ -7,7 +7,7 @@ pub fn f32_vec_to_bytes(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
-/// Convert a byte slice back to a Vec<f32> (little-endian).
+/// Convert a byte slice back to a `Vec<f32>` (little-endian).
 pub fn bytes_to_f32_vec(b: &[u8]) -> Vec<f32> {
     b.chunks_exact(4)
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
@@ -19,7 +19,7 @@ pub fn i8_vec_to_bytes(v: &[i8]) -> Vec<u8> {
     v.iter().map(|&b| b as u8).collect()
 }
 
-/// Convert a byte slice back to a Vec<i8>.
+/// Convert a byte slice back to a `Vec<i8>`.
 pub fn bytes_to_i8_vec(b: &[u8]) -> Vec<i8> {
     b.iter().map(|&b| b as i8).collect()
 }

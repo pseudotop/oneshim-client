@@ -697,7 +697,7 @@ fn mask_user_paths_os(text: &str, prefix: &str, prefix_len: usize, sep: char) ->
     result
 }
 
-/// Adapter implementing [`PiiSanitizer`] by delegating to this module's
+/// Adapter implementing [`oneshim_core::ports::pii_sanitizer::PiiSanitizer`] by delegating to this module's
 /// `sanitize_title_with_level` function.
 pub struct VisionPiiSanitizer;
 

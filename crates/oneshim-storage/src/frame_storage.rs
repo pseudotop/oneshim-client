@@ -511,7 +511,6 @@ impl FrameFileStorage {
         }
 
         let mut deleted_count = 0;
-        let mut deleted_bytes: u64 = 0;
         for chunk in dirs_to_delete.chunks(PARALLEL_DELETE_LIMIT) {
             let mut handles = Vec::with_capacity(chunk.len());
 
@@ -519,9 +518,8 @@ impl FrameFileStorage {
                 let path = path.clone();
                 handles.push(tokio::spawn(async move {
                     let count = count_files_in_dir(&path).await;
-                    let dir_bytes = calculate_dir_size(&path).await.unwrap_or(0);
                     match fs::remove_dir_all(&path).await {
-                        Ok(()) => Some((count, dir_bytes)),
+                        Ok(()) => Some(count),
                         Err(e) => {
                             warn!("frame folder delete failure: {e}");
                             None
@@ -531,19 +529,10 @@ impl FrameFileStorage {
             }
 
             for handle in handles {
-                if let Ok(Some((count, bytes))) = handle.await {
+                if let Ok(Some(count)) = handle.await {
                     deleted_count += count;
-                    deleted_bytes += bytes;
                 }
             }
-        }
-
-        // Subtract deleted bytes from cached size tracker
-        if deleted_bytes > 0 {
-            self.cached_size_bytes.fetch_sub(
-                deleted_bytes.min(self.cached_size_bytes.load(Ordering::Relaxed)),
-                Ordering::Relaxed,
-            );
         }
 
         if deleted_count > 0 {
@@ -552,6 +541,15 @@ impl FrameFileStorage {
                 self.retention_days
             );
         }
+
+        // Re-scan to correct any drift from external deletions or TOCTOU races
+        let frames_dir = self.base_dir.join("frames");
+        let actual_size = if frames_dir.exists() {
+            calculate_dir_size(&frames_dir).await.unwrap_or(0)
+        } else {
+            0
+        };
+        self.cached_size_bytes.store(actual_size, Ordering::Relaxed);
 
         Ok(deleted_count)
     }

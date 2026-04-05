@@ -80,7 +80,7 @@ pub struct SyncConfig {
     pub passphrase_hash: Option<String>,
 
     /// Remote sync endpoint URL. Required when transport == Remote.
-    /// Example: "https://sync.example.com/api/v1"
+    /// Example: `<https://sync.example.com/api/v1>`
     #[serde(default)]
     pub remote_endpoint: Option<String>,
 

@@ -61,20 +61,33 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    let unlistenCapture: (() => void) | undefined
-    let unlistenConn: (() => void) | undefined
+    let disposed = false
+    const unlistens: Array<() => void> = []
 
-    listen<CaptureState>('overlay:capture-state-changed', (e) => {
-      setState(e.payload)
-    }).then((fn) => {
-      unlistenCapture = fn
-    })
+    ;(async () => {
+      const { listen: listenAsync } = await import('@tauri-apps/api/event')
+      if (disposed) return
 
-    listen<ConnectionStatus>('overlay:connection-changed', (e) => {
-      setConn(e.payload)
-    }).then((fn) => {
-      unlistenConn = fn
-    })
+      unlistens.push(
+        await listenAsync<CaptureState>('overlay:capture-state-changed', (e) => {
+          setState(e.payload)
+        }),
+      )
+      if (disposed) {
+        unlistens.forEach((fn) => fn())
+        return
+      }
+
+      unlistens.push(
+        await listenAsync<ConnectionStatus>('overlay:connection-changed', (e) => {
+          setConn(e.payload)
+        }),
+      )
+      if (disposed) {
+        unlistens.forEach((fn) => fn())
+        return
+      }
+    })()
 
     invoke<CaptureState>('get_capture_status')
       .then(setState)
@@ -104,8 +117,8 @@ export function App() {
       .catch((e) => console.warn('get_panel_position failed:', e))
 
     return () => {
-      unlistenCapture?.()
-      unlistenConn?.()
+      disposed = true
+      unlistens.forEach((fn) => fn())
     }
   }, [showFeedback, t])
 
