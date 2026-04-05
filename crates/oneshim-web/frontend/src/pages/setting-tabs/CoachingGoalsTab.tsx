@@ -46,17 +46,34 @@ export default function CoachingGoalsTab() {
           {/* Existing goals list */}
           {goals && goals.length > 0 ? (
             <div className="mb-4 space-y-2">
-              {goals.map((g) => (
-                <div key={g.regime_label} className="flex items-center gap-3">
-                  <span className={`w-32 truncate text-sm ${typography.weight.medium}`}>{g.regime_label}</span>
-                  <span className="text-content-secondary text-sm">
-                    {g.target_minutes} {t('coaching.perDay', 'min/day')}
-                  </span>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(g.regime_label)}>
-                    {t('coaching.remove', 'Remove')}
-                  </Button>
-                </div>
-              ))}
+              {goals.map((g) => {
+                const percent =
+                  g.target_minutes > 0
+                    ? Math.min(100, Math.round(((g.current_minutes ?? 0) / g.target_minutes) * 100))
+                    : 0
+                const barColor = percent >= 100 ? 'bg-green-500' : percent >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+
+                return (
+                  <div key={g.regime_label} className="flex items-center gap-3">
+                    <span className={`w-28 truncate text-sm ${typography.weight.medium}`}>{g.regime_label}</span>
+                    <div className="flex-1">
+                      <div className="h-2 w-full rounded-full bg-surface-elevated">
+                        <div
+                          className={`h-2 rounded-full transition-all ${barColor}`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="w-20 text-right text-content-secondary text-xs">
+                      {g.current_minutes ?? 0}/{g.target_minutes} {t('coaching.min', 'min')}
+                    </span>
+                    <span className={`w-10 text-right text-xs ${typography.weight.semibold}`}>{percent}%</span>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(g.regime_label)}>
+                      {t('coaching.remove', 'Remove')}
+                    </Button>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <p className="mb-4 text-content-secondary text-sm">
