@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.5] - 2026-04-05
+
+### Fixed
+
+- Use vcpkg pre-built OpenSSL for Windows SQLCipher build
+  vendored-openssl fails on Windows CI due to Perl/Configure incompatibility.
+  Switch to bundled-sqlcipher (no vendored OpenSSL) + vcpkg pre-built
+  OpenSSL static library.
+
+  vcpkg is pre-installed on GitHub Actions Windows runners — no global
+  tool installation needed. Sets OPENSSL_DIR, OPENSSL_STATIC, OPENSSL_NO_VENDOR
+  env vars for the openssl-sys crate to find the pre-built libs.
+
 ## [0.4.23-rc.4] - 2026-04-05
 
 ### Fixed
