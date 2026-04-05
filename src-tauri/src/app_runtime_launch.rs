@@ -76,6 +76,7 @@ impl AppRuntimeLaunchBuilder {
         let update_control = core_resources.update_runtime.update_control.clone();
         let update_action_tx = core_resources.update_runtime.update_action_tx.clone();
         let sqlite_storage = core_resources.storage_runtime.sqlite_storage.clone();
+        let encryption_key = core_resources.storage_runtime.encryption_key.clone();
         let event_tx = core_resources.background_runtime.event_tx();
         let shutdown_tx = core_resources.background_runtime.shutdown_tx();
 
@@ -102,14 +103,17 @@ impl AppRuntimeLaunchBuilder {
 
         // Shared capture services are reused by scheduler and IPC commands so capture
         // semantics stay aligned across background monitoring and ad-hoc user actions.
-        let shared_capture_services =
-            match handle.block_on(SharedCaptureServices::build(&data_dir_path, &config)) {
-                Ok(services) => Some(Arc::new(services)),
-                Err(error) => {
-                    tracing::warn!("shared capture services init failed: {error}");
-                    None
-                }
-            };
+        let shared_capture_services = match handle.block_on(SharedCaptureServices::build(
+            &data_dir_path,
+            &config,
+            encryption_key.clone(),
+        )) {
+            Ok(services) => Some(Arc::new(services)),
+            Err(error) => {
+                tracing::warn!("shared capture services init failed: {error}");
+                None
+            }
+        };
         let capture_consent_manager = shared_capture_services
             .as_ref()
             .map(|services| services.consent_manager.clone())
@@ -227,6 +231,7 @@ impl AppRuntimeLaunchBuilder {
                         shared_scorer.clone(),
                         deferred,
                         retry_queue,
+                        sqlite_storage.clone(),
                     )))
                 }
                 Err(e) => {
@@ -237,6 +242,89 @@ impl AppRuntimeLaunchBuilder {
         };
         #[cfg(not(feature = "server"))]
         let suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>> = None;
+
+        // Restore deferred suggestions and pending feedbacks from SQLite.
+        #[cfg(feature = "server")]
+        if let Some(ref mgr) = suggestion_manager {
+            // A. Deferred suggestions → DeferredManager or queue (if already due)
+            let deferred_records = sqlite_storage
+                .list_suggestions_by_state("deferred", 50)
+                .unwrap_or_default();
+            if !deferred_records.is_empty() {
+                let total = deferred_records.len();
+                let entries: Vec<_> = deferred_records
+                    .into_iter()
+                    .filter_map(|record| {
+                        let resurface_at = record
+                            .resurface_at
+                            .as_ref()
+                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.with_timezone(&chrono::Utc))?;
+                        let created_at = chrono::DateTime::parse_from_rfc3339(&record.created_at)
+                            .ok()
+                            .map(|dt| dt.with_timezone(&chrono::Utc))?;
+                        let suggestion = record.try_into_suggestion()?;
+                        Some((suggestion, created_at, resurface_at))
+                    })
+                    .collect();
+                if entries.len() < total {
+                    tracing::warn!(
+                        dropped = total - entries.len(),
+                        "skipped malformed deferred records"
+                    );
+                }
+
+                let mut deferred_mgr = handle.block_on(mgr.deferred().lock());
+                let already_due = deferred_mgr.restore(entries);
+                let deferred_count = deferred_mgr.pending_count();
+                drop(deferred_mgr);
+
+                if !already_due.is_empty() {
+                    let mut queue = handle.block_on(shared_suggestion_queue.lock());
+                    for s in already_due {
+                        queue.push(s);
+                    }
+                }
+                if deferred_count > 0 {
+                    tracing::info!(count = deferred_count, "restored deferred suggestions");
+                }
+            }
+
+            // B. Pending feedbacks → FeedbackRetryQueue
+            // Note: enqueue() recalculates next_retry_at from the attempt count,
+            // so the persisted schedule is not honored exactly. This is acceptable
+            // — SQLite is the durability guarantee, in-memory queue is best-effort.
+            let pending_feedbacks = sqlite_storage
+                .list_pending_feedbacks(100)
+                .unwrap_or_default();
+            if !pending_feedbacks.is_empty() {
+                let cutoff = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+                let mut rq = handle.block_on(mgr.retry_queue().lock());
+                let mut fb_count = 0usize;
+                for record in pending_feedbacks {
+                    // Skip orphaned rows older than 7 days
+                    if record.created_at < cutoff {
+                        let _ = sqlite_storage.delete_pending_feedback(&record.suggestion_id);
+                        continue;
+                    }
+                    if let Some((sid, ft, comment, attempts, next_retry)) =
+                        record.into_domain_parts()
+                    {
+                        rq.enqueue(oneshim_suggestion::feedback_retry::PendingFeedback {
+                            suggestion_id: sid,
+                            feedback_type: ft,
+                            comment,
+                            attempts,
+                            next_retry_at: next_retry,
+                        });
+                        fb_count += 1;
+                    }
+                }
+                if fb_count > 0 {
+                    tracing::info!(count = fb_count, "restored pending feedbacks for retry");
+                }
+            }
+        }
 
         // Adapter-side health flags — written by adapters on success/failure,
         // read by the health check loop. The loop is the single source of truth

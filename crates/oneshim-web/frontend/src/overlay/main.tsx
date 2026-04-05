@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import '../i18n'
 import { installFrontendLogBridge } from '../logging/frontendLogger'
 import OverlayApp from './App'
 import './index.css'

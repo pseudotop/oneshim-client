@@ -55,6 +55,10 @@ pub struct AutomationController {
             HashMap<String, (PendingConfirmation, tokio::sync::oneshot::Sender<bool>)>,
         >,
     >,
+    /// Optional callback invoked when a command requires user confirmation.
+    /// The frontend (e.g., Tauri overlay) registers this to display a modal.
+    #[allow(clippy::type_complexity)]
+    pub(super) on_confirmation_needed: Option<Arc<dyn Fn(PendingConfirmation) + Send + Sync>>,
 }
 
 impl AutomationController {
@@ -81,6 +85,7 @@ impl AutomationController {
             gui_service: None,
             last_command_ok: None,
             pending_confirmations: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            on_confirmation_needed: None,
         }
     }
 
@@ -89,6 +94,56 @@ impl AutomationController {
     pub fn with_health_flag(mut self, flag: Arc<AtomicBool>) -> Self {
         self.last_command_ok = Some(flag);
         self
+    }
+
+    /// Attach a callback that is invoked when a command needs user confirmation.
+    /// The callback should present a UI prompt (e.g., overlay modal) and the
+    /// caller later resolves the pending confirmation via `resolve_confirmation`.
+    pub fn with_confirmation_callback(
+        mut self,
+        cb: Arc<dyn Fn(PendingConfirmation) + Send + Sync>,
+    ) -> Self {
+        self.on_confirmation_needed = Some(cb);
+        self
+    }
+
+    /// Create a pending confirmation for a command and wait for the user to
+    /// approve or deny it. Returns `Ok(true)` if approved, `Ok(false)` on
+    /// denial or timeout (30 s).
+    pub(super) async fn request_confirmation(
+        &self,
+        cmd_id: &str,
+        process_name: &str,
+        args: &[String],
+        audit_level: &str,
+    ) -> Result<bool, AutomationError> {
+        let nonce = uuid::Uuid::new_v4().to_string();
+        let confirmation = PendingConfirmation {
+            command_id: cmd_id.to_string(),
+            nonce: nonce.clone(),
+            process_name: process_name.to_string(),
+            args: args.to_vec(),
+            audit_level: audit_level.to_string(),
+            requested_at: chrono::Utc::now(),
+        };
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.pending_confirmations
+            .lock()
+            .await
+            .insert(cmd_id.to_string(), (confirmation.clone(), tx));
+
+        if let Some(ref cb) = self.on_confirmation_needed {
+            cb(confirmation);
+        }
+
+        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+            Ok(Ok(approved)) => Ok(approved),
+            _ => {
+                self.pending_confirmations.lock().await.remove(cmd_id);
+                Ok(false) // timeout or channel error -> denied
+            }
+        }
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {

@@ -1,11 +1,13 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 
 use oneshim_api_contracts::automation::{
     AuditQuery, ExecuteIntentHintRequest, ExecuteSceneActionRequest, PolicyEventQuery,
 };
+use oneshim_core::models::automation::ExecutionPolicyDto;
 
 use crate::error::ApiError;
 use crate::services::automation_service::{AutomationCommandService, AutomationQueryService};
@@ -129,4 +131,96 @@ pub async fn execute_scene_action(
             .execute_scene_action(req)
             .await?,
     ))
+}
+
+pub async fn list_execution_policies(
+    State(context): State<AutomationWebContext>,
+) -> Result<Json<Vec<ExecutionPolicyDto>>, ApiError> {
+    let Some(ref controller) = context.automation_controller else {
+        return Ok(Json(Vec::new()));
+    };
+    Ok(Json(controller.list_execution_policies().await?))
+}
+
+pub async fn create_execution_policy(
+    State(context): State<AutomationWebContext>,
+    Json(policy): Json<ExecutionPolicyDto>,
+) -> Result<Json<ExecutionPolicyDto>, ApiError> {
+    if policy.policy_id.trim().is_empty() || policy.process_name.trim().is_empty() {
+        return Err(ApiError::BadRequest(
+            "policy_id and process_name are required".into(),
+        ));
+    }
+    validate_execution_policy(&policy)?;
+    let Some(ref controller) = context.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "Automation controller is not active.".into(),
+        ));
+    };
+    Ok(Json(controller.add_execution_policy(policy).await?))
+}
+
+pub async fn update_execution_policy(
+    State(context): State<AutomationWebContext>,
+    Path(id): Path<String>,
+    Json(mut policy): Json<ExecutionPolicyDto>,
+) -> Result<Json<ExecutionPolicyDto>, ApiError> {
+    policy.policy_id = id;
+    validate_execution_policy(&policy)?;
+    let Some(ref controller) = context.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "Automation controller is not active.".into(),
+        ));
+    };
+    Ok(Json(controller.add_execution_policy(policy).await?))
+}
+
+pub async fn delete_execution_policy(
+    State(context): State<AutomationWebContext>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let Some(ref controller) = context.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "Automation controller is not active.".into(),
+        ));
+    };
+    if controller.remove_execution_policy(&id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound("policy not found".into()))
+    }
+}
+
+/// Shared validation for create and update execution policy handlers.
+fn validate_execution_policy(policy: &ExecutionPolicyDto) -> Result<(), ApiError> {
+    // I6: Input length and range validation
+    if policy.policy_id.len() > 256 {
+        return Err(ApiError::BadRequest(
+            "policy_id exceeds 256 characters".into(),
+        ));
+    }
+    if policy.process_name.len() > 256 {
+        return Err(ApiError::BadRequest(
+            "process_name exceeds 256 characters".into(),
+        ));
+    }
+    if policy.max_execution_time_ms > 0 && policy.max_execution_time_ms < 100 {
+        return Err(ApiError::BadRequest(
+            "max_execution_time_ms must be >= 100 or 0 (unlimited)".into(),
+        ));
+    }
+    if policy.max_execution_time_ms > 3_600_000 {
+        return Err(ApiError::BadRequest(
+            "max_execution_time_ms exceeds 1 hour".into(),
+        ));
+    }
+
+    // I5: Auto confirmation cannot be used with requires_sudo policies
+    if policy.confirmation == "Auto" && policy.requires_sudo {
+        return Err(ApiError::BadRequest(
+            "Auto confirmation cannot be used with requires_sudo policies".into(),
+        ));
+    }
+
+    Ok(())
 }

@@ -3,9 +3,12 @@
 //! Policy tokens are time-limited tickets that authorize a specific automation
 //! command. The TTL is governed by `PolicyCache.ttl_seconds` (default: 300s / 5min).
 //! Under high load, a 5-second grace window in `PolicyClient::validate_command()`
-//! absorbs clock skew. Tokens are single-use and SHA-256 signed.
+//! absorbs clock skew. Tokens are single-use and HMAC-SHA256 signed.
 
+use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
+
+type HmacSha256 = Hmac<Sha256>;
 use uuid::Uuid;
 
 use crate::controller::AutomationCommand;
@@ -169,8 +172,29 @@ pub(super) fn verify_policy_token_signature(
         return false;
     };
 
-    compute_policy_token_signature(policy_id, nonce, command_hash, &secret)
-        .eq_ignore_ascii_case(signature)
+    // Decode the provided hex signature into bytes for constant-time comparison
+    let sig_bytes = match hex_decode(signature) {
+        Some(b) => b,
+        None => return false,
+    };
+
+    // Build HMAC and verify in constant time via hmac::Mac::verify_slice
+    let payload = build_signature_payload(policy_id, nonce, command_hash);
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(payload.as_bytes());
+    mac.verify_slice(&sig_bytes).is_ok()
+}
+
+/// Decode a lowercase hex string into bytes. Returns `None` on invalid input.
+fn hex_decode(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect()
 }
 
 pub(super) fn load_signing_secret() -> Option<String> {
@@ -180,17 +204,29 @@ pub(super) fn load_signing_secret() -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// Build the canonical payload string for signing.
+fn build_signature_payload(policy_id: &str, nonce: &str, command_hash: Option<&str>) -> String {
+    if let Some(command_hash) = command_hash {
+        format!("{policy_id}:{nonce}:{command_hash}")
+    } else {
+        format!("{policy_id}:{nonce}")
+    }
+}
+
 pub(super) fn compute_policy_token_signature(
     policy_id: &str,
     nonce: &str,
     command_hash: Option<&str>,
     secret: &str,
 ) -> String {
-    let payload = if let Some(command_hash) = command_hash {
-        format!("{policy_id}:{nonce}:{command_hash}:{secret}")
-    } else {
-        format!("{policy_id}:{nonce}:{secret}")
-    };
-    let digest = Sha256::digest(payload.as_bytes());
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    let payload = build_signature_payload(policy_id, nonce, command_hash);
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(payload.as_bytes());
+    let result = mac.finalize();
+    result
+        .into_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }

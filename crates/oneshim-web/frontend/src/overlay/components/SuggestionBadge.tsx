@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 
 interface SuggestionBadgeProps {
@@ -6,6 +7,7 @@ interface SuggestionBadgeProps {
 }
 
 export function SuggestionBadge({ count, onClick }: SuggestionBadgeProps) {
+  const { t } = useTranslation()
   if (count === 0) return null
 
   return (
@@ -22,7 +24,7 @@ export function SuggestionBadge({ count, onClick }: SuggestionBadgeProps) {
       )}
     >
       <span>{count}</span>
-      <span>new</span>
+      <span>{t('suggestions.badgeNew', 'new')}</span>
     </button>
   )
 }

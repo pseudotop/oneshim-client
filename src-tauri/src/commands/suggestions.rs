@@ -12,6 +12,42 @@ use oneshim_core::ports::conversation_session::SessionManager;
 use crate::commands::suggestion_parser::try_extract_suggestions;
 use crate::runtime_state::{AiSessionRuntimeState, AppState, SuggestionRuntimeState};
 
+/// Enqueue a failed feedback for background retry and persist to SQLite.
+/// SQLite persist happens synchronously (primary durability guarantee).
+/// In-memory enqueue uses `tokio::spawn` to avoid blocking the IPC caller;
+/// it is best-effort for the current session — on restart, SQLite is restored.
+fn enqueue_feedback_retry(
+    mgr: &crate::suggestion_manager::SuggestionManager,
+    suggestion_id: &str,
+    feedback_type: oneshim_core::models::suggestion::FeedbackType,
+    comment: Option<String>,
+) {
+    let record = oneshim_core::models::storage_records::PendingFeedbackRecord::new_for_insert(
+        suggestion_id.to_string(),
+        &feedback_type,
+        comment.clone(),
+        0,
+        chrono::Utc::now(),
+    );
+    if let Err(e) = mgr.storage().save_pending_feedback(&record) {
+        tracing::warn!(id = %suggestion_id, "failed to persist pending feedback: {e}");
+    }
+    // Fire-and-forget tokio task to avoid holding the caller's async context.
+    let rq = mgr.retry_queue().clone();
+    let sid = suggestion_id.to_string();
+    tokio::spawn(async move {
+        rq.lock()
+            .await
+            .enqueue(oneshim_suggestion::feedback_retry::PendingFeedback {
+                suggestion_id: sid,
+                feedback_type,
+                comment,
+                attempts: 0,
+                next_retry_at: chrono::Utc::now(),
+            });
+    });
+}
+
 #[derive(Serialize)]
 pub struct SuggestionViewDto {
     pub id: String,
@@ -37,7 +73,7 @@ fn source_label(source: &oneshim_core::models::suggestion::SuggestionSource) -> 
     match source {
         oneshim_core::models::suggestion::SuggestionSource::LlmServer => "server",
         oneshim_core::models::suggestion::SuggestionSource::LlmLocal => "local",
-        oneshim_core::models::suggestion::SuggestionSource::RuleBased => "local",
+        oneshim_core::models::suggestion::SuggestionSource::RuleBased => "rule",
     }
 }
 
@@ -143,23 +179,38 @@ pub async fn submit_suggestion_feedback(
 ) -> Result<(), String> {
     let mgr = state.manager().ok_or("Suggestions not available")?;
 
-    // Send feedback to server
+    // Send feedback to server (best-effort — enqueue for retry on failure)
     match action.as_str() {
-        "accept" => mgr
-            .feedback()
-            .accept(&suggestion_id, None)
-            .await
-            .map_err(|e| e.to_string())?,
-        "reject" => mgr
-            .feedback()
-            .reject(&suggestion_id, None)
-            .await
-            .map_err(|e| e.to_string())?,
+        "accept" => {
+            if let Err(_e) = mgr.feedback().accept(&suggestion_id, None).await {
+                enqueue_feedback_retry(
+                    &mgr,
+                    &suggestion_id,
+                    oneshim_core::models::suggestion::FeedbackType::Accepted,
+                    None,
+                );
+            }
+        }
+        "reject" => {
+            if let Err(_e) = mgr.feedback().reject(&suggestion_id, None).await {
+                enqueue_feedback_retry(
+                    &mgr,
+                    &suggestion_id,
+                    oneshim_core::models::suggestion::FeedbackType::Rejected,
+                    None,
+                );
+            }
+        }
         "defer" => {
-            mgr.feedback()
-                .defer(&suggestion_id, None)
-                .await
-                .map_err(|e| e.to_string())?;
+            // Server notification is best-effort; local state changes always proceed.
+            if let Err(_e) = mgr.feedback().defer(&suggestion_id, None).await {
+                enqueue_feedback_retry(
+                    &mgr,
+                    &suggestion_id,
+                    oneshim_core::models::suggestion::FeedbackType::Deferred,
+                    None,
+                );
+            }
 
             let (removed, scorer_data) = {
                 let mut queue = mgr.queue().lock().await;
@@ -583,6 +634,19 @@ pub async fn save_suggestion_state(
 // ── Suggestion statistics ────────────────────────────────────
 
 #[derive(Serialize)]
+pub struct TypeCountDto {
+    pub suggestion_type: String,
+    pub count: u32,
+}
+
+#[derive(Serialize)]
+pub struct SourceStatsDto {
+    pub source: String,
+    pub count: u32,
+    pub acceptance_rate: f64,
+}
+
+#[derive(Serialize)]
 pub struct SuggestionStatsDto {
     pub total: u32,
     pub accepted: u32,
@@ -590,6 +654,8 @@ pub struct SuggestionStatsDto {
     pub deferred: u32,
     pub pending: u32,
     pub acceptance_rate: f64,
+    pub by_type: Vec<TypeCountDto>,
+    pub by_source: Vec<SourceStatsDto>,
 }
 
 /// Return aggregate statistics from the suggestion history (in-memory).
@@ -604,6 +670,23 @@ pub async fn get_suggestion_stats(
     } else {
         0.0
     };
+    let by_type = stats
+        .by_type
+        .iter()
+        .map(|(t, c)| TypeCountDto {
+            suggestion_type: t.clone(),
+            count: *c,
+        })
+        .collect();
+    let by_source = stats
+        .by_source
+        .iter()
+        .map(|(s, c, r)| SourceStatsDto {
+            source: s.clone(),
+            count: *c,
+            acceptance_rate: *r,
+        })
+        .collect();
     Ok(SuggestionStatsDto {
         total: stats.total,
         accepted: stats.accepted,
@@ -611,5 +694,87 @@ pub async fn get_suggestion_stats(
         deferred: stats.deferred,
         pending: stats.pending,
         acceptance_rate: (rate * 10.0).round() / 10.0,
+        by_type,
+        by_source,
     })
+}
+
+// ── Daily time-series stats ─────────────────────────────────
+
+#[derive(Serialize)]
+pub struct DailyStatDto {
+    pub day: String,
+    pub total: u32,
+    pub acted: u32,
+    pub suggestion_type: String,
+    pub source: String,
+}
+
+/// Return daily aggregated suggestion statistics for the last N days (max 90).
+#[command]
+pub async fn get_suggestion_daily_stats(
+    app_state: tauri::State<'_, AppState>,
+    days: Option<u32>,
+) -> Result<Vec<DailyStatDto>, String> {
+    let days = days.unwrap_or(7).min(90);
+    let records = app_state
+        .storage
+        .suggestion_daily_stats(days)
+        .map_err(|e| e.to_string())?;
+    Ok(records
+        .into_iter()
+        .map(|r| DailyStatDto {
+            day: r.day,
+            total: r.total,
+            acted: r.acted,
+            suggestion_type: r.suggestion_type,
+            source: r.source,
+        })
+        .collect())
+}
+
+// ── Deferred suggestions ────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct DeferredSuggestionDto {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub priority: String,
+    pub source: String,
+    pub deferred_at: String,
+    pub resurface_at: String,
+    pub remaining_minutes: i64,
+}
+
+/// Return the list of currently deferred (snoozed) suggestions.
+#[command]
+pub async fn get_deferred_suggestions(
+    state: tauri::State<'_, SuggestionRuntimeState>,
+) -> Result<Vec<DeferredSuggestionDto>, String> {
+    let mgr = state.manager().ok_or("suggestions not available")?;
+    let deferred = mgr.deferred().lock().await;
+    let now = chrono::Utc::now();
+
+    let items: Vec<DeferredSuggestionDto> = deferred
+        .list_deferred()
+        .into_iter()
+        .map(|entry| {
+            let remaining = (entry.resurface_at - now).num_minutes().max(0);
+            DeferredSuggestionDto {
+                id: entry.suggestion.suggestion_id.clone(),
+                title: oneshim_suggestion::presenter::type_to_title(
+                    &entry.suggestion.suggestion_type,
+                ),
+                body: entry.suggestion.content.clone(),
+                priority: format!("{:?}", entry.suggestion.priority).to_lowercase(),
+                source: source_label(&entry.suggestion.source).to_string(),
+                deferred_at: entry.deferred_at.to_rfc3339(),
+                resurface_at: entry.resurface_at.to_rfc3339(),
+                remaining_minutes: remaining,
+            }
+        })
+        .collect();
+
+    Ok(items)
 }

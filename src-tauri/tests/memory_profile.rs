@@ -239,7 +239,7 @@ fn test_storage_memory() {
 
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
 
     let mut snapshots = Vec::with_capacity(ITERATIONS / SAMPLE_INTERVAL + 2);
     let start = Instant::now();
@@ -329,7 +329,7 @@ fn test_combined_memory() {
 
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
 
     let img1 = create_test_image(1920, 1080, 42);
     let img2 = create_test_image(1920, 1080, 43);

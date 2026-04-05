@@ -7,6 +7,174 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.21-rc.2] - 2026-04-05
+
+### Added
+
+- Complete Phase 1 suggestion UX gaps — deferred hydration + feedback retry wiring
+
+- Wire navigate:chat event handler for explain-in-chat navigation
+  Add navigate:chat Tauri event listener in useTauriEventBridge so clicking
+  "Explain" on a suggestion in the overlay navigates the web dashboard to
+  /chat with the target session auto-selected via ?sid= query parameter.
+
+  Completes Phase 2 #7 (suggestion context in chat).
+
+- Stabilize 4 YELLOW domains — confirmation wiring, embedding fallback, sync health, update verify
+  #9 Automation: Wire ConfirmationRequirement (Auto/Confirm/Block) into
+  execution gate. Confirmation callback emits Tauri event to overlay modal.
+  30-second timeout auto-denies. Block policy prevents execution entirely.
+
+  #10 Embedding: Add FallbackEmbeddingProvider that chains primary → noop
+  at request time. Transient local ONNX failures degrade gracefully.
+
+  #11 Sync: Add health tracking (last_sync_at, last_error) to SyncEngine.
+  Extend get_sync_status IPC with health fields. Document conflict
+  resolution strategy (HLC last-write-wins, GDPR deletion precedence).
+
+  #12 Update: Add verify_update IPC for dry-run integrity check. Returns
+  version, checksum/signature status, and estimated download size.
+
+- Phase 4 polish — auto-save on shutdown, 3-source filter, enhanced stats
+  #13 Offline mode: Auto-persist suggestion queue + deferred items to SQLite
+  on app exit (RunEvent::Exit). Uses try_lock for non-blocking best-effort
+  save. Restoration on startup was already implemented.
+
+  #14 Source filtering: Split RuleBased from "local" to distinct "rule"
+  source label. Frontend now shows 3 toggles (Server/Local/Rules) with
+  localStorage migration for existing users.
+
+  #15 Statistics: Add type distribution and per-source acceptance rates to
+  HistoryStats. Extended SuggestionStatsDto with by_type/by_source arrays.
+  Frontend shows type bar chart and source quality table.
+
+- Embedding health tracking, sync conflict tests, update e2e stubs
+
+- Time-series stats, audit log viewer, policy config CRUD
+
+
+### Changed
+
+- WebStorage trait split, integration.rs ADR-003, SyncTab rewrite, i18n sync, docs fix
+  Architecture (I6):
+  - Split WebStorage god trait (55+ methods) into 11 focused sub-traits
+    (TagStorage, FrameQueryStorage, DigestStorage, BackupStorage, etc.)
+  - WebStorage now composes via blanket impl — zero breaking changes
+  - SqliteStorage impl split into 11 blocks matching sub-traits
+
+  Architecture (I7):
+  - Split integration.rs (15 traits, 367 lines) into directory module
+    per ADR-003: session.rs, auth.rs, egress.rs, inbox.rs, insight.rs
+  - All 28 downstream imports unchanged via mod.rs re-exports
+
+  Frontend (I8):
+  - SyncTab: replace raw colors with tokens, raw button with Button
+    component, add useTranslation with 20+ t() calls, Spinner loading
+
+  Frontend (I9):
+  - Sync 100+ missing i18n keys to ja/es/zh-CN (settings, focus,
+    pomodoro, onboarding, chat sections)
+
+  Docs (m1):
+  - CLAUDE.md: 13→14 crate count, remove stale suggestion→network
+    exception, add oneshim-audio to workspace diagram
+
+
+### Fixed
+
+- Address 10 review findings — security, i18n, UI/UX consistency
+
+- Round 2 review — sandbox honesty, overlay i18n, section headers
+  Security (2 IMPORTANT):
+  - Linux sandbox capabilities() now returns false for all unenforced
+    features. is_available() returns false (enforcement deferred).
+  - macOS sandbox capabilities() reports resource_limits: false since
+    sandbox-exec cannot inject setrlimit into child processes.
+
+  UI/UX (5 IMPORTANT):
+  - SuggestionHistory: add useTranslation, replace 10 hardcoded strings
+  - SnoozePopover: i18n for all 6 duration labels + cancel
+  - AutomationConfirmModal: i18n for 7 strings (title, process, deny, approve)
+  - SuggestionsPanel: replace 9 remaining hardcoded strings with t()
+  - CoachingPopup: remove stale no-i18n comment, add 6 t() calls
+
+  UI/UX (1 MINOR):
+  - ShortcutsHelp: replace manual aria-labelledby with DialogTitle component
+
+  Architecture (4 MINOR):
+  - credential_source.rs, scheduler/mod.rs: add section headers
+  - updater/mod.rs: add growth-monitoring note
+  - 33 new i18n keys across 5 locales (suggestions, automation, coaching)
+
+- Round 3 review — last overlay i18n gaps (aria-labels + 3 components)
+  Replace 6 hardcoded aria-label strings with t() calls in CoachingPopup
+  and SuggestionsPanel. Add useTranslation to FocusModeIndicator,
+  SuggestionBadge, and DetectionHeader. 13 new i18n keys across 5 locales.
+
+
+### Security
+
+- 11 review fixes — HMAC tokens, SSN filter, settings validation, a11y, i18n
+
+- SQLCipher DB encryption, AES-256-GCM frame encryption, macOS sandbox enforcement
+  SQLCipher (C1):
+  - Switch rusqlite from bundled to bundled-sqlcipher
+  - SqliteStorage::open() accepts EncryptionKey, applies PRAGMA key
+  - Graceful fallback for pre-existing unencrypted databases
+  - 2 new tests
+
+  Frame encryption (C2):
+  - Add encrypt/decrypt methods to EncryptionKey using AES-256-GCM
+  - FrameFileStorage encrypts on save, decrypts on load when key present
+  - 12 new tests (7 crypto + 5 frame storage)
+
+  macOS sandbox (I4):
+  - execute_sandboxed now invokes sandbox-exec with SBPL profile
+  - build_sandbox_command separated for testability
+  - Linux sandbox: document deferred status with clear doc comments
+  - 4 new tests
+
+## [0.4.21-rc.1] - 2026-04-05
+
+### Added
+
+- Complete Phase 1 suggestion UX gaps — deferred hydration + feedback retry wiring
+
+- Wire navigate:chat event handler for explain-in-chat navigation
+  Add navigate:chat Tauri event listener in useTauriEventBridge so clicking
+  "Explain" on a suggestion in the overlay navigates the web dashboard to
+  /chat with the target session auto-selected via ?sid= query parameter.
+
+  Completes Phase 2 #7 (suggestion context in chat).
+
+- Stabilize 4 YELLOW domains — confirmation wiring, embedding fallback, sync health, update verify
+  #9 Automation: Wire ConfirmationRequirement (Auto/Confirm/Block) into
+  execution gate. Confirmation callback emits Tauri event to overlay modal.
+  30-second timeout auto-denies. Block policy prevents execution entirely.
+
+  #10 Embedding: Add FallbackEmbeddingProvider that chains primary → noop
+  at request time. Transient local ONNX failures degrade gracefully.
+
+  #11 Sync: Add health tracking (last_sync_at, last_error) to SyncEngine.
+  Extend get_sync_status IPC with health fields. Document conflict
+  resolution strategy (HLC last-write-wins, GDPR deletion precedence).
+
+  #12 Update: Add verify_update IPC for dry-run integrity check. Returns
+  version, checksum/signature status, and estimated download size.
+
+- Phase 4 polish — auto-save on shutdown, 3-source filter, enhanced stats
+  #13 Offline mode: Auto-persist suggestion queue + deferred items to SQLite
+  on app exit (RunEvent::Exit). Uses try_lock for non-blocking best-effort
+  save. Restoration on startup was already implemented.
+
+  #14 Source filtering: Split RuleBased from "local" to distinct "rule"
+  source label. Frontend now shows 3 toggles (Server/Local/Rules) with
+  localStorage migration for existing users.
+
+  #15 Statistics: Add type distribution and per-source acceptance rates to
+  HistoryStats. Extended SuggestionStatsDto with by_type/by_source arrays.
+  Frontend shows type bar chart and source quality table.
+
 ## [0.4.20] - 2026-04-05
 
 ### Security

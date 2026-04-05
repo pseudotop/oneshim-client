@@ -188,3 +188,15 @@ impl std::fmt::Display for MicInputMode {
         }
     }
 }
+
+/// Confirmation requirement for automation command execution.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConfirmationRequirement {
+    /// Low-risk: execute without user prompt
+    Auto,
+    /// Medium-risk: show confirmation modal
+    #[default]
+    Confirm,
+    /// High-risk: block execution entirely
+    Block,
+}

@@ -11,6 +11,7 @@ use crate::feature_capabilities::{
 };
 use crate::runtime_state::{ConfigRuntimeState, SecretBackendCapabilities, SecretBackendState};
 use crate::services::log_helpers;
+use crate::updater::{UpdatePreview, Updater};
 
 const DEFAULT_LOG_LINE_LIMIT: usize = 200;
 const MAX_LOG_LINE_LIMIT: usize = 500;
@@ -214,6 +215,19 @@ pub async fn record_frontend_log(
     emit_frontend_log(level, &surface, message, context);
 
     Ok(())
+}
+
+/// Preview available update info without downloading.
+#[command]
+pub async fn preview_update(
+    state: tauri::State<'_, ConfigRuntimeState>,
+) -> Result<UpdatePreview, String> {
+    let update_config = state.config_manager().get().update.clone();
+    let updater = Updater::new(update_config);
+    updater
+        .preview_update_availability()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

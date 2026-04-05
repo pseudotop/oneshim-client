@@ -172,6 +172,8 @@ pub struct SuggestionRecord {
     pub acted_at: Option<String>,
     pub created_at: String,
     pub expires_at: Option<String>,
+    /// RFC3339 timestamp for deferred suggestion resurface time.
+    pub resurface_at: Option<String>,
 }
 
 impl SuggestionRecord {
@@ -291,4 +293,82 @@ pub struct GuiInteractionRecord {
 
 fn default_type_confidence() -> f32 {
     1.0
+}
+
+/// Row from the `feedback_retries` table (V24).
+#[derive(Debug, Clone)]
+pub struct PendingFeedbackRecord {
+    pub id: Option<i64>,
+    pub suggestion_id: String,
+    pub feedback_type: String,
+    pub comment: Option<String>,
+    pub attempts: u32,
+    pub next_retry_at: String,
+    pub created_at: String,
+}
+
+/// Daily aggregated suggestion statistics for time-series display.
+#[derive(Debug, Clone)]
+pub struct DailyStatRecord {
+    pub day: String,
+    pub total: u32,
+    pub acted: u32,
+    pub suggestion_type: String,
+    pub source: String,
+}
+
+impl PendingFeedbackRecord {
+    /// Create a record for insertion (no id, auto-generated created_at).
+    pub fn new_for_insert(
+        suggestion_id: String,
+        feedback_type: &crate::models::suggestion::FeedbackType,
+        comment: Option<String>,
+        attempts: u32,
+        next_retry_at: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
+        let ft = match feedback_type {
+            crate::models::suggestion::FeedbackType::Accepted => "Accepted",
+            crate::models::suggestion::FeedbackType::Rejected => "Rejected",
+            crate::models::suggestion::FeedbackType::Deferred => "Deferred",
+        };
+        Self {
+            id: None,
+            suggestion_id,
+            feedback_type: ft.to_string(),
+            comment,
+            attempts,
+            next_retry_at: next_retry_at.to_rfc3339(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// Convert back to domain types. Returns `None` if feedback_type is unrecognized.
+    #[allow(clippy::type_complexity)]
+    pub fn into_domain_parts(
+        self,
+    ) -> Option<(
+        String,
+        crate::models::suggestion::FeedbackType,
+        Option<String>,
+        u32,
+        chrono::DateTime<chrono::Utc>,
+    )> {
+        let ft = match self.feedback_type.as_str() {
+            "Accepted" | "ACCEPTED" => crate::models::suggestion::FeedbackType::Accepted,
+            "Rejected" | "REJECTED" => crate::models::suggestion::FeedbackType::Rejected,
+            "Deferred" | "DEFERRED" => crate::models::suggestion::FeedbackType::Deferred,
+            _ => return None,
+        };
+        let next_retry = chrono::DateTime::parse_from_rfc3339(&self.next_retry_at)
+            .ok()
+            .map(|d| d.with_timezone(&chrono::Utc))
+            .unwrap_or_else(chrono::Utc::now);
+        Some((
+            self.suggestion_id,
+            ft,
+            self.comment,
+            self.attempts,
+            next_retry,
+        ))
+    }
 }

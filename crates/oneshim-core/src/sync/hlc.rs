@@ -7,6 +7,11 @@
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Maximum allowed clock drift between local and remote HLC (1 hour).
+/// Remote timestamps beyond this threshold are rejected to prevent
+/// a single far-future device from poisoning the causal ordering.
+const MAX_CLOCK_DRIFT_MS: u64 = 3_600_000;
+
 /// A Hybrid Logical Clock timestamp.
 ///
 /// Ordering: `wall_ms` → `counter` → `device_id` (lexicographic).
@@ -59,8 +64,24 @@ impl Hlc {
     ///
     /// Takes the maximum of local and remote timestamps, then
     /// advances the counter to maintain causal ordering.
+    /// Rejects remote timestamps that exceed `MAX_CLOCK_DRIFT_MS` ahead
+    /// of the current wall clock to prevent far-future poisoning.
     pub fn merge(&mut self, remote: &Hlc) {
         let now = current_time_ms();
+
+        // Reject remote HLC with excessive clock drift (> 1 hour ahead).
+        // Fall back to a local-only tick instead of adopting the far-future timestamp.
+        if remote.wall_ms > now + MAX_CLOCK_DRIFT_MS {
+            tracing::warn!(
+                remote_ms = remote.wall_ms,
+                local_ms = now,
+                drift_ms = remote.wall_ms - now,
+                "rejecting remote HLC: clock drift exceeds 1 hour"
+            );
+            self.tick();
+            return;
+        }
+
         let max_wall = now.max(self.wall_ms).max(remote.wall_ms);
 
         if max_wall == self.wall_ms && max_wall == remote.wall_ms {
@@ -208,5 +229,31 @@ mod tests {
         let json = serde_json::to_string(&hlc).unwrap();
         let parsed: Hlc = serde_json::from_str(&json).unwrap();
         assert_eq!(hlc, parsed);
+    }
+
+    #[test]
+    fn merge_rejects_excessive_clock_drift() {
+        let now = current_time_ms();
+        let mut local = Hlc {
+            wall_ms: now,
+            counter: 5,
+            device_id: "dev-a".to_string(),
+        };
+
+        // Remote timestamp 2 hours in the future — exceeds MAX_CLOCK_DRIFT_MS
+        let remote = Hlc {
+            wall_ms: now + 2 * MAX_CLOCK_DRIFT_MS,
+            counter: 10,
+            device_id: "dev-b".to_string(),
+        };
+
+        local.merge(&remote);
+
+        // Should NOT adopt the far-future timestamp; should tick locally instead
+        assert!(
+            local.wall_ms < now + MAX_CLOCK_DRIFT_MS,
+            "wall_ms should not adopt far-future remote timestamp"
+        );
+        assert_eq!(local.device_id, "dev-a", "device_id must remain local");
     }
 }

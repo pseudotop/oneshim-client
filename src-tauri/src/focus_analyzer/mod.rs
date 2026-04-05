@@ -342,7 +342,7 @@ mod tests {
     async fn create_test_analyzer() -> (FocusAnalyzer, TempDir, Arc<MockNotifier>) {
         let temp_dir = TempDir::new().unwrap();
         let storage = Arc::new(
-            SqliteStorage::open(&temp_dir.path().join("test.db"), 30)
+            SqliteStorage::open(&temp_dir.path().join("test.db"), 30, None)
                 .expect("storage creation failed"),
         );
         let notifier = Arc::new(MockNotifier::new());

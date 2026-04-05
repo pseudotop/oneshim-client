@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { getShortcutsList } from '../../hooks/useKeyboardShortcuts'
 import { iconSize, interaction, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
-import { Dialog, DialogContent } from '../ui'
+import { Dialog, DialogContent, DialogTitle } from '../ui'
 
 interface ShortcutsHelpProps {
   onClose: () => void
@@ -14,11 +14,11 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
 
   return (
     <Dialog open onClose={onClose}>
-      <DialogContent size="sm" aria-labelledby="shortcuts-help-title" className="mx-4">
+      <DialogContent size="sm" className="mx-4">
         <div className="flex items-center justify-between border-muted border-b p-4">
-          <h2 id="shortcuts-help-title" className={cn(typography.h3, 'text-content')}>
+          <DialogTitle>
             {t('shortcuts.title')}
-          </h2>
+          </DialogTitle>
           <button
             type="button"
             onClick={onClose}

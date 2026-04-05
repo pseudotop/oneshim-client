@@ -365,6 +365,7 @@ impl Scheduler {
                     mgr.deferred().clone(),
                     mgr.retry_queue().clone(),
                     mgr.feedback().clone(),
+                    mgr.storage().clone(),
                     None, // on_change wired via on_new callback on receiver
                     shutdown_rx.clone(),
                 )

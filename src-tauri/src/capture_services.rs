@@ -8,6 +8,7 @@ use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
 use oneshim_core::ports::vision::FrameProcessor;
+use oneshim_storage::encryption::EncryptionKey;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
 
@@ -21,12 +22,17 @@ pub(crate) struct SharedCaptureServices {
 }
 
 impl SharedCaptureServices {
-    pub(crate) async fn build(data_dir: &Path, config: &AppConfig) -> Result<Self> {
+    pub(crate) async fn build(
+        data_dir: &Path,
+        config: &AppConfig,
+        encryption_key: Option<Arc<EncryptionKey>>,
+    ) -> Result<Self> {
         let frame_storage = Arc::new(
-            FrameFileStorage::new(
+            FrameFileStorage::with_encryption(
                 data_dir.to_path_buf(),
                 config.storage.max_storage_mb,
                 config.storage.retention_days,
+                encryption_key,
             )
             .await?,
         );

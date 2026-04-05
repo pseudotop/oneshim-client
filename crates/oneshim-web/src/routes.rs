@@ -150,6 +150,16 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::automation::get_policies),
         )
         .route(
+            "/automation/execution-policies",
+            get(handlers::automation::list_execution_policies)
+                .post(handlers::automation::create_execution_policy),
+        )
+        .route(
+            "/automation/execution-policies/{id}",
+            put(handlers::automation::update_execution_policy)
+                .delete(handlers::automation::delete_execution_policy),
+        )
+        .route(
             "/automation/stats",
             get(handlers::automation::get_automation_stats),
         )

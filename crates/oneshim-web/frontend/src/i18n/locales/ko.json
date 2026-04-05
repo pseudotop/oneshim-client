@@ -16,7 +16,10 @@
     "close": "닫기",
     "more": "더 보기",
     "darkMode": "다크 모드",
-    "lightMode": "라이트 모드"
+    "lightMode": "라이트 모드",
+    "actions": "작업",
+    "edit": "편집",
+    "create": "생성"
   },
   "nav": {
     "dashboard": "대시보드",
@@ -33,7 +36,9 @@
     "recalibration": "재보정",
     "dashboardDay": "일별 보기",
     "mainNavLabel": "메인 내비게이션",
-    "chat": "채팅"
+    "chat": "채팅",
+    "audit": "감사 로그",
+    "policies": "정책"
   },
   "dashboard": {
     "title": "활동 요약",
@@ -552,7 +557,15 @@
     "low": "낮음",
     "high": "높음",
     "loadError": "데이터를 불러올 수 없습니다",
-    "days": ["월", "화", "수", "목", "금", "토", "일"],
+    "days": [
+      "월",
+      "화",
+      "수",
+      "목",
+      "금",
+      "토",
+      "일"
+    ],
     "activity": "활동"
   },
   "dateRange": {
@@ -734,7 +747,14 @@
       "AppManagement": "앱 관리",
       "Workflow": "워크플로우",
       "Custom": "사용자 정의"
-    }
+    },
+    "confirmTitle": "자동화 확인",
+    "confirmProcess": "프로세스",
+    "confirmArgs": "인수",
+    "confirmAutoDeny": "{{seconds}}초 후 자동 거부",
+    "confirmDeny": "거부",
+    "confirmApprove": "승인",
+    "confirmSubmitError": "확인을 제출할 수 없습니다."
   },
   "settingsAutomation": {
     "title": "자동화",
@@ -1047,6 +1067,11 @@
       "breakCompleteBody": "다시 집중할 준비가 되었나요?"
     }
   },
+  "auditLog": {
+    "title": "감사 로그",
+    "entries": "감사 항목",
+    "details": "상세"
+  },
   "emptyState": {
     "dashboard": {
       "title": "대시보드 준비 중",
@@ -1081,6 +1106,11 @@
       "title": "자동화 비활성",
       "description": "자동화 시스템이 비활성 상태입니다. Settings에서 활성화하세요",
       "action": "설정으로 이동"
+    },
+    "auditLog": {
+      "title": "감사 항목 없음",
+      "description": "자동화 명령이 실행되면 감사 항목이 여기에 표시됩니다",
+      "action": "자동화로 이동"
     }
   },
   "commandPalette": {
@@ -1173,7 +1203,9 @@
     "coachingGoals": "목표",
     "coachingEvents": "이벤트",
     "insight": "인사이트",
-    "statistics": "통계"
+    "statistics": "통계",
+    "auditSummary": "요약",
+    "auditEntries": "항목"
   },
   "coaching": {
     "title": "코칭 히스토리",
@@ -1196,7 +1228,17 @@
       "DeepWorkCoach": "딥워크 코치",
       "ContextRestore": "컨텍스트 복원",
       "GoalTracker": "목표 추적"
-    }
+    },
+    "ok": "확인",
+    "later": "나중에",
+    "thanksFeedback": "감사합니다! 학습 중...",
+    "adjustingFeedback": "알겠습니다, 조정 중...",
+    "dismissError": "코칭 메시지를 업데이트할 수 없습��다.",
+    "feedbackError": "피드백을 저장할 수 없습니다.",
+    "dismissLabel": "코칭 메시지 닫기",
+    "laterLabel": "나중에 다시 알림",
+    "helpfulLabel": "도움이 됨",
+    "notHelpfulLabel": "도움이 안 됨"
   },
   "onboarding": {
     "step1Title": "ONESHIM에 오신 것을 환영합니다",
@@ -1275,6 +1317,85 @@
     "invalid_tools_json": "도구 정의는 JSON 배열이어야 합니다.",
     "invalid_response_format_json": "응답 형식은 유효한 JSON이어야 합니다."
   },
+  "policies": {
+    "title": "실행 정책",
+    "policyId": "정책 ID",
+    "processName": "프로세스 이름",
+    "confirmation": "확인 방식",
+    "auditLevel": "감사 수준",
+    "sandboxProfile": "샌드박스 프로필",
+    "sandboxNone": "(없음)",
+    "maxExecutionTime": "최대 실행 시간 (ms)",
+    "maxExecMs": "최대 (ms)",
+    "allowedArgs": "허용 인자 (줄 단위 입력)",
+    "requireSignedToken": "서명된 토큰 필요",
+    "requiresSudo": "Sudo 필요",
+    "addPolicy": "정책 추가",
+    "newPolicy": "새 실행 정책",
+    "editPolicy": "정책 편집",
+    "configuredPolicies": "설정된 정책",
+    "emptyTitle": "실행 정책 없음",
+    "emptyDescription": "실행 정책은 자동화가 실행할 수 있는 프로세스와 조건을 제어합니다.",
+    "created": "정책이 생성되었습니다",
+    "createError": "정책 생성에 실패했습니다",
+    "updated": "정책이 업데이트되었습니다",
+    "updateError": "정책 업데이트에 실패했습니다",
+    "deleted": "정책이 삭제되었습니다",
+    "deleteError": "정책 삭제에 실패했습니다"
+  },
+  "suggestions": {
+    "sourceServer": "서버",
+    "sourceLocal": "로컬",
+    "sourceRules": "규칙",
+    "suggestionLabel": "제안: {{title}}",
+    "accept": "수락",
+    "reject": "거절",
+    "later": "나중에",
+    "explain": "설명",
+    "noHistory": "아직 히스토리가 없습니다",
+    "noSuggestions": "아직 제안이 없습니다",
+    "loadError": "제안을 불러올 수 없습니다.",
+    "openingInChat": "채팅에서 여는 중...",
+    "toastAccepted": "제안이 수락되었습니다",
+    "toastRejected": "제안이 거부되었습니다",
+    "toastSnoozed": "일시 보���됨",
+    "feedbackFailed": "피드백 실패:",
+    "feedbackAccepted": "수락됨",
+    "feedbackRejected": "거부됨",
+    "feedbackSnoozed": "보류됨",
+    "statsAccepted": "수락",
+    "statsRejected": "거���",
+    "statsSnoozed": "보��",
+    "statsPending": "대기",
+    "panelTitle": "제안 ({{count}})",
+    "tabActive": "활성 ({{count}})",
+    "tabHistory": "히스��리",
+    "tabStats": "통계",
+    "snooze30min": "30분",
+    "snooze1hr": "1시간",
+    "snooze2hr": "2시간",
+    "snooze4hr": "4시간",
+    "snoozeTomorrow": "내일 오전 9시",
+    "snoozeCancel": "취소",
+    "panelLabel": "제안 패널",
+    "closePanelLabel": "제안 패널 닫기",
+    "badgeNew": "새"
+  },
+  "suggestionStats": {
+    "acceptanceRate": "수락률",
+    "totalSuggestions": "총 {{count}}개 제안",
+    "accepted": "수락됨",
+    "rejected": "거부됨",
+    "snoozed": "일시 보류",
+    "pending": "대기 중",
+    "typeDistribution": "유형별 분포",
+    "sourceQuality": "소스 품질",
+    "countTotal": "{{count}}개 전체",
+    "dailyTrends": "일별 추이 (7일)",
+    "acted": "실행됨",
+    "total": "전체",
+    "noData": "아직 데이터가 없습니다"
+  },
   "trackingPanel": {
     "statusUnavailable": "상태를 확인할 수 없습니다",
     "connectionUnavailable": "연결 상태를 확인할 수 없습니다",
@@ -1306,5 +1427,38 @@
     "comingSoon": "출시 예정",
     "ocr": "OCR",
     "focus": "포커스"
+  },
+  "syncTab": {
+    "loading": "동기화 상태 불러오는 중...",
+    "title": "크로스 디바이스 동기화",
+    "notEnabled": "동기화가 활성화되어 있지 않습니다. 크로스 디바이스 동기화를 시작하려면:",
+    "step1": "설정에서",
+    "step1Suffix": "를 설정하세요",
+    "step2": "환경변수",
+    "step2Suffix": "를 설정하세요",
+    "step3": "동기화 설정에서 전송 방식(파일, 원격, LAN)을 선택하세요",
+    "step4": "애플리케이션을 재시작하세요",
+    "thisDevice": "현재 기기",
+    "deviceName": "이름",
+    "deviceId": "ID",
+    "syncNow": "지금 동기화",
+    "syncing": "동기화 중...",
+    "applied": "적용됨",
+    "skipped": "건너뜀",
+    "discoveredPeers": "발견된 피어",
+    "noPeers": "아직 발견된 피어가 없습니다. 다른 기기가 같은 네트워크에서 동기화를 활성화했는지 확인하세요.",
+    "lastSync": "마지막",
+    "neverSynced": "동기화한 적 없음"
+  },
+  "overlay": {
+    "focusMode": "집중 모드"
+  },
+  "detection": {
+    "mode": "감지 모드",
+    "elements": "요소",
+    "refresh": "새로고침",
+    "refreshLabel": "감지 새로고침",
+    "close": "닫기",
+    "closeLabel": "감지 오버레이 닫기"
   }
 }

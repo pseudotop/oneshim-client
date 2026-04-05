@@ -27,7 +27,9 @@ const DashboardDay = lazy(() => import('./pages/DashboardDay'))
 const RecalibrationPage = lazy(() => import('./pages/RecalibrationPage'))
 const Coaching = lazy(() => import('./pages/Coaching'))
 const Chat = lazy(() => import('./pages/chat'))
+const AuditLog = lazy(() => import('./pages/audit'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
+const Policies = lazy(() => import('./pages/policies'))
 
 function AppShell() {
   const { t } = useTranslation()
@@ -92,6 +94,7 @@ function AppShell() {
                 <Route path="/focus" element={<Focus />} />
                 <Route path="/replay" element={<SessionReplay />} />
                 <Route path="/automation" element={<Automation />} />
+                <Route path="/audit" element={<AuditLog />} />
                 <Route path="/updates" element={<Updates />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/privacy" element={<Privacy />} />
@@ -99,6 +102,7 @@ function AppShell() {
                 <Route path="/coaching" element={<Coaching />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/search" element={<Search />} />
+                <Route path="/policies" element={<Policies />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>

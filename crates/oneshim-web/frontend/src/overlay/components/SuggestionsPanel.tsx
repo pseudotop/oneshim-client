@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
@@ -27,6 +28,7 @@ interface SuggestionsPanelProps {
  * - Interactive elements use standard tab order within the panel.
  */
 export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: SuggestionsPanelProps) {
+  const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'active' | 'history' | 'stats'>('active')
 
@@ -34,9 +36,18 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
   const [sourceFilter, setSourceFilter] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('suggestion-source-filter')
-      return saved ? new Set(JSON.parse(saved) as string[]) : new Set(['server', 'local'])
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[]
+        // Migrate: old filters without 'rule' get it appended
+        if (!parsed.includes('rule')) {
+          parsed.push('rule')
+          localStorage.setItem('suggestion-source-filter', JSON.stringify(parsed))
+        }
+        return new Set(parsed)
+      }
+      return new Set(['server', 'local', 'rule'])
     } catch {
-      return new Set(['server', 'local'])
+      return new Set(['server', 'local', 'rule'])
     }
   })
 
@@ -61,7 +72,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     setError(null)
     void Promise.resolve(onRefresh()).catch((e) => {
       console.warn('SuggestionsPanel refresh failed:', e)
-      setError('Could not load suggestions.')
+      setError(t('suggestions.loadError', 'Could not load suggestions.'))
     })
   }, [open, onRefresh])
 
@@ -78,7 +89,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         await invoke('explain_suggestion_in_chat', { suggestionId: id })
-        showToast('Opening in chat...', 'info')
+        showToast(t('suggestions.openingInChat', 'Opening in chat...'), 'info')
       } catch (e) {
         showToast(errorMessage(e), 'error')
       }
@@ -91,19 +102,19 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       setError(null)
       await Promise.resolve(onRefresh())
       showToast(
-        action === 'accept' ? 'Suggestion accepted' : action === 'reject' ? 'Suggestion rejected' : 'Snoozed',
+        action === 'accept' ? t('suggestions.toastAccepted', 'Suggestion accepted') : action === 'reject' ? t('suggestions.toastRejected', 'Suggestion rejected') : t('suggestions.toastSnoozed', 'Snoozed'),
         'success',
       )
     } catch (e) {
       console.warn('Feedback failed:', e)
       setError(null)
-      showToast(`Feedback failed: ${errorMessage(e)}`, 'error')
+      showToast(`${t('suggestions.feedbackFailed', 'Feedback failed:')} ${errorMessage(e)}`, 'error')
     }
   }
 
   return (
     <aside
-      aria-label="Suggestions panel"
+      aria-label={t('suggestions.panelLabel', 'Suggestions panel')}
       className={cn(
         'fixed top-20 right-4 z-panel max-h-[calc(100vh-10rem)] w-80 max-w-[calc(100vw-2rem)] transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md',
         motion.transform,
@@ -113,12 +124,12 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       {/* Header */}
       <div className="flex items-center justify-between border-content-inverse/5 border-b px-4 py-3">
         <span className={cn('text-content-secondary text-xs uppercase tracking-wider', typography.weight.semibold)}>
-          Suggestions ({suggestions.length})
+          {t('suggestions.panelTitle', 'Suggestions ({{count}})', { count: suggestions.length })}
         </span>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close suggestions panel"
+          aria-label={t('suggestions.closePanelLabel', 'Close suggestions panel')}
           className={cn('text-content-tertiary text-sm hover:text-content', motion.colors)}
         >
           &times;
@@ -137,7 +148,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           )}
           onClick={() => setActiveTab('active')}
         >
-          Active ({suggestions.length})
+          {t('suggestions.tabActive', 'Active ({{count}})', { count: suggestions.length })}
         </button>
         <button
           type="button"
@@ -149,7 +160,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           )}
           onClick={() => setActiveTab('history')}
         >
-          History
+          {t('suggestions.tabHistory', 'History')}
         </button>
         <button
           type="button"
@@ -161,7 +172,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           )}
           onClick={() => setActiveTab('stats')}
         >
-          Stats
+          {t('suggestions.tabStats', 'Stats')}
         </button>
       </div>
 
@@ -174,7 +185,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           <>
             {/* Source filter toggles */}
             <div className="flex gap-1.5 px-3 py-1.5">
-              {['server', 'local'].map((src) => (
+              {(['server', 'local', 'rule'] as const).map((src) => (
                 <button
                   key={src}
                   type="button"
@@ -186,7 +197,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                   )}
                   onClick={() => toggleSource(src)}
                 >
-                  {src === 'server' ? 'Server' : 'Local'}
+                  {src === 'server' ? t('suggestions.sourceServer', 'Server') : src === 'local' ? t('suggestions.sourceLocal', 'Local') : t('suggestions.sourceRules', 'Rules')}
                 </button>
               ))}
             </div>
@@ -197,7 +208,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                 ))}
               </ul>
             ) : (
-              <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
+              <div className="px-4 py-8 text-center text-content-tertiary text-xs">{t('suggestions.noSuggestions', 'No suggestions yet')}</div>
             )}
           </>
         ) : activeTab === 'history' ? (

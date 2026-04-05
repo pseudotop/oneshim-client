@@ -16,7 +16,10 @@
     "close": "Close",
     "more": "More",
     "darkMode": "Dark mode",
-    "lightMode": "Light mode"
+    "lightMode": "Light mode",
+    "actions": "Actions",
+    "edit": "Edit",
+    "create": "Create"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -33,7 +36,9 @@
     "recalibration": "Recalibration",
     "dashboardDay": "Day View",
     "mainNavLabel": "Main Navigation",
-    "chat": "Chat"
+    "chat": "Chat",
+    "audit": "Audit Log",
+    "policies": "Policies"
   },
   "dashboard": {
     "title": "Activity Summary",
@@ -552,7 +557,15 @@
     "low": "Low",
     "high": "High",
     "loadError": "Failed to load data",
-    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "days": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "activity": "Activity"
   },
   "dateRange": {
@@ -734,7 +747,14 @@
       "AppManagement": "App Management",
       "Workflow": "Workflow",
       "Custom": "Custom"
-    }
+    },
+    "confirmTitle": "Automation Confirmation",
+    "confirmProcess": "Process",
+    "confirmArgs": "Args",
+    "confirmAutoDeny": "Auto-deny in {{seconds}}s",
+    "confirmDeny": "Deny",
+    "confirmApprove": "Approve",
+    "confirmSubmitError": "Could not submit confirmation."
   },
   "settingsAutomation": {
     "title": "Automation",
@@ -1047,6 +1067,11 @@
       "breakCompleteBody": "Ready to focus again?"
     }
   },
+  "auditLog": {
+    "title": "Audit Log",
+    "entries": "Audit Entries",
+    "details": "Details"
+  },
   "emptyState": {
     "dashboard": {
       "title": "Dashboard Preparing",
@@ -1081,6 +1106,11 @@
       "title": "Automation Inactive",
       "description": "The automation system is inactive. Enable it in Settings",
       "action": "Go to Settings"
+    },
+    "auditLog": {
+      "title": "No Audit Entries",
+      "description": "Audit entries will appear here once automation commands are executed",
+      "action": "Go to Automation"
     }
   },
   "commandPalette": {
@@ -1173,7 +1203,9 @@
     "coachingGoals": "Goals",
     "coachingEvents": "Events",
     "insight": "Insight",
-    "statistics": "Statistics"
+    "statistics": "Statistics",
+    "auditSummary": "Summary",
+    "auditEntries": "Entries"
   },
   "coaching": {
     "title": "Coaching History",
@@ -1196,7 +1228,17 @@
       "DeepWorkCoach": "Deep Work Coach",
       "ContextRestore": "Context Restore",
       "GoalTracker": "Goal Tracker"
-    }
+    },
+    "ok": "OK",
+    "later": "Later",
+    "thanksFeedback": "Thanks! Learning...",
+    "adjustingFeedback": "Got it, adjusting...",
+    "dismissError": "Could not update the coaching message.",
+    "feedbackError": "Could not save feedback.",
+    "dismissLabel": "Dismiss coaching message",
+    "laterLabel": "Remind me later",
+    "helpfulLabel": "Helpful",
+    "notHelpfulLabel": "Not helpful"
   },
   "onboarding": {
     "step1Title": "Welcome to ONESHIM",
@@ -1275,6 +1317,85 @@
     "invalid_tools_json": "Tool definitions must be a JSON array of tool definitions.",
     "invalid_response_format_json": "Response format must be valid JSON."
   },
+  "policies": {
+    "title": "Execution Policies",
+    "policyId": "Policy ID",
+    "processName": "Process Name",
+    "confirmation": "Confirmation",
+    "auditLevel": "Audit Level",
+    "sandboxProfile": "Sandbox Profile",
+    "sandboxNone": "(none)",
+    "maxExecutionTime": "Max Execution Time (ms)",
+    "maxExecMs": "Max (ms)",
+    "allowedArgs": "Allowed Arguments (one per line)",
+    "requireSignedToken": "Require Signed Token",
+    "requiresSudo": "Requires Sudo",
+    "addPolicy": "Add Policy",
+    "newPolicy": "New Execution Policy",
+    "editPolicy": "Edit Policy",
+    "configuredPolicies": "Configured Policies",
+    "emptyTitle": "No execution policies",
+    "emptyDescription": "Execution policies control which processes automation can run and under what conditions.",
+    "created": "Policy created",
+    "createError": "Failed to create policy",
+    "updated": "Policy updated",
+    "updateError": "Failed to update policy",
+    "deleted": "Policy deleted",
+    "deleteError": "Failed to delete policy"
+  },
+  "suggestions": {
+    "sourceServer": "Server",
+    "sourceLocal": "Local",
+    "sourceRules": "Rules",
+    "suggestionLabel": "Suggestion: {{title}}",
+    "accept": "Accept",
+    "reject": "Reject",
+    "later": "Later",
+    "explain": "Explain",
+    "noHistory": "No history yet",
+    "noSuggestions": "No suggestions yet",
+    "loadError": "Could not load suggestions.",
+    "openingInChat": "Opening in chat...",
+    "toastAccepted": "Suggestion accepted",
+    "toastRejected": "Suggestion rejected",
+    "toastSnoozed": "Snoozed",
+    "feedbackFailed": "Feedback failed:",
+    "feedbackAccepted": "Accepted",
+    "feedbackRejected": "Rejected",
+    "feedbackSnoozed": "Snoozed",
+    "statsAccepted": "accepted",
+    "statsRejected": "rejected",
+    "statsSnoozed": "snoozed",
+    "statsPending": "pending",
+    "panelTitle": "Suggestions ({{count}})",
+    "tabActive": "Active ({{count}})",
+    "tabHistory": "History",
+    "tabStats": "Stats",
+    "snooze30min": "30 minutes",
+    "snooze1hr": "1 hour",
+    "snooze2hr": "2 hours",
+    "snooze4hr": "4 hours",
+    "snoozeTomorrow": "Tomorrow 9 AM",
+    "snoozeCancel": "Cancel",
+    "panelLabel": "Suggestions panel",
+    "closePanelLabel": "Close suggestions panel",
+    "badgeNew": "new"
+  },
+  "suggestionStats": {
+    "acceptanceRate": "Acceptance Rate",
+    "totalSuggestions": "{{count}} total suggestions",
+    "accepted": "Accepted",
+    "rejected": "Rejected",
+    "snoozed": "Snoozed",
+    "pending": "Pending",
+    "typeDistribution": "Type Distribution",
+    "sourceQuality": "Source Quality",
+    "countTotal": "{{count}} total",
+    "dailyTrends": "Daily Trends (7d)",
+    "acted": "Acted",
+    "total": "Total",
+    "noData": "No data yet"
+  },
   "trackingPanel": {
     "statusUnavailable": "Status unavailable",
     "connectionUnavailable": "Connection status unavailable",
@@ -1306,5 +1427,38 @@
     "comingSoon": "Coming soon",
     "ocr": "OCR",
     "focus": "Focus"
+  },
+  "syncTab": {
+    "loading": "Loading sync status...",
+    "title": "Cross-Device Sync",
+    "notEnabled": "Sync is not enabled. To activate cross-device sync:",
+    "step1": "Set",
+    "step1Suffix": "in config",
+    "step2": "Set the",
+    "step2Suffix": "environment variable",
+    "step3": "Choose a transport (File, Remote, or LAN) in sync settings",
+    "step4": "Restart the application",
+    "thisDevice": "This Device",
+    "deviceName": "Name",
+    "deviceId": "ID",
+    "syncNow": "Sync Now",
+    "syncing": "Syncing...",
+    "applied": "Applied",
+    "skipped": "Skipped",
+    "discoveredPeers": "Discovered Peers",
+    "noPeers": "No peers discovered yet. Ensure other devices are on the same network with sync enabled.",
+    "lastSync": "Last",
+    "neverSynced": "Never synced"
+  },
+  "overlay": {
+    "focusMode": "Focus Mode"
+  },
+  "detection": {
+    "mode": "Detection Mode",
+    "elements": "elements",
+    "refresh": "Refresh",
+    "refreshLabel": "Refresh detection",
+    "close": "Close",
+    "closeLabel": "Close detection overlay"
   }
 }

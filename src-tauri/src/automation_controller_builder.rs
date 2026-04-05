@@ -206,6 +206,9 @@ fn build_controller_from_runtime(
     app_handle: Option<tauri::AppHandle>,
     cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> AutomationController {
+    // Clone handle early so we can wire the confirmation callback after
+    // the overlay driver consumes the original.
+    let confirmation_handle = app_handle.clone();
     info!(
         access_mode = ?runtime.access_mode,
         ocr = runtime.ocr_provider_name,
@@ -255,6 +258,15 @@ fn build_controller_from_runtime(
         controller.configure_gui_interaction(focus_probe, overlay_driver, hmac_secret)
     {
         warn!(error = %error, "GUI interaction setup failed (non-fatal)");
+    }
+
+    // Wire confirmation callback to emit Tauri event for overlay modal.
+    if let Some(handle) = confirmation_handle {
+        let handle_clone = handle.clone();
+        controller = controller.with_confirmation_callback(Arc::new(move |confirmation| {
+            use tauri::Emitter;
+            let _ = handle_clone.emit("automation:confirm-request", &confirmation);
+        }));
     }
 
     controller

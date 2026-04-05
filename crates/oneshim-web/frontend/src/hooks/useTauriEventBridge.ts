@@ -135,6 +135,20 @@ export function useTauriEventBridge() {
         }
 
         if (
+          !(await registerListener('navigate:chat', (event: TauriEventPayload) => {
+            const payload = event.payload as { sessionId?: string } | undefined
+            const sid = payload?.sessionId
+            if (sid) {
+              navigateTo(`/chat?sid=${encodeURIComponent(sid)}`)
+            } else {
+              navigateTo('/chat')
+            }
+          }))
+        ) {
+          return
+        }
+
+        if (
           !(await registerListener('integration-proactive-prompt', (event: TauriEventPayload) => {
             if (!isIntegrationPromptPayload(event.payload)) {
               return

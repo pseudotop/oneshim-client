@@ -29,6 +29,12 @@ pub enum AutomationError {
     InvalidArguments(String),
     #[error("internal error: {0}")]
     Internal(String),
+    /// User denied the confirmation prompt.
+    #[error("user denied automation command")]
+    UserDenied,
+    /// Policy blocks this command from executing.
+    #[error("policy blocks execution of this command")]
+    PolicyBlocked,
 }
 
 impl From<AutomationError> for CoreError {
@@ -49,6 +55,12 @@ impl From<AutomationError> for CoreError {
             AutomationError::PrivacyDenied(msg) => CoreError::PrivacyDenied(msg),
             AutomationError::InvalidArguments(msg) => CoreError::InvalidArguments(msg),
             AutomationError::Internal(msg) => CoreError::Internal(msg),
+            AutomationError::UserDenied => {
+                CoreError::PolicyDenied("user denied automation command".to_string())
+            }
+            AutomationError::PolicyBlocked => {
+                CoreError::PolicyDenied("policy blocks execution of this command".to_string())
+            }
         }
     }
 }

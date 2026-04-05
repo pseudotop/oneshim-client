@@ -1,10 +1,12 @@
 /**
  *
  */
-import { type ReactNode, useEffect, useId, useRef } from 'react'
+import { type ReactNode, createContext, useContext, useEffect, useId, useRef } from 'react'
 import { elevation, layout, motion, radius, typography } from '../../styles/tokens'
 import { dialogVariants } from '../../styles/variants'
 import { cn } from '../../utils/cn'
+
+const DialogContext = createContext<string | undefined>(undefined)
 
 export interface DialogProps {
   open: boolean
@@ -60,6 +62,7 @@ export interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement>
 
 export function DialogContent({ className, size = 'md', children, ...props }: DialogContentProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const titleId = useId()
 
   // Focus trap
   useEffect(() => {
@@ -99,32 +102,35 @@ export function DialogContent({ className, size = 'md', children, ...props }: Di
   }, [])
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: click stops propagation only — keyboard handled by Dialog
-    <div
-      ref={ref}
-      role="dialog"
-      aria-modal="true"
-      className={cn(
-        'w-full',
-        radius.lg,
-        elevation.dialog,
-        motion.opacity,
-        layout.commandPalette.bg,
-        layout.commandPalette.border,
-        dialogVariants.size[size],
-        className,
-      )}
-      onClick={(e) => e.stopPropagation()}
-      {...props}
-    >
-      {children}
-    </div>
+    <DialogContext.Provider value={titleId}>
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: click stops propagation only — keyboard handled by Dialog */}
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={cn(
+          'w-full',
+          radius.lg,
+          elevation.dialog,
+          motion.opacity,
+          layout.commandPalette.bg,
+          layout.commandPalette.border,
+          dialogVariants.size[size],
+          className,
+        )}
+        onClick={(e) => e.stopPropagation()}
+        {...props}
+      >
+        {children}
+      </div>
+    </DialogContext.Provider>
   )
 }
 
 export function DialogTitle({ className, id, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  const autoId = useId()
-  return <h2 id={id ?? autoId} className={cn('p-4 pb-0 text-content', typography.h3, className)} {...props} />
+  const contextId = useContext(DialogContext)
+  return <h2 id={id ?? contextId} className={cn('p-4 pb-0 text-content', typography.h3, className)} {...props} />
 }
 
 export function DialogBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

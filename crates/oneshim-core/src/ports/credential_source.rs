@@ -11,6 +11,8 @@ use crate::ports::oauth::OAuthPort;
 use crate::ports::secret_store::{provider_api_key_secret_ref, SecretStore};
 use crate::provider_surface::{provider_surface_uses_no_auth, provider_vendor_id_or_default};
 
+// --- Type definitions ---
+
 /// Source of authentication credentials for AI provider requests.
 #[derive(Clone)]
 pub enum CredentialSource {
@@ -39,6 +41,8 @@ pub enum CredentialSource {
         secret_store: Arc<dyn SecretStore>,
     },
 }
+
+// --- Resolution logic ---
 
 impl CredentialSource {
     /// Build an API-key credential source from the configured secret backend.
@@ -139,6 +143,8 @@ impl CredentialSource {
             }
         }
     }
+
+    // --- Helper functions ---
 
     /// Whether this source is a managed OAuth credential.
     pub fn is_managed(&self) -> bool {

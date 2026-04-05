@@ -1150,6 +1150,21 @@ export interface AutomationContracts {
   scene_action_schema_version: string
 }
 
+export interface ExecutionPolicyConfig {
+  policy_id: string
+  process_name: string
+  process_hash?: string | null
+  allowed_args: string[]
+  requires_sudo: boolean
+  max_execution_time_ms: number
+  audit_level: string
+  sandbox_profile?: string | null
+  allowed_paths: string[]
+  allow_network?: boolean | null
+  require_signed_token: boolean
+  confirmation: string
+}
+
 export type IntentDefinition = Record<string, unknown>
 
 export interface WorkflowPreset {

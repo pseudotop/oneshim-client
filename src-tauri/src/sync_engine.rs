@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+use chrono::{DateTime, Utc};
+
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::sync::{ChangeSet, ChangeSetKind, SyncResult};
@@ -36,6 +38,10 @@ pub struct SyncEngine {
     /// (immutable), this flag provides the equivalent of
     /// `ConsentManager::clear_pending_deletion()` without requiring `&mut`.
     deletion_pushed: AtomicBool,
+    /// Timestamp of the last successful sync cycle completion.
+    last_sync_at: parking_lot::Mutex<Option<DateTime<Utc>>>,
+    /// Error message from the most recent failed sync cycle, if any.
+    last_error: parking_lot::Mutex<Option<String>>,
 }
 
 impl SyncEngine {
@@ -82,12 +88,33 @@ impl SyncEngine {
             device_name,
             last_push_watermark: parking_lot::Mutex::new(initial_watermark),
             deletion_pushed: AtomicBool::new(false),
+            last_sync_at: parking_lot::Mutex::new(None),
+            last_error: parking_lot::Mutex::new(None),
         }
     }
 
     /// Run one complete sync cycle: check consent, handle deletion,
     /// pull + merge, extract + push.
+    ///
+    /// On success, updates `last_sync_at` and clears `last_error`.
+    /// On failure, records the error message in `last_error`.
     pub async fn run_cycle(&self) -> Result<Option<SyncResult>, CoreError> {
+        match self.run_cycle_inner().await {
+            Ok(result) => {
+                *self.last_sync_at.lock() = Some(Utc::now());
+                *self.last_error.lock() = None;
+                Ok(result)
+            }
+            Err(e) => {
+                *self.last_error.lock() = Some(e.to_string());
+                Err(e)
+            }
+        }
+    }
+
+    /// Inner implementation of the sync cycle, called by `run_cycle` which
+    /// wraps it with health tracking.
+    async fn run_cycle_inner(&self) -> Result<Option<SyncResult>, CoreError> {
         // Gate 1: consent check
         if let Some(ref cm) = self.consent_manager {
             if !cm.is_permitted(|p| p.cross_device_sync) {
@@ -190,6 +217,13 @@ impl SyncEngine {
     /// Human-readable device name.
     pub fn device_name(&self) -> &str {
         &self.device_name
+    }
+
+    /// Returns `(last_sync_at_rfc3339, last_error)` for health reporting.
+    pub fn health_status(&self) -> (Option<String>, Option<String>) {
+        let sync_at = self.last_sync_at.lock().as_ref().map(|d| d.to_rfc3339());
+        let error = self.last_error.lock().clone();
+        (sync_at, error)
     }
 
     /// Discover known peers via the configured transport.
