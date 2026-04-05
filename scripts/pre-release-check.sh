@@ -212,6 +212,27 @@ if [ -x "scripts/check-config-sync.sh" ]; then
   echo ""
 fi
 
+# --- Frontend Build Verification ---
+FRONTEND_DIR="crates/oneshim-web/frontend"
+if [ -d "$FRONTEND_DIR/node_modules" ]; then
+  echo "[Frontend Build]"
+  if (cd "$FRONTEND_DIR" && npx tsc --noEmit > /dev/null 2>&1); then
+    pass "TypeScript type check passed"
+  else
+    fail "TypeScript type check failed — run: cd $FRONTEND_DIR && npx tsc --noEmit"
+  fi
+  if (cd "$FRONTEND_DIR" && npx vite build > /dev/null 2>&1); then
+    pass "Vite build passed"
+  else
+    fail "Vite build failed — run: cd $FRONTEND_DIR && pnpm build"
+  fi
+  echo ""
+else
+  echo "[Frontend Build]"
+  warn "Skipped — node_modules not installed (run: cd $FRONTEND_DIR && pnpm install)"
+  echo ""
+fi
+
 # --- Summary ---
 echo "=== Summary ==="
 if [ "$errors" -gt 0 ]; then
