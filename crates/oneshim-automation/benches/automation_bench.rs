@@ -26,6 +26,7 @@ fn create_policies(n: usize) -> Vec<ExecutionPolicy> {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         })
         .collect()
 }
@@ -164,6 +165,7 @@ fn bench_policy_validate_args(c: &mut Criterion) {
         allowed_paths: vec![],
         allow_network: None,
         require_signed_token: false,
+        confirmation: Default::default(),
     };
 
     let matching_args = vec![

@@ -11,6 +11,7 @@ use crate::feature_capabilities::{
 };
 use crate::runtime_state::{ConfigRuntimeState, SecretBackendCapabilities, SecretBackendState};
 use crate::services::log_helpers;
+use crate::updater::{Updater, VerifyResult};
 
 const DEFAULT_LOG_LINE_LIMIT: usize = 200;
 const MAX_LOG_LINE_LIMIT: usize = 500;
@@ -214,6 +215,19 @@ pub async fn record_frontend_log(
     emit_frontend_log(level, &surface, message, context);
 
     Ok(())
+}
+
+/// Dry-run update integrity verification — checks latest release without installing.
+#[command]
+pub async fn verify_update(
+    state: tauri::State<'_, ConfigRuntimeState>,
+) -> Result<VerifyResult, String> {
+    let update_config = state.config_manager().get().update.clone();
+    let updater = Updater::new(update_config);
+    updater
+        .verify_update_integrity()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

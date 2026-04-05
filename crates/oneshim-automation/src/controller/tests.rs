@@ -54,6 +54,7 @@ fn make_policy(audit: AuditLevel, timeout: u64) -> ExecutionPolicy {
         allowed_paths: vec![],
         allow_network: None,
         require_signed_token: false,
+        confirmation: oneshim_core::config::ConfirmationRequirement::Auto,
     }
 }
 

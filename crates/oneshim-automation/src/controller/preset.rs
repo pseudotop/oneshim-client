@@ -181,6 +181,34 @@ impl AutomationController {
         cmd: &AutomationCommand,
     ) -> Result<CommandResult, AutomationError> {
         self.ensure_enabled()?;
+
+        // Check confirmation requirement from the policy before execution.
+        if let Some(policy) = self
+            .policy_client
+            .get_policy_for_token(&cmd.policy_token)
+            .await
+        {
+            match policy.confirmation {
+                oneshim_core::config::ConfirmationRequirement::Block => {
+                    return Ok(CommandResult::Denied);
+                }
+                oneshim_core::config::ConfirmationRequirement::Confirm => {
+                    let approved = self
+                        .request_confirmation(
+                            &cmd.command_id,
+                            &policy.process_name,
+                            &policy.allowed_args,
+                            &format!("{:?}", policy.audit_level),
+                        )
+                        .await?;
+                    if !approved {
+                        return Ok(CommandResult::Denied);
+                    }
+                }
+                oneshim_core::config::ConfirmationRequirement::Auto => {}
+            }
+        }
+
         let result = self.command_execution_gate().execute(cmd).await;
         if let Some(ref flag) = self.last_command_ok {
             match &result {

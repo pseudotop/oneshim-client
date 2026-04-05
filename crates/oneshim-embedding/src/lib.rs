@@ -229,6 +229,54 @@ mod stub_impl {
 #[cfg(not(feature = "fastembed-local"))]
 pub use stub_impl::LocalEmbeddingProvider;
 
+// ── Fallback chaining provider ────────────────────────────────────────────
+
+/// Chains two embedding providers: tries primary first, falls back on error.
+pub struct FallbackEmbeddingProvider {
+    primary: std::sync::Arc<dyn EmbeddingProvider>,
+    fallback: std::sync::Arc<dyn EmbeddingProvider>,
+}
+
+impl FallbackEmbeddingProvider {
+    pub fn new(
+        primary: std::sync::Arc<dyn EmbeddingProvider>,
+        fallback: std::sync::Arc<dyn EmbeddingProvider>,
+    ) -> Self {
+        Self { primary, fallback }
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for FallbackEmbeddingProvider {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, CoreError> {
+        match self.primary.embed(text).await {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                tracing::warn!("primary embedding failed, trying fallback: {e}");
+                self.fallback.embed(text).await
+            }
+        }
+    }
+
+    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
+        match self.primary.embed_batch(texts).await {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                tracing::warn!("primary batch embedding failed, trying fallback: {e}");
+                self.fallback.embed_batch(texts).await
+            }
+        }
+    }
+
+    fn dimensions(&self) -> usize {
+        self.primary.dimensions()
+    }
+
+    fn model_id(&self) -> &str {
+        self.primary.model_id()
+    }
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -584,6 +632,115 @@ mod tests {
             // Converting back should preserve as CoreError (via transparent).
             let back: CoreError = emb.into();
             assert!(matches!(back, CoreError::Network(_)));
+        }
+    }
+
+    // ── FallbackEmbeddingProvider tests ─────────────────────────────────
+
+    mod fallback_tests {
+        use super::*;
+        use oneshim_core::ports::embedding_provider::EmbeddingProvider;
+        use std::sync::Arc;
+
+        /// Mock provider that always succeeds, returning vectors of a given value.
+        struct OkProvider {
+            value: f32,
+            dims: usize,
+        }
+
+        #[async_trait]
+        impl EmbeddingProvider for OkProvider {
+            async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
+                Ok(vec![self.value; self.dims])
+            }
+
+            async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
+                Ok(texts.iter().map(|_| vec![self.value; self.dims]).collect())
+            }
+
+            fn dimensions(&self) -> usize {
+                self.dims
+            }
+
+            fn model_id(&self) -> &str {
+                "ok-mock"
+            }
+        }
+
+        /// Mock provider that always fails.
+        struct ErrProvider;
+
+        #[async_trait]
+        impl EmbeddingProvider for ErrProvider {
+            async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
+                Err(CoreError::Internal("mock primary failure".into()))
+            }
+
+            async fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
+                Err(CoreError::Internal("mock primary batch failure".into()))
+            }
+
+            fn dimensions(&self) -> usize {
+                384
+            }
+
+            fn model_id(&self) -> &str {
+                "err-mock"
+            }
+        }
+
+        #[tokio::test]
+        async fn test_fallback_primary_succeeds() {
+            let primary: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 1.0,
+                dims: 4,
+            });
+            let fallback: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 9.9,
+                dims: 4,
+            });
+            let provider = FallbackEmbeddingProvider::new(primary, fallback);
+
+            let result = provider.embed("hello").await.unwrap();
+            // Should get primary's value (1.0), not fallback's (9.9)
+            assert_eq!(result, vec![1.0; 4]);
+
+            let batch = provider
+                .embed_batch(&["a".to_owned(), "b".to_owned()])
+                .await
+                .unwrap();
+            assert_eq!(batch.len(), 2);
+            assert_eq!(batch[0], vec![1.0; 4]);
+        }
+
+        #[tokio::test]
+        async fn test_fallback_primary_fails() {
+            let primary: Arc<dyn EmbeddingProvider> = Arc::new(ErrProvider);
+            let fallback: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 2.0,
+                dims: 4,
+            });
+            let provider = FallbackEmbeddingProvider::new(primary, fallback);
+
+            let result = provider.embed("hello").await.unwrap();
+            // Primary fails, should get fallback's value (2.0)
+            assert_eq!(result, vec![2.0; 4]);
+
+            let batch = provider.embed_batch(&["a".to_owned()]).await.unwrap();
+            assert_eq!(batch[0], vec![2.0; 4]);
+        }
+
+        #[tokio::test]
+        async fn test_fallback_both_fail() {
+            let primary: Arc<dyn EmbeddingProvider> = Arc::new(ErrProvider);
+            let fallback: Arc<dyn EmbeddingProvider> = Arc::new(ErrProvider);
+            let provider = FallbackEmbeddingProvider::new(primary, fallback);
+
+            let result = provider.embed("hello").await;
+            assert!(result.is_err());
+
+            let batch_result = provider.embed_batch(&["a".to_owned()]).await;
+            assert!(batch_result.is_err());
         }
     }
 }

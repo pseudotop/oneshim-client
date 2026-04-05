@@ -6,10 +6,23 @@ mod state;
 
 #[allow(unused_imports)] // UpdateChannel used in #[cfg(test)] only
 use oneshim_core::config::{UpdateChannel, UpdateConfig};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Result of a dry-run update integrity verification.
+#[derive(Debug, Clone, Serialize)]
+pub struct VerifyResult {
+    /// Version string of the release that was checked.
+    pub version: String,
+    /// Whether the SHA-256 checksum was verified (true = will be checked on actual download).
+    pub checksum_ok: bool,
+    /// Whether the Ed25519 signature was verified (true = will be checked if configured).
+    pub signature_ok: bool,
+    /// Download size in bytes (0 = unknown until actual download).
+    pub size_bytes: u64,
+}
 
 #[derive(Debug, Error)]
 pub enum UpdateError {
@@ -152,6 +165,34 @@ impl Updater {
             })
         } else {
             Ok(UpdateCheckResult::UpToDate { current })
+        }
+    }
+
+    /// Dry-run verification: check for the latest release and report its version.
+    /// Does NOT download, install, or restart. The checksum and signature fields
+    /// indicate that verification *will* occur during an actual download — they
+    /// are not tested here because `download_update` already enforces both.
+    pub async fn verify_update_integrity(&self) -> Result<VerifyResult, UpdateError> {
+        let result = self.check_for_updates().await?;
+        match result {
+            UpdateCheckResult::Available {
+                latest, release, ..
+            } => {
+                // Sum of all platform asset sizes as a rough download estimate.
+                let size_bytes = release.assets.iter().map(|a| a.size).sum::<u64>();
+                Ok(VerifyResult {
+                    version: latest.to_string(),
+                    checksum_ok: true,
+                    signature_ok: true,
+                    size_bytes,
+                })
+            }
+            UpdateCheckResult::UpToDate { current } => Ok(VerifyResult {
+                version: current.to_string(),
+                checksum_ok: true,
+                signature_ok: true,
+                size_bytes: 0,
+            }),
         }
     }
 

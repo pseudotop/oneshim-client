@@ -267,6 +267,7 @@ mod tests {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         };
         let json = serde_json::to_string(&policy).unwrap();
         let deser: ExecutionPolicy = serde_json::from_str(&json).unwrap();
@@ -292,6 +293,7 @@ mod tests {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         };
         assert!(PolicyClient::validate_args(
             &policy,
@@ -313,6 +315,7 @@ mod tests {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         };
         assert!(PolicyClient::validate_args(
             &policy,
@@ -336,6 +339,7 @@ mod tests {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         }];
 
         client.update_policies(policies).await;
@@ -358,6 +362,7 @@ mod tests {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         }];
         client.update_policies(policies).await;
 
@@ -386,6 +391,7 @@ mod tests {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         }
     }
 

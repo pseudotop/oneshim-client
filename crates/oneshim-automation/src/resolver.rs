@@ -83,6 +83,7 @@ mod tests {
             allowed_paths: vec![],
             allow_network: None,
             require_signed_token: false,
+            confirmation: Default::default(),
         }
     }
 

@@ -79,6 +79,20 @@ pub(super) fn build_embedding_components(
             }
         };
 
+        // Wrap successful provider with FallbackEmbeddingProvider → NoOp,
+        // so transient failures at runtime degrade to zero vectors instead of
+        // propagating errors through the pipeline.
+        #[cfg(feature = "embedding")]
+        let embedding_provider: Option<
+            Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>,
+        > = embedding_provider.map(|p| {
+            let noop = Arc::new(
+                oneshim_core::ports::embedding_provider::NoOpEmbeddingProvider::new(p.dimensions()),
+            );
+            Arc::new(oneshim_embedding::FallbackEmbeddingProvider::new(p, noop))
+                as Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>
+        });
+
         if let (Some(ref provider), Some(ref vector_store)) =
             (&embedding_provider, &vector_store_opt)
         {

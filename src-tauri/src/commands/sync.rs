@@ -8,6 +8,8 @@ pub struct SyncStatusDto {
     pub enabled: bool,
     pub device_id: String,
     pub device_name: String,
+    pub last_sync_at: Option<String>,
+    pub last_error: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -29,15 +31,22 @@ pub async fn get_sync_status(
     state: tauri::State<'_, SyncRuntimeState>,
 ) -> Result<SyncStatusDto, String> {
     match state.engine() {
-        Some(engine) => Ok(SyncStatusDto {
-            enabled: true,
-            device_id: engine.device_id().to_string(),
-            device_name: engine.device_name().to_string(),
-        }),
+        Some(engine) => {
+            let (sync_at, error) = engine.health_status();
+            Ok(SyncStatusDto {
+                enabled: true,
+                device_id: engine.device_id().to_string(),
+                device_name: engine.device_name().to_string(),
+                last_sync_at: sync_at,
+                last_error: error,
+            })
+        }
         None => Ok(SyncStatusDto {
             enabled: false,
             device_id: String::new(),
             device_name: String::new(),
+            last_sync_at: None,
+            last_error: None,
         }),
     }
 }

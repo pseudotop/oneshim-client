@@ -24,6 +24,8 @@ pub struct ExecutionPolicy {
     pub allow_network: Option<bool>,
     #[serde(default)]
     pub require_signed_token: bool,
+    #[serde(default)]
+    pub confirmation: oneshim_core::config::ConfirmationRequirement,
 }
 
 #[derive(Debug, Clone)]
