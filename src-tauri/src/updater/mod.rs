@@ -11,17 +11,18 @@ use thiserror::Error;
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Result of a dry-run update integrity verification.
+/// Preview of an available update without downloading.
+///
+/// Does not verify checksums or signatures — those are enforced during
+/// the actual download performed by `download_update`.
 #[derive(Debug, Clone, Serialize)]
-pub struct VerifyResult {
-    /// Version string of the release that was checked.
+pub struct UpdatePreview {
+    /// Version string of the release that was found.
     pub version: String,
-    /// Whether the SHA-256 checksum was verified (true = will be checked on actual download).
-    pub checksum_ok: bool,
-    /// Whether the Ed25519 signature was verified (true = will be checked if configured).
-    pub signature_ok: bool,
-    /// Download size in bytes (0 = unknown until actual download).
-    pub size_bytes: u64,
+    /// Total download size in bytes across all platform assets (0 = already up to date).
+    pub download_size_bytes: u64,
+    /// Number of release assets available for the current platform.
+    pub asset_count: usize,
 }
 
 #[derive(Debug, Error)]
@@ -168,30 +169,29 @@ impl Updater {
         }
     }
 
-    /// Dry-run verification: check for the latest release and report its version.
-    /// Does NOT download, install, or restart. The checksum and signature fields
-    /// indicate that verification *will* occur during an actual download — they
-    /// are not tested here because `download_update` already enforces both.
-    pub async fn verify_update_integrity(&self) -> Result<VerifyResult, UpdateError> {
+    /// Preview available update info without downloading.
+    ///
+    /// Reports version, download size, and asset count for the latest release.
+    /// Does NOT download, install, or verify checksums/signatures — those are
+    /// enforced during the actual download performed by `download_update`.
+    pub async fn preview_update_availability(&self) -> Result<UpdatePreview, UpdateError> {
         let result = self.check_for_updates().await?;
         match result {
             UpdateCheckResult::Available {
                 latest, release, ..
             } => {
-                // Sum of all platform asset sizes as a rough download estimate.
-                let size_bytes = release.assets.iter().map(|a| a.size).sum::<u64>();
-                Ok(VerifyResult {
+                let download_size_bytes = release.assets.iter().map(|a| a.size).sum::<u64>();
+                let asset_count = release.assets.len();
+                Ok(UpdatePreview {
                     version: latest.to_string(),
-                    checksum_ok: true,
-                    signature_ok: true,
-                    size_bytes,
+                    download_size_bytes,
+                    asset_count,
                 })
             }
-            UpdateCheckResult::UpToDate { current } => Ok(VerifyResult {
+            UpdateCheckResult::UpToDate { current } => Ok(UpdatePreview {
                 version: current.to_string(),
-                checksum_ok: true,
-                signature_ok: true,
-                size_bytes: 0,
+                download_size_bytes: 0,
+                asset_count: 0,
             }),
         }
     }
@@ -1079,11 +1079,11 @@ mod tests {
         }
     }
 
-    /// Verify that verify_update_integrity can reach GitHub and return a coherent result.
+    /// Verify that preview_update_availability can reach GitHub and return a coherent result.
     /// Requires network access — marked #[ignore] for CI.
     #[tokio::test]
     #[ignore]
-    async fn e2e_verify_update_integrity_reaches_github() {
+    async fn e2e_preview_update_availability_reaches_github() {
         let config = UpdateConfig {
             enabled: true,
             repo_owner: "pseudotop".to_string(),
@@ -1094,21 +1094,19 @@ mod tests {
         };
         let updater = Updater::new(config);
 
-        let result = updater.verify_update_integrity().await;
+        let result = updater.preview_update_availability().await;
 
         match result {
-            Ok(verify) => {
+            Ok(preview) => {
                 // Version string must be valid semver
                 assert!(
-                    semver::Version::parse(&verify.version).is_ok(),
-                    "verify result version must be valid semver, got: {}",
-                    verify.version
+                    semver::Version::parse(&preview.version).is_ok(),
+                    "preview result version must be valid semver, got: {}",
+                    preview.version
                 );
-                assert!(verify.checksum_ok, "checksum_ok must be true");
-                assert!(verify.signature_ok, "signature_ok must be true");
             }
             Err(e) => panic!(
-                "verify_update_integrity failed against live GitHub API: {}",
+                "preview_update_availability failed against live GitHub API: {}",
                 e
             ),
         }

@@ -16,7 +16,10 @@
     "close": "閉じる",
     "more": "もっと見る",
     "darkMode": "ダークモード",
-    "lightMode": "ライトモード"
+    "lightMode": "ライトモード",
+    "actions": "操作",
+    "edit": "編集",
+    "create": "作成"
   },
   "nav": {
     "dashboard": "ダッシュボード",
@@ -34,7 +37,8 @@
     "coaching": "コーチング",
     "recalibration": "再キャリブレーション",
     "chat": "チャット",
-    "audit": "監査ログ"
+    "audit": "監査ログ",
+    "policies": "ポリシー"
   },
   "dashboard": {
     "title": "アクティビティサマリー",
@@ -1142,6 +1146,52 @@
     "response_format_placeholder": "任意の JSON schema または形式ヒント",
     "invalid_tools_json": "ツール定義は JSON 配列である必要があります。",
     "invalid_response_format_json": "レスポンス形式は有効な JSON である必要があります。"
+  },
+  "policies": {
+    "title": "実行ポリシー",
+    "policyId": "ポリシーID",
+    "processName": "プロセス名",
+    "confirmation": "確認方式",
+    "auditLevel": "監査レベル",
+    "sandboxProfile": "サンドボックスプロファイル",
+    "sandboxNone": "(なし)",
+    "maxExecutionTime": "最大実行時間 (ms)",
+    "maxExecMs": "最大 (ms)",
+    "allowedArgs": "許可された引数 (1行に1つ)",
+    "requireSignedToken": "署名トークンが必要",
+    "requiresSudo": "Sudo が必要",
+    "addPolicy": "ポリシーを追加",
+    "newPolicy": "新規実行ポリシー",
+    "editPolicy": "ポリシーを編集",
+    "configuredPolicies": "設定済みポリシー",
+    "emptyTitle": "実行ポリシーがありません",
+    "emptyDescription": "実行ポリシーはオートメーションが実行できるプロセスと条件を制御します。",
+    "created": "ポリシーが作成されました",
+    "createError": "ポリシーの作成に失敗しました",
+    "updated": "ポリシーが更新されました",
+    "updateError": "ポリシーの更新に失敗しました",
+    "deleted": "ポリシーが削除されました",
+    "deleteError": "ポリシーの削除に失敗しました"
+  },
+  "suggestions": {
+    "sourceServer": "サーバー",
+    "sourceLocal": "ローカル",
+    "sourceRules": "ルール"
+  },
+  "suggestionStats": {
+    "acceptanceRate": "承認率",
+    "totalSuggestions": "合計 {{count}} 件の提案",
+    "accepted": "承認済み",
+    "rejected": "拒否済み",
+    "snoozed": "スヌーズ",
+    "pending": "保留中",
+    "typeDistribution": "タイプ別分布",
+    "sourceQuality": "ソース品質",
+    "countTotal": "{{count}} 件",
+    "dailyTrends": "日次トレンド (7日)",
+    "acted": "実行済み",
+    "total": "合計",
+    "noData": "データがまだありません"
   },
   "trackingPanel": {
     "statusUnavailable": "ステータスを取得できません",

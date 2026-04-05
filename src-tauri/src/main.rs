@@ -207,7 +207,7 @@ fn main() {
             commands::permissions::request_desktop_notification_permission,
             commands::permissions::open_desktop_permission_settings,
             commands::system::probe_provider_surface_endpoint,
-            commands::system::verify_update,
+            commands::system::preview_update,
             commands::settings::get_allowed_setting_keys,
             commands::integration::integration_auth_status,
             commands::integration::integration_start_device_authorization,

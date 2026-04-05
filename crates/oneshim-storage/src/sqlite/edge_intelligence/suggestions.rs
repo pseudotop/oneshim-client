@@ -501,6 +501,25 @@ impl SqliteStorage {
         Ok(records)
     }
 
+    /// Delete orphaned feedback retries older than `max_age_days`.
+    /// Returns the number of rows deleted.
+    pub fn cleanup_old_feedback_retries(&self, max_age_days: u32) -> Result<usize, StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+        let cutoff = format!("-{max_age_days} days");
+        let deleted = conn
+            .execute(
+                "DELETE FROM feedback_retries WHERE created_at < datetime('now', ?1)",
+                rusqlite::params![cutoff],
+            )
+            .map_err(|e| {
+                StorageError::Internal(format!("Failed to cleanup old feedback retries: {e}"))
+            })?;
+        Ok(deleted)
+    }
+
     /// Delete a pending feedback after successful retry or exhaustion.
     pub fn delete_pending_feedback(&self, suggestion_id: &str) -> Result<(), StorageError> {
         let conn = self

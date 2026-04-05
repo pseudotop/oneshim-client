@@ -16,7 +16,10 @@
     "close": "Cerrar",
     "more": "Más",
     "darkMode": "Modo oscuro",
-    "lightMode": "Modo claro"
+    "lightMode": "Modo claro",
+    "actions": "Acciones",
+    "edit": "Editar",
+    "create": "Crear"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -34,7 +37,8 @@
     "recalibration": "Recalibración",
     "dashboardDay": "Vista diaria",
     "chat": "Chat",
-    "audit": "Registro de auditoría"
+    "audit": "Registro de auditoría",
+    "policies": "Políticas"
   },
   "dashboard": {
     "title": "Resumen de actividad",
@@ -1142,6 +1146,52 @@
     "response_format_placeholder": "Schema JSON opcional o pista de formato",
     "invalid_tools_json": "Las definiciones de herramientas deben ser un arreglo JSON.",
     "invalid_response_format_json": "El formato de respuesta debe ser JSON válido."
+  },
+  "policies": {
+    "title": "Políticas de ejecución",
+    "policyId": "ID de política",
+    "processName": "Nombre del proceso",
+    "confirmation": "Confirmación",
+    "auditLevel": "Nivel de auditoría",
+    "sandboxProfile": "Perfil de sandbox",
+    "sandboxNone": "(ninguno)",
+    "maxExecutionTime": "Tiempo máximo de ejecución (ms)",
+    "maxExecMs": "Máx (ms)",
+    "allowedArgs": "Argumentos permitidos (uno por línea)",
+    "requireSignedToken": "Requiere token firmado",
+    "requiresSudo": "Requiere Sudo",
+    "addPolicy": "Agregar política",
+    "newPolicy": "Nueva política de ejecución",
+    "editPolicy": "Editar política",
+    "configuredPolicies": "Políticas configuradas",
+    "emptyTitle": "Sin políticas de ejecución",
+    "emptyDescription": "Las políticas de ejecución controlan qué procesos puede ejecutar la automatización y bajo qué condiciones.",
+    "created": "Política creada",
+    "createError": "Error al crear la política",
+    "updated": "Política actualizada",
+    "updateError": "Error al actualizar la política",
+    "deleted": "Política eliminada",
+    "deleteError": "Error al eliminar la política"
+  },
+  "suggestions": {
+    "sourceServer": "Servidor",
+    "sourceLocal": "Local",
+    "sourceRules": "Reglas"
+  },
+  "suggestionStats": {
+    "acceptanceRate": "Tasa de aceptación",
+    "totalSuggestions": "{{count}} sugerencias en total",
+    "accepted": "Aceptadas",
+    "rejected": "Rechazadas",
+    "snoozed": "Pospuestas",
+    "pending": "Pendientes",
+    "typeDistribution": "Distribución por tipo",
+    "sourceQuality": "Calidad de origen",
+    "countTotal": "{{count}} en total",
+    "dailyTrends": "Tendencias diarias (7d)",
+    "acted": "Procesadas",
+    "total": "Total",
+    "noData": "Aún no hay datos"
   },
   "trackingPanel": {
     "statusUnavailable": "Estado no disponible",

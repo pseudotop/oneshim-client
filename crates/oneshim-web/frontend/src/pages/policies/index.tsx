@@ -9,7 +9,7 @@ import {
   fetchExecutionPolicies,
   updateExecutionPolicy,
 } from '../../api/client'
-import { EmptyState, Input, ListSkeleton, Select } from '../../components/ui'
+import { Checkbox, EmptyState, Input, ListSkeleton, Select } from '../../components/ui'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
@@ -180,22 +180,16 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
         />
       </div>
       <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-content">
-          <input
-            type="checkbox"
-            checked={form.require_signed_token}
-            onChange={(e) => setForm((f) => ({ ...f, require_signed_token: e.target.checked }))}
-          />
-          {t('policies.requireSignedToken', 'Require Signed Token')}
-        </label>
-        <label className="flex items-center gap-2 text-sm text-content">
-          <input
-            type="checkbox"
-            checked={form.requires_sudo}
-            onChange={(e) => setForm((f) => ({ ...f, requires_sudo: e.target.checked }))}
-          />
-          {t('policies.requiresSudo', 'Requires Sudo')}
-        </label>
+        <Checkbox
+          checked={form.require_signed_token}
+          onChange={(e) => setForm((f) => ({ ...f, require_signed_token: e.target.checked }))}
+          label={t('policies.requireSignedToken', 'Require Signed Token')}
+        />
+        <Checkbox
+          checked={form.requires_sudo}
+          onChange={(e) => setForm((f) => ({ ...f, requires_sudo: e.target.checked }))}
+          label={t('policies.requiresSudo', 'Requires Sudo')}
+        />
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>

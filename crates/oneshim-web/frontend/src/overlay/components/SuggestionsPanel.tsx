@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
@@ -27,6 +28,7 @@ interface SuggestionsPanelProps {
  * - Interactive elements use standard tab order within the panel.
  */
 export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: SuggestionsPanelProps) {
+  const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'active' | 'history' | 'stats'>('active')
 
@@ -195,7 +197,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                   )}
                   onClick={() => toggleSource(src)}
                 >
-                  {src === 'server' ? 'Server' : src === 'local' ? 'Local' : 'Rules'}
+                  {src === 'server' ? t('suggestions.sourceServer', 'Server') : src === 'local' ? t('suggestions.sourceLocal', 'Local') : t('suggestions.sourceRules', 'Rules')}
                 </button>
               ))}
             </div>

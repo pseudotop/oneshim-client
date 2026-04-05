@@ -16,7 +16,10 @@
     "close": "关闭",
     "more": "更多",
     "darkMode": "深色模式",
-    "lightMode": "浅色模式"
+    "lightMode": "浅色模式",
+    "actions": "操作",
+    "edit": "编辑",
+    "create": "创建"
   },
   "nav": {
     "dashboard": "仪表盘",
@@ -34,7 +37,8 @@
     "coaching": "教练",
     "recalibration": "重新校准",
     "chat": "聊天",
-    "audit": "审计日志"
+    "audit": "审计日志",
+    "policies": "策略"
   },
   "dashboard": {
     "title": "活动概览",
@@ -1142,6 +1146,52 @@
     "response_format_placeholder": "可选的 JSON schema 或格式提示",
     "invalid_tools_json": "工具定义必须是 JSON 数组。",
     "invalid_response_format_json": "响应格式必须是有效的 JSON。"
+  },
+  "policies": {
+    "title": "执行策略",
+    "policyId": "策略 ID",
+    "processName": "进程名称",
+    "confirmation": "确认方式",
+    "auditLevel": "审计级别",
+    "sandboxProfile": "沙箱配置",
+    "sandboxNone": "(无)",
+    "maxExecutionTime": "最大执行时间 (ms)",
+    "maxExecMs": "最大 (ms)",
+    "allowedArgs": "允许的参数（每行一个）",
+    "requireSignedToken": "需要签名令牌",
+    "requiresSudo": "需要 Sudo",
+    "addPolicy": "添加策略",
+    "newPolicy": "新建执行策略",
+    "editPolicy": "编辑策略",
+    "configuredPolicies": "已配置的策略",
+    "emptyTitle": "暂无执行策略",
+    "emptyDescription": "执行策略控制自动化可以运行哪些进程以及在何种条件下运行。",
+    "created": "策略已创建",
+    "createError": "创建策略失败",
+    "updated": "策略已更新",
+    "updateError": "更新策略失败",
+    "deleted": "策略已删除",
+    "deleteError": "删除策略失败"
+  },
+  "suggestions": {
+    "sourceServer": "服务器",
+    "sourceLocal": "本地",
+    "sourceRules": "规则"
+  },
+  "suggestionStats": {
+    "acceptanceRate": "接受率",
+    "totalSuggestions": "共 {{count}} 条建议",
+    "accepted": "已接受",
+    "rejected": "已拒绝",
+    "snoozed": "已暂缓",
+    "pending": "待处理",
+    "typeDistribution": "类型分布",
+    "sourceQuality": "来源质量",
+    "countTotal": "共 {{count}} 条",
+    "dailyTrends": "每日趋势（7天）",
+    "acted": "已处理",
+    "total": "总计",
+    "noData": "暂无数据"
   },
   "trackingPanel": {
     "statusUnavailable": "无法获取状态",

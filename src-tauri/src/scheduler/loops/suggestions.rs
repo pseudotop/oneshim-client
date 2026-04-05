@@ -156,6 +156,11 @@ pub(crate) fn spawn_suggestion_maintenance_loop(
                     }
                 }
             }
+
+            // 3. Cleanup orphaned feedback retries older than 7 days
+            if let Err(e) = storage.cleanup_old_feedback_retries(7) {
+                warn!("failed to clean up old feedback retries: {e}");
+            }
         }
     })
 }

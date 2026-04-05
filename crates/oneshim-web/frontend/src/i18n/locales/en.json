@@ -16,7 +16,10 @@
     "close": "Close",
     "more": "More",
     "darkMode": "Dark mode",
-    "lightMode": "Light mode"
+    "lightMode": "Light mode",
+    "actions": "Actions",
+    "edit": "Edit",
+    "create": "Create"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -34,7 +37,8 @@
     "dashboardDay": "Day View",
     "mainNavLabel": "Main Navigation",
     "chat": "Chat",
-    "audit": "Audit Log"
+    "audit": "Audit Log",
+    "policies": "Policies"
   },
   "dashboard": {
     "title": "Activity Summary",
@@ -1287,6 +1291,52 @@
     "response_format_placeholder": "Optional JSON schema or format hint",
     "invalid_tools_json": "Tool definitions must be a JSON array of tool definitions.",
     "invalid_response_format_json": "Response format must be valid JSON."
+  },
+  "policies": {
+    "title": "Execution Policies",
+    "policyId": "Policy ID",
+    "processName": "Process Name",
+    "confirmation": "Confirmation",
+    "auditLevel": "Audit Level",
+    "sandboxProfile": "Sandbox Profile",
+    "sandboxNone": "(none)",
+    "maxExecutionTime": "Max Execution Time (ms)",
+    "maxExecMs": "Max (ms)",
+    "allowedArgs": "Allowed Arguments (one per line)",
+    "requireSignedToken": "Require Signed Token",
+    "requiresSudo": "Requires Sudo",
+    "addPolicy": "Add Policy",
+    "newPolicy": "New Execution Policy",
+    "editPolicy": "Edit Policy",
+    "configuredPolicies": "Configured Policies",
+    "emptyTitle": "No execution policies",
+    "emptyDescription": "Execution policies control which processes automation can run and under what conditions.",
+    "created": "Policy created",
+    "createError": "Failed to create policy",
+    "updated": "Policy updated",
+    "updateError": "Failed to update policy",
+    "deleted": "Policy deleted",
+    "deleteError": "Failed to delete policy"
+  },
+  "suggestions": {
+    "sourceServer": "Server",
+    "sourceLocal": "Local",
+    "sourceRules": "Rules"
+  },
+  "suggestionStats": {
+    "acceptanceRate": "Acceptance Rate",
+    "totalSuggestions": "{{count}} total suggestions",
+    "accepted": "Accepted",
+    "rejected": "Rejected",
+    "snoozed": "Snoozed",
+    "pending": "Pending",
+    "typeDistribution": "Type Distribution",
+    "sourceQuality": "Source Quality",
+    "countTotal": "{{count}} total",
+    "dailyTrends": "Daily Trends (7d)",
+    "acted": "Acted",
+    "total": "Total",
+    "noData": "No data yet"
   },
   "trackingPanel": {
     "statusUnavailable": "Status unavailable",
