@@ -73,7 +73,7 @@ fn source_label(source: &oneshim_core::models::suggestion::SuggestionSource) -> 
     match source {
         oneshim_core::models::suggestion::SuggestionSource::LlmServer => "server",
         oneshim_core::models::suggestion::SuggestionSource::LlmLocal => "local",
-        oneshim_core::models::suggestion::SuggestionSource::RuleBased => "local",
+        oneshim_core::models::suggestion::SuggestionSource::RuleBased => "rule",
     }
 }
 
@@ -634,6 +634,19 @@ pub async fn save_suggestion_state(
 // ── Suggestion statistics ────────────────────────────────────
 
 #[derive(Serialize)]
+pub struct TypeCountDto {
+    pub suggestion_type: String,
+    pub count: u32,
+}
+
+#[derive(Serialize)]
+pub struct SourceStatsDto {
+    pub source: String,
+    pub count: u32,
+    pub acceptance_rate: f64,
+}
+
+#[derive(Serialize)]
 pub struct SuggestionStatsDto {
     pub total: u32,
     pub accepted: u32,
@@ -641,6 +654,8 @@ pub struct SuggestionStatsDto {
     pub deferred: u32,
     pub pending: u32,
     pub acceptance_rate: f64,
+    pub by_type: Vec<TypeCountDto>,
+    pub by_source: Vec<SourceStatsDto>,
 }
 
 /// Return aggregate statistics from the suggestion history (in-memory).
@@ -655,6 +670,23 @@ pub async fn get_suggestion_stats(
     } else {
         0.0
     };
+    let by_type = stats
+        .by_type
+        .iter()
+        .map(|(t, c)| TypeCountDto {
+            suggestion_type: t.clone(),
+            count: *c,
+        })
+        .collect();
+    let by_source = stats
+        .by_source
+        .iter()
+        .map(|(s, c, r)| SourceStatsDto {
+            source: s.clone(),
+            count: *c,
+            acceptance_rate: *r,
+        })
+        .collect();
     Ok(SuggestionStatsDto {
         total: stats.total,
         accepted: stats.accepted,
@@ -662,6 +694,8 @@ pub async fn get_suggestion_stats(
         deferred: stats.deferred,
         pending: stats.pending,
         acceptance_rate: (rate * 10.0).round() / 10.0,
+        by_type,
+        by_source,
     })
 }
 

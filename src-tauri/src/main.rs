@@ -299,6 +299,31 @@ fn main() {
     app.run(|app_handle, event| match event {
         RunEvent::Exit => {
             info!("Tauri exit: sending shutdown signal");
+
+            // Persist suggestion queue before shutdown (best-effort).
+            if let Some(srs) = app_handle.try_state::<runtime_state::SuggestionRuntimeState>() {
+                if let Some(ref mgr) = srs.manager() {
+                    let storage = mgr.storage();
+                    // Save pending queue items.
+                    if let Ok(queue) = mgr.queue().try_lock() {
+                        for suggestion in queue.iter() {
+                            let _ = storage.save_suggestion_with_state(suggestion, "pending", None);
+                        }
+                    }
+                    // Save deferred items with their resurface time.
+                    if let Ok(deferred) = mgr.deferred().try_lock() {
+                        for entry in deferred.list_deferred() {
+                            let resurface = entry.resurface_at.to_rfc3339();
+                            let _ = storage.save_suggestion_with_state(
+                                &entry.suggestion,
+                                "deferred",
+                                Some(&resurface),
+                            );
+                        }
+                    }
+                }
+            }
+
             if let Some(state) = app_handle.try_state::<runtime_state::AppState>() {
                 // Terminate all active AI sessions before shutdown.
                 if let Some(ai_session_state) =

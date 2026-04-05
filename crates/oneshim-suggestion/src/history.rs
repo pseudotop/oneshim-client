@@ -1,5 +1,5 @@
 use oneshim_core::models::suggestion::{FeedbackType, Suggestion};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone)]
 pub struct HistoryEntry {
@@ -62,6 +62,12 @@ impl SuggestionHistory {
         let mut deferred = 0u32;
         let mut pending = 0u32;
 
+        // Track counts per suggestion type
+        let mut type_counts: HashMap<String, u32> = HashMap::new();
+        // Track (total, accepted) per source
+        let mut source_totals: HashMap<String, u32> = HashMap::new();
+        let mut source_accepted: HashMap<String, u32> = HashMap::new();
+
         for entry in &self.entries {
             match &entry.feedback {
                 Some(FeedbackType::Accepted) => accepted += 1,
@@ -69,7 +75,35 @@ impl SuggestionHistory {
                 Some(FeedbackType::Deferred) => deferred += 1,
                 None => pending += 1,
             }
+
+            let type_key = format!("{:?}", entry.suggestion.suggestion_type);
+            *type_counts.entry(type_key).or_insert(0) += 1;
+
+            let source_key = format!("{:?}", entry.suggestion.source);
+            *source_totals.entry(source_key.clone()).or_insert(0) += 1;
+            if matches!(&entry.feedback, Some(FeedbackType::Accepted)) {
+                *source_accepted.entry(source_key).or_insert(0) += 1;
+            }
         }
+
+        // Sort type counts descending by count
+        let mut by_type: Vec<(String, u32)> = type_counts.into_iter().collect();
+        by_type.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Build source stats with acceptance rate
+        let mut by_source: Vec<(String, u32, f64)> = source_totals
+            .into_iter()
+            .map(|(source, total)| {
+                let acc = *source_accepted.get(&source).unwrap_or(&0);
+                let rate = if total > 0 {
+                    (acc as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                };
+                (source, total, (rate * 10.0).round() / 10.0)
+            })
+            .collect();
+        by_source.sort_by(|a, b| b.1.cmp(&a.1));
 
         HistoryStats {
             total: self.entries.len() as u32,
@@ -77,6 +111,8 @@ impl SuggestionHistory {
             rejected,
             deferred,
             pending,
+            by_type,
+            by_source,
         }
     }
 }
@@ -88,6 +124,10 @@ pub struct HistoryStats {
     pub rejected: u32,
     pub deferred: u32,
     pub pending: u32,
+    /// (type_name, count) sorted descending by count
+    pub by_type: Vec<(String, u32)>,
+    /// (source_name, total, acceptance_rate_percent) sorted descending by total
+    pub by_source: Vec<(String, u32, f64)>,
 }
 
 #[cfg(test)]

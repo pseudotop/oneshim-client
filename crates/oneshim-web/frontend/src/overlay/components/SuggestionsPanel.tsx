@@ -34,9 +34,18 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
   const [sourceFilter, setSourceFilter] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('suggestion-source-filter')
-      return saved ? new Set(JSON.parse(saved) as string[]) : new Set(['server', 'local'])
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[]
+        // Migrate: old filters without 'rule' get it appended
+        if (!parsed.includes('rule')) {
+          parsed.push('rule')
+          localStorage.setItem('suggestion-source-filter', JSON.stringify(parsed))
+        }
+        return new Set(parsed)
+      }
+      return new Set(['server', 'local', 'rule'])
     } catch {
-      return new Set(['server', 'local'])
+      return new Set(['server', 'local', 'rule'])
     }
   })
 
@@ -174,7 +183,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           <>
             {/* Source filter toggles */}
             <div className="flex gap-1.5 px-3 py-1.5">
-              {['server', 'local'].map((src) => (
+              {(['server', 'local', 'rule'] as const).map((src) => (
                 <button
                   key={src}
                   type="button"
@@ -186,7 +195,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                   )}
                   onClick={() => toggleSource(src)}
                 >
-                  {src === 'server' ? 'Server' : 'Local'}
+                  {src === 'server' ? 'Server' : src === 'local' ? 'Local' : 'Rules'}
                 </button>
               ))}
             </div>
