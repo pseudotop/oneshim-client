@@ -1,6 +1,6 @@
 # CLAUDE.md — client-rust
 
-ONESHIM Rust desktop client. 13-crate Cargo workspace, Hexagonal Architecture.
+ONESHIM Rust desktop client. 14-crate Cargo workspace, Hexagonal Architecture.
 
 ## Essential Commands
 
@@ -84,6 +84,7 @@ client-rust/
     ├── oneshim-embedding/  # Vector embedding + compression — INT8 quantization, similarity search
     ├── oneshim-lint/       # Workspace lint tool (language-check binary)
     ├── oneshim-api-contracts/ # Shared API type contracts
+    ├── oneshim-audio/      # Audio capture and speech-to-text — cpal + whisper-rs
     └── oneshim-app/        # ⚠️ DEPRECATED — removed from workspace (replaced by src-tauri)
 ```
 
@@ -98,10 +99,11 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-vision
               ←  oneshim-network
               ←  oneshim-storage
-              ←  oneshim-suggestion  ←  oneshim-network
+              ←  oneshim-suggestion
               ←  oneshim-automation
               ←  oneshim-analysis    ←  oneshim-core
               ←  oneshim-embedding   ←  oneshim-core
+              ←  oneshim-audio
               ←  oneshim-api-contracts
               ←  src-tauri           ←  (all, Tauri v2 main binary)
 
@@ -109,8 +111,6 @@ oneshim-lint     (standalone — no oneshim-core dependency)
 ```
 
 **Forbidden**: Direct dependency between adapter crates (e.g., monitor → storage). All cross-crate communication must go through `oneshim-core` traits.
-
-**Exceptions**: `suggestion → network` (SSE reception).
 
 **Accepted deviations**:
 - `AppState.storage: Arc<SqliteStorage>` uses concrete type (not `Arc<dyn T>`) because `SqliteStorage` implements 10+ disjoint port traits (`StorageService`, `MetricsStorage`, `WebStorage`, `FocusStorage`, `VectorStore`, etc.) — a single trait object cannot represent this.
@@ -400,7 +400,7 @@ Ports (Arc<dyn T>) created for the Scheduler should be shared with AppState, not
 
 ## Current Status
 
-- Phase 0-35 + Privacy & Permission Control System + Superpowers-era features completed (13 crates)
+- Phase 0-35 + Privacy & Permission Control System + Superpowers-era features completed (14 crates)
 - Current quality metrics (test counts, pass/fail, lint/build status) are maintained in `docs/STATUS.md` as the single source of truth
 - Actual adapters connected to all ports: `SmartCaptureTrigger`, `EdgeFrameProcessor`, `DesktopNotifierImpl`
 - Windows active window detection implemented (`windows-sys` + `sysinfo`)

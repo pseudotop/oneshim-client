@@ -124,16 +124,16 @@ impl SchedulerStorage for SqliteStorage {
         &self,
         limit: usize,
     ) -> Result<Vec<oneshim_core::models::weekly_digest::WeeklyDigest>, CoreError> {
-        use oneshim_core::ports::web_storage::WebStorage;
-        WebStorage::list_weekly_digests(self, limit)
+        use oneshim_core::ports::web_storage::DigestStorage;
+        DigestStorage::list_weekly_digests(self, limit)
     }
 
     fn save_weekly_digest(
         &self,
         digest: &oneshim_core::models::weekly_digest::WeeklyDigest,
     ) -> Result<(), CoreError> {
-        use oneshim_core::ports::web_storage::WebStorage;
-        WebStorage::save_weekly_digest(self, digest)
+        use oneshim_core::ports::web_storage::DigestStorage;
+        DigestStorage::save_weekly_digest(self, digest)
     }
 
     fn list_segments_between(
@@ -156,32 +156,32 @@ impl SchedulerStorage for SqliteStorage {
         &self,
         date: &str,
     ) -> Result<Option<oneshim_core::models::daily_digest::DailyDigest>, CoreError> {
-        use oneshim_core::ports::web_storage::WebStorage;
-        WebStorage::get_daily_digest(self, date)
+        use oneshim_core::ports::web_storage::DigestStorage;
+        DigestStorage::get_daily_digest(self, date)
     }
 
     fn save_daily_digest(
         &self,
         digest: &oneshim_core::models::daily_digest::DailyDigest,
     ) -> Result<(), CoreError> {
-        use oneshim_core::ports::web_storage::WebStorage;
-        WebStorage::save_daily_digest(self, digest)
+        use oneshim_core::ports::web_storage::DigestStorage;
+        DigestStorage::save_daily_digest(self, digest)
     }
 
     fn get_segments_for_date(
         &self,
         date: &str,
     ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError> {
-        use oneshim_core::ports::web_storage::WebStorage;
-        WebStorage::get_segments_for_date(self, date)
+        use oneshim_core::ports::web_storage::DigestStorage;
+        DigestStorage::get_segments_for_date(self, date)
     }
 
     fn save_gui_interaction(
         &self,
         input: &oneshim_core::models::storage_records::NewGuiInteraction<'_>,
     ) -> Result<(), CoreError> {
-        use oneshim_core::ports::web_storage::WebStorage;
-        WebStorage::save_gui_interaction(self, input)
+        use oneshim_core::ports::web_storage::GuiInteractionStorage;
+        GuiInteractionStorage::save_gui_interaction(self, input)
     }
 
     fn enforce_all_retention(&self) -> Result<u64, CoreError> {

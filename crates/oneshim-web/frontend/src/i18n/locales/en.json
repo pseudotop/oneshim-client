@@ -557,7 +557,15 @@
     "low": "Low",
     "high": "High",
     "loadError": "Failed to load data",
-    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "days": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "activity": "Activity"
   },
   "dateRange": {
@@ -1374,5 +1382,27 @@
     "comingSoon": "Coming soon",
     "ocr": "OCR",
     "focus": "Focus"
+  },
+  "syncTab": {
+    "loading": "Loading sync status...",
+    "title": "Cross-Device Sync",
+    "notEnabled": "Sync is not enabled. To activate cross-device sync:",
+    "step1": "Set",
+    "step1Suffix": "in config",
+    "step2": "Set the",
+    "step2Suffix": "environment variable",
+    "step3": "Choose a transport (File, Remote, or LAN) in sync settings",
+    "step4": "Restart the application",
+    "thisDevice": "This Device",
+    "deviceName": "Name",
+    "deviceId": "ID",
+    "syncNow": "Sync Now",
+    "syncing": "Syncing...",
+    "applied": "Applied",
+    "skipped": "Skipped",
+    "discoveredPeers": "Discovered Peers",
+    "noPeers": "No peers discovered yet. Ensure other devices are on the same network with sync enabled.",
+    "lastSync": "Last",
+    "neverSynced": "Never synced"
   }
 }

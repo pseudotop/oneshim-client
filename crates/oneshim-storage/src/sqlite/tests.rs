@@ -427,7 +427,7 @@ fn daily_digest_save_and_get_roundtrip() {
     use oneshim_core::models::daily_digest::{
         DailyDigest, DailyInsight, DailyStatistics, DigestHighlight, HighlightType,
     };
-    use oneshim_core::ports::web_storage::WebStorage;
+    use oneshim_core::ports::web_storage::DigestStorage;
 
     let storage = SqliteStorage::open_in_memory(30).unwrap();
     let today = Utc::now().date_naive();
@@ -467,7 +467,7 @@ fn daily_digest_save_and_get_roundtrip() {
 fn daily_digest_list_ordering() {
     use chrono::Days;
     use oneshim_core::models::daily_digest::{DailyDigest, DailyStatistics};
-    use oneshim_core::ports::web_storage::WebStorage;
+    use oneshim_core::ports::web_storage::DigestStorage;
 
     let storage = SqliteStorage::open_in_memory(30).unwrap();
     let today = Utc::now().date_naive();
@@ -493,7 +493,7 @@ fn daily_digest_list_ordering() {
 
 #[test]
 fn daily_digest_get_nonexistent_returns_none() {
-    use oneshim_core::ports::web_storage::WebStorage;
+    use oneshim_core::ports::web_storage::DigestStorage;
 
     let storage = SqliteStorage::open_in_memory(30).unwrap();
     let result = storage.get_daily_digest("2020-01-01").unwrap();

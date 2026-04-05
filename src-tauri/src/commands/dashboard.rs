@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use tauri::command;
 
 use crate::runtime_state::AppState;
-use oneshim_core::ports::web_storage::WebStorage;
+use oneshim_core::ports::web_storage::DigestStorage;
 
 // ── Semantic search IPC commands ──────────────────────────────
 
