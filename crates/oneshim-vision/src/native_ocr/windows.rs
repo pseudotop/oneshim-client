@@ -4,7 +4,7 @@
 //! dependencies — uses the OS-shipped language packs from the user profile.
 //!
 //! WinRT async operations (`IAsyncOperation`) are resolved synchronously
-//! via `.get()` inside a `spawn_blocking` context. The `windows` crate
+//! via `.GetResults()` inside a `spawn_blocking` context. The `windows` crate
 //! auto-initializes COM MTA on first WinRT factory activation.
 
 use async_trait::async_trait;
@@ -34,12 +34,12 @@ impl WindowsNativeOcr {
             writer
                 .StoreAsync()
                 .map_err(|e| CoreError::Internal(format!("StoreAsync failed: {e}")))?
-                .get()
+                .GetResults()
                 .map_err(|e| CoreError::Internal(format!("StoreAsync get failed: {e}")))?;
             writer
                 .FlushAsync()
                 .map_err(|e| CoreError::Internal(format!("FlushAsync failed: {e}")))?
-                .get()
+                .GetResults()
                 .map_err(|e| CoreError::Internal(format!("FlushAsync get failed: {e}")))?;
             writer
                 .DetachStream()
@@ -53,20 +53,20 @@ impl WindowsNativeOcr {
 
         let decoder = windows::Graphics::Imaging::BitmapDecoder::CreateAsync(&stream)
             .map_err(|e| CoreError::Internal(format!("BitmapDecoder failed: {e}")))?
-            .get()
+            .GetResults()
             .map_err(|e| CoreError::Internal(format!("BitmapDecoder get failed: {e}")))?;
 
         let bitmap = decoder
             .GetSoftwareBitmapAsync()
             .map_err(|e| CoreError::Internal(format!("GetSoftwareBitmap failed: {e}")))?
-            .get()
+            .GetResults()
             .map_err(|e| CoreError::Internal(format!("GetSoftwareBitmap get failed: {e}")))?;
 
         // 3. Run OCR
         let ocr_result = engine
             .RecognizeAsync(&bitmap)
             .map_err(|e| CoreError::Internal(format!("RecognizeAsync failed: {e}")))?
-            .get()
+            .GetResults()
             .map_err(|e| CoreError::Internal(format!("RecognizeAsync get failed: {e}")))?;
 
         // 4. Extract results — iterate lines → words with bounding rectangles
