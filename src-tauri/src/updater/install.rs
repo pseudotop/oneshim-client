@@ -185,7 +185,11 @@ impl Updater {
     pub(super) fn sha256_hex(bytes: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(bytes);
-        format!("{:x}", hasher.finalize())
+        hasher.finalize().iter().fold(String::new(), |mut acc, b| {
+            use std::fmt::Write as _;
+            let _ = write!(acc, "{b:02x}");
+            acc
+        })
     }
 
     pub(super) fn validate_download_url(&self, url: &str) -> Result<reqwest::Url, UpdateError> {

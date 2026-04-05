@@ -6,7 +6,7 @@
 //! 3. Salt is deterministic: SHA256(sort(device_id_a, device_id_b)) truncated to 16 bytes.
 //! 4. Server verifies by computing the same HMAC.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
 use oneshim_core::error::CoreError;
