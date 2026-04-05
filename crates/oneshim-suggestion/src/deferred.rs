@@ -64,6 +64,28 @@ impl DeferredManager {
             .position(|e| e.suggestion.suggestion_id == suggestion_id)?;
         self.items.remove(pos).map(|e| e.suggestion)
     }
+
+    /// Bulk-restore deferred entries from storage. Items past their resurface
+    /// time are returned for immediate re-queue; the rest are inserted.
+    pub fn restore(
+        &mut self,
+        entries: Vec<(Suggestion, DateTime<Utc>, DateTime<Utc>)>,
+    ) -> Vec<Suggestion> {
+        let now = Utc::now();
+        let mut already_due = Vec::new();
+        for (suggestion, deferred_at, resurface_at) in entries {
+            if resurface_at <= now {
+                already_due.push(suggestion);
+            } else if self.items.len() < self.max_size {
+                self.items.push_back(DeferredEntry {
+                    suggestion,
+                    deferred_at,
+                    resurface_at,
+                });
+            }
+        }
+        already_due
+    }
 }
 
 #[cfg(test)]
@@ -140,5 +162,53 @@ mod tests {
     fn cancel_nonexistent_returns_none() {
         let mut mgr = DeferredManager::new(50);
         assert!(mgr.cancel("nope").is_none());
+    }
+
+    #[test]
+    fn test_restore_future_items() {
+        let mut mgr = DeferredManager::new(50);
+        let now = Utc::now();
+        let entries = vec![
+            (make_suggestion("r1"), now, now + Duration::hours(1)),
+            (make_suggestion("r2"), now, now + Duration::hours(2)),
+        ];
+        let due = mgr.restore(entries);
+        assert!(due.is_empty());
+        assert_eq!(mgr.pending_count(), 2);
+    }
+
+    #[test]
+    fn test_restore_past_items() {
+        let mut mgr = DeferredManager::new(50);
+        let now = Utc::now();
+        let entries = vec![
+            (
+                make_suggestion("r1"),
+                now - Duration::hours(2),
+                now - Duration::hours(1),
+            ),
+            (
+                make_suggestion("r2"),
+                now - Duration::hours(3),
+                now - Duration::minutes(1),
+            ),
+        ];
+        let due = mgr.restore(entries);
+        assert_eq!(due.len(), 2);
+        assert_eq!(mgr.pending_count(), 0);
+    }
+
+    #[test]
+    fn test_restore_max_size() {
+        let mut mgr = DeferredManager::new(2);
+        let now = Utc::now();
+        let entries = vec![
+            (make_suggestion("r1"), now, now + Duration::hours(1)),
+            (make_suggestion("r2"), now, now + Duration::hours(2)),
+            (make_suggestion("r3"), now, now + Duration::hours(3)),
+        ];
+        let due = mgr.restore(entries);
+        assert!(due.is_empty());
+        assert_eq!(mgr.pending_count(), 2);
     }
 }

@@ -203,6 +203,7 @@ impl SqliteStorage {
                     acted_at: row.get(12)?,
                     created_at: row.get(13)?,
                     expires_at: row.get(14)?,
+                    resurface_at: None,
                 })
             })
             .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
@@ -400,7 +401,7 @@ impl SqliteStorage {
             .prepare(
                 "SELECT id, suggestion_id, suggestion_type, source, content, priority, \
                  confidence_score, relevance_score, is_actionable, reasoning, \
-                 shown_at, dismissed_at, acted_at, created_at, expires_at \
+                 shown_at, dismissed_at, acted_at, created_at, expires_at, resurface_at \
                  FROM suggestions WHERE state = ?1 \
                  ORDER BY created_at DESC LIMIT ?2",
             )
@@ -424,6 +425,7 @@ impl SqliteStorage {
                     acted_at: row.get(12)?,
                     created_at: row.get(13)?,
                     expires_at: row.get(14)?,
+                    resurface_at: row.get(15)?,
                 })
             })
             .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
@@ -434,6 +436,83 @@ impl SqliteStorage {
                 .push(row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
+    }
+
+    /// Persist a pending feedback for retry after app restart.
+    pub fn save_pending_feedback(
+        &self,
+        record: &oneshim_core::models::storage_records::PendingFeedbackRecord,
+    ) -> Result<(), StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO feedback_retries \
+             (suggestion_id, feedback_type, comment, attempts, next_retry_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                record.suggestion_id,
+                record.feedback_type,
+                record.comment,
+                record.attempts,
+                record.next_retry_at,
+            ],
+        )
+        .map_err(|e| StorageError::Internal(format!("Failed to save pending feedback: {e}")))?;
+        Ok(())
+    }
+
+    /// List pending feedbacks for retry queue restoration on startup.
+    pub fn list_pending_feedbacks(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<oneshim_core::models::storage_records::PendingFeedbackRecord>, StorageError>
+    {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, suggestion_id, feedback_type, comment, attempts, next_retry_at, created_at \
+                 FROM feedback_retries ORDER BY created_at ASC LIMIT ?1",
+            )
+            .map_err(|e| StorageError::Internal(format!("prepare failure: {e}")))?;
+        let rows = stmt
+            .query_map(rusqlite::params![limit as i64], |row| {
+                Ok(
+                    oneshim_core::models::storage_records::PendingFeedbackRecord {
+                        id: Some(row.get(0)?),
+                        suggestion_id: row.get(1)?,
+                        feedback_type: row.get(2)?,
+                        comment: row.get(3)?,
+                        attempts: row.get(4)?,
+                        next_retry_at: row.get(5)?,
+                        created_at: row.get(6)?,
+                    },
+                )
+            })
+            .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row.map_err(|e| StorageError::Internal(format!("row failure: {e}")))?);
+        }
+        Ok(records)
+    }
+
+    /// Delete a pending feedback after successful retry or exhaustion.
+    pub fn delete_pending_feedback(&self, suggestion_id: &str) -> Result<(), StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+        conn.execute(
+            "DELETE FROM feedback_retries WHERE suggestion_id = ?1",
+            rusqlite::params![suggestion_id],
+        )
+        .map_err(|e| StorageError::Internal(format!("Failed to delete pending feedback: {e}")))?;
+        Ok(())
     }
 
     #[allow(deprecated)]

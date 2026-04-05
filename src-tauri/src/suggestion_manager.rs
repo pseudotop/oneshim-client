@@ -1,4 +1,5 @@
 use lru::LruCache;
+use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_suggestion::deferred::DeferredManager;
 use oneshim_suggestion::feedback::FeedbackSender;
 use oneshim_suggestion::feedback_retry::FeedbackRetryQueue;
@@ -27,6 +28,7 @@ pub struct SuggestionManager {
     scorer: Arc<Mutex<FeedbackScorer>>,
     deferred: Arc<Mutex<DeferredManager>>,
     retry_queue: Arc<Mutex<FeedbackRetryQueue>>,
+    storage: Arc<SqliteStorage>,
 }
 
 #[allow(dead_code)] // wired in app_runtime_launch
@@ -38,6 +40,7 @@ impl SuggestionManager {
         scorer: Arc<Mutex<FeedbackScorer>>,
         deferred: Arc<Mutex<DeferredManager>>,
         retry_queue: Arc<Mutex<FeedbackRetryQueue>>,
+        storage: Arc<SqliteStorage>,
     ) -> Self {
         Self {
             queue,
@@ -49,6 +52,7 @@ impl SuggestionManager {
             scorer,
             deferred,
             retry_queue,
+            storage,
         }
     }
 
@@ -74,6 +78,10 @@ impl SuggestionManager {
 
     pub fn scorer(&self) -> &Arc<Mutex<FeedbackScorer>> {
         &self.scorer
+    }
+
+    pub fn storage(&self) -> &Arc<SqliteStorage> {
+        &self.storage
     }
 
     pub async fn mark_read(&self, suggestion_id: &str) {

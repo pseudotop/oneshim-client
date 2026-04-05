@@ -1,3 +1,4 @@
+use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_suggestion::deferred::DeferredManager;
 use oneshim_suggestion::feedback::FeedbackSender;
 use oneshim_suggestion::feedback_retry::FeedbackRetryQueue;
@@ -71,6 +72,7 @@ pub(crate) fn spawn_suggestion_maintenance_loop(
     deferred: Arc<Mutex<DeferredManager>>,
     retry_queue: Arc<Mutex<FeedbackRetryQueue>>,
     feedback: Arc<FeedbackSender>,
+    storage: Arc<SqliteStorage>,
     on_change: Option<Arc<dyn Fn(usize) + Send + Sync>>,
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
@@ -125,22 +127,32 @@ pub(crate) fn spawn_suggestion_maintenance_loop(
                             .await
                     }
                 };
-                if let Err(e) = result {
-                    let mut rq = retry_queue.lock().await;
-                    if rq.is_exhausted(&pending) {
-                        warn!(
-                            suggestion_id = %pending.suggestion_id,
-                            attempts = pending.attempts,
-                            "feedback retry exhausted"
-                        );
-                        rq.drop_exhausted(&pending.suggestion_id);
-                    } else {
-                        info!(
-                            suggestion_id = %pending.suggestion_id,
-                            attempt = pending.attempts + 1,
-                            "feedback retry failed: {e}"
-                        );
-                        rq.retry_failed(pending);
+                match result {
+                    Ok(()) => {
+                        // Cleanup persisted retry on success
+                        if let Err(e) = storage.delete_pending_feedback(&pending.suggestion_id) {
+                            warn!("failed to clean up persisted feedback: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        let mut rq = retry_queue.lock().await;
+                        if rq.is_exhausted(&pending) {
+                            warn!(
+                                suggestion_id = %pending.suggestion_id,
+                                attempts = pending.attempts,
+                                "feedback retry exhausted"
+                            );
+                            rq.drop_exhausted(&pending.suggestion_id);
+                            // Also clean up persisted row
+                            let _ = storage.delete_pending_feedback(&pending.suggestion_id);
+                        } else {
+                            info!(
+                                suggestion_id = %pending.suggestion_id,
+                                attempt = pending.attempts + 1,
+                                "feedback retry failed: {e}"
+                            );
+                            rq.retry_failed(pending);
+                        }
                     }
                 }
             }
