@@ -640,3 +640,502 @@ async fn concurrent_push_pull_no_data_loss() {
     a.stop();
     b.stop();
 }
+
+// -----------------------------------------------------------------------
+// Conflict Resolution Tests
+// -----------------------------------------------------------------------
+
+/// Helper to create a changeset carrying a specific record in a named table.
+///
+/// The record payload includes a `record_id` for identification and a `value`
+/// field to distinguish versions from different devices.
+fn changeset_with_record(
+    origin: &str,
+    wall_ms: u64,
+    counter: u32,
+    record_id: &str,
+    value: &str,
+) -> ChangeSet {
+    ChangeSet {
+        kind: ChangeSetKind::Data,
+        origin_device_id: origin.to_string(),
+        origin_device_name: format!("Device {origin}"),
+        watermark: Hlc {
+            wall_ms,
+            counter,
+            device_id: origin.to_string(),
+        },
+        segments: vec![serde_json::json!({
+            "record_id": record_id,
+            "value": value,
+            "hlc_wall_ms": wall_ms,
+            "hlc_counter": counter,
+        })],
+        ..Default::default()
+    }
+}
+
+/// Two devices push conflicting versions of the same record to a shared
+/// server. A puller then reads back the merged result and verifies that
+/// the higher-HLC version wins.
+///
+/// Flow:
+///   1. Start a "hub" server and two transports (A, B) that both know the hub.
+///   2. Device A pushes record X with HLC (wall_ms=100, counter=1).
+///   3. Device B pushes record X with HLC (wall_ms=200, counter=1).
+///   4. The hub now holds both changesets in its received queue.
+///   5. Hub enqueues both as outbound for a consumer to pull.
+///   6. Consumer pulls and gets a merged changeset whose watermark is
+///      the higher of the two (wall_ms=200). Both record versions are
+///      present in the merged segments so the application-layer merger
+///      (ChangeMerger) can apply LWW.
+#[tokio::test]
+async fn conflict_resolution_higher_hlc_wins_on_pull() {
+    let passphrase = "conflict-test-pass";
+
+    // Start a hub server that both devices will push to
+    let hub = LanSyncTransport::start(
+        "hub".to_string(),
+        "Hub".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-hub".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    let hub_port = hub.server_port();
+
+    let hub_peer = LanPeerInfo {
+        device_id: "hub".to_string(),
+        device_name: "Hub".to_string(),
+        host: "127.0.0.1".to_string(),
+        port: hub_port,
+        fingerprint: "fp-hub".to_string(),
+        version: "1".to_string(),
+    };
+
+    // Start device A and inject hub as a peer
+    let dev_a = LanSyncTransport::start(
+        "dev-a".to_string(),
+        "Device A".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-a".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    dev_a
+        .verified_peers
+        .write()
+        .insert("hub".to_string(), hub_peer.clone());
+
+    // Start device B and inject hub as a peer
+    let dev_b = LanSyncTransport::start(
+        "dev-b".to_string(),
+        "Device B".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-b".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    dev_b
+        .verified_peers
+        .write()
+        .insert("hub".to_string(), hub_peer.clone());
+
+    tokio::task::yield_now().await;
+
+    // Device A pushes record X at HLC(100, 1)
+    let cs_a = changeset_with_record("dev-a", 100, 1, "record-X", "value-from-A");
+    dev_a.push(&cs_a).await.unwrap();
+
+    // Device B pushes record X at HLC(200, 1) -- higher wall_ms wins
+    let cs_b = changeset_with_record("dev-b", 200, 1, "record-X", "value-from-B");
+    dev_b.push(&cs_b).await.unwrap();
+
+    // Hub received both pushes
+    let received = hub.drain_received();
+    assert_eq!(received.len(), 2, "hub should have received 2 changesets");
+
+    // Verify one is from A (HLC=100) and the other from B (HLC=200)
+    let from_a = received
+        .iter()
+        .find(|cs| cs.origin_device_id == "dev-a")
+        .expect("should find changeset from dev-a");
+    let from_b = received
+        .iter()
+        .find(|cs| cs.origin_device_id == "dev-b")
+        .expect("should find changeset from dev-b");
+    assert_eq!(from_a.watermark.wall_ms, 100);
+    assert_eq!(from_b.watermark.wall_ms, 200);
+
+    // Hub enqueues both as outbound for a consumer to pull.
+    // The one with the lower HLC goes first to simulate natural order.
+    hub.enqueue_outbound(from_a.clone());
+    hub.enqueue_outbound(from_b.clone());
+
+    // Start a consumer that pulls from the hub
+    let consumer = LanSyncTransport::start(
+        "consumer".to_string(),
+        "Consumer".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-cons".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    consumer
+        .verified_peers
+        .write()
+        .insert("hub".to_string(), hub_peer);
+
+    tokio::task::yield_now().await;
+
+    // Pull everything from the hub (since HLC epoch)
+    let pulled = consumer.pull(&Hlc::default()).await.unwrap();
+    assert!(pulled.is_some(), "consumer should receive merged changeset");
+
+    let merged = pulled.unwrap();
+
+    // The merged changeset's watermark should be the higher HLC (B's: 200)
+    assert_eq!(
+        merged.watermark.wall_ms, 200,
+        "merged watermark should adopt the higher HLC (200 from dev-b)"
+    );
+
+    // Both record versions should be present in segments so the
+    // application-layer ChangeMerger can apply LWW resolution.
+    assert_eq!(
+        merged.segments.len(),
+        2,
+        "merged segments should contain both record versions"
+    );
+
+    // Verify both values are present
+    let values: Vec<&str> = merged
+        .segments
+        .iter()
+        .filter_map(|s| s.get("value").and_then(|v| v.as_str()))
+        .collect();
+    assert!(
+        values.contains(&"value-from-A"),
+        "should contain A's record version"
+    );
+    assert!(
+        values.contains(&"value-from-B"),
+        "should contain B's record version"
+    );
+
+    // The consumer can now apply LWW: for records with the same record_id,
+    // the version with the higher HLC wins. We verify the HLC ordering holds.
+    let hlc_a = Hlc {
+        wall_ms: 100,
+        counter: 1,
+        device_id: "dev-a".to_string(),
+    };
+    let hlc_b = Hlc {
+        wall_ms: 200,
+        counter: 1,
+        device_id: "dev-b".to_string(),
+    };
+    assert!(
+        hlc_b.is_after(&hlc_a),
+        "HLC(200) should be causally after HLC(100)"
+    );
+
+    dev_a.stop();
+    dev_b.stop();
+    hub.stop();
+    consumer.stop();
+}
+
+/// Same record pushed by two devices with identical wall_ms but different
+/// counters. Verifies that the counter acts as the tiebreaker.
+#[tokio::test]
+async fn conflict_resolution_counter_tiebreaker() {
+    let passphrase = "counter-tie-pass";
+
+    let hub = LanSyncTransport::start(
+        "hub-ctr".to_string(),
+        "Hub".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-hub-ctr".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    let hub_port = hub.server_port();
+
+    let hub_peer = LanPeerInfo {
+        device_id: "hub-ctr".to_string(),
+        device_name: "Hub".to_string(),
+        host: "127.0.0.1".to_string(),
+        port: hub_port,
+        fingerprint: "fp-hub-ctr".to_string(),
+        version: "1".to_string(),
+    };
+
+    // Device A: record X at HLC(500, 3)
+    let dev_a = LanSyncTransport::start(
+        "ctr-a".to_string(),
+        "Device A".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-ctr-a".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    dev_a
+        .verified_peers
+        .write()
+        .insert("hub-ctr".to_string(), hub_peer.clone());
+
+    // Device B: record X at HLC(500, 7) -- same wall_ms, higher counter
+    let dev_b = LanSyncTransport::start(
+        "ctr-b".to_string(),
+        "Device B".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-ctr-b".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    dev_b
+        .verified_peers
+        .write()
+        .insert("hub-ctr".to_string(), hub_peer.clone());
+
+    tokio::task::yield_now().await;
+
+    let cs_a = changeset_with_record("ctr-a", 500, 3, "record-Y", "version-A");
+    dev_a.push(&cs_a).await.unwrap();
+
+    let cs_b = changeset_with_record("ctr-b", 500, 7, "record-Y", "version-B");
+    dev_b.push(&cs_b).await.unwrap();
+
+    let received = hub.drain_received();
+    assert_eq!(received.len(), 2);
+
+    // Enqueue both as outbound (lower counter first)
+    let lower_first = if received[0].watermark.counter <= received[1].watermark.counter {
+        vec![received[0].clone(), received[1].clone()]
+    } else {
+        vec![received[1].clone(), received[0].clone()]
+    };
+    for cs in lower_first {
+        hub.enqueue_outbound(cs);
+    }
+
+    // Consumer pulls the merged result
+    let consumer = LanSyncTransport::start(
+        "cons-ctr".to_string(),
+        "Consumer".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-cons-ctr".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    consumer
+        .verified_peers
+        .write()
+        .insert("hub-ctr".to_string(), hub_peer);
+
+    tokio::task::yield_now().await;
+
+    let pulled = consumer.pull(&Hlc::default()).await.unwrap();
+    assert!(pulled.is_some());
+
+    let merged = pulled.unwrap();
+
+    // Merged watermark should have the higher counter (7)
+    assert_eq!(merged.watermark.wall_ms, 500);
+    assert_eq!(
+        merged.watermark.counter, 7,
+        "merged watermark counter should be 7 (higher counter wins)"
+    );
+
+    // Both versions present for LWW resolution
+    assert_eq!(merged.segments.len(), 2);
+
+    // Verify HLC ordering: counter=7 > counter=3 when wall_ms is equal
+    let hlc_low = Hlc {
+        wall_ms: 500,
+        counter: 3,
+        device_id: "ctr-a".to_string(),
+    };
+    let hlc_high = Hlc {
+        wall_ms: 500,
+        counter: 7,
+        device_id: "ctr-b".to_string(),
+    };
+    assert!(
+        hlc_high.is_after(&hlc_low),
+        "HLC(500,7) should be causally after HLC(500,3)"
+    );
+
+    dev_a.stop();
+    dev_b.stop();
+    hub.stop();
+    consumer.stop();
+}
+
+/// Same record pushed with identical wall_ms and counter. The device_id
+/// string acts as the final lexicographic tiebreaker.
+#[tokio::test]
+async fn conflict_resolution_device_id_tiebreaker() {
+    let passphrase = "devid-tie-pass";
+
+    let hub = LanSyncTransport::start(
+        "hub-did".to_string(),
+        "Hub".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-hub-did".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    let hub_port = hub.server_port();
+
+    let hub_peer = LanPeerInfo {
+        device_id: "hub-did".to_string(),
+        device_name: "Hub".to_string(),
+        host: "127.0.0.1".to_string(),
+        port: hub_port,
+        fingerprint: "fp-hub-did".to_string(),
+        version: "1".to_string(),
+    };
+
+    // Device "aaa": record X at HLC(300, 1, "aaa")
+    let dev_aaa = LanSyncTransport::start(
+        "aaa".to_string(),
+        "Device AAA".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-aaa".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    dev_aaa
+        .verified_peers
+        .write()
+        .insert("hub-did".to_string(), hub_peer.clone());
+
+    // Device "zzz": record X at HLC(300, 1, "zzz") -- same wall+counter, higher device_id
+    let dev_zzz = LanSyncTransport::start(
+        "zzz".to_string(),
+        "Device ZZZ".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-zzz".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    dev_zzz
+        .verified_peers
+        .write()
+        .insert("hub-did".to_string(), hub_peer.clone());
+
+    tokio::task::yield_now().await;
+
+    let cs_aaa = changeset_with_record("aaa", 300, 1, "record-Z", "from-aaa");
+    dev_aaa.push(&cs_aaa).await.unwrap();
+
+    let cs_zzz = changeset_with_record("zzz", 300, 1, "record-Z", "from-zzz");
+    dev_zzz.push(&cs_zzz).await.unwrap();
+
+    let received = hub.drain_received();
+    assert_eq!(received.len(), 2);
+
+    for cs in &received {
+        hub.enqueue_outbound(cs.clone());
+    }
+
+    let consumer = LanSyncTransport::start(
+        "cons-did".to_string(),
+        "Consumer".to_string(),
+        passphrase.to_string(),
+        b"cert".to_vec(),
+        b"key".to_vec(),
+        "fp-cons-did".to_string(),
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    consumer
+        .verified_peers
+        .write()
+        .insert("hub-did".to_string(), hub_peer);
+
+    tokio::task::yield_now().await;
+
+    let pulled = consumer.pull(&Hlc::default()).await.unwrap();
+    assert!(pulled.is_some());
+    let merged = pulled.unwrap();
+
+    // Both segments present
+    assert_eq!(merged.segments.len(), 2);
+
+    // Verify HLC ordering: "zzz" > "aaa" when wall_ms and counter are equal
+    let hlc_aaa = Hlc {
+        wall_ms: 300,
+        counter: 1,
+        device_id: "aaa".to_string(),
+    };
+    let hlc_zzz = Hlc {
+        wall_ms: 300,
+        counter: 1,
+        device_id: "zzz".to_string(),
+    };
+    assert!(
+        hlc_zzz.is_after(&hlc_aaa),
+        "HLC with device_id 'zzz' should be after 'aaa' (lexicographic tiebreaker)"
+    );
+
+    // The merged watermark uses wall_ms/counter comparison only (no device_id),
+    // so it picks whichever was later in iteration order. Both are valid since
+    // the application layer will compare full HLCs per record. The important
+    // invariant is that both records are present.
+    assert_eq!(merged.watermark.wall_ms, 300);
+    assert_eq!(merged.watermark.counter, 1);
+
+    dev_aaa.stop();
+    dev_zzz.stop();
+    hub.stop();
+    consumer.stop();
+}

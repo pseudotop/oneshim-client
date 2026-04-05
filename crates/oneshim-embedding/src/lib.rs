@@ -20,6 +20,8 @@
 pub mod error;
 pub use error::EmbeddingError;
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
@@ -231,10 +233,17 @@ pub use stub_impl::LocalEmbeddingProvider;
 
 // ── Fallback chaining provider ────────────────────────────────────────────
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 /// Chains two embedding providers: tries primary first, falls back on error.
+///
+/// Tracks per-request health of the primary provider via an `AtomicBool`.
+/// Callers holding the concrete type can inspect `is_primary_healthy()` to
+/// decide whether to surface degraded-mode indicators in the UI or logs.
 pub struct FallbackEmbeddingProvider {
     primary: std::sync::Arc<dyn EmbeddingProvider>,
     fallback: std::sync::Arc<dyn EmbeddingProvider>,
+    primary_healthy: Arc<AtomicBool>,
 }
 
 impl FallbackEmbeddingProvider {
@@ -242,7 +251,16 @@ impl FallbackEmbeddingProvider {
         primary: std::sync::Arc<dyn EmbeddingProvider>,
         fallback: std::sync::Arc<dyn EmbeddingProvider>,
     ) -> Self {
-        Self { primary, fallback }
+        Self {
+            primary,
+            fallback,
+            primary_healthy: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    /// Returns `true` when the most recent primary embed call succeeded.
+    pub fn is_primary_healthy(&self) -> bool {
+        self.primary_healthy.load(Ordering::Relaxed)
     }
 }
 
@@ -250,8 +268,12 @@ impl FallbackEmbeddingProvider {
 impl EmbeddingProvider for FallbackEmbeddingProvider {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, CoreError> {
         match self.primary.embed(text).await {
-            Ok(v) => Ok(v),
+            Ok(v) => {
+                self.primary_healthy.store(true, Ordering::Relaxed);
+                Ok(v)
+            }
             Err(e) => {
+                self.primary_healthy.store(false, Ordering::Relaxed);
                 tracing::warn!("primary embedding failed, trying fallback: {e}");
                 self.fallback.embed(text).await
             }
@@ -260,8 +282,12 @@ impl EmbeddingProvider for FallbackEmbeddingProvider {
 
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
         match self.primary.embed_batch(texts).await {
-            Ok(v) => Ok(v),
+            Ok(v) => {
+                self.primary_healthy.store(true, Ordering::Relaxed);
+                Ok(v)
+            }
             Err(e) => {
+                self.primary_healthy.store(false, Ordering::Relaxed);
                 tracing::warn!("primary batch embedding failed, trying fallback: {e}");
                 self.fallback.embed_batch(texts).await
             }
@@ -741,6 +767,120 @@ mod tests {
 
             let batch_result = provider.embed_batch(&["a".to_owned()]).await;
             assert!(batch_result.is_err());
+        }
+
+        // ── Health tracking tests ────────────────────────────────────────
+
+        /// Mock provider whose success/failure can be toggled at runtime.
+        struct ToggleProvider {
+            should_fail: std::sync::Arc<AtomicBool>,
+            value: f32,
+            dims: usize,
+        }
+
+        #[async_trait]
+        impl EmbeddingProvider for ToggleProvider {
+            async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
+                if self.should_fail.load(Ordering::Relaxed) {
+                    Err(CoreError::Internal("toggle: failing".into()))
+                } else {
+                    Ok(vec![self.value; self.dims])
+                }
+            }
+
+            async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
+                if self.should_fail.load(Ordering::Relaxed) {
+                    Err(CoreError::Internal("toggle: batch failing".into()))
+                } else {
+                    Ok(texts.iter().map(|_| vec![self.value; self.dims]).collect())
+                }
+            }
+
+            fn dimensions(&self) -> usize {
+                self.dims
+            }
+
+            fn model_id(&self) -> &str {
+                "toggle-mock"
+            }
+        }
+
+        #[tokio::test]
+        async fn health_starts_true() {
+            let primary: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 1.0,
+                dims: 4,
+            });
+            let fallback: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 2.0,
+                dims: 4,
+            });
+            let provider = FallbackEmbeddingProvider::new(primary, fallback);
+            assert!(provider.is_primary_healthy());
+        }
+
+        #[tokio::test]
+        async fn health_false_after_primary_failure() {
+            let primary: Arc<dyn EmbeddingProvider> = Arc::new(ErrProvider);
+            let fallback: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 2.0,
+                dims: 4,
+            });
+            let provider = FallbackEmbeddingProvider::new(primary, fallback);
+
+            let _ = provider.embed("hello").await;
+            assert!(!provider.is_primary_healthy());
+        }
+
+        #[tokio::test]
+        async fn health_recovers_after_primary_succeeds_again() {
+            let should_fail = std::sync::Arc::new(AtomicBool::new(true));
+            let primary: Arc<dyn EmbeddingProvider> = Arc::new(ToggleProvider {
+                should_fail: Arc::clone(&should_fail),
+                value: 1.0,
+                dims: 4,
+            });
+            let fallback: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 9.0,
+                dims: 4,
+            });
+            let provider = FallbackEmbeddingProvider::new(primary, fallback);
+
+            // Primary fails — health should be false.
+            let result = provider.embed("first").await.unwrap();
+            assert_eq!(result, vec![9.0; 4], "should use fallback value");
+            assert!(!provider.is_primary_healthy());
+
+            // Primary recovers — health should flip back to true.
+            should_fail.store(false, Ordering::Relaxed);
+            let result = provider.embed("second").await.unwrap();
+            assert_eq!(result, vec![1.0; 4], "should use primary value");
+            assert!(provider.is_primary_healthy());
+        }
+
+        #[tokio::test]
+        async fn health_tracks_batch_calls() {
+            let should_fail = std::sync::Arc::new(AtomicBool::new(false));
+            let primary: Arc<dyn EmbeddingProvider> = Arc::new(ToggleProvider {
+                should_fail: Arc::clone(&should_fail),
+                value: 3.0,
+                dims: 2,
+            });
+            let fallback: Arc<dyn EmbeddingProvider> = Arc::new(OkProvider {
+                value: 7.0,
+                dims: 2,
+            });
+            let provider = FallbackEmbeddingProvider::new(primary, fallback);
+
+            // Batch succeeds — healthy.
+            let _ = provider.embed_batch(&["a".to_owned()]).await.unwrap();
+            assert!(provider.is_primary_healthy());
+
+            // Batch fails — unhealthy.
+            should_fail.store(true, Ordering::Relaxed);
+            let batch = provider.embed_batch(&["b".to_owned()]).await.unwrap();
+            assert_eq!(batch[0], vec![7.0; 2], "should use fallback");
+            assert!(!provider.is_primary_healthy());
         }
     }
 }
