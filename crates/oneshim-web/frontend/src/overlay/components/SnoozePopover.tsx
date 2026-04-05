@@ -1,16 +1,18 @@
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 
 interface SnoozeOption {
-  label: string
+  i18nKey: string
+  fallback: string
   minutes: number
 }
 
 const options: SnoozeOption[] = [
-  { label: '30 minutes', minutes: 30 },
-  { label: '1 hour', minutes: 60 },
-  { label: '2 hours', minutes: 120 },
-  { label: '4 hours', minutes: 240 },
-  { label: 'Tomorrow 9 AM', minutes: 0 }, // calculated at runtime
+  { i18nKey: 'suggestions.snooze30min', fallback: '30 minutes', minutes: 30 },
+  { i18nKey: 'suggestions.snooze1hr', fallback: '1 hour', minutes: 60 },
+  { i18nKey: 'suggestions.snooze2hr', fallback: '2 hours', minutes: 120 },
+  { i18nKey: 'suggestions.snooze4hr', fallback: '4 hours', minutes: 240 },
+  { i18nKey: 'suggestions.snoozeTomorrow', fallback: 'Tomorrow 9 AM', minutes: 0 }, // calculated at runtime
 ]
 
 interface SnoozePopoverProps {
@@ -27,6 +29,8 @@ function minutesToTomorrow9AM(): number {
 }
 
 export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
+  const { t } = useTranslation()
+
   return (
     <div className={cn(
       'absolute bottom-full right-0 mb-1 z-10',
@@ -35,12 +39,12 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
     )}>
       {options.map(opt => (
         <button
-          key={opt.label}
+          key={opt.i18nKey}
           type="button"
           className="w-full text-left px-3 py-1.5 text-xs text-content-primary rounded hover:bg-content-inverse/10 transition-colors"
           onClick={() => onSelect(opt.minutes === 0 ? minutesToTomorrow9AM() : opt.minutes)}
         >
-          {opt.label}
+          {t(opt.i18nKey, opt.fallback)}
         </button>
       ))}
       <button
@@ -48,7 +52,7 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
         className="w-full text-left px-3 py-1.5 text-xs text-content-secondary rounded hover:bg-content-inverse/10 transition-colors mt-0.5 border-t border-border-default"
         onClick={onCancel}
       >
-        Cancel
+        {t('suggestions.snoozeCancel', 'Cancel')}
       </button>
     </div>
   )

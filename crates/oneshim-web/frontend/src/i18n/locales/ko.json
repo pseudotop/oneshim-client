@@ -747,7 +747,14 @@
       "AppManagement": "앱 관리",
       "Workflow": "워크플로우",
       "Custom": "사용자 정의"
-    }
+    },
+    "confirmTitle": "자동화 확인",
+    "confirmProcess": "프로세스",
+    "confirmArgs": "인수",
+    "confirmAutoDeny": "{{seconds}}초 후 자동 거부",
+    "confirmDeny": "거부",
+    "confirmApprove": "승인",
+    "confirmSubmitError": "확인을 제출할 수 없습니다."
   },
   "settingsAutomation": {
     "title": "자동화",
@@ -1221,7 +1228,13 @@
       "DeepWorkCoach": "딥워크 코치",
       "ContextRestore": "컨텍스트 복원",
       "GoalTracker": "목표 추적"
-    }
+    },
+    "ok": "확인",
+    "later": "나중에",
+    "thanksFeedback": "감사합니다! 학습 중...",
+    "adjustingFeedback": "알겠습니다, 조정 중...",
+    "dismissError": "코칭 메시지를 업데이트할 수 없습��다.",
+    "feedbackError": "피드백을 저장할 수 없습니다."
   },
   "onboarding": {
     "step1Title": "ONESHIM에 오신 것을 환영합니다",
@@ -1334,7 +1347,32 @@
     "accept": "수락",
     "reject": "거절",
     "later": "나중에",
-    "explain": "설명"
+    "explain": "설명",
+    "noHistory": "아직 히스토리가 없습니다",
+    "noSuggestions": "아직 제안이 없습니다",
+    "loadError": "제안을 불러올 수 없습니다.",
+    "openingInChat": "채팅에서 여는 중...",
+    "toastAccepted": "제안이 수락되었습니다",
+    "toastRejected": "제안이 거부되었습니다",
+    "toastSnoozed": "일시 보���됨",
+    "feedbackFailed": "피드백 실패:",
+    "feedbackAccepted": "수락됨",
+    "feedbackRejected": "거부됨",
+    "feedbackSnoozed": "보류됨",
+    "statsAccepted": "수락",
+    "statsRejected": "거���",
+    "statsSnoozed": "보��",
+    "statsPending": "대기",
+    "panelTitle": "제안 ({{count}})",
+    "tabActive": "활성 ({{count}})",
+    "tabHistory": "히스��리",
+    "tabStats": "통계",
+    "snooze30min": "30분",
+    "snooze1hr": "1시간",
+    "snooze2hr": "2시간",
+    "snooze4hr": "4시간",
+    "snoozeTomorrow": "내일 오전 9시",
+    "snoozeCancel": "취소"
   },
   "suggestionStats": {
     "acceptanceRate": "수락률",

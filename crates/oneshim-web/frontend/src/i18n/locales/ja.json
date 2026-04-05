@@ -747,7 +747,14 @@
       "AppManagement": "アプリ管理",
       "Workflow": "ワークフロー",
       "Custom": "カスタム"
-    }
+    },
+    "confirmTitle": "オートメーション確認",
+    "confirmProcess": "プロセス",
+    "confirmArgs": "引数",
+    "confirmAutoDeny": "{{seconds}}秒後に自動拒否",
+    "confirmDeny": "拒否",
+    "confirmApprove": "承認",
+    "confirmSubmitError": "確認を送信できませんでした。"
   },
   "settingsAutomation": {
     "title": "オートメーション",
@@ -1221,7 +1228,13 @@
       "DeepWorkCoach": "ディープワークコーチ",
       "ContextRestore": "コンテキスト復元",
       "GoalTracker": "目標トラッカー"
-    }
+    },
+    "ok": "OK",
+    "later": "後で",
+    "thanksFeedback": "ありがとうございます！学習中...",
+    "adjustingFeedback": "了解しました、調整中...",
+    "dismissError": "コーチングメッセージを更新できませんでした。",
+    "feedbackError": "フィードバックを保存できませんでした。"
   },
   "onboarding": {
     "step1Title": "ONESHIMへようこそ",
@@ -1334,7 +1347,32 @@
     "accept": "承認",
     "reject": "拒否",
     "later": "後で",
-    "explain": "説明"
+    "explain": "説明",
+    "noHistory": "まだ履歴がありません",
+    "noSuggestions": "まだ提案がありません",
+    "loadError": "提案を読み込めませ��でした。",
+    "openingInChat": "チャットで開いています...",
+    "toastAccepted": "提案を承認しました",
+    "toastRejected": "提案を拒否しま���た",
+    "toastSnoozed": "スヌーズしました",
+    "feedbackFailed": "フィードバック失敗:",
+    "feedbackAccepted": "承認済み",
+    "feedbackRejected": "拒否済み",
+    "feedbackSnoozed": "スヌーズ",
+    "statsAccepted": "承認",
+    "statsRejected": "拒否",
+    "statsSnoozed": "スヌーズ",
+    "statsPending": "保留中",
+    "panelTitle": "提案 ({{count}})",
+    "tabActive": "アクティブ ({{count}})",
+    "tabHistory": "履歴",
+    "tabStats": "統計",
+    "snooze30min": "30分",
+    "snooze1hr": "1時間",
+    "snooze2hr": "2時間",
+    "snooze4hr": "4時間",
+    "snoozeTomorrow": "明日の午前9時",
+    "snoozeCancel": "キャ���セル"
   },
   "suggestionStats": {
     "acceptanceRate": "承認率",

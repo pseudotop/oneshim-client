@@ -72,7 +72,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     setError(null)
     void Promise.resolve(onRefresh()).catch((e) => {
       console.warn('SuggestionsPanel refresh failed:', e)
-      setError('Could not load suggestions.')
+      setError(t('suggestions.loadError', 'Could not load suggestions.'))
     })
   }, [open, onRefresh])
 
@@ -89,7 +89,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         await invoke('explain_suggestion_in_chat', { suggestionId: id })
-        showToast('Opening in chat...', 'info')
+        showToast(t('suggestions.openingInChat', 'Opening in chat...'), 'info')
       } catch (e) {
         showToast(errorMessage(e), 'error')
       }
@@ -102,13 +102,13 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       setError(null)
       await Promise.resolve(onRefresh())
       showToast(
-        action === 'accept' ? 'Suggestion accepted' : action === 'reject' ? 'Suggestion rejected' : 'Snoozed',
+        action === 'accept' ? t('suggestions.toastAccepted', 'Suggestion accepted') : action === 'reject' ? t('suggestions.toastRejected', 'Suggestion rejected') : t('suggestions.toastSnoozed', 'Snoozed'),
         'success',
       )
     } catch (e) {
       console.warn('Feedback failed:', e)
       setError(null)
-      showToast(`Feedback failed: ${errorMessage(e)}`, 'error')
+      showToast(`${t('suggestions.feedbackFailed', 'Feedback failed:')} ${errorMessage(e)}`, 'error')
     }
   }
 
@@ -124,7 +124,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       {/* Header */}
       <div className="flex items-center justify-between border-content-inverse/5 border-b px-4 py-3">
         <span className={cn('text-content-secondary text-xs uppercase tracking-wider', typography.weight.semibold)}>
-          Suggestions ({suggestions.length})
+          {t('suggestions.panelTitle', 'Suggestions ({{count}})', { count: suggestions.length })}
         </span>
         <button
           type="button"
@@ -148,7 +148,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           )}
           onClick={() => setActiveTab('active')}
         >
-          Active ({suggestions.length})
+          {t('suggestions.tabActive', 'Active ({{count}})', { count: suggestions.length })}
         </button>
         <button
           type="button"
@@ -160,7 +160,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           )}
           onClick={() => setActiveTab('history')}
         >
-          History
+          {t('suggestions.tabHistory', 'History')}
         </button>
         <button
           type="button"
@@ -172,7 +172,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           )}
           onClick={() => setActiveTab('stats')}
         >
-          Stats
+          {t('suggestions.tabStats', 'Stats')}
         </button>
       </div>
 
@@ -208,7 +208,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                 ))}
               </ul>
             ) : (
-              <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
+              <div className="px-4 py-8 text-center text-content-tertiary text-xs">{t('suggestions.noSuggestions', 'No suggestions yet')}</div>
             )}
           </>
         ) : activeTab === 'history' ? (

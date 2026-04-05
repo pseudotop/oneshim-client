@@ -4,8 +4,11 @@
 //! [`SandboxConfig`] and executes automation actions within a sandboxed
 //! child process using `/usr/bin/sandbox-exec -p <profile> -- <command>`.
 //!
-//! Resource limits (memory, CPU time) are applied via `setrlimit(2)` on
-//! the child process before exec.
+//! **Resource limits**: `apply_resource_limits()` logs the configured values
+//! but does **not** call `setrlimit(2)`. The sandbox-exec model spawns a
+//! child via Seatbelt, and there is no hook to inject `setrlimit` into the
+//! child before exec. `capabilities()` therefore reports `resource_limits: false`.
+//! Filesystem and network isolation ARE enforced by the SBPL profile.
 
 use async_trait::async_trait;
 use std::process::Command;
@@ -214,7 +217,10 @@ impl Sandbox for MacOsSandbox {
             filesystem_isolation: self.is_available(),
             syscall_filtering: false, // macOS has no syscall filtering support
             network_isolation: self.is_available(),
-            resource_limits: true,
+            // Resource limits require the child process to call setrlimit(2)
+            // before exec. sandbox-exec does not support injecting setrlimit
+            // into the child, so apply_resource_limits() is a no-op log.
+            resource_limits: false,
             process_isolation: self.is_available(),
         }
     }

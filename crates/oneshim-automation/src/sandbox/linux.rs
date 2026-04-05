@@ -136,8 +136,10 @@ impl Sandbox for LinuxSandbox {
         "linux"
     }
 
+    /// Returns `false` — all Linux sandbox enforcement (Landlock, seccomp,
+    /// resource limits) is deferred. See module-level docs for rationale.
     fn is_available(&self) -> bool {
-        true
+        false
     }
 
     async fn execute_sandboxed(
@@ -180,13 +182,17 @@ impl Sandbox for LinuxSandbox {
         Ok(())
     }
 
+    /// Report only capabilities that are actually enforced.
+    ///
+    /// All `apply_*` functions are currently stubs (see module-level docs),
+    /// so every capability is `false` until real kernel enforcement is wired.
     fn capabilities(&self) -> SandboxCapabilities {
         SandboxCapabilities {
-            filesystem_isolation: self.landlock_available,
-            syscall_filtering: true,
-            network_isolation: true,
-            resource_limits: true,
-            process_isolation: true,
+            filesystem_isolation: false,
+            syscall_filtering: false,
+            network_isolation: false,
+            resource_limits: false,
+            process_isolation: false,
         }
     }
 }

@@ -1,6 +1,5 @@
-// i18n: This overlay runs in a separate Tauri window without i18n initialization.
-// Hardcoded labels ("OK", "Later") are intentional and acceptable here.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, typography } from '../../styles/tokens'
 import { useAutoDismiss } from '../hooks/useAutoDismiss'
 import type { CoachingPayload, DismissAction } from '../types'
@@ -16,6 +15,7 @@ interface CoachingPopupProps {
 }
 
 export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopupProps) {
+  const { t } = useTranslation()
   const [text, setText] = useState(message.text)
   const [transitioning, setTransitioning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -82,10 +82,10 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
         await dismiss(action)
       } catch (e) {
         console.warn(`dismiss_coaching_message(${action}) failed:`, e)
-        setError('Could not update the coaching message.')
+        setError(t('coaching.dismissError', 'Could not update the coaching message.'))
       }
     },
-    [dismiss],
+    [dismiss, t],
   )
 
   const handleFeedback = useCallback(
@@ -95,10 +95,10 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
         await feedback(positive)
       } catch (e) {
         console.warn(`submit_coaching_feedback(${positive ? 'positive' : 'negative'}) failed:`, e)
-        setError('Could not save feedback.')
+        setError(t('coaching.feedbackError', 'Could not save feedback.'))
       }
     },
-    [feedback],
+    [feedback, t],
   )
 
   // Note: No per-element mouseenter/mouseleave cursor passthrough management.
@@ -128,7 +128,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
               aria-label="Dismiss coaching message"
               className={`rounded-md bg-content-inverse/10 px-3 py-1 text-xs ${typography.weight.medium} text-content-secondary ${motion.colors} hover:bg-content-inverse/20`}
             >
-              OK
+              {t('coaching.ok', 'OK')}
             </button>
             <button
               type="button"
@@ -136,7 +136,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
               aria-label="Remind me later"
               className={`rounded-md bg-content-inverse/5 px-3 py-1 text-xs ${typography.weight.medium} text-content-tertiary ${motion.colors} hover:bg-content-inverse/10`}
             >
-              Later
+              {t('coaching.later', 'Later')}
             </button>
           </div>
 
@@ -144,7 +144,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
           <div className="flex items-center gap-1">
             {feedbackSent ? (
               <span className={`text-[10px] ${feedbackSent === 'positive' ? 'text-semantic-success' : 'text-semantic-error'} ${motion.opacity}`}>
-                {feedbackSent === 'positive' ? 'Thanks! Learning...' : 'Got it, adjusting...'}
+                {feedbackSent === 'positive' ? t('coaching.thanksFeedback', 'Thanks! Learning...') : t('coaching.adjustingFeedback', 'Got it, adjusting...')}
               </span>
             ) : (
               <>

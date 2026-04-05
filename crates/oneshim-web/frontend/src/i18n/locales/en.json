@@ -747,7 +747,14 @@
       "AppManagement": "App Management",
       "Workflow": "Workflow",
       "Custom": "Custom"
-    }
+    },
+    "confirmTitle": "Automation Confirmation",
+    "confirmProcess": "Process",
+    "confirmArgs": "Args",
+    "confirmAutoDeny": "Auto-deny in {{seconds}}s",
+    "confirmDeny": "Deny",
+    "confirmApprove": "Approve",
+    "confirmSubmitError": "Could not submit confirmation."
   },
   "settingsAutomation": {
     "title": "Automation",
@@ -1221,7 +1228,13 @@
       "DeepWorkCoach": "Deep Work Coach",
       "ContextRestore": "Context Restore",
       "GoalTracker": "Goal Tracker"
-    }
+    },
+    "ok": "OK",
+    "later": "Later",
+    "thanksFeedback": "Thanks! Learning...",
+    "adjustingFeedback": "Got it, adjusting...",
+    "dismissError": "Could not update the coaching message.",
+    "feedbackError": "Could not save feedback."
   },
   "onboarding": {
     "step1Title": "Welcome to ONESHIM",
@@ -1334,7 +1347,32 @@
     "accept": "Accept",
     "reject": "Reject",
     "later": "Later",
-    "explain": "Explain"
+    "explain": "Explain",
+    "noHistory": "No history yet",
+    "noSuggestions": "No suggestions yet",
+    "loadError": "Could not load suggestions.",
+    "openingInChat": "Opening in chat...",
+    "toastAccepted": "Suggestion accepted",
+    "toastRejected": "Suggestion rejected",
+    "toastSnoozed": "Snoozed",
+    "feedbackFailed": "Feedback failed:",
+    "feedbackAccepted": "Accepted",
+    "feedbackRejected": "Rejected",
+    "feedbackSnoozed": "Snoozed",
+    "statsAccepted": "accepted",
+    "statsRejected": "rejected",
+    "statsSnoozed": "snoozed",
+    "statsPending": "pending",
+    "panelTitle": "Suggestions ({{count}})",
+    "tabActive": "Active ({{count}})",
+    "tabHistory": "History",
+    "tabStats": "Stats",
+    "snooze30min": "30 minutes",
+    "snooze1hr": "1 hour",
+    "snooze2hr": "2 hours",
+    "snooze4hr": "4 hours",
+    "snoozeTomorrow": "Tomorrow 9 AM",
+    "snoozeCancel": "Cancel"
   },
   "suggestionStats": {
     "acceptanceRate": "Acceptance Rate",

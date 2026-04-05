@@ -747,7 +747,14 @@
       "AppManagement": "应用管理",
       "Workflow": "工作流",
       "Custom": "自定义"
-    }
+    },
+    "confirmTitle": "自动化确认",
+    "confirmProcess": "进程",
+    "confirmArgs": "参数",
+    "confirmAutoDeny": "{{seconds}}秒后自动拒绝",
+    "confirmDeny": "拒绝",
+    "confirmApprove": "批准",
+    "confirmSubmitError": "无法提交确认。"
   },
   "settingsAutomation": {
     "title": "自动化",
@@ -1221,7 +1228,13 @@
       "DeepWorkCoach": "深度工作教练",
       "ContextRestore": "上下文恢复",
       "GoalTracker": "目标追踪"
-    }
+    },
+    "ok": "确定",
+    "later": "稍后",
+    "thanksFeedback": "谢谢！学习中...",
+    "adjustingFeedback": "了解，正在调整...",
+    "dismissError": "无法更新教练消息。",
+    "feedbackError": "无法保存反馈。"
   },
   "onboarding": {
     "step1Title": "欢迎使用 ONESHIM",
@@ -1334,7 +1347,32 @@
     "accept": "接受",
     "reject": "拒绝",
     "later": "稍后",
-    "explain": "说明"
+    "explain": "说明",
+    "noHistory": "暂无历史记录",
+    "noSuggestions": "暂无建议",
+    "loadError": "无法加载建议。",
+    "openingInChat": "正在聊天中打开...",
+    "toastAccepted": "建议已接受",
+    "toastRejected": "建议已拒绝",
+    "toastSnoozed": "已暂缓",
+    "feedbackFailed": "反馈失败:",
+    "feedbackAccepted": "已接受",
+    "feedbackRejected": "已拒绝",
+    "feedbackSnoozed": "已暂缓",
+    "statsAccepted": "已接受",
+    "statsRejected": "已拒绝",
+    "statsSnoozed": "已暂缓",
+    "statsPending": "待处理",
+    "panelTitle": "建议 ({{count}})",
+    "tabActive": "活跃 ({{count}})",
+    "tabHistory": "历史",
+    "tabStats": "统计",
+    "snooze30min": "30分钟",
+    "snooze1hr": "1小时",
+    "snooze2hr": "2小时",
+    "snooze4hr": "4小时",
+    "snoozeTomorrow": "明天上午9点",
+    "snoozeCancel": "取消"
   },
   "suggestionStats": {
     "acceptanceRate": "接受率",

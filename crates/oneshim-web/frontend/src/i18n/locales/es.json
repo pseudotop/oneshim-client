@@ -747,7 +747,14 @@
       "AppManagement": "Gestión de aplicaciones",
       "Workflow": "Flujo de trabajo",
       "Custom": "Personalizado"
-    }
+    },
+    "confirmTitle": "Confirmación de automatización",
+    "confirmProcess": "Proceso",
+    "confirmArgs": "Argumentos",
+    "confirmAutoDeny": "Denegación automática en {{seconds}}s",
+    "confirmDeny": "Denegar",
+    "confirmApprove": "Aprobar",
+    "confirmSubmitError": "No se pudo enviar la confirmación."
   },
   "settingsAutomation": {
     "title": "Automatización",
@@ -1221,7 +1228,13 @@
       "DeepWorkCoach": "Coach de trabajo profundo",
       "ContextRestore": "Restauración de contexto",
       "GoalTracker": "Seguimiento de objetivos"
-    }
+    },
+    "ok": "OK",
+    "later": "Luego",
+    "thanksFeedback": "¡Gracias! Aprendiendo...",
+    "adjustingFeedback": "Entendido, ajustando...",
+    "dismissError": "No se pudo actualizar el mensaje de coaching.",
+    "feedbackError": "No se pudo guardar el feedback."
   },
   "onboarding": {
     "step1Title": "Bienvenido a ONESHIM",
@@ -1334,7 +1347,32 @@
     "accept": "Aceptar",
     "reject": "Rechazar",
     "later": "Luego",
-    "explain": "Explicar"
+    "explain": "Explicar",
+    "noHistory": "Aun no hay historial",
+    "noSuggestions": "Aun no hay sugerencias",
+    "loadError": "No se pudieron cargar las sugerencias.",
+    "openingInChat": "Abriendo en chat...",
+    "toastAccepted": "Sugerencia aceptada",
+    "toastRejected": "Sugerencia rechazada",
+    "toastSnoozed": "Pospuesta",
+    "feedbackFailed": "Error de feedback:",
+    "feedbackAccepted": "Aceptada",
+    "feedbackRejected": "Rechazada",
+    "feedbackSnoozed": "Pospuesta",
+    "statsAccepted": "aceptadas",
+    "statsRejected": "rechazadas",
+    "statsSnoozed": "pospuestas",
+    "statsPending": "pendientes",
+    "panelTitle": "Sugerencias ({{count}})",
+    "tabActive": "Activas ({{count}})",
+    "tabHistory": "Historial",
+    "tabStats": "Estadisticas",
+    "snooze30min": "30 minutos",
+    "snooze1hr": "1 hora",
+    "snooze2hr": "2 horas",
+    "snooze4hr": "4 horas",
+    "snoozeTomorrow": "Manana 9 AM",
+    "snoozeCancel": "Cancelar"
   },
   "suggestionStats": {
     "acceptanceRate": "Tasa de aceptación",

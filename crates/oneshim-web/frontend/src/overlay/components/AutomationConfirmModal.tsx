@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 import { motion, typography } from '../../styles/tokens'
 import type { PendingConfirmationDto } from '../types'
@@ -24,6 +25,7 @@ interface AutomationConfirmModalProps {
 }
 
 export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationConfirmModalProps) {
+  const { t } = useTranslation()
   const [remaining, setRemaining] = useState(AUTO_DENY_SECS)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -69,7 +71,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
         onDismiss()
       } catch (e) {
         console.warn('confirm_automation_command failed:', e)
-        setError('Could not submit confirmation.')
+        setError(t('automation.confirmSubmitError', 'Could not submit confirmation.'))
         setSubmitting(false)
       }
     },
@@ -88,7 +90,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
       <div className="relative w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-content-inverse/10 bg-surface-sunken/95 p-5 shadow-2xl backdrop-blur-md">
         {/* Header */}
         <div className="mb-3 flex items-center justify-between">
-          <h3 className={cn(typography.h4, 'text-content')}>Automation Confirmation</h3>
+          <h3 className={cn(typography.h4, 'text-content')}>{t('automation.confirmTitle', 'Automation Confirmation')}</h3>
           <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', badgeColor)}>
             {confirmation.audit_level}
           </span>
@@ -97,12 +99,12 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
         {/* Process info */}
         <div className="mb-3 rounded-lg bg-content-inverse/5 p-3">
           <div className="mb-1.5 flex items-center gap-2">
-            <span className={cn(typography.caption, 'text-content-tertiary')}>Process</span>
+            <span className={cn(typography.caption, 'text-content-tertiary')}>{t('automation.confirmProcess', 'Process')}</span>
             <span className={cn(typography.label, 'text-content')}>{confirmation.process_name}</span>
           </div>
           {confirmation.args.length > 0 && (
             <div className="flex items-start gap-2">
-              <span className={cn(typography.caption, 'text-content-tertiary shrink-0 pt-0.5')}>Args</span>
+              <span className={cn(typography.caption, 'text-content-tertiary shrink-0 pt-0.5')}>{t('automation.confirmArgs', 'Args')}</span>
               <code className="text-[11px] text-content-secondary break-all font-mono">
                 {confirmation.args.map(sanitizeArg).join(' ')}
               </code>
@@ -124,7 +126,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
         {/* Actions */}
         <div className="flex items-center justify-between">
           <span className={cn(typography.caption, 'text-content-tertiary')}>
-            Auto-deny in {remaining}s
+            {t('automation.confirmAutoDeny', 'Auto-deny in {{seconds}}s', { seconds: remaining })}
           </span>
           <div className="flex gap-2">
             <button
@@ -138,7 +140,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
                 'disabled:opacity-50 disabled:cursor-not-allowed',
               )}
             >
-              Deny
+              {t('automation.confirmDeny', 'Deny')}
             </button>
             <button
               type="button"
@@ -151,7 +153,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
                 'disabled:opacity-50 disabled:cursor-not-allowed',
               )}
             >
-              Approve
+              {t('automation.confirmApprove', 'Approve')}
             </button>
           </div>
         </div>

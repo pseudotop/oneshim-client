@@ -41,6 +41,8 @@ use tracing::{info, warn};
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::notification_manager::NotificationManager;
 
+// --- Struct definition ---
+
 /// Wraps all components needed for the adaptive tiered-memory pipeline.
 /// Kept as owned (non-Arc) so the monitor loop can mutate the components
 /// without interior-mutability overhead.
@@ -203,6 +205,8 @@ pub struct Scheduler {
     /// in run_scheduler_loops if not provided.
     pub(super) shared_regime: Option<Arc<shared_regime_state::SharedRegimeState>>,
 }
+
+// --- Builder methods ---
 
 impl Scheduler {
     #[allow(clippy::too_many_arguments)]
@@ -483,6 +487,8 @@ impl Scheduler {
         self
     }
 
+    // --- Session management ---
+
     pub(super) async fn initialize_session(&self, session_id: &str) {
         let sqlite_init = self.sqlite_storage.clone();
         let session_stats = SessionStats::new(session_id.to_string());
@@ -490,6 +496,8 @@ impl Scheduler {
             warn!("session initialize failure: {e}");
         }
     }
+
+    // --- Spawn orchestration ---
 
     pub async fn run(
         &self,

@@ -1,3 +1,7 @@
+// NOTE: This file (1200+ lines) already uses directory module pattern
+// (github.rs, install.rs, state.rs). Consider further extraction if it
+// continues to grow.
+
 #![allow(dead_code)] // UI /
 
 mod github;
