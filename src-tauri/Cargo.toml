@@ -121,7 +121,7 @@ license-file = ["../LICENSE", "4"]
 extended-description = """
 ONESHIM은 AI 기반 자율 사무 업무 지원 에이전트입니다.
 """
-depends = "$auto"
+depends = "$auto, libgtk-3-0, libglib2.0-0, libwebkit2gtk-4.1-0, libappindicator3-1"
 section = "utility"
 priority = "optional"
 assets = [

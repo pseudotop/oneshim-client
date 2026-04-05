@@ -206,6 +206,27 @@ done
 
 OS_NAME="$(uname -s)"
 ARCH_NAME="$(uname -m)"
+
+# Linux runtime dependency check
+if [[ "$OS_NAME" == "Linux" ]]; then
+  MISSING=""
+  for lib in libwebkit2gtk-4.1-0 libgtk-3-0 libappindicator3-1; do
+    if ! dpkg -s "$lib" >/dev/null 2>&1; then
+      MISSING="$MISSING $lib"
+    fi
+  done
+  if [[ -n "$MISSING" ]]; then
+    warn "Missing required system packages:$MISSING"
+    warn "Install with: sudo apt install$MISSING"
+    echo ""
+    read -p "Install now? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      sudo apt install -y $MISSING
+    fi
+  fi
+fi
+
 ASSET_NAME="$(detect_asset_name "$OS_NAME" "$ARCH_NAME")"
 TAG_NAME="$(normalize_tag "$VERSION")"
 
