@@ -574,6 +574,16 @@ export async function removeTagFromFrame(frameId: number, tagId: number): Promis
   }
 }
 
+export async function batchAddTag(frameIds: number[], tagId: number): Promise<{ tagged_count: number }> {
+  const res = await fetchWithRetry(`${BASE_URL}/frames/batch-tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frame_ids: frameIds, tag_id: tagId }),
+  })
+  if (!res.ok) throw new Error(`batch tag: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchReport(params: ReportParams): Promise<ReportResponse> {
   const searchParams = new URLSearchParams()
   searchParams.set('period', params.period)

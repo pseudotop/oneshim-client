@@ -1,10 +1,22 @@
 use axum::extract::{Path, State};
 use axum::Json;
 use oneshim_api_contracts::tags::{CreateTagRequest, TagResponse, UpdateTagRequest};
+use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
 use crate::services::tags_service::{TagsCommandService, TagsQueryService};
 use crate::services::web_contexts::StorageWebContext;
+
+#[derive(Debug, Deserialize)]
+pub struct BatchTagRequest {
+    pub frame_ids: Vec<i64>,
+    pub tag_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchTagResponse {
+    pub tagged_count: u32,
+}
 
 /// GET /api/tags
 pub async fn list_tags(
@@ -76,6 +88,23 @@ pub async fn remove_tag_from_frame(
     Ok(Json(
         TagsCommandService::new(context).remove_tag_from_frame(frame_id, tag_id)?,
     ))
+}
+
+/// POST /api/frames/batch-tags
+pub async fn batch_add_tag(
+    State(context): State<StorageWebContext>,
+    Json(req): Json<BatchTagRequest>,
+) -> Result<Json<BatchTagResponse>, ApiError> {
+    let mut tagged_count = 0u32;
+    for frame_id in &req.frame_ids {
+        match TagsCommandService::new(context.clone()).add_tag_to_frame(*frame_id, req.tag_id) {
+            Ok(_) => tagged_count += 1,
+            Err(e) => {
+                tracing::warn!("batch tag: frame {} failed: {}", frame_id, e);
+            }
+        }
+    }
+    Ok(Json(BatchTagResponse { tagged_count }))
 }
 
 #[cfg(test)]
