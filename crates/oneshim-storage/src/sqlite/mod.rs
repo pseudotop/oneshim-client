@@ -240,6 +240,43 @@ impl SqliteStorage {
     }
 }
 
+// ── Audit log persistence (V25) ────────────────────────────
+
+impl SqliteStorage {
+    /// Persist a single audit entry to the `audit_log` table (V25).
+    ///
+    /// Designed to be called from a persistence callback wired by `src-tauri`.
+    /// Failures are logged and swallowed to avoid disrupting the audit buffer.
+    pub fn save_audit_entry(&self, entry: &oneshim_core::models::audit::AuditEntry) {
+        let Ok(conn) = self.conn.lock() else {
+            warn!("audit persistence: failed to acquire SQLite lock");
+            return;
+        };
+
+        let status_str = format!("{:?}", entry.status);
+        let timestamp_str = entry.timestamp.to_rfc3339();
+        let exec_time = entry.execution_time_ms.map(|v| v as i64);
+
+        if let Err(e) = conn.execute(
+            "INSERT OR IGNORE INTO audit_log \
+             (entry_id, timestamp, session_id, command_id, action_type, status, details, execution_time_ms) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                entry.entry_id,
+                timestamp_str,
+                entry.session_id,
+                entry.command_id,
+                entry.action_type,
+                status_str,
+                entry.details,
+                exec_time,
+            ],
+        ) {
+            warn!("audit persistence: INSERT failed: {e}");
+        }
+    }
+}
+
 /// Apply SQLCipher `PRAGMA key` and verify the key works.
 ///
 /// If the key is rejected (e.g. database was previously unencrypted), falls back

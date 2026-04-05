@@ -263,23 +263,47 @@ mod tests {
 
     #[async_trait]
     impl OAuthPort for MockOAuthPort {
-        async fn start_flow(&self, _: &str) -> Result<OAuthFlowHandle, CoreError> {
-            unimplemented!()
+        async fn start_flow(&self, provider_id: &str) -> Result<OAuthFlowHandle, CoreError> {
+            warn!("MockOAuthPort::start_flow called unexpectedly for {provider_id}");
+            Err(CoreError::Network(format!(
+                "start_flow not supported in MockOAuthPort (provider: {provider_id})"
+            )))
         }
-        async fn flow_status(&self, _: &str) -> Result<OAuthFlowStatus, CoreError> {
-            unimplemented!()
+        async fn flow_status(&self, flow_id: &str) -> Result<OAuthFlowStatus, CoreError> {
+            warn!("MockOAuthPort::flow_status called unexpectedly for {flow_id}");
+            Err(CoreError::Network(format!(
+                "flow_status not supported in MockOAuthPort (flow: {flow_id})"
+            )))
         }
-        async fn cancel_flow(&self, _: &str) -> Result<(), CoreError> {
-            unimplemented!()
+        async fn cancel_flow(&self, flow_id: &str) -> Result<(), CoreError> {
+            warn!("MockOAuthPort::cancel_flow called unexpectedly for {flow_id}");
+            Err(CoreError::Network(format!(
+                "cancel_flow not supported in MockOAuthPort (flow: {flow_id})"
+            )))
         }
-        async fn get_access_token(&self, _: &str) -> Result<Option<String>, CoreError> {
-            unimplemented!()
+        async fn get_access_token(&self, provider_id: &str) -> Result<Option<String>, CoreError> {
+            warn!("MockOAuthPort::get_access_token called unexpectedly for {provider_id}");
+            Ok(None)
         }
-        async fn revoke(&self, _: &str) -> Result<(), CoreError> {
-            unimplemented!()
+        async fn revoke(&self, provider_id: &str) -> Result<(), CoreError> {
+            warn!("MockOAuthPort::revoke called unexpectedly for {provider_id}");
+            Err(CoreError::Network(format!(
+                "revoke not supported in MockOAuthPort (provider: {provider_id})"
+            )))
         }
-        async fn connection_status(&self, _: &str) -> Result<OAuthConnectionStatus, CoreError> {
-            unimplemented!()
+        async fn connection_status(
+            &self,
+            provider_id: &str,
+        ) -> Result<OAuthConnectionStatus, CoreError> {
+            info!("MockOAuthPort::connection_status returning disconnected for {provider_id}");
+            Ok(OAuthConnectionStatus {
+                provider_id: provider_id.to_string(),
+                connected: false,
+                expires_at: None,
+                scopes: vec![],
+                api_base_url: None,
+                has_refresh_token: false,
+            })
         }
         async fn refresh_access_token(
             &self,
@@ -469,23 +493,54 @@ mod tests {
 
         #[async_trait]
         impl OAuthPort for CountingMockOAuthPort {
-            async fn start_flow(&self, _: &str) -> Result<OAuthFlowHandle, CoreError> {
-                unimplemented!()
+            async fn start_flow(&self, provider_id: &str) -> Result<OAuthFlowHandle, CoreError> {
+                warn!("CountingMockOAuthPort::start_flow called unexpectedly for {provider_id}");
+                Err(CoreError::Network(format!(
+                    "start_flow not supported in CountingMockOAuthPort (provider: {provider_id})"
+                )))
             }
-            async fn flow_status(&self, _: &str) -> Result<OAuthFlowStatus, CoreError> {
-                unimplemented!()
+            async fn flow_status(&self, flow_id: &str) -> Result<OAuthFlowStatus, CoreError> {
+                warn!("CountingMockOAuthPort::flow_status called unexpectedly for {flow_id}");
+                Err(CoreError::Network(format!(
+                    "flow_status not supported in CountingMockOAuthPort (flow: {flow_id})"
+                )))
             }
-            async fn cancel_flow(&self, _: &str) -> Result<(), CoreError> {
-                unimplemented!()
+            async fn cancel_flow(&self, flow_id: &str) -> Result<(), CoreError> {
+                warn!("CountingMockOAuthPort::cancel_flow called unexpectedly for {flow_id}");
+                Err(CoreError::Network(format!(
+                    "cancel_flow not supported in CountingMockOAuthPort (flow: {flow_id})"
+                )))
             }
-            async fn get_access_token(&self, _: &str) -> Result<Option<String>, CoreError> {
-                unimplemented!()
+            async fn get_access_token(
+                &self,
+                provider_id: &str,
+            ) -> Result<Option<String>, CoreError> {
+                warn!(
+                    "CountingMockOAuthPort::get_access_token called unexpectedly for {provider_id}"
+                );
+                Ok(None)
             }
-            async fn revoke(&self, _: &str) -> Result<(), CoreError> {
-                unimplemented!()
+            async fn revoke(&self, provider_id: &str) -> Result<(), CoreError> {
+                warn!("CountingMockOAuthPort::revoke called unexpectedly for {provider_id}");
+                Err(CoreError::Network(format!(
+                    "revoke not supported in CountingMockOAuthPort (provider: {provider_id})"
+                )))
             }
-            async fn connection_status(&self, _: &str) -> Result<OAuthConnectionStatus, CoreError> {
-                unimplemented!()
+            async fn connection_status(
+                &self,
+                provider_id: &str,
+            ) -> Result<OAuthConnectionStatus, CoreError> {
+                info!(
+                    "CountingMockOAuthPort::connection_status returning disconnected for {provider_id}"
+                );
+                Ok(OAuthConnectionStatus {
+                    provider_id: provider_id.to_string(),
+                    connected: false,
+                    expires_at: None,
+                    scopes: vec![],
+                    api_base_url: None,
+                    has_refresh_token: false,
+                })
             }
             async fn refresh_access_token(
                 &self,
@@ -535,5 +590,157 @@ mod tests {
         );
         assert_eq!(RefreshState::backoff_duration(3), None);
         assert_eq!(RefreshState::backoff_duration(4), None);
+    }
+
+    #[tokio::test]
+    async fn mock_start_flow_returns_error() {
+        let mock = Arc::new(MockOAuthPort::new(RefreshResult::AlreadyFresh {
+            expires_at: expiry_in_secs(3600),
+        }));
+        let result = mock.start_flow("openai").await;
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("start_flow not supported"),
+            "expected descriptive error, got: {err_msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mock_flow_status_returns_error() {
+        let mock = Arc::new(MockOAuthPort::new(RefreshResult::AlreadyFresh {
+            expires_at: expiry_in_secs(3600),
+        }));
+        let result = mock.flow_status("flow-123").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn mock_cancel_flow_returns_error() {
+        let mock = Arc::new(MockOAuthPort::new(RefreshResult::AlreadyFresh {
+            expires_at: expiry_in_secs(3600),
+        }));
+        let result = mock.cancel_flow("flow-123").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn mock_get_access_token_returns_none() {
+        let mock = Arc::new(MockOAuthPort::new(RefreshResult::AlreadyFresh {
+            expires_at: expiry_in_secs(3600),
+        }));
+        let result = mock.get_access_token("openai").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn mock_revoke_returns_error() {
+        let mock = Arc::new(MockOAuthPort::new(RefreshResult::AlreadyFresh {
+            expires_at: expiry_in_secs(3600),
+        }));
+        let result = mock.revoke("openai").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn mock_connection_status_returns_disconnected() {
+        let mock = Arc::new(MockOAuthPort::new(RefreshResult::AlreadyFresh {
+            expires_at: expiry_in_secs(3600),
+        }));
+        let result = mock.connection_status("openai").await;
+        assert!(result.is_ok());
+        let status = result.unwrap();
+        assert_eq!(status.provider_id, "openai");
+        assert!(!status.connected);
+        assert!(status.scopes.is_empty());
+        assert!(!status.has_refresh_token);
+    }
+
+    #[tokio::test]
+    async fn not_authenticated_triggers_reauth() {
+        let mock = Arc::new(MockOAuthPort::new(RefreshResult::NotAuthenticated));
+        let (coord, mut rx) = make_coordinator(mock);
+
+        let outcome = coord.check_and_refresh("openai").await;
+        assert_eq!(outcome, RefreshOutcome::ReauthRequired);
+
+        let event = rx
+            .try_recv()
+            .expect("should receive TokenEvent::ReauthRequired");
+        match event {
+            TokenEvent::ReauthRequired { provider_id } => {
+                assert_eq!(provider_id, "openai");
+            }
+            other => panic!("expected ReauthRequired event, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn port_error_treated_as_transient() {
+        // When the OAuthPort returns Err(...), the coordinator should treat
+        // it the same as a transient failure.
+        struct ErrorMockOAuthPort;
+
+        #[async_trait]
+        impl OAuthPort for ErrorMockOAuthPort {
+            async fn start_flow(&self, _: &str) -> Result<OAuthFlowHandle, CoreError> {
+                Err(CoreError::Network("mock".into()))
+            }
+            async fn flow_status(&self, _: &str) -> Result<OAuthFlowStatus, CoreError> {
+                Err(CoreError::Network("mock".into()))
+            }
+            async fn cancel_flow(&self, _: &str) -> Result<(), CoreError> {
+                Err(CoreError::Network("mock".into()))
+            }
+            async fn get_access_token(&self, _: &str) -> Result<Option<String>, CoreError> {
+                Ok(None)
+            }
+            async fn revoke(&self, _: &str) -> Result<(), CoreError> {
+                Err(CoreError::Network("mock".into()))
+            }
+            async fn connection_status(
+                &self,
+                provider_id: &str,
+            ) -> Result<OAuthConnectionStatus, CoreError> {
+                Ok(OAuthConnectionStatus {
+                    provider_id: provider_id.to_string(),
+                    connected: false,
+                    expires_at: None,
+                    scopes: vec![],
+                    api_base_url: None,
+                    has_refresh_token: false,
+                })
+            }
+            async fn refresh_access_token(
+                &self,
+                _provider_id: &str,
+                _min_valid_for_secs: i64,
+            ) -> Result<RefreshResult, CoreError> {
+                Err(CoreError::Network("connection refused".into()))
+            }
+        }
+
+        let mock = Arc::new(ErrorMockOAuthPort);
+        let (tx, mut rx) = broadcast::channel(16);
+        let coord = TokenRefreshCoordinator::new(mock, tx);
+
+        let outcome = coord.check_and_refresh("openai").await;
+        assert_eq!(outcome, RefreshOutcome::Failed { attempt: 1 });
+
+        let event = rx
+            .try_recv()
+            .expect("should receive TokenEvent::RefreshFailed");
+        match event {
+            TokenEvent::RefreshFailed {
+                attempt,
+                max_attempts,
+                ..
+            } => {
+                assert_eq!(attempt, 1);
+                assert_eq!(max_attempts, 3);
+            }
+            other => panic!("expected RefreshFailed event, got {other:?}"),
+        }
     }
 }

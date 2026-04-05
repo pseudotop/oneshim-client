@@ -1,13 +1,30 @@
 use chrono::Utc;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 // Canonical types from oneshim-core — re-exported for backward compat
 pub use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
+
+/// Callback trait for persisting audit entries to durable storage.
+///
+/// Implemented by the binary crate to bridge AuditLogger (library) with
+/// SQLite (infrastructure), preserving hexagonal architecture boundaries.
+pub trait AuditPersistence: Send + Sync {
+    fn persist(&self, entry: &AuditEntry);
+}
+
+/// Blanket impl: any `Fn(&AuditEntry) + Send + Sync` satisfies `AuditPersistence`.
+impl<F: Fn(&AuditEntry) + Send + Sync> AuditPersistence for F {
+    fn persist(&self, entry: &AuditEntry) {
+        self(entry);
+    }
+}
 
 pub struct AuditLogger {
     buffer: VecDeque<AuditEntry>,
     max_buffer_size: usize,
     batch_size: usize,
+    persistence: Option<Arc<dyn AuditPersistence>>,
 }
 
 impl AuditLogger {
@@ -16,7 +33,17 @@ impl AuditLogger {
             buffer: VecDeque::with_capacity(max_buffer_size),
             max_buffer_size,
             batch_size,
+            persistence: None,
         }
+    }
+
+    /// Attach a persistence callback for durable storage of audit entries.
+    ///
+    /// When set, every new audit entry is forwarded to this callback
+    /// immediately after being added to the in-memory buffer.
+    pub fn with_persistence(mut self, cb: Arc<dyn AuditPersistence>) -> Self {
+        self.persistence = Some(cb);
+        self
     }
 
     pub fn log_start(&mut self, command_id: &str, session_id: &str, action_type: &str) {
@@ -210,6 +237,10 @@ impl AuditLogger {
             execution_time_ms: None,
         };
 
+        if let Some(ref cb) = self.persistence {
+            cb.persist(&entry);
+        }
+
         self.buffer.push_back(entry);
     }
 
@@ -238,6 +269,10 @@ impl AuditLogger {
             execution_time_ms,
         };
 
+        if let Some(ref cb) = self.persistence {
+            cb.persist(&entry);
+        }
+
         self.buffer.push_back(entry);
     }
 }
@@ -250,7 +285,6 @@ impl Default for AuditLogger {
 
 // ── AuditLogPort adapter ──
 
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// `Arc<RwLock<AuditLogger>>`를 `AuditLogPort`로 래핑하는 어댑터
@@ -578,6 +612,78 @@ mod tests {
         let mut logger = AuditLogger::new(100, 10);
         let batch = logger.drain_batch();
         assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn persistence_callback_invoked_on_push() {
+        let persisted = Arc::new(std::sync::Mutex::new(Vec::<AuditEntry>::new()));
+        let persisted_clone = persisted.clone();
+        let cb: Arc<dyn AuditPersistence> = Arc::new(move |entry: &AuditEntry| {
+            persisted_clone.lock().unwrap().push(entry.clone());
+        });
+
+        let mut logger = AuditLogger::new(100, 10).with_persistence(cb);
+        logger.log_start("cmd-1", "sess-1", "MouseClick");
+        logger.log_complete("cmd-2", "sess-1", "ok");
+        logger.log_complete_with_time(AuditLevel::Detailed, "cmd-3", "sess-1", "timed", 42);
+
+        let entries = persisted.lock().unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].action_type, "MouseClick");
+        assert_eq!(entries[1].action_type, "complete");
+        assert_eq!(entries[2].execution_time_ms, Some(42));
+    }
+
+    #[test]
+    fn persistence_not_called_without_callback() {
+        // No persistence set — should work exactly as before.
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_start("cmd-1", "sess-1", "a");
+        assert_eq!(logger.pending_count(), 1);
+    }
+
+    #[test]
+    fn persistence_called_for_all_log_methods() {
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count_clone = count.clone();
+        let cb: Arc<dyn AuditPersistence> = Arc::new(move |_: &AuditEntry| {
+            count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        });
+
+        let mut logger = AuditLogger::new(100, 10).with_persistence(cb);
+        logger.log_start("c1", "s", "a");
+        logger.log_complete("c2", "s", "ok");
+        logger.log_denied("c3", "s", "denied");
+        logger.log_failed("c4", "s", "err");
+        logger.log_event("evt", "s", "details");
+        logger.log_start_if(AuditLevel::Basic, "c5", "s", "a");
+        logger.log_complete_with_time(AuditLevel::Full, "c6", "s", "ok", 10);
+        logger.log_timeout("c7", "s", 5000);
+
+        assert_eq!(
+            count.load(std::sync::atomic::Ordering::Relaxed),
+            8,
+            "persistence should be called for all 8 log methods"
+        );
+    }
+
+    #[test]
+    fn persistence_skipped_when_level_is_none() {
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count_clone = count.clone();
+        let cb: Arc<dyn AuditPersistence> = Arc::new(move |_: &AuditEntry| {
+            count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        });
+
+        let mut logger = AuditLogger::new(100, 10).with_persistence(cb);
+        logger.log_start_if(AuditLevel::None, "c1", "s", "a");
+        logger.log_complete_with_time(AuditLevel::None, "c2", "s", "ok", 10);
+
+        assert_eq!(
+            count.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "persistence should NOT be called when level is None"
+        );
     }
 
     #[test]
