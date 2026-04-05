@@ -270,6 +270,7 @@ fn main() {
             commands::suggestions::save_suggestion_state,
             commands::suggestions::get_suggestion_stats,
             commands::suggestions::get_deferred_suggestions,
+            commands::suggestions::get_suggestion_daily_stats,
             commands::sync::get_sync_status,
             commands::sync::trigger_sync_cycle,
             commands::sync::discover_sync_peers,

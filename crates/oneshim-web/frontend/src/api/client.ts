@@ -20,6 +20,7 @@ import type {
   ExecuteIntentHintRequest,
   ExecuteIntentHintResponse,
   ExecuteSceneActionRequest,
+  ExecutionPolicyConfig,
   ExecuteSceneActionResponse,
   ExportDataType,
   ExportFormat,
@@ -791,6 +792,48 @@ export async function executeSceneAction(payload: ExecuteSceneActionRequest): Pr
     throw new Error(err.error || 'Scene action execution failed')
   }
   return res.json()
+}
+
+export async function fetchExecutionPolicies(): Promise<ExecutionPolicyConfig[]> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/execution-policies`)
+  if (!res.ok) throw new Error('Execution policy query failed')
+  return res.json()
+}
+
+export async function createExecutionPolicy(policy: ExecutionPolicyConfig): Promise<ExecutionPolicyConfig> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/execution-policies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(policy),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create execution policy' }))
+    throw new Error(err.error || 'Failed to create execution policy')
+  }
+  return res.json()
+}
+
+export async function updateExecutionPolicy(id: string, policy: ExecutionPolicyConfig): Promise<ExecutionPolicyConfig> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/execution-policies/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(policy),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to update execution policy' }))
+    throw new Error(err.error || 'Failed to update execution policy')
+  }
+  return res.json()
+}
+
+export async function deleteExecutionPolicy(id: string): Promise<void> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/execution-policies/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({ error: 'Failed to delete execution policy' }))
+    throw new Error(err.error || 'Failed to delete execution policy')
+  }
 }
 
 export async function fetchAutomationScene(

@@ -33,7 +33,8 @@
     "coaching": "Coaching",
     "recalibration": "Recalibración",
     "dashboardDay": "Vista diaria",
-    "chat": "Chat"
+    "chat": "Chat",
+    "audit": "Registro de auditoría"
   },
   "dashboard": {
     "title": "Resumen de actividad",
@@ -819,6 +820,11 @@
       "act": "Actuar"
     }
   },
+  "auditLog": {
+    "title": "Registro de auditoría",
+    "entries": "Entradas de auditoría",
+    "details": "Detalles"
+  },
   "emptyState": {
     "dashboard": {
       "title": "Dashboard en preparación",
@@ -845,6 +851,11 @@
       "title": "Automatización inactiva",
       "description": "El sistema de automatización está inactivo. Habilítelo en Configuración",
       "action": "Ir a Configuración"
+    },
+    "auditLog": {
+      "title": "Sin entradas de auditoría",
+      "description": "Las entradas de auditoría aparecerán aquí una vez que se ejecuten comandos de automatización",
+      "action": "Ir a Automatización"
     }
   },
   "commandPalette": {
@@ -919,7 +930,9 @@
     "coachingGoals": "Objetivos",
     "coachingEvents": "Eventos",
     "insight": "Información",
-    "statistics": "Estadísticas"
+    "statistics": "Estadísticas",
+    "auditSummary": "Resumen",
+    "auditEntries": "Entradas"
   },
   "settingsOAuth": {
     "title": "Conexión",

@@ -699,6 +699,40 @@ pub async fn get_suggestion_stats(
     })
 }
 
+// ── Daily time-series stats ─────────────────────────────────
+
+#[derive(Serialize)]
+pub struct DailyStatDto {
+    pub day: String,
+    pub total: u32,
+    pub acted: u32,
+    pub suggestion_type: String,
+    pub source: String,
+}
+
+/// Return daily aggregated suggestion statistics for the last N days (max 90).
+#[command]
+pub async fn get_suggestion_daily_stats(
+    app_state: tauri::State<'_, AppState>,
+    days: Option<u32>,
+) -> Result<Vec<DailyStatDto>, String> {
+    let days = days.unwrap_or(7).min(90);
+    let records = app_state
+        .storage
+        .suggestion_daily_stats(days)
+        .map_err(|e| e.to_string())?;
+    Ok(records
+        .into_iter()
+        .map(|r| DailyStatDto {
+            day: r.day,
+            total: r.total,
+            acted: r.acted,
+            suggestion_type: r.suggestion_type,
+            source: r.source,
+        })
+        .collect())
+}
+
 // ── Deferred suggestions ────────────────────────────────────
 
 #[derive(Serialize)]

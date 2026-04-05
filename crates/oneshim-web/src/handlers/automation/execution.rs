@@ -1,11 +1,13 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 
 use oneshim_api_contracts::automation::{
     AuditQuery, ExecuteIntentHintRequest, ExecuteSceneActionRequest, PolicyEventQuery,
 };
+use oneshim_core::models::automation::ExecutionPolicyDto;
 
 use crate::error::ApiError;
 use crate::services::automation_service::{AutomationCommandService, AutomationQueryService};
@@ -129,4 +131,60 @@ pub async fn execute_scene_action(
             .execute_scene_action(req)
             .await?,
     ))
+}
+
+pub async fn list_execution_policies(
+    State(context): State<AutomationWebContext>,
+) -> Result<Json<Vec<ExecutionPolicyDto>>, ApiError> {
+    let Some(ref controller) = context.automation_controller else {
+        return Ok(Json(Vec::new()));
+    };
+    Ok(Json(controller.list_execution_policies().await?))
+}
+
+pub async fn create_execution_policy(
+    State(context): State<AutomationWebContext>,
+    Json(policy): Json<ExecutionPolicyDto>,
+) -> Result<Json<ExecutionPolicyDto>, ApiError> {
+    if policy.policy_id.trim().is_empty() || policy.process_name.trim().is_empty() {
+        return Err(ApiError::BadRequest(
+            "policy_id and process_name are required".into(),
+        ));
+    }
+    let Some(ref controller) = context.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "Automation controller is not active.".into(),
+        ));
+    };
+    Ok(Json(controller.add_execution_policy(policy).await?))
+}
+
+pub async fn update_execution_policy(
+    State(context): State<AutomationWebContext>,
+    Path(id): Path<String>,
+    Json(mut policy): Json<ExecutionPolicyDto>,
+) -> Result<Json<ExecutionPolicyDto>, ApiError> {
+    policy.policy_id = id;
+    let Some(ref controller) = context.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "Automation controller is not active.".into(),
+        ));
+    };
+    Ok(Json(controller.add_execution_policy(policy).await?))
+}
+
+pub async fn delete_execution_policy(
+    State(context): State<AutomationWebContext>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let Some(ref controller) = context.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "Automation controller is not active.".into(),
+        ));
+    };
+    if controller.remove_execution_policy(&id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound("policy not found".into()))
+    }
 }

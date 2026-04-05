@@ -12,6 +12,20 @@ interface SourceStats {
   acceptance_rate: number
 }
 
+interface DailyStat {
+  day: string
+  total: number
+  acted: number
+  suggestion_type: string
+  source: string
+}
+
+interface DayAggregate {
+  day: string
+  total: number
+  acted: number
+}
+
 interface StatsData {
   total: number
   accepted: number
@@ -32,14 +46,35 @@ const barColors: Record<string, string> = {
 
 export function SuggestionStats() {
   const [stats, setStats] = useState<StatsData | null>(null)
+  const [dailyTrends, setDailyTrends] = useState<DayAggregate[]>([])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
-        const data = await invoke<StatsData>('get_suggestion_stats')
-        if (!cancelled) setStats(data)
+        const [data, daily] = await Promise.all([
+          invoke<StatsData>('get_suggestion_stats'),
+          invoke<DailyStat[]>('get_suggestion_daily_stats', { days: 7 }),
+        ])
+        if (cancelled) return
+        setStats(data)
+        // Aggregate daily rows by day (sum across types/sources)
+        const map = new Map<string, DayAggregate>()
+        for (const row of daily) {
+          const existing = map.get(row.day)
+          if (existing) {
+            existing.total += row.total
+            existing.acted += row.acted
+          } else {
+            map.set(row.day, { day: row.day, total: row.total, acted: row.acted })
+          }
+        }
+        // Sort ascending by day and take last 7
+        const sorted = Array.from(map.values())
+          .sort((a, b) => a.day.localeCompare(b.day))
+          .slice(-7)
+        setDailyTrends(sorted)
       } catch (e) {
         console.warn('Failed to load stats:', e)
       }
@@ -131,6 +166,47 @@ export function SuggestionStats() {
           </div>
         </>
       )}
+
+      {/* Daily Trends */}
+      {dailyTrends.length > 0 &&
+        (() => {
+          const maxTotal = Math.max(...dailyTrends.map((d) => d.total), 1)
+          return (
+            <>
+              <div className="text-[10px] text-content-secondary font-medium pt-1">Daily Trends (7d)</div>
+              <div className="flex flex-col gap-1">
+                {dailyTrends.map(({ day, total, acted }) => (
+                  <div key={day} className="flex items-center gap-2">
+                    <span className="text-[10px] text-content-secondary w-14 tabular-nums">{day.slice(5)}</span>
+                    <div className="flex-1 h-3 rounded-full bg-content-inverse/5 overflow-hidden relative">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-brand/30 transition-all"
+                        style={{ width: `${(total / maxTotal) * 100}%` }}
+                      />
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-brand transition-all"
+                        style={{ width: `${(acted / maxTotal) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-content-primary w-10 text-right tabular-nums">
+                      {acted}/{total}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 justify-center text-[9px] text-content-secondary">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-brand" />
+                  Acted
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-brand/30" />
+                  Total
+                </span>
+              </div>
+            </>
+          )
+        })()}
     </div>
   )
 }

@@ -87,6 +87,13 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'history', labelKey: 'sidebar.executionHistory' },
     ],
   },
+  '/audit': {
+    titleKey: 'nav.audit',
+    nodes: [
+      { id: 'summary', labelKey: 'sidebar.auditSummary' },
+      { id: 'entries', labelKey: 'sidebar.auditEntries' },
+    ],
+  },
   '/updates': {
     titleKey: 'nav.updates',
     nodes: [

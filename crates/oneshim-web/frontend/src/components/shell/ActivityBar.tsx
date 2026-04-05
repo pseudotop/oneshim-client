@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Calendar,
+  ClipboardList,
   Clock,
   FileText,
   Image,
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { id: 'timeline', to: '/timeline', icon: Clock, labelKey: 'nav.timeline', group: 'monitor' },
   { id: 'replay', to: '/replay', icon: Zap, labelKey: 'nav.replay', group: 'monitor' },
   { id: 'automation', to: '/automation', icon: Monitor, labelKey: 'nav.automation', group: 'monitor' },
+  { id: 'audit', to: '/audit', icon: ClipboardList, labelKey: 'nav.audit', group: 'monitor' },
   { id: 'recalibration', to: '/recalibration', icon: RefreshCw, labelKey: 'nav.recalibration', group: 'data' },
   { id: 'coaching', to: '/coaching', icon: MessageCircle, labelKey: 'nav.coaching', group: 'data' },
   { id: 'chat', to: '/chat', icon: MessageSquare, labelKey: 'nav.chat', group: 'data' },

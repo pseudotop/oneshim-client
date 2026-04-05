@@ -91,6 +91,43 @@ pub struct PendingConfirmation {
     pub requested_at: DateTime<Utc>,
 }
 
+/// Portable execution-policy representation exposed through `AutomationPort`.
+///
+/// This mirrors `oneshim_automation::policy::ExecutionPolicy` without pulling
+/// the automation crate into `oneshim-core`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionPolicyDto {
+    pub policy_id: String,
+    pub process_name: String,
+    #[serde(default)]
+    pub process_hash: Option<String>,
+    #[serde(default)]
+    pub allowed_args: Vec<String>,
+    #[serde(default)]
+    pub requires_sudo: bool,
+    #[serde(default = "default_max_exec_time")]
+    pub max_execution_time_ms: u64,
+    #[serde(default)]
+    pub audit_level: String,
+    #[serde(default)]
+    pub sandbox_profile: Option<String>,
+    #[serde(default)]
+    pub allowed_paths: Vec<String>,
+    #[serde(default)]
+    pub allow_network: Option<bool>,
+    #[serde(default)]
+    pub require_signed_token: bool,
+    #[serde(default = "default_confirmation")]
+    pub confirmation: String,
+}
+
+fn default_max_exec_time() -> u64 {
+    5000
+}
+fn default_confirmation() -> String {
+    "Confirm".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

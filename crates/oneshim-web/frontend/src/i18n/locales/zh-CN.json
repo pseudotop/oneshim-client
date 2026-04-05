@@ -33,7 +33,8 @@
     "mainNavLabel": "主导航",
     "coaching": "教练",
     "recalibration": "重新校准",
-    "chat": "聊天"
+    "chat": "聊天",
+    "audit": "审计日志"
   },
   "dashboard": {
     "title": "活动概览",
@@ -819,6 +820,11 @@
       "act": "执行"
     }
   },
+  "auditLog": {
+    "title": "审计日志",
+    "entries": "审计条目",
+    "details": "详情"
+  },
   "emptyState": {
     "dashboard": {
       "title": "仪表盘准备中",
@@ -845,6 +851,11 @@
       "title": "自动化未激活",
       "description": "自动化系统当前未激活，请在设置中启用",
       "action": "前往设置"
+    },
+    "auditLog": {
+      "title": "暂无审计条目",
+      "description": "执行自动化命令后审计条目将在此显示",
+      "action": "前往自动化"
     }
   },
   "commandPalette": {
@@ -919,7 +930,9 @@
     "coachingGoals": "目标",
     "coachingEvents": "事件",
     "insight": "洞察",
-    "statistics": "统计"
+    "statistics": "统计",
+    "auditSummary": "摘要",
+    "auditEntries": "条目"
   },
   "settingsOAuth": {
     "title": "连接",

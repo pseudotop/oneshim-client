@@ -33,7 +33,8 @@
     "recalibration": "Recalibration",
     "dashboardDay": "Day View",
     "mainNavLabel": "Main Navigation",
-    "chat": "Chat"
+    "chat": "Chat",
+    "audit": "Audit Log"
   },
   "dashboard": {
     "title": "Activity Summary",
@@ -1047,6 +1048,11 @@
       "breakCompleteBody": "Ready to focus again?"
     }
   },
+  "auditLog": {
+    "title": "Audit Log",
+    "entries": "Audit Entries",
+    "details": "Details"
+  },
   "emptyState": {
     "dashboard": {
       "title": "Dashboard Preparing",
@@ -1081,6 +1087,11 @@
       "title": "Automation Inactive",
       "description": "The automation system is inactive. Enable it in Settings",
       "action": "Go to Settings"
+    },
+    "auditLog": {
+      "title": "No Audit Entries",
+      "description": "Audit entries will appear here once automation commands are executed",
+      "action": "Go to Automation"
     }
   },
   "commandPalette": {
@@ -1173,7 +1184,9 @@
     "coachingGoals": "Goals",
     "coachingEvents": "Events",
     "insight": "Insight",
-    "statistics": "Statistics"
+    "statistics": "Statistics",
+    "auditSummary": "Summary",
+    "auditEntries": "Entries"
   },
   "coaching": {
     "title": "Coaching History",

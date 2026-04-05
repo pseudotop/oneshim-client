@@ -33,7 +33,8 @@
     "recalibration": "재보정",
     "dashboardDay": "일별 보기",
     "mainNavLabel": "메인 내비게이션",
-    "chat": "채팅"
+    "chat": "채팅",
+    "audit": "감사 로그"
   },
   "dashboard": {
     "title": "활동 요약",
@@ -1047,6 +1048,11 @@
       "breakCompleteBody": "다시 집중할 준비가 되었나요?"
     }
   },
+  "auditLog": {
+    "title": "감사 로그",
+    "entries": "감사 항목",
+    "details": "상세"
+  },
   "emptyState": {
     "dashboard": {
       "title": "대시보드 준비 중",
@@ -1081,6 +1087,11 @@
       "title": "자동화 비활성",
       "description": "자동화 시스템이 비활성 상태입니다. Settings에서 활성화하세요",
       "action": "설정으로 이동"
+    },
+    "auditLog": {
+      "title": "감사 항목 없음",
+      "description": "자동화 명령이 실행되면 감사 항목이 여기에 표시됩니다",
+      "action": "자동화로 이동"
     }
   },
   "commandPalette": {
@@ -1173,7 +1184,9 @@
     "coachingGoals": "목표",
     "coachingEvents": "이벤트",
     "insight": "인사이트",
-    "statistics": "통계"
+    "statistics": "통계",
+    "auditSummary": "요약",
+    "auditEntries": "항목"
   },
   "coaching": {
     "title": "코칭 히스토리",

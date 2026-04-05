@@ -33,7 +33,8 @@
     "mainNavLabel": "メインナビゲーション",
     "coaching": "コーチング",
     "recalibration": "再キャリブレーション",
-    "chat": "チャット"
+    "chat": "チャット",
+    "audit": "監査ログ"
   },
   "dashboard": {
     "title": "アクティビティサマリー",
@@ -819,6 +820,11 @@
       "act": "実行"
     }
   },
+  "auditLog": {
+    "title": "監査ログ",
+    "entries": "監査エントリー",
+    "details": "詳細"
+  },
   "emptyState": {
     "dashboard": {
       "title": "ダッシュボード準備中",
@@ -845,6 +851,11 @@
       "title": "オートメーション無効",
       "description": "オートメーションシステムが無効です。設定で有効にしてください",
       "action": "設定へ移動"
+    },
+    "auditLog": {
+      "title": "監査エントリーがありません",
+      "description": "オートメーションコマンドが実行されると監査エントリーがここに表示されます",
+      "action": "オートメーションへ移動"
     }
   },
   "commandPalette": {
@@ -919,7 +930,9 @@
     "coachingGoals": "目標",
     "coachingEvents": "イベント",
     "insight": "インサイト",
-    "statistics": "統計"
+    "statistics": "統計",
+    "auditSummary": "サマリー",
+    "auditEntries": "エントリー"
   },
   "settingsOAuth": {
     "title": "接続",

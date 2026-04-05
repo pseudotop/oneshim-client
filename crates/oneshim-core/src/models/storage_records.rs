@@ -307,6 +307,16 @@ pub struct PendingFeedbackRecord {
     pub created_at: String,
 }
 
+/// Daily aggregated suggestion statistics for time-series display.
+#[derive(Debug, Clone)]
+pub struct DailyStatRecord {
+    pub day: String,
+    pub total: u32,
+    pub acted: u32,
+    pub suggestion_type: String,
+    pub source: String,
+}
+
 impl PendingFeedbackRecord {
     /// Create a record for insertion (no id, auto-generated created_at).
     pub fn new_for_insert(

@@ -515,6 +515,46 @@ impl SqliteStorage {
         Ok(())
     }
 
+    /// Daily suggestion stats for the last N days, grouped by type and source.
+    pub fn suggestion_daily_stats(
+        &self,
+        days: u32,
+    ) -> Result<Vec<oneshim_core::models::storage_records::DailyStatRecord>, StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+        let cutoff = format!("-{days} days");
+        let mut stmt = conn
+            .prepare(
+                "SELECT SUBSTR(created_at, 1, 10) as day, \
+                 COUNT(*) as total, \
+                 SUM(CASE WHEN acted_at IS NOT NULL THEN 1 ELSE 0 END) as acted, \
+                 suggestion_type, source \
+                 FROM suggestions \
+                 WHERE created_at >= datetime('now', ?1) \
+                 GROUP BY day, suggestion_type, source \
+                 ORDER BY day DESC",
+            )
+            .map_err(|e| StorageError::Internal(format!("prepare failure: {e}")))?;
+        let rows = stmt
+            .query_map(rusqlite::params![cutoff], |row| {
+                Ok(oneshim_core::models::storage_records::DailyStatRecord {
+                    day: row.get(0)?,
+                    total: row.get(1)?,
+                    acted: row.get(2)?,
+                    suggestion_type: row.get(3)?,
+                    source: row.get(4)?,
+                })
+            })
+            .map_err(|e| StorageError::Internal(format!("query failure: {e}")))?;
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row.map_err(|e| StorageError::Internal(format!("row failure: {e}")))?);
+        }
+        Ok(records)
+    }
+
     #[allow(deprecated)]
     fn serialize_suggestion(suggestion: &LocalSuggestion) -> (String, String) {
         match suggestion {

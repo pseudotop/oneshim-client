@@ -213,6 +213,41 @@ impl PolicyClient {
             .cloned()
     }
 
+    /// Add or replace a single execution policy by `policy_id`.
+    pub async fn add_policy(&self, policy: ExecutionPolicy) {
+        let mut cache = self.policy_cache.write().await;
+        cache.policies.retain(|p| p.policy_id != policy.policy_id);
+        let name = policy.process_name.clone();
+        cache.policies.push(policy);
+        cache.last_updated = Utc::now();
+        let mut allowed = self.allowed_processes.write().await;
+        allowed.insert(name);
+    }
+
+    /// Remove a policy by `policy_id`. Returns `true` if a policy was removed.
+    pub async fn remove_policy(&self, policy_id: &str) -> bool {
+        let mut cache = self.policy_cache.write().await;
+        let before = cache.policies.len();
+        cache.policies.retain(|p| p.policy_id != policy_id);
+        if cache.policies.len() < before {
+            cache.last_updated = Utc::now();
+            let mut allowed = self.allowed_processes.write().await;
+            *allowed = cache
+                .policies
+                .iter()
+                .map(|p| p.process_name.clone())
+                .collect();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Return a snapshot of all execution policies.
+    pub async fn list_policies(&self) -> Vec<ExecutionPolicy> {
+        self.policy_cache.read().await.policies.clone()
+    }
+
     pub fn validate_args(policy: &ExecutionPolicy, args: &[String]) -> bool {
         if policy.allowed_args.is_empty() {
             return true; // unrestricted
@@ -592,5 +627,62 @@ mod tests {
         let mut different_cmd = make_command(&token);
         different_cmd.command_id = "cmd-other".to_string();
         assert!(!client.validate_command(&different_cmd).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn add_policy_inserts_new_policy() {
+        let client = PolicyClient::new();
+        let policy = make_policy("pol-add");
+        client.add_policy(policy).await;
+        let list = client.list_policies().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].policy_id, "pol-add");
+        assert!(client.is_process_allowed("git").await);
+    }
+
+    #[tokio::test]
+    async fn add_policy_replaces_existing_by_id() {
+        let client = PolicyClient::new();
+        let mut p1 = make_policy("pol-1");
+        p1.process_name = "ls".to_string();
+        client.add_policy(p1).await;
+        assert_eq!(client.list_policies().await.len(), 1);
+
+        let mut p1_updated = make_policy("pol-1");
+        p1_updated.process_name = "cat".to_string();
+        client.add_policy(p1_updated).await;
+
+        let list = client.list_policies().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].process_name, "cat");
+    }
+
+    #[tokio::test]
+    async fn remove_policy_returns_false_for_unknown() {
+        let client = PolicyClient::new();
+        assert!(!client.remove_policy("nonexistent").await);
+    }
+
+    #[tokio::test]
+    async fn remove_policy_removes_and_rebuilds_allowed() {
+        let client = PolicyClient::new();
+        let mut p1 = make_policy("pol-1");
+        p1.process_name = "git".to_string();
+        let mut p2 = make_policy("pol-2");
+        p2.process_name = "ls".to_string();
+        client.add_policy(p1).await;
+        client.add_policy(p2).await;
+        assert_eq!(client.list_policies().await.len(), 2);
+
+        assert!(client.remove_policy("pol-1").await);
+        assert_eq!(client.list_policies().await.len(), 1);
+        assert!(!client.is_process_allowed("git").await);
+        assert!(client.is_process_allowed("ls").await);
+    }
+
+    #[tokio::test]
+    async fn list_policies_empty_by_default() {
+        let client = PolicyClient::new();
+        assert!(client.list_policies().await.is_empty());
     }
 }

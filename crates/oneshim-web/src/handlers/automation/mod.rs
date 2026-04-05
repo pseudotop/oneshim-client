@@ -2,9 +2,10 @@ mod execution;
 mod scene;
 
 pub use execution::{
-    create_preset, delete_preset, execute_intent_hint, execute_scene_action, get_audit_logs,
-    get_automation_stats, get_automation_status, get_contract_versions, get_policies,
-    get_policy_events, list_presets, run_preset, update_preset,
+    create_execution_policy, create_preset, delete_execution_policy, delete_preset,
+    execute_intent_hint, execute_scene_action, get_audit_logs, get_automation_stats,
+    get_automation_status, get_contract_versions, get_policies, get_policy_events,
+    list_execution_policies, list_presets, run_preset, update_execution_policy, update_preset,
 };
 pub use scene::{get_automation_scene, get_automation_scene_calibration};
 
