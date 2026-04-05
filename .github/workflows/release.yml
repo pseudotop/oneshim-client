@@ -351,6 +351,14 @@ jobs:
           tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
           test -f crates/oneshim-web/frontend/dist/index.html
 
+      - name: Install Windows build dependencies (Perl + NASM for SQLCipher)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install strawberryperl nasm --no-progress -y
+          echo "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          echo "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
