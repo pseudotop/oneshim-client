@@ -204,6 +204,12 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             checked={formData.analysis.text_intelligence_enabled}
             onChange={(v) => onChange('analysis', 'text_intelligence_enabled', v)}
           />
+          <ToggleRow
+            label="Auto-tuner"
+            description="EMA-based drift detection and automatic re-clustering of behavioral regimes"
+            checked={formData.analysis.auto_tuner_enabled}
+            onChange={(v) => onChange('analysis', 'auto_tuner_enabled', v)}
+          />
         </div>
       </Card>
 
@@ -337,6 +343,12 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
                 description="Advertise this device on the local network for peer sync"
                 checked={formData.sync.lan_advertise}
                 onChange={(v) => onChange('sync', 'lan_advertise', v)}
+              />
+              <ToggleRow
+                label="Payload compression"
+                description="Compress changeset payloads before encryption to reduce bandwidth"
+                checked={formData.sync.compression_enabled}
+                onChange={(v) => onChange('sync', 'compression_enabled', v)}
               />
             </>
           )}

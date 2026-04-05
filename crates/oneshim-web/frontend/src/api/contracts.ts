@@ -220,6 +220,7 @@ export interface AnalysisSettings {
   embedding_enabled: boolean
   gui_intelligence_enabled: boolean
   text_intelligence_enabled: boolean
+  auto_tuner_enabled: boolean
   tiered_memory?: TieredMemorySettings
 }
 
@@ -251,6 +252,7 @@ export interface SyncSettings {
   interval_secs: number
   device_name: string
   lan_advertise: boolean
+  compression_enabled: boolean
 }
 
 export type UpdatePhase = 'Idle' | 'Checking' | 'PendingApproval' | 'Installing' | 'Updated' | 'Deferred' | 'Error'

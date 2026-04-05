@@ -120,6 +120,7 @@ pub(crate) fn config_to_settings(
             embedding_enabled: config.analysis.embedding.enabled,
             gui_intelligence_enabled: config.analysis.gui_intelligence.enabled,
             text_intelligence_enabled: config.analysis.text_intelligence.enabled,
+            auto_tuner_enabled: config.analysis.tiered_memory.auto_tuning.enabled,
         },
         network: NetworkSettings {
             server_base_url: config.server.base_url.clone(),
@@ -146,6 +147,7 @@ pub(crate) fn config_to_settings(
             interval_secs: config.sync.interval_secs,
             device_name: config.sync.device_name.clone(),
             lan_advertise: config.sync.lan_advertise,
+            compression_enabled: config.sync.compression_enabled,
         },
     }
 }

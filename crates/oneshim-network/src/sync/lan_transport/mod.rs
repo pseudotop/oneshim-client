@@ -1,6 +1,13 @@
-//! LanSyncTransport -- mDNS + HTTPS peer-to-peer sync orchestrator.
+//! Phase 3b LAN peer-to-peer sync transport.
 //!
-//! Requires the `lan-sync` feature flag.
+//! Provides mDNS-based peer discovery and encrypted HTTPS push/pull
+//! changeset synchronization between devices on the same local network.
+//! Wired into the main sync pipeline via `sync_setup.rs` when the user
+//! selects `SyncTransportKind::Lan`.
+//!
+//! Requires the `lan-sync` feature flag (`cargo build --features lan-sync`).
+//! When compiled without this feature, the `SyncTransportKind::Lan` arm in
+//! `sync_setup` returns an error and sync is disabled.
 
 mod auth;
 mod operations;
