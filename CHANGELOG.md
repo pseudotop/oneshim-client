@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.3] - 2026-04-05
+
+### Fixed
+
+- Restore SQLCipher + install Perl/NASM on Windows CI for OpenSSL build
+  Restore bundled-sqlcipher-vendored-openssl for full SQLite encryption
+  on all platforms. The Windows CI failure was caused by missing Perl
+  (required by OpenSSL's Configure script). Fix: install strawberryperl
+  and nasm via chocolatey before the Rust build step.
+
+  This ensures data-at-rest encryption for ALL platforms:
+  - SQLite: SQLCipher PRAGMA key (AES-256)
+  - Frames: AES-256-GCM via EncryptionKey
+
 ## [0.4.23-rc.2] - 2026-04-05
 
 ### Fixed
