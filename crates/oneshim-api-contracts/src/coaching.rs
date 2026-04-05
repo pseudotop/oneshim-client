@@ -67,6 +67,14 @@ impl From<GoalProgressView> for GoalProgressResponse {
     }
 }
 
+/// Response DTO for GET /api/coaching/stats/today — aggregated coaching stats for the current day.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoachingStatsTodayResponse {
+    pub nudges_count: u32,
+    pub current_regime: Option<String>,
+    pub regime_minutes_today: u32,
+}
+
 /// Request body for PUT /api/coaching/goals.
 #[derive(Debug, Deserialize)]
 pub struct UpdateGoalsRequest {

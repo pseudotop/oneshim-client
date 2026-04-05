@@ -71,7 +71,14 @@
     "today": "Today",
     "previousDay": "Previous day",
     "nextDay": "Next day",
-    "loadError": "Failed to load daily digest. Please try again later."
+    "loadError": "Failed to load daily digest. Please try again later.",
+    "todaySummary": {
+      "title": "Today at a Glance",
+      "activeTime": "Active Time",
+      "topApp": "Top App",
+      "nudges": "Nudges",
+      "regime": "Regime"
+    }
   },
   "updates": {
     "title": "Updates",

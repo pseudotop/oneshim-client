@@ -288,6 +288,10 @@ pub fn api_routes() -> Router<AppState> {
             "/coaching/goals",
             get(handlers::coaching::get_goals).put(handlers::coaching::update_goals),
         )
+        .route(
+            "/coaching/stats/today",
+            get(handlers::coaching::get_coaching_stats_today),
+        )
         // Pomodoro timer
         .route("/pomodoro/start", post(handlers::pomodoro::start_pomodoro))
         .route(

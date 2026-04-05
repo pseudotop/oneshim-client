@@ -8,6 +8,7 @@ import type {
   AutomationStatus,
   BackupArchive,
   BackupParams,
+  CoachingStatsToday,
   CreateOverrideRequest,
   CreateTagRequest,
   DailyDigestResponse,
@@ -1186,6 +1187,17 @@ export async function fetchSupportDiagnostics(): Promise<DiagnosticsBundleRespon
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Diagnostics query failed' }))
     throw new Error(err.error || 'Diagnostics query failed')
+  }
+  return res.json()
+}
+
+// ── Coaching Stats API ─────────────────────────────────────────
+
+export async function fetchCoachingStatsToday(): Promise<CoachingStatsToday> {
+  const res = await fetchWithRetry(`${BASE_URL}/coaching/stats/today`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Coaching stats query failed' }))
+    throw new Error(err.error || 'Coaching stats query failed')
   }
   return res.json()
 }
