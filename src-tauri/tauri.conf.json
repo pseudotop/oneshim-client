@@ -33,7 +33,9 @@
       "dangerousDisableAssetCspModification": false
     }
   },
-  "plugins": {},
+  "plugins": {
+    "_note": "tauri-plugin-updater is intentionally NOT configured here. This project uses a custom updater (src-tauri/src/updater/) with GitHub Releases API, checksum verification, and signature validation. See ADR-004 for details."
+  },
   "bundle": {
     "active": true,
     "targets": "all",

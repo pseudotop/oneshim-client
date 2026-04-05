@@ -1106,13 +1106,23 @@ jobs:
         id: changelog
         env:
           TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
+          REPO_SLUG: ${{ github.repository }}
         run: |
           VERSION="${TAG_REF#v}"
-          # Extract section between ## [$VERSION] and next ## [
-          CHANGELOG_SECTION=$(sed -n "/^## \[$VERSION\]\( - .*\)\?$/,/^## \[/p" CHANGELOG.md | sed '1d;$d' | sed '/^$/d')
+          # Extract changelog section for this version
+          # Handle both "## [VERSION] - DATE" and "## [VERSION]" formats
+          VERSION_ESCAPED=$(echo "$VERSION" | sed 's/[.]/\\./g')
+          CHANGELOG_SECTION=$(awk "/^## \[${VERSION_ESCAPED}\]/{found=1; next} /^## \[/{found=0} found" CHANGELOG.md)
+
           if [ -z "$CHANGELOG_SECTION" ]; then
-            CHANGELOG_SECTION="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)"
+            echo "⚠️ No changelog section found for [$VERSION], using git-cliff"
+            CHANGELOG_SECTION=$(git cliff --latest --strip header 2>/dev/null || echo "See [CHANGELOG.md](https://github.com/${REPO_SLUG}/blob/main/CHANGELOG.md) for details.")
           fi
+
+          if [ -z "$CHANGELOG_SECTION" ] || [ ${#CHANGELOG_SECTION} -lt 20 ]; then
+            echo "::warning::Release notes are suspiciously short (${#CHANGELOG_SECTION} chars)"
+          fi
+
           # Write to file for multi-line output
           echo "$CHANGELOG_SECTION" > changelog_section.md
 
