@@ -151,6 +151,7 @@ mod macos {
 mod windows {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
+    use tracing::debug;
 
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
