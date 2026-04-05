@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.1] - 2026-04-05
+
+### Added
+
+- Expand Updates page, add config toggles, document LAN sync
+
+
+### Fixed
+
+- Shutdown error logging, cache rescan, listener cleanup, rustdoc warnings
+
+- Eliminate release notes race condition, improve changelog extraction
+  Remove changelog.yml workflow that raced with release.yml on tag push.
+  Both triggered on v* tags — changelog.yml finished in 2min but release.yml
+  took 45-90min, causing gh release edit to fail on non-existent release.
+
+  Improve release.yml changelog extraction:
+  - Replace fragile 3-chained-sed with robust awk extraction
+  - Add git-cliff fallback when CHANGELOG.md section is empty
+  - Add validation warning for suspiciously short release notes (<20 chars)
+  - Handle both "## [VERSION] - DATE" and "## [VERSION]" header formats
+
+  Document custom updater decision in tauri.conf.json (custom updater with
+  GitHub API, checksum/signature verification is used instead of
+  tauri-plugin-updater).
+
+- Resolve all release build failures since v0.4.16
+  Root cause 1 (v0.4.21+): bundled-sqlcipher requires OPENSSL_DIR on
+  Windows CI. Fix: switch to bundled-sqlcipher-vendored-openssl which
+  bundles OpenSSL source, eliminating external dependency.
+
+  Root cause 2 (v0.4.18+): New auto_tuner_enabled and compression_enabled
+  fields missing from mock/story TS objects. Fix: add missing fields to
+  standalone.ts and stories-utils.ts.
+
+  Root cause 3: Updates.tsx addToast calls used object syntax instead of
+  positional arguments. Fix: match addToast(type, message) signature.
+
+  All releases v0.4.16-v0.4.22 failed due to these cascading issues.
+  This commit fixes the pipeline so next release will succeed.
+
 ## [0.4.22] - 2026-04-05
 
 ### Fixed
