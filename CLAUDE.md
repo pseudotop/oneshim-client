@@ -308,6 +308,13 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `validation.rs`: spec validation rules
   - `tests.rs`: unit tests
 
+### oneshim-audio (Audio Capture + STT)
+- `capture.rs`: Cross-platform microphone capture via cpal, auto-resampling to 16kHz mono
+- `vad.rs`: `VadDetector` — energy-based voice activity detection with configurable threshold
+- `whisper.rs`: `WhisperSttProvider` — local speech-to-text via Whisper model (`#[cfg(feature = "whisper")]`)
+- `cloud_stt.rs`: `CloudSttProvider` — cloud-based STT fallback (`#[cfg(feature = "cloud-stt")]`)
+- `model_downloader.rs`: Whisper model download support (`#[cfg(feature = "download")]`)
+
 ### oneshim-app (crates/oneshim-app/) — DEPRECATED
 > **Removed from workspace.** Replaced by `src-tauri/` which is the active binary crate
 > (also named `oneshim-app` as its package). Do not add new code here.
