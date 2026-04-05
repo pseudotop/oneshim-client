@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.7] - 2026-04-05
+
+### Fixed
+
+- Autostart.rs RegDeleteValueW returns u32, not Result
+  windows-sys 0.61 RegDeleteValueW returns u32 (Win32 error code), not
+  Result. Fix if-let-Err pattern to check != 0 instead.
+
 ## [0.4.23-rc.6] - 2026-04-05
 
 ### Fixed
