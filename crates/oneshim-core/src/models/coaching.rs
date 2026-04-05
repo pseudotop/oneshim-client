@@ -59,6 +59,8 @@ pub struct CoachingMessage {
     pub variables: HashMap<String, String>,
     /// Timestamp when the message was created.
     pub created_at: DateTime<Utc>,
+    /// Human-readable explanation of why this message was triggered.
+    pub explanation: String,
 }
 
 impl CoachingMessage {
@@ -174,6 +176,7 @@ mod tests {
             ),
             variables,
             created_at: Utc::now(),
+            explanation: String::new(),
         };
 
         let json = serde_json::to_string(&msg).expect("serialize");
@@ -198,6 +201,7 @@ mod tests {
             personalized_text: Some("personalized text".to_string()),
             variables: HashMap::new(),
             created_at: Utc::now(),
+            explanation: String::new(),
         };
 
         assert_eq!(msg.display_text(), "personalized text");
@@ -218,6 +222,7 @@ mod tests {
             personalized_text: None,
             variables: HashMap::new(),
             created_at: Utc::now(),
+            explanation: String::new(),
         };
 
         assert_eq!(msg.display_text(), "template fallback text");

@@ -17,6 +17,7 @@ pub struct OverlayCoachingPayload {
     pub trigger_type: String,
     pub text: String,
     pub auto_dismiss_secs: u64,
+    pub explanation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,6 +186,7 @@ impl MagicOverlayHandle {
             trigger_type: oneshim_core::models::coaching::trigger_type_name(&message.trigger),
             text: message.display_text().to_string(),
             auto_dismiss_secs: 15,
+            explanation: message.explanation.clone(),
         };
 
         if let Err(e) = self.app_handle.emit("overlay:show-coaching", &payload) {
@@ -550,6 +552,7 @@ mod tests {
             trigger_type: "RegimeDrift".to_string(),
             text: "Take a break from coding.".to_string(),
             auto_dismiss_secs: 15,
+            explanation: "Frequent app switching detected in 'Coding'. FocusGuard profile flagged possible attention drift.".to_string(),
         };
 
         let json = serde_json::to_string(&payload).expect("serialize");

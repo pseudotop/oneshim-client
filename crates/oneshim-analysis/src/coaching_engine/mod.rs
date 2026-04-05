@@ -5,7 +5,9 @@ pub mod tunable_params;
 
 use chrono::{DateTime, Timelike, Utc};
 use oneshim_core::config::CoachingConfig;
-use oneshim_core::models::coaching::{trigger_type_name, CoachingMessage, GoalProgressView};
+use oneshim_core::models::coaching::{
+    trigger_type_name, CoachingMessage, CoachingProfile, GoalProgressView, TriggerType,
+};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -237,6 +239,7 @@ impl CoachingEngine {
 
         // 10. Produce message
         let message_id = uuid::Uuid::new_v4().to_string();
+        let explanation = Self::build_explanation(&trigger, &profile);
         Some(CoachingMessage {
             message_id,
             profile,
@@ -245,7 +248,58 @@ impl CoachingEngine {
             personalized_text: None,
             variables,
             created_at: Utc::now(),
+            explanation,
         })
+    }
+
+    /// Build a human-readable explanation of why this coaching message was triggered.
+    ///
+    /// Each trigger variant produces a distinct explanation referencing the
+    /// coaching profile name so users understand both the _what_ and the _who_.
+    pub fn build_explanation(trigger: &TriggerType, profile: &CoachingProfile) -> String {
+        let profile_name = format!("{:?}", profile);
+        match trigger {
+            TriggerType::RegimeTransition {
+                from_regime,
+                to_regime,
+            } => {
+                let from = from_regime.as_deref().unwrap_or("unknown");
+                let to = to_regime.as_deref().unwrap_or("unknown");
+                format!(
+                    "You switched from '{}' to '{}' (context switch detected). {} profile triggered this coaching nudge.",
+                    from, to, profile_name
+                )
+            }
+            TriggerType::RegimeOverstay {
+                regime_label,
+                duration_secs,
+                avg_duration_secs,
+            } => {
+                let dur_min = duration_secs / 60;
+                let avg_min = avg_duration_secs / 60;
+                format!(
+                    "You've been in '{}' for {} minutes (average: {} min). {} profile suggests a break or status check.",
+                    regime_label, dur_min, avg_min, profile_name
+                )
+            }
+            TriggerType::RegimeDrift { regime_label } => {
+                format!(
+                    "Frequent app switching detected in '{}'. {} profile flagged possible attention drift.",
+                    regime_label, profile_name
+                )
+            }
+            TriggerType::GoalThreshold {
+                regime_label,
+                target_minutes,
+                current_minutes,
+                threshold_percent,
+            } => {
+                format!(
+                    "You've reached {}% of your '{}' goal ({}/{} min). {} profile is tracking your progress.",
+                    threshold_percent, regime_label, current_minutes, target_minutes, profile_name
+                )
+            }
+        }
     }
 
     // ── Public delegation methods ──────────────────────────────────────
@@ -1014,5 +1068,62 @@ mod tests {
             score.positive_signals
         );
         assert_eq!(score.total_shown, 1, "step 8: total_shown should be 1");
+    }
+
+    // ── build_explanation tests ──────────────────────────────────
+
+    #[test]
+    fn generates_explanation_for_regime_transition() {
+        let trigger = TriggerType::RegimeTransition {
+            from_regime: Some("Deep Work".to_string()),
+            to_regime: Some("Communication".to_string()),
+        };
+        let profile = CoachingProfile::FocusGuard;
+        let explanation = CoachingEngine::build_explanation(&trigger, &profile);
+
+        assert!(
+            explanation.contains("Deep Work"),
+            "should contain from regime name"
+        );
+        assert!(
+            explanation.contains("Communication"),
+            "should contain to regime name"
+        );
+        assert!(
+            explanation.contains("FocusGuard"),
+            "should contain profile name"
+        );
+        assert!(
+            explanation.contains("context switch"),
+            "should mention context switch"
+        );
+    }
+
+    #[test]
+    fn generates_explanation_for_overstay() {
+        let trigger = TriggerType::RegimeOverstay {
+            regime_label: "Coding".to_string(),
+            duration_secs: 5400,     // 90 minutes
+            avg_duration_secs: 3600, // 60 minutes
+        };
+        let profile = CoachingProfile::TimeAware;
+        let explanation = CoachingEngine::build_explanation(&trigger, &profile);
+
+        assert!(
+            explanation.contains("90"),
+            "should contain duration in minutes (90)"
+        );
+        assert!(
+            explanation.contains("60"),
+            "should contain average in minutes (60)"
+        );
+        assert!(
+            explanation.contains("Coding"),
+            "should contain regime label"
+        );
+        assert!(
+            explanation.contains("TimeAware"),
+            "should contain profile name"
+        );
     }
 }
