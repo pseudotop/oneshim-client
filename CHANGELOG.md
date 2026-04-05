@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.22-rc.1] - 2026-04-05
+
+### Fixed
+
+- Config validation, IBAN/passport PII, dead code cleanup, STATUS.md update
+
+- Frame retention scheduler, size caching, SSE gap detection, audio tests, 4K bench
+  Frame storage ([#3](https://github.com/pseudotop/oneshim-client/pull/3)): Auto-enforce retention + storage limits every 100s
+  in monitor loop via helpers::enforce_frame_retention. Extracted to helper
+  to keep monitor.rs at 500-line guardrail.
+
+  Frame size ([#8](https://github.com/pseudotop/oneshim-client/pull/8)): AtomicU64 cached_size_bytes with lazy init. O(1) reads
+  instead of O(n) directory walk. Updated on save/delete.
+
+  SSE ([#6](https://github.com/pseudotop/oneshim-client/pull/6)): Event ID gap detection with tracing::warn.
+
+  Audio ([#11](https://github.com/pseudotop/oneshim-client/pull/11)): 6 new VAD tests (silence, threshold, boundary, RMS, cycles).
+
+  Vision ([#14](https://github.com/pseudotop/oneshim-client/pull/14)): 4K delta benchmark (3840x2160, asserts <500ms).
+
+- OAuth refresh graceful errors, audit SQLite persistence, Wayland native, GUI ML wiring
+  OAuth ([#1](https://github.com/pseudotop/oneshim-client/pull/1)): Replace 12 unimplemented!() in refresh_coordinator test mocks
+  with graceful error returns + logging. 8 new tests for error paths.
+
+  Audit ([#2](https://github.com/pseudotop/oneshim-client/pull/2)): Add AuditPersistence callback trait to AuditLogger (hexagonal).
+  V25 migration creates audit_log SQLite table with indexes. Wire persistence
+  callback in app_runtime_launch + web_server_runtime. 4 new audit tests +
+  4 migration tests.
+
+  Wayland ([#4](https://github.com/pseudotop/oneshim-client/pull/4)): Add native GNOME Shell (gdbus) and Sway (swaymsg) active
+  window detection. Add Mutter IdleMonitor for idle time. XWayland fallback
+  with clear warning logs. 7 new parsing tests.
+
+  GUI ML ([#5](https://github.com/pseudotop/oneshim-client/pull/5)): Add build_gui_element_with_frame() async method that calls
+  ml_classifier.classify_crop() when available (confidence > 0.7 threshold).
+  Add crop_region_rgba() helper. Document Phase 2 integration plan.
+
+- Codebase audit — 14 improvements (HIGH→LOW) ([#332](https://github.com/pseudotop/oneshim-client/pull/332))
+
+- Mark 4K benchmark as #[ignore], update schema V25 in STATUS.md, add audio crate summary
+  - delta.rs: Mark benchmark_delta_4k as #[ignore] — flaky under CPU contention in debug builds
+  - STATUS.md + STATUS.ko.md: SQLite schema V24 → V25 (audit_log table)
+  - CLAUDE.md: Add oneshim-audio crate summary (capture, VAD, whisper, cloud STT)
+
+- Audit round 2 minor ([#334](https://github.com/pseudotop/oneshim-client/pull/334))
+
 ## [0.4.21] - 2026-04-05
 
 ### Added
