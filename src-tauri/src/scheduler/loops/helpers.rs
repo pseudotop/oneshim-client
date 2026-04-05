@@ -335,3 +335,18 @@ pub(crate) fn record_to_segment_summary(r: &SegmentSummaryRecord) -> Option<Segm
         llm_summary: r.llm_summary.clone(),
     })
 }
+
+/// Interval between automatic frame retention enforcement runs (100 seconds).
+pub(super) const FRAME_RETENTION_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(100);
+
+/// Enforce frame retention and storage limits. Called periodically from the
+/// monitor loop to prevent unbounded disk usage.
+pub(super) async fn enforce_frame_retention(frame_storage: &dyn FrameStoragePort) {
+    if let Err(e) = frame_storage.enforce_retention().await {
+        warn!("frame retention enforcement failed: {e}");
+    }
+    if let Err(e) = frame_storage.enforce_storage_limit().await {
+        warn!("frame storage limit enforcement failed: {e}");
+    }
+}

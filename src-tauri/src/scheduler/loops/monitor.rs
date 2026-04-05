@@ -7,7 +7,7 @@ use oneshim_monitor::input_activity::InputActivityCollector;
 use oneshim_monitor::window_layout::WindowLayoutTracker;
 use oneshim_vision::ring_buffer::{CaptureRingBuffer, RingFrame};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 use super::super::config::PlatformEgressPolicy;
@@ -67,12 +67,9 @@ impl Scheduler {
             let mut interval = tokio::time::interval(poll);
             let mut idle_tracker = IdleTracker::new(Some(idle_threshold));
             let mut adaptive_trigger_state = adaptive_trigger_state;
-
             let window_tracker = WindowLayoutTracker::new();
             let input_collector = input_collector1;
-            // Dashcam ring buffer: 6 slots (~18s at 3s poll), flush on importance >= 0.5,
-            // capture 2 post-event frames after each flush.
-            let ring_buffer = CaptureRingBuffer::new(6, 2, 0.5);
+            let ring_buffer = CaptureRingBuffer::new(6, 2, 0.5); // dashcam: 6 slots, 2 post-event, 0.5 threshold
 
             // GUI Activity Intelligence state (carried across ticks)
             let mut last_gui_summary: Option<
@@ -89,14 +86,9 @@ impl Scheduler {
             // pipeline uses these for click-to-element correlation via
             // `GuiElementDetector::correlate_click()`.
             let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
-
-            // ── Focus highlight debounce state ──
             let mut focus_hl = super::detection_helper::FocusHighlightState::new();
-
-            // ── Coaching: track real regime dwell time ──
             let mut coaching_tick_state = CoachingTickState::new();
-
-            // ── Audit tracking: consent and PII level changes (Task 7) ──
+            let mut last_retention_check = Instant::now();
             let mut prev_full_text_consent = false;
             let mut prev_pii_level = config_manager1
                 .as_ref()
@@ -480,6 +472,14 @@ impl Scheduler {
                                 );
 
                                 super::vision_helper::log_ring_buffer_evictions(&ring_buffer);
+
+                                // ── Periodic frame retention enforcement ──
+                                if last_retention_check.elapsed() >= super::helpers::FRAME_RETENTION_INTERVAL {
+                                    last_retention_check = Instant::now();
+                                    if let Some(ref fs) = frame_storage1 {
+                                        super::helpers::enforce_frame_retention(fs.as_ref()).await;
+                                    }
+                                }
 
                                 prev_window_title = Some(focus_window_title);
                                 prev_app = Some(app_name);

@@ -272,4 +272,82 @@ mod tests {
         let event = vad.process_chunk(&[]);
         assert_eq!(event, VadEvent::None);
     }
+
+    #[test]
+    fn all_zero_samples_no_speech() {
+        let mut vad = VadDetector::new(0.001, 0, 0);
+        let silence = vec![0.0f32; 4096];
+        // Process multiple chunks — should never leave Idle
+        for _ in 0..10 {
+            let event = vad.process_chunk(&silence);
+            assert_eq!(event, VadEvent::None);
+        }
+        assert_eq!(vad.state(), VadState::Idle);
+    }
+
+    #[test]
+    fn above_threshold_triggers_speech() {
+        // Use a very low threshold so any non-zero signal triggers
+        let mut vad = VadDetector::new(0.001, 800, 0);
+        // RMS of [0.1; 1024] = 0.1, well above 0.001
+        let speech = vec![0.1f32; 1024];
+        let event = vad.process_chunk(&speech);
+        assert_eq!(event, VadEvent::SpeechStarted);
+        assert_eq!(vad.state(), VadState::SpeechDetected);
+    }
+
+    #[test]
+    fn below_threshold_no_speech() {
+        // Threshold 0.5 — signal with RMS ~0.001 should not trigger
+        let mut vad = VadDetector::new(0.5, 800, 0);
+        let quiet = vec![0.001f32; 1024];
+        let event = vad.process_chunk(&quiet);
+        assert_eq!(event, VadEvent::None);
+        assert!(
+            vad.state() == VadState::Idle || vad.state() == VadState::Listening,
+            "should remain idle or listening, got {:?}",
+            vad.state()
+        );
+    }
+
+    #[test]
+    fn vad_config_threshold_boundary() {
+        // Exactly at threshold — signal RMS equals threshold should count as speech
+        let threshold = 0.5f32;
+        let mut vad = VadDetector::new(threshold, 0, 0);
+        // samples all = threshold → RMS = threshold → energy >= threshold → speech
+        let samples = vec![threshold; 1024];
+        let event = vad.process_chunk(&samples);
+        assert_eq!(event, VadEvent::SpeechStarted);
+    }
+
+    #[test]
+    fn rms_of_alternating_signal() {
+        // Alternating +0.5 / -0.5 → RMS = 0.5
+        let samples: Vec<f32> = (0..1024)
+            .map(|i| if i % 2 == 0 { 0.5 } else { -0.5 })
+            .collect();
+        let energy = rms(&samples);
+        assert!(
+            (energy - 0.5).abs() < 1e-4,
+            "expected RMS ~0.5, got {energy}"
+        );
+    }
+
+    #[test]
+    fn multiple_speech_silence_cycles() {
+        let mut vad = VadDetector::new(0.01, 0, 0);
+        let loud = vec![0.5f32; 1024];
+        let silence = vec![0.0f32; 1024];
+
+        // Cycle 1
+        assert_eq!(vad.process_chunk(&loud), VadEvent::SpeechStarted);
+        assert_eq!(vad.process_chunk(&silence), VadEvent::SpeechEnded);
+        assert_eq!(vad.state(), VadState::Idle);
+
+        // Cycle 2 — should work identically after returning to Idle
+        assert_eq!(vad.process_chunk(&loud), VadEvent::SpeechStarted);
+        assert_eq!(vad.process_chunk(&silence), VadEvent::SpeechEnded);
+        assert_eq!(vad.state(), VadState::Idle);
+    }
 }

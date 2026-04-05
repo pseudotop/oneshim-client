@@ -136,6 +136,12 @@ pub struct FrameFileStorage {
     buffer_pool: Arc<BufferPool>,
     disk_cache: DiskSpaceCache,
     encryption_key: Option<Arc<EncryptionKey>>,
+    /// Approximate total size of all frame files, updated on save/delete.
+    /// Avoids O(n) directory stat on every `total_size_mb()` call.
+    /// Initialized lazily on the first call to `total_size_mb()`.
+    cached_size_bytes: AtomicU64,
+    /// Whether `cached_size_bytes` has been initialized from a directory walk.
+    cached_size_initialized: std::sync::atomic::AtomicBool,
 }
 
 impl FrameFileStorage {
@@ -185,6 +191,8 @@ impl FrameFileStorage {
             buffer_pool: Arc::new(BufferPool::new(BUFFER_POOL_SIZE, DEFAULT_BUFFER_SIZE)),
             disk_cache: DiskSpaceCache::new(),
             encryption_key,
+            cached_size_bytes: AtomicU64::new(0),
+            cached_size_initialized: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -226,9 +234,14 @@ impl FrameFileStorage {
             webp_data.to_vec()
         };
 
+        let written_len = data_to_write.len() as u64;
         fs::write(&file_path, &data_to_write)
             .await
             .map_err(|e| StorageError::Internal(format!("frame file save failure: {e}")))?;
+
+        // Update cached size tracker
+        self.cached_size_bytes
+            .fetch_add(written_len, Ordering::Relaxed);
 
         let relative_path = PathBuf::from("frames").join(&date_str).join(&filename);
 
@@ -236,7 +249,7 @@ impl FrameFileStorage {
             "frame save: {} ({}bytes raw, {}bytes on disk)",
             relative_path.display(),
             webp_data.len(),
-            data_to_write.len()
+            written_len
         );
 
         Ok(relative_path)
@@ -287,22 +300,34 @@ impl FrameFileStorage {
                     webp_data
                 };
 
+                let written_len = data_to_write.len() as u64;
                 fs::write(&file_path, &data_to_write)
                     .await
                     .map_err(|e| StorageError::Internal(format!("frame file save failure: {e}")))?;
 
                 let relative_path = PathBuf::from("frames").join(&date_str).join(&filename);
 
-                Ok(relative_path)
+                Ok((relative_path, written_len))
             }));
         }
 
         let mut results = Vec::with_capacity(handles.len());
+        let mut total_written: u64 = 0;
         for handle in handles {
             match handle.await {
-                Ok(result) => results.push(result),
+                Ok(Ok((path, size))) => {
+                    total_written += size;
+                    results.push(Ok(path));
+                }
+                Ok(Err(e)) => results.push(Err(e)),
                 Err(e) => results.push(Err(StorageError::Internal(format!("Task failed: {e}")))),
             }
+        }
+
+        // Update cached size tracker in a single atomic add
+        if total_written > 0 {
+            self.cached_size_bytes
+                .fetch_add(total_written, Ordering::Relaxed);
         }
 
         results
@@ -486,6 +511,7 @@ impl FrameFileStorage {
         }
 
         let mut deleted_count = 0;
+        let mut deleted_bytes: u64 = 0;
         for chunk in dirs_to_delete.chunks(PARALLEL_DELETE_LIMIT) {
             let mut handles = Vec::with_capacity(chunk.len());
 
@@ -493,8 +519,9 @@ impl FrameFileStorage {
                 let path = path.clone();
                 handles.push(tokio::spawn(async move {
                     let count = count_files_in_dir(&path).await;
+                    let dir_bytes = calculate_dir_size(&path).await.unwrap_or(0);
                     match fs::remove_dir_all(&path).await {
-                        Ok(()) => Some(count),
+                        Ok(()) => Some((count, dir_bytes)),
                         Err(e) => {
                             warn!("frame folder delete failure: {e}");
                             None
@@ -504,10 +531,19 @@ impl FrameFileStorage {
             }
 
             for handle in handles {
-                if let Ok(Some(count)) = handle.await {
+                if let Ok(Some((count, bytes))) = handle.await {
                     deleted_count += count;
+                    deleted_bytes += bytes;
                 }
             }
+        }
+
+        // Subtract deleted bytes from cached size tracker
+        if deleted_bytes > 0 {
+            self.cached_size_bytes.fetch_sub(
+                deleted_bytes.min(self.cached_size_bytes.load(Ordering::Relaxed)),
+                Ordering::Relaxed,
+            );
         }
 
         if deleted_count > 0 {
@@ -521,14 +557,19 @@ impl FrameFileStorage {
     }
 
     pub async fn total_size_mb(&self) -> Result<u64, StorageError> {
-        let frames_dir = self.base_dir.join("frames");
-
-        if !frames_dir.exists() {
-            return Ok(0);
+        // Lazy-init: walk the directory once on the first call
+        if !self.cached_size_initialized.load(Ordering::Acquire) {
+            let frames_dir = self.base_dir.join("frames");
+            let size_bytes = if frames_dir.exists() {
+                calculate_dir_size(&frames_dir).await?
+            } else {
+                0
+            };
+            self.cached_size_bytes.store(size_bytes, Ordering::Relaxed);
+            self.cached_size_initialized.store(true, Ordering::Release);
         }
 
-        let size_bytes = calculate_dir_size(&frames_dir).await?;
-        Ok(size_bytes / 1024 / 1024)
+        Ok(self.cached_size_bytes.load(Ordering::Relaxed) / 1024 / 1024)
     }
 
     pub async fn enforce_storage_limit(&self) -> Result<usize, StorageError> {
@@ -538,8 +579,15 @@ impl FrameFileStorage {
             return Ok(0);
         }
 
-        // 전체 크기를 한 번만 계산하고, 삭제할 때마다 차감하여 반복 디렉터리 순회를 방지
-        let total_bytes = calculate_dir_size(&frames_dir).await?;
+        // Use cached size when available, otherwise compute once
+        let total_bytes = if self.cached_size_initialized.load(Ordering::Acquire) {
+            self.cached_size_bytes.load(Ordering::Relaxed)
+        } else {
+            let size = calculate_dir_size(&frames_dir).await?;
+            self.cached_size_bytes.store(size, Ordering::Relaxed);
+            self.cached_size_initialized.store(true, Ordering::Release);
+            size
+        };
         let mut current_mb = total_bytes / 1024 / 1024;
 
         if current_mb <= self.max_storage_mb {
@@ -547,9 +595,10 @@ impl FrameFileStorage {
         }
 
         let mut deleted_count = 0;
+        let mut total_deleted_bytes: u64 = 0;
 
         let mut dirs = list_date_dirs(&frames_dir).await?;
-        dirs.sort(); // YYYY-MM-DD 오름차순 (오래된 것부터 삭제)
+        dirs.sort(); // YYYY-MM-DD ascending (oldest first)
         for dir_name in dirs {
             if current_mb <= self.max_storage_mb {
                 break;
@@ -561,13 +610,21 @@ impl FrameFileStorage {
             deleted_count += count;
 
             if let Err(e) = fs::remove_dir_all(&dir_path).await {
-                warn!("s folder delete failure: {e}");
+                warn!("frame folder delete failure: {e}");
             } else {
-                // 삭제된 디렉터리 크기를 차감
                 let dir_size_mb = dir_size_bytes / 1024 / 1024;
                 current_mb = current_mb.saturating_sub(dir_size_mb);
-                info!("s folder delete: {} ({count}items file)", dir_name);
+                total_deleted_bytes += dir_size_bytes;
+                info!("frame folder delete: {} ({count} files)", dir_name);
             }
+        }
+
+        // Subtract deleted bytes from cached size tracker
+        if total_deleted_bytes > 0 {
+            self.cached_size_bytes.fetch_sub(
+                total_deleted_bytes.min(self.cached_size_bytes.load(Ordering::Relaxed)),
+                Ordering::Relaxed,
+            );
         }
 
         Ok(deleted_count)
@@ -618,6 +675,8 @@ impl FrameFileStorage {
         }
 
         if deleted > 0 {
+            // Reset cached size to zero since all frames were deleted
+            self.cached_size_bytes.store(0, Ordering::Relaxed);
             info!(
                 "GDPR: deleted {deleted} frame files across {} directories",
                 dirs.len()
