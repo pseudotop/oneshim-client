@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.2] - 2026-04-05
+
+### Fixed
+
+- Add 3-layer TypeScript safety net to prevent release build failures
+  Layer 1 — lefthook pre-commit: Add frontend-typecheck hook that runs
+  npx tsc --noEmit on staged .ts/.tsx files. Catches type errors before
+  they reach git history.
+
+  Layer 2 — pre-release-check.sh: Add frontend build verification section
+  that runs tsc --noEmit + vite build before allowing release tag creation.
+  Blocks release if frontend is broken.
+
+  Layer 3 — CI workflows: Add explicit "TypeScript type check" step in
+  both ci.yml and release.yml before the vite build step. Provides clear
+  error messages in CI logs instead of cryptic build failures.
+
+  These 3 layers would have caught the TS2741/TS2554 errors that broke
+  all releases from v0.4.18 to v0.4.22.
+
+- Revert SQLCipher to bundled SQLite for Windows CI compatibility
+  bundled-sqlcipher-vendored-openssl fails on Windows CI runner because
+  OpenSSL's Configure script requires a functional Perl that the runner's
+  environment doesn't provide correctly.
+
+  Revert to bundled (plain SQLite) for cross-platform CI compatibility.
+  Data-at-rest encryption is provided by:
+  - Frame images: AES-256-GCM via EncryptionKey (unchanged, still active)
+  - SQLite: deferred to future when SQLCipher CI toolchain is resolved
+
+  The EncryptionKey infrastructure and frame encryption remain fully
+  functional. Only the SQLite-level PRAGMA key is disabled.
+
 ## [0.4.23-rc.1] - 2026-04-05
 
 ### Added
