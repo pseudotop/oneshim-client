@@ -34,7 +34,11 @@ export default function Chat() {
   } = useSessionSetup()
 
   // ---- Local UI state ----
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(() => {
+    // Auto-select session from ?sid= query parameter (e.g. explain-in-chat navigation)
+    const params = new URLSearchParams(window.location.search)
+    return params.get('sid')
+  })
   const [input, setInput] = useState('')
   const [transport, setTransport] = useState<Transport>('subprocess')
   const [creating, setCreating] = useState(false)
