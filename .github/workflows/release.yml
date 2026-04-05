@@ -351,13 +351,29 @@ jobs:
           tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
           test -f crates/oneshim-web/frontend/dist/index.html
 
-      - name: Install Windows build dependencies (Perl + NASM for SQLCipher)
+      - name: Setup Windows build tools for SQLCipher (Perl + NASM)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install strawberryperl nasm --no-progress -y
-          echo "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-          echo "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+          # GitHub Actions Windows runner has Strawberry Perl pre-installed
+          # but it may not be on PATH. Locate and add it.
+          $perlPaths = @(
+            "C:\Strawberry\perl\bin",
+            "$env:RUNNER_TOOL_CACHE\strawberry-perl\*\x64\perl\bin"
+          )
+          foreach ($p in $perlPaths) {
+            $resolved = Resolve-Path $p -ErrorAction SilentlyContinue
+            if ($resolved) {
+              echo "$resolved" | Out-File -FilePath $env:GITHUB_PATH -Append
+              Write-Host "Perl found at: $resolved"
+              break
+            }
+          }
+          # NASM may be needed for OpenSSL asm optimizations
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install nasm --no-progress -y
+            echo "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
