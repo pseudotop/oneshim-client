@@ -271,6 +271,10 @@ jobs:
         working-directory: crates/oneshim-web/frontend
         run: pnpm install --frozen-lockfile
 
+      - name: TypeScript type check (early fail)
+        working-directory: crates/oneshim-web/frontend
+        run: npx tsc --noEmit
+
       - name: Build frontend bundle
         working-directory: crates/oneshim-web/frontend
         run: pnpm build

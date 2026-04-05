@@ -105,3 +105,12 @@ pre-commit:
         fi
         cargo clippy --workspace --quiet -- -D warnings
       stage_fixed: true
+    frontend-typecheck:
+      glob: "*.{ts,tsx}"
+      run: |
+        FRONTEND_DIR="crates/oneshim-web/frontend"
+        if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
+          echo "frontend-typecheck: skipped (node_modules not installed)"
+          exit 0
+        fi
+        cd "$FRONTEND_DIR" && npx tsc --noEmit
