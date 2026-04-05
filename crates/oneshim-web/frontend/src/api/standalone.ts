@@ -224,6 +224,7 @@ function makeDefaultSettings(): AppSettings {
       embedding_enabled: true,
       gui_intelligence_enabled: true,
       text_intelligence_enabled: true,
+      auto_tuner_enabled: false,
     },
     network: {
       server_base_url: 'http://localhost:8000',
@@ -234,7 +235,7 @@ function makeDefaultSettings(): AppSettings {
     },
     coaching: { enabled: true, tone: 'Balanced', locale: 'en', overlay_mode: 'Minimal' },
     integration: { enabled: false, auth_profile_kind: 'None', request_timeout_secs: 30, sync_interval_secs: 60 },
-    sync: { enabled: false, transport: 'None', interval_secs: 300, device_name: '', lan_advertise: false },
+    sync: { enabled: false, transport: 'None', interval_secs: 300, device_name: '', lan_advertise: false, compression_enabled: true },
     audio: {
       enabled: false,
       whisper_model_path: '',
