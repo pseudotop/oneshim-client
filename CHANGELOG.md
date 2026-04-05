@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23-rc.8] - 2026-04-05
+
+### Fixed
+
+- Add tracing::debug import to Windows autostart module
+  The Windows-only mod block was missing the debug! macro import,
+  causing compile failure on Windows CI.
+
 ## [0.4.23-rc.7] - 2026-04-05
 
 ### Fixed
