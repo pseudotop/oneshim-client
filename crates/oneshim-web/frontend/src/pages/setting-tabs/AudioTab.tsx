@@ -104,6 +104,8 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
   const modelState = audioStatus?.model_status?.state ?? 'not_installed'
   const sttProvider = (audio?.stt_provider ?? 'local') as string
   const cloudApiKey = audio?.cloud_api_key ?? ''
+  const cloudEndpoint = audio?.cloud_stt_endpoint ?? 'https://api.openai.com/v1/audio/transcriptions'
+  const cloudTimeoutSecs = audio?.cloud_timeout_secs ?? 30
   const micInputMode = audio?.mic_input_mode ?? 'push_to_talk'
   const vadThreshold = audio?.vad_threshold ?? 0.02
   const vadSilenceMs = audio?.vad_silence_ms ?? 800
@@ -357,23 +359,56 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
         </div>
       </fieldset>
 
-      {/* Cloud API Key (shown when Cloud selected) */}
+      {/* Cloud STT Settings (shown when Cloud selected) */}
       {sttProvider === 'cloud' && (
-        <div className="space-y-2">
-          <label htmlFor="cloud-api-key" className={cn(typography.label, colors.text.secondary)}>
-            {t('settings.audio.api_key', 'OpenAI API Key')}
-          </label>
-          <input
-            id="cloud-api-key"
-            type="password"
-            value={cloudApiKey}
-            onChange={(e) => onAudioChange('cloud_api_key', e.target.value)}
-            placeholder="sk-..."
-            className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
-          />
-          <p className={cn(typography.caption, colors.text.tertiary)}>
-            {t('settings.audio.api_key_hint', 'Your API key is stored locally and sent directly to OpenAI.')}
-          </p>
+        <div className="space-y-4 rounded-lg border border-muted p-4">
+          <div className="space-y-2">
+            <label htmlFor="cloud-api-key" className={cn(typography.label, colors.text.secondary)}>
+              {t('settings.audio.api_key', 'API Key')}
+            </label>
+            <input
+              id="cloud-api-key"
+              type="password"
+              value={cloudApiKey}
+              onChange={(e) => onAudioChange('cloud_api_key', e.target.value)}
+              placeholder="sk-..."
+              className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
+            />
+            <p className={cn(typography.caption, colors.text.tertiary)}>
+              {t('settings.audio.api_key_hint', 'Your API key is stored locally and sent directly to the provider.')}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="cloud-endpoint" className={cn(typography.label, colors.text.secondary)}>
+              {t('settings.audio.endpoint', 'Endpoint URL')}
+            </label>
+            <input
+              id="cloud-endpoint"
+              type="url"
+              value={cloudEndpoint}
+              onChange={(e) => onAudioChange('cloud_stt_endpoint', e.target.value)}
+              placeholder="https://api.openai.com/v1/audio/transcriptions"
+              className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
+            />
+            <p className={cn(typography.caption, colors.text.tertiary)}>
+              {t('settings.audio.endpoint_hint', 'OpenAI-compatible transcription endpoint.')}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="cloud-timeout" className={cn(typography.label, colors.text.secondary)}>
+              {t('settings.audio.cloud_timeout', 'Timeout (sec)')}
+            </label>
+            <input
+              id="cloud-timeout"
+              type="number"
+              min="5"
+              max="120"
+              step="5"
+              value={cloudTimeoutSecs}
+              onChange={(e) => onAudioChange('cloud_timeout_secs', Number.parseInt(e.target.value, 10) || 30)}
+              className={cn('w-32 border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
+            />
+          </div>
         </div>
       )}
     </div>

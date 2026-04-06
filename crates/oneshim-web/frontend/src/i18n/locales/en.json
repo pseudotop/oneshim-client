@@ -180,7 +180,8 @@
       "monitoring": "Monitoring",
       "aiAutomation": "AI & Automation",
       "dataStorage": "Data & Storage",
-      "coaching": "Coaching Goals"
+      "coaching": "Coaching Goals",
+      "audio": "Audio"
     },
     "dataCollection": "Data Collection",
     "enableCapture": "Enable Screenshot Capture",
@@ -483,6 +484,37 @@
       "tierOauth": "OAuth",
       "tierAws": "AWS",
       "tierAggregator": "Aggregator"
+    },
+    "audio": {
+      "title": "Audio & Speech-to-Text",
+      "enable": "Enable audio capture and STT",
+      "model": "Whisper Model",
+      "status": "Model Status",
+      "not_installed": "Not installed",
+      "downloading": "Downloading...",
+      "ready": "Ready",
+      "cancel": "Cancel",
+      "download": "Download",
+      "redownload": "Re-download",
+      "reload": "Reload Engine",
+      "delete": "Delete",
+      "delete_confirm": "Delete the downloaded model? You can re-download it later.",
+      "language": "STT Language",
+      "input_mode": "Input Mode",
+      "ptt": "Push-to-Talk",
+      "vad": "Voice Activity",
+      "vad_sensitivity": "VAD Sensitivity",
+      "vad_sensitivity_hint": "Lower = more sensitive. Increase if background noise triggers false detections.",
+      "vad_silence": "Silence Duration (ms)",
+      "vad_silence_hint": "How long to wait in silence before ending an utterance.",
+      "stt_provider": "STT Provider",
+      "local": "Local (Whisper)",
+      "cloud": "Cloud (OpenAI)",
+      "api_key": "API Key",
+      "api_key_hint": "Your API key is stored locally and sent directly to the provider.",
+      "endpoint": "Endpoint URL",
+      "endpoint_hint": "OpenAI-compatible transcription endpoint.",
+      "cloud_timeout": "Timeout (sec)"
     }
   },
   "privacy": {
