@@ -38,7 +38,8 @@
     "recalibration": "再キャリブレーション",
     "chat": "チャット",
     "audit": "監査ログ",
-    "policies": "ポリシー"
+    "policies": "ポリシー",
+    "playbooks": "プレイブック"
   },
   "dashboard": {
     "title": "アクティビティサマリー",
@@ -1475,5 +1476,16 @@
     "refreshLabel": "検出を更新",
     "close": "閉じる",
     "closeLabel": "検出オーバーレイを閉じる"
+  },
+  "playbooks": {
+    "title": "プレイブックライブラリ",
+    "coaching": "コーチングテンプレート",
+    "presets": "自動化プリセット",
+    "filterProfile": "プロフィール",
+    "filterTrigger": "トリガー",
+    "filterCategory": "カテゴリ",
+    "steps": "{{count}}ステップ",
+    "builtin": "組み込み",
+    "templateCount": "{{count}}件"
   }
 }

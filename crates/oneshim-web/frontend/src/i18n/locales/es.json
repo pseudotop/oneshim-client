@@ -38,7 +38,8 @@
     "dashboardDay": "Vista diaria",
     "chat": "Chat",
     "audit": "Registro de auditoría",
-    "policies": "Políticas"
+    "policies": "Políticas",
+    "playbooks": "Cuadernos de jugadas"
   },
   "dashboard": {
     "title": "Resumen de actividad",
@@ -1475,5 +1476,16 @@
     "refreshLabel": "Actualizar detección",
     "close": "Cerrar",
     "closeLabel": "Cerrar superposición de detección"
+  },
+  "playbooks": {
+    "title": "Biblioteca de Playbooks",
+    "coaching": "Plantillas de Coaching",
+    "presets": "Preajustes de Automatización",
+    "filterProfile": "Perfil",
+    "filterTrigger": "Disparador",
+    "filterCategory": "Categoría",
+    "steps": "{{count}} pasos",
+    "builtin": "Integrado",
+    "templateCount": "{{count}} elementos"
   }
 }

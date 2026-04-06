@@ -38,7 +38,8 @@
     "mainNavLabel": "Main Navigation",
     "chat": "Chat",
     "audit": "Audit Log",
-    "policies": "Policies"
+    "policies": "Policies",
+    "playbooks": "Playbooks"
   },
   "dashboard": {
     "title": "Activity Summary",
@@ -1538,5 +1539,16 @@
     "refreshLabel": "Refresh detection",
     "close": "Close",
     "closeLabel": "Close detection overlay"
+  },
+  "playbooks": {
+    "title": "Playbook Library",
+    "coaching": "Coaching Templates",
+    "presets": "Automation Presets",
+    "filterProfile": "Profile",
+    "filterTrigger": "Trigger",
+    "filterCategory": "Category",
+    "steps": "{{count}} steps",
+    "builtin": "Built-in",
+    "templateCount": "{{count}} items"
   }
 }

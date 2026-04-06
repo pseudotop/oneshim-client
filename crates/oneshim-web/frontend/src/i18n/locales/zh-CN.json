@@ -38,7 +38,8 @@
     "recalibration": "重新校准",
     "chat": "聊天",
     "audit": "审计日志",
-    "policies": "策略"
+    "policies": "策略",
+    "playbooks": "剧本库"
   },
   "dashboard": {
     "title": "活动概览",
@@ -1475,5 +1476,16 @@
     "refreshLabel": "刷新检测",
     "close": "关闭",
     "closeLabel": "关闭检测叠加层"
+  },
+  "playbooks": {
+    "title": "剧本库",
+    "coaching": "辅导模板",
+    "presets": "自动化预设",
+    "filterProfile": "配置文件",
+    "filterTrigger": "触发器",
+    "filterCategory": "分类",
+    "steps": "{{count}} 步",
+    "builtin": "内置",
+    "templateCount": "{{count}} 项"
   }
 }

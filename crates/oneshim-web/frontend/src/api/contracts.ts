@@ -1667,3 +1667,30 @@ export interface RuntimeLogSnapshot {
   line_count: number
   recent_text: string
 }
+
+// ── Playbook Library types ────────────────────────────────────
+
+export interface CoachingTemplateDto {
+  profile: string
+  trigger_type: string
+  tone: string
+  locale: string
+  text: string
+}
+
+export interface CoachingTemplateListDto {
+  templates: CoachingTemplateDto[]
+}
+
+export interface PresetSummaryDto {
+  id: string
+  name: string
+  description: string
+  category: string
+  step_count: number
+  builtin: boolean
+}
+
+export interface PresetSummaryListDto {
+  presets: PresetSummaryDto[]
+}
