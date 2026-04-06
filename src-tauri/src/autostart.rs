@@ -1,7 +1,7 @@
 //! - macOS: `~/Library/LaunchAgents/com.oneshim.agent.plist`
 //! - Linux: `~/.config/systemd/user/oneshim.service` (systemd) or `~/.config/autostart/oneshim.desktop` (XDG fallback)
 
-#![allow(dead_code)]
+#![allow(dead_code)] // Module ready for IPC command wiring; all public fns used once autostart UI is enabled
 
 const APP_LABEL: &str = "com.oneshim.agent";
 

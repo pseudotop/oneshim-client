@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code)] // Diagnostic module; invoked on-demand via debug IPC commands and scheduler health checks
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};

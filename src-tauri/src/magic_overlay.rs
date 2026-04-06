@@ -268,7 +268,7 @@ impl MagicOverlayHandle {
 
     /// Emit a full UiScene to the detection overlay. Clears any active
     /// focus highlight first (mutual exclusion).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Called from scheduler detection loop when accessibility scene is available
     pub async fn emit_detection_scene(&self, scene: &oneshim_core::models::ui_scene::UiScene) {
         self.clear_focus_highlight();
 
@@ -315,7 +315,7 @@ impl MagicOverlayHandle {
     }
 
     /// Clear the detection overlay.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Called from scheduler detection loop on scene teardown
     pub async fn clear_detection_scene(&self) {
         if let Err(e) = self.app_handle.emit("overlay:detection-clear", ()) {
             debug!("emit overlay:detection-clear failed: {e}");

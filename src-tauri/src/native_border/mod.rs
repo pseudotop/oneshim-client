@@ -47,13 +47,13 @@ impl NativeBorderIndicator {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Stub for non-macOS platforms; called from main.rs setup
     pub fn new() -> Option<Self> {
         None
     }
 
     /// Show border on all screens. No-op if already visible.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Public API called from scheduler border loop
     pub fn show(&self) {
         if !self.visible.swap(true, Ordering::Relaxed) {
             #[cfg(target_os = "macos")]
@@ -66,7 +66,7 @@ impl NativeBorderIndicator {
     }
 
     /// Hide border on all screens. No-op if already hidden.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Public API called from scheduler border loop
     pub fn hide(&self) {
         if self.visible.swap(false, Ordering::Relaxed) {
             #[cfg(target_os = "macos")]
@@ -79,7 +79,7 @@ impl NativeBorderIndicator {
     }
 
     /// Update paused state on all screens.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Public API called from scheduler border loop on pause toggle
     pub fn set_paused(&self, paused: bool) {
         self.paused.store(paused, Ordering::Relaxed);
         #[cfg(target_os = "macos")]
@@ -171,12 +171,12 @@ impl NativeBorderIndicator {
         });
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Public query accessor for border state inspection
     pub fn is_visible(&self) -> bool {
         self.visible.load(Ordering::Relaxed)
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Public query accessor for border state inspection
     pub fn is_paused(&self) -> bool {
         self.paused.load(Ordering::Relaxed)
     }
@@ -194,5 +194,5 @@ impl Drop for NativeBorderIndicator {
 }
 
 /// Tauri managed state wrapper. Uses `Arc` for sharing with the screen monitor task.
-#[allow(dead_code)]
+#[allow(dead_code)] // Tauri managed state; accessed via AppState in scheduler loops
 pub struct NativeBorderState(pub std::sync::Arc<NativeBorderIndicator>);

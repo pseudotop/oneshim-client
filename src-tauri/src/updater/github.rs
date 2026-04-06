@@ -1,5 +1,5 @@
 //! GitHub API: fetch releases, parse JSON, select asset.
-#![allow(dead_code)]
+#![allow(dead_code)] // GitHub API helpers called from updater check/download paths
 
 use super::{ReleaseAsset, ReleaseInfo, UpdateError, Updater};
 

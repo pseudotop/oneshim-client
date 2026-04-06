@@ -69,7 +69,7 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
     ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError>;
 
     /// Save a GUI interaction event (delegates to WebStorage V13 table).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Wired in capture loop when GUI detection is active
     fn save_gui_interaction(
         &self,
         input: &oneshim_core::models::storage_records::NewGuiInteraction<'_>,
@@ -100,7 +100,7 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
 
     /// Run `ANALYZE` to refresh SQLite query planner statistics. Call after
     /// bulk operations (IVF index builds, large batch inserts).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Called after bulk IVF index builds in maintenance loop
     fn run_analyze(&self) -> Result<(), CoreError>;
 }
 

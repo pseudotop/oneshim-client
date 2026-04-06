@@ -1,5 +1,5 @@
 //! Download, decompress, binary replacement, restart.
-#![allow(dead_code)]
+#![allow(dead_code)] // Install helpers called from updater apply/verify paths
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};

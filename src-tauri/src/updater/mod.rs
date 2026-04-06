@@ -2,7 +2,7 @@
 // (github.rs, install.rs, state.rs). Consider further extraction if it
 // continues to grow.
 
-#![allow(dead_code)] // UI /
+#![allow(dead_code)] // Updater wired via update_runtime.rs; methods called from IPC commands and scheduler
 
 pub(crate) mod delta;
 mod github;
