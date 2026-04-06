@@ -90,7 +90,9 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
       <div className="relative w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-content-inverse/10 bg-surface-sunken/95 p-5 shadow-2xl backdrop-blur-md">
         {/* Header */}
         <div className="mb-3 flex items-center justify-between">
-          <h3 className={cn(typography.h4, 'text-content')}>{t('automation.confirmTitle', 'Automation Confirmation')}</h3>
+          <h3 className={cn(typography.h4, 'text-content')}>
+            {t('automation.confirmTitle', 'Automation Confirmation')}
+          </h3>
           <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', badgeColor)}>
             {confirmation.audit_level}
           </span>
@@ -99,12 +101,16 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
         {/* Process info */}
         <div className="mb-3 rounded-lg bg-content-inverse/5 p-3">
           <div className="mb-1.5 flex items-center gap-2">
-            <span className={cn(typography.caption, 'text-content-tertiary')}>{t('automation.confirmProcess', 'Process')}</span>
+            <span className={cn(typography.caption, 'text-content-tertiary')}>
+              {t('automation.confirmProcess', 'Process')}
+            </span>
             <span className={cn(typography.label, 'text-content')}>{confirmation.process_name}</span>
           </div>
           {confirmation.args.length > 0 && (
             <div className="flex items-start gap-2">
-              <span className={cn(typography.caption, 'text-content-tertiary shrink-0 pt-0.5')}>{t('automation.confirmArgs', 'Args')}</span>
+              <span className={cn(typography.caption, 'text-content-tertiary shrink-0 pt-0.5')}>
+                {t('automation.confirmArgs', 'Args')}
+              </span>
               <code className="text-[11px] text-content-secondary break-all font-mono">
                 {confirmation.args.map(sanitizeArg).join(' ')}
               </code>

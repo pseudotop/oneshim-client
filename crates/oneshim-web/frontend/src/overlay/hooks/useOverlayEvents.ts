@@ -99,9 +99,7 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
       return {
         ...state,
         suggestions: action.payload,
-        suggestionBadgeCount: state.suggestionsPanelOpen
-          ? 0
-          : state.suggestionBadgeCount + delta,
+        suggestionBadgeCount: state.suggestionsPanelOpen ? 0 : state.suggestionBadgeCount + delta,
       }
     }
     case 'remove-suggestion':

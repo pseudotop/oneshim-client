@@ -102,7 +102,11 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       setError(null)
       await Promise.resolve(onRefresh())
       showToast(
-        action === 'accept' ? t('suggestions.toastAccepted', 'Suggestion accepted') : action === 'reject' ? t('suggestions.toastRejected', 'Suggestion rejected') : t('suggestions.toastSnoozed', 'Snoozed'),
+        action === 'accept'
+          ? t('suggestions.toastAccepted', 'Suggestion accepted')
+          : action === 'reject'
+            ? t('suggestions.toastRejected', 'Suggestion rejected')
+            : t('suggestions.toastSnoozed', 'Snoozed'),
         'success',
       )
     } catch (e) {
@@ -191,13 +195,15 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                   type="button"
                   className={cn(
                     'px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors',
-                    sourceFilter.has(src)
-                      ? 'bg-brand/20 text-brand'
-                      : 'bg-content-inverse/5 text-content-tertiary',
+                    sourceFilter.has(src) ? 'bg-brand/20 text-brand' : 'bg-content-inverse/5 text-content-tertiary',
                   )}
                   onClick={() => toggleSource(src)}
                 >
-                  {src === 'server' ? t('suggestions.sourceServer', 'Server') : src === 'local' ? t('suggestions.sourceLocal', 'Local') : t('suggestions.sourceRules', 'Rules')}
+                  {src === 'server'
+                    ? t('suggestions.sourceServer', 'Server')
+                    : src === 'local'
+                      ? t('suggestions.sourceLocal', 'Local')
+                      : t('suggestions.sourceRules', 'Rules')}
                 </button>
               ))}
             </div>
@@ -208,7 +214,9 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                 ))}
               </ul>
             ) : (
-              <div className="px-4 py-8 text-center text-content-tertiary text-xs">{t('suggestions.noSuggestions', 'No suggestions yet')}</div>
+              <div className="px-4 py-8 text-center text-content-tertiary text-xs">
+                {t('suggestions.noSuggestions', 'No suggestions yet')}
+              </div>
             )}
           </>
         ) : activeTab === 'history' ? (

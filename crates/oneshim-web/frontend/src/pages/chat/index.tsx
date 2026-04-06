@@ -103,17 +103,11 @@ export default function Chat() {
     let unlisten: (() => void) | null = null
     ;(async () => {
       const { listen } = await import('@tauri-apps/api/event')
-      unlisten = await listen<{ count: number; sessionId: string }>(
-        'chat:suggestions-extracted',
-        ({ payload }) => {
-          if (payload.sessionId === activeId) {
-            addToast(
-              'info',
-              `${payload.count} suggestion${payload.count !== 1 ? 's' : ''} added from this conversation`,
-            )
-          }
-        },
-      )
+      unlisten = await listen<{ count: number; sessionId: string }>('chat:suggestions-extracted', ({ payload }) => {
+        if (payload.sessionId === activeId) {
+          addToast('info', `${payload.count} suggestion${payload.count !== 1 ? 's' : ''} added from this conversation`)
+        }
+      })
     })()
     return () => {
       unlisten?.()

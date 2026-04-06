@@ -153,8 +153,12 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
           {/* Thumbs feedback — subtle by default, shows confirmation after submit */}
           <div className="flex items-center gap-1">
             {feedbackSent ? (
-              <span className={`text-[10px] ${feedbackSent === 'positive' ? 'text-semantic-success' : 'text-semantic-error'} ${motion.opacity}`}>
-                {feedbackSent === 'positive' ? t('coaching.thanksFeedback', 'Thanks! Learning...') : t('coaching.adjustingFeedback', 'Got it, adjusting...')}
+              <span
+                className={`text-[10px] ${feedbackSent === 'positive' ? 'text-semantic-success' : 'text-semantic-error'} ${motion.opacity}`}
+              >
+                {feedbackSent === 'positive'
+                  ? t('coaching.thanksFeedback', 'Thanks! Learning...')
+                  : t('coaching.adjustingFeedback', 'Got it, adjusting...')}
               </span>
             ) : (
               <>

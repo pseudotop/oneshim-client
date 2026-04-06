@@ -33,7 +33,9 @@ export function SuggestionHistory() {
         if (!cancelled) setLoading(false)
       }
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   if (loading) {
@@ -45,42 +47,43 @@ export function SuggestionHistory() {
   }
 
   const stats = {
-    accepted: entries.filter(e => e.feedback === 'accepted').length,
-    rejected: entries.filter(e => e.feedback === 'rejected').length,
-    deferred: entries.filter(e => e.feedback === 'deferred').length,
-    pending: entries.filter(e => !e.feedback).length,
+    accepted: entries.filter((e) => e.feedback === 'accepted').length,
+    rejected: entries.filter((e) => e.feedback === 'rejected').length,
+    deferred: entries.filter((e) => e.feedback === 'deferred').length,
+    pending: entries.filter((e) => !e.feedback).length,
   }
 
   return (
     <div className="flex flex-col gap-2 p-2">
       <div className="flex gap-3 text-xs text-content-secondary px-2 pb-2 border-b border-border-default">
-        <span>{stats.accepted} {t('suggestions.statsAccepted', 'accepted')}</span>
-        <span>{stats.rejected} {t('suggestions.statsRejected', 'rejected')}</span>
-        <span>{stats.deferred} {t('suggestions.statsSnoozed', 'snoozed')}</span>
-        <span>{stats.pending} {t('suggestions.statsPending', 'pending')}</span>
+        <span>
+          {stats.accepted} {t('suggestions.statsAccepted', 'accepted')}
+        </span>
+        <span>
+          {stats.rejected} {t('suggestions.statsRejected', 'rejected')}
+        </span>
+        <span>
+          {stats.deferred} {t('suggestions.statsSnoozed', 'snoozed')}
+        </span>
+        <span>
+          {stats.pending} {t('suggestions.statsPending', 'pending')}
+        </span>
       </div>
       <ul className="flex flex-col gap-1.5">
-        {entries.map(entry => {
+        {entries.map((entry) => {
           const badgeClass = entry.feedback ? feedbackBadgeClassName[entry.feedback] : null
           const badgeKey = entry.feedback ? feedbackBadgeKey[entry.feedback] : null
           return (
-            <li
-              key={entry.id}
-              className="px-3 py-2 rounded-lg bg-surface-default/60 text-xs"
-            >
+            <li key={entry.id} className="px-3 py-2 rounded-lg bg-surface-default/60 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-content-primary truncate">
-                  {entry.title}
-                </span>
+                <span className="font-medium text-content-primary truncate">{entry.title}</span>
                 {badgeClass && badgeKey && (
                   <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0', badgeClass)}>
                     {t(badgeKey)}
                   </span>
                 )}
               </div>
-              <p className="text-content-secondary line-clamp-1 mt-0.5">
-                {entry.body}
-              </p>
+              <p className="text-content-secondary line-clamp-1 mt-0.5">{entry.body}</p>
             </li>
           )
         })}

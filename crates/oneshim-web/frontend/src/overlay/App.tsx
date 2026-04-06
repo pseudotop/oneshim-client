@@ -94,12 +94,7 @@ export default function OverlayApp() {
       {state.coaching && <CoachingPopup message={state.coaching} autoDismissSecs={state.coaching.auto_dismiss_secs} />}
 
       {/* Suggestion badge (shown when panel is closed and there are new items) */}
-      {!state.suggestionsPanelOpen && (
-        <SuggestionBadge
-          count={state.suggestionBadgeCount}
-          onClick={handleBadgeClick}
-        />
-      )}
+      {!state.suggestionsPanelOpen && <SuggestionBadge count={state.suggestionBadgeCount} onClick={handleBadgeClick} />}
 
       {/* Suggestions panel (right side, slide in/out) */}
       <SuggestionsPanel

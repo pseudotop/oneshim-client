@@ -87,7 +87,8 @@ export function SuggestionStats() {
   }, [])
 
   if (!stats) return <p className="text-content-secondary text-xs p-4">{t('common.loading', 'Loading...')}</p>
-  if (stats.total === 0) return <p className="text-content-secondary text-xs p-4">{t('suggestionStats.noData', 'No data yet')}</p>
+  if (stats.total === 0)
+    return <p className="text-content-secondary text-xs p-4">{t('suggestionStats.noData', 'No data yet')}</p>
 
   const entries = [
     { key: 'accepted', label: t('suggestionStats.accepted', 'Accepted'), count: stats.accepted },
@@ -100,9 +101,13 @@ export function SuggestionStats() {
     <div className="flex flex-col gap-3 p-3">
       <div className="text-center">
         <div className="text-2xl font-bold text-brand">{stats.acceptance_rate}%</div>
-        <div className="text-[10px] text-content-secondary">{t('suggestionStats.acceptanceRate', 'Acceptance Rate')}</div>
+        <div className="text-[10px] text-content-secondary">
+          {t('suggestionStats.acceptanceRate', 'Acceptance Rate')}
+        </div>
       </div>
-      <div className="text-[10px] text-content-secondary text-center">{t('suggestionStats.totalSuggestions', '{{count}} total suggestions', { count: stats.total })}</div>
+      <div className="text-[10px] text-content-secondary text-center">
+        {t('suggestionStats.totalSuggestions', '{{count}} total suggestions', { count: stats.total })}
+      </div>
       <div className="flex flex-col gap-1.5">
         {entries.map(({ key, label, count }) => (
           <div key={key} className="flex items-center gap-2">
@@ -121,7 +126,9 @@ export function SuggestionStats() {
       {/* Type Distribution */}
       {stats.by_type.length > 0 && (
         <>
-          <div className="text-[10px] text-content-secondary font-medium pt-1">{t('suggestionStats.typeDistribution', 'Type Distribution')}</div>
+          <div className="text-[10px] text-content-secondary font-medium pt-1">
+            {t('suggestionStats.typeDistribution', 'Type Distribution')}
+          </div>
           <div className="flex flex-col gap-1">
             {stats.by_type.map(({ suggestion_type, count }) => {
               const maxCount = stats.by_type[0]?.count ?? 1
@@ -147,14 +154,18 @@ export function SuggestionStats() {
       {/* Source Quality */}
       {stats.by_source.length > 0 && (
         <>
-          <div className="text-[10px] text-content-secondary font-medium pt-1">{t('suggestionStats.sourceQuality', 'Source Quality')}</div>
+          <div className="text-[10px] text-content-secondary font-medium pt-1">
+            {t('suggestionStats.sourceQuality', 'Source Quality')}
+          </div>
           <div className="flex flex-col gap-1">
             {stats.by_source.map(({ source, count, acceptance_rate }) => (
               <div key={source} className="flex items-center justify-between">
                 <span className="text-[10px] text-content-secondary w-20 truncate" title={source}>
                   {source}
                 </span>
-                <span className="text-[10px] text-content-primary">{t('suggestionStats.countTotal', '{{count}} total', { count })}</span>
+                <span className="text-[10px] text-content-primary">
+                  {t('suggestionStats.countTotal', '{{count}} total', { count })}
+                </span>
                 <span
                   className={cn(
                     'text-[10px] font-medium w-12 text-right',
@@ -175,7 +186,9 @@ export function SuggestionStats() {
           const maxTotal = Math.max(...dailyTrends.map((d) => d.total), 1)
           return (
             <>
-              <div className="text-[10px] text-content-secondary font-medium pt-1">{t('suggestionStats.dailyTrends', 'Daily Trends (7d)')}</div>
+              <div className="text-[10px] text-content-secondary font-medium pt-1">
+                {t('suggestionStats.dailyTrends', 'Daily Trends (7d)')}
+              </div>
               <div className="flex flex-col gap-1">
                 {dailyTrends.map(({ day, total, acted }) => (
                   <div key={day} className="flex items-center gap-2">

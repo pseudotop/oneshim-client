@@ -101,10 +101,7 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
           <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
             {t('policies.confirmation', 'Confirmation')}
           </label>
-          <Select
-            value={form.confirmation}
-            onChange={(e) => setForm((f) => ({ ...f, confirmation: e.target.value }))}
-          >
+          <Select value={form.confirmation} onChange={(e) => setForm((f) => ({ ...f, confirmation: e.target.value }))}>
             {CONFIRMATION_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
@@ -116,10 +113,7 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
           <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
             {t('policies.auditLevel', 'Audit Level')}
           </label>
-          <Select
-            value={form.audit_level}
-            onChange={(e) => setForm((f) => ({ ...f, audit_level: e.target.value }))}
-          >
+          <Select value={form.audit_level} onChange={(e) => setForm((f) => ({ ...f, audit_level: e.target.value }))}>
             {AUDIT_LEVEL_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}

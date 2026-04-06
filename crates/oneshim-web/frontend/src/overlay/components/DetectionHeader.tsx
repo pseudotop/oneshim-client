@@ -20,7 +20,9 @@ export default memo(function DetectionHeader({ elementCount, onRefresh, onClose 
     >
       <div className="flex items-center gap-3">
         <span className="font-medium">{t('detection.mode', 'Detection Mode')}</span>
-        <span className="text-white/50">{elementCount} {t('detection.elements', 'elements')}</span>
+        <span className="text-white/50">
+          {elementCount} {t('detection.elements', 'elements')}
+        </span>
       </div>
       <div className="flex items-center gap-3">
         <button
