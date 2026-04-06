@@ -7,6 +7,315 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.30] - 2026-04-07
+
+### Added
+
+- Blackout hours capture blocking (Q3)
+  Gate SmartCaptureTrigger on ScheduleConfig active hours/days so
+  captures are suppressed outside the configured work window,
+  including overnight ranges (e.g. 22:00-06:00).
+
+- Linux systemd autostart (Q7)
+
+- Re-run onboarding from settings (Q1)
+  Remove IS_TAURI gate on ViewSetupGuideButton so the re-run setup guide
+  button is always visible in Settings General tab, not only in Tauri mode.
+  In Tauri, it resets onboarding via IPC then reloads; in standalone mode
+  it reloads directly.
+
+- Coaching explanation field and overlay (Q6)
+  Add human-readable explanation to CoachingMessage and OverlayCoachingPayload
+  so users understand why they received a coaching nudge. Each TriggerType
+  variant produces a contextual explanation referencing the profile name,
+  regime labels, and durations.
+
+- Coaching goals progress bars (Q5)
+
+- Today summary dashboard widget (Q2)
+  Add coaching stats today endpoint and TodaySummary component
+  showing active time, top app, nudge count, and current regime.
+
+- Timeline batch tagging (Q4)
+  Add POST /api/frames/batch-tags endpoint and multi-select mode
+  in Timeline page for batch tag application to selected frames.
+
+- Add i18n keys for timeline batch tagging (Q4)
+  Add select/cancel/selectAll/clearSelection/selectedCount/batchTagged
+  keys to en.json and ko.json for the multi-select batch tagging feature.
+
+- Coaching overlay Why? toggle + notification queue (M3/F3)
+
+- Cloud STT fallback chain wiring + AudioTab config (M6)
+  Enhance AudioTab with cloud STT provider config UI (provider toggle,
+  API key input, endpoint URL). Verify existing FallbackSttProvider
+  wiring in reload_stt_engine.
+
+- Chat session rename + search + export (M1)
+  Add rename_ai_session IPC command with session title storage,
+  V26 schema migration for session title column.
+
+- Semantic search UI enhancement (M2)
+  Add semantic search toggle to Search page with score display,
+  content type badges, and regime label rendering from vector
+  search results.
+
+- Habit tracker V27 migration + storage (M4 backend)
+  Add HabitStreakRow model, HabitStorage trait with WebStorage
+  supertrait integration, V27 schema migration for habit_streaks
+  table, and SqliteStorage implementation.
+
+- M1 chat frontend + M4 habits endpoint + route wiring
+  Complete M1 chat polish (sidebar search/rename, markdown export,
+  token usage, IPC registration) and M4 habits REST endpoint with
+  frontend API hooks.
+
+- HabitTrackerWidget + Coaching page integration (M4 frontend)
+  Add 7-day streak grid widget with color-coded progress and
+  integrate into Coaching page.
+
+- Add i18n keys for Phase 10 features (M1-M4)
+  Add chat, search, coaching, and habit tracker i18n keys
+  for en.json and ko.json.
+
+- Daily digest export (A2)
+  Add DigestExporter module with markdown rendering, export endpoint
+  GET /api/digests/daily/export with Content-Disposition, and export
+  button in DashboardDay.
+
+- ReloadableModel port trait + additional locale keys (A4 partial + i18n)
+  Add ReloadableModel trait to embedding_provider port for runtime
+  model hot-reloading. Add digest export i18n keys for all locales.
+
+- Embedding model hot-reloading (A4)
+  Add runtime model reloading to LocalEmbeddingProvider without app restart.
+  ReloadableModel port trait (from prior commit) is now implemented by both
+  the fastembed and stub variants, with AtomicU64 version tracking and
+  Mutex-guarded model swap. New reload_embedding_model IPC command exposed
+  via EmbeddingRuntimeState managed state.
+
+- FallbackAnalysisProvider + NoOpAnalysisProvider (A3 step 1)
+
+- Llm_api_fallback config + DI helper (A3 step 2)
+  Add `llm_api_fallback: Option<ExternalApiEndpoint>` field to
+  `AiProviderConfig` with serde default, and introduce
+  `agent_runtime::analysis_helpers::build_analysis_provider` which
+  chains primary + fallback `AnalysisClient` instances via
+  `FallbackAnalysisProvider`, exposing a shared `AtomicBool` health
+  flag for future IPC health queries.
+
+- Wire FallbackAnalysisProvider at 4 DI sites + health IPC (A3 step 3)
+  Replace direct AnalysisClient::new() calls with build_analysis_provider()
+  helper at all 4 DI injection sites (scheduler coaching, embedding
+  summarizer, work-type refiner, context analyzer). Add AnalysisHealthFlags
+  to AppState and get_analysis_health IPC command for frontend health queries.
+
+- V28 migration + FewShotStorage port + SuggestionHistoryEntry (A1 step 1)
+
+- Implement FewShotStorage on SqliteStorage (A1 step 2)
+  - Add few_shot_storage_impl.rs: FewShotStorage impl for SqliteStorage
+    querying local_suggestions with feedback columns from v28 migration
+  - Extend v28 migration with idempotency-guarded addition of
+    suggestion_id, content, confidence columns to local_suggestions so
+    the FewShotStorage query can retrieve all required fields
+  - Fix pre-existing migration::tests version assertions (25 → 28)
+  - 4 new unit tests: empty, record-and-retrieve, limit, feedback-filter
+
+- PromptBuilder + FewShotSelector (A1 step 3)
+  Add PromptBuilder to prompts.rs for composing system prompts with
+  regime hints and few-shot examples, and introduce FewShotSelector
+  for picking representative accepted/rejected history entries with
+  soft regime-based filtering.
+
+- Wire few-shot into ContextAssembler + ContextAnalyzer (A1 step 4)
+  - Add `build_with_few_shot` to ContextAssembler using PromptBuilder for
+    enriched system prompts with few-shot examples and regime hints
+  - Add FewShotSelector + FewShotStorage fields to ContextAnalyzer with
+    async setter, auto-selecting examples from feedback history in analyze()
+  - Wire FewShotStorage (SqliteStorage) through AgentSupportContextBuilder
+    into the ContextAnalyzer at DI time in AgentRuntime
+
+- Release notes + download size in PendingUpdateInfo (U1 step 1)
+  Add release_notes (Option<String>) and download_size_bytes (Option<u64>)
+  to PendingUpdateInfo API contract. Add download_size (Option<u64>) to
+  UpdateCheckResult::Available and propagate through coordinator and
+  startup runtime. Update find_platform_asset to return (url, size) tuple.
+
+- Desktop notification on update detection (U1 step 2)
+  Adds a one-time-per-version desktop notification in spawn_update_event_bridge when UpdatePhase::PendingApproval is first detected, using the same tauri_plugin_notification pattern as the rest of the codebase.
+
+- Release notes display + download size in UpdatePanel (U1 step 3)
+
+- Downloading + ReadyToInstall phases + DownloadProgress (U2 step 1)
+  Add Downloading and ReadyToInstall variants to UpdatePhase enum, add
+  DownloadProgress struct with bytes_downloaded/total_bytes/percent, and
+  add download_progress field to UpdateStatus. Update all match sites,
+  frontend TypeScript contracts, phase label mappings, badge colors, and
+  i18n keys across all 5 locales (en/ko/ja/es/zh-CN).
+
+- Streaming download with progress reporting (U2 step 2)
+  Add download_update_with_progress() to Updater — streams chunks to disk
+  via bytes_stream() and emits DownloadProgress through a watch::Sender on
+  each chunk, keeping memory usage flat for large installers while
+  preserving checksum + signature verification identical to download_update().
+
+- Two-phase download/install flow + real progress bar (U2 step 3)
+  Split the update coordinator's Approve handler into two phases:
+  - Phase 1: PendingApproval -> Downloading -> ReadyToInstall (stream download with progress)
+  - Phase 2: ReadyToInstall -> Installing -> Updated (binary replacement)
+
+  The coordinator now forwards download progress via broadcast channel.
+  Auto-install mode runs both phases sequentially. Frontend shows a real
+  progress bar during Downloading and an "Install Now" button at ReadyToInstall.
+
+- Staged rollout with FNV-1a bucketing + installation ID (U4)
+  Add client-side staged rollout support so releases with
+  `<!-- rollout:N -->` in the GitHub release body only reach the
+  specified percentage of installations. Uses deterministic FNV-1a
+  hashing on (installation_id + version) for stable bucket assignment.
+
+  - Add `installation_id` field to UpdateConfig (auto-generated UUID on first launch)
+  - Add fnv1a_hash, is_eligible_for_rollout, parse_rollout_percent functions
+  - Gate update availability on rollout bucket membership in check_for_updates_from
+  - 9 new tests covering hash determinism, rollout edge cases, and body parsing
+
+- Bsdiff delta patch module (U3 step 1)
+  Add bsdiff 0.2 workspace dependency and implement updater::delta with
+  apply_patch/current_binary_path helpers + 4 unit tests (all passing).
+
+- Delta patch asset discovery + install path (U3 step 2)
+  Add UpdateAssetType enum (FullBinary | DeltaPatch) to UpdateCheckResult,
+  delta patch asset discovery in github.rs (find_patch_asset), and
+  apply_delta_update method in install.rs that reads the current binary,
+  applies bsdiff patch, and verifies SHA-256 checksum of the result.
+  check_for_updates_from now tries delta patch first, falling back to full
+  binary download.
+
+- Playbook listing API — coaching templates + automation presets (X3 backend)
+  Two new GET endpoints under /api/playbooks/ that expose the static
+  coaching template registry and built-in automation presets as
+  lightweight DTO summaries, enabling the upcoming Playbook Explorer
+  frontend panel.
+
+- Playbooks page — coaching templates + presets library (X3 frontend)
+
+- Preset CRUD — PresetStorage port + V29 migration + API (X1 backend)
+  Add durable SQLite storage for automation presets:
+  - PresetStorage port trait in oneshim-core (sync, follows FewShotStorage pattern)
+  - V29 migration creating automation_presets table with upsert support
+  - SqliteStorage impl with list/get/save/delete + builtin-delete protection
+  - 10 new tests (3 migration + 7 storage CRUD including roundtrip, builtin
+    protection, empty/nonexistent edge cases, full-field coverage)
+
+  The existing CRUD API endpoints (already wired to ConfigManager) can be
+  migrated to use this storage port in a follow-up task.
+
+- Enhanced sync IPC commands (X2 backend)
+  - SyncStatusDto now includes peers: Vec<SyncPeerDto> (populated via
+    discover_peers() on get_sync_status) and reads enabled flag from
+    config rather than engine presence alone
+  - New set_sync_enabled command: persists config.sync.enabled via
+    ConfigRuntimeState.config_manager().update_with()
+  - New forget_peer command: stable IPC stub, logs intent, ready for
+    peer-registry wiring when SyncEngine exposes peer eviction
+  - Both commands registered in main.rs invoke_handler
+
+- Annotation model + storage + API (X5 backend)
+  Add FrameAnnotation model, AnnotationStorage port, V30 migration,
+  SqliteStorage impl, and REST API (GET/POST/DELETE) for attaching
+  highlights, memos, and arrows to captured frames.
+
+- Coaching settings UI — quiet hours, tone, profile toggles (v0.5.0 UX)
+  Expand the Coaching tab from goals-only to a full settings panel:
+  - Add "coaching" to ALLOWED_KEYS so the WebView can PATCH coaching config
+  - Rename CoachingGoalsTab → CoachingSettingsTab with quiet hours, tone
+    radio group, and per-profile toggle sections
+  - Extend CoachingSettings TS type with quiet_hours, profiles, regime_goals
+  - Add i18n keys for all 3 new sections across 5 locales (en/ko/ja/es/zh-CN)
+  - Fix stub settings data to match tightened CoachingSettings union type
+
+
+### Changed
+
+- V0.4 complete roadmap — 15 phases to production-ready
+  Phase 1-8: Completed (v0.4.18→v0.4.23)
+  Phase 9-15: Remaining — user journey, coaching loop, platform parity,
+  ecosystem integration, AI/ML, advanced features, update UX.
+
+  v0.5.0 = GA release after customer feedback. v0.4.x = get to
+  production-ready level first.
+
+- Phase 13 A1+A3 spec document
+
+- Phase 14, 15, UX polish spec documents
+
+- Remove oneshim-web -> oneshim-analysis cross-adapter dependency
+  Move CoachingTemplate struct and static TEMPLATES data from
+  oneshim-analysis to oneshim-core (where domain models belong).
+  The web handler now reads templates directly from core instead
+  of going through the analysis crate's registry, eliminating a
+  forbidden cross-adapter dependency.
+
+
+### Fixed
+
+- Add serde(default) to CoachingMessage.explanation + coaching.min i18n
+  Review fix I-1: prevent deserialization failure for pre-existing
+  CoachingMessage payloads missing the new explanation field.
+  Review fix M-1: add missing coaching.min i18n key (en: "min", ko: "분").
+
+- Wire regime data from CoachingEngine to coaching stats handler (F1)
+  Add current_regime_label_blocking and regime_minutes_today_blocking
+  methods to CoachingPort trait with default impls, implement them in
+  CoachingEngine, and wire into the coaching stats today handler to
+  replace stub zeros.
+
+- Coaching stats SQL date filtering (F2)
+  Replace in-memory date filtering with SQL WHERE clause for
+  coaching event count. Adds query_coaching_events_since method
+  to CoachingQueryStorage trait with SqliteStorage implementation.
+
+- Habit tracker widget polish + additional locale keys
+
+- Add missing habit_streaks IPC + session_title default impl (P10 review fixes)
+
+- Wire analysis health flag into AppState + document on_significant_event scope
+  The analysis_health field in AppState was always None because all 4 DI
+  sites discarded the health flag from build_analysis_provider(). This
+  caused get_analysis_health IPC to always return { primary_healthy: false,
+  provider_configured: false }.
+
+- PII filter for few-shot context_window + missing i18n keys
+  Apply PII filtering to context_window text in FewShotSelector to prevent
+  window titles containing emails, file paths, or project names from
+  leaking into LLM system prompts. Add missing coaching.min and
+  coaching.whyTitle i18n keys to ja.json, es.json, zh-CN.json.
+
+- Resolve all lint errors in session-changed files
+  - Auto-fix formatting/import ordering (biome)
+  - Replace array index keys with stable composite keys (Playbooks, CoachingSettingsTab)
+  - Apply CSS class sorting fixes (nursery rule)
+
+- Replace expect() in hot paths + document dead_code annotations
+  - OAuth authorization_url: changed from expect() to Result<String, ParseError>,
+    propagating the error through CoreError::OAuthError at the call site
+  - Token refresh backoff: replaced expect() with unwrap_or(120s) defensive default
+  - Added safety comments on 4 init-time expect() calls (compile-time constants,
+    embedded resources, main-thread guarantee)
+  - Added explanatory comments to 18 #[allow(dead_code)] annotations across
+    autostart, memory_profiler, updater, native_border, magic_overlay, scheduler
+
+- Resolve a11y, hook dependency, regex, and forEach lint issues
+  - a11y: add htmlFor/id to 7 label-control pairs in policies page
+  - hooks: fix 5 useExhaustiveDependencies violations
+  - regex: suppress intentional control char stripping with biome-ignore
+  - forEach: convert 3 implicit returns to block body
+
+- Eliminate flaky web_server_fallback test port collision
+  Use OS-assigned port (bind to 0) instead of hardcoded DEFAULT_WEB_PORT
+  for the reservation listener. Prevents AddrInUse panic under parallel
+  test execution.
+
 ## [0.4.30-rc.2] - 2026-04-07
 
 ### Added
