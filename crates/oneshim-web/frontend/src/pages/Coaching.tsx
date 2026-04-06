@@ -1,5 +1,6 @@
 import { MessageCircle, Target, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import HabitTrackerWidget from '../components/HabitTrackerWidget'
 import { Card, CardContent, Skeleton } from '../components/ui'
 import { useCoachingHistory, useGoalProgress } from '../hooks/useCoaching'
 import { colors, iconSize, motion, typography } from '../styles/tokens'
@@ -66,6 +67,11 @@ export default function Coaching() {
             </div>
           </Card>
         )}
+      </section>
+
+      {/* Habit streak tracker */}
+      <section className="mb-6">
+        <HabitTrackerWidget />
       </section>
 
       {/* Coaching event timeline */}
