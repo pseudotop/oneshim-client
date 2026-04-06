@@ -20,6 +20,9 @@ mod windows;
 #[cfg(target_os = "linux")]
 mod linux;
 
+#[cfg(target_os = "linux")]
+pub mod atspi_cache;
+
 use std::sync::Arc;
 
 use oneshim_core::ports::accessibility::AccessibilityExtractor;

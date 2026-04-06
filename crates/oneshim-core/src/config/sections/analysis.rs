@@ -461,6 +461,12 @@ pub struct TextIntelligenceConfig {
     /// PII filter level for accessibility-extracted text (Phase 2).
     #[serde(default = "default_pii_extraction_level")]
     pub pii_extraction_level: crate::config::enums::PiiFilterLevel,
+
+    /// TTL in seconds for the Linux AT-SPI element tree cache.
+    /// Cached trees are reused within this window to avoid re-querying
+    /// the full accessibility tree on every frame capture.
+    #[serde(default = "default_atspi_cache_ttl")]
+    pub atspi_cache_ttl_secs: u8,
 }
 
 impl Default for TextIntelligenceConfig {
@@ -470,6 +476,7 @@ impl Default for TextIntelligenceConfig {
             input_pattern_detail: default_input_pattern_detail(),
             accessibility_extraction: false,
             pii_extraction_level: default_pii_extraction_level(),
+            atspi_cache_ttl_secs: default_atspi_cache_ttl(),
         }
     }
 }
@@ -480,6 +487,10 @@ fn default_input_pattern_detail() -> bool {
 
 fn default_pii_extraction_level() -> crate::config::enums::PiiFilterLevel {
     crate::config::enums::PiiFilterLevel::Standard
+}
+
+fn default_atspi_cache_ttl() -> u8 {
+    5
 }
 
 #[cfg(test)]
