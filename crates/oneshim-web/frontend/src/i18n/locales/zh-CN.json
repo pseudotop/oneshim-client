@@ -1238,7 +1238,16 @@
     "dismissLabel": "关闭教练消息",
     "laterLabel": "稍后提醒",
     "helpfulLabel": "有帮助",
-    "notHelpfulLabel": "没有帮助"
+    "notHelpfulLabel": "没有帮助",
+    "habits": {
+      "title": "习惯追踪器",
+      "regime": "模式",
+      "empty": "暂无习惯数据。开始追踪目标后将显示连续记录。",
+      "met": "达成",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "无数据"
+    }
   },
   "onboarding": {
     "step1Title": "欢迎使用 ONESHIM",

@@ -17,10 +17,12 @@ import { Card, CardContent, CardTitle, Skeleton } from './ui'
 function buildStreakMap(data: HabitStreak[]) {
   const map = new Map<string, Map<string, HabitStreak>>()
   for (const row of data) {
-    if (!map.has(row.regime_label)) {
-      map.set(row.regime_label, new Map())
+    let dateMap = map.get(row.regime_label)
+    if (!dateMap) {
+      dateMap = new Map()
+      map.set(row.regime_label, dateMap)
     }
-    map.get(row.regime_label)!.set(row.date, row)
+    dateMap.set(row.date, row)
   }
   return map
 }
@@ -62,7 +64,7 @@ function cellBg(entry: HabitStreak | undefined): string {
 
 /** Short day label (Mon, Tue, ...) from YYYY-MM-DD string. */
 function shortDay(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
+  const d = new Date(`${dateStr}T00:00:00`)
   return d.toLocaleDateString(undefined, { weekday: 'short' })
 }
 
@@ -120,30 +122,29 @@ export default function HabitTrackerWidget() {
             </thead>
             <tbody>
               {regimes.map((regime) => {
-                const dateMap = streakMap.get(regime)!
+                const dateMap = streakMap.get(regime) ?? new Map<string, HabitStreak>()
                 const streak = computeStreak(dateMap, days)
                 return (
                   <tr key={regime}>
-                    <td className={cn('py-1 pr-3 text-left', typography.weight.medium, 'truncate max-w-[120px]')}>
+                    <td className={cn('max-w-[120px] truncate py-1 pr-3 text-left', typography.weight.medium)}>
                       {regime}
                     </td>
                     {days.map((d) => {
                       const entry = dateMap.get(d)
-                      const pct = entry && entry.target_minutes > 0
-                        ? Math.round((entry.minutes_logged / entry.target_minutes) * 100)
-                        : 0
+                      const pct =
+                        entry && entry.target_minutes > 0
+                          ? Math.round((entry.minutes_logged / entry.target_minutes) * 100)
+                          : 0
+                      const tooltip = entry
+                        ? `${entry.minutes_logged}/${entry.target_minutes}m (${pct}%)`
+                        : t('coaching.habits.noData', 'No data')
                       return (
                         <td key={d} className="px-1 py-1 text-center">
-                          <div
-                            className={cn('mx-auto h-6 w-6 rounded', cellBg(entry))}
-                            title={entry ? `${entry.minutes_logged}/${entry.target_minutes}m (${pct}%)` : t('coaching.habits.noData', 'No data')}
-                          />
+                          <div className={cn('mx-auto h-6 w-6 rounded', cellBg(entry))} title={tooltip} />
                         </td>
                       )
                     })}
-                    <td className={cn('py-1 text-center', typography.weight.bold)}>
-                      {streak > 0 ? streak : '-'}
-                    </td>
+                    <td className={cn('py-1 text-center', typography.weight.bold)}>{streak > 0 ? streak : '-'}</td>
                   </tr>
                 )
               })}

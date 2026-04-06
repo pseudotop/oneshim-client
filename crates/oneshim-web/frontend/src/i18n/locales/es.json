@@ -1238,7 +1238,16 @@
     "dismissLabel": "Cerrar mensaje de coaching",
     "laterLabel": "Recordar más tarde",
     "helpfulLabel": "Útil",
-    "notHelpfulLabel": "No útil"
+    "notHelpfulLabel": "No útil",
+    "habits": {
+      "title": "Rastreador de hábitos",
+      "regime": "Régimen",
+      "empty": "Aún no hay datos de hábitos. Las rachas aparecerán cuando se rastreen los objetivos.",
+      "met": "Cumplido",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "Sin datos"
+    }
   },
   "onboarding": {
     "step1Title": "Bienvenido a ONESHIM",

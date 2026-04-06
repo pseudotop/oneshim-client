@@ -1238,7 +1238,16 @@
     "dismissLabel": "コーチングメッセージを閉じる",
     "laterLabel": "後でリマインド",
     "helpfulLabel": "役に立った",
-    "notHelpfulLabel": "役に立たなかった"
+    "notHelpfulLabel": "役に立たなかった",
+    "habits": {
+      "title": "習慣トラッカー",
+      "regime": "レジーム",
+      "empty": "まだ習慣データがありません。目標が追跡されるとストリークが表示されます。",
+      "met": "達成",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "データなし"
+    }
   },
   "onboarding": {
     "step1Title": "ONESHIMへようこそ",
