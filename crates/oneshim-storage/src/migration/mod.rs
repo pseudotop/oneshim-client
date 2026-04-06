@@ -10,6 +10,7 @@
 //! - `v26.rs` — ai_sessions title column for user-assigned display names
 //! - `v27.rs` — habit_streaks table for daily regime habit tracking
 //! - `v28.rs` — feedback tracking columns on local_suggestions for few-shot prompt construction
+//! - `v29.rs` — automation_presets table for persistent custom preset storage
 
 #[cfg(test)]
 mod tests;
@@ -22,11 +23,12 @@ mod v25;
 mod v26;
 mod v27;
 mod v28;
+mod v29;
 
 use rusqlite::Connection;
 use tracing::{error, info, warn};
 
-pub(crate) const CURRENT_VERSION: u32 = 28;
+pub(crate) const CURRENT_VERSION: u32 = 29;
 
 /// Back up the database file before running schema migrations.
 fn backup_if_needed(conn: &Connection, current_version: u32) -> Option<std::path::PathBuf> {
@@ -184,6 +186,9 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
     if current < 28 {
         run_migration_step(conn, 28, v28::migrate_v28)?;
+    }
+    if current < 29 {
+        run_migration_step(conn, 29, v29::migrate_v29)?;
     }
 
     Ok(())

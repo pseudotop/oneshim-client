@@ -14,6 +14,7 @@ mod lan_pin_store;
 mod maintenance;
 mod metrics;
 mod override_store_impl;
+mod preset_storage_impl;
 mod session_context_store_impl;
 mod session_storage_impl;
 mod tags;

@@ -33,6 +33,7 @@ pub mod ocr_provider;
 pub mod overlay_driver;
 pub mod override_store;
 pub mod pii_sanitizer;
+pub mod preset_storage;
 pub mod rectangle_detector;
 pub mod runtime_log_provider;
 pub mod sandbox;
