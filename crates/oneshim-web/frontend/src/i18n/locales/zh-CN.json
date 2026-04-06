@@ -1229,6 +1229,7 @@
     "addGoal": "添加目标",
     "remove": "删除",
     "perDay": "分钟/天",
+    "min": "分钟",
     "profiles": {
       "FocusGuard": "专注守护",
       "TimeAware": "时间感知",
@@ -1246,6 +1247,7 @@
     "laterLabel": "稍后提醒",
     "helpfulLabel": "有帮助",
     "notHelpfulLabel": "没有帮助",
+    "whyTitle": "为什么推荐这个？",
     "quietHoursTitle": "免打扰时段",
     "quietHoursDesc": "在这些时间段内，教练消息将被静音。",
     "noQuietHours": "未配置免打扰时段。",

@@ -1,14 +1,27 @@
+use crate::assembler::PiiFilter;
 use crate::prompts::{FewShotExample, FewShotOutcome};
 use oneshim_core::models::suggestion::SuggestionHistoryEntry;
 
 /// Selects representative few-shot examples from suggestion history for prompt construction.
 pub struct FewShotSelector {
     max_examples: usize,
+    pii_filter: Option<PiiFilter>,
 }
 
 impl FewShotSelector {
     pub fn new(max_examples: usize) -> Self {
-        Self { max_examples }
+        Self {
+            max_examples,
+            pii_filter: None,
+        }
+    }
+
+    /// Create a selector with a PII filter applied to context_window text in few-shot examples.
+    pub fn with_pii_filter(max_examples: usize, pii_filter: PiiFilter) -> Self {
+        Self {
+            max_examples,
+            pii_filter: Some(pii_filter),
+        }
     }
 
     /// Select best examples from history. Returns empty Vec if no feedback exists.
@@ -48,13 +61,13 @@ impl FewShotSelector {
 
         // Always prefer at least one accepted example first.
         if let Some(entry) = accepted.first() {
-            selected.push(to_example(entry, FewShotOutcome::Accepted));
+            selected.push(self.to_example(entry, FewShotOutcome::Accepted));
         }
 
         // Add one rejected example if budget remains.
         if selected.len() < self.max_examples {
             if let Some(entry) = rejected.first() {
-                selected.push(to_example(entry, FewShotOutcome::Rejected));
+                selected.push(self.to_example(entry, FewShotOutcome::Rejected));
             }
         }
 
@@ -63,24 +76,32 @@ impl FewShotSelector {
             if selected.len() >= self.max_examples {
                 break;
             }
-            selected.push(to_example(entry, FewShotOutcome::Accepted));
+            selected.push(self.to_example(entry, FewShotOutcome::Accepted));
         }
 
         selected
     }
-}
 
-fn to_example(entry: &SuggestionHistoryEntry, outcome: FewShotOutcome) -> FewShotExample {
-    let context_summary = if entry.context_app.is_empty() {
-        "Unknown context".to_string()
-    } else {
-        format!("{} — {}", entry.context_app, entry.context_window)
-    };
-    FewShotExample {
-        context_summary,
-        suggestion_content: entry.content.clone(),
-        suggestion_type: entry.suggestion_type.clone(),
-        outcome,
+    fn to_example(
+        &self,
+        entry: &SuggestionHistoryEntry,
+        outcome: FewShotOutcome,
+    ) -> FewShotExample {
+        let window = match &self.pii_filter {
+            Some(filter) => filter(&entry.context_window),
+            None => entry.context_window.clone(),
+        };
+        let context_summary = if entry.context_app.is_empty() {
+            "Unknown context".to_string()
+        } else {
+            format!("{} — {}", entry.context_app, window)
+        };
+        FewShotExample {
+            context_summary,
+            suggestion_content: entry.content.clone(),
+            suggestion_type: entry.suggestion_type.clone(),
+            outcome,
+        }
     }
 }
 
@@ -181,6 +202,30 @@ mod tests {
         let result = selector.select(&history, None);
         assert_eq!(result.len(), 2);
         assert!(result.iter().all(|e| e.outcome == FewShotOutcome::Accepted));
+    }
+
+    #[test]
+    fn pii_filter_applied_to_context_window() {
+        let history = vec![make_entry("accepted", None, "Chrome", "Take a break")];
+        // Mutate the context_window to contain PII
+        let mut history = history;
+        history[0].context_window = "Inbox - user@example.com".to_string();
+
+        let filter: Box<dyn Fn(&str) -> String + Send + Sync> =
+            Box::new(|text: &str| text.replace("user@example.com", "[EMAIL]"));
+        let selector = FewShotSelector::with_pii_filter(3, filter);
+        let result = selector.select(&history, None);
+
+        assert_eq!(result.len(), 1);
+        assert!(
+            result[0].context_summary.contains("[EMAIL]"),
+            "PII should be filtered: {}",
+            result[0].context_summary
+        );
+        assert!(
+            !result[0].context_summary.contains("user@example.com"),
+            "Raw PII should not appear"
+        );
     }
 
     #[test]

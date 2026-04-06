@@ -1229,6 +1229,7 @@
     "addGoal": "Añadir objetivo",
     "remove": "Eliminar",
     "perDay": "min/día",
+    "min": "min",
     "profiles": {
       "FocusGuard": "Guardia de enfoque",
       "TimeAware": "Conciencia temporal",
@@ -1246,6 +1247,7 @@
     "laterLabel": "Recordar más tarde",
     "helpfulLabel": "Útil",
     "notHelpfulLabel": "No útil",
+    "whyTitle": "\u00bfPor qu\u00e9 esta sugerencia?",
     "quietHoursTitle": "Horas de silencio",
     "quietHoursDesc": "Los mensajes de coaching se suprimen durante estos rangos de tiempo.",
     "noQuietHours": "No hay horas de silencio configuradas.",

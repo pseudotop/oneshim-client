@@ -179,14 +179,21 @@ impl<'a> AgentSupportContextBuilder<'a> {
         let context_assembler = oneshim_analysis::ContextAssembler::new(Box::new(move |text| {
             oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
         }));
+        let few_shot_pii_filter: Box<dyn Fn(&str) -> String + Send + Sync> =
+            Box::new(move |text| {
+                oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
+            });
 
-        Some(Arc::new(oneshim_analysis::ContextAnalyzer::new(
-            storage,
-            analysis_provider,
-            pattern_miner,
-            context_assembler,
-            self.config.analysis.clone(),
-        )))
+        Some(Arc::new(
+            oneshim_analysis::ContextAnalyzer::with_pii_filter(
+                storage,
+                analysis_provider,
+                pattern_miner,
+                context_assembler,
+                self.config.analysis.clone(),
+                few_shot_pii_filter,
+            ),
+        ))
     }
 
     #[cfg(not(feature = "analysis"))]

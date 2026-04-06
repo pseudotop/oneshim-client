@@ -15,8 +15,8 @@ use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::few_shot_storage::FewShotStorage;
 
 use crate::assembler::{
-    humanize_time_ago, ContextAssembler, CurrentActivity, RelevantHistoryEntry, SegmentStats,
-    SessionMetrics,
+    humanize_time_ago, ContextAssembler, CurrentActivity, PiiFilter, RelevantHistoryEntry,
+    SegmentStats, SessionMetrics,
 };
 use crate::error::AnalysisError;
 use crate::few_shot_selector::FewShotSelector;
@@ -77,6 +77,31 @@ impl ContextAnalyzer {
             segment_stats: tokio::sync::RwLock::new(None),
             accessibility_text: tokio::sync::RwLock::new(None),
             few_shot_selector: FewShotSelector::new(2),
+            few_shot_storage: tokio::sync::RwLock::new(None),
+        }
+    }
+
+    /// Create a ContextAnalyzer with a PII filter for few-shot context sanitization.
+    pub fn with_pii_filter(
+        storage: Arc<dyn StorageService>,
+        analysis_provider: Arc<dyn AnalysisProvider>,
+        pattern_miner: PatternMiner,
+        context_assembler: ContextAssembler,
+        config: AnalysisConfig,
+        pii_filter: PiiFilter,
+    ) -> Self {
+        Self {
+            storage,
+            analysis_provider,
+            pattern_miner,
+            context_assembler,
+            vector_retriever: tokio::sync::RwLock::new(None),
+            config,
+            last_analysis_at: Mutex::new(None),
+            last_patterns_hash: Mutex::new(0),
+            segment_stats: tokio::sync::RwLock::new(None),
+            accessibility_text: tokio::sync::RwLock::new(None),
+            few_shot_selector: FewShotSelector::with_pii_filter(2, pii_filter),
             few_shot_storage: tokio::sync::RwLock::new(None),
         }
     }

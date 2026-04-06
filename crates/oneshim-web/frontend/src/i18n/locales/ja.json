@@ -1229,6 +1229,7 @@
     "addGoal": "目標を追加",
     "remove": "削除",
     "perDay": "分/日",
+    "min": "分",
     "profiles": {
       "FocusGuard": "集中ガード",
       "TimeAware": "時間認識",
@@ -1246,6 +1247,7 @@
     "laterLabel": "後でリマインド",
     "helpfulLabel": "役に立った",
     "notHelpfulLabel": "役に立たなかった",
+    "whyTitle": "なぜこの提案？",
     "quietHoursTitle": "静粛時間",
     "quietHoursDesc": "この時間帯ではコーチングメッセージが非表示になります。",
     "noQuietHours": "静粛時間は設定されていません。",
