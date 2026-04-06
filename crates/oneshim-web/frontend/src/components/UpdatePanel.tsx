@@ -11,6 +11,12 @@ type UpdatePanelProps = {
   compact?: boolean
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -132,6 +138,26 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
           <a href={status.pending.release_url} target="_blank" rel="noreferrer" className="text-brand-text underline">
             {t('updates.openRelease')}
           </a>
+          {status.pending.download_size_bytes != null && status.pending.download_size_bytes > 0 && (
+            <p className={cn('mt-1', typography.caption, 'text-content-tertiary')}>
+              {t('updates.downloadSize', { size: formatBytes(status.pending.download_size_bytes) })}
+            </p>
+          )}
+          {status.pending.release_notes && (
+            <details className="mt-3">
+              <summary className={cn('cursor-pointer select-none', typography.caption, 'text-content-secondary')}>
+                {t('updates.releaseNotes')}
+              </summary>
+              <pre
+                className={cn(
+                  'mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-surface-secondary p-3',
+                  typography.caption,
+                )}
+              >
+                {status.pending.release_notes}
+              </pre>
+            </details>
+          )}
         </div>
       )}
 

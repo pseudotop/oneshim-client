@@ -129,7 +129,9 @@
     "active": "Active",
     "savingChannel": "Saving...",
     "channelSaved": "Update channel saved",
-    "channelSaveFailed": "Failed to save update channel"
+    "channelSaveFailed": "Failed to save update channel",
+    "releaseNotes": "Release Notes",
+    "downloadSize": "Download size: {{size}}"
   },
   "timeline": {
     "title": "Timeline",

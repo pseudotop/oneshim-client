@@ -111,7 +111,9 @@
     "policyTitle": "アップデートセキュリティポリシー",
     "policyIntegrity": "インストール前にすべてのアーティファクトはチェックサム検証に合格する必要があります。",
     "policySignature": "リリースアーティファクトにはEd25519署名検証が必須です。",
-    "policyRollback": "再起動に失敗した場合、以前のバイナリに自動ロールバックします。"
+    "policyRollback": "再起動に失敗した場合、以前のバイナリに自動ロールバックします。",
+    "releaseNotes": "リリースノート",
+    "downloadSize": "ダウンロードサイズ: {{size}}"
   },
   "timeline": {
     "title": "タイムライン",

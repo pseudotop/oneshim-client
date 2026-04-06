@@ -111,7 +111,9 @@
     "policyTitle": "更新安全策略",
     "policyIntegrity": "安装前所有构件必须通过校验和验证。",
     "policySignature": "发布构件需要通过 Ed25519 签名验证。",
-    "policyRollback": "重启失败时将自动回滚到上一版本。"
+    "policyRollback": "重启失败时将自动回滚到上一版本。",
+    "releaseNotes": "发布说明",
+    "downloadSize": "下载大小：{{size}}"
   },
   "timeline": {
     "title": "时间线",

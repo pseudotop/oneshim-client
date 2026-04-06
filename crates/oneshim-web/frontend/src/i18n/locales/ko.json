@@ -129,7 +129,9 @@
     "active": "활성",
     "savingChannel": "저장 중...",
     "channelSaved": "업데이트 채널이 저장되었습니다",
-    "channelSaveFailed": "업데이트 채널 저장에 실패했습니다"
+    "channelSaveFailed": "업데이트 채널 저장에 실패했습니다",
+    "releaseNotes": "릴리즈 노트",
+    "downloadSize": "다운로드 크기: {{size}}"
   },
   "timeline": {
     "title": "타임라인",

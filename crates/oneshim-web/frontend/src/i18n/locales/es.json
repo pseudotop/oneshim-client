@@ -111,7 +111,9 @@
     "policyTitle": "Política de seguridad de actualizaciones",
     "policyIntegrity": "Todos los artefactos deben pasar la verificación de checksum antes de la instalación.",
     "policySignature": "Se requiere la verificación de firma Ed25519 para los artefactos de la versión.",
-    "policyRollback": "Los reinicios fallidos activan la reversión automática al binario anterior."
+    "policyRollback": "Los reinicios fallidos activan la reversión automática al binario anterior.",
+    "releaseNotes": "Notas de la versión",
+    "downloadSize": "Tamaño de descarga: {{size}}"
   },
   "timeline": {
     "title": "Línea de tiempo",
