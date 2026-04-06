@@ -1264,7 +1264,8 @@
     "dismissLabel": "Dismiss coaching message",
     "laterLabel": "Remind me later",
     "helpfulLabel": "Helpful",
-    "notHelpfulLabel": "Not helpful"
+    "notHelpfulLabel": "Not helpful",
+    "whyTitle": "Why this suggestion?"
   },
   "onboarding": {
     "step1Title": "Welcome to ONESHIM",

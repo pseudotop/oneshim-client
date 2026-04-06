@@ -119,6 +119,16 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
         </p>
         {error && <p className="mb-3 text-semantic-error text-xs">{error}</p>}
 
+        {/* Why? expandable explanation */}
+        {message.explanation && (
+          <details className="mt-2 mb-3">
+            <summary className="cursor-pointer text-content-tertiary text-xs hover:text-content-secondary">
+              {t('coaching.whyTitle', 'Why this suggestion?')}
+            </summary>
+            <p className="mt-1 text-content-secondary text-xs leading-relaxed">{message.explanation}</p>
+          </details>
+        )}
+
         {/* Actions row */}
         <div className="flex items-center justify-between">
           <div className="flex gap-2">

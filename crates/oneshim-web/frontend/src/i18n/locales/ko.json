@@ -1264,7 +1264,8 @@
     "dismissLabel": "코칭 메시지 닫기",
     "laterLabel": "나중에 다시 알림",
     "helpfulLabel": "도움이 됨",
-    "notHelpfulLabel": "도움이 안 됨"
+    "notHelpfulLabel": "도움이 안 됨",
+    "whyTitle": "왜 이 제안?"
   },
   "onboarding": {
     "step1Title": "ONESHIM에 오신 것을 환영합니다",

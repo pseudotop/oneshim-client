@@ -35,6 +35,7 @@ type OverlayAction =
 const initialState: OverlayState = {
   mode: 'minimal',
   coaching: null,
+  coachingQueue: [],
   focusHighlight: null,
   goals: [],
   captureState: { paused: false, indicator_visible: false },
@@ -51,7 +52,10 @@ const initialState: OverlayState = {
 function reducer(state: OverlayState, action: OverlayAction): OverlayState {
   switch (action.type) {
     case 'show-coaching':
-      return { ...state, coaching: action.payload }
+      if (state.coaching === null) {
+        return { ...state, coaching: action.payload }
+      }
+      return { ...state, coachingQueue: [...state.coachingQueue, action.payload] }
     case 'upgrade-message':
       if (state.coaching?.message_id === action.payload.message_id) {
         return {
@@ -60,8 +64,13 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
         }
       }
       return state
-    case 'dismiss':
+    case 'dismiss': {
+      if (state.coachingQueue.length > 0) {
+        const [next, ...rest] = state.coachingQueue
+        return { ...state, coaching: next, coachingQueue: rest }
+      }
       return { ...state, coaching: null }
+    }
     case 'update-focus':
       if (state.detectionScene) return state
       return { ...state, focusHighlight: action.payload }

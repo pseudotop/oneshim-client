@@ -197,6 +197,7 @@ impl MetricsStorage for SqliteStorage {
                             download_speed: download as u64,
                             is_connected: upload > 0 || download > 0,
                         }),
+                        typing_wpm: 0.0,
                     })
                 })
                 .map_err(|e| StorageError::Internal(format!("Failed to execute query: {e}")))?

@@ -7,6 +7,7 @@ export interface CoachingPayload {
   trigger_type: string
   text: string
   auto_dismiss_secs: number
+  explanation: string
 }
 
 export interface UpgradePayload {
@@ -110,6 +111,7 @@ export interface ToastItem {
 export interface OverlayState {
   mode: OverlayMode
   coaching: CoachingPayload | null
+  coachingQueue: CoachingPayload[]
   focusHighlight: FocusHighlightPayload | null
   focusMode: boolean
   goals: GoalProgressItem[]

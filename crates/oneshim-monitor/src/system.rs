@@ -101,6 +101,7 @@ impl SystemMonitor for SysInfoMonitor {
             disk_used,
             disk_total,
             network,
+            typing_wpm: 0.0,
         };
 
         debug!(
