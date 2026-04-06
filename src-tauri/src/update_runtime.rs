@@ -54,6 +54,7 @@ impl<'a> UpdateRuntimeBuilder<'a> {
                         release,
                         download_url,
                         download_size,
+                        ..
                     })) => {
                         info!("startup update check: v{latest} available");
                         // Write to shared state and publish to broadcast.

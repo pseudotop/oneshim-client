@@ -432,6 +432,7 @@ async fn run_check<E: UpdateExecutor>(
             release,
             download_url,
             download_size,
+            ..
         }) => {
             {
                 let mut guard = state.write().await;
@@ -491,7 +492,7 @@ async fn run_check<E: UpdateExecutor>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::updater::{ReleaseAsset, ReleaseInfo};
+    use crate::updater::{ReleaseAsset, ReleaseInfo, UpdateAssetType};
     use std::collections::VecDeque;
     use std::sync::Mutex as StdMutex;
     use tokio::sync::Mutex;
@@ -622,6 +623,7 @@ mod tests {
                 "https://github.com/pseudotop/oneshim-client/releases/download/v1.2.0/oneshim-macos-arm64.tar.gz"
                     .to_string(),
             download_size: None,
+            asset_type: UpdateAssetType::FullBinary,
         })
     }
 

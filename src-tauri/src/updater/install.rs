@@ -12,6 +12,43 @@ use std::path::{Component, Path, PathBuf};
 use super::{UpdateError, Updater};
 
 impl Updater {
+    /// Apply a delta patch: read current binary, apply bsdiff patch, verify checksum.
+    ///
+    /// Returns the path to the patched binary (written to a temp file).
+    pub async fn apply_delta_update(
+        &self,
+        patch_path: &Path,
+        full_binary_checksum: &str,
+    ) -> Result<PathBuf, UpdateError> {
+        let current_binary = super::delta::current_binary_path()?;
+        let old_bytes = tokio::fs::read(&current_binary)
+            .await
+            .map_err(|e| UpdateError::Install(format!("Failed to read current binary: {e}")))?;
+        let patch_bytes = tokio::fs::read(patch_path)
+            .await
+            .map_err(|e| UpdateError::Install(format!("Failed to read patch file: {e}")))?;
+
+        let new_bytes = super::delta::apply_patch(&old_bytes, &patch_bytes)?;
+
+        // Write patched binary to temp
+        let temp_dir = std::env::temp_dir();
+        let unique = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let temp_path = temp_dir.join(format!("oneshim-{unique}-patched"));
+        std::fs::write(&temp_path, &new_bytes)?;
+
+        // Verify against FULL binary checksum
+        let actual_hash = Self::sha256_hex(&new_bytes);
+        if actual_hash != full_binary_checksum {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(UpdateError::Integrity(format!(
+                "Patched binary checksum mismatch: expected={full_binary_checksum}, actual={actual_hash}"
+            )));
+        }
+
+        tracing::info!("Delta update applied: {:?}", temp_path);
+        Ok(temp_path)
+    }
+
     pub async fn download_update(&self, download_url: &str) -> Result<PathBuf, UpdateError> {
         let validated_url = self.validate_download_url(download_url)?;
         tracing::info!("Starting update download: {}", validated_url);

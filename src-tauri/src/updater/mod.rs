@@ -16,6 +16,13 @@ use thiserror::Error;
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Whether the matched release asset is a full binary or a delta patch.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdateAssetType {
+    FullBinary,
+    DeltaPatch { from_version: String },
+}
+
 /// Preview of an available update without downloading.
 ///
 /// Does not verify checksums or signatures — those are enforced during
@@ -95,6 +102,7 @@ pub enum UpdateCheckResult {
         release: Box<ReleaseInfo>,
         download_url: String,
         download_size: Option<u64>,
+        asset_type: UpdateAssetType,
     },
     UpToDate {
         current: semver::Version,
@@ -113,6 +121,18 @@ impl Updater {
         "objects.githubusercontent.com",
         "githubusercontent.com",
     ];
+
+    /// Returns the canonical platform tag used in delta patch asset names.
+    /// E.g. `"macos-arm64"`, `"linux-x64"`, `"windows-x64"`.
+    pub(super) fn get_platform_tag() -> String {
+        let os = std::env::consts::OS;
+        let arch = match std::env::consts::ARCH {
+            "aarch64" => "arm64",
+            "x86_64" => "x64",
+            other => other,
+        };
+        format!("{os}-{arch}")
+    }
 
     pub fn new(config: UpdateConfig) -> Self {
         let http_client = reqwest::Client::builder()
@@ -163,6 +183,7 @@ impl Updater {
 
         if latest > current {
             let latest_str = latest.to_string();
+            let current_str = current.to_string();
 
             // Staged rollout gate: check if this installation is in the rollout bucket.
             let rollout_percent = parse_rollout_percent(&release.body);
@@ -175,6 +196,26 @@ impl Updater {
                 }
             }
 
+            // Try delta patch first, fall back to full binary
+            let platform = Self::get_platform_tag();
+            if let Some((patch_url, patch_size)) =
+                github::find_patch_asset(&release.assets, &platform, &current_str, &latest_str)
+            {
+                tracing::info!(
+                    "Delta patch available: {current_str} -> {latest_str} ({patch_size} bytes)"
+                );
+                return Ok(UpdateCheckResult::Available {
+                    current,
+                    latest,
+                    release: Box::new(release),
+                    download_url: patch_url,
+                    download_size: Some(patch_size),
+                    asset_type: UpdateAssetType::DeltaPatch {
+                        from_version: current_str,
+                    },
+                });
+            }
+
             let (download_url, asset_size) = self.find_platform_asset(&release)?;
 
             Ok(UpdateCheckResult::Available {
@@ -183,6 +224,7 @@ impl Updater {
                 release: Box::new(release),
                 download_url,
                 download_size: Some(asset_size),
+                asset_type: UpdateAssetType::FullBinary,
             })
         } else {
             Ok(UpdateCheckResult::UpToDate { current })

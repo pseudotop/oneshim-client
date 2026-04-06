@@ -1,7 +1,25 @@
 //! GitHub API: fetch releases, parse JSON, select asset.
 #![allow(dead_code)]
 
-use super::{ReleaseInfo, UpdateError, Updater};
+use super::{ReleaseAsset, ReleaseInfo, UpdateError, Updater};
+
+/// Look for a delta patch asset matching current -> target version.
+/// Returns `(download_url, size)` if found.
+pub(super) fn find_patch_asset(
+    assets: &[ReleaseAsset],
+    platform: &str,
+    current_version: &str,
+    target_version: &str,
+) -> Option<(String, u64)> {
+    let patch_name = format!(
+        "oneshim-{}-{}-to-{}.patch",
+        platform, current_version, target_version
+    );
+    assets
+        .iter()
+        .find(|a| a.name == patch_name)
+        .map(|a| (a.browser_download_url.clone(), a.size))
+}
 
 impl Updater {
     /// Returns `(download_url, asset_size)` for the first matching platform asset.
