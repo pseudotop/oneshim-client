@@ -155,6 +155,7 @@ prost-types = "0.14"
 enigo = { version = "0.6", features = ["serde"] }
 
 # 자동 업데이트 (self-replace only — reqwest 0.12 중복 제거)
+bsdiff = "0.2"
 self-replace = "1.5"
 tar = "0.4"
 zip = "8"

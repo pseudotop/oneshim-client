@@ -59,6 +59,7 @@ sysinfo = { workspace = true }
 tempfile = { workspace = true }
 
 # 자동 업데이트
+bsdiff = { workspace = true }
 self-replace = { workspace = true }
 reqwest = { workspace = true }
 tar = { workspace = true }

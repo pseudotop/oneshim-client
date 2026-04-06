@@ -4,6 +4,7 @@
 
 #![allow(dead_code)] // UI /
 
+pub(crate) mod delta;
 mod github;
 mod install;
 mod state;
