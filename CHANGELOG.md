@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.28-rc.1] - 2026-04-06
+
+### Added
+
+- Blackout hours capture blocking (Q3)
+  Gate SmartCaptureTrigger on ScheduleConfig active hours/days so
+  captures are suppressed outside the configured work window,
+  including overnight ranges (e.g. 22:00-06:00).
+
+- Linux systemd autostart (Q7)
+
+- Re-run onboarding from settings (Q1)
+  Remove IS_TAURI gate on ViewSetupGuideButton so the re-run setup guide
+  button is always visible in Settings General tab, not only in Tauri mode.
+  In Tauri, it resets onboarding via IPC then reloads; in standalone mode
+  it reloads directly.
+
+- Coaching explanation field and overlay (Q6)
+  Add human-readable explanation to CoachingMessage and OverlayCoachingPayload
+  so users understand why they received a coaching nudge. Each TriggerType
+  variant produces a contextual explanation referencing the profile name,
+  regime labels, and durations.
+
+- Coaching goals progress bars (Q5)
+
+- Today summary dashboard widget (Q2)
+  Add coaching stats today endpoint and TodaySummary component
+  showing active time, top app, nudge count, and current regime.
+
+- Timeline batch tagging (Q4)
+  Add POST /api/frames/batch-tags endpoint and multi-select mode
+  in Timeline page for batch tag application to selected frames.
+
+- Add i18n keys for timeline batch tagging (Q4)
+  Add select/cancel/selectAll/clearSelection/selectedCount/batchTagged
+  keys to en.json and ko.json for the multi-select batch tagging feature.
+
+- Coaching overlay Why? toggle + notification queue (M3/F3)
+
+- Cloud STT fallback chain wiring + AudioTab config (M6)
+  Enhance AudioTab with cloud STT provider config UI (provider toggle,
+  API key input, endpoint URL). Verify existing FallbackSttProvider
+  wiring in reload_stt_engine.
+
+- Chat session rename + search + export (M1)
+  Add rename_ai_session IPC command with session title storage,
+  V26 schema migration for session title column.
+
+- Semantic search UI enhancement (M2)
+  Add semantic search toggle to Search page with score display,
+  content type badges, and regime label rendering from vector
+  search results.
+
+- Habit tracker V27 migration + storage (M4 backend)
+  Add HabitStreakRow model, HabitStorage trait with WebStorage
+  supertrait integration, V27 schema migration for habit_streaks
+  table, and SqliteStorage implementation.
+
+- M1 chat frontend + M4 habits endpoint + route wiring
+  Complete M1 chat polish (sidebar search/rename, markdown export,
+  token usage, IPC registration) and M4 habits REST endpoint with
+  frontend API hooks.
+
+- HabitTrackerWidget + Coaching page integration (M4 frontend)
+  Add 7-day streak grid widget with color-coded progress and
+  integrate into Coaching page.
+
+- Add i18n keys for Phase 10 features (M1-M4)
+  Add chat, search, coaching, and habit tracker i18n keys
+  for en.json and ko.json.
+
+- Daily digest export (A2)
+  Add DigestExporter module with markdown rendering, export endpoint
+  GET /api/digests/daily/export with Content-Disposition, and export
+  button in DashboardDay.
+
+- ReloadableModel port trait + additional locale keys (A4 partial + i18n)
+  Add ReloadableModel trait to embedding_provider port for runtime
+  model hot-reloading. Add digest export i18n keys for all locales.
+
+
+### Changed
+
+- V0.4 complete roadmap — 15 phases to production-ready
+  Phase 1-8: Completed (v0.4.18→v0.4.23)
+  Phase 9-15: Remaining — user journey, coaching loop, platform parity,
+  ecosystem integration, AI/ML, advanced features, update UX.
+
+  v0.5.0 = GA release after customer feedback. v0.4.x = get to
+  production-ready level first.
+
+
+### Fixed
+
+- Add serde(default) to CoachingMessage.explanation + coaching.min i18n
+  Review fix I-1: prevent deserialization failure for pre-existing
+  CoachingMessage payloads missing the new explanation field.
+  Review fix M-1: add missing coaching.min i18n key (en: "min", ko: "분").
+
+- Wire regime data from CoachingEngine to coaching stats handler (F1)
+  Add current_regime_label_blocking and regime_minutes_today_blocking
+  methods to CoachingPort trait with default impls, implement them in
+  CoachingEngine, and wire into the coaching stats today handler to
+  replace stub zeros.
+
+- Coaching stats SQL date filtering (F2)
+  Replace in-memory date filtering with SQL WHERE clause for
+  coaching event count. Adds query_coaching_events_since method
+  to CoachingQueryStorage trait with SqliteStorage implementation.
+
+- Habit tracker widget polish + additional locale keys
+
+- Add missing habit_streaks IPC + session_title default impl (P10 review fixes)
+
 ## [0.4.25-rc.1] - 2026-04-06
 
 ### Added
