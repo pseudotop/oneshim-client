@@ -86,12 +86,45 @@ export default function GeneralTab({
 }: GeneralTabProps) {
   const { t } = useTranslation()
 
+  const [autostartEnabled, setAutostartEnabled] = useState(false)
+  const [autostartLoading, setAutostartLoading] = useState(false)
+
+  useEffect(() => {
+    if (!IS_TAURI) return
+    invokeDesktop<boolean>('get_autostart_enabled').then(setAutostartEnabled).catch(() => {})
+  }, [])
+
+  const handleAutostartToggle = useCallback(async (enabled: boolean) => {
+    if (!IS_TAURI) return
+    setAutostartLoading(true)
+    try {
+      await invokeDesktop<void>('set_autostart_enabled', { enabled })
+      setAutostartEnabled(enabled)
+    } catch {
+      addToast('error', t('settings.saveFailed'), 4000)
+    } finally {
+      setAutostartLoading(false)
+    }
+  }, [t])
+
   return (
     <div className="space-y-6">
       <Card variant="default" padding="lg">
         <CardTitle sticky>{t('settings.language')}</CardTitle>
         <LanguageSelector />
       </Card>
+
+      {IS_TAURI && (
+        <Card variant="default" padding="lg">
+          <CardTitle sticky>{t('settings.startup')}</CardTitle>
+          <ToggleRow
+            label={t('settings.autostart')}
+            description={t('settings.autostartDescription')}
+            checked={autostartEnabled}
+            onChange={autostartLoading ? () => {} : handleAutostartToggle}
+          />
+        </Card>
+      )}
 
       <Card variant="default" padding="lg">
         <CardTitle sticky>{t('settings.webTitle')}</CardTitle>

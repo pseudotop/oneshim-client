@@ -208,6 +208,8 @@ fn main() {
             commands::permissions::open_desktop_permission_settings,
             commands::system::probe_provider_surface_endpoint,
             commands::system::preview_update,
+            commands::system::get_autostart_enabled,
+            commands::system::set_autostart_enabled,
             commands::settings::get_allowed_setting_keys,
             commands::integration::integration_auth_status,
             commands::integration::integration_start_device_authorization,

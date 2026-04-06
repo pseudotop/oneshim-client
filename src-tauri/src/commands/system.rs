@@ -217,6 +217,22 @@ pub async fn record_frontend_log(
     Ok(())
 }
 
+/// 로그인 시 자동 시작 상태 조회
+#[command]
+pub fn get_autostart_enabled() -> Result<bool, String> {
+    crate::autostart::is_autostart_enabled()
+}
+
+/// 로그인 시 자동 시작 설정 변경
+#[command]
+pub fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    if enabled {
+        crate::autostart::enable_autostart()
+    } else {
+        crate::autostart::disable_autostart()
+    }
+}
+
 /// Preview available update info without downloading.
 #[command]
 pub async fn preview_update(
