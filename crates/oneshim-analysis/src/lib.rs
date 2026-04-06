@@ -15,6 +15,7 @@ pub mod adaptive_search;
 mod adaptive_trigger;
 mod analyzer;
 pub mod error;
+pub mod fallback_analysis_provider;
 
 mod assembler;
 pub mod auto_tuner;
@@ -102,6 +103,7 @@ pub use weekly_digest_generator::WeeklyDigestGenerator;
 
 pub use coaching_engine::CoachingEngine;
 pub use coaching_template::CoachingTemplateRegistry;
+pub use fallback_analysis_provider::{FallbackAnalysisProvider, NoOpAnalysisProvider};
 pub use feedback_tracker::FeedbackTracker;
 pub use regime_goal_tracker::RegimeGoalTracker;
 
