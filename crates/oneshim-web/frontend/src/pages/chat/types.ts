@@ -18,6 +18,7 @@ export interface SessionInfo {
   created_at: string
   last_active: string
   turn_count: number
+  title?: string
 }
 
 export type OutboundMessage =

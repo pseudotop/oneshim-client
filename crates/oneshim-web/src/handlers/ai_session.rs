@@ -248,6 +248,7 @@ mod tests {
                 created_at: now,
                 last_active: now,
                 turn_count: 0,
+                title: None,
             };
             self.sessions
                 .lock()

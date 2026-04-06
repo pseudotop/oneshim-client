@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::Json;
 use oneshim_api_contracts::coaching::{
     CoachingEventResponse, CoachingHistoryQuery, CoachingStatsTodayResponse, GoalProgressResponse,
-    UpdateGoalsRequest,
+    HabitStreakQuery, HabitStreakResponse, UpdateGoalsRequest,
 };
 
 use crate::error::ApiError;
@@ -84,6 +84,23 @@ pub async fn get_coaching_stats_today(
         current_regime,
         regime_minutes_today: regime_minutes,
     }))
+}
+
+/// GET /api/coaching/habits?days=7 -- habit streak data for the last N days.
+pub async fn get_habits(
+    State(state): State<AppState>,
+    Query(params): Query<HabitStreakQuery>,
+) -> Result<Json<Vec<HabitStreakResponse>>, ApiError> {
+    let days = params.days.unwrap_or(7);
+    let rows = state
+        .core
+        .storage
+        .query_habit_streaks(days)
+        .map_err(|e: oneshim_core::error::CoreError| ApiError::Internal(e.to_string()))?;
+
+    Ok(Json(
+        rows.into_iter().map(HabitStreakResponse::from).collect(),
+    ))
 }
 
 #[cfg(test)]
@@ -347,5 +364,63 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(parsed["current_regime"], "deep_work");
         assert_eq!(parsed["regime_minutes_today"], 90);
+    }
+
+    #[tokio::test]
+    async fn get_habits_returns_empty_by_default() {
+        let app = loopback_app(test_app_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/coaching/habits?days=7")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(parsed.is_array());
+        assert_eq!(parsed.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn get_habits_returns_upserted_data() {
+        let state = test_app_state();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        state
+            .core
+            .storage
+            .upsert_habit_streak("deep_work", &today, 90, 120, false)
+            .unwrap();
+
+        let app = loopback_app(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/coaching/habits?days=7")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["regime_label"], "deep_work");
+        assert_eq!(arr[0]["minutes_logged"], 90);
+        assert_eq!(arr[0]["target_minutes"], 120);
+        assert_eq!(arr[0]["met"], false);
     }
 }

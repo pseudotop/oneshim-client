@@ -106,6 +106,7 @@ pub(crate) mod tests {
                 created_at: Utc::now(),
                 last_active: Utc::now(),
                 turn_count: 0,
+                title: None,
             }
         }
         fn session_id(&self) -> &str {

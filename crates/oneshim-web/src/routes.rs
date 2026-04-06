@@ -293,6 +293,7 @@ pub fn api_routes() -> Router<AppState> {
             "/coaching/stats/today",
             get(handlers::coaching::get_coaching_stats_today),
         )
+        .route("/coaching/habits", get(handlers::coaching::get_habits))
         // Pomodoro timer
         .route("/pomodoro/start", post(handlers::pomodoro::start_pomodoro))
         .route(

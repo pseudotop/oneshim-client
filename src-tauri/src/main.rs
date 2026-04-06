@@ -227,6 +227,7 @@ fn main() {
             commands::ai_session::get_token_usage,
             commands::ai_session::load_session_messages,
             commands::ai_session::delete_session_history,
+            commands::ai_session::rename_ai_session,
             commands::analysis::get_analysis_config,
             commands::analysis::update_analysis_config,
             commands::analysis::get_analysis_status,

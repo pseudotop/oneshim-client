@@ -68,6 +68,7 @@ pub async fn create_ai_session(
             created_at: info.created_at,
             last_active: info.last_active,
             terminated_at: None,
+            title: None,
         };
         if let Err(e) = ss.save_session(&record).await {
             tracing::warn!("failed to persist session metadata: {e}");
@@ -379,6 +380,22 @@ pub async fn delete_session_history(
         .ok_or_else(|| "session storage not available".to_string())?;
 
     ss.delete_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Rename (set display title) for an AI session.
+#[command]
+pub async fn rename_ai_session(
+    state: tauri::State<'_, AiSessionRuntimeState>,
+    session_id: String,
+    new_title: String,
+) -> Result<(), String> {
+    let ss = state
+        .session_storage()
+        .ok_or_else(|| "session storage not available".to_string())?;
+
+    ss.update_session_title(&session_id, &new_title)
         .await
         .map_err(|e| e.to_string())
 }

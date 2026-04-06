@@ -1,4 +1,5 @@
-import { ChevronDown, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ProviderSurfaceSpec } from '../../api/contracts'
 import { Badge, Button, Input, Select } from '../../components/ui'
@@ -28,6 +29,7 @@ interface ChatSidebarProps {
   onSelectSession: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
+  onRename: (id: string, title: string) => void
   isHistorical: (s: SessionInfo) => boolean
 }
 
@@ -51,9 +53,42 @@ export function ChatSidebar({
   onSelectSession,
   onCreate,
   onDelete,
+  onRename,
   isHistorical,
 }: ChatSidebarProps) {
   const { t } = useTranslation()
+  const [searchFilter, setSearchFilter] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  const filteredSessions = useMemo(() => {
+    if (!searchFilter.trim()) return sessions
+    const q = searchFilter.toLowerCase()
+    return sessions.filter(
+      (s) =>
+        (s.title ?? s.model ?? s.provider_name).toLowerCase().includes(q) ||
+        s.model?.toLowerCase().includes(q) ||
+        s.provider_name?.toLowerCase().includes(q),
+    )
+  }, [sessions, searchFilter])
+
+  const startRename = useCallback((s: SessionInfo) => {
+    setEditingId(s.session_id)
+    setEditValue(s.title ?? s.model ?? s.provider_name)
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }, [])
+
+  const commitRename = useCallback(() => {
+    if (editingId && editValue.trim()) {
+      onRename(editingId, editValue.trim())
+    }
+    setEditingId(null)
+  }, [editingId, editValue, onRename])
+
+  const cancelRename = useCallback(() => {
+    setEditingId(null)
+  }, [])
 
   return (
     <div className="flex w-64 shrink-0 flex-col border-muted border-r bg-surface-base">
@@ -153,15 +188,39 @@ export function ChatSidebar({
         </div>
       )}
 
+      {/* Search filter */}
+      <div className="border-muted border-b px-2 py-1.5">
+        <div className="relative">
+          <Search className={cn(iconSize.xs, 'absolute top-1/2 left-2 -translate-y-1/2 text-content-muted')} />
+          <input
+            type="text"
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            placeholder={t('chat.searchSessions', 'Search sessions...')}
+            className={cn(
+              'w-full border bg-surface-base py-1 pr-2 pl-7 text-xs placeholder-content-tertiary',
+              radius.md,
+              interaction.focusRing,
+              colors.text.primary,
+              'border-DEFAULT focus:border-brand-signal',
+            )}
+          />
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto">
-        {sessions.length === 0 ? (
+        {filteredSessions.length === 0 ? (
           <p className={cn('px-3 py-4 text-center text-xs', colors.text.secondary)}>{t('chat.no_sessions')}</p>
         ) : (
-          sessions.map((s) => (
+          filteredSessions.map((s) => (
             <button
               key={s.session_id}
               type="button"
               onClick={() => onSelectSession(s.session_id)}
+              onDoubleClick={(e) => {
+                e.preventDefault()
+                startRename(s)
+              }}
               className={cn(
                 'group flex w-full items-center gap-2 px-3 py-2 text-left',
                 interaction.interactive,
@@ -170,9 +229,31 @@ export function ChatSidebar({
             >
               <span className={cn('h-2 w-2 shrink-0 rounded-full', STATE_DOT[s.state] ?? 'bg-status-disconnected')} />
               <div className="min-w-0 flex-1">
-                <p className={cn('truncate text-xs', typography.weight.medium, colors.text.primary)}>
-                  {s.model || s.provider_name}
-                </p>
+                {editingId === s.session_id ? (
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitRename()
+                      if (e.key === 'Escape') cancelRename()
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className={cn(
+                      'w-full border bg-surface-base px-1 py-0.5 text-xs',
+                      radius.md,
+                      interaction.focusRing,
+                      colors.text.primary,
+                      'border-DEFAULT focus:border-brand-signal',
+                    )}
+                  />
+                ) : (
+                  <p className={cn('truncate text-xs', typography.weight.medium, colors.text.primary)}>
+                    {s.title || s.model || s.provider_name}
+                  </p>
+                )}
                 <p className={cn('truncate text-[10px]', colors.text.secondary)}>
                   {s.transport} -- {s.turn_count} {t('chat.turns')}
                 </p>
@@ -182,16 +263,31 @@ export function ChatSidebar({
                   {t('chat.history', 'History')}
                 </Badge>
               ) : null}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(s.session_id)
-                }}
-                className="hidden text-content-muted hover:text-semantic-error group-hover:block"
-              >
-                <Trash2 className={iconSize.xs} />
-              </button>
+              <div className="hidden items-center gap-0.5 group-hover:flex">
+                {editingId !== s.session_id && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      startRename(s)
+                    }}
+                    className="text-content-muted hover:text-content-primary"
+                    title={t('chat.renameSession', 'Rename')}
+                  >
+                    <Pencil className={iconSize.xs} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete(s.session_id)
+                  }}
+                  className="text-content-muted hover:text-semantic-error"
+                >
+                  <Trash2 className={iconSize.xs} />
+                </button>
+              </div>
             </button>
           ))
         )}
