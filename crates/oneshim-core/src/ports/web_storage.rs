@@ -17,6 +17,7 @@ use crate::models::storage_records::{
     TagRecord,
 };
 use crate::models::work_session::FocusMetrics;
+use crate::ports::annotation_storage::AnnotationStorage;
 use crate::ports::storage::{MetricsStorage, StorageService};
 
 // ---------------------------------------------------------------------------
@@ -403,6 +404,7 @@ pub trait WebStorage:
     + SegmentQueryStorage
     + CoachingQueryStorage
     + HabitStorage
+    + AnnotationStorage
     + Send
     + Sync
 {
@@ -426,6 +428,7 @@ impl<T> WebStorage for T where
         + SegmentQueryStorage
         + CoachingQueryStorage
         + HabitStorage
+        + AnnotationStorage
         + Send
         + Sync
 {

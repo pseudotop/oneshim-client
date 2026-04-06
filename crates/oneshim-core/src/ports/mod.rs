@@ -1,6 +1,7 @@
 pub mod accessibility;
 pub mod analysis_provider;
 pub mod ann_index;
+pub mod annotation_storage;
 pub mod api_client;
 pub mod audio_capture;
 pub mod audit_log;

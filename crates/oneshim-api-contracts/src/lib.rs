@@ -11,6 +11,7 @@
 )]
 
 pub mod ai_providers;
+pub mod annotations;
 pub mod automation;
 pub mod automation_gui;
 pub mod backup;

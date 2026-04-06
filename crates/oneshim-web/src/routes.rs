@@ -17,6 +17,15 @@ pub fn api_routes() -> Router<AppState> {
         .route("/sessions/{id}", get(handlers::sessions::get_session))
         .route("/frames", get(handlers::frames::get_frames))
         .route("/frames/{id}/image", get(handlers::frames::get_frame_image))
+        .route(
+            "/frames/{frame_id}/annotations",
+            get(handlers::annotations::list_annotations)
+                .post(handlers::annotations::create_annotation),
+        )
+        .route(
+            "/frames/{frame_id}/annotations/{annotation_id}",
+            delete(handlers::annotations::delete_annotation),
+        )
         .route("/events", get(handlers::events::get_events))
         .route("/stats/summary", get(handlers::stats::get_summary))
         .route("/stats/apps", get(handlers::stats::get_app_usage))
