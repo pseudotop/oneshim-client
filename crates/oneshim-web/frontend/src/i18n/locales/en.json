@@ -1297,7 +1297,16 @@
     "laterLabel": "Remind me later",
     "helpfulLabel": "Helpful",
     "notHelpfulLabel": "Not helpful",
-    "whyTitle": "Why this suggestion?"
+    "whyTitle": "Why this suggestion?",
+    "habits": {
+      "title": "Habit Tracker",
+      "regime": "Regime",
+      "empty": "No habit data yet. Streaks will appear once goals are tracked.",
+      "met": "Met",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "No data"
+    }
   },
   "onboarding": {
     "step1Title": "Welcome to ONESHIM",

@@ -1297,7 +1297,16 @@
     "laterLabel": "나중에 다시 알림",
     "helpfulLabel": "도움이 됨",
     "notHelpfulLabel": "도움이 안 됨",
-    "whyTitle": "왜 이 제안?"
+    "whyTitle": "왜 이 제안?",
+    "habits": {
+      "title": "습관 트래커",
+      "regime": "레짐",
+      "empty": "아직 습관 데이터가 없습니다. 목표가 추적되면 스트릭이 표시됩니다.",
+      "met": "달성",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "데이터 없음"
+    }
   },
   "onboarding": {
     "step1Title": "ONESHIM에 오신 것을 환영합니다",
