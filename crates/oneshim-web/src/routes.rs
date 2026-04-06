@@ -259,6 +259,10 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::daily_digest::get_daily_digest_today),
         )
         .route(
+            "/digests/daily/export",
+            get(handlers::daily_digest::export_daily_digest),
+        )
+        .route(
             "/dashboard/day",
             get(handlers::dashboard::get_dashboard_day),
         )
