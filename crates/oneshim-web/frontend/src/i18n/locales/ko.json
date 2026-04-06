@@ -72,6 +72,8 @@
     "previousDay": "이전 날",
     "nextDay": "다음 날",
     "loadError": "일일 다이제스트를 불러오지 못했습니다. 나중에 다시 시도하세요.",
+    "exportDigest": "내보내기",
+    "exportMarkdown": "마크다운으로 다운로드",
     "todaySummary": {
       "title": "오늘 한눈에",
       "activeTime": "활동 시간",

@@ -71,7 +71,9 @@
     "today": "今天",
     "previousDay": "前一天",
     "nextDay": "后一天",
-    "loadError": "无法加载每日摘要。请稍后重试。"
+    "loadError": "无法加载每日摘要。请稍后重试。",
+    "exportDigest": "导出",
+    "exportMarkdown": "下载为 Markdown"
   },
   "updates": {
     "title": "更新",

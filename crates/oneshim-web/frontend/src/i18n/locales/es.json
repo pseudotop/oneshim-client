@@ -71,7 +71,9 @@
     "today": "Hoy",
     "previousDay": "Día anterior",
     "nextDay": "Día siguiente",
-    "loadError": "No se pudo cargar el resumen diario. Inténtelo de nuevo más tarde."
+    "loadError": "No se pudo cargar el resumen diario. Inténtelo de nuevo más tarde.",
+    "exportDigest": "Exportar",
+    "exportMarkdown": "Descargar como Markdown"
   },
   "updates": {
     "title": "Actualizaciones",

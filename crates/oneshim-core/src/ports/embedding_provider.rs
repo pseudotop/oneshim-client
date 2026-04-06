@@ -27,6 +27,19 @@ pub trait EmbeddingProvider: Send + Sync {
     fn model_id(&self) -> &str;
 }
 
+/// Port for embedding models that support runtime hot-reloading.
+///
+/// Implementors can re-initialise the underlying model without restarting the
+/// application. `model_version` provides a monotonically increasing counter
+/// that callers can use to detect changes (e.g. cache invalidation).
+pub trait ReloadableModel: Send + Sync {
+    /// Current model version — starts at 1, incremented on each `reload()`.
+    fn model_version(&self) -> u64;
+
+    /// Re-initialise the model in-place and return the new version.
+    fn reload(&self) -> Result<u64, CoreError>;
+}
+
 /// No-op embedding provider that returns zero vectors.
 /// Used as fallback when both local and remote embedding are unavailable.
 #[derive(Debug)]
