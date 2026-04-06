@@ -63,7 +63,8 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
     },
   })
 
-  const canApproveOrDefer = (status?.phase === 'PendingApproval' || status?.phase === 'ReadyToInstall') && !freshness.severelyStale
+  const canApproveOrDefer =
+    (status?.phase === 'PendingApproval' || status?.phase === 'ReadyToInstall') && !freshness.severelyStale
   const isDownloading = status?.phase === 'Downloading'
 
   const phaseLabel = useMemo(() => {
@@ -183,8 +184,8 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
             />
           </div>
           <p className={cn(typography.caption, 'text-text-tertiary')}>
-            {formatBytes(status.download_progress.bytes_downloaded)} / {formatBytes(status.download_progress.total_bytes)}
-            {' '}({status.download_progress.percent.toFixed(1)}%)
+            {formatBytes(status.download_progress.bytes_downloaded)} /{' '}
+            {formatBytes(status.download_progress.total_bytes)} ({status.download_progress.percent.toFixed(1)}%)
           </p>
         </div>
       )}

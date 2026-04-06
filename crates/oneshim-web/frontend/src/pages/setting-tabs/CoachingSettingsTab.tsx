@@ -182,12 +182,12 @@ export default function CoachingSettingsTab({ formData, onCoachingChange }: Coac
 
           {quietHours.length > 0 ? (
             <div className="mb-4 space-y-2">
-              {quietHours.map((range, index) => (
-                <div key={`${range.start}-${range.end}-${index}`} className="flex items-center gap-3">
+              {quietHours.map((range, rangeIdx) => (
+                <div key={`${range.start}-${range.end}`} className="flex items-center gap-3">
                   <span className={cn('text-sm tabular-nums', colors.text.primary)}>
                     {range.start} &ndash; {range.end}
                   </span>
-                  <Button variant="ghost" size="sm" onClick={() => handleDeleteQuietHour(index)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleDeleteQuietHour(rangeIdx)}>
                     {t('coaching.remove', 'Remove')}
                   </Button>
                 </div>
@@ -251,9 +251,7 @@ export default function CoachingSettingsTab({ formData, onCoachingChange }: Coac
                   <span className={cn('text-sm', typography.weight.medium, colors.text.primary)}>
                     {t(`coaching.toneOption.${tone}`, tone)}
                   </span>
-                  <p className={cn('text-xs', colors.text.tertiary)}>
-                    {t(`coaching.toneDesc.${tone}`, '')}
-                  </p>
+                  <p className={cn('text-xs', colors.text.tertiary)}>{t(`coaching.toneDesc.${tone}`, '')}</p>
                 </div>
               </label>
             ))}

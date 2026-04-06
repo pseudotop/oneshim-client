@@ -70,13 +70,7 @@ function CoachingCard({ template }: CoachingCardProps) {
       <CardContent>
         <div className="flex items-start gap-2">
           <MessageSquare className={cn(iconSize.sm, 'mt-0.5 shrink-0 text-content-muted')} aria-hidden="true" />
-          <p
-            className={cn(
-              'text-sm leading-relaxed',
-              colors.text.secondary,
-              !expanded && isLong && 'line-clamp-2',
-            )}
-          >
+          <p className={cn('text-sm leading-relaxed', colors.text.secondary, !expanded && isLong && 'line-clamp-2')}>
             {template.text}
           </p>
         </div>
@@ -144,9 +138,7 @@ function PresetCard({ preset }: PresetCardProps) {
           <Layers className={cn(iconSize.sm, 'mt-0.5 shrink-0 text-content-muted')} aria-hidden="true" />
           <p className={cn('text-sm leading-relaxed', colors.text.secondary)}>{preset.description}</p>
         </div>
-        <p className={cn('mt-2 text-xs', colors.text.tertiary)}>
-          {t('playbooks.steps', { count: preset.step_count })}
-        </p>
+        <p className={cn('mt-2 text-xs', colors.text.tertiary)}>{t('playbooks.steps', { count: preset.step_count })}</p>
       </CardContent>
     </Card>
   )
@@ -199,10 +191,7 @@ export default function Playbooks() {
 
   const categoryOptions = useMemo(() => {
     const values = [...new Set(presets.map((p) => p.category))]
-    return [
-      { label: t('playbooks.filterCategory'), value: '' },
-      ...values.map((v) => ({ label: v, value: v })),
-    ]
+    return [{ label: t('playbooks.filterCategory'), value: '' }, ...values.map((v) => ({ label: v, value: v }))]
   }, [presets, t])
 
   // Filtered lists
@@ -241,7 +230,7 @@ export default function Playbooks() {
       </p>
 
       {/* Tabs */}
-      <div className="mb-4 flex gap-1 border-b border-muted">
+      <div className="mb-4 flex gap-1 border-muted border-b">
         <button type="button" className={tabClass(tab === 'coaching')} onClick={() => setTab('coaching')}>
           <span className="flex items-center gap-1.5">
             <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
@@ -312,11 +301,8 @@ export default function Playbooks() {
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredTemplates.map((tpl, idx) => (
-                <CoachingCard
-                  key={`${tpl.profile}-${tpl.trigger_type}-${tpl.locale}-${idx}`}
-                  template={tpl}
-                />
+              {filteredTemplates.map((tpl) => (
+                <CoachingCard key={`${tpl.profile}-${tpl.trigger_type}-${tpl.tone}-${tpl.locale}`} template={tpl} />
               ))}
             </div>
           )}
