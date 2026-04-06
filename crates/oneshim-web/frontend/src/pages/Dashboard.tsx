@@ -14,6 +14,7 @@ import FocusWidget from '../components/FocusWidget'
 import MetricsChart from '../components/MetricsChart'
 import ProcessList from '../components/ProcessList'
 import StatCard from '../components/StatCard'
+import TodaySummary from '../components/TodaySummary'
 import UpdatePanel from '../components/UpdatePanel'
 import { Badge, Card, CardTitle, ChartSkeleton, EmptyState, Skeleton, StatCardsSkeleton } from '../components/ui'
 import { type ConnectionStatus, useSSE } from '../hooks/useSSE'
@@ -175,6 +176,12 @@ export default function Dashboard() {
       <div id="section-updates">
         <UpdatePanel compact />
       </div>
+
+      {/* Today at a Glance */}
+      <TodaySummary
+        totalActiveSecs={summary?.total_active_secs ?? 0}
+        topApps={(summary?.top_apps ?? []).map((a) => ({ name: a.name }))}
+      />
 
       {/* UI note */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

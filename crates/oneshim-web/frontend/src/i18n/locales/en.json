@@ -71,7 +71,14 @@
     "today": "Today",
     "previousDay": "Previous day",
     "nextDay": "Next day",
-    "loadError": "Failed to load daily digest. Please try again later."
+    "loadError": "Failed to load daily digest. Please try again later.",
+    "todaySummary": {
+      "title": "Today at a Glance",
+      "activeTime": "Active Time",
+      "topApp": "Top App",
+      "nudges": "Nudges",
+      "regime": "Regime"
+    }
   },
   "updates": {
     "title": "Updates",
@@ -156,7 +163,14 @@
     "creating": "Creating...",
     "noSearchResults": "No results found",
     "selectColor": "Select color",
-    "removeTag": "Remove {{name}} tag"
+    "removeTag": "Remove {{name}} tag",
+    "select": "Select",
+    "cancelSelect": "Cancel",
+    "selectAll": "Select All",
+    "clearSelection": "Clear",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "batchTagged": "Tagged {{count}} frames"
   },
   "settings": {
     "title": "Settings",
@@ -1233,6 +1247,7 @@
     "addGoal": "Add Goal",
     "remove": "Remove",
     "perDay": "min/day",
+    "min": "min",
     "profiles": {
       "FocusGuard": "Focus Guard",
       "TimeAware": "Time Aware",

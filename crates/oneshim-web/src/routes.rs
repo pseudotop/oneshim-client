@@ -105,6 +105,7 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::tags::get_frame_tags),
         )
         .route("/timeline", get(handlers::timeline::get_timeline))
+        .route("/frames/batch-tags", post(handlers::tags::batch_add_tag))
         .route(
             "/frames/{frame_id}/tags/{tag_id}",
             post(handlers::tags::add_tag_to_frame),
@@ -287,6 +288,10 @@ pub fn api_routes() -> Router<AppState> {
         .route(
             "/coaching/goals",
             get(handlers::coaching::get_goals).put(handlers::coaching::update_goals),
+        )
+        .route(
+            "/coaching/stats/today",
+            get(handlers::coaching::get_coaching_stats_today),
         )
         // Pomodoro timer
         .route("/pomodoro/start", post(handlers::pomodoro::start_pomodoro))

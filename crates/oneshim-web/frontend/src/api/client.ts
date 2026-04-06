@@ -8,6 +8,7 @@ import type {
   AutomationStatus,
   BackupArchive,
   BackupParams,
+  CoachingStatsToday,
   CreateOverrideRequest,
   CreateTagRequest,
   DailyDigestResponse,
@@ -571,6 +572,16 @@ export async function removeTagFromFrame(frameId: number, tagId: number): Promis
     const err = await res.json().catch(() => ({ error: 'Failed to remove tag' }))
     throw new Error(err.error || 'Failed to remove tag')
   }
+}
+
+export async function batchAddTag(frameIds: number[], tagId: number): Promise<{ tagged_count: number }> {
+  const res = await fetchWithRetry(`${BASE_URL}/frames/batch-tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frame_ids: frameIds, tag_id: tagId }),
+  })
+  if (!res.ok) throw new Error(`batch tag: ${res.status}`)
+  return res.json()
 }
 
 export async function fetchReport(params: ReportParams): Promise<ReportResponse> {
@@ -1186,6 +1197,17 @@ export async function fetchSupportDiagnostics(): Promise<DiagnosticsBundleRespon
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Diagnostics query failed' }))
     throw new Error(err.error || 'Diagnostics query failed')
+  }
+  return res.json()
+}
+
+// ── Coaching Stats API ─────────────────────────────────────────
+
+export async function fetchCoachingStatsToday(): Promise<CoachingStatsToday> {
+  const res = await fetchWithRetry(`${BASE_URL}/coaching/stats/today`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Coaching stats query failed' }))
+    throw new Error(err.error || 'Coaching stats query failed')
   }
   return res.json()
 }

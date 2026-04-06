@@ -3,12 +3,13 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, Copy } from 'lucide-react'
+import { Camera, CheckSquare, Copy, Square } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   addTagToFrame,
+  batchAddTag,
   type Frame,
   fetchFrames,
   fetchFrameTags,
@@ -69,6 +70,32 @@ export default function Timeline() {
   const [tagFilter, setTagFilter] = useState<number | 'all'>('all')
   const pageSize = 50
   const standaloneMode = isStandaloneModeEnabled()
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedFrames, setSelectedFrames] = useState<Set<number>>(new Set())
+
+  const toggleFrameSelection = useCallback((frameId: number) => {
+    setSelectedFrames((prev) => {
+      const next = new Set(prev)
+      if (next.has(frameId)) next.delete(frameId)
+      else next.add(frameId)
+      return next
+    })
+  }, [])
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelectedFrames(new Set())
+  }, [])
+
+  const batchTagMutation = useMutation({
+    mutationFn: ({ frameIds, tagId }: { frameIds: number[]; tagId: number }) => batchAddTag(frameIds, tagId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['frames'] })
+      queryClient.invalidateQueries({ queryKey: ['frame-tags'] })
+      addToast('success', t('timeline.batchTagged', { count: data.tagged_count }))
+      exitSelectMode()
+    },
+  })
 
   const handleRangeChange = useCallback(
     (from: string | undefined, to: string | undefined) => {
@@ -133,6 +160,10 @@ export default function Timeline() {
     })
   }, [frames, appFilter, importanceFilter, tagFilter])
 
+  const selectAllFiltered = useCallback(() => {
+    setSelectedFrames(new Set(filteredFrames.map((f) => f.id)))
+  }, [filteredFrames])
+
   const appList = useMemo(() => {
     const apps = new Set(frames.map((f) => f.app_name))
     return Array.from(apps).sort()
@@ -187,6 +218,8 @@ export default function Timeline() {
     onEscape: () => {
       if (lightboxOpen) {
         setLightboxOpen(false)
+      } else if (selectMode) {
+        exitSelectMode()
       } else {
         setSelectedFrame(null)
         setSelectedIndex(-1)
@@ -333,8 +366,21 @@ export default function Timeline() {
             </div>
           )}
 
+          {/* Select mode toggle */}
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              data-testid="toggle-select-mode"
+              variant={selectMode ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            >
+              <CheckSquare className="mr-1 h-4 w-4" />
+              {selectMode ? t('timeline.cancelSelect') : t('timeline.select')}
+            </Button>
+          </div>
+
           {/* UI note */}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="flex items-center gap-1">
             <Button
               data-testid="view-grid"
               variant={viewMode === 'grid' ? 'primary' : 'secondary'}
@@ -396,17 +442,21 @@ export default function Timeline() {
                 type="button"
                 key={frame.id}
                 data-testid={`frame-card-${frame.id}`}
-                onClick={() => selectFrame(frame, index)}
+                onClick={() => (selectMode ? toggleFrameSelection(frame.id) : selectFrame(frame, index))}
                 onDoubleClick={() => {
-                  selectFrame(frame, index)
-                  if (frame.image_url) setLightboxOpen(true)
+                  if (!selectMode) {
+                    selectFrame(frame, index)
+                    if (frame.image_url) setLightboxOpen(true)
+                  }
                 }}
                 className={cn(
-                  `aspect-video overflow-hidden rounded border-2 bg-hover ${motion.all} hover:scale-105`,
+                  `relative aspect-video overflow-hidden rounded border-2 bg-hover ${motion.all} hover:scale-105`,
                   interaction.focusRing,
-                  selectedFrame?.id === frame.id
+                  selectMode && selectedFrames.has(frame.id)
                     ? 'border-brand-signal ring-2 ring-brand-signal/50'
-                    : 'border-transparent hover:border-strong',
+                    : selectedFrame?.id === frame.id && !selectMode
+                      ? 'border-brand-signal ring-2 ring-brand-signal/50'
+                      : 'border-transparent hover:border-strong',
                 )}
               >
                 {frame.image_url ? (
@@ -419,6 +469,15 @@ export default function Timeline() {
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-content-tertiary text-xs">
                     {t('timeline.noImage')}
+                  </div>
+                )}
+                {selectMode && (
+                  <div className="absolute top-1 left-1">
+                    {selectedFrames.has(frame.id) ? (
+                      <CheckSquare className="h-5 w-5 text-brand-signal drop-shadow" />
+                    ) : (
+                      <Square className="h-5 w-5 text-content-inverse drop-shadow" />
+                    )}
                   </div>
                 )}
               </button>
@@ -443,17 +502,34 @@ export default function Timeline() {
                   type="button"
                   key={frame.id}
                   data-testid={`frame-row-${frame.id}`}
-                  onClick={() => selectFrame(frame, index)}
+                  onClick={() => (selectMode ? toggleFrameSelection(frame.id) : selectFrame(frame, index))}
                   onDoubleClick={() => {
-                    selectFrame(frame, index)
-                    if (frame.image_url) setLightboxOpen(true)
+                    if (!selectMode) {
+                      selectFrame(frame, index)
+                      if (frame.image_url) setLightboxOpen(true)
+                    }
                   }}
                   className={cn(
                     `flex w-full items-center gap-4 p-3 text-left ${motion.colors}`,
                     interaction.focusRing,
-                    selectedFrame?.id === frame.id ? 'bg-brand-signal/10' : 'hover:bg-hover/50',
+                    selectMode && selectedFrames.has(frame.id)
+                      ? 'bg-brand-signal/10'
+                      : selectedFrame?.id === frame.id && !selectMode
+                        ? 'bg-brand-signal/10'
+                        : 'hover:bg-hover/50',
                   )}
                 >
+                  {/* Selection checkbox for list view */}
+                  {selectMode && (
+                    <div className="flex-shrink-0">
+                      {selectedFrames.has(frame.id) ? (
+                        <CheckSquare className="h-5 w-5 text-brand-signal" />
+                      ) : (
+                        <Square className="h-5 w-5 text-content-tertiary" />
+                      )}
+                    </div>
+                  )}
+
                   {/* UI note */}
                   <div className="h-14 w-24 flex-shrink-0 overflow-hidden rounded bg-hover">
                     {frame.image_url ? (
@@ -715,6 +791,29 @@ export default function Timeline() {
           hasPrev={selectedIndex > 0}
           hasNext={selectedIndex < filteredFrames.length - 1}
         />
+      )}
+
+      {/* Floating batch action bar */}
+      {selectMode && selectedFrames.size > 0 && (
+        <div className="fixed inset-x-0 bottom-6 z-50 mx-auto flex w-fit items-center gap-3 rounded-xl border border-border-muted bg-surface-raised px-4 py-3 shadow-lg">
+          <span className="text-content-secondary text-sm">
+            {t('timeline.selectedCount', { count: selectedFrames.size })}
+          </span>
+          <Button variant="secondary" size="sm" onClick={selectAllFiltered}>
+            {t('timeline.selectAll')}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setSelectedFrames(new Set())}>
+            {t('timeline.clearSelection')}
+          </Button>
+          <TagInput
+            selectedTags={[]}
+            onAddTag={(tag) => {
+              batchTagMutation.mutate({ frameIds: Array.from(selectedFrames), tagId: tag.id })
+            }}
+            onRemoveTag={() => {}}
+            placeholder={t('timeline.addTag')}
+          />
+        </div>
       )}
     </div>
   )

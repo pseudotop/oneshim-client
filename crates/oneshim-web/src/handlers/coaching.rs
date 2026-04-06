@@ -1,7 +1,8 @@
 use axum::extract::{Query, State};
 use axum::Json;
 use oneshim_api_contracts::coaching::{
-    CoachingEventResponse, CoachingHistoryQuery, GoalProgressResponse, UpdateGoalsRequest,
+    CoachingEventResponse, CoachingHistoryQuery, CoachingStatsTodayResponse, GoalProgressResponse,
+    UpdateGoalsRequest,
 };
 
 use crate::error::ApiError;
@@ -52,6 +53,42 @@ pub async fn update_goals(
         engine.update_regime_goals_blocking(&body.goals);
     }
     Ok(Json(()))
+}
+
+/// GET /api/coaching/stats/today — aggregated coaching stats for the current day.
+pub async fn get_coaching_stats_today(
+    State(state): State<AppState>,
+) -> Result<Json<CoachingStatsTodayResponse>, ApiError> {
+    let today_count = state
+        .core
+        .storage
+        .query_coaching_events(100, 0)
+        .map(|events| {
+            let today = chrono::Local::now().date_naive();
+            events
+                .iter()
+                .filter(|e| {
+                    chrono::NaiveDate::parse_from_str(
+                        e.shown_at.get(..10).unwrap_or(""),
+                        "%Y-%m-%d",
+                    )
+                    .map(|d| d == today)
+                    .unwrap_or(false)
+                })
+                .count() as u32
+        })
+        .unwrap_or(0);
+
+    // current_regime_label() and regime_minutes_today() are not yet on CoachingPort;
+    // return defaults until Q6 adds them.
+    let current_regime: Option<String> = None;
+    let regime_minutes: u32 = 0;
+
+    Ok(Json(CoachingStatsTodayResponse {
+        nudges_count: today_count,
+        current_regime,
+        regime_minutes_today: regime_minutes,
+    }))
 }
 
 #[cfg(test)]
@@ -261,5 +298,29 @@ mod tests {
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("deep_work"));
         assert!(json.contains("\"percentage\":75"));
+    }
+
+    #[tokio::test]
+    async fn get_coaching_stats_today_returns_defaults() {
+        let app = loopback_app(test_app_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/coaching/stats/today")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(parsed["nudges_count"], 0);
+        assert!(parsed["current_regime"].is_null());
+        assert_eq!(parsed["regime_minutes_today"], 0);
     }
 }

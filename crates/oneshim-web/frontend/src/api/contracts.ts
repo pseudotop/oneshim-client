@@ -1604,6 +1604,14 @@ export interface DiagnosticsBundleResponse {
   recent_policy_events: AuditEntry[]
 }
 
+// ── Coaching Stats types ────────────────────────────────────────
+
+export interface CoachingStatsToday {
+  nudges_count: number
+  current_regime: string | null
+  regime_minutes_today: number
+}
+
 // --- Bug Report ---
 
 export interface BugReportBundle {

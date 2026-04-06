@@ -71,7 +71,14 @@
     "today": "오늘",
     "previousDay": "이전 날",
     "nextDay": "다음 날",
-    "loadError": "일일 다이제스트를 불러오지 못했습니다. 나중에 다시 시도하세요."
+    "loadError": "일일 다이제스트를 불러오지 못했습니다. 나중에 다시 시도하세요.",
+    "todaySummary": {
+      "title": "오늘 한눈에",
+      "activeTime": "활동 시간",
+      "topApp": "최다 앱",
+      "nudges": "코칭 알림",
+      "regime": "작업 모드"
+    }
   },
   "updates": {
     "title": "업데이트",
@@ -156,7 +163,14 @@
     "creating": "생성 중...",
     "noSearchResults": "검색 결과 없음",
     "selectColor": "색상 선택",
-    "removeTag": "{{name}} 태그 삭제"
+    "removeTag": "{{name}} 태그 삭제",
+    "select": "선택",
+    "cancelSelect": "취소",
+    "selectAll": "전체 선택",
+    "clearSelection": "해제",
+    "selectedCount_one": "{{count}}개 선택됨",
+    "selectedCount_other": "{{count}}개 선택됨",
+    "batchTagged": "{{count}}개 프레임에 태그 적용됨"
   },
   "settings": {
     "title": "설정",
@@ -1233,6 +1247,7 @@
     "addGoal": "목표 추가",
     "remove": "삭제",
     "perDay": "분/일",
+    "min": "분",
     "profiles": {
       "FocusGuard": "집중 가드",
       "TimeAware": "시간 인식",

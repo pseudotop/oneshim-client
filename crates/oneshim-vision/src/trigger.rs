@@ -1,4 +1,5 @@
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use oneshim_core::config::ScheduleConfig;
 use oneshim_core::models::event::ContextEvent;
 use oneshim_core::ports::vision::CaptureRequest;
 use oneshim_core::ports::vision::CaptureTrigger;
@@ -25,10 +26,15 @@ struct TriggerState {
 pub struct SmartCaptureTrigger {
     state: Mutex<TriggerState>,
     throttle_ms: u64,
+    schedule: ScheduleConfig,
 }
 
 impl SmartCaptureTrigger {
     pub fn new(throttle_ms: u64) -> Self {
+        Self::with_schedule(throttle_ms, ScheduleConfig::default())
+    }
+
+    pub fn with_schedule(throttle_ms: u64, schedule: ScheduleConfig) -> Self {
         Self {
             state: Mutex::new(TriggerState {
                 last_capture: None,
@@ -36,6 +42,38 @@ impl SmartCaptureTrigger {
                 prev_window_title: None,
             }),
             throttle_ms,
+            schedule,
+        }
+    }
+
+    /// Check whether the given hour and weekday fall within the configured
+    /// active hours window. Returns `true` (allow capture) when scheduling
+    /// is disabled.
+    pub fn is_within_active_hours(&self, hour: u8, weekday: chrono::Weekday) -> bool {
+        if !self.schedule.active_hours_enabled {
+            return true;
+        }
+
+        // Check day-of-week against configured active days
+        let chrono_dow = weekday.num_days_from_sunday();
+        let day_allowed = self
+            .schedule
+            .active_days
+            .iter()
+            .any(|d| d.num_days_from_sunday() == chrono_dow);
+        if !day_allowed {
+            return false;
+        }
+
+        // Check hour range — handles overnight windows (e.g. 22-06)
+        let start = self.schedule.active_start_hour;
+        let end = self.schedule.active_end_hour;
+        if start <= end {
+            // Normal range, e.g. 9-17
+            hour >= start && hour < end
+        } else {
+            // Overnight range, e.g. 22-06: allowed when hour >= start OR hour < end
+            hour >= start || hour < end
         }
     }
 
@@ -98,6 +136,16 @@ impl SmartCaptureTrigger {
 
 impl CaptureTrigger for SmartCaptureTrigger {
     fn should_capture(&self, event: &ContextEvent) -> Option<CaptureRequest> {
+        if self.schedule.active_hours_enabled {
+            let now = chrono::Local::now();
+            let hour = now.hour() as u8;
+            let weekday = now.weekday();
+            if !self.is_within_active_hours(hour, weekday) {
+                debug!("capture blocked: outside active hours");
+                return None;
+            }
+        }
+
         let mut state = self
             .state
             .lock()
@@ -317,5 +365,72 @@ mod tests {
             second.is_none(),
             "second call within the throttle window for a low-importance event must return None"
         );
+    }
+
+    // ── Blackout-hours tests (Q3) ────────────────────────────────────
+
+    #[test]
+    fn blocks_capture_outside_active_hours() {
+        use oneshim_core::config::Weekday as CfgWeekday;
+
+        let schedule = ScheduleConfig {
+            active_hours_enabled: true,
+            active_start_hour: 9,
+            active_end_hour: 17,
+            active_days: vec![
+                CfgWeekday::Mon,
+                CfgWeekday::Tue,
+                CfgWeekday::Wed,
+                CfgWeekday::Thu,
+                CfgWeekday::Fri,
+            ],
+            ..Default::default()
+        };
+        let trigger = SmartCaptureTrigger::with_schedule(5000, schedule);
+
+        // Hour 8 on Wednesday — before active window
+        assert!(!trigger.is_within_active_hours(8, chrono::Weekday::Wed));
+        // Hour 10 on Wednesday — inside active window
+        assert!(trigger.is_within_active_hours(10, chrono::Weekday::Wed));
+    }
+
+    #[test]
+    fn allows_capture_when_schedule_disabled() {
+        // Default ScheduleConfig has active_hours_enabled = false
+        let trigger = SmartCaptureTrigger::new(5000);
+
+        // Should allow any hour on any day
+        assert!(trigger.is_within_active_hours(0, chrono::Weekday::Sun));
+        assert!(trigger.is_within_active_hours(12, chrono::Weekday::Mon));
+        assert!(trigger.is_within_active_hours(23, chrono::Weekday::Sat));
+    }
+
+    #[test]
+    fn handles_overnight_active_hours() {
+        use oneshim_core::config::Weekday as CfgWeekday;
+
+        let schedule = ScheduleConfig {
+            active_hours_enabled: true,
+            active_start_hour: 22,
+            active_end_hour: 6,
+            active_days: vec![
+                CfgWeekday::Mon,
+                CfgWeekday::Tue,
+                CfgWeekday::Wed,
+                CfgWeekday::Thu,
+                CfgWeekday::Fri,
+                CfgWeekday::Sat,
+                CfgWeekday::Sun,
+            ],
+            ..Default::default()
+        };
+        let trigger = SmartCaptureTrigger::with_schedule(5000, schedule);
+
+        // Hour 23 — after start, should be allowed
+        assert!(trigger.is_within_active_hours(23, chrono::Weekday::Mon));
+        // Hour 3 — before end, should be allowed
+        assert!(trigger.is_within_active_hours(3, chrono::Weekday::Mon));
+        // Hour 12 — outside overnight window, should be blocked
+        assert!(!trigger.is_within_active_hours(12, chrono::Weekday::Mon));
     }
 }
