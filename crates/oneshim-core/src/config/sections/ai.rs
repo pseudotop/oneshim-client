@@ -26,6 +26,8 @@ pub struct AiProviderConfig {
     #[serde(default)]
     pub llm_api: Option<ExternalApiEndpoint>,
     #[serde(default)]
+    pub llm_api_fallback: Option<ExternalApiEndpoint>,
+    #[serde(default)]
     pub external_data_policy: ExternalDataPolicy,
     #[serde(default)]
     pub allow_unredacted_external_ocr: bool,
@@ -87,6 +89,7 @@ impl Default for AiProviderConfig {
             llm_provider: LlmProviderType::default(),
             ocr_api: None,
             llm_api: None,
+            llm_api_fallback: None,
             external_data_policy: ExternalDataPolicy::default(),
             allow_unredacted_external_ocr: false,
             ocr_validation: OcrValidationConfig::default(),

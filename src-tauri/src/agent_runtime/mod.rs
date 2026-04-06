@@ -1,3 +1,4 @@
+pub(crate) mod analysis_helpers;
 mod analysis_setup;
 mod embedding_setup;
 mod sync_setup;
