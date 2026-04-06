@@ -278,6 +278,8 @@ fn main() {
             commands::sync::get_sync_status,
             commands::sync::trigger_sync_cycle,
             commands::sync::discover_sync_peers,
+            commands::sync::set_sync_enabled,
+            commands::sync::forget_peer,
             commands::automation::check_automation_available,
             commands::automation::list_automation_presets,
             commands::automation::run_automation_preset,
