@@ -22,7 +22,7 @@ export function ToastContainer() {
 
   const addToast = useCallback((toast: Omit<ToastItem, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    setToasts(prev => {
+    setToasts((prev) => {
       const next = [...prev, { ...toast, id }]
       return next.slice(-MAX_TOASTS)
     })
@@ -30,20 +30,22 @@ export function ToastContainer() {
 
   useEffect(() => {
     addToastGlobal = addToast
-    return () => { addToastGlobal = null }
+    return () => {
+      addToastGlobal = null
+    }
   }, [addToast])
 
   useEffect(() => {
     if (toasts.length === 0) return
     const timer = setTimeout(() => {
-      setToasts(prev => prev.slice(1))
+      setToasts((prev) => prev.slice(1))
     }, TOAST_DURATION)
     return () => clearTimeout(timer)
   }, [toasts])
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
-      {toasts.map(toast => (
+      {toasts.map((toast) => (
         <div
           key={toast.id}
           className={cn(

@@ -23,7 +23,10 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
   const badgeClass = priorityClasses[item.priority] ?? priorityClasses.low
 
   return (
-    <li aria-label={t('suggestions.suggestionLabel', { title: item.title })} className="list-none border-content-inverse/5 border-b px-4 py-3">
+    <li
+      aria-label={t('suggestions.suggestionLabel', { title: item.title })}
+      className="list-none border-content-inverse/5 border-b px-4 py-3"
+    >
       <div className="flex items-start justify-between gap-2">
         <span className={cn('text-content text-sm leading-tight', typography.weight.medium)}>{item.title}</span>
         <span
@@ -82,10 +85,7 @@ export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: S
         <button
           type="button"
           onClick={() => onAction(item.id, 'explain')}
-          className={cn(
-            'rounded-md bg-brand/10 px-2 py-1 text-brand text-xs hover:bg-brand/20',
-            motion.colors,
-          )}
+          className={cn('rounded-md bg-brand/10 px-2 py-1 text-brand text-xs hover:bg-brand/20', motion.colors)}
         >
           {t('suggestions.explain')}
         </button>

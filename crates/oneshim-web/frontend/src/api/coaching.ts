@@ -23,6 +23,14 @@ export interface GoalProgress {
   display_color: string
 }
 
+export interface HabitStreak {
+  regime_label: string
+  date: string
+  minutes_logged: number
+  target_minutes: number
+  met: boolean
+}
+
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<T>(cmd, args)
@@ -45,6 +53,16 @@ export async function fetchGoalProgress(): Promise<GoalProgress[]> {
   const url = await resolveApiUrl('/api/coaching/goals')
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Failed to fetch goal progress: ${response.statusText}`)
+  return response.json()
+}
+
+export async function fetchHabitStreaks(days = 7): Promise<HabitStreak[]> {
+  if (IS_TAURI) {
+    return tauriInvoke<HabitStreak[]>('get_habit_streaks', { days })
+  }
+  const url = await resolveApiUrl(`/api/coaching/habits?days=${days}`)
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`Failed to fetch habit streaks: ${response.statusText}`)
   return response.json()
 }
 

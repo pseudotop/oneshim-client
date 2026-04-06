@@ -10,6 +10,8 @@ pub struct SystemMetrics {
     pub disk_used: u64,
     pub disk_total: u64,
     pub network: Option<NetworkInfo>,
+    #[serde(default)]
+    pub typing_wpm: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

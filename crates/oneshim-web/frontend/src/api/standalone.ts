@@ -233,9 +233,30 @@ function makeDefaultSettings(): AppSettings {
       grpc_endpoint: 'http://localhost:50051',
       tls_enabled: false,
     },
-    coaching: { enabled: true, tone: 'Balanced', locale: 'en', overlay_mode: 'Minimal' },
+    coaching: {
+      enabled: true,
+      tone: 'Gentle',
+      quiet_hours: [],
+      profiles: {
+        FocusGuard: { enabled: true, min_interval_secs: 300 },
+        TimeAware: { enabled: true, min_interval_secs: 300 },
+        DeepWorkCoach: { enabled: true, min_interval_secs: 300 },
+        ContextRestore: { enabled: true, min_interval_secs: 300 },
+        GoalTracker: { enabled: true, min_interval_secs: 300 },
+      },
+      regime_goals: {},
+      locale: 'en',
+      overlay_mode: 'Minimal',
+    },
     integration: { enabled: false, auth_profile_kind: 'None', request_timeout_secs: 30, sync_interval_secs: 60 },
-    sync: { enabled: false, transport: 'None', interval_secs: 300, device_name: '', lan_advertise: false, compression_enabled: true },
+    sync: {
+      enabled: false,
+      transport: 'None',
+      interval_secs: 300,
+      device_name: '',
+      lan_advertise: false,
+      compression_enabled: true,
+    },
     audio: {
       enabled: false,
       whisper_model_path: '',
@@ -261,6 +282,7 @@ function makeDefaultUpdateStatus(): UpdateStatus {
     phase: 'Idle',
     message: 'Standalone mode',
     pending: null,
+    download_progress: null,
     revision: 1,
     updated_at: new Date().toISOString(),
   }
@@ -1093,6 +1115,95 @@ export async function handleStandaloneRequest(
       storage_stats: makeDefaultStorageStats(),
       recent_audit_entries: [],
       recent_policy_events: [],
+    })
+  }
+
+  // ── Playbook Library ────────────────────────────────────────
+  if (path === '/api/playbooks/coaching' && method === 'GET') {
+    return jsonResponse({
+      templates: [
+        {
+          profile: 'deep_work',
+          trigger_type: 'session_start',
+          tone: 'motivating',
+          locale: 'en',
+          text: "Let's lock in and get some deep work done. Minimize distractions and focus on your top priority.",
+        },
+        {
+          profile: 'deep_work',
+          trigger_type: 'session_start',
+          tone: 'motivating',
+          locale: 'ko',
+          text: '집중 작업 세션을 시작합니다. 방해 요소를 최소화하고 최우선 과제에 집중하세요.',
+        },
+        {
+          profile: 'balanced',
+          trigger_type: 'idle_return',
+          tone: 'gentle',
+          locale: 'en',
+          text: 'Welcome back! You were idle for a bit. Ready to ease back in?',
+        },
+        {
+          profile: 'balanced',
+          trigger_type: 'idle_return',
+          tone: 'gentle',
+          locale: 'ko',
+          text: '돌아오셨군요! 잠시 자리를 비웠네요. 다시 시작할 준비가 되셨나요?',
+        },
+        {
+          profile: 'flow_seeker',
+          trigger_type: 'context_switch',
+          tone: 'curious',
+          locale: 'en',
+          text: 'You just switched context. Take a moment to reset and re-engage with your new task.',
+        },
+      ],
+    })
+  }
+  if (path === '/api/playbooks/presets' && method === 'GET') {
+    return jsonResponse({
+      presets: [
+        {
+          id: 'focus-mode',
+          name: 'Focus Mode',
+          description: 'Closes distracting apps and enables DND',
+          category: 'Productivity',
+          step_count: 3,
+          builtin: true,
+        },
+        {
+          id: 'end-of-day',
+          name: 'End of Day',
+          description: 'Saves session summary and closes all work apps',
+          category: 'Workflow',
+          step_count: 5,
+          builtin: true,
+        },
+        {
+          id: 'meeting-prep',
+          name: 'Meeting Prep',
+          description: 'Opens calendar, notes, and mutes notifications',
+          category: 'Productivity',
+          step_count: 4,
+          builtin: true,
+        },
+        {
+          id: 'app-cleanup',
+          name: 'App Cleanup',
+          description: 'Closes unused background applications',
+          category: 'AppManagement',
+          step_count: 2,
+          builtin: true,
+        },
+        {
+          id: 'custom-workflow',
+          name: 'My Workflow',
+          description: 'Custom personal automation workflow',
+          category: 'Custom',
+          step_count: 6,
+          builtin: false,
+        },
+      ],
     })
   }
 

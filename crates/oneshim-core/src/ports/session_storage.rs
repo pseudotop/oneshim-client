@@ -56,4 +56,9 @@ pub trait SessionStoragePort: Send + Sync {
 
     /// Get the next seq value for a session (`MAX(seq) + 1`, or 0 if empty).
     async fn next_seq(&self, session_id: &str) -> Result<i64, CoreError>;
+
+    /// Update the user-assigned display title for a session.
+    async fn update_session_title(&self, _session_id: &str, _title: &str) -> Result<(), CoreError> {
+        Ok(())
+    }
 }

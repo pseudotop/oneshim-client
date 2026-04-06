@@ -661,12 +661,15 @@ mod tests {
 
     #[tokio::test]
     async fn web_server_fallback_updates_bound_port_state() {
-        let reserved_listener =
-            TcpListener::bind(("127.0.0.1", oneshim_core::config::DEFAULT_WEB_PORT))
-                .await
-                .unwrap();
+        // Bind port 0 to let the OS assign a free port, then use that port as the
+        // "occupied" port. This avoids the flaky AddrInUse panic when another test
+        // concurrently holds DEFAULT_WEB_PORT.
+        let reserved_listener = TcpListener::bind(("127.0.0.1", 0u16)).await.unwrap();
+        let occupied_port = reserved_listener.local_addr().unwrap().port();
+
         let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
-        let config = WebConfig::default();
+        let mut config = WebConfig::default();
+        config.port = occupied_port; // force the server to hit the occupied port
         let bound_port_state = Arc::new(AtomicU16::new(config.port));
         let (bound_port_tx, bound_port_rx) = oneshot::channel();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -681,7 +684,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_ne!(fallback_port, oneshim_core::config::DEFAULT_WEB_PORT);
+        assert_ne!(fallback_port, occupied_port);
         assert_eq!(bound_port_state.load(Ordering::Relaxed), fallback_port);
 
         let _ = shutdown_tx.send(true);

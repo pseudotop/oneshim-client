@@ -232,9 +232,22 @@ export interface NetworkSettings {
   tls_enabled: boolean
 }
 
+export interface TimeRange {
+  start: string
+  end: string
+}
+
+export interface ProfileConfig {
+  enabled: boolean
+  min_interval_secs: number
+}
+
 export interface CoachingSettings {
   enabled: boolean
-  tone: string
+  tone: 'Direct' | 'Gentle' | 'DataDriven'
+  quiet_hours: TimeRange[]
+  profiles: Record<string, ProfileConfig>
+  regime_goals: Record<string, number>
   locale: string
   overlay_mode: string
 }
@@ -255,7 +268,22 @@ export interface SyncSettings {
   compression_enabled: boolean
 }
 
-export type UpdatePhase = 'Idle' | 'Checking' | 'PendingApproval' | 'Installing' | 'Updated' | 'Deferred' | 'Error'
+export type UpdatePhase =
+  | 'Idle'
+  | 'Checking'
+  | 'PendingApproval'
+  | 'Downloading'
+  | 'ReadyToInstall'
+  | 'Installing'
+  | 'Updated'
+  | 'Deferred'
+  | 'Error'
+
+export interface DownloadProgress {
+  bytes_downloaded: number
+  total_bytes: number
+  percent: number
+}
 
 export interface PendingUpdateInfo {
   current_version: string
@@ -264,6 +292,8 @@ export interface PendingUpdateInfo {
   release_name: string | null
   published_at: string | null
   download_url: string
+  release_notes?: string | null
+  download_size_bytes?: number | null
 }
 
 export interface UpdateStatus {
@@ -272,6 +302,7 @@ export interface UpdateStatus {
   phase: UpdatePhase
   message: string | null
   pending: PendingUpdateInfo | null
+  download_progress: DownloadProgress | null
   revision: number
   updated_at: string
 }
@@ -1648,4 +1679,31 @@ export interface RuntimeLogSnapshot {
   log_file: string | null
   line_count: number
   recent_text: string
+}
+
+// ── Playbook Library types ────────────────────────────────────
+
+export interface CoachingTemplateDto {
+  profile: string
+  trigger_type: string
+  tone: string
+  locale: string
+  text: string
+}
+
+export interface CoachingTemplateListDto {
+  templates: CoachingTemplateDto[]
+}
+
+export interface PresetSummaryDto {
+  id: string
+  name: string
+  description: string
+  category: string
+  step_count: number
+  builtin: boolean
+}
+
+export interface PresetSummaryListDto {
+  presets: PresetSummaryDto[]
 }

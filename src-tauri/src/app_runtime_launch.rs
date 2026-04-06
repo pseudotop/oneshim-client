@@ -13,9 +13,9 @@ use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
 use crate::runtime_bridges::RuntimeBridgeSpawner;
 use crate::runtime_state::{
-    AiSessionRuntimeState, AppState, AudioContext, AudioRuntimeState, CaptureContext,
-    ConfigRuntimeState, ConnectionStatus, DetectionRuntimeState, ManagedStateBuilder,
-    SuggestionRuntimeState,
+    AiSessionRuntimeState, AnalysisHealthFlags, AppState, AudioContext, AudioRuntimeState,
+    CaptureContext, ConfigRuntimeState, ConnectionStatus, DetectionRuntimeState,
+    ManagedStateBuilder, SuggestionRuntimeState,
 };
 use crate::scheduler::shared_regime_state::SharedRegimeState;
 #[cfg(feature = "server")]
@@ -52,7 +52,7 @@ impl AppRuntimeLaunchBuilder {
             db_path,
             data_dir_path,
             config_manager,
-            config,
+            mut config,
             runtime_handle: handle,
             background_runtime,
             web_port,
@@ -61,6 +61,18 @@ impl AppRuntimeLaunchBuilder {
             #[cfg(not(feature = "server"))]
                 integration_runtime_status: _integration_runtime_status,
         } = self.bootstrap;
+
+        // Auto-generate installation ID for staged rollout bucketing.
+        if config.update.installation_id.is_none() {
+            let new_id = uuid::Uuid::new_v4().to_string();
+            if let Err(e) = config_manager.update_with(|c| {
+                c.update.installation_id = Some(new_id.clone());
+                Ok(())
+            }) {
+                tracing::warn!("Failed to persist installation_id: {e}");
+            }
+            config.update.installation_id = Some(new_id);
+        }
 
         #[cfg(feature = "server")]
         let server_context = ServerLaunchContext::from_bootstrap(server);
@@ -333,6 +345,11 @@ impl AppRuntimeLaunchBuilder {
         let llm_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cli_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+        // Analysis provider health flag — shared between the FallbackAnalysisProvider
+        // (written on success/failure) and AppState (read by get_analysis_health IPC).
+        // Starts `true` (optimistic); flipped to `false` on first primary failure.
+        let analysis_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+
         #[cfg(feature = "server")]
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
@@ -406,7 +423,8 @@ impl AppRuntimeLaunchBuilder {
                     cli_connected.clone(),
                 )
                 .with_tray_app_handle(self.app_handle.clone())
-                .with_suggestions_enabled(config.suggestions.enabled);
+                .with_suggestions_enabled(config.suggestions.enabled)
+                .with_analysis_health_flag(analysis_health_flag.clone());
             #[cfg(feature = "server")]
             let builder = builder
                 .with_shared_suggestion_queue(shared_suggestion_queue)
@@ -573,57 +591,122 @@ impl AppRuntimeLaunchBuilder {
             }
         };
 
+        // Build STT engine with full fallback chain (local + cloud) based on config.
         let stt_engine: Option<Arc<dyn oneshim_core::ports::stt_provider::SttProvider>> = {
-            #[cfg(feature = "stt")]
-            {
-                if !config.audio.enabled {
-                    None
-                } else {
-                    // Try model_dir first (when download feature available), then legacy whisper_model_path
-                    let model_path = if config.audio.whisper_model_path.is_empty() {
-                        #[cfg(feature = "download")]
-                        {
-                            model_dir.join(oneshim_audio::model_downloader::model_filename(
-                                config.audio.model_size,
-                            ))
-                        }
-                        #[cfg(not(feature = "download"))]
-                        {
-                            self.app_handle
-                                .path()
-                                .resource_dir()
-                                .map(|d| d.join("ggml-base.bin"))
-                                .unwrap_or_default()
-                        }
-                    } else {
-                        std::path::PathBuf::from(&config.audio.whisper_model_path)
-                    };
-                    if model_path.exists() {
-                        match oneshim_audio::WhisperSttProvider::new(
-                            &model_path,
-                            config.audio.language,
-                        ) {
-                            Ok(provider) => {
-                                tracing::info!("Whisper STT loaded: {}", model_path.display());
-                                Some(Arc::new(provider) as _)
+            use oneshim_core::config::SttProviderKind;
+
+            if !config.audio.enabled {
+                None
+            } else {
+                // Build local provider (if model available)
+                let local_provider: Option<
+                    Arc<dyn oneshim_core::ports::stt_provider::SttProvider>,
+                > = {
+                    #[cfg(feature = "stt")]
+                    {
+                        let model_path = if config.audio.whisper_model_path.is_empty() {
+                            #[cfg(feature = "download")]
+                            {
+                                model_dir.join(oneshim_audio::model_downloader::model_filename(
+                                    config.audio.model_size,
+                                ))
                             }
-                            Err(e) => {
-                                tracing::warn!("Failed to load Whisper model: {e}");
-                                None
+                            #[cfg(not(feature = "download"))]
+                            {
+                                self.app_handle
+                                    .path()
+                                    .resource_dir()
+                                    .map(|d| d.join("ggml-base.bin"))
+                                    .unwrap_or_default()
                             }
+                        } else {
+                            std::path::PathBuf::from(&config.audio.whisper_model_path)
+                        };
+                        if model_path.exists() {
+                            match oneshim_audio::WhisperSttProvider::new(
+                                &model_path,
+                                config.audio.language,
+                            ) {
+                                Ok(provider) => {
+                                    tracing::info!("Whisper STT loaded: {}", model_path.display());
+                                    Some(Arc::new(provider) as _)
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to load Whisper model: {e}");
+                                    None
+                                }
+                            }
+                        } else {
+                            tracing::info!(
+                                "Whisper model not found at {}; local STT unavailable",
+                                model_path.display()
+                            );
+                            None
                         }
-                    } else {
-                        tracing::info!(
-                            "Whisper model not found at {}; STT disabled",
-                            model_path.display()
-                        );
+                    }
+                    #[cfg(not(feature = "stt"))]
+                    {
                         None
                     }
+                };
+
+                // Build cloud provider (if key configured)
+                let cloud_provider: Option<
+                    Arc<dyn oneshim_core::ports::stt_provider::SttProvider>,
+                > = {
+                    #[cfg(feature = "cloud-stt")]
+                    {
+                        if !config.audio.cloud_api_key.is_empty() {
+                            match oneshim_audio::CloudSttProvider::new(
+                                config.audio.cloud_api_key.clone(),
+                                config.audio.cloud_stt_endpoint.clone(),
+                                config.audio.language,
+                                config.audio.cloud_timeout_secs,
+                            ) {
+                                Ok(p) => Some(Arc::new(p) as _),
+                                Err(e) => {
+                                    tracing::warn!("Failed to create cloud STT: {e}");
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    #[cfg(not(feature = "cloud-stt"))]
+                    {
+                        None
+                    }
+                };
+
+                // Assemble final provider based on config preference
+                match config.audio.stt_provider {
+                    SttProviderKind::Cloud => match (cloud_provider, local_provider) {
+                        (Some(cloud), Some(local)) => {
+                            tracing::info!("STT startup: Cloud with local fallback");
+                            Some(Arc::new(crate::fallback_stt::FallbackSttProvider::new(
+                                cloud, local,
+                            )) as _)
+                        }
+                        (Some(cloud), None) => {
+                            tracing::info!("STT startup: Cloud only (no local model)");
+                            Some(cloud)
+                        }
+                        (None, Some(local)) => {
+                            tracing::warn!(
+                                "Cloud STT unavailable at startup, falling back to local"
+                            );
+                            Some(local)
+                        }
+                        (None, None) => None,
+                    },
+                    SttProviderKind::Local => {
+                        if local_provider.is_some() {
+                            tracing::info!("STT startup: Local provider");
+                        }
+                        local_provider
+                    }
                 }
-            }
-            #[cfg(not(feature = "stt"))]
-            {
-                None
             }
         };
 
@@ -669,6 +752,15 @@ impl AppRuntimeLaunchBuilder {
             Some(magic_overlay.clone()),
         );
 
+        // Compute analysis_health before `config` is moved into AppState.
+        let analysis_health = if config.analysis.enabled && config.ai_provider.llm_api.is_some() {
+            Some(AnalysisHealthFlags {
+                primary_healthy: analysis_health_flag,
+            })
+        } else {
+            None
+        };
+
         let state_builder = ManagedStateBuilder::new(
             AppState {
                 runtime_handle: handle,
@@ -709,6 +801,7 @@ impl AppRuntimeLaunchBuilder {
                         oneshim_vision::work_classifier::RuleBasedClassifier,
                     )),
                 },
+                analysis_health,
             },
             config_runtime_state,
         )

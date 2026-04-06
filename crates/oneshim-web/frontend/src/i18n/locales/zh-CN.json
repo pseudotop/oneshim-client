@@ -38,7 +38,8 @@
     "recalibration": "重新校准",
     "chat": "聊天",
     "audit": "审计日志",
-    "policies": "策略"
+    "policies": "策略",
+    "playbooks": "剧本库"
   },
   "dashboard": {
     "title": "活动概览",
@@ -71,7 +72,9 @@
     "today": "今天",
     "previousDay": "前一天",
     "nextDay": "后一天",
-    "loadError": "无法加载每日摘要。请稍后重试。"
+    "loadError": "无法加载每日摘要。请稍后重试。",
+    "exportDigest": "导出",
+    "exportMarkdown": "下载为 Markdown"
   },
   "updates": {
     "title": "更新",
@@ -86,6 +89,8 @@
     "installing": "安装中",
     "updated": "已更新",
     "deferred": "已推迟",
+    "downloading": "下载中...",
+    "readyToInstall": "准备安装",
     "error": "错误",
     "statusUnavailable": "无法获取更新状态",
     "lastUpdateUnknown": "上次更新信号：未知",
@@ -109,7 +114,9 @@
     "policyTitle": "更新安全策略",
     "policyIntegrity": "安装前所有构件必须通过校验和验证。",
     "policySignature": "发布构件需要通过 Ed25519 签名验证。",
-    "policyRollback": "重启失败时将自动回滚到上一版本。"
+    "policyRollback": "重启失败时将自动回滚到上一版本。",
+    "releaseNotes": "发布说明",
+    "downloadSize": "下载大小：{{size}}"
   },
   "timeline": {
     "title": "时间线",
@@ -155,7 +162,7 @@
       "monitoring": "监控",
       "aiAutomation": "AI与自动化",
       "dataStorage": "数据与存储",
-      "coaching": "教练目标"
+      "coaching": "教练"
     },
     "dataCollection": "数据采集",
     "enableCapture": "启用截图捕获",
@@ -557,15 +564,7 @@
     "low": "低",
     "high": "高",
     "loadError": "数据加载失败",
-    "days": [
-      "周一",
-      "周二",
-      "周三",
-      "周四",
-      "周五",
-      "周六",
-      "周日"
-    ],
+    "days": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
     "activity": "活动"
   },
   "dateRange": {
@@ -1222,6 +1221,7 @@
     "addGoal": "添加目标",
     "remove": "删除",
     "perDay": "分钟/天",
+    "min": "分钟",
     "profiles": {
       "FocusGuard": "专注守护",
       "TimeAware": "时间感知",
@@ -1238,7 +1238,42 @@
     "dismissLabel": "关闭教练消息",
     "laterLabel": "稍后提醒",
     "helpfulLabel": "有帮助",
-    "notHelpfulLabel": "没有帮助"
+    "notHelpfulLabel": "没有帮助",
+    "whyTitle": "为什么推荐这个？",
+    "quietHoursTitle": "免打扰时段",
+    "quietHoursDesc": "在这些时间段内，教练消息将被静音。",
+    "noQuietHours": "未配置免打扰时段。",
+    "quietStart": "开始",
+    "quietEnd": "结束",
+    "addQuietHour": "添加",
+    "toneTitle": "教练语气",
+    "toneOption": {
+      "Direct": "直接",
+      "Gentle": "温和",
+      "DataDriven": "数据驱动"
+    },
+    "toneDesc": {
+      "Direct": "简短、可操作的陈述",
+      "Gentle": "更柔和、鼓励性的语言",
+      "DataDriven": "以统计数据和数字为中心"
+    },
+    "profilesTitle": "教练配置",
+    "profileDesc": {
+      "FocusGuard": "频繁切换上下文时发出提醒",
+      "TimeAware": "提醒即将到来的会议和截止日期",
+      "DeepWorkCoach": "鼓励持续的专注会话",
+      "ContextRestore": "帮助在中断后恢复工作",
+      "GoalTracker": "追踪每日模式目标的进度"
+    },
+    "habits": {
+      "title": "习惯追踪器",
+      "regime": "模式",
+      "empty": "暂无习惯数据。开始追踪目标后将显示连续记录。",
+      "met": "达成",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "无数据"
+    }
   },
   "onboarding": {
     "step1Title": "欢迎使用 ONESHIM",
@@ -1460,5 +1495,16 @@
     "refreshLabel": "刷新检测",
     "close": "关闭",
     "closeLabel": "关闭检测叠加层"
+  },
+  "playbooks": {
+    "title": "剧本库",
+    "coaching": "辅导模板",
+    "presets": "自动化预设",
+    "filterProfile": "配置文件",
+    "filterTrigger": "触发器",
+    "filterCategory": "分类",
+    "steps": "{{count}} 步",
+    "builtin": "内置",
+    "templateCount": "{{count}} 项"
   }
 }

@@ -38,7 +38,8 @@
     "mainNavLabel": "메인 내비게이션",
     "chat": "채팅",
     "audit": "감사 로그",
-    "policies": "정책"
+    "policies": "정책",
+    "playbooks": "플레이북"
   },
   "dashboard": {
     "title": "활동 요약",
@@ -72,6 +73,8 @@
     "previousDay": "이전 날",
     "nextDay": "다음 날",
     "loadError": "일일 다이제스트를 불러오지 못했습니다. 나중에 다시 시도하세요.",
+    "exportDigest": "내보내기",
+    "exportMarkdown": "마크다운으로 다운로드",
     "todaySummary": {
       "title": "오늘 한눈에",
       "activeTime": "활동 시간",
@@ -93,6 +96,8 @@
     "installing": "설치 중",
     "updated": "업데이트 완료",
     "deferred": "연기됨",
+    "downloading": "다운로드 중...",
+    "readyToInstall": "설치 준비 완료",
     "error": "오류",
     "statusUnavailable": "업데이트 상태를 불러오지 못했습니다",
     "lastUpdateUnknown": "마지막 업데이트 신호: 알 수 없음",
@@ -127,7 +132,9 @@
     "active": "활성",
     "savingChannel": "저장 중...",
     "channelSaved": "업데이트 채널이 저장되었습니다",
-    "channelSaveFailed": "업데이트 채널 저장에 실패했습니다"
+    "channelSaveFailed": "업데이트 채널 저장에 실패했습니다",
+    "releaseNotes": "릴리즈 노트",
+    "downloadSize": "다운로드 크기: {{size}}"
   },
   "timeline": {
     "title": "타임라인",
@@ -180,7 +187,8 @@
       "monitoring": "모니터링",
       "aiAutomation": "AI & 자동화",
       "dataStorage": "데이터 & 저장소",
-      "coaching": "코칭 목표"
+      "coaching": "코칭",
+      "audio": "오디오"
     },
     "dataCollection": "데이터 수집",
     "enableCapture": "스크린샷 캡처 활성화",
@@ -483,6 +491,37 @@
       "tierOauth": "OAuth",
       "tierAws": "AWS",
       "tierAggregator": "Aggregator"
+    },
+    "audio": {
+      "title": "오디오 & 음성 인식",
+      "enable": "오디오 캡처 및 STT 활성화",
+      "model": "Whisper 모델",
+      "status": "모델 상태",
+      "not_installed": "설치되지 않음",
+      "downloading": "다운로드 중...",
+      "ready": "준비됨",
+      "cancel": "취소",
+      "download": "다운로드",
+      "redownload": "재다운로드",
+      "reload": "엔진 재로드",
+      "delete": "삭제",
+      "delete_confirm": "다운로드된 모델을 삭제하시겠습니까? 나중에 다시 다운로드할 수 있습니다.",
+      "language": "STT 언어",
+      "input_mode": "입력 모드",
+      "ptt": "푸시 투 토크",
+      "vad": "음성 감지",
+      "vad_sensitivity": "VAD 감도",
+      "vad_sensitivity_hint": "낮을수록 민감합니다. 배경 소음이 감지되면 값을 높이세요.",
+      "vad_silence": "무음 지속 시간 (ms)",
+      "vad_silence_hint": "발화 종료 전 무음 대기 시간입니다.",
+      "stt_provider": "STT 제공자",
+      "local": "로컬 (Whisper)",
+      "cloud": "클라우드 (OpenAI)",
+      "api_key": "API 키",
+      "api_key_hint": "API 키는 로컬에 저장되며 제공자에게 직접 전송됩니다.",
+      "endpoint": "엔드포인트 URL",
+      "endpoint_hint": "OpenAI 호환 음성 인식 엔드포인트입니다.",
+      "cloud_timeout": "타임아웃 (초)"
     }
   },
   "privacy": {
@@ -548,6 +587,7 @@
   "search": {
     "title": "검색",
     "placeholder": "검색어 입력...",
+    "semanticPlaceholder": "찾고 싶은 내용을 설명하세요...",
     "results": "검색 결과",
     "noResults": "검색 결과가 없습니다.",
     "frames": "프레임",
@@ -561,7 +601,14 @@
     "searchHint": "앱 이름, 창 제목, OCR 텍스트 또는 태그로 검색할 수 있습니다",
     "screenshot": "스크린샷",
     "event": "이벤트",
-    "importance": "중요도"
+    "importance": "중요도",
+    "semantic": "시맨틱",
+    "textSearch": "텍스트",
+    "relevance": "관련도",
+    "similarity": "유사도",
+    "timeDecay": "시간 감쇠",
+    "type": "유형",
+    "summary": "요약"
   },
   "shortcuts": {
     "title": "키보드 단축키",
@@ -582,15 +629,7 @@
     "low": "낮음",
     "high": "높음",
     "loadError": "데이터를 불러올 수 없습니다",
-    "days": [
-      "월",
-      "화",
-      "수",
-      "목",
-      "금",
-      "토",
-      "일"
-    ],
+    "days": ["월", "화", "수", "목", "금", "토", "일"],
     "activity": "활동"
   },
   "dateRange": {
@@ -1264,7 +1303,42 @@
     "dismissLabel": "코칭 메시지 닫기",
     "laterLabel": "나중에 다시 알림",
     "helpfulLabel": "도움이 됨",
-    "notHelpfulLabel": "도움이 안 됨"
+    "notHelpfulLabel": "도움이 안 됨",
+    "whyTitle": "왜 이 제안?",
+    "quietHoursTitle": "방해 금지 시간",
+    "quietHoursDesc": "이 시간대에는 코칭 메시지가 표시되지 않습니다.",
+    "noQuietHours": "방해 금지 시간이 설정되지 않았습니다.",
+    "quietStart": "시작",
+    "quietEnd": "종료",
+    "addQuietHour": "추가",
+    "toneTitle": "코칭 톤",
+    "toneOption": {
+      "Direct": "직접적",
+      "Gentle": "부드러운",
+      "DataDriven": "데이터 기반"
+    },
+    "toneDesc": {
+      "Direct": "짧고 실행 가능한 문장",
+      "Gentle": "부드럽고 격려하는 표현",
+      "DataDriven": "숫자와 통계 중심"
+    },
+    "profilesTitle": "코칭 프로필",
+    "profileDesc": {
+      "FocusGuard": "컨텍스트 전환이 잦을 때 알림",
+      "TimeAware": "예정된 회의와 마감을 알림",
+      "DeepWorkCoach": "집중 세션 유지를 격려",
+      "ContextRestore": "중단 후 작업 재개를 도움",
+      "GoalTracker": "일일 레짐 목표 달성 추적"
+    },
+    "habits": {
+      "title": "습관 트래커",
+      "regime": "레짐",
+      "empty": "아직 습관 데이터가 없습니다. 목표가 추적되면 스트릭이 표시됩니다.",
+      "met": "달성",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "데이터 없음"
+    }
   },
   "onboarding": {
     "step1Title": "ONESHIM에 오신 것을 환영합니다",
@@ -1341,7 +1415,11 @@
     "response_format_label": "응답 형식 JSON",
     "response_format_placeholder": "선택 사항 JSON schema 또는 형식 힌트",
     "invalid_tools_json": "도구 정의는 JSON 배열이어야 합니다.",
-    "invalid_response_format_json": "응답 형식은 유효한 JSON이어야 합니다."
+    "invalid_response_format_json": "응답 형식은 유효한 JSON이어야 합니다.",
+    "searchSessions": "세션 검색...",
+    "exportMarkdown": "마크다운으로 내보내기",
+    "tokensToday": "오늘: {{count}} 토큰",
+    "renameSession": "이름 변경"
   },
   "policies": {
     "title": "실행 정책",
@@ -1486,5 +1564,16 @@
     "refreshLabel": "감지 새로고침",
     "close": "닫기",
     "closeLabel": "감지 오버레이 닫기"
+  },
+  "playbooks": {
+    "title": "플레이북 라이브러리",
+    "coaching": "코칭 템플릿",
+    "presets": "자동화 프리셋",
+    "filterProfile": "프로필",
+    "filterTrigger": "트리거",
+    "filterCategory": "카테고리",
+    "steps": "{{count}}단계",
+    "builtin": "내장",
+    "templateCount": "{{count}}개 항목"
   }
 }

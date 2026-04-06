@@ -51,6 +51,7 @@ fn make_metrics() -> SystemMetrics {
         disk_used: 100_000_000_000,
         disk_total: 500_000_000_000,
         network: None,
+        typing_wpm: 0.0,
     }
 }
 

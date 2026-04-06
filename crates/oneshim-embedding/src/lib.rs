@@ -20,11 +20,12 @@
 pub mod error;
 pub use error::EmbeddingError;
 
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
-use oneshim_core::ports::embedding_provider::EmbeddingProvider;
+use oneshim_core::ports::embedding_provider::{EmbeddingProvider, ReloadableModel};
 
 // ── fastembed-backed implementation ────────────────────────────────────────
 
@@ -37,10 +38,15 @@ mod fastembed_impl {
     ///
     /// Thread-safe (`Send + Sync`) — the inner `TextEmbedding` is wrapped
     /// in `Arc<Mutex>` and accessed only through `spawn_blocking`.
+    ///
+    /// Supports hot-reloading via `reload()` — re-initialises the ONNX model
+    /// in-place and bumps `model_version` so callers can detect the change.
     pub struct LocalEmbeddingProvider {
         model: Arc<Mutex<fastembed::TextEmbedding>>,
         model_id: String,
+        model_name_raw: Mutex<Option<String>>,
         dimensions: usize,
+        model_version: AtomicU64,
     }
 
     impl LocalEmbeddingProvider {
@@ -60,8 +66,42 @@ mod fastembed_impl {
             Ok(Self {
                 model: Arc::new(Mutex::new(model)),
                 model_id: id,
+                model_name_raw: Mutex::new(model_name.map(String::from)),
                 dimensions: dims,
+                model_version: AtomicU64::new(1),
             })
+        }
+
+        /// Current model version — incremented on each successful `reload()`.
+        pub fn model_version(&self) -> u64 {
+            self.model_version.load(Ordering::Relaxed)
+        }
+
+        /// Re-initialise the ONNX model in-place without restarting the app.
+        ///
+        /// Uses the same model name that was passed to `new()`. On success the
+        /// internal model is swapped and `model_version` is incremented.
+        pub fn reload(&self) -> Result<u64, EmbeddingError> {
+            let raw_name = self
+                .model_name_raw
+                .lock()
+                .map_err(|e| EmbeddingError::Internal(format!("model_name lock poisoned: {e}")))?;
+            let (model_enum, _id, _dims) = resolve_model(raw_name.as_deref());
+
+            let options = fastembed::InitOptions::new(model_enum).with_show_download_progress(true);
+
+            let new_model = fastembed::TextEmbedding::try_new(options)
+                .map_err(|e| EmbeddingError::Internal(format!("fastembed reload failed: {e}")))?;
+
+            let mut guard = self
+                .model
+                .lock()
+                .map_err(|e| EmbeddingError::Internal(format!("model lock poisoned: {e}")))?;
+            *guard = new_model;
+
+            let new_version = self.model_version.fetch_add(1, Ordering::Relaxed) + 1;
+            tracing::info!(version = new_version, "Embedding model reloaded");
+            Ok(new_version)
         }
     }
 
@@ -109,6 +149,16 @@ mod fastembed_impl {
 
         fn model_id(&self) -> &str {
             &self.model_id
+        }
+    }
+
+    impl ReloadableModel for LocalEmbeddingProvider {
+        fn model_version(&self) -> u64 {
+            self.model_version()
+        }
+
+        fn reload(&self) -> Result<u64, CoreError> {
+            self.reload().map_err(CoreError::from)
         }
     }
 
@@ -190,9 +240,11 @@ mod stub_impl {
     /// Stub provider used when the `fastembed-local` feature is disabled.
     ///
     /// Every method returns `CoreError::Internal` with a descriptive message.
+    /// `model_version()` and `reload()` are available for API compatibility.
     pub struct LocalEmbeddingProvider {
         model_id: String,
         dimensions: usize,
+        model_version: AtomicU64,
     }
 
     impl LocalEmbeddingProvider {
@@ -200,7 +252,21 @@ mod stub_impl {
             Ok(Self {
                 model_id: "stub-no-fastembed".to_owned(),
                 dimensions: 384,
+                model_version: AtomicU64::new(1),
             })
+        }
+
+        /// Current model version — always 1 for stub, incremented by `reload()`.
+        pub fn model_version(&self) -> u64 {
+            self.model_version.load(Ordering::Relaxed)
+        }
+
+        /// Stub reload — no actual model to reinitialise, but bumps version
+        /// so the IPC contract is satisfied.
+        pub fn reload(&self) -> Result<u64, EmbeddingError> {
+            let new_version = self.model_version.fetch_add(1, Ordering::Relaxed) + 1;
+            tracing::info!(version = new_version, "Stub embedding model reload (no-op)");
+            Ok(new_version)
         }
     }
 
@@ -226,14 +292,22 @@ mod stub_impl {
             &self.model_id
         }
     }
+
+    impl ReloadableModel for LocalEmbeddingProvider {
+        fn model_version(&self) -> u64 {
+            self.model_version()
+        }
+
+        fn reload(&self) -> Result<u64, CoreError> {
+            self.reload().map_err(CoreError::from)
+        }
+    }
 }
 
 #[cfg(not(feature = "fastembed-local"))]
 pub use stub_impl::LocalEmbeddingProvider;
 
 // ── Fallback chaining provider ────────────────────────────────────────────
-
-use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Chains two embedding providers: tries primary first, falls back on error.
 ///

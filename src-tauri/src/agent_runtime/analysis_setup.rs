@@ -58,14 +58,19 @@ pub(super) fn build_analysis_pipeline(
             let buf_cap = config.analysis.tiered_memory.buffer_capacity;
             let tm_config = &config.analysis.tiered_memory;
             // Create LLM WorkType refiner independently of embedding pipeline.
-            // Uses its own AnalysisClient — stateless, no shared state concern.
+            // Uses its own FallbackAnalysisProvider — stateless, no shared state concern.
             let llm_work_type_refiner = if config.analysis.llm_work_type_enabled {
-                config.ai_provider.llm_api.as_ref().map(|llm_api| {
+                config.ai_provider.llm_api.as_ref().map(|_llm_api| {
                     let provider: Arc<
                         dyn oneshim_core::ports::analysis_provider::AnalysisProvider,
-                    > = Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
-                        llm_api,
-                    ));
+                    > = crate::agent_runtime::analysis_helpers::build_analysis_provider(
+                        &config.ai_provider,
+                    )
+                    .map(|(p, _)| p)
+                    .unwrap_or_else(|| {
+                        Arc::new(oneshim_analysis::NoOpAnalysisProvider)
+                            as Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>
+                    });
                     info!("LLM WorkType refiner enabled");
                     Arc::new(oneshim_analysis::LlmWorkTypeRefiner::new(provider))
                 })

@@ -32,12 +32,14 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
   const { t } = useTranslation()
 
   return (
-    <div className={cn(
-      'absolute bottom-full right-0 mb-1 z-10',
-      'bg-surface-sunken/95 backdrop-blur-md rounded-lg shadow-lg',
-      'border border-border-default p-1 min-w-[140px]',
-    )}>
-      {options.map(opt => (
+    <div
+      className={cn(
+        'absolute bottom-full right-0 mb-1 z-10',
+        'bg-surface-sunken/95 backdrop-blur-md rounded-lg shadow-lg',
+        'border border-border-default p-1 min-w-[140px]',
+      )}
+    >
+      {options.map((opt) => (
         <button
           key={opt.i18nKey}
           type="button"

@@ -66,6 +66,9 @@ pub struct CoachingEngine {
     pub(super) last_features: RwLock<Option<CoachingFeatures>>,
     /// Count of coaching messages shown today (for feature extraction).
     pub(super) messages_shown_today: RwLock<u32>,
+
+    /// Human-readable label of the current regime (set during evaluate).
+    pub(super) current_regime_label: RwLock<Option<String>>,
 }
 
 impl CoachingEngine {
@@ -92,6 +95,7 @@ impl CoachingEngine {
             adaptive_scorer: RwLock::new(AdaptiveScorer::default()),
             last_features: RwLock::new(None),
             messages_shown_today: RwLock::new(0),
+            current_regime_label: RwLock::new(None),
         }
     }
 
@@ -136,11 +140,12 @@ impl CoachingEngine {
         // 2b. Clear expired snooze eagerly (before trigger detection)
         self.clear_expired_snooze().await;
 
-        // 2c. Record last app name for implicit feedback
+        // 2c. Record last app name for implicit feedback + current regime label
         {
             let mut app = self.last_app_name.write().await;
             *app = app_name.to_string();
         }
+        *self.current_regime_label.write().await = Some(regime_label.to_string());
 
         // 3. Detect trigger
         let trigger = self
@@ -462,6 +467,23 @@ impl oneshim_core::ports::coaching::CoachingPort for CoachingEngine {
 
     async fn update_regime_goals(&self, goals: &HashMap<String, u32>) {
         self.update_regime_goals(goals).await;
+    }
+
+    fn current_regime_label_blocking(&self) -> Option<String> {
+        let handle = tokio::runtime::Handle::current();
+        tokio::task::block_in_place(|| {
+            handle.block_on(async { self.current_regime_label.read().await.clone() })
+        })
+    }
+
+    fn regime_minutes_today_blocking(&self) -> u32 {
+        let handle = tokio::runtime::Handle::current();
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+                let gt = self.goal_tracker.read().await;
+                gt.all_progress().iter().map(|p| p.current_minutes).sum()
+            })
+        })
     }
 }
 

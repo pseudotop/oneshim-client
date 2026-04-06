@@ -213,8 +213,11 @@ impl TokenRefreshCoordinator {
             });
             RefreshOutcome::ReauthRequired
         } else {
-            let backoff = RefreshState::backoff_duration(attempt)
-                .expect("backoff_duration should return Some for failures < MAX");
+            // Safe: the `attempt >= MAX` branch above handles the None case,
+            // so `backoff_duration` always returns Some here. Fallback to 120s
+            // as a defensive default in case the match arms are ever reordered.
+            let backoff =
+                RefreshState::backoff_duration(attempt).unwrap_or(Duration::from_secs(120));
             state.backoff_until = Some(Instant::now() + backoff);
 
             warn!(

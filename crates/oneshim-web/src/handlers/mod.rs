@@ -1,6 +1,7 @@
 pub mod ai_models;
 pub mod ai_provider_surfaces;
 pub mod ai_session;
+pub mod annotations;
 pub mod automation;
 pub mod automation_gui;
 pub mod bug_report;
@@ -20,6 +21,7 @@ pub mod idle;
 pub mod integration;
 pub mod metrics;
 pub mod onboarding;
+pub mod playbooks;
 pub mod pomodoro;
 pub mod processes;
 pub mod reports;

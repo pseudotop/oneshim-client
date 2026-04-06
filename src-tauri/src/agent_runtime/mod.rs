@@ -1,3 +1,4 @@
+pub(crate) mod analysis_helpers;
 mod analysis_setup;
 mod embedding_setup;
 mod sync_setup;
@@ -77,6 +78,9 @@ pub(crate) struct AgentRuntimeBundle {
     /// SharedRegimeState passed through to the Scheduler so it shares the same
     /// instance as the SessionManager's context assembler.
     shared_regime: Option<Arc<SharedRegimeState>>,
+    /// Pre-created health flag for the primary analysis provider, shared with AppState
+    /// so the `get_analysis_health` IPC command reflects actual provider health.
+    analysis_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl AgentRuntimeBundle {
@@ -106,6 +110,11 @@ impl AgentRuntimeBundle {
         }
         if let Some(ref shared_scorer) = self.shared_scorer {
             builder = builder.with_shared_scorer(shared_scorer.clone());
+        }
+        builder = builder.with_few_shot_storage(Arc::clone(&self.sqlite_storage_concrete)
+            as Arc<dyn oneshim_core::ports::few_shot_storage::FewShotStorage>);
+        if let Some(ref flag) = self.analysis_health_flag {
+            builder = builder.with_analysis_health_flag(flag.clone());
         }
         let support = builder.build().await?;
         let accessibility_extractor = support.accessibility_extractor.clone();
@@ -294,11 +303,9 @@ impl AgentRuntimeBundle {
 
         // --- Analysis provider for coaching LLM personalization ---
         #[cfg(feature = "analysis")]
-        if let Some(ref llm_api) = self.config.ai_provider.llm_api {
-            let provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider> =
-                Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
-                    llm_api,
-                ));
+        if let Some((provider, _health)) =
+            analysis_helpers::build_analysis_provider(&self.config.ai_provider)
+        {
             scheduler = scheduler.with_analysis_provider(provider);
         }
 
@@ -426,6 +433,8 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     /// SharedRegimeState — passed through to the Scheduler so it shares the same
     /// instance as the SessionManager's context assembler.
     shared_regime: Option<Arc<SharedRegimeState>>,
+    /// Pre-created health flag for the primary analysis provider, shared with AppState.
+    analysis_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -483,6 +492,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             shared_suggestion_queue: None,
             shared_scorer: None,
             shared_regime: None,
+            analysis_health_flag: None,
         }
     }
 
@@ -673,6 +683,14 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_analysis_health_flag(
+        mut self,
+        flag: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.analysis_health_flag = Some(flag);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -716,6 +734,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             shared_suggestion_queue: self.shared_suggestion_queue,
             shared_scorer: self.shared_scorer,
             shared_regime: self.shared_regime,
+            analysis_health_flag: self.analysis_health_flag,
         }
     }
 }

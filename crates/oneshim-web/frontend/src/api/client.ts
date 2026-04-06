@@ -9,6 +9,7 @@ import type {
   BackupArchive,
   BackupParams,
   CoachingStatsToday,
+  CoachingTemplateListDto,
   CreateOverrideRequest,
   CreateTagRequest,
   DailyDigestResponse,
@@ -21,8 +22,8 @@ import type {
   ExecuteIntentHintRequest,
   ExecuteIntentHintResponse,
   ExecuteSceneActionRequest,
-  ExecutionPolicyConfig,
   ExecuteSceneActionResponse,
+  ExecutionPolicyConfig,
   ExportDataType,
   ExportFormat,
   FeatureCapabilitySnapshot,
@@ -60,6 +61,7 @@ import type {
   PoliciesInfo,
   PomodoroSession,
   PresetRunResult,
+  PresetSummaryListDto,
   ProcessSnapshot,
   ProviderEndpointProbeResult,
   ProviderModelsRequest,
@@ -1208,6 +1210,27 @@ export async function fetchCoachingStatsToday(): Promise<CoachingStatsToday> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Coaching stats query failed' }))
     throw new Error(err.error || 'Coaching stats query failed')
+  }
+  return res.json()
+}
+
+
+// ── Playbook Library API ─────────────────────────────────────
+
+export async function fetchCoachingTemplates(): Promise<CoachingTemplateListDto> {
+  const res = await fetchWithRetry(`${BASE_URL}/playbooks/coaching`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Coaching templates query failed' }))
+    throw new Error(err.error || 'Coaching templates query failed')
+  }
+  return res.json()
+}
+
+export async function fetchPresetLibrary(): Promise<PresetSummaryListDto> {
+  const res = await fetchWithRetry(`${BASE_URL}/playbooks/presets`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Preset library query failed' }))
+    throw new Error(err.error || 'Preset library query failed')
   }
   return res.json()
 }

@@ -80,3 +80,32 @@ pub struct CoachingStatsTodayResponse {
 pub struct UpdateGoalsRequest {
     pub goals: HashMap<String, u32>,
 }
+
+/// Query parameters for GET /api/coaching/habits.
+#[derive(Debug, Deserialize)]
+pub struct HabitStreakQuery {
+    /// Number of days to look back. Defaults to 7.
+    pub days: Option<u32>,
+}
+
+/// Response DTO for a single habit streak row.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HabitStreakResponse {
+    pub regime_label: String,
+    pub date: String,
+    pub minutes_logged: u32,
+    pub target_minutes: u32,
+    pub met: bool,
+}
+
+impl From<oneshim_core::models::coaching::HabitStreakRow> for HabitStreakResponse {
+    fn from(row: oneshim_core::models::coaching::HabitStreakRow) -> Self {
+        Self {
+            regime_label: row.regime_label,
+            date: row.date,
+            minutes_logged: row.minutes_logged,
+            target_minutes: row.target_minutes,
+            met: row.met,
+        }
+    }
+}

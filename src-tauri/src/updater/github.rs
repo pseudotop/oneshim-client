@@ -1,17 +1,39 @@
 //! GitHub API: fetch releases, parse JSON, select asset.
-#![allow(dead_code)]
+#![allow(dead_code)] // GitHub API helpers called from updater check/download paths
 
-use super::{ReleaseInfo, UpdateError, Updater};
+use super::{ReleaseAsset, ReleaseInfo, UpdateError, Updater};
+
+/// Look for a delta patch asset matching current -> target version.
+/// Returns `(download_url, size)` if found.
+pub(super) fn find_patch_asset(
+    assets: &[ReleaseAsset],
+    platform: &str,
+    current_version: &str,
+    target_version: &str,
+) -> Option<(String, u64)> {
+    let patch_name = format!(
+        "oneshim-{}-{}-to-{}.patch",
+        platform, current_version, target_version
+    );
+    assets
+        .iter()
+        .find(|a| a.name == patch_name)
+        .map(|a| (a.browser_download_url.clone(), a.size))
+}
 
 impl Updater {
-    pub(super) fn find_platform_asset(&self, release: &ReleaseInfo) -> Result<String, UpdateError> {
+    /// Returns `(download_url, asset_size)` for the first matching platform asset.
+    pub(super) fn find_platform_asset(
+        &self,
+        release: &ReleaseInfo,
+    ) -> Result<(String, u64), UpdateError> {
         let platform_patterns = Self::get_platform_patterns()?;
 
         for asset in &release.assets {
             let name_lower = asset.name.to_lowercase();
             for pattern in &platform_patterns {
                 if name_lower.contains(pattern) {
-                    return Ok(asset.browser_download_url.clone());
+                    return Ok((asset.browser_download_url.clone(), asset.size));
                 }
             }
         }

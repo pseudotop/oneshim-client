@@ -46,6 +46,7 @@ impl SuggestionManager {
             queue,
             history,
             feedback,
+            // Safe: READ_IDS_CAPACITY is a compile-time constant (200), always > 0.
             read_ids: Mutex::new(LruCache::new(
                 NonZeroUsize::new(READ_IDS_CAPACITY).expect("non-zero capacity"),
             )),

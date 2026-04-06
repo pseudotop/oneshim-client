@@ -464,6 +464,7 @@ impl ConversationSession for GenericSubprocessSession {
             created_at: self.created_at,
             last_active: last_active_utc,
             turn_count: self.turn_count.load(Ordering::Relaxed),
+            title: None,
         }
     }
 

@@ -74,7 +74,9 @@ export function App() {
         }),
       )
       if (disposed) {
-        unlistens.forEach((fn) => fn())
+        unlistens.forEach((fn) => {
+          fn()
+        })
         return
       }
 
@@ -84,7 +86,9 @@ export function App() {
         }),
       )
       if (disposed) {
-        unlistens.forEach((fn) => fn())
+        unlistens.forEach((fn) => {
+          fn()
+        })
         return
       }
     })()
@@ -118,7 +122,9 @@ export function App() {
 
     return () => {
       disposed = true
-      unlistens.forEach((fn) => fn())
+      unlistens.forEach((fn) => {
+        fn()
+      })
     }
   }, [showFeedback, t])
 

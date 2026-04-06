@@ -1,8 +1,9 @@
 //! Download, decompress, binary replacement, restart.
-#![allow(dead_code)]
+#![allow(dead_code)] // Install helpers called from updater apply/verify paths
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use futures::StreamExt;
 use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -11,6 +12,43 @@ use std::path::{Component, Path, PathBuf};
 use super::{UpdateError, Updater};
 
 impl Updater {
+    /// Apply a delta patch: read current binary, apply bsdiff patch, verify checksum.
+    ///
+    /// Returns the path to the patched binary (written to a temp file).
+    pub async fn apply_delta_update(
+        &self,
+        patch_path: &Path,
+        full_binary_checksum: &str,
+    ) -> Result<PathBuf, UpdateError> {
+        let current_binary = super::delta::current_binary_path()?;
+        let old_bytes = tokio::fs::read(&current_binary)
+            .await
+            .map_err(|e| UpdateError::Install(format!("Failed to read current binary: {e}")))?;
+        let patch_bytes = tokio::fs::read(patch_path)
+            .await
+            .map_err(|e| UpdateError::Install(format!("Failed to read patch file: {e}")))?;
+
+        let new_bytes = super::delta::apply_patch(&old_bytes, &patch_bytes)?;
+
+        // Write patched binary to temp
+        let temp_dir = std::env::temp_dir();
+        let unique = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let temp_path = temp_dir.join(format!("oneshim-{unique}-patched"));
+        std::fs::write(&temp_path, &new_bytes)?;
+
+        // Verify against FULL binary checksum
+        let actual_hash = Self::sha256_hex(&new_bytes);
+        if actual_hash != full_binary_checksum {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(UpdateError::Integrity(format!(
+                "Patched binary checksum mismatch: expected={full_binary_checksum}, actual={actual_hash}"
+            )));
+        }
+
+        tracing::info!("Delta update applied: {:?}", temp_path);
+        Ok(temp_path)
+    }
+
     pub async fn download_update(&self, download_url: &str) -> Result<PathBuf, UpdateError> {
         let validated_url = self.validate_download_url(download_url)?;
         tracing::info!("Starting update download: {}", validated_url);
@@ -57,6 +95,89 @@ impl Updater {
         outfile.sync_all()?;
 
         tracing::info!("Update download completed: {:?}", temp_path);
+        Ok(temp_path)
+    }
+
+    /// 실시간 진행 상황을 보고하면서 업데이트를 스트리밍 방식으로 다운로드한다.
+    /// 전체 파일을 메모리에 로드하는 대신 청크 단위로 디스크에 기록한다.
+    pub async fn download_update_with_progress(
+        &self,
+        download_url: &str,
+        progress_tx: tokio::sync::watch::Sender<oneshim_api_contracts::update::DownloadProgress>,
+    ) -> Result<PathBuf, UpdateError> {
+        let validated_url = self.validate_download_url(download_url)?;
+        tracing::info!("Starting streaming download: {}", validated_url);
+
+        let response = self.http_client.get(validated_url.clone()).send().await?;
+        if !response.status().is_success() {
+            return Err(UpdateError::Download(format!(
+                "Download failed: HTTP {}",
+                response.status()
+            )));
+        }
+
+        let total_bytes = response.content_length().unwrap_or(0);
+        let mut downloaded: u64 = 0;
+
+        // 임시 파일 생성 (동기 I/O — 기존 패턴 유지)
+        let temp_dir = std::env::temp_dir();
+        let file_name = validated_url
+            .path_segments()
+            .and_then(|mut s| s.next_back())
+            .unwrap_or("oneshim-update")
+            .trim();
+        let unique = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let temp_path = temp_dir.join(format!("oneshim-{unique}-{file_name}"));
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)?;
+
+        // 스트리밍 청크 수신 및 디스크 기록
+        let mut stream = response.bytes_stream();
+        while let Some(chunk_result) = stream.next().await {
+            let chunk =
+                chunk_result.map_err(|e| UpdateError::Download(format!("Stream error: {e}")))?;
+            file.write_all(&chunk)?;
+            downloaded += chunk.len() as u64;
+            let percent = if total_bytes > 0 {
+                (downloaded as f32 / total_bytes as f32) * 100.0
+            } else {
+                0.0
+            };
+            let _ = progress_tx.send(oneshim_api_contracts::update::DownloadProgress {
+                bytes_downloaded: downloaded,
+                total_bytes,
+                percent,
+            });
+        }
+        file.sync_all()?;
+        drop(file);
+
+        // 검증을 위해 파일 재읽기
+        let bytes = std::fs::read(&temp_path)?;
+
+        // 체크섬 검증
+        let expected_hash = self.fetch_expected_sha256(&validated_url).await?;
+        let actual_hash = Self::sha256_hex(&bytes);
+        if actual_hash != expected_hash {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(UpdateError::Integrity(format!(
+                "Checksum mismatch: expected={expected_hash}, actual={actual_hash}"
+            )));
+        }
+
+        // 서명 검증
+        if self.config.require_signature_verification {
+            let signature = self.fetch_signature(&validated_url).await?;
+            self.verify_signature(&bytes, &signature)?;
+        }
+
+        tracing::info!(
+            "Streaming download completed: {:?} ({downloaded} bytes)",
+            temp_path
+        );
         Ok(temp_path)
     }
 

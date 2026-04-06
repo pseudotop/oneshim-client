@@ -35,6 +35,9 @@ pub struct ConversationSessionInfo {
     pub created_at: DateTime<Utc>,
     pub last_active: DateTime<Utc>,
     pub turn_count: u32,
+    /// User-assigned display title (None = use model/provider fallback).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,6 +353,9 @@ pub struct SessionRecord {
     pub created_at: DateTime<Utc>,
     pub last_active: DateTime<Utc>,
     pub terminated_at: Option<DateTime<Utc>>,
+    /// User-assigned display title.
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 /// Persisted conversation message.
@@ -378,6 +384,7 @@ impl From<&SessionRecord> for ConversationSessionInfo {
             created_at: r.created_at,
             last_active: r.last_active,
             turn_count: r.turn_count,
+            title: r.title.clone(),
         }
     }
 }

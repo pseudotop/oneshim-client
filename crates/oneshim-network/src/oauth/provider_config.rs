@@ -94,11 +94,16 @@ impl OAuthProviderConfig {
     }
 
     /// Build the full authorization URL with PKCE parameters.
-    pub fn authorization_url(&self, state: &str, pkce_challenge: &str) -> String {
+    ///
+    /// Returns `Err` if `authorization_endpoint` is not a valid URL.
+    pub fn authorization_url(
+        &self,
+        state: &str,
+        pkce_challenge: &str,
+    ) -> Result<String, url::ParseError> {
         let scope = self.scopes.join(" ");
         let redirect = self.redirect_uri();
-        let mut url = url::Url::parse(&self.authorization_endpoint)
-            .expect("OAuth authorization endpoint must be a valid URL");
+        let mut url = url::Url::parse(&self.authorization_endpoint)?;
         {
             let mut query = url.query_pairs_mut();
             query.append_pair("response_type", "code");
@@ -112,7 +117,7 @@ impl OAuthProviderConfig {
                 query.append_pair(key, value);
             }
         }
-        url.into()
+        Ok(url.into())
     }
 }
 
@@ -141,7 +146,9 @@ mod tests {
     #[test]
     fn authorization_url_contains_required_params() {
         let config = OAuthProviderConfig::openai_codex();
-        let url = config.authorization_url("test_state", "test_challenge");
+        let url = config
+            .authorization_url("test_state", "test_challenge")
+            .expect("known-good preset URL should parse");
 
         assert!(url.starts_with("https://auth.openai.com/oauth/authorize?"));
         assert!(url.contains("response_type=code"));
@@ -183,7 +190,9 @@ mod tests {
     #[test]
     fn google_authorization_url_includes_offline_access_hint() {
         let config = OAuthProviderConfig::google_cloud_vision("desktop-client-id");
-        let url = config.authorization_url("state", "challenge");
+        let url = config
+            .authorization_url("state", "challenge")
+            .expect("known-good preset URL should parse");
 
         assert!(url.contains("access_type=offline"));
         assert!(url.contains("include_granted_scopes=true"));

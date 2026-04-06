@@ -3,14 +3,14 @@ import { Clock, Download, RefreshCw, RotateCcw, Shield } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  type AppSettings,
   fetchSettings,
   fetchUpdateStatus,
   postUpdateAction,
-  updateSettings,
-  type AppSettings,
   type UpdateAction,
   type UpdateChannel,
   type UpdateStatus,
+  updateSettings,
 } from '../api/client'
 import UpdatePanel from '../components/UpdatePanel'
 import { Badge, Button, Card, CardTitle, Spinner } from '../components/ui'
@@ -97,7 +97,7 @@ export default function Updates() {
 
   const currentChannel = settings?.update?.channel ?? 'stable'
 
-  const isDownloading = status?.phase === 'Installing'
+  const isDownloading = status?.phase === 'Downloading' || status?.phase === 'Installing'
 
   const versionSummary = useMemo(() => {
     if (!status?.pending) return null
@@ -154,9 +154,7 @@ export default function Updates() {
               </div>
               {versionSummary.releaseName && (
                 <div className="rounded-lg bg-surface-muted p-3 sm:col-span-2">
-                  <span className="block text-content-secondary text-xs">
-                    {t('updates.releaseName', 'Release')}
-                  </span>
+                  <span className="block text-content-secondary text-xs">{t('updates.releaseName', 'Release')}</span>
                   <span className="text-content-strong text-sm">{versionSummary.releaseName}</span>
                   {versionSummary.publishedAt && (
                     <span className="ml-2 text-content-secondary text-xs">
@@ -217,14 +215,16 @@ export default function Updates() {
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span className={cn('text-sm font-medium', isActive ? 'text-brand-text' : 'text-content-strong')}>
+                  <span className={cn('font-medium text-sm', isActive ? 'text-brand-text' : 'text-content-strong')}>
                     {t(opt.labelKey, opt.value)}
                   </span>
-                  {isActive && <Badge color="success" size="sm">{t('updates.active', 'Active')}</Badge>}
+                  {isActive && (
+                    <Badge color="success" size="sm">
+                      {t('updates.active', 'Active')}
+                    </Badge>
+                  )}
                 </div>
-                <p className="mt-1 text-content-secondary text-xs">
-                  {t(opt.descKey, '')}
-                </p>
+                <p className="mt-1 text-content-secondary text-xs">{t(opt.descKey, '')}</p>
               </button>
             )
           })}

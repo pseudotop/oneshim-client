@@ -167,7 +167,12 @@ impl OAuthPort for OAuthClient {
         let state = pkce::generate_state();
         let flow_id = uuid::Uuid::new_v4().to_string();
 
-        let auth_url = config.authorization_url(&state, &pkce.challenge);
+        let auth_url = config
+            .authorization_url(&state, &pkce.challenge)
+            .map_err(|e| CoreError::OAuthError {
+                provider: provider_id.into(),
+                message: format!("invalid authorization endpoint URL: {e}"),
+            })?;
 
         let (cancel_tx, cancel_rx) = oneshot::channel();
 

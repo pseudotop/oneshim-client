@@ -17,6 +17,15 @@ pub fn api_routes() -> Router<AppState> {
         .route("/sessions/{id}", get(handlers::sessions::get_session))
         .route("/frames", get(handlers::frames::get_frames))
         .route("/frames/{id}/image", get(handlers::frames::get_frame_image))
+        .route(
+            "/frames/{frame_id}/annotations",
+            get(handlers::annotations::list_annotations)
+                .post(handlers::annotations::create_annotation),
+        )
+        .route(
+            "/frames/{frame_id}/annotations/{annotation_id}",
+            delete(handlers::annotations::delete_annotation),
+        )
         .route("/events", get(handlers::events::get_events))
         .route("/stats/summary", get(handlers::stats::get_summary))
         .route("/stats/apps", get(handlers::stats::get_app_usage))
@@ -259,6 +268,10 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::daily_digest::get_daily_digest_today),
         )
         .route(
+            "/digests/daily/export",
+            get(handlers::daily_digest::export_daily_digest),
+        )
+        .route(
             "/dashboard/day",
             get(handlers::dashboard::get_dashboard_day),
         )
@@ -279,7 +292,12 @@ pub fn api_routes() -> Router<AppState> {
             "/recalibration/recluster",
             post(handlers::recalibration::trigger_recluster),
         )
-        // Pomodoro timer
+        // Playbook listing endpoints
+        .route(
+            "/playbooks/coaching",
+            get(handlers::playbooks::list_coaching_templates),
+        )
+        .route("/playbooks/presets", get(handlers::playbooks::list_presets))
         // Coaching endpoints
         .route(
             "/coaching/history",
@@ -293,6 +311,7 @@ pub fn api_routes() -> Router<AppState> {
             "/coaching/stats/today",
             get(handlers::coaching::get_coaching_stats_today),
         )
+        .route("/coaching/habits", get(handlers::coaching::get_habits))
         // Pomodoro timer
         .route("/pomodoro/start", post(handlers::pomodoro::start_pomodoro))
         .route(

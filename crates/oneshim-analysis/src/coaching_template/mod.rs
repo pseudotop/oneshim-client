@@ -2,20 +2,8 @@ mod templates;
 
 use oneshim_core::config::CoachingTone;
 use oneshim_core::models::coaching::{trigger_type_name, CoachingProfile, TriggerType};
+pub use oneshim_core::models::coaching_template::CoachingTemplate;
 use std::collections::HashMap;
-
-/// A coaching message template with variable placeholders.
-///
-/// Placeholders use `{variable_name}` syntax, resolved by
-/// `CoachingTemplateRegistry::select()`.
-#[derive(Debug, Clone)]
-pub struct CoachingTemplate {
-    pub profile: CoachingProfile,
-    pub trigger_type: &'static str,
-    pub tone: CoachingTone,
-    pub locale: &'static str,
-    pub text: &'static str,
-}
 
 /// Replace `{key}` placeholders with values from the variables map.
 fn substitute(template: &str, vars: &HashMap<String, String>) -> String {
@@ -93,6 +81,11 @@ impl CoachingTemplateRegistry {
     /// Total number of templates (for metrics/testing).
     pub fn template_count(&self) -> usize {
         self.templates.len()
+    }
+
+    /// Return a reference to all templates (for playbook listing).
+    pub fn all_templates(&self) -> &[CoachingTemplate] {
+        &self.templates
     }
 }
 

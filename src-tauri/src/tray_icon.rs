@@ -49,6 +49,7 @@ impl From<bool> for TrayIconState {
 /// `tauri::image::Image::from_rgba()`.
 pub fn status_icon(state: impl Into<TrayIconState>) -> (Vec<u8>, u32, u32) {
     let state = state.into();
+    // Safe: BASE_2X is a compile-time embedded PNG via include_bytes!().
     let base = ::image::load_from_memory(BASE_2X).expect("embedded tray icon must be valid PNG");
     let mut img = base.to_rgba8();
     let w = img.width();

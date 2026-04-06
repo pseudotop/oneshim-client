@@ -49,9 +49,23 @@ impl RuntimeBridgeSpawner {
         let app = app_handle.clone();
         let mut rx = update_control.subscribe();
         handle.spawn(async move {
+            let mut last_notified_version: Option<String> = None;
             while let Ok(status) = rx.recv().await {
                 if let Err(e) = app.emit_to("main", "update:status-changed", &status) {
                     tracing::debug!("update event emit error (window may be hidden): {e}");
+                }
+                if status.phase == oneshim_api_contracts::update::UpdatePhase::PendingApproval {
+                    if let Some(ref pending) = status.pending {
+                        let version = &pending.latest_version;
+                        if last_notified_version.as_deref() != Some(version) {
+                            last_notified_version = Some(version.clone());
+                            let _ = tauri_plugin_notification::NotificationExt::notification(&app)
+                                .builder()
+                                .title("Update Available")
+                                .body(format!("Version {} is ready to install", version))
+                                .show();
+                        }
+                    }
                 }
             }
         });

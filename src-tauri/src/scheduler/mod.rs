@@ -342,7 +342,7 @@ impl Scheduler {
 
     /// Attach an HNSW ANN index for approximate nearest neighbor search.
     #[cfg(feature = "hnsw")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Builder method; wired when hnsw feature is enabled
     pub fn with_ann_index(mut self, ann: Arc<dyn AnnIndex>) -> Self {
         self.ann_index = Some(ann);
         self
@@ -397,7 +397,7 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Builder method; wired when coaching engine storage is configured
     pub fn with_coaching_storage(mut self, storage: Arc<dyn CoachingStoragePort>) -> Self {
         self.coaching_storage = Some(storage);
         self

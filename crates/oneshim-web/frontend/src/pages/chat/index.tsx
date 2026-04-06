@@ -1,4 +1,4 @@
-import { ChevronDown, Download, Loader2, MessageSquarePlus, RefreshCw, Search } from 'lucide-react'
+import { ChevronDown, Download, FileText, Loader2, MessageSquarePlus, RefreshCw, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert, Button, Input } from '../../components/ui'
@@ -103,17 +103,11 @@ export default function Chat() {
     let unlisten: (() => void) | null = null
     ;(async () => {
       const { listen } = await import('@tauri-apps/api/event')
-      unlisten = await listen<{ count: number; sessionId: string }>(
-        'chat:suggestions-extracted',
-        ({ payload }) => {
-          if (payload.sessionId === activeId) {
-            addToast(
-              'info',
-              `${payload.count} suggestion${payload.count !== 1 ? 's' : ''} added from this conversation`,
-            )
-          }
-        },
-      )
+      unlisten = await listen<{ count: number; sessionId: string }>('chat:suggestions-extracted', ({ payload }) => {
+        if (payload.sessionId === activeId) {
+          addToast('info', `${payload.count} suggestion${payload.count !== 1 ? 's' : ''} added from this conversation`)
+        }
+      })
     })()
     return () => {
       unlisten?.()
@@ -146,6 +140,19 @@ export default function Chat() {
   const handleCreate = useCallback(() => {
     handleCreateInner(setCreating, setCreateError)
   }, [handleCreateInner])
+
+  const handleRename = useCallback(
+    async (id: string, title: string) => {
+      try {
+        await ipc('rename_ai_session', { sessionId: id, newTitle: title })
+        setSessions((prev) => prev.map((s) => (s.session_id === id ? { ...s, title } : s)))
+      } catch (e) {
+        console.warn('rename_ai_session failed:', e)
+        addToast('error', errorMessage(e, 'Failed to rename session'), 5000)
+      }
+    },
+    [setSessions],
+  )
 
   const handleRequestSuggestions = useCallback(async () => {
     if (!activeId) return
@@ -282,6 +289,7 @@ export default function Chat() {
         onSelectSession={handleSelectSession}
         onCreate={handleCreate}
         onDelete={handleDelete}
+        onRename={handleRename}
         isHistorical={isHistorical}
       />
 
@@ -318,7 +326,7 @@ export default function Chat() {
             <div className="flex items-center gap-2 border-muted border-b bg-surface-base px-4 py-2">
               <span className={cn('h-2 w-2 rounded-full', STATE_DOT[active?.state ?? 'terminated'])} />
               <span className={cn('text-xs', typography.weight.medium, colors.text.primary)}>
-                {active?.model || active?.provider_name || 'Session'}
+                {active?.title || active?.model || active?.provider_name || 'Session'}
               </span>
               <span className={cn('text-[10px]', colors.text.secondary)}>({active?.transport})</span>
               {tokenUsage.total > 0 && (
@@ -380,6 +388,14 @@ export default function Chat() {
                   title={t('chat.export_json', 'Export JSON')}
                 >
                   <Download className={iconSize.xs} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExport('markdown')}
+                  title={t('chat.exportMarkdown', 'Export as Markdown')}
+                >
+                  <FileText className={iconSize.xs} />
                 </Button>
                 {active?.state === 'failed' && (
                   <Button variant="ghost" size="sm" onClick={handleRetry} className="text-xs">
@@ -553,6 +569,17 @@ export default function Chat() {
               onMicUp={handleMicUp}
               onVadToggle={handleVadToggle}
             />
+            {tokenUsage.total > 0 && (
+              <div
+                className={cn(
+                  'border-muted border-t bg-surface-base px-4 py-1 text-right text-[10px]',
+                  colors.text.secondary,
+                )}
+              >
+                {t('chat.tokensToday', 'Today: {{count}} tokens', { count: tokenUsage.total })}
+                {tokenUsage.budget ? ` / ${tokenUsage.budget.toLocaleString()}` : ''}
+              </div>
+            )}
           </>
         )}
       </div>

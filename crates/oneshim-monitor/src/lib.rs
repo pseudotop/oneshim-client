@@ -18,6 +18,7 @@ pub mod idle;
 pub mod input_activity;
 pub mod input_detail;
 pub mod key_hook;
+pub mod keyboard_pattern;
 pub mod process;
 pub mod system;
 pub mod system_info;

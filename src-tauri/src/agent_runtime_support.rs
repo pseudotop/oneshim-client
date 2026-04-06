@@ -3,8 +3,6 @@ use oneshim_core::config::AppConfig;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
-#[cfg(feature = "analysis")]
-use oneshim_network::analysis_client::AnalysisClient;
 #[cfg(feature = "server")]
 use oneshim_network::auth::TokenManager;
 #[cfg(feature = "server")]
@@ -21,6 +19,8 @@ use oneshim_vision::trigger::SmartCaptureTrigger;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+
+use std::sync::atomic::AtomicBool;
 
 use crate::capture_services::SharedCaptureServices;
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
@@ -70,6 +70,11 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
     shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     shared_capture_services: Option<Arc<SharedCaptureServices>>,
+    few_shot_storage: Option<Arc<dyn oneshim_core::ports::few_shot_storage::FewShotStorage>>,
+    /// Pre-created health flag shared with AppState. When set, `build_context_analyzer`
+    /// wires it into the FallbackAnalysisProvider so the IPC `get_analysis_health`
+    /// command reflects the actual provider health.
+    analysis_health_flag: Option<Arc<AtomicBool>>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -87,6 +92,8 @@ impl<'a> AgentSupportContextBuilder<'a> {
             shared_suggestion_queue: None,
             shared_scorer: None,
             shared_capture_services: None,
+            few_shot_storage: None,
+            analysis_health_flag: None,
         }
     }
 
@@ -127,6 +134,19 @@ impl<'a> AgentSupportContextBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_few_shot_storage(
+        mut self,
+        storage: Arc<dyn oneshim_core::ports::few_shot_storage::FewShotStorage>,
+    ) -> Self {
+        self.few_shot_storage = Some(storage);
+        self
+    }
+
+    pub(crate) fn with_analysis_health_flag(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.analysis_health_flag = Some(flag);
+        self
+    }
+
     #[cfg(feature = "analysis")]
     fn build_context_analyzer(&self) -> Option<Arc<oneshim_analysis::ContextAnalyzer>> {
         if !self.config.analysis.enabled {
@@ -142,8 +162,13 @@ impl<'a> AgentSupportContextBuilder<'a> {
         };
 
         let analysis_provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider> =
-            if let Some(ref llm_api) = self.config.ai_provider.llm_api {
-                Arc::new(AnalysisClient::new(llm_api))
+            if let Some((provider, _health)) =
+                crate::agent_runtime::analysis_helpers::build_analysis_provider_with_flag(
+                    &self.config.ai_provider,
+                    self.analysis_health_flag.clone(),
+                )
+            {
+                provider
             } else {
                 tracing::warn!("analysis enabled but no LLM provider configured");
                 return None;
@@ -154,14 +179,21 @@ impl<'a> AgentSupportContextBuilder<'a> {
         let context_assembler = oneshim_analysis::ContextAssembler::new(Box::new(move |text| {
             oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
         }));
+        let few_shot_pii_filter: Box<dyn Fn(&str) -> String + Send + Sync> =
+            Box::new(move |text| {
+                oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
+            });
 
-        Some(Arc::new(oneshim_analysis::ContextAnalyzer::new(
-            storage,
-            analysis_provider,
-            pattern_miner,
-            context_assembler,
-            self.config.analysis.clone(),
-        )))
+        Some(Arc::new(
+            oneshim_analysis::ContextAnalyzer::with_pii_filter(
+                storage,
+                analysis_provider,
+                pattern_miner,
+                context_assembler,
+                self.config.analysis.clone(),
+                few_shot_pii_filter,
+            ),
+        ))
     }
 
     #[cfg(not(feature = "analysis"))]
@@ -244,6 +276,13 @@ impl<'a> AgentSupportContextBuilder<'a> {
         ));
 
         let context_analyzer = self.build_context_analyzer();
+
+        // Wire few-shot storage into the analyzer for personalized prompts.
+        if let (Some(ref analyzer), Some(ref fs_storage)) =
+            (&context_analyzer, &self.few_shot_storage)
+        {
+            analyzer.set_few_shot_storage(fs_storage.clone()).await;
+        }
 
         // Build SuggestionReceiver when SSE client is available and suggestions enabled.
         // When a shared_suggestion_queue is provided (from SuggestionManager), the receiver

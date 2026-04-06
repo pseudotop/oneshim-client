@@ -861,6 +861,39 @@ impl CoachingQueryStorage for SqliteStorage {
         self.query_coaching_events(limit, offset)
             .map_err(Into::into)
     }
+
+    fn query_coaching_events_since(
+        &self,
+        since_date: &str,
+    ) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, CoreError> {
+        self.query_coaching_events_since(since_date)
+            .map_err(Into::into)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HabitStorage
+// ---------------------------------------------------------------------------
+
+impl oneshim_core::ports::web_storage::HabitStorage for SqliteStorage {
+    fn upsert_habit_streak(
+        &self,
+        regime_label: &str,
+        date: &str,
+        minutes_logged: u32,
+        target_minutes: u32,
+        met: bool,
+    ) -> Result<(), CoreError> {
+        self.upsert_habit_streak(regime_label, date, minutes_logged, target_minutes, met)
+            .map_err(Into::into)
+    }
+
+    fn query_habit_streaks(
+        &self,
+        days: u32,
+    ) -> Result<Vec<oneshim_core::models::coaching::HabitStreakRow>, CoreError> {
+        self.query_habit_streaks(days).map_err(Into::into)
+    }
 }
 
 /// Parse the centroid (center x, center y) from a bbox JSON string.

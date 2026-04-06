@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchCoachingHistory, fetchGoalProgress, updateRegimeGoals } from '../api/coaching'
+import { fetchCoachingHistory, fetchGoalProgress, fetchHabitStreaks, updateRegimeGoals } from '../api/coaching'
 import { addToast } from './useToast'
 
 export function useCoachingHistory(limit = 50, offset = 0) {
@@ -15,6 +15,14 @@ export function useGoalProgress() {
     queryKey: ['goal-progress'],
     queryFn: fetchGoalProgress,
     refetchInterval: 30_000,
+  })
+}
+
+export function useHabitStreaks(days = 7) {
+  return useQuery({
+    queryKey: ['habit-streaks', days],
+    queryFn: () => fetchHabitStreaks(days),
+    refetchInterval: 60_000,
   })
 }
 

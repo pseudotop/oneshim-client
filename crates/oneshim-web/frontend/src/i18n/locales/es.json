@@ -38,7 +38,8 @@
     "dashboardDay": "Vista diaria",
     "chat": "Chat",
     "audit": "Registro de auditoría",
-    "policies": "Políticas"
+    "policies": "Políticas",
+    "playbooks": "Cuadernos de jugadas"
   },
   "dashboard": {
     "title": "Resumen de actividad",
@@ -71,7 +72,9 @@
     "today": "Hoy",
     "previousDay": "Día anterior",
     "nextDay": "Día siguiente",
-    "loadError": "No se pudo cargar el resumen diario. Inténtelo de nuevo más tarde."
+    "loadError": "No se pudo cargar el resumen diario. Inténtelo de nuevo más tarde.",
+    "exportDigest": "Exportar",
+    "exportMarkdown": "Descargar como Markdown"
   },
   "updates": {
     "title": "Actualizaciones",
@@ -86,6 +89,8 @@
     "installing": "Instalando",
     "updated": "Actualizado",
     "deferred": "Aplazado",
+    "downloading": "Descargando...",
+    "readyToInstall": "Listo para instalar",
     "error": "Error",
     "statusUnavailable": "No se pudo obtener el estado de actualización",
     "lastUpdateUnknown": "Última señal de actualización: desconocida",
@@ -109,7 +114,9 @@
     "policyTitle": "Política de seguridad de actualizaciones",
     "policyIntegrity": "Todos los artefactos deben pasar la verificación de checksum antes de la instalación.",
     "policySignature": "Se requiere la verificación de firma Ed25519 para los artefactos de la versión.",
-    "policyRollback": "Los reinicios fallidos activan la reversión automática al binario anterior."
+    "policyRollback": "Los reinicios fallidos activan la reversión automática al binario anterior.",
+    "releaseNotes": "Notas de la versión",
+    "downloadSize": "Tamaño de descarga: {{size}}"
   },
   "timeline": {
     "title": "Línea de tiempo",
@@ -155,7 +162,7 @@
       "monitoring": "Monitoreo",
       "aiAutomation": "IA y Automatización",
       "dataStorage": "Datos y Almacenamiento",
-      "coaching": "Objetivos de coaching"
+      "coaching": "Coaching"
     },
     "dataCollection": "Recopilación de datos",
     "enableCapture": "Habilitar captura de pantalla",
@@ -557,15 +564,7 @@
     "low": "Bajo",
     "high": "Alto",
     "loadError": "Error al cargar los datos",
-    "days": [
-      "Lun",
-      "Mar",
-      "Mié",
-      "Jue",
-      "Vie",
-      "Sáb",
-      "Dom"
-    ],
+    "days": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
     "activity": "Actividad"
   },
   "dateRange": {
@@ -1222,6 +1221,7 @@
     "addGoal": "Añadir objetivo",
     "remove": "Eliminar",
     "perDay": "min/día",
+    "min": "min",
     "profiles": {
       "FocusGuard": "Guardia de enfoque",
       "TimeAware": "Conciencia temporal",
@@ -1238,7 +1238,42 @@
     "dismissLabel": "Cerrar mensaje de coaching",
     "laterLabel": "Recordar más tarde",
     "helpfulLabel": "Útil",
-    "notHelpfulLabel": "No útil"
+    "notHelpfulLabel": "No útil",
+    "whyTitle": "\u00bfPor qu\u00e9 esta sugerencia?",
+    "quietHoursTitle": "Horas de silencio",
+    "quietHoursDesc": "Los mensajes de coaching se suprimen durante estos rangos de tiempo.",
+    "noQuietHours": "No hay horas de silencio configuradas.",
+    "quietStart": "Inicio",
+    "quietEnd": "Fin",
+    "addQuietHour": "Agregar",
+    "toneTitle": "Tono de coaching",
+    "toneOption": {
+      "Direct": "Directo",
+      "Gentle": "Suave",
+      "DataDriven": "Basado en datos"
+    },
+    "toneDesc": {
+      "Direct": "Declaraciones cortas y accionables",
+      "Gentle": "Lenguaje suave y alentador",
+      "DataDriven": "Enfocado en estadísticas con números"
+    },
+    "profilesTitle": "Perfiles de coaching",
+    "profileDesc": {
+      "FocusGuard": "Alerta cuando cambias de contexto con frecuencia",
+      "TimeAware": "Te recuerda reuniones y plazos próximos",
+      "DeepWorkCoach": "Fomenta sesiones de enfoque sostenido",
+      "ContextRestore": "Ayuda a retomar el trabajo después de interrupciones",
+      "GoalTracker": "Rastrea el progreso hacia las metas diarias"
+    },
+    "habits": {
+      "title": "Rastreador de hábitos",
+      "regime": "Régimen",
+      "empty": "Aún no hay datos de hábitos. Las rachas aparecerán cuando se rastreen los objetivos.",
+      "met": "Cumplido",
+      "partial": ">50%",
+      "missed": "<50%",
+      "noData": "Sin datos"
+    }
   },
   "onboarding": {
     "step1Title": "Bienvenido a ONESHIM",
@@ -1460,5 +1495,16 @@
     "refreshLabel": "Actualizar detección",
     "close": "Cerrar",
     "closeLabel": "Cerrar superposición de detección"
+  },
+  "playbooks": {
+    "title": "Biblioteca de Playbooks",
+    "coaching": "Plantillas de Coaching",
+    "presets": "Preajustes de Automatización",
+    "filterProfile": "Perfil",
+    "filterTrigger": "Disparador",
+    "filterCategory": "Categoría",
+    "steps": "{{count}} pasos",
+    "builtin": "Integrado",
+    "templateCount": "{{count}} elementos"
   }
 }

@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::Json;
 use oneshim_api_contracts::coaching::{
     CoachingEventResponse, CoachingHistoryQuery, CoachingStatsTodayResponse, GoalProgressResponse,
-    UpdateGoalsRequest,
+    HabitStreakQuery, HabitStreakResponse, UpdateGoalsRequest,
 };
 
 use crate::error::ApiError;
@@ -59,36 +59,48 @@ pub async fn update_goals(
 pub async fn get_coaching_stats_today(
     State(state): State<AppState>,
 ) -> Result<Json<CoachingStatsTodayResponse>, ApiError> {
+    let today_str = chrono::Local::now().format("%Y-%m-%d").to_string();
     let today_count = state
         .core
         .storage
-        .query_coaching_events(100, 0)
-        .map(|events| {
-            let today = chrono::Local::now().date_naive();
-            events
-                .iter()
-                .filter(|e| {
-                    chrono::NaiveDate::parse_from_str(
-                        e.shown_at.get(..10).unwrap_or(""),
-                        "%Y-%m-%d",
-                    )
-                    .map(|d| d == today)
-                    .unwrap_or(false)
-                })
-                .count() as u32
-        })
+        .query_coaching_events_since(&today_str)
+        .map(|events| events.len() as u32)
         .unwrap_or(0);
 
-    // current_regime_label() and regime_minutes_today() are not yet on CoachingPort;
-    // return defaults until Q6 adds them.
-    let current_regime: Option<String> = None;
-    let regime_minutes: u32 = 0;
+    let current_regime = if let Some(ref engine) = state.analysis.coaching_engine {
+        engine.current_regime_label_blocking()
+    } else {
+        None
+    };
+
+    let regime_minutes = if let Some(ref engine) = state.analysis.coaching_engine {
+        engine.regime_minutes_today_blocking()
+    } else {
+        0
+    };
 
     Ok(Json(CoachingStatsTodayResponse {
         nudges_count: today_count,
         current_regime,
         regime_minutes_today: regime_minutes,
     }))
+}
+
+/// GET /api/coaching/habits?days=7 -- habit streak data for the last N days.
+pub async fn get_habits(
+    State(state): State<AppState>,
+    Query(params): Query<HabitStreakQuery>,
+) -> Result<Json<Vec<HabitStreakResponse>>, ApiError> {
+    let days = params.days.unwrap_or(7);
+    let rows = state
+        .core
+        .storage
+        .query_habit_streaks(days)
+        .map_err(|e: oneshim_core::error::CoreError| ApiError::Internal(e.to_string()))?;
+
+    Ok(Json(
+        rows.into_iter().map(HabitStreakResponse::from).collect(),
+    ))
 }
 
 #[cfg(test)]
@@ -133,6 +145,13 @@ mod tests {
             self.all_goal_progress_blocking()
         }
         async fn update_regime_goals(&self, _goals: &HashMap<String, u32>) {}
+
+        fn current_regime_label_blocking(&self) -> Option<String> {
+            Some("deep_work".to_string())
+        }
+        fn regime_minutes_today_blocking(&self) -> u32 {
+            90
+        }
     }
 
     fn test_app_state() -> AppState {
@@ -322,5 +341,86 @@ mod tests {
         assert_eq!(parsed["nudges_count"], 0);
         assert!(parsed["current_regime"].is_null());
         assert_eq!(parsed["regime_minutes_today"], 0);
+    }
+
+    #[tokio::test]
+    async fn get_coaching_stats_today_returns_regime_data_from_engine() {
+        let app = loopback_app(test_app_state_with_coaching());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/coaching/stats/today")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(parsed["current_regime"], "deep_work");
+        assert_eq!(parsed["regime_minutes_today"], 90);
+    }
+
+    #[tokio::test]
+    async fn get_habits_returns_empty_by_default() {
+        let app = loopback_app(test_app_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/coaching/habits?days=7")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(parsed.is_array());
+        assert_eq!(parsed.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn get_habits_returns_upserted_data() {
+        let state = test_app_state();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        state
+            .core
+            .storage
+            .upsert_habit_streak("deep_work", &today, 90, 120, false)
+            .unwrap();
+
+        let app = loopback_app(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/coaching/habits?days=7")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["regime_label"], "deep_work");
+        assert_eq!(arr[0]["minutes_logged"], 90);
+        assert_eq!(arr[0]["target_minutes"], 120);
+        assert_eq!(arr[0]["met"], false);
     }
 }

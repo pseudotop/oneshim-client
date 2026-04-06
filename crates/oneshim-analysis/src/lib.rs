@@ -15,6 +15,7 @@ pub mod adaptive_search;
 mod adaptive_trigger;
 mod analyzer;
 pub mod error;
+pub mod fallback_analysis_provider;
 
 mod assembler;
 pub mod auto_tuner;
@@ -24,6 +25,7 @@ pub mod constraint_builder;
 pub mod content_tracker;
 pub mod daily_digest_generator;
 pub mod daily_insight_generator;
+pub mod digest_exporter;
 pub mod document_heading;
 pub mod embedding_pipeline;
 pub mod focus_shared;
@@ -57,6 +59,7 @@ mod work_type_classifier;
 pub mod coaching_engine;
 pub mod coaching_template;
 pub mod feedback_tracker;
+pub mod few_shot_selector;
 pub mod regime_goal_tracker;
 
 pub use adaptive_trigger::{AdaptiveTrigger, TriggerDecision};
@@ -67,9 +70,10 @@ pub use assembler::{
 };
 pub use calibration_buffer::CalibrationBuffer;
 pub use content_tracker::ContentTracker;
+pub use few_shot_selector::FewShotSelector;
 pub use param_resolver::ParamResolver;
 pub use pattern_miner::{detect_gui_patterns, GuiPattern, PatternMiner};
-pub use prompts::ANALYSIS_SYSTEM_PROMPT;
+pub use prompts::{FewShotExample, FewShotOutcome, PromptBuilder, ANALYSIS_SYSTEM_PROMPT};
 pub use regime_classifier::RegimeClassifier;
 pub use regime_detector::RegimeDetector;
 pub use regime_manager::RegimeManager;
@@ -87,6 +91,7 @@ pub use regime_analysis_facade::RegimeAnalysisFacade;
 pub use adaptive_search::{AdaptiveSearchCoordinator, SearchConfig, SearchStrategy};
 pub use daily_digest_generator::DailyDigestGenerator;
 pub use daily_insight_generator::DailyInsightGenerator;
+pub use digest_exporter::DigestExporter;
 pub use embedding_pipeline::EmbeddingPipeline;
 pub use error::AnalysisError;
 pub use gui_aggregator::GuiActivityAggregator;
@@ -100,6 +105,7 @@ pub use weekly_digest_generator::WeeklyDigestGenerator;
 
 pub use coaching_engine::CoachingEngine;
 pub use coaching_template::CoachingTemplateRegistry;
+pub use fallback_analysis_provider::{FallbackAnalysisProvider, NoOpAnalysisProvider};
 pub use feedback_tracker::FeedbackTracker;
 pub use regime_goal_tracker::RegimeGoalTracker;
 

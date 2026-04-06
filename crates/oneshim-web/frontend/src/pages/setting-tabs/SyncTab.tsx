@@ -84,13 +84,10 @@ export default function SyncTab() {
       <div className="space-y-4">
         <h2 className={cn(typography.h2, colors.text.primary)}>{t('syncTab.title')}</h2>
         <div className={cn('rounded-lg border p-4', colors.surface.muted)}>
-          <p className={cn('text-sm', colors.text.secondary)}>
-            {t('syncTab.notEnabled')}
-          </p>
+          <p className={cn('text-sm', colors.text.secondary)}>{t('syncTab.notEnabled')}</p>
           <ol className={cn('mt-2 list-decimal pl-5 text-sm space-y-1', colors.text.tertiary)}>
             <li>
-              {t('syncTab.step1')}{' '}
-              <code className={cn('rounded px-1', 'bg-surface-muted')}>sync.enabled = true</code>{' '}
+              {t('syncTab.step1')} <code className={cn('rounded px-1', 'bg-surface-muted')}>sync.enabled = true</code>{' '}
               {t('syncTab.step1Suffix')}
             </li>
             <li>
@@ -117,21 +114,13 @@ export default function SyncTab() {
           <span className={colors.text.tertiary}>{t('syncTab.deviceName')}</span>
           <span className={colors.text.primary}>{status.device_name}</span>
           <span className={colors.text.tertiary}>{t('syncTab.deviceId')}</span>
-          <span className={cn('font-mono text-xs', colors.text.secondary)}>
-            {status.device_id.slice(0, 12)}...
-          </span>
+          <span className={cn('font-mono text-xs', colors.text.secondary)}>{status.device_id.slice(0, 12)}...</span>
         </div>
       </div>
 
       {/* Sync Action */}
       <div className="flex items-center gap-3">
-        <Button
-          onClick={handleSync}
-          disabled={syncing}
-          isLoading={syncing}
-          variant="primary"
-          size="md"
-        >
+        <Button onClick={handleSync} disabled={syncing} isLoading={syncing} variant="primary" size="md">
           {syncing ? t('syncTab.syncing') : t('syncTab.syncNow')}
         </Button>
         {lastResult && (
@@ -141,11 +130,7 @@ export default function SyncTab() {
         )}
       </div>
 
-      {error && (
-        <div className={cn('rounded-md p-3 text-sm', 'bg-semantic-error/10 text-semantic-error')}>
-          {error}
-        </div>
-      )}
+      {error && <div className={cn('rounded-md p-3 text-sm', 'bg-semantic-error/10 text-semantic-error')}>{error}</div>}
 
       {/* Peers */}
       <div>
@@ -153,9 +138,7 @@ export default function SyncTab() {
           {t('syncTab.discoveredPeers')} ({peers.length})
         </h3>
         {peers.length === 0 ? (
-          <p className={cn('text-sm', colors.text.tertiary)}>
-            {t('syncTab.noPeers')}
-          </p>
+          <p className={cn('text-sm', colors.text.tertiary)}>{t('syncTab.noPeers')}</p>
         ) : (
           <div className="space-y-2">
             {peers.map((peer) => (
@@ -164,9 +147,7 @@ export default function SyncTab() {
                 className={cn('flex items-center justify-between rounded-lg border p-3', colors.surface.elevated)}
               >
                 <div>
-                  <span className={cn('text-sm font-medium', colors.text.primary)}>
-                    {peer.device_name}
-                  </span>
+                  <span className={cn('text-sm font-medium', colors.text.primary)}>{peer.device_name}</span>
                   <span className={cn('ml-2 text-xs font-mono', colors.text.tertiary)}>
                     {peer.device_id.slice(0, 8)}
                   </span>

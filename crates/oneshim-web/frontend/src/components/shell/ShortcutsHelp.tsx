@@ -16,9 +16,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
     <Dialog open onClose={onClose}>
       <DialogContent size="sm" className="mx-4">
         <div className="flex items-center justify-between border-muted border-b p-4">
-          <DialogTitle>
-            {t('shortcuts.title')}
-          </DialogTitle>
+          <DialogTitle>{t('shortcuts.title')}</DialogTitle>
           <button
             type="button"
             onClick={onClose}

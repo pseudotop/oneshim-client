@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookOpen,
   Calendar,
   ClipboardList,
   Clock,
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { id: 'policies', to: '/policies', icon: Shield, labelKey: 'nav.policies', group: 'monitor' },
   { id: 'recalibration', to: '/recalibration', icon: RefreshCw, labelKey: 'nav.recalibration', group: 'data' },
   { id: 'coaching', to: '/coaching', icon: MessageCircle, labelKey: 'nav.coaching', group: 'data' },
+  { id: 'playbooks', to: '/playbooks', icon: BookOpen, labelKey: 'nav.playbooks', group: 'data' },
   { id: 'chat', to: '/chat', icon: MessageSquare, labelKey: 'nav.chat', group: 'data' },
   { id: 'focus', to: '/focus', icon: Image, labelKey: 'nav.focus', group: 'data' },
   { id: 'reports', to: '/reports', icon: BarChart3, labelKey: 'nav.reports', group: 'data' },

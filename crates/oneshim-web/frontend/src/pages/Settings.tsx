@@ -15,7 +15,7 @@ const PrivacyTab = lazy(() => import('./setting-tabs/PrivacyTab'))
 const MonitoringTab = lazy(() => import('./setting-tabs/MonitoringTab'))
 const AiAutomationTab = lazy(() => import('./setting-tabs/ai-automation'))
 const DataStorageTab = lazy(() => import('./setting-tabs/DataStorageTab'))
-const CoachingGoalsTab = lazy(() => import('./setting-tabs/CoachingGoalsTab'))
+const CoachingSettingsTab = lazy(() => import('./setting-tabs/CoachingSettingsTab'))
 const SyncTab = lazy(() => import('./setting-tabs/SyncTab'))
 const AudioTab = lazy(() => import('./setting-tabs/AudioTab'))
 const AdvancedTab = lazy(() => import('./setting-tabs/AdvancedTab'))
@@ -67,7 +67,7 @@ export default function Settings() {
     { id: 'monitoring', label: t('settings.tabs.monitoring') },
     { id: 'ai-automation', label: t('settings.tabs.aiAutomation') },
     { id: 'data', label: t('settings.tabs.dataStorage') },
-    { id: 'coaching', label: t('settings.tabs.coaching', 'Coaching Goals') },
+    { id: 'coaching', label: t('settings.tabs.coaching', 'Coaching') },
     { id: 'sync', label: t('settings.tabs.sync', 'Sync') },
     { id: 'audio', label: t('settings.tabs.audio', 'Audio') },
     { id: 'advanced', label: t('settings.tabs.advanced', 'Advanced') },
@@ -255,7 +255,15 @@ export default function Settings() {
 
           {activeTab === 'coaching' && (
             <div id="settings-panel-coaching" role="tabpanel" aria-labelledby="settings-tab-coaching">
-              <CoachingGoalsTab />
+              <CoachingSettingsTab
+                formData={form.formData}
+                onCoachingChange={(field, value) => {
+                  form.setFormData((prev) => {
+                    if (!prev) return prev
+                    return { ...prev, coaching: { ...prev.coaching, [field]: value } }
+                  })
+                }}
+              />
             </div>
           )}
 

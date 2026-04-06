@@ -3,7 +3,7 @@
  * and a Pomodoro focus timer widget.
  */
 import { useQuery } from '@tanstack/react-query'
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchDailyDigest } from '../api/client'
@@ -78,6 +78,14 @@ export default function DashboardDay() {
 
   const isToday = date === todayStr()
 
+  const handleExportMarkdown = () => {
+    const url = `/api/digests/daily/export?date=${encodeURIComponent(date)}`
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `daily-digest-${date}.md`
+    a.click()
+  }
+
   return (
     <div className="min-h-full p-6">
       {/* Date navigation */}
@@ -120,6 +128,17 @@ export default function DashboardDay() {
               {t('dashboard.today')}
             </Button>
           )}
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleExportMarkdown}
+            disabled={isLoading || !data}
+            aria-label={t('dashboard.exportDigest')}
+            title={t('dashboard.exportMarkdown')}
+          >
+            <Download className={`${iconSize.base}`} />
+          </Button>
         </div>
       </div>
 

@@ -174,6 +174,7 @@ fn make_system_metrics() -> SystemMetrics {
             download_speed: 5000,
             is_connected: true,
         }),
+        typing_wpm: 0.0,
     }
 }
 

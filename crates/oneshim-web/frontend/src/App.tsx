@@ -30,6 +30,7 @@ const Chat = lazy(() => import('./pages/chat'))
 const AuditLog = lazy(() => import('./pages/audit'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
 const Policies = lazy(() => import('./pages/policies'))
+const Playbooks = lazy(() => import('./pages/Playbooks'))
 
 function AppShell() {
   const { t } = useTranslation()
@@ -103,6 +104,7 @@ function AppShell() {
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/policies" element={<Policies />} />
+                <Route path="/playbooks" element={<Playbooks />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>

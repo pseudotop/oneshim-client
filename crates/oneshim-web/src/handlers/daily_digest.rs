@@ -1,9 +1,11 @@
 use axum::extract::{Query, State};
+use axum::http::header;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Utc;
 use tracing::debug;
 
-use oneshim_core::models::daily_digest::DailyDigest;
+use oneshim_core::models::daily_digest::{DailyDigest, DigestExporter};
 
 use crate::error::ApiError;
 use crate::services::dashboard_service;
@@ -44,6 +46,38 @@ pub async fn get_daily_digest_today(
         .map_err(ApiError::Internal)?;
 
     Ok(Json(digest))
+}
+
+/// GET /api/digests/daily/export?date=YYYY-MM-DD&format=markdown — download digest as Markdown.
+pub async fn export_daily_digest(
+    State(state): State<AppState>,
+    Query(params): Query<DashboardDayQuery>,
+) -> Result<Response, ApiError> {
+    let date_str = params
+        .date
+        .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+    debug!("GET /api/digests/daily/export date={}", date_str);
+
+    let date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {e}")))?;
+
+    let digest = dashboard_service::get_or_generate_digest(&state, &date_str, date)
+        .map_err(ApiError::Internal)?;
+
+    let markdown = DigestExporter::to_markdown(&digest);
+    let filename = format!("daily-digest-{date_str}.md");
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/markdown; charset=utf-8"),
+            (
+                header::CONTENT_DISPOSITION,
+                &format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
+        markdown,
+    )
+        .into_response())
 }
 
 #[cfg(test)]

@@ -12,11 +12,14 @@ use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::analysis_provider::AnalysisProvider;
 use oneshim_core::ports::storage::StorageService;
 
+use oneshim_core::ports::few_shot_storage::FewShotStorage;
+
 use crate::assembler::{
-    humanize_time_ago, ContextAssembler, CurrentActivity, RelevantHistoryEntry, SegmentStats,
-    SessionMetrics,
+    humanize_time_ago, ContextAssembler, CurrentActivity, PiiFilter, RelevantHistoryEntry,
+    SegmentStats, SessionMetrics,
 };
 use crate::error::AnalysisError;
+use crate::few_shot_selector::FewShotSelector;
 use crate::pattern_miner::{is_communication_app, PatternMiner};
 use crate::vector_retriever::VectorRetriever;
 
@@ -50,6 +53,8 @@ pub struct ContextAnalyzer {
     segment_stats: tokio::sync::RwLock<Option<SegmentStats>>,
     /// Current accessibility text from the focused element, updated by the monitor loop.
     accessibility_text: tokio::sync::RwLock<Option<String>>,
+    few_shot_selector: FewShotSelector,
+    few_shot_storage: tokio::sync::RwLock<Option<Arc<dyn FewShotStorage>>>,
 }
 
 impl ContextAnalyzer {
@@ -71,6 +76,33 @@ impl ContextAnalyzer {
             last_patterns_hash: Mutex::new(0),
             segment_stats: tokio::sync::RwLock::new(None),
             accessibility_text: tokio::sync::RwLock::new(None),
+            few_shot_selector: FewShotSelector::new(2),
+            few_shot_storage: tokio::sync::RwLock::new(None),
+        }
+    }
+
+    /// Create a ContextAnalyzer with a PII filter for few-shot context sanitization.
+    pub fn with_pii_filter(
+        storage: Arc<dyn StorageService>,
+        analysis_provider: Arc<dyn AnalysisProvider>,
+        pattern_miner: PatternMiner,
+        context_assembler: ContextAssembler,
+        config: AnalysisConfig,
+        pii_filter: PiiFilter,
+    ) -> Self {
+        Self {
+            storage,
+            analysis_provider,
+            pattern_miner,
+            context_assembler,
+            vector_retriever: tokio::sync::RwLock::new(None),
+            config,
+            last_analysis_at: Mutex::new(None),
+            last_patterns_hash: Mutex::new(0),
+            segment_stats: tokio::sync::RwLock::new(None),
+            accessibility_text: tokio::sync::RwLock::new(None),
+            few_shot_selector: FewShotSelector::with_pii_filter(2, pii_filter),
+            few_shot_storage: tokio::sync::RwLock::new(None),
         }
     }
 
@@ -94,6 +126,8 @@ impl ContextAnalyzer {
             last_patterns_hash: Mutex::new(0),
             segment_stats: tokio::sync::RwLock::new(None),
             accessibility_text: tokio::sync::RwLock::new(None),
+            few_shot_selector: FewShotSelector::new(2),
+            few_shot_storage: tokio::sync::RwLock::new(None),
         }
     }
 
@@ -113,6 +147,11 @@ impl ContextAnalyzer {
     /// once embedding components are available).
     pub async fn set_vector_retriever(&self, retriever: VectorRetriever) {
         *self.vector_retriever.write().await = Some(retriever);
+    }
+
+    /// Attach few-shot storage for personalized prompts.
+    pub async fn set_few_shot_storage(&self, storage: Arc<dyn FewShotStorage>) {
+        *self.few_shot_storage.write().await = Some(storage);
     }
 
     /// Full periodic analysis: query events, mine patterns, call LLM.
@@ -171,14 +210,44 @@ impl ContextAnalyzer {
         };
 
         let seg_stats = self.segment_stats.read().await;
-        let ctx = self.context_assembler.build_with_history(
-            &current,
-            &events,
-            &patterns,
-            &metrics,
-            seg_stats.as_ref(),
-            &relevant_history,
-        );
+        let regime_hint = seg_stats.as_ref().and_then(|s| s.regime_label.as_deref());
+
+        let few_shot_examples = {
+            let fs_guard = self.few_shot_storage.read().await;
+            if let Some(ref fs_storage) = *fs_guard {
+                match fs_storage.get_suggestions_with_feedback(10) {
+                    Ok(history) => self.few_shot_selector.select(&history, regime_hint),
+                    Err(e) => {
+                        debug!("Few-shot history retrieval failed: {e}");
+                        vec![]
+                    }
+                }
+            } else {
+                vec![]
+            }
+        };
+
+        let ctx = if few_shot_examples.is_empty() {
+            self.context_assembler.build_with_history(
+                &current,
+                &events,
+                &patterns,
+                &metrics,
+                seg_stats.as_ref(),
+                &relevant_history,
+            )
+        } else {
+            self.context_assembler.build_with_few_shot(
+                &current,
+                &events,
+                &patterns,
+                &metrics,
+                seg_stats.as_ref(),
+                &relevant_history,
+                &few_shot_examples,
+                regime_hint,
+            )
+        };
 
         let suggestions = self
             .analysis_provider
@@ -267,6 +336,9 @@ impl ContextAnalyzer {
             accessibility_text: None,
         };
 
+        // Few-shot enrichment is intentionally skipped for event-driven analysis.
+        // Event-triggered analysis is latency-sensitive; the periodic analyze()
+        // path handles personalized prompts via build_with_few_shot().
         let seg_stats = self.segment_stats.read().await;
         let ctx = self.context_assembler.build_with_segment(
             &current,
