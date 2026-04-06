@@ -56,4 +56,14 @@ pub trait CoachingPort: Send + Sync {
 
     /// Update the goal tracker's regime targets at runtime (async).
     async fn update_regime_goals(&self, goals: &HashMap<String, u32>);
+
+    /// Return the label of the currently active regime (blocking).
+    fn current_regime_label_blocking(&self) -> Option<String> {
+        None
+    }
+
+    /// Return total minutes spent in regimes today (blocking).
+    fn regime_minutes_today_blocking(&self) -> u32 {
+        0
+    }
 }

@@ -79,10 +79,17 @@ pub async fn get_coaching_stats_today(
         })
         .unwrap_or(0);
 
-    // current_regime_label() and regime_minutes_today() are not yet on CoachingPort;
-    // return defaults until Q6 adds them.
-    let current_regime: Option<String> = None;
-    let regime_minutes: u32 = 0;
+    let current_regime = if let Some(ref engine) = state.analysis.coaching_engine {
+        engine.current_regime_label_blocking()
+    } else {
+        None
+    };
+
+    let regime_minutes = if let Some(ref engine) = state.analysis.coaching_engine {
+        engine.regime_minutes_today_blocking()
+    } else {
+        0
+    };
 
     Ok(Json(CoachingStatsTodayResponse {
         nudges_count: today_count,
@@ -133,6 +140,13 @@ mod tests {
             self.all_goal_progress_blocking()
         }
         async fn update_regime_goals(&self, _goals: &HashMap<String, u32>) {}
+
+        fn current_regime_label_blocking(&self) -> Option<String> {
+            Some("deep_work".to_string())
+        }
+        fn regime_minutes_today_blocking(&self) -> u32 {
+            90
+        }
     }
 
     fn test_app_state() -> AppState {
@@ -322,5 +336,28 @@ mod tests {
         assert_eq!(parsed["nudges_count"], 0);
         assert!(parsed["current_regime"].is_null());
         assert_eq!(parsed["regime_minutes_today"], 0);
+    }
+
+    #[tokio::test]
+    async fn get_coaching_stats_today_returns_regime_data_from_engine() {
+        let app = loopback_app(test_app_state_with_coaching());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/coaching/stats/today")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(parsed["current_regime"], "deep_work");
+        assert_eq!(parsed["regime_minutes_today"], 90);
     }
 }
