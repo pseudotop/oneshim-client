@@ -352,6 +352,33 @@ pub trait CoachingQueryStorage: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
+// Sub-trait: HabitStorage
+// ---------------------------------------------------------------------------
+
+/// Habit streak persistence and queries for daily regime tracking.
+pub trait HabitStorage: Send + Sync {
+    /// Upsert a daily habit record for a regime.
+    fn upsert_habit_streak(
+        &self,
+        _regime_label: &str,
+        _date: &str,
+        _minutes_logged: u32,
+        _target_minutes: u32,
+        _met: bool,
+    ) -> Result<(), CoreError> {
+        Ok(()) // No-op default — storage adapters override
+    }
+
+    /// Query habit streak rows for all regimes within the last `days` days.
+    fn query_habit_streaks(
+        &self,
+        _days: u32,
+    ) -> Result<Vec<crate::models::coaching::HabitStreakRow>, CoreError> {
+        Ok(vec![])
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Composed supertrait
 // ---------------------------------------------------------------------------
 
@@ -375,6 +402,7 @@ pub trait WebStorage:
     + GuiInteractionStorage
     + SegmentQueryStorage
     + CoachingQueryStorage
+    + HabitStorage
     + Send
     + Sync
 {
@@ -397,6 +425,7 @@ impl<T> WebStorage for T where
         + GuiInteractionStorage
         + SegmentQueryStorage
         + CoachingQueryStorage
+        + HabitStorage
         + Send
         + Sync
 {

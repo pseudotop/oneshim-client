@@ -143,6 +143,16 @@ pub struct CoachingEventRow {
     pub feedback_score: Option<f64>,
 }
 
+/// A single day's habit record for one regime — maps to the `habit_streaks` table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HabitStreakRow {
+    pub regime_label: String,
+    pub date: String,
+    pub minutes_logged: u32,
+    pub target_minutes: u32,
+    pub met: bool,
+}
+
 /// Extract the variant name of a `TriggerType` for template matching and storage keys.
 pub fn trigger_type_name(trigger: &TriggerType) -> String {
     match trigger {

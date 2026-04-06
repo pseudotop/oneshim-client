@@ -7,6 +7,7 @@ mod events;
 mod focus_storage_impl;
 mod frames;
 mod fts_search_impl;
+mod habit_storage;
 mod integration_query_impl;
 mod lan_pin_store;
 mod maintenance;
