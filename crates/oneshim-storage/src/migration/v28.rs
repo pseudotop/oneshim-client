@@ -1,7 +1,37 @@
 use rusqlite::Connection;
 
 /// V28: Add feedback tracking columns to `local_suggestions` for few-shot prompt construction.
+///
+/// Also adds `suggestion_id`, `content`, and `confidence_score` columns so that the
+/// `local_suggestions` table can be queried by `FewShotStorage` without joining
+/// the `suggestions` (v8) table. These three columns are guarded by a PRAGMA
+/// table_info check for idempotency (the v28 unit-test `setup_schema` pre-creates
+/// them, so a plain `ALTER TABLE` would fail on the second run).
 pub(super) fn migrate_v28(conn: &Connection) -> rusqlite::Result<()> {
+    // --- idempotency guard for data columns (may already exist in test setups) ---
+    let existing_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(local_suggestions)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !existing_cols.iter().any(|c| c == "suggestion_id") {
+        conn.execute_batch(
+            "ALTER TABLE local_suggestions ADD COLUMN suggestion_id TEXT NOT NULL DEFAULT '';",
+        )?;
+    }
+    if !existing_cols.iter().any(|c| c == "content") {
+        conn.execute_batch(
+            "ALTER TABLE local_suggestions ADD COLUMN content TEXT NOT NULL DEFAULT '';",
+        )?;
+    }
+    if !existing_cols.iter().any(|c| c == "confidence") {
+        conn.execute_batch(
+            "ALTER TABLE local_suggestions ADD COLUMN confidence REAL NOT NULL DEFAULT 0.0;",
+        )?;
+    }
+
+    // --- feedback tracking columns (always new in v28) ---
     conn.execute_batch(
         "ALTER TABLE local_suggestions ADD COLUMN feedback_type TEXT;
          ALTER TABLE local_suggestions ADD COLUMN feedback_at TEXT;

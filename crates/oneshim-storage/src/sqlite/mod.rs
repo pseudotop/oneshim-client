@@ -4,6 +4,7 @@ mod coaching_storage_port_impl;
 mod device_identity;
 pub(crate) mod edge_intelligence;
 mod events;
+mod few_shot_storage_impl;
 mod focus_storage_impl;
 mod frames;
 mod fts_search_impl;
