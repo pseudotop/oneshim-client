@@ -7,6 +7,7 @@
 //! - `v09_v18.rs` — tiered memory, vectors, sync, IVF index, coaching engine, trigram FTS, app_meta
 //! - `v19_v21.rs` — app_meta, session audit log, AI sessions, gui_interactions type_confidence
 //! - `v25.rs` — audit_log table for durable audit entry persistence
+//! - `v26.rs` — ai_sessions title column for user-assigned display names
 
 #[cfg(test)]
 mod tests;
@@ -16,11 +17,12 @@ mod v19_v21;
 mod v22_v23;
 mod v23_v24;
 mod v25;
+mod v26;
 
 use rusqlite::Connection;
 use tracing::{error, info, warn};
 
-pub(crate) const CURRENT_VERSION: u32 = 25;
+pub(crate) const CURRENT_VERSION: u32 = 26;
 
 /// Back up the database file before running schema migrations.
 fn backup_if_needed(conn: &Connection, current_version: u32) -> Option<std::path::PathBuf> {
@@ -169,6 +171,9 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
     if current < 25 {
         run_migration_step(conn, 25, v25::migrate_v25)?;
+    }
+    if current < 26 {
+        run_migration_step(conn, 26, v26::migrate_v26)?;
     }
 
     Ok(())

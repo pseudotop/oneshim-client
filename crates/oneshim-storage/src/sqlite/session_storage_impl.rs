@@ -61,8 +61,8 @@ impl SessionStoragePort for SqliteStorage {
                 "INSERT OR REPLACE INTO ai_sessions
                  (session_id, provider, model, transport, state, system_prompt,
                   turn_count, total_input_tokens, total_output_tokens,
-                  created_at, last_active, terminated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                  created_at, last_active, terminated_at, title)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 rusqlite::params![
                     r.session_id,
                     r.provider_name,
@@ -76,6 +76,7 @@ impl SessionStoragePort for SqliteStorage {
                     fmt_dt(&r.created_at),
                     fmt_dt(&r.last_active),
                     r.terminated_at.as_ref().map(fmt_dt),
+                    r.title,
                 ],
             )
             .map_err(StorageError::Sqlite)?;
@@ -149,7 +150,7 @@ impl SessionStoragePort for SqliteStorage {
                 .prepare(
                     "SELECT session_id, provider, model, transport, state, system_prompt,
                             turn_count, total_input_tokens, total_output_tokens,
-                            created_at, last_active, terminated_at
+                            created_at, last_active, terminated_at, title
                      FROM ai_sessions
                      ORDER BY last_active DESC
                      LIMIT ?1",
@@ -171,6 +172,7 @@ impl SessionStoragePort for SqliteStorage {
                         created_at: parse_dt(&row.get::<_, String>(9)?),
                         last_active: parse_dt(&row.get::<_, String>(10)?),
                         terminated_at: row.get::<_, Option<String>>(11)?.map(|s| parse_dt(&s)),
+                        title: row.get(12)?,
                     })
                 })
                 .map_err(StorageError::Sqlite)?;
@@ -347,6 +349,21 @@ impl SessionStoragePort for SqliteStorage {
         .await
         .map_err(CoreError::from)
     }
+
+    async fn update_session_title(&self, session_id: &str, title: &str) -> Result<(), CoreError> {
+        let sid = session_id.to_string();
+        let t = title.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE ai_sessions SET title = ?1 WHERE session_id = ?2",
+                rusqlite::params![t, sid],
+            )
+            .map_err(StorageError::Sqlite)?;
+            Ok(())
+        })
+        .await
+        .map_err(CoreError::from)
+    }
 }
 
 #[cfg(test)]
@@ -371,6 +388,7 @@ mod tests {
             created_at: Utc::now(),
             last_active: Utc::now(),
             terminated_at: None,
+            title: None,
         }
     }
 
@@ -510,6 +528,17 @@ mod tests {
         assert_eq!(sessions[0].total_input_tokens, 150);
         assert_eq!(sessions[0].total_output_tokens, 230);
         assert_eq!(sessions[0].turn_count, 2);
+    }
+
+    #[tokio::test]
+    async fn update_session_title() {
+        let storage = setup().await;
+        storage.save_session(&make_session("s1")).await.unwrap();
+
+        storage.update_session_title("s1", "My Chat").await.unwrap();
+
+        let sessions = storage.list_sessions(10).await.unwrap();
+        assert_eq!(sessions[0].title, Some("My Chat".to_string()));
     }
 
     #[tokio::test]
