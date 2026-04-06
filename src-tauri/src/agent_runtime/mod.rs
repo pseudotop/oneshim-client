@@ -295,11 +295,9 @@ impl AgentRuntimeBundle {
 
         // --- Analysis provider for coaching LLM personalization ---
         #[cfg(feature = "analysis")]
-        if let Some(ref llm_api) = self.config.ai_provider.llm_api {
-            let provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider> =
-                Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
-                    llm_api,
-                ));
+        if let Some((provider, _health)) =
+            analysis_helpers::build_analysis_provider(&self.config.ai_provider)
+        {
             scheduler = scheduler.with_analysis_provider(provider);
         }
 

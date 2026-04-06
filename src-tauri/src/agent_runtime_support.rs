@@ -3,8 +3,6 @@ use oneshim_core::config::AppConfig;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
-#[cfg(feature = "analysis")]
-use oneshim_network::analysis_client::AnalysisClient;
 #[cfg(feature = "server")]
 use oneshim_network::auth::TokenManager;
 #[cfg(feature = "server")]
@@ -142,8 +140,12 @@ impl<'a> AgentSupportContextBuilder<'a> {
         };
 
         let analysis_provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider> =
-            if let Some(ref llm_api) = self.config.ai_provider.llm_api {
-                Arc::new(AnalysisClient::new(llm_api))
+            if let Some((provider, _health)) =
+                crate::agent_runtime::analysis_helpers::build_analysis_provider(
+                    &self.config.ai_provider,
+                )
+            {
+                provider
             } else {
                 tracing::warn!("analysis enabled but no LLM provider configured");
                 return None;

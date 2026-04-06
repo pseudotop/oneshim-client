@@ -112,12 +112,17 @@ pub(super) fn build_embedding_components(
 
             // Build LlmSegmentSummarizer if LLM summary is enabled
             if embedding_config.llm_summary_enabled {
-                if let Some(ref llm_api) = config.ai_provider.llm_api {
+                if let Some(ref _llm_api) = config.ai_provider.llm_api {
                     let analysis_provider: Arc<
                         dyn oneshim_core::ports::analysis_provider::AnalysisProvider,
-                    > = Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
-                        llm_api,
-                    ));
+                    > = crate::agent_runtime::analysis_helpers::build_analysis_provider(
+                        &config.ai_provider,
+                    )
+                    .map(|(p, _)| p)
+                    .unwrap_or_else(|| {
+                        Arc::new(oneshim_analysis::NoOpAnalysisProvider)
+                            as Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>
+                    });
                     let pii_level_summ = config.privacy.pii_filter_level;
                     let pii_filter_summ: oneshim_analysis::PiiFilter =
                         Box::new(move |text: &str| {

@@ -32,6 +32,11 @@ pub(crate) type OAuthCoordinator =
 #[cfg(not(feature = "server"))]
 pub(crate) type OAuthCoordinator = Option<()>;
 
+/// Health flags for the analysis LLM provider fallback chain.
+pub struct AnalysisHealthFlags {
+    pub primary_healthy: Arc<AtomicBool>,
+}
+
 /// Groups frame processor, frame storage, activity monitor, accessibility
 /// extractor, and consent manager used by IPC capture commands (A1, A2).
 pub struct CaptureContext {
@@ -365,6 +370,8 @@ pub struct AppState {
     pub focus_mode: Arc<crate::focus_mode::FocusModeState>,
     /// Capture-related resources for IPC commands (A1, A2).
     pub capture: CaptureContext,
+    /// Analysis provider health (None when no LLM configured).
+    pub analysis_health: Option<AnalysisHealthFlags>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -664,6 +671,7 @@ mod tests {
                     consent_manager: None,
                     work_classifier: None,
                 },
+                analysis_health: None,
             },
             ConfigRuntimeState::new(config_manager, web_port),
         )

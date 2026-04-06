@@ -774,6 +774,7 @@ impl AppRuntimeLaunchBuilder {
                         oneshim_vision::work_classifier::RuleBasedClassifier,
                     )),
                 },
+                analysis_health: None,
             },
             config_runtime_state,
         )

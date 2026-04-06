@@ -1,7 +1,8 @@
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use tauri::command;
 
-use crate::runtime_state::{ConfigRuntimeState, EmbeddingRuntimeState};
+use crate::runtime_state::{AppState, ConfigRuntimeState, EmbeddingRuntimeState};
 
 use super::deep_merge;
 
@@ -117,6 +118,26 @@ pub async fn reload_embedding_model(
         .reloadable()
         .ok_or_else(|| "Embedding provider not available".to_string())?;
     reloadable.reload().map_err(|e| e.to_string())
+}
+
+/// Health status of the analysis LLM provider fallback chain.
+#[derive(Debug, Serialize)]
+pub struct AnalysisHealthStatus {
+    pub primary_healthy: bool,
+    pub provider_configured: bool,
+}
+
+/// Query the health of the analysis LLM provider fallback chain.
+#[command]
+pub fn get_analysis_health(state: tauri::State<'_, AppState>) -> AnalysisHealthStatus {
+    let (primary_healthy, configured) = match &state.analysis_health {
+        Some(h) => (h.primary_healthy.load(Ordering::Relaxed), true),
+        None => (false, false),
+    };
+    AnalysisHealthStatus {
+        primary_healthy,
+        provider_configured: configured,
+    }
 }
 
 #[cfg(test)]
