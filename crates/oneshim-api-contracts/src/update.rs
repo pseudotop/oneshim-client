@@ -6,6 +6,8 @@ pub enum UpdatePhase {
     Idle,
     Checking,
     PendingApproval,
+    Downloading,
+    ReadyToInstall,
     Installing,
     Updated,
     Deferred,
@@ -28,6 +30,13 @@ pub struct PendingUpdateInfo {
     pub download_size_bytes: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DownloadProgress {
+    pub bytes_downloaded: u64,
+    pub total_bytes: u64,
+    pub percent: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateStatus {
     pub enabled: bool,
@@ -37,6 +46,8 @@ pub struct UpdateStatus {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending: Option<PendingUpdateInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_progress: Option<DownloadProgress>,
     pub revision: u64,
     pub updated_at: String,
 }
@@ -49,6 +60,7 @@ impl Default for UpdateStatus {
             phase: UpdatePhase::Idle,
             message: None,
             pending: None,
+            download_progress: None,
             revision: 0,
             updated_at: Utc::now().to_rfc3339(),
         }

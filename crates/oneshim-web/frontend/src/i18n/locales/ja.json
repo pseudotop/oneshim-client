@@ -88,6 +88,8 @@
     "installing": "インストール中",
     "updated": "更新済み",
     "deferred": "延期済み",
+    "downloading": "ダウンロード中...",
+    "readyToInstall": "インストール準備完了",
     "error": "エラー",
     "statusUnavailable": "アップデート状況を取得できません",
     "lastUpdateUnknown": "最終アップデート信号: 不明",

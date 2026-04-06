@@ -1,5 +1,5 @@
 pub use oneshim_api_contracts::update::{
-    PendingUpdateInfo, UpdateAction, UpdatePhase, UpdateStatus,
+    DownloadProgress, PendingUpdateInfo, UpdateAction, UpdatePhase, UpdateStatus,
 };
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, RwLock};

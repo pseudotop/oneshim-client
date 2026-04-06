@@ -88,6 +88,8 @@
     "installing": "Instalando",
     "updated": "Actualizado",
     "deferred": "Aplazado",
+    "downloading": "Descargando...",
+    "readyToInstall": "Listo para instalar",
     "error": "Error",
     "statusUnavailable": "No se pudo obtener el estado de actualización",
     "lastUpdateUnknown": "Última señal de actualización: desconocida",

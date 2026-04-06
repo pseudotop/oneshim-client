@@ -97,7 +97,7 @@ export default function Updates() {
 
   const currentChannel = settings?.update?.channel ?? 'stable'
 
-  const isDownloading = status?.phase === 'Installing'
+  const isDownloading = status?.phase === 'Downloading' || status?.phase === 'Installing'
 
   const versionSummary = useMemo(() => {
     if (!status?.pending) return null

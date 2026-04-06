@@ -255,7 +255,22 @@ export interface SyncSettings {
   compression_enabled: boolean
 }
 
-export type UpdatePhase = 'Idle' | 'Checking' | 'PendingApproval' | 'Installing' | 'Updated' | 'Deferred' | 'Error'
+export type UpdatePhase =
+  | 'Idle'
+  | 'Checking'
+  | 'PendingApproval'
+  | 'Downloading'
+  | 'ReadyToInstall'
+  | 'Installing'
+  | 'Updated'
+  | 'Deferred'
+  | 'Error'
+
+export interface DownloadProgress {
+  bytes_downloaded: number
+  total_bytes: number
+  percent: number
+}
 
 export interface PendingUpdateInfo {
   current_version: string
@@ -274,6 +289,7 @@ export interface UpdateStatus {
   phase: UpdatePhase
   message: string | null
   pending: PendingUpdateInfo | null
+  download_progress: DownloadProgress | null
   revision: number
   updated_at: string
 }

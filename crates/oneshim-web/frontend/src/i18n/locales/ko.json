@@ -95,6 +95,8 @@
     "installing": "설치 중",
     "updated": "업데이트 완료",
     "deferred": "연기됨",
+    "downloading": "다운로드 중...",
+    "readyToInstall": "설치 준비 완료",
     "error": "오류",
     "statusUnavailable": "업데이트 상태를 불러오지 못했습니다",
     "lastUpdateUnknown": "마지막 업데이트 신호: 알 수 없음",

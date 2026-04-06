@@ -68,6 +68,8 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
   const phaseLabel = useMemo(() => {
     const phase = status?.phase
     if (phase === 'PendingApproval') return t('updates.pendingApproval')
+    if (phase === 'Downloading') return t('updates.downloading', 'Downloading...')
+    if (phase === 'ReadyToInstall') return t('updates.readyToInstall', 'Ready to Install')
     if (phase === 'Installing') return t('updates.installing')
     if (phase === 'Updated') return t('updates.updated')
     if (phase === 'Deferred') return t('updates.deferred')
@@ -99,7 +101,17 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
             {freshness.stale ? t('updates.stale') : t('updates.fresh')}
           </Badge>
           <Badge
-            color={status?.phase === 'Error' ? 'error' : status?.phase === 'PendingApproval' ? 'warning' : 'info'}
+            color={
+              status?.phase === 'Error'
+                ? 'error'
+                : status?.phase === 'PendingApproval'
+                  ? 'warning'
+                  : status?.phase === 'Downloading'
+                    ? 'info'
+                    : status?.phase === 'ReadyToInstall'
+                      ? 'success'
+                      : 'info'
+            }
             size="sm"
           >
             {phaseLabel}

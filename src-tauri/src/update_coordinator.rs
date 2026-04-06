@@ -47,6 +47,7 @@ pub fn initial_status(config: &UpdateConfig, auto_install: bool) -> UpdateStatus
         phase: UpdatePhase::Idle,
         message: None,
         pending: None,
+        download_progress: None,
         revision: 0,
         updated_at: Utc::now().to_rfc3339(),
     }
@@ -152,7 +153,10 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
             _ = recheck_timer.tick() => {
                 // Skip re-check if an update is already pending or installing
                 let phase = state.read().await.phase.clone();
-                if matches!(phase, UpdatePhase::Idle | UpdatePhase::Deferred | UpdatePhase::Error) {
+                if matches!(
+                    phase,
+                    UpdatePhase::Idle | UpdatePhase::Deferred | UpdatePhase::Error
+                ) {
                     info!("periodic update re-check");
                     run_check(&updater, &state, status_tx.as_ref(), auto_install).await;
                 }

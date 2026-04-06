@@ -261,6 +261,7 @@ function makeDefaultUpdateStatus(): UpdateStatus {
     phase: 'Idle',
     message: 'Standalone mode',
     pending: null,
+    download_progress: null,
     revision: 1,
     updated_at: new Date().toISOString(),
   }

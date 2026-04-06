@@ -95,6 +95,8 @@
     "installing": "Installing",
     "updated": "Updated",
     "deferred": "Deferred",
+    "downloading": "Downloading...",
+    "readyToInstall": "Ready to Install",
     "error": "Error",
     "statusUnavailable": "Unable to fetch update status",
     "lastUpdateUnknown": "Last update signal: unknown",
