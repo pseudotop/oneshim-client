@@ -20,6 +20,7 @@ pub mod idle;
 pub mod integration;
 pub mod metrics;
 pub mod onboarding;
+pub mod playbooks;
 pub mod pomodoro;
 pub mod processes;
 pub mod reports;

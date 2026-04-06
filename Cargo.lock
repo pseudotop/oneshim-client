@@ -5645,6 +5645,7 @@ dependencies = [
  "futures",
  "hex",
  "mime_guess",
+ "oneshim-analysis",
  "oneshim-api-contracts",
  "oneshim-automation",
  "oneshim-core",

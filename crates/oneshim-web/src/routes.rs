@@ -283,7 +283,12 @@ pub fn api_routes() -> Router<AppState> {
             "/recalibration/recluster",
             post(handlers::recalibration::trigger_recluster),
         )
-        // Pomodoro timer
+        // Playbook listing endpoints
+        .route(
+            "/playbooks/coaching",
+            get(handlers::playbooks::list_coaching_templates),
+        )
+        .route("/playbooks/presets", get(handlers::playbooks::list_presets))
         // Coaching endpoints
         .route(
             "/coaching/history",

@@ -94,6 +94,11 @@ impl CoachingTemplateRegistry {
     pub fn template_count(&self) -> usize {
         self.templates.len()
     }
+
+    /// Return a reference to all templates (for playbook listing).
+    pub fn all_templates(&self) -> &[CoachingTemplate] {
+        &self.templates
+    }
 }
 
 impl Default for CoachingTemplateRegistry {
