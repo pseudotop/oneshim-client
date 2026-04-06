@@ -165,6 +165,18 @@ pub async fn get_goal_progress(
     }
 }
 
+/// Get habit streak data for all regimes within the last N days.
+#[command]
+pub async fn get_habit_streaks(
+    state: tauri::State<'_, AppState>,
+    days: u32,
+) -> Result<Vec<oneshim_core::models::coaching::HabitStreakRow>, String> {
+    state
+        .storage
+        .query_habit_streaks(days)
+        .map_err(|e| e.to_string())
+}
+
 /// Update regime goal targets and persist to config.
 #[command]
 pub async fn update_regime_goals(
