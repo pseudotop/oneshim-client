@@ -384,20 +384,23 @@ pub async fn get_idle_time_linux() -> Option<u64> {
     match display_server {
         DisplayServer::X11 => get_idle_time_x11().await,
         DisplayServer::Wayland => {
-            // 1. Try GNOME Mutter IdleMonitor D-Bus API
             if let Some(idle) = get_idle_time_gnome_mutter().await {
+                debug!("idle: GNOME Mutter → {idle}s");
                 return Some(idle);
             }
-
-            // 2. Fall back to XWayland (xprintidle works for X11 apps under Wayland)
+            if let Some(idle) = get_idle_time_kde().await {
+                debug!("idle: KDE ScreenSaver → {idle}s");
+                return Some(idle);
+            }
+            if let Some(idle) = get_idle_time_logind().await {
+                debug!("idle: logind → {idle}s");
+                return Some(idle);
+            }
             if let Some(idle) = get_idle_time_x11().await {
+                debug!("idle: xprintidle (XWayland) → {idle}s");
                 return Some(idle);
             }
-
-            warn!(
-                "Wayland idle detection unavailable — GNOME Mutter IdleMonitor not found \
-                 and xprintidle failed. Returning 0 (unknown idle)."
-            );
+            warn!("Wayland idle detection: all methods failed");
             Some(0)
         }
         DisplayServer::Unknown => None,
@@ -441,6 +444,84 @@ async fn get_idle_time_gnome_mutter() -> Option<u64> {
 
     debug!("Failed to parse GNOME Mutter IdleMonitor response");
     None
+}
+
+/// Get idle time via KDE ScreenSaver D-Bus interface.
+/// Returns idle time in seconds, or None if not available.
+async fn get_idle_time_kde() -> Option<u64> {
+    let output = timeout(
+        Duration::from_secs(SUBPROCESS_TIMEOUT_SECS),
+        Command::new("dbus-send")
+            .args([
+                "--dest=org.freedesktop.ScreenSaver",
+                "--type=method_call",
+                "--print-reply",
+                "/ScreenSaver",
+                "org.freedesktop.ScreenSaver.GetSessionIdleTime",
+            ])
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+
+    if !output.status.success() {
+        debug!("KDE ScreenSaver D-Bus not available — not a KDE session");
+        return None;
+    }
+
+    // dbus-send output format: "   uint32 5000\n" (idle time in milliseconds)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("uint32 ") {
+            if let Ok(ms) = rest.trim().parse::<u64>() {
+                return Some(ms / 1000);
+            }
+        }
+    }
+
+    debug!("Failed to parse KDE ScreenSaver idle response");
+    None
+}
+
+/// Get idle time via systemd-logind session properties.
+/// Works across compositors when the session reports idle.
+/// Returns idle time in seconds, or None if not available.
+async fn get_idle_time_logind() -> Option<u64> {
+    let output = timeout(
+        Duration::from_secs(SUBPROCESS_TIMEOUT_SECS),
+        Command::new("loginctl")
+            .args([
+                "show-session",
+                "self",
+                "--property=IdleSinceHint",
+                "--value",
+            ])
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+
+    if !output.status.success() {
+        debug!("loginctl show-session failed — logind idle detection unavailable");
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let timestamp_usec: u64 = stdout.trim().parse().ok()?;
+
+    if timestamp_usec == 0 {
+        return Some(0);
+    }
+
+    let now_usec = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_micros() as u64;
+
+    Some(now_usec.saturating_sub(timestamp_usec) / 1_000_000)
 }
 
 async fn get_idle_time_x11() -> Option<u64> {
@@ -652,5 +733,53 @@ mod tests {
         let json = r#"{"name": "vim", "app_id": "Alacritty", "focused":false}"#;
         let result = parse_sway_focused_window(json);
         assert!(result.is_none());
+    }
+
+    // ── KDE D-Bus idle response parsing ──
+
+    #[test]
+    fn parse_kde_dbus_idle_response() {
+        let output = "   uint32 5000\n";
+        let mut result = None;
+        for line in output.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("uint32 ") {
+                if let Ok(ms) = rest.trim().parse::<u64>() {
+                    result = Some(ms / 1000);
+                }
+            }
+        }
+        assert_eq!(result, Some(5));
+    }
+
+    #[test]
+    fn parse_kde_dbus_idle_response_zero() {
+        let output = "   uint32 0\n";
+        let mut result = None;
+        for line in output.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("uint32 ") {
+                if let Ok(ms) = rest.trim().parse::<u64>() {
+                    result = Some(ms / 1000);
+                }
+            }
+        }
+        assert_eq!(result, Some(0));
+    }
+
+    #[test]
+    fn parse_kde_dbus_idle_response_large() {
+        // 5 minutes = 300_000 ms
+        let output = "   uint32 300000\n";
+        let mut result = None;
+        for line in output.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("uint32 ") {
+                if let Ok(ms) = rest.trim().parse::<u64>() {
+                    result = Some(ms / 1000);
+                }
+            }
+        }
+        assert_eq!(result, Some(300));
     }
 }
