@@ -341,6 +341,14 @@ pub trait CoachingQueryStorage: Send + Sync {
     ) -> Result<Vec<crate::models::coaching::CoachingEventRow>, CoreError> {
         Ok(vec![])
     }
+
+    /// Query coaching events shown on or after `since_date` (YYYY-MM-DD format).
+    fn query_coaching_events_since(
+        &self,
+        _since_date: &str,
+    ) -> Result<Vec<crate::models::coaching::CoachingEventRow>, CoreError> {
+        Ok(vec![])
+    }
 }
 
 // ---------------------------------------------------------------------------

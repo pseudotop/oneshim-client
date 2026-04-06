@@ -59,24 +59,12 @@ pub async fn update_goals(
 pub async fn get_coaching_stats_today(
     State(state): State<AppState>,
 ) -> Result<Json<CoachingStatsTodayResponse>, ApiError> {
+    let today_str = chrono::Local::now().format("%Y-%m-%d").to_string();
     let today_count = state
         .core
         .storage
-        .query_coaching_events(100, 0)
-        .map(|events| {
-            let today = chrono::Local::now().date_naive();
-            events
-                .iter()
-                .filter(|e| {
-                    chrono::NaiveDate::parse_from_str(
-                        e.shown_at.get(..10).unwrap_or(""),
-                        "%Y-%m-%d",
-                    )
-                    .map(|d| d == today)
-                    .unwrap_or(false)
-                })
-                .count() as u32
-        })
+        .query_coaching_events_since(&today_str)
+        .map(|events| events.len() as u32)
         .unwrap_or(0);
 
     let current_regime = if let Some(ref engine) = state.analysis.coaching_engine {

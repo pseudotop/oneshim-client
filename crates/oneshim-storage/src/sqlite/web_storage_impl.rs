@@ -861,6 +861,14 @@ impl CoachingQueryStorage for SqliteStorage {
         self.query_coaching_events(limit, offset)
             .map_err(Into::into)
     }
+
+    fn query_coaching_events_since(
+        &self,
+        since_date: &str,
+    ) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, CoreError> {
+        self.query_coaching_events_since(since_date)
+            .map_err(Into::into)
+    }
 }
 
 /// Parse the centroid (center x, center y) from a bbox JSON string.

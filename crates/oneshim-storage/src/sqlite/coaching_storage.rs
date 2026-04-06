@@ -52,6 +52,54 @@ impl SqliteStorage {
         Ok(results)
     }
 
+    /// Query coaching events shown on or after a given date (YYYY-MM-DD).
+    pub fn query_coaching_events_since(
+        &self,
+        since_date: &str,
+    ) -> Result<Vec<CoachingEventRow>, StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("lock poisoned: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT event_id, trigger_type, profile_name, regime_id,
+                        message_template, personalized_message, shown_at,
+                        dismissed_at, dismiss_action, feedback_type, feedback_score
+                 FROM coaching_events
+                 WHERE shown_at >= ?1
+                 ORDER BY shown_at DESC",
+            )
+            .map_err(|e| {
+                StorageError::Internal(format!("prepare query_coaching_events_since: {e}"))
+            })?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![since_date], |row| {
+                Ok(CoachingEventRow {
+                    event_id: row.get(0)?,
+                    trigger_type: row.get(1)?,
+                    profile_name: row.get(2)?,
+                    regime_id: row.get(3)?,
+                    message_template: row.get(4)?,
+                    personalized_message: row.get(5)?,
+                    shown_at: row.get(6)?,
+                    dismissed_at: row.get(7)?,
+                    dismiss_action: row.get(8)?,
+                    feedback_type: row.get(9)?,
+                    feedback_score: row.get(10)?,
+                })
+            })
+            .map_err(|e| StorageError::Internal(format!("query_coaching_events_since: {e}")))?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row.map_err(|e| StorageError::Internal(format!("row read: {e}")))?);
+        }
+        Ok(results)
+    }
+
     /// Insert a coaching event record.
     pub fn insert_coaching_event(&self, event: &CoachingEventRow) -> Result<(), StorageError> {
         let conn = self
