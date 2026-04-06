@@ -232,9 +232,22 @@ export interface NetworkSettings {
   tls_enabled: boolean
 }
 
+export interface TimeRange {
+  start: string
+  end: string
+}
+
+export interface ProfileConfig {
+  enabled: boolean
+  min_interval_secs: number
+}
+
 export interface CoachingSettings {
   enabled: boolean
-  tone: string
+  tone: 'Direct' | 'Gentle' | 'DataDriven'
+  quiet_hours: TimeRange[]
+  profiles: Record<string, ProfileConfig>
+  regime_goals: Record<string, number>
   locale: string
   overlay_mode: string
 }

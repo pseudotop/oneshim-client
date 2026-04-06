@@ -187,7 +187,7 @@
       "monitoring": "모니터링",
       "aiAutomation": "AI & 자동화",
       "dataStorage": "데이터 & 저장소",
-      "coaching": "코칭 목표",
+      "coaching": "코칭",
       "audio": "오디오"
     },
     "dataCollection": "데이터 수집",
@@ -1305,6 +1305,31 @@
     "helpfulLabel": "도움이 됨",
     "notHelpfulLabel": "도움이 안 됨",
     "whyTitle": "왜 이 제안?",
+    "quietHoursTitle": "방해 금지 시간",
+    "quietHoursDesc": "이 시간대에는 코칭 메시지가 표시되지 않습니다.",
+    "noQuietHours": "방해 금지 시간이 설정되지 않았습니다.",
+    "quietStart": "시작",
+    "quietEnd": "종료",
+    "addQuietHour": "추가",
+    "toneTitle": "코칭 톤",
+    "toneOption": {
+      "Direct": "직접적",
+      "Gentle": "부드러운",
+      "DataDriven": "데이터 기반"
+    },
+    "toneDesc": {
+      "Direct": "짧고 실행 가능한 문장",
+      "Gentle": "부드럽고 격려하는 표현",
+      "DataDriven": "숫자와 통계 중심"
+    },
+    "profilesTitle": "코칭 프로필",
+    "profileDesc": {
+      "FocusGuard": "컨텍스트 전환이 잦을 때 알림",
+      "TimeAware": "예정된 회의와 마감을 알림",
+      "DeepWorkCoach": "집중 세션 유지를 격려",
+      "ContextRestore": "중단 후 작업 재개를 도움",
+      "GoalTracker": "일일 레짐 목표 달성 추적"
+    },
     "habits": {
       "title": "습관 트래커",
       "regime": "레짐",

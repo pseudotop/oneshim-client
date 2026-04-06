@@ -162,7 +162,7 @@
       "monitoring": "モニタリング",
       "aiAutomation": "AI & 自動化",
       "dataStorage": "データ & ストレージ",
-      "coaching": "コーチング目標"
+      "coaching": "コーチング"
     },
     "dataCollection": "データ収集",
     "enableCapture": "スクリーンショットキャプチャを有効化",
@@ -1246,6 +1246,31 @@
     "laterLabel": "後でリマインド",
     "helpfulLabel": "役に立った",
     "notHelpfulLabel": "役に立たなかった",
+    "quietHoursTitle": "静粛時間",
+    "quietHoursDesc": "この時間帯ではコーチングメッセージが非表示になります。",
+    "noQuietHours": "静粛時間は設定されていません。",
+    "quietStart": "開始",
+    "quietEnd": "終了",
+    "addQuietHour": "追加",
+    "toneTitle": "コーチングトーン",
+    "toneOption": {
+      "Direct": "ダイレクト",
+      "Gentle": "ジェントル",
+      "DataDriven": "データドリブン"
+    },
+    "toneDesc": {
+      "Direct": "短く実用的な表現",
+      "Gentle": "柔らかく励ましの言葉",
+      "DataDriven": "数値と統計重視"
+    },
+    "profilesTitle": "コーチングプロファイル",
+    "profileDesc": {
+      "FocusGuard": "コンテキスト切り替えが多い時にアラート",
+      "TimeAware": "予定のミーティングや締切をリマインド",
+      "DeepWorkCoach": "集中セッションの持続を促進",
+      "ContextRestore": "中断後の作業再開をサポート",
+      "GoalTracker": "日次レジーム目標の進捗を追跡"
+    },
     "habits": {
       "title": "習慣トラッカー",
       "regime": "レジーム",

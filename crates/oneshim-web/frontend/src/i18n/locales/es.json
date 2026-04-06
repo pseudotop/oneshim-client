@@ -162,7 +162,7 @@
       "monitoring": "Monitoreo",
       "aiAutomation": "IA y Automatización",
       "dataStorage": "Datos y Almacenamiento",
-      "coaching": "Objetivos de coaching"
+      "coaching": "Coaching"
     },
     "dataCollection": "Recopilación de datos",
     "enableCapture": "Habilitar captura de pantalla",
@@ -1246,6 +1246,31 @@
     "laterLabel": "Recordar más tarde",
     "helpfulLabel": "Útil",
     "notHelpfulLabel": "No útil",
+    "quietHoursTitle": "Horas de silencio",
+    "quietHoursDesc": "Los mensajes de coaching se suprimen durante estos rangos de tiempo.",
+    "noQuietHours": "No hay horas de silencio configuradas.",
+    "quietStart": "Inicio",
+    "quietEnd": "Fin",
+    "addQuietHour": "Agregar",
+    "toneTitle": "Tono de coaching",
+    "toneOption": {
+      "Direct": "Directo",
+      "Gentle": "Suave",
+      "DataDriven": "Basado en datos"
+    },
+    "toneDesc": {
+      "Direct": "Declaraciones cortas y accionables",
+      "Gentle": "Lenguaje suave y alentador",
+      "DataDriven": "Enfocado en estadísticas con números"
+    },
+    "profilesTitle": "Perfiles de coaching",
+    "profileDesc": {
+      "FocusGuard": "Alerta cuando cambias de contexto con frecuencia",
+      "TimeAware": "Te recuerda reuniones y plazos próximos",
+      "DeepWorkCoach": "Fomenta sesiones de enfoque sostenido",
+      "ContextRestore": "Ayuda a retomar el trabajo después de interrupciones",
+      "GoalTracker": "Rastrea el progreso hacia las metas diarias"
+    },
     "habits": {
       "title": "Rastreador de hábitos",
       "regime": "Régimen",

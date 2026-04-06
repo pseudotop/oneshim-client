@@ -187,7 +187,7 @@
       "monitoring": "Monitoring",
       "aiAutomation": "AI & Automation",
       "dataStorage": "Data & Storage",
-      "coaching": "Coaching Goals",
+      "coaching": "Coaching",
       "audio": "Audio"
     },
     "dataCollection": "Data Collection",
@@ -1305,6 +1305,31 @@
     "helpfulLabel": "Helpful",
     "notHelpfulLabel": "Not helpful",
     "whyTitle": "Why this suggestion?",
+    "quietHoursTitle": "Quiet Hours",
+    "quietHoursDesc": "Coaching messages are suppressed during these time ranges.",
+    "noQuietHours": "No quiet hours configured.",
+    "quietStart": "Start",
+    "quietEnd": "End",
+    "addQuietHour": "Add",
+    "toneTitle": "Coaching Tone",
+    "toneOption": {
+      "Direct": "Direct",
+      "Gentle": "Gentle",
+      "DataDriven": "Data-Driven"
+    },
+    "toneDesc": {
+      "Direct": "Short, actionable statements",
+      "Gentle": "Softer, encouraging language",
+      "DataDriven": "Statistics-focused with numbers"
+    },
+    "profilesTitle": "Coaching Profiles",
+    "profileDesc": {
+      "FocusGuard": "Alerts when you switch context too often",
+      "TimeAware": "Reminds you of upcoming meetings and deadlines",
+      "DeepWorkCoach": "Encourages sustained focus sessions",
+      "ContextRestore": "Helps resume work after interruptions",
+      "GoalTracker": "Tracks progress toward daily regime goals"
+    },
     "habits": {
       "title": "Habit Tracker",
       "regime": "Regime",

@@ -162,7 +162,7 @@
       "monitoring": "监控",
       "aiAutomation": "AI与自动化",
       "dataStorage": "数据与存储",
-      "coaching": "教练目标"
+      "coaching": "教练"
     },
     "dataCollection": "数据采集",
     "enableCapture": "启用截图捕获",
@@ -1246,6 +1246,31 @@
     "laterLabel": "稍后提醒",
     "helpfulLabel": "有帮助",
     "notHelpfulLabel": "没有帮助",
+    "quietHoursTitle": "免打扰时段",
+    "quietHoursDesc": "在这些时间段内，教练消息将被静音。",
+    "noQuietHours": "未配置免打扰时段。",
+    "quietStart": "开始",
+    "quietEnd": "结束",
+    "addQuietHour": "添加",
+    "toneTitle": "教练语气",
+    "toneOption": {
+      "Direct": "直接",
+      "Gentle": "温和",
+      "DataDriven": "数据驱动"
+    },
+    "toneDesc": {
+      "Direct": "简短、可操作的陈述",
+      "Gentle": "更柔和、鼓励性的语言",
+      "DataDriven": "以统计数据和数字为中心"
+    },
+    "profilesTitle": "教练配置",
+    "profileDesc": {
+      "FocusGuard": "频繁切换上下文时发出提醒",
+      "TimeAware": "提醒即将到来的会议和截止日期",
+      "DeepWorkCoach": "鼓励持续的专注会话",
+      "ContextRestore": "帮助在中断后恢复工作",
+      "GoalTracker": "追踪每日模式目标的进度"
+    },
     "habits": {
       "title": "习惯追踪器",
       "regime": "模式",
