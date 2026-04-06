@@ -63,7 +63,8 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
     },
   })
 
-  const canApproveOrDefer = status?.phase === 'PendingApproval' && !freshness.severelyStale
+  const canApproveOrDefer = (status?.phase === 'PendingApproval' || status?.phase === 'ReadyToInstall') && !freshness.severelyStale
+  const isDownloading = status?.phase === 'Downloading'
 
   const phaseLabel = useMemo(() => {
     const phase = status?.phase
@@ -173,6 +174,27 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
         </div>
       )}
 
+      {status?.phase === 'Downloading' && status.download_progress && (
+        <div className="mt-3 space-y-1">
+          <div className="h-2 w-full rounded-full bg-surface-secondary">
+            <div
+              className="h-full rounded-full bg-brand-text transition-all duration-300"
+              style={{ width: `${Math.min(status.download_progress.percent, 100)}%` }}
+            />
+          </div>
+          <p className={cn(typography.caption, 'text-text-tertiary')}>
+            {formatBytes(status.download_progress.bytes_downloaded)} / {formatBytes(status.download_progress.total_bytes)}
+            {' '}({status.download_progress.percent.toFixed(1)}%)
+          </p>
+        </div>
+      )}
+
+      {status?.phase === 'ReadyToInstall' && (
+        <p className={cn('mt-2', typography.body, 'text-semantic-success')}>
+          {t('updates.readyToInstallMsg', 'Download complete. Ready to install.')}
+        </p>
+      )}
+
       {!compact && (
         <div className={cn('mt-3 text-content-secondary', typography.caption)}>
           {status?.auto_install ? t('updates.autoInstallOn') : t('updates.autoInstallOff')}
@@ -185,6 +207,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
           variant="secondary"
           size="sm"
           isLoading={actionMutation.isPending}
+          disabled={isDownloading}
           onClick={() => actionMutation.mutate('CheckNow')}
         >
           {t('updates.checkNow')}
@@ -200,6 +223,30 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
               disabled={!canApproveOrDefer}
             >
               {t('updates.approve')}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              isLoading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('Defer')}
+              disabled={!canApproveOrDefer}
+            >
+              {t('updates.defer')}
+            </Button>
+          </>
+        )}
+        {status?.phase === 'ReadyToInstall' && (
+          <>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              isLoading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('Approve')}
+              disabled={!canApproveOrDefer}
+            >
+              {t('updates.installNow', 'Install Now')}
             </Button>
             <Button
               type="button"
