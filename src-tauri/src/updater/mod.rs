@@ -93,6 +93,7 @@ pub enum UpdateCheckResult {
         latest: semver::Version,
         release: Box<ReleaseInfo>,
         download_url: String,
+        download_size: Option<u64>,
     },
     UpToDate {
         current: semver::Version,
@@ -160,13 +161,14 @@ impl Updater {
         self.enforce_version_floor(&latest)?;
 
         if latest > current {
-            let download_url = self.find_platform_asset(&release)?;
+            let (download_url, asset_size) = self.find_platform_asset(&release)?;
 
             Ok(UpdateCheckResult::Available {
                 current,
                 latest,
                 release: Box::new(release),
                 download_url,
+                download_size: Some(asset_size),
             })
         } else {
             Ok(UpdateCheckResult::UpToDate { current })
@@ -1222,9 +1224,11 @@ mod tests {
             published_at: None,
         };
 
-        let url = updater
+        let (url, size) = updater
             .find_platform_asset(&release)
             .expect("must find an asset for the current platform");
+
+        assert!(size > 0, "asset size must be positive");
 
         // The selected URL must correspond to the current OS
         let os = std::env::consts::OS;

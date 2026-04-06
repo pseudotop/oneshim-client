@@ -265,6 +265,7 @@ async fn run_check<E: UpdateExecutor>(
             latest,
             release,
             download_url,
+            download_size,
         }) => {
             {
                 let mut guard = state.write().await;
@@ -277,6 +278,8 @@ async fn run_check<E: UpdateExecutor>(
                     release_name: release.name.clone(),
                     published_at: release.published_at.clone(),
                     download_url,
+                    release_notes: release.body.clone(),
+                    download_size_bytes: download_size,
                 });
                 guard.touch();
                 if let Some(tx) = status_tx {
@@ -430,6 +433,7 @@ mod tests {
             download_url:
                 "https://github.com/pseudotop/oneshim-client/releases/download/v1.2.0/oneshim-macos-arm64.tar.gz"
                     .to_string(),
+            download_size: None,
         })
     }
 

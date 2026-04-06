@@ -264,6 +264,8 @@ export interface PendingUpdateInfo {
   release_name: string | null
   published_at: string | null
   download_url: string
+  release_notes?: string | null
+  download_size_bytes?: number | null
 }
 
 export interface UpdateStatus {

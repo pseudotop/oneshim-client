@@ -53,6 +53,7 @@ impl<'a> UpdateRuntimeBuilder<'a> {
                         latest,
                         release,
                         download_url,
+                        download_size,
                     })) => {
                         info!("startup update check: v{latest} available");
                         // Write to shared state and publish to broadcast.
@@ -69,6 +70,8 @@ impl<'a> UpdateRuntimeBuilder<'a> {
                             release_name: release.name.clone(),
                             published_at: release.published_at.clone(),
                             download_url,
+                            release_notes: release.body.clone(),
+                            download_size_bytes: download_size,
                         });
                         guard.touch();
                         if let Err(e) = startup_event_tx.send(guard.clone()) {
@@ -153,6 +156,8 @@ mod tests {
                 release_name: Some("v0.2.0".to_string()),
                 published_at: None,
                 download_url: "https://example.com/download".to_string(),
+                release_notes: None,
+                download_size_bytes: None,
             });
             guard.touch();
             let _ = event_tx.send(guard.clone());

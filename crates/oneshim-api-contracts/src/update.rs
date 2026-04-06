@@ -22,6 +22,10 @@ pub struct PendingUpdateInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub published_at: Option<String>,
     pub download_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

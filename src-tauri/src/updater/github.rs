@@ -4,14 +4,18 @@
 use super::{ReleaseInfo, UpdateError, Updater};
 
 impl Updater {
-    pub(super) fn find_platform_asset(&self, release: &ReleaseInfo) -> Result<String, UpdateError> {
+    /// Returns `(download_url, asset_size)` for the first matching platform asset.
+    pub(super) fn find_platform_asset(
+        &self,
+        release: &ReleaseInfo,
+    ) -> Result<(String, u64), UpdateError> {
         let platform_patterns = Self::get_platform_patterns()?;
 
         for asset in &release.assets {
             let name_lower = asset.name.to_lowercase();
             for pattern in &platform_patterns {
                 if name_lower.contains(pattern) {
-                    return Ok(asset.browser_download_url.clone());
+                    return Ok((asset.browser_download_url.clone(), asset.size));
                 }
             }
         }
