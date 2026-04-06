@@ -59,6 +59,7 @@ mod work_type_classifier;
 pub mod coaching_engine;
 pub mod coaching_template;
 pub mod feedback_tracker;
+pub mod few_shot_selector;
 pub mod regime_goal_tracker;
 
 pub use adaptive_trigger::{AdaptiveTrigger, TriggerDecision};
@@ -69,9 +70,10 @@ pub use assembler::{
 };
 pub use calibration_buffer::CalibrationBuffer;
 pub use content_tracker::ContentTracker;
+pub use few_shot_selector::FewShotSelector;
 pub use param_resolver::ParamResolver;
 pub use pattern_miner::{detect_gui_patterns, GuiPattern, PatternMiner};
-pub use prompts::ANALYSIS_SYSTEM_PROMPT;
+pub use prompts::{FewShotExample, FewShotOutcome, PromptBuilder, ANALYSIS_SYSTEM_PROMPT};
 pub use regime_classifier::RegimeClassifier;
 pub use regime_detector::RegimeDetector;
 pub use regime_manager::RegimeManager;
