@@ -231,6 +231,7 @@ fn main() {
             commands::analysis::get_analysis_config,
             commands::analysis::update_analysis_config,
             commands::analysis::get_analysis_status,
+            commands::analysis::reload_embedding_model,
             commands::dashboard::semantic_search,
             commands::dashboard::get_weekly_digest,
             commands::dashboard::get_dashboard_day,

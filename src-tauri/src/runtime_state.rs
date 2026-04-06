@@ -211,6 +211,31 @@ impl SuggestionRuntimeState {
     }
 }
 
+/// Feature-scoped Tauri managed state for embedding model hot-reloading.
+///
+/// Holds a `ReloadableModel` so that `reload()` and `model_version()` are
+/// accessible from IPC commands without depending on the concrete embedding
+/// crate (which may be feature-gated).
+#[derive(Default)]
+pub struct EmbeddingRuntimeState {
+    reloadable: Option<Arc<dyn oneshim_core::ports::embedding_provider::ReloadableModel>>,
+}
+
+#[allow(dead_code)] // wired when embedding provider is available
+impl EmbeddingRuntimeState {
+    pub(crate) fn new(
+        reloadable: Option<Arc<dyn oneshim_core::ports::embedding_provider::ReloadableModel>>,
+    ) -> Self {
+        Self { reloadable }
+    }
+
+    pub(crate) fn reloadable(
+        &self,
+    ) -> Option<&Arc<dyn oneshim_core::ports::embedding_provider::ReloadableModel>> {
+        self.reloadable.as_ref()
+    }
+}
+
 /// Feature-scoped Tauri managed state for automation (RPA) IPC commands.
 #[derive(Default)]
 pub struct AutomationRuntimeState {
@@ -390,6 +415,7 @@ pub(crate) struct ManagedStateRegistration {
     pub(crate) detection_runtime_state: DetectionRuntimeState,
     pub(crate) sync_runtime_state: SyncRuntimeState,
     pub(crate) automation_runtime_state: AutomationRuntimeState,
+    pub(crate) embedding_runtime_state: EmbeddingRuntimeState,
     pub(crate) oauth_state: OAuthState,
     pub(crate) oauth_coordinator_state: OAuthCoordinatorState,
     pub(crate) secret_backend_state: SecretBackendState,
@@ -407,6 +433,7 @@ pub(crate) struct ManagedStateBuilder {
     detection_runtime_state: DetectionRuntimeState,
     sync_runtime_state: SyncRuntimeState,
     automation_runtime_state: AutomationRuntimeState,
+    embedding_runtime_state: EmbeddingRuntimeState,
     oauth_state: OAuthState,
     oauth_coordinator_state: OAuthCoordinatorState,
     capability_profile: ManagedStateCapabilityProfile,
@@ -427,6 +454,7 @@ impl ManagedStateBuilder {
             detection_runtime_state: DetectionRuntimeState::default(),
             sync_runtime_state: SyncRuntimeState::default(),
             automation_runtime_state: AutomationRuntimeState::default(),
+            embedding_runtime_state: EmbeddingRuntimeState::default(),
             oauth_state: OAuthState(None),
             oauth_coordinator_state: OAuthCoordinatorState(None),
             capability_profile: ManagedStateCapabilityProfile::default(),
@@ -461,6 +489,15 @@ impl ManagedStateBuilder {
         detection_runtime_state: DetectionRuntimeState,
     ) -> Self {
         self.detection_runtime_state = detection_runtime_state;
+        self
+    }
+
+    #[allow(dead_code)] // wired when embedding provider is available
+    pub(crate) fn with_embedding_runtime(
+        mut self,
+        embedding_runtime_state: EmbeddingRuntimeState,
+    ) -> Self {
+        self.embedding_runtime_state = embedding_runtime_state;
         self
     }
 
@@ -515,6 +552,7 @@ impl ManagedStateBuilder {
             detection_runtime_state: self.detection_runtime_state,
             sync_runtime_state: self.sync_runtime_state,
             automation_runtime_state: self.automation_runtime_state,
+            embedding_runtime_state: self.embedding_runtime_state,
             oauth_state: self.oauth_state,
             oauth_coordinator_state: self.oauth_coordinator_state,
             secret_backend_state,
@@ -535,6 +573,7 @@ impl ManagedStateRegistration {
         app.manage(self.detection_runtime_state);
         app.manage(self.sync_runtime_state);
         app.manage(self.automation_runtime_state);
+        app.manage(self.embedding_runtime_state);
         app.manage(self.oauth_state);
         app.manage(self.oauth_coordinator_state);
         app.manage(self.secret_backend_state);
