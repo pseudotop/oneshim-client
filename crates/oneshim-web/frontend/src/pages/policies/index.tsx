@@ -75,10 +75,11 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
+          <label htmlFor="policy-id" className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
             {t('policies.policyId', 'Policy ID')}
           </label>
           <Input
+            id="policy-id"
             value={form.policy_id}
             onChange={(e) => setForm((f) => ({ ...f, policy_id: e.target.value }))}
             placeholder="pol-001"
@@ -87,10 +88,14 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
           />
         </div>
         <div>
-          <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
+          <label
+            htmlFor="policy-process-name"
+            className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}
+          >
             {t('policies.processName', 'Process Name')}
           </label>
           <Input
+            id="policy-process-name"
             value={form.process_name}
             onChange={(e) => setForm((f) => ({ ...f, process_name: e.target.value }))}
             placeholder="git"
@@ -98,10 +103,17 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
           />
         </div>
         <div>
-          <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
+          <label
+            htmlFor="policy-confirmation"
+            className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}
+          >
             {t('policies.confirmation', 'Confirmation')}
           </label>
-          <Select value={form.confirmation} onChange={(e) => setForm((f) => ({ ...f, confirmation: e.target.value }))}>
+          <Select
+            id="policy-confirmation"
+            value={form.confirmation}
+            onChange={(e) => setForm((f) => ({ ...f, confirmation: e.target.value }))}
+          >
             {CONFIRMATION_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
@@ -110,10 +122,17 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
           </Select>
         </div>
         <div>
-          <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
+          <label
+            htmlFor="policy-audit-level"
+            className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}
+          >
             {t('policies.auditLevel', 'Audit Level')}
           </label>
-          <Select value={form.audit_level} onChange={(e) => setForm((f) => ({ ...f, audit_level: e.target.value }))}>
+          <Select
+            id="policy-audit-level"
+            value={form.audit_level}
+            onChange={(e) => setForm((f) => ({ ...f, audit_level: e.target.value }))}
+          >
             {AUDIT_LEVEL_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
@@ -122,10 +141,14 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
           </Select>
         </div>
         <div>
-          <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
+          <label
+            htmlFor="policy-sandbox-profile"
+            className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}
+          >
             {t('policies.sandboxProfile', 'Sandbox Profile')}
           </label>
           <Select
+            id="policy-sandbox-profile"
             value={form.sandbox_profile ?? ''}
             onChange={(e) =>
               setForm((f) => ({
@@ -142,10 +165,14 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
           </Select>
         </div>
         <div>
-          <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
+          <label
+            htmlFor="policy-max-exec-time"
+            className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}
+          >
             {t('policies.maxExecutionTime', 'Max Execution Time (ms)')}
           </label>
           <Input
+            id="policy-max-exec-time"
             type="number"
             min={100}
             value={form.max_execution_time_ms}
@@ -159,10 +186,14 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
         </div>
       </div>
       <div>
-        <label className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}>
+        <label
+          htmlFor="policy-allowed-args"
+          className={cn('mb-1 block text-sm', typography.weight.medium, 'text-content')}
+        >
           {t('policies.allowedArgs', 'Allowed Arguments (one per line)')}
         </label>
         <textarea
+          id="policy-allowed-args"
           className={cn(
             'w-full rounded-md border border-muted bg-surface px-3 py-2 text-sm text-content',
             interaction.focusRing,

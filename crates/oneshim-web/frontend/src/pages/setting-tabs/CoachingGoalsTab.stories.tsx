@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import CoachingSettingsTab from './CoachingSettingsTab'
 import type { AppSettings } from '../../api/contracts'
+import CoachingSettingsTab from './CoachingSettingsTab'
 
 function createStoryQueryClient() {
   return new QueryClient({

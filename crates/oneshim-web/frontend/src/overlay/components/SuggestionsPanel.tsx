@@ -74,7 +74,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       console.warn('SuggestionsPanel refresh failed:', e)
       setError(t('suggestions.loadError', 'Could not load suggestions.'))
     })
-  }, [open, onRefresh])
+  }, [open, onRefresh, t])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '../../utils/cn'
 import { motion, typography } from '../../styles/tokens'
+import { cn } from '../../utils/cn'
 import type { PendingConfirmationDto } from '../types'
 
 const AUTO_DENY_SECS = 30
 
 /** Strip Unicode control characters that could disguise the actual command. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional — stripping C0/C1 control chars, DEL, zero-width chars, bidi overrides, line/paragraph separators, BOM
+const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202F\uFEFF]/g
+
 function sanitizeArg(arg: string): string {
-  // C0 controls, DEL, C1 controls, zero-width chars, bidi overrides,
-  // line/paragraph separators, BOM
-  return arg.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202F\uFEFF]/g, '')
+  return arg.replace(CONTROL_CHAR_RE, '')
 }
 
 const auditBadgeColors: Record<string, string> = {
@@ -31,8 +32,11 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
   const [error, setError] = useState<string | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Countdown timer
+  // Countdown timer — resets when a new confirmation arrives (keyed by command_id)
+  const commandId = confirmation.command_id
   useEffect(() => {
+    // commandId is read here to satisfy exhaustive-deps while acting as a reset trigger
+    void commandId
     setRemaining(AUTO_DENY_SECS)
     intervalRef.current = setInterval(() => {
       setRemaining((prev) => {
@@ -46,15 +50,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [confirmation.command_id])
-
-  // Auto-deny on timeout
-  useEffect(() => {
-    if (remaining === 0 && !submitting) {
-      void handleSubmit(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining])
+  }, [commandId])
 
   const handleSubmit = useCallback(
     async (approved: boolean) => {
@@ -75,8 +71,15 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
         setSubmitting(false)
       }
     },
-    [confirmation.command_id, confirmation.nonce, onDismiss, submitting],
+    [confirmation.command_id, confirmation.nonce, onDismiss, submitting, t],
   )
+
+  // Auto-deny on timeout
+  useEffect(() => {
+    if (remaining === 0 && !submitting) {
+      void handleSubmit(false)
+    }
+  }, [remaining, handleSubmit, submitting])
 
   const progressPct = (remaining / AUTO_DENY_SECS) * 100
   const badgeColor = auditBadgeColors[confirmation.audit_level] ?? 'bg-content-inverse/10 text-content-secondary'
@@ -93,7 +96,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
           <h3 className={cn(typography.h4, 'text-content')}>
             {t('automation.confirmTitle', 'Automation Confirmation')}
           </h3>
-          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', badgeColor)}>
+          <span className={cn('rounded-full px-2 py-0.5 font-semibold text-[10px]', badgeColor)}>
             {confirmation.audit_level}
           </span>
         </div>
@@ -108,10 +111,10 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
           </div>
           {confirmation.args.length > 0 && (
             <div className="flex items-start gap-2">
-              <span className={cn(typography.caption, 'text-content-tertiary shrink-0 pt-0.5')}>
+              <span className={cn(typography.caption, 'shrink-0 pt-0.5 text-content-tertiary')}>
                 {t('automation.confirmArgs', 'Args')}
               </span>
-              <code className="text-[11px] text-content-secondary break-all font-mono">
+              <code className="break-all font-mono text-[11px] text-content-secondary">
                 {confirmation.args.map(sanitizeArg).join(' ')}
               </code>
             </div>
@@ -140,10 +143,10 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
               disabled={submitting}
               onClick={() => void handleSubmit(false)}
               className={cn(
-                'rounded-lg px-4 py-1.5 text-xs font-medium',
+                'rounded-lg px-4 py-1.5 font-medium text-xs',
                 motion.colors,
                 'bg-semantic-error/15 text-semantic-error hover:bg-semantic-error/25',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'disabled:cursor-not-allowed disabled:opacity-50',
               )}
             >
               {t('automation.confirmDeny', 'Deny')}
@@ -153,10 +156,10 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
               disabled={submitting}
               onClick={() => void handleSubmit(true)}
               className={cn(
-                'rounded-lg px-4 py-1.5 text-xs font-medium',
+                'rounded-lg px-4 py-1.5 font-medium text-xs',
                 motion.colors,
                 'bg-semantic-success/15 text-semantic-success hover:bg-semantic-success/25',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'disabled:cursor-not-allowed disabled:opacity-50',
               )}
             >
               {t('automation.confirmApprove', 'Approve')}
