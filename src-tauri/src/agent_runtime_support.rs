@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use std::sync::atomic::AtomicBool;
+
 use crate::capture_services::SharedCaptureServices;
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
@@ -69,6 +71,10 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
     shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     shared_capture_services: Option<Arc<SharedCaptureServices>>,
     few_shot_storage: Option<Arc<dyn oneshim_core::ports::few_shot_storage::FewShotStorage>>,
+    /// Pre-created health flag shared with AppState. When set, `build_context_analyzer`
+    /// wires it into the FallbackAnalysisProvider so the IPC `get_analysis_health`
+    /// command reflects the actual provider health.
+    analysis_health_flag: Option<Arc<AtomicBool>>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -87,6 +93,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             shared_scorer: None,
             shared_capture_services: None,
             few_shot_storage: None,
+            analysis_health_flag: None,
         }
     }
 
@@ -135,6 +142,11 @@ impl<'a> AgentSupportContextBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_analysis_health_flag(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.analysis_health_flag = Some(flag);
+        self
+    }
+
     #[cfg(feature = "analysis")]
     fn build_context_analyzer(&self) -> Option<Arc<oneshim_analysis::ContextAnalyzer>> {
         if !self.config.analysis.enabled {
@@ -151,8 +163,9 @@ impl<'a> AgentSupportContextBuilder<'a> {
 
         let analysis_provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider> =
             if let Some((provider, _health)) =
-                crate::agent_runtime::analysis_helpers::build_analysis_provider(
+                crate::agent_runtime::analysis_helpers::build_analysis_provider_with_flag(
                     &self.config.ai_provider,
+                    self.analysis_health_flag.clone(),
                 )
             {
                 provider

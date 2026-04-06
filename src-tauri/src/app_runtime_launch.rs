@@ -13,9 +13,9 @@ use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
 use crate::runtime_bridges::RuntimeBridgeSpawner;
 use crate::runtime_state::{
-    AiSessionRuntimeState, AppState, AudioContext, AudioRuntimeState, CaptureContext,
-    ConfigRuntimeState, ConnectionStatus, DetectionRuntimeState, ManagedStateBuilder,
-    SuggestionRuntimeState,
+    AiSessionRuntimeState, AnalysisHealthFlags, AppState, AudioContext, AudioRuntimeState,
+    CaptureContext, ConfigRuntimeState, ConnectionStatus, DetectionRuntimeState,
+    ManagedStateBuilder, SuggestionRuntimeState,
 };
 use crate::scheduler::shared_regime_state::SharedRegimeState;
 #[cfg(feature = "server")]
@@ -333,6 +333,11 @@ impl AppRuntimeLaunchBuilder {
         let llm_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cli_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+        // Analysis provider health flag — shared between the FallbackAnalysisProvider
+        // (written on success/failure) and AppState (read by get_analysis_health IPC).
+        // Starts `true` (optimistic); flipped to `false` on first primary failure.
+        let analysis_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+
         #[cfg(feature = "server")]
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
@@ -406,7 +411,8 @@ impl AppRuntimeLaunchBuilder {
                     cli_connected.clone(),
                 )
                 .with_tray_app_handle(self.app_handle.clone())
-                .with_suggestions_enabled(config.suggestions.enabled);
+                .with_suggestions_enabled(config.suggestions.enabled)
+                .with_analysis_health_flag(analysis_health_flag.clone());
             #[cfg(feature = "server")]
             let builder = builder
                 .with_shared_suggestion_queue(shared_suggestion_queue)
@@ -734,6 +740,15 @@ impl AppRuntimeLaunchBuilder {
             Some(magic_overlay.clone()),
         );
 
+        // Compute analysis_health before `config` is moved into AppState.
+        let analysis_health = if config.analysis.enabled && config.ai_provider.llm_api.is_some() {
+            Some(AnalysisHealthFlags {
+                primary_healthy: analysis_health_flag,
+            })
+        } else {
+            None
+        };
+
         let state_builder = ManagedStateBuilder::new(
             AppState {
                 runtime_handle: handle,
@@ -774,7 +789,7 @@ impl AppRuntimeLaunchBuilder {
                         oneshim_vision::work_classifier::RuleBasedClassifier,
                     )),
                 },
-                analysis_health: None,
+                analysis_health,
             },
             config_runtime_state,
         )

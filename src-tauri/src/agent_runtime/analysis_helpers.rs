@@ -14,6 +14,18 @@ use oneshim_network::analysis_client::AnalysisClient;
 pub fn build_analysis_provider(
     config: &AiProviderConfig,
 ) -> Option<(Arc<dyn AnalysisProvider>, Arc<AtomicBool>)> {
+    build_analysis_provider_with_flag(config, None)
+}
+
+/// Like [`build_analysis_provider`] but accepts a pre-created health flag.
+///
+/// When `external_flag` is `Some`, that flag is wired into the
+/// [`FallbackAnalysisProvider`] so the caller can share the same `Arc<AtomicBool>`
+/// with `AppState` for IPC health queries.
+pub fn build_analysis_provider_with_flag(
+    config: &AiProviderConfig,
+    external_flag: Option<Arc<AtomicBool>>,
+) -> Option<(Arc<dyn AnalysisProvider>, Arc<AtomicBool>)> {
     let llm_api = config.llm_api.as_ref()?;
     let primary: Arc<dyn AnalysisProvider> = Arc::new(AnalysisClient::new(llm_api));
 
@@ -22,7 +34,7 @@ pub fn build_analysis_provider(
         None => Arc::new(NoOpAnalysisProvider),
     };
 
-    let health_flag = Arc::new(AtomicBool::new(true));
+    let health_flag = external_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(true)));
     let provider = Arc::new(FallbackAnalysisProvider::new_with_flag(
         primary,
         fallback,

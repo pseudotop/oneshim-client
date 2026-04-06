@@ -311,6 +311,9 @@ impl ContextAnalyzer {
             accessibility_text: None,
         };
 
+        // Few-shot enrichment is intentionally skipped for event-driven analysis.
+        // Event-triggered analysis is latency-sensitive; the periodic analyze()
+        // path handles personalized prompts via build_with_few_shot().
         let seg_stats = self.segment_stats.read().await;
         let ctx = self.context_assembler.build_with_segment(
             &current,
