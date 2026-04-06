@@ -16,6 +16,7 @@ pub mod conversation_session;
 pub mod credential_source;
 pub mod element_finder;
 pub mod embedding_provider;
+pub mod few_shot_storage;
 pub mod focus_probe;
 pub mod focus_storage;
 pub mod frame_storage;

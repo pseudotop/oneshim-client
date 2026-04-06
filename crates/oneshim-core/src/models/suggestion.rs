@@ -79,3 +79,18 @@ pub enum FeedbackType {
     Rejected,
     Deferred,
 }
+
+/// Suggestion with feedback data, used for few-shot prompt construction.
+/// Distinct from `RelevantHistoryEntry` (RAG-based activity history in oneshim-analysis).
+#[derive(Debug, Clone)]
+pub struct SuggestionHistoryEntry {
+    pub suggestion_id: String,
+    pub suggestion_type: String,
+    pub content: String,
+    pub confidence: f64,
+    pub feedback_type: String,
+    pub regime_label: Option<String>,
+    pub context_app: String,
+    pub context_window: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
