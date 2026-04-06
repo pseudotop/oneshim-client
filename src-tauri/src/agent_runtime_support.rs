@@ -68,6 +68,7 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
     shared_scorer: Option<Arc<tokio::sync::Mutex<oneshim_suggestion::scorer::FeedbackScorer>>>,
     shared_capture_services: Option<Arc<SharedCaptureServices>>,
+    few_shot_storage: Option<Arc<dyn oneshim_core::ports::few_shot_storage::FewShotStorage>>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -85,6 +86,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             shared_suggestion_queue: None,
             shared_scorer: None,
             shared_capture_services: None,
+            few_shot_storage: None,
         }
     }
 
@@ -122,6 +124,14 @@ impl<'a> AgentSupportContextBuilder<'a> {
         services: Arc<SharedCaptureServices>,
     ) -> Self {
         self.shared_capture_services = Some(services);
+        self
+    }
+
+    pub(crate) fn with_few_shot_storage(
+        mut self,
+        storage: Arc<dyn oneshim_core::ports::few_shot_storage::FewShotStorage>,
+    ) -> Self {
+        self.few_shot_storage = Some(storage);
         self
     }
 
@@ -246,6 +256,13 @@ impl<'a> AgentSupportContextBuilder<'a> {
         ));
 
         let context_analyzer = self.build_context_analyzer();
+
+        // Wire few-shot storage into the analyzer for personalized prompts.
+        if let (Some(ref analyzer), Some(ref fs_storage)) =
+            (&context_analyzer, &self.few_shot_storage)
+        {
+            analyzer.set_few_shot_storage(fs_storage.clone()).await;
+        }
 
         // Build SuggestionReceiver when SSE client is available and suggestions enabled.
         // When a shared_suggestion_queue is provided (from SuggestionManager), the receiver

@@ -3,7 +3,7 @@ use oneshim_core::models::analysis::ActivityPattern;
 use oneshim_core::models::event::Event;
 use serde::Serialize;
 
-use crate::prompts::ANALYSIS_SYSTEM_PROMPT;
+use crate::prompts::{FewShotExample, PromptBuilder, ANALYSIS_SYSTEM_PROMPT};
 
 /// Injected PII filter function: takes raw text, returns sanitized text.
 pub type PiiFilter = Box<dyn Fn(&str) -> String + Send + Sync>;
@@ -347,6 +347,42 @@ impl ContextAssembler {
         AnalysisContext {
             user_context_json,
             system_prompt: ANALYSIS_SYSTEM_PROMPT.to_string(),
+        }
+    }
+
+    /// Build analysis context with few-shot examples and optional regime hint.
+    /// Uses PromptBuilder instead of the hardcoded ANALYSIS_SYSTEM_PROMPT.
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_with_few_shot(
+        &self,
+        current: &CurrentActivity,
+        events: &[Event],
+        patterns: &[ActivityPattern],
+        metrics: &SessionMetrics,
+        segment_stats: Option<&SegmentStats>,
+        relevant_history: &[RelevantHistoryEntry],
+        few_shot_examples: &[FewShotExample],
+        regime_hint: Option<&str>,
+    ) -> AnalysisContext {
+        // Build the context JSON payload (reuse existing method)
+        let base = self.build_with_history(
+            current,
+            events,
+            patterns,
+            metrics,
+            segment_stats,
+            relevant_history,
+        );
+
+        // Build enriched system prompt
+        let mut pb = PromptBuilder::new().with_examples(few_shot_examples.to_vec());
+        if let Some(regime) = regime_hint {
+            pb = pb.with_regime(regime);
+        }
+
+        AnalysisContext {
+            user_context_json: base.user_context_json,
+            system_prompt: pb.build(),
         }
     }
 

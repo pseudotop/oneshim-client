@@ -108,6 +108,8 @@ impl AgentRuntimeBundle {
         if let Some(ref shared_scorer) = self.shared_scorer {
             builder = builder.with_shared_scorer(shared_scorer.clone());
         }
+        builder = builder.with_few_shot_storage(Arc::clone(&self.sqlite_storage_concrete)
+            as Arc<dyn oneshim_core::ports::few_shot_storage::FewShotStorage>);
         let support = builder.build().await?;
         let accessibility_extractor = support.accessibility_extractor.clone();
 
