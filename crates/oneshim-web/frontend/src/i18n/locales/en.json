@@ -580,6 +580,7 @@
   "search": {
     "title": "Search",
     "placeholder": "Enter search term...",
+    "semanticPlaceholder": "Describe what you're looking for...",
     "results": "Search Results",
     "noResults": "No results found.",
     "frames": "Frames",
@@ -593,7 +594,14 @@
     "searchHint": "Search by app name, window title, OCR text, or tags",
     "screenshot": "Screenshot",
     "event": "Event",
-    "importance": "Importance"
+    "importance": "Importance",
+    "semantic": "Semantic",
+    "textSearch": "Text",
+    "relevance": "Relevance",
+    "similarity": "Similarity",
+    "timeDecay": "Time decay",
+    "type": "Type",
+    "summary": "Summary"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -614,15 +622,7 @@
     "low": "Low",
     "high": "High",
     "loadError": "Failed to load data",
-    "days": [
-      "Mon",
-      "Tue",
-      "Wed",
-      "Thu",
-      "Fri",
-      "Sat",
-      "Sun"
-    ],
+    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     "activity": "Activity"
   },
   "dateRange": {
@@ -1374,7 +1374,11 @@
     "response_format_label": "Response format JSON",
     "response_format_placeholder": "Optional JSON schema or format hint",
     "invalid_tools_json": "Tool definitions must be a JSON array of tool definitions.",
-    "invalid_response_format_json": "Response format must be valid JSON."
+    "invalid_response_format_json": "Response format must be valid JSON.",
+    "searchSessions": "Search sessions...",
+    "exportMarkdown": "Export as Markdown",
+    "tokensToday": "Today: {{count}} tokens",
+    "renameSession": "Rename"
   },
   "policies": {
     "title": "Execution Policies",

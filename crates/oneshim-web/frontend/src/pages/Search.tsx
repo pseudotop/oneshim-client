@@ -3,11 +3,12 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Search as SearchIcon } from 'lucide-react'
+import { Brain, Clock, FileText, Search as SearchIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { fetchTags, type SearchResult, search } from '../api/client'
+import { fetchSemanticSearch, fetchTags, type SearchResult, search } from '../api/client'
+import type { SemanticSearchResult } from '../api/contracts'
 import { TagBadge } from '../components/TagBadge'
 import { Badge, Button, Card, Input, Spinner } from '../components/ui'
 import { colors, typography } from '../styles/tokens'
@@ -37,6 +38,7 @@ function highlightText(text: string, query: string): JSX.Element {
 }
 
 type SearchType = 'all' | 'frames' | 'events'
+type SearchMode = 'text' | 'semantic'
 
 export default function Search() {
   const { t } = useTranslation()
@@ -46,6 +48,7 @@ export default function Search() {
 
   const [inputValue, setInputValue] = useState(initialQuery)
   const [searchQuery, setSearchQuery] = useState(initialQuery)
+  const [searchMode, setSearchMode] = useState<SearchMode>('text')
   const [searchType, setSearchType] = useState<SearchType>('all')
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>(initialTagIds)
   const [page, setPage] = useState(0)
@@ -56,12 +59,13 @@ export default function Search() {
     queryFn: fetchTags,
   })
 
-  const hasSearchCriteria = searchQuery.length > 0 || selectedTagIds.length > 0
+  const hasSearchCriteria =
+    searchMode === 'text' ? searchQuery.length > 0 || selectedTagIds.length > 0 : searchQuery.length > 0
 
   const {
     data: response,
-    isLoading,
-    error,
+    isLoading: isTextLoading,
+    error: textError,
   } = useQuery({
     queryKey: ['search', searchQuery, searchType, selectedTagIds, page],
     queryFn: () =>
@@ -72,8 +76,21 @@ export default function Search() {
         limit: pageSize,
         offset: page * pageSize,
       }),
-    enabled: hasSearchCriteria,
+    enabled: hasSearchCriteria && searchMode === 'text',
   })
+
+  const {
+    data: semanticResults,
+    isLoading: isSemanticLoading,
+    error: semanticError,
+  } = useQuery({
+    queryKey: ['semantic-search', searchQuery],
+    queryFn: () => fetchSemanticSearch(searchQuery, pageSize),
+    enabled: hasSearchCriteria && searchMode === 'semantic' && searchQuery.length > 0,
+  })
+
+  const isLoading = searchMode === 'text' ? isTextLoading : isSemanticLoading
+  const error = searchMode === 'text' ? textError : semanticError
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -108,14 +125,51 @@ export default function Search() {
       {/* UI note */}
       <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('search.title')}</h1>
 
-      {/* UI note */}
+      {/* Search mode toggle + search form */}
+      <div className="flex items-center gap-3">
+        <div className="flex rounded-lg border border-DEFAULT bg-surface-muted p-0.5">
+          <button
+            type="button"
+            data-testid="mode-text"
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+              searchMode === 'text' ? 'bg-surface text-content shadow-sm' : 'text-content-secondary hover:text-content',
+            )}
+            onClick={() => {
+              setSearchMode('text')
+              setPage(0)
+            }}
+          >
+            <SearchIcon className="h-3.5 w-3.5" />
+            {t('search.textSearch')}
+          </button>
+          <button
+            type="button"
+            data-testid="mode-semantic"
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+              searchMode === 'semantic'
+                ? 'bg-surface text-content shadow-sm'
+                : 'text-content-secondary hover:text-content',
+            )}
+            onClick={() => {
+              setSearchMode('semantic')
+              setPage(0)
+            }}
+          >
+            <Brain className="h-3.5 w-3.5" />
+            {t('search.semantic')}
+          </button>
+        </div>
+      </div>
+
       <form id="section-recent" onSubmit={handleSearch} className="flex gap-2">
         <Input
           data-testid="search-input"
           type="text"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          placeholder={t('search.placeholder')}
+          placeholder={searchMode === 'semantic' ? t('search.semanticPlaceholder') : t('search.placeholder')}
           className="flex-1"
         />
         <Button type="submit" variant="primary" size="lg">
@@ -123,56 +177,56 @@ export default function Search() {
         </Button>
       </form>
 
-      {/* UI note */}
-      <div id="section-tags" className="flex flex-wrap items-center gap-4">
-        {/* UI note */}
-        <div className="flex space-x-2">
-          {(['all', 'frames', 'events'] as SearchType[]).map((type) => (
-            <Button
-              key={type}
-              data-testid={`filter-${type}`}
-              variant={searchType === type ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => handleTypeChange(type)}
-            >
-              {type === 'all' ? t('common.all') : type === 'frames' ? t('search.frames') : t('search.events')}
-            </Button>
-          ))}
-        </div>
+      {/* Type filters + tag filters (text mode only) */}
+      {searchMode === 'text' && (
+        <>
+          <div id="section-tags" className="flex flex-wrap items-center gap-4">
+            <div className="flex space-x-2">
+              {(['all', 'frames', 'events'] as SearchType[]).map((type) => (
+                <Button
+                  key={type}
+                  data-testid={`filter-${type}`}
+                  variant={searchType === type ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => handleTypeChange(type)}
+                >
+                  {type === 'all' ? t('common.all') : type === 'frames' ? t('search.frames') : t('search.events')}
+                </Button>
+              ))}
+            </div>
 
-        {/* UI note */}
-        <div className="h-8 w-px bg-hover" />
+            <div className="h-8 w-px bg-hover" />
 
-        {/* UI note */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-content-secondary text-sm">{t('search.filterByTags')}:</span>
-          {allTags.map((tag) => (
-            <TagBadge
-              key={tag.id}
-              name={tag.name}
-              color={tag.color}
-              size="sm"
-              selected={selectedTagIds.includes(tag.id)}
-              onClick={() => handleTagToggle(tag.id)}
-            />
-          ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-content-secondary text-sm">{t('search.filterByTags')}:</span>
+              {allTags.map((tag) => (
+                <TagBadge
+                  key={tag.id}
+                  name={tag.name}
+                  color={tag.color}
+                  size="sm"
+                  selected={selectedTagIds.includes(tag.id)}
+                  onClick={() => handleTagToggle(tag.id)}
+                />
+              ))}
+              {selectedTagIds.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={handleClearTags}>
+                  {t('search.clearTags')}
+                </Button>
+              )}
+            </div>
+          </div>
+
           {selectedTagIds.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={handleClearTags}>
-              {t('search.clearTags')}
-            </Button>
+            <div className="text-content-secondary text-sm">
+              {t('search.selectedTags')}:{' '}
+              {allTags
+                .filter((tag) => selectedTagIds.includes(tag.id))
+                .map((tag) => tag.name)
+                .join(', ')}
+            </div>
           )}
-        </div>
-      </div>
-
-      {/* UI note */}
-      {selectedTagIds.length > 0 && (
-        <div className="text-content-secondary text-sm">
-          {t('search.selectedTags')}:{' '}
-          {allTags
-            .filter((tag) => selectedTagIds.includes(tag.id))
-            .map((tag) => tag.name)
-            .join(', ')}
-        </div>
+        </>
       )}
 
       {/* UI note */}
@@ -189,9 +243,9 @@ export default function Search() {
         </Card>
       )}
 
-      {response && (
+      {/* Text search results */}
+      {searchMode === 'text' && response && (
         <>
-          {/* UI note */}
           <div className="text-content-secondary">
             {response.query && (
               <>
@@ -202,7 +256,6 @@ export default function Search() {
             {t('search.resultCount')}
           </div>
 
-          {/* UI note */}
           {response.results.length > 0 ? (
             <div className="space-y-3">
               {response.results.map((result) => (
@@ -219,7 +272,6 @@ export default function Search() {
             <div className="py-12 text-center text-content-secondary">{t('search.noResults')}</div>
           )}
 
-          {/* UI note */}
           {response.total > pageSize && (
             <div className="flex items-center justify-center space-x-4">
               <Button
@@ -242,6 +294,27 @@ export default function Search() {
                 {t('common.next')}
               </Button>
             </div>
+          )}
+        </>
+      )}
+
+      {/* Semantic search results */}
+      {searchMode === 'semantic' && semanticResults && (
+        <>
+          <div className="text-content-secondary">
+            "<span className="text-content">{searchQuery}</span>" {t('search.results')}:{' '}
+            <span className="text-brand-text">{semanticResults.length}</span>
+            {t('search.resultCount')}
+          </div>
+
+          {semanticResults.length > 0 ? (
+            <div className="space-y-3">
+              {semanticResults.map((result) => (
+                <SemanticResultCard key={result.segment_id} result={result} />
+              ))}
+            </div>
+          ) : (
+            <div className="py-12 text-center text-content-secondary">{t('search.noResults')}</div>
           )}
         </>
       )}
@@ -315,7 +388,6 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
           </div>
         )}
 
-        {/* UI note */}
         {result.tags && result.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {result.tags.map((tag) => (
@@ -330,6 +402,86 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
             ))}
           </div>
         )}
+      </div>
+    </Card>
+  )
+}
+
+// ── Semantic search result card ────────────────────────────────
+
+interface SemanticResultCardProps {
+  result: SemanticSearchResult
+}
+
+function formatDuration(secs: number): string {
+  if (secs < 60) return `${Math.round(secs)}s`
+  if (secs < 3600) return `${Math.round(secs / 60)}m`
+  const h = Math.floor(secs / 3600)
+  const m = Math.round((secs % 3600) / 60)
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+function scoreColor(score: number): string {
+  if (score >= 0.8) return 'text-semantic-success'
+  if (score >= 0.5) return 'text-semantic-warning'
+  return 'text-content-secondary'
+}
+
+function SemanticResultCard({ result }: SemanticResultCardProps) {
+  const { t } = useTranslation()
+  const scorePercent = Math.round(result.score * 100)
+
+  return (
+    <Card padding="md" className="flex gap-4">
+      {/* Score indicator */}
+      <div className="flex flex-shrink-0 flex-col items-center justify-center gap-1">
+        <span className={cn('text-xl', typography.weight.bold, scoreColor(result.score))}>{scorePercent}%</span>
+        <span className="text-content-tertiary text-xs">{t('search.relevance')}</span>
+      </div>
+
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <Badge color="primary" size="sm">
+            {result.content_type}
+          </Badge>
+          {result.regime_label && (
+            <Badge color="info" size="sm">
+              {result.regime_label}
+            </Badge>
+          )}
+          {result.duration_secs != null && result.duration_secs > 0 && (
+            <span className="flex items-center gap-1 text-content-tertiary text-xs">
+              <Clock className="h-3 w-3" />
+              {formatDuration(result.duration_secs)}
+            </span>
+          )}
+          {result.timestamp && (
+            <span className="text-content-secondary text-sm">{formatDateTime(result.timestamp)}</span>
+          )}
+        </div>
+
+        {result.content_label && (
+          <div className={cn('truncate text-content', typography.weight.medium)}>{result.content_label}</div>
+        )}
+
+        {result.llm_summary && (
+          <div className="mt-1 line-clamp-2 text-content-secondary text-sm">{result.llm_summary}</div>
+        )}
+
+        {!result.llm_summary && result.original_text && (
+          <div className="mt-1 line-clamp-2 text-content-secondary text-sm">{result.original_text}</div>
+        )}
+
+        {/* Score breakdown */}
+        <div className="mt-2 flex items-center gap-3 text-content-tertiary text-xs">
+          <span>
+            {t('search.similarity')}: {Math.round(result.similarity * 100)}%
+          </span>
+          <span>
+            {t('search.timeDecay')}: {result.time_decay.toFixed(2)}
+          </span>
+        </div>
       </div>
     </Card>
   )
