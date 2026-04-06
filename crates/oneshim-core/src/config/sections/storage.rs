@@ -155,6 +155,10 @@ pub struct UpdateConfig {
     pub include_prerelease: bool,
     #[serde(default)]
     pub auto_install: bool,
+    /// Unique per-installation identifier for staged rollout bucketing.
+    /// Auto-generated on first launch if absent.
+    #[serde(default)]
+    pub installation_id: Option<String>,
     #[serde(default = "default_update_require_signature")]
     pub require_signature_verification: bool,
     #[serde(default = "default_update_signature_public_key")]
@@ -173,6 +177,7 @@ impl Default for UpdateConfig {
             channel: UpdateChannel::Stable,
             include_prerelease: false,
             auto_install: false,
+            installation_id: None,
             require_signature_verification: default_update_require_signature(),
             signature_public_key: default_update_signature_public_key(),
             min_allowed_version: None,

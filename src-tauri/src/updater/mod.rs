@@ -161,6 +161,19 @@ impl Updater {
         self.enforce_version_floor(&latest)?;
 
         if latest > current {
+            let latest_str = latest.to_string();
+
+            // Staged rollout gate: check if this installation is in the rollout bucket.
+            let rollout_percent = parse_rollout_percent(&release.body);
+            if let Some(ref installation_id) = self.config.installation_id {
+                if !is_eligible_for_rollout(installation_id, &latest_str, rollout_percent) {
+                    tracing::debug!(
+                        "Update v{latest_str} available but device not in rollout bucket ({rollout_percent}%)"
+                    );
+                    return Ok(UpdateCheckResult::UpToDate { current });
+                }
+            }
+
             let (download_url, asset_size) = self.find_platform_asset(&release)?;
 
             Ok(UpdateCheckResult::Available {
@@ -241,6 +254,46 @@ impl Updater {
     }
 }
 
+/// Deterministic FNV-1a hash for rollout bucketing.
+/// Stable across Rust versions (unlike `DefaultHasher`).
+fn fnv1a_hash(data: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &byte in data {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Check if this installation is eligible for a staged rollout.
+fn is_eligible_for_rollout(installation_id: &str, version: &str, rollout_percent: u8) -> bool {
+    if rollout_percent >= 100 {
+        return true;
+    }
+    if rollout_percent == 0 {
+        return false;
+    }
+    let mut data = installation_id.as_bytes().to_vec();
+    data.extend_from_slice(version.as_bytes());
+    let hash = fnv1a_hash(&data);
+    (hash % 100) < rollout_percent as u64
+}
+
+/// Parse rollout percentage from GitHub release body.
+/// Looks for `<!-- rollout:N -->` comment. Returns 100 if absent or invalid.
+fn parse_rollout_percent(body: &Option<String>) -> u8 {
+    let Some(body) = body else { return 100 };
+    if let Some(start) = body.find("<!-- rollout:") {
+        let after = &body[start + 13..];
+        if let Some(end) = after.find("-->") {
+            if let Ok(percent) = after[..end].trim().parse::<u8>() {
+                return percent.min(100);
+            }
+        }
+    }
+    100
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,6 +309,7 @@ mod tests {
             channel: UpdateChannel::default(),
             include_prerelease: false,
             auto_install: false,
+            installation_id: None,
             require_signature_verification: false,
             signature_public_key: String::new(),
             min_allowed_version: None,
@@ -1245,5 +1299,63 @@ mod tests {
                 panic!("unhandled platform: {}-{}", os, arch);
             }
         }
+    }
+
+    // -------------------------------------------------------------------
+    // Task 7: Staged Rollout Tests (FNV-1a bucketing + rollout parsing)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn fnv1a_hash_deterministic() {
+        let h1 = fnv1a_hash(b"test-device-v1.0.0");
+        let h2 = fnv1a_hash(b"test-device-v1.0.0");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn fnv1a_hash_different_inputs() {
+        let h1 = fnv1a_hash(b"device-a-v1.0.0");
+        let h2 = fnv1a_hash(b"device-b-v1.0.0");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn rollout_100_always_eligible() {
+        assert!(is_eligible_for_rollout("any-device", "v1.0.0", 100));
+    }
+
+    #[test]
+    fn rollout_0_never_eligible() {
+        assert!(!is_eligible_for_rollout("any-device", "v1.0.0", 0));
+    }
+
+    #[test]
+    fn rollout_deterministic() {
+        let r1 = is_eligible_for_rollout("device-123", "v2.0.0", 50);
+        let r2 = is_eligible_for_rollout("device-123", "v2.0.0", 50);
+        assert_eq!(r1, r2);
+    }
+
+    #[test]
+    fn parse_rollout_present() {
+        let body = Some("<!-- rollout:25 -->\n## Changes".to_string());
+        assert_eq!(parse_rollout_percent(&body), 25);
+    }
+
+    #[test]
+    fn parse_rollout_absent() {
+        let body = Some("## Changes\n- Fix bugs".to_string());
+        assert_eq!(parse_rollout_percent(&body), 100);
+    }
+
+    #[test]
+    fn parse_rollout_none() {
+        assert_eq!(parse_rollout_percent(&None), 100);
+    }
+
+    #[test]
+    fn parse_rollout_caps_at_100() {
+        let body = Some("<!-- rollout:150 -->".to_string());
+        assert_eq!(parse_rollout_percent(&body), 100);
     }
 }

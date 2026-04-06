@@ -52,7 +52,7 @@ impl AppRuntimeLaunchBuilder {
             db_path,
             data_dir_path,
             config_manager,
-            config,
+            mut config,
             runtime_handle: handle,
             background_runtime,
             web_port,
@@ -61,6 +61,18 @@ impl AppRuntimeLaunchBuilder {
             #[cfg(not(feature = "server"))]
                 integration_runtime_status: _integration_runtime_status,
         } = self.bootstrap;
+
+        // Auto-generate installation ID for staged rollout bucketing.
+        if config.update.installation_id.is_none() {
+            let new_id = uuid::Uuid::new_v4().to_string();
+            if let Err(e) = config_manager.update_with(|c| {
+                c.update.installation_id = Some(new_id.clone());
+                Ok(())
+            }) {
+                tracing::warn!("Failed to persist installation_id: {e}");
+            }
+            config.update.installation_id = Some(new_id);
+        }
 
         #[cfg(feature = "server")]
         let server_context = ServerLaunchContext::from_bootstrap(server);
