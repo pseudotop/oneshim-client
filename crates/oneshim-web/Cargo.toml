@@ -13,7 +13,6 @@ authors.workspace = true
 # 내부 크레이트
 oneshim-core = { workspace = true }
 oneshim-api-contracts = { workspace = true }
-oneshim-analysis = { workspace = true }
 
 # 비동기 런타임
 tokio = { workspace = true }

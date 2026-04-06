@@ -8,13 +8,12 @@ use axum::Json;
 use oneshim_api_contracts::playbooks::{
     CoachingTemplateDto, CoachingTemplateListDto, PresetSummaryDto, PresetSummaryListDto,
 };
+use oneshim_core::models::coaching_template::TEMPLATES;
 use oneshim_core::models::intent::builtin_presets;
 
 /// GET /api/playbooks/coaching — list all coaching templates.
 pub async fn list_coaching_templates() -> Json<CoachingTemplateListDto> {
-    let registry = oneshim_analysis::CoachingTemplateRegistry::new();
-    let templates: Vec<CoachingTemplateDto> = registry
-        .all_templates()
+    let templates: Vec<CoachingTemplateDto> = TEMPLATES
         .iter()
         .map(|t| CoachingTemplateDto {
             profile: format!("{:?}", t.profile),
