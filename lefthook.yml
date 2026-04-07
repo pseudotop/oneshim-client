@@ -95,7 +95,7 @@ pre-commit:
         fi
     web-contracts:
       glob: "crates/oneshim-web/src/{routes,handlers/**}.rs"
-      run: ./scripts/verify-web-contract-boundary.sh && ./scripts/verify-http-interface-manifest.sh
+      run: ./scripts/verify-web-contract-boundary.sh && ./scripts/verify-http-interface-manifest.sh && ./scripts/verify-http-openapi-sync.sh
     cargo-fmt:
       glob: "*.rs"
       run: cargo fmt --check
