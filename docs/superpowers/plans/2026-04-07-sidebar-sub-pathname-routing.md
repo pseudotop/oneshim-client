@@ -10,6 +10,25 @@
 
 **Spec:** `docs/superpowers/specs/2026-04-07-sidebar-sub-pathname-routing-design.md`
 
+### Critical Design Decisions (rev.2 review)
+
+1. **Route ordering**: routeTree array MUST place leaf routes (no children) BEFORE parent routes with children. Dashboard (`/`) with `/*` MUST be last in the array to avoid catch-all consuming other routes. RouteRenderer sorts automatically: leaves first, then parents, root `/` last.
+
+2. **Shared state pattern**: Use `useOutletContext<T>()` (react-router-dom v6 built-in) for Layout → child data passing. Layouts call `<Outlet context={sharedData} />`, children call `useOutletContext<T>()`. No re-querying.
+
+3. **Settings complexity**: AiAutomationTab has 49 props including provider surfaces, endpoint probes, model catalogs. SettingsFormContext must include ALL of these — it wraps both `useSettingsForm()` AND `useSettingsData()` return values. Tabs access the full combined context.
+
+4. **Dashboard sub-route mapping**:
+   - `/overview` — section-overview (title, connection, realtime metrics) + TodaySummary + StatCards
+   - `/monitoring` — section-metrics (CPU/memory chart) + section-processes (process list) + AppUsageChart
+   - `/insights` — section-heatmap + section-focus (FocusWidget) + section-updates (UpdatePanel)
+
+5. **Onboarding**: NOT in routeTree. Rendered conditionally outside AppShell before routes load. No changes needed.
+
+6. **DashboardDay**: Moves from `/dashboard/day` to `/day`. Affects: App.tsx, ActivityBar.tsx, SidePanel.tsx, dashboard-day.spec.ts, recalibration.spec.ts, api/standalone.ts.
+
+7. **CommandPalette**: Keeps hardcoded parent paths. Works via defaultChild redirects. verify-route-integrity.sh validates all CommandPalette paths have matching routeTree entries with defaultChild.
+
 ---
 
 ## File Structure
@@ -169,6 +188,16 @@ function validateRouteTree() {
 export default function RouteRenderer() {
   validateRouteTree()
 
+  // Sort: leaf routes first, parent routes after, root "/" last.
+  // Prevents "/" catch-all from consuming other routes.
+  const sorted = [...routeTree].sort((a, b) => {
+    if (a.path === '/') return 1
+    if (b.path === '/') return -1
+    if (a.children && !b.children) return 1
+    if (!a.children && b.children) return -1
+    return 0
+  })
+
   return (
     <Suspense
       fallback={
@@ -178,7 +207,7 @@ export default function RouteRenderer() {
       }
     >
       <Routes>
-        {routeTree.map((node) =>
+        {sorted.map((node) =>
           node.children ? (
             <Route key={node.path} path={`${node.path}/*`} element={<node.component />}>
               {node.defaultChild && (
