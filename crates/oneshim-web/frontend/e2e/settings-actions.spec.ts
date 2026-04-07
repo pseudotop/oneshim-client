@@ -4,7 +4,7 @@ import { expect, test } from './helpers/test'
 const notificationEnabledName = i18nRegex('settings.notifEnabled')
 const notificationIdleName = i18nRegex('settings.notifIdle')
 const languageSelectorName = i18nRegex('settings.language')
-const prereleaseToggleName = i18nRegex('settings.updateIncludePrerelease')
+const updateChannelName = i18nRegex('settings.updateChannel', ['Update channel'])
 
 test.describe('Settings Actions', () => {
   test('P117: notification toggles exist', async ({ page }) => {
@@ -31,8 +31,8 @@ test.describe('Settings Actions', () => {
     await expect(page.getByLabel(languageSelectorName)).toBeVisible()
   })
 
-  test('P121: prerelease toggle exists', async ({ page }) => {
+  test('P121: update channel selector exists', async ({ page }) => {
     await page.goto('/settings?tab=general')
-    await expect(page.getByRole('checkbox', { name: prereleaseToggleName })).toBeVisible()
+    await expect(page.locator('#update-channel')).toBeVisible()
   })
 })

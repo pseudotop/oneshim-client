@@ -122,10 +122,10 @@ test.describe('Dashboard', () => {
   })
 
   test('should display stat cards', async ({ page }) => {
-    await expect(page.getByText(activeTimeName)).toBeVisible()
-    await expect(page.getByText(idleTimeName)).toBeVisible()
-    await expect(page.getByText(capturesName).first()).toBeVisible()
-    await expect(page.getByText(eventsName).first()).toBeVisible()
+    await expect(page.getByTestId('metric-card-active-time')).toBeVisible()
+    await expect(page.getByTestId('metric-card-idle-time')).toBeVisible()
+    await expect(page.getByTestId('metric-card-captures')).toBeVisible()
+    await expect(page.getByTestId('metric-card-events')).toBeVisible()
   })
 
   test('should display realtime monitoring section', async ({ page }) => {
