@@ -668,8 +668,10 @@ mod tests {
         let occupied_port = reserved_listener.local_addr().unwrap().port();
 
         let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
-        let mut config = WebConfig::default();
-        config.port = occupied_port; // force the server to hit the occupied port
+        let config = WebConfig {
+            port: occupied_port,
+            ..Default::default()
+        };
         let bound_port_state = Arc::new(AtomicU16::new(config.port));
         let (bound_port_tx, bound_port_rx) = oneshot::channel();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
