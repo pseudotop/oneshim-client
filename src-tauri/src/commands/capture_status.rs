@@ -176,6 +176,10 @@ pub async fn open_devtools(app: AppHandle, label: Option<String>) -> Result<(), 
             window.open_devtools();
         }
     }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = (app, label);
+    }
     Ok(())
 }
 
