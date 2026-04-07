@@ -19,3 +19,14 @@ pub struct UpdateTagRequest {
     pub name: String,
     pub color: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct BatchTagRequest {
+    pub frame_ids: Vec<i64>,
+    pub tag_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchTagResponse {
+    pub tagged_count: u32,
+}

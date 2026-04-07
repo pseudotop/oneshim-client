@@ -382,6 +382,7 @@ impl ApiClient for HttpApiClient {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::error::NetworkError;

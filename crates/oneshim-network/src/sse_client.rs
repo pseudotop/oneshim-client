@@ -303,6 +303,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn last_event_id_initially_none() {
         let tm = TokenManager::new("http://localhost");
         let client = SseStreamClient::new("http://localhost", Arc::new(tm), 30);

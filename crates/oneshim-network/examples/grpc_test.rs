@@ -1,5 +1,6 @@
 //!   cargo run -p oneshim-network --example grpc_test --features grpc
 //!   NO_EMOJI=1 cargo run -p oneshim-network --example grpc_test --features grpc
+#![allow(deprecated)] // Example uses simple constructors for brevity
 
 use std::collections::HashMap;
 use std::sync::Arc;

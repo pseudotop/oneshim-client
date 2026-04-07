@@ -1,4 +1,5 @@
 #![cfg(feature = "server")]
+#![allow(deprecated)]
 
 use oneshim_core::config::AppConfig;
 use oneshim_monitor::system::SysInfoMonitor;

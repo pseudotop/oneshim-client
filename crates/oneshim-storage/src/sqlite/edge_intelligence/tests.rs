@@ -3,7 +3,7 @@ use chrono::Utc;
 use oneshim_core::models::work_session::{
     AppCategory, FocusMetrics, Interruption, LocalSuggestion,
 };
-use oneshim_core::ports::web_storage::{DigestStorage, FocusQueryStorage};
+use oneshim_core::ports::web_storage::DigestStorage;
 
 use super::super::SqliteStorage;
 

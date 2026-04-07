@@ -2,9 +2,10 @@
 //!
 //! Run with: `cargo bench -p oneshim-analysis -- coaching`
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use oneshim_analysis::coaching_engine::adaptive_scorer::{AdaptiveScorer, CoachingFeatures};
 use oneshim_analysis::coaching_engine::tunable_params::TunableParams;
+use std::hint::black_box;
 
 fn make_features() -> CoachingFeatures {
     CoachingFeatures::extract(14, 3600, 5, 0.6, 0.5, false, 2, 1800)

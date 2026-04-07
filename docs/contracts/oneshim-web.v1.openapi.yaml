@@ -5,8 +5,8 @@ info:
   description: |
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.
     This snapshot is transport-level and contract-focused.
-  x-oneshim-document-version: 3
-  x-oneshim-updated-at: "2026-03-20"
+  x-oneshim-document-version: 5
+  x-oneshim-updated-at: "2026-04-07"
   x-oneshim-routes-file: "crates/oneshim-web/src/routes.rs"
   x-oneshim-contracts-crate: "crates/oneshim-api-contracts"
 servers:
@@ -236,6 +236,110 @@ paths:
         - automation
       operationId: automation_post_api_automation_execute_scene_action
       summary: "POST /api/automation/execute-scene-action"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/automation/execution-policies":
+    get:
+      tags:
+        - automation
+      operationId: automation_get_api_automation_execution_policies
+      summary: "GET /api/automation/execution-policies"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - automation
+      operationId: automation_post_api_automation_execution_policies
+      summary: "POST /api/automation/execution-policies"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/automation/execution-policies/{id}":
+    put:
+      tags:
+        - automation
+      operationId: automation_put_api_automation_execution_policies_id
+      summary: "PUT /api/automation/execution-policies/{id}"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - automation
+      operationId: automation_delete_api_automation_execution_policies_id
+      summary: "DELETE /api/automation/execution-policies/{id}"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: false
         content:
@@ -789,12 +893,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/coaching/habits":
+    get:
+      tags:
+        - coaching
+      operationId: coaching_get_api_coaching_habits
+      summary: "GET /api/coaching/habits"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/coaching/history":
     get:
       tags:
         - coaching
       operationId: coaching_get_api_coaching_history
       summary: "GET /api/coaching/history"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/coaching/stats/today":
+    get:
+      tags:
+        - coaching
+      operationId: coaching_get_api_coaching_stats_today
+      summary: "GET /api/coaching/stats/today"
       responses:
         "200":
           description: Success
@@ -921,6 +1063,25 @@ paths:
         - daily_digest
       operationId: daily_digest_get_api_digests_daily
       summary: "GET /api/digests/daily"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/digests/daily/export":
+    get:
+      tags:
+        - daily_digest
+      operationId: daily_digest_get_api_digests_daily_export
+      summary: "GET /api/digests/daily/export"
       responses:
         "200":
           description: Success
@@ -1180,6 +1341,122 @@ paths:
         - frames
       operationId: frames_get_api_frames
       summary: "GET /api/frames"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/frames/batch-tags":
+    post:
+      tags:
+        - frames
+      operationId: frames_post_api_frames_batch_tags
+      summary: "POST /api/frames/batch-tags"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/frames/{frame_id}/annotations":
+    get:
+      tags:
+        - frames
+      operationId: frames_get_api_frames_frame_id_annotations
+      summary: "GET /api/frames/{frame_id}/annotations"
+      parameters:
+        - name: frame_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - frames
+      operationId: frames_post_api_frames_frame_id_annotations
+      summary: "POST /api/frames/{frame_id}/annotations"
+      parameters:
+        - name: frame_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/frames/{frame_id}/annotations/{annotation_id}":
+    delete:
+      tags:
+        - frames
+      operationId: frames_delete_api_frames_frame_id_annotations_annotation_id
+      summary: "DELETE /api/frames/{frame_id}/annotations/{annotation_id}"
+      parameters:
+        - name: frame_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: annotation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
       responses:
         "200":
           description: Success
@@ -1640,6 +1917,44 @@ paths:
         - onboarding
       operationId: onboarding_get_api_onboarding_quickstart
       summary: "GET /api/onboarding/quickstart"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/playbooks/coaching":
+    get:
+      tags:
+        - playbooks
+      operationId: playbooks_get_api_playbooks_coaching
+      summary: "GET /api/playbooks/coaching"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/playbooks/presets":
+    get:
+      tags:
+        - playbooks
+      operationId: playbooks_get_api_playbooks_presets
+      summary: "GET /api/playbooks/presets"
       responses:
         "200":
           description: Success
@@ -2161,6 +2476,50 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/support/bug-report":
+    post:
+      tags:
+        - support
+      operationId: support_post_api_support_bug_report
+      summary: "POST /api/support/bug-report"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/support/bug-report/latest":
+    get:
+      tags:
+        - support
+      operationId: support_get_api_support_bug_report_latest
+      summary: "GET /api/support/bug-report/latest"
       responses:
         "200":
           description: Success

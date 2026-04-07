@@ -1,7 +1,7 @@
 {
   "schema_version": "http.interface.manifest.v1",
-  "document_version": 4,
-  "updated_at": "2026-04-04",
+  "document_version": 5,
+  "updated_at": "2026-04-07",
   "source": {
     "routes_file": "crates/oneshim-web/src/routes.rs",
     "contracts_crate": "crates/oneshim-api-contracts"
@@ -61,6 +61,22 @@
         {
           "method": "GET",
           "path": "/api/frames/{id}/image"
+        },
+        {
+          "method": "GET",
+          "path": "/api/frames/{frame_id}/annotations"
+        },
+        {
+          "method": "POST",
+          "path": "/api/frames/{frame_id}/annotations"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/frames/{frame_id}/annotations/{annotation_id}"
+        },
+        {
+          "method": "POST",
+          "path": "/api/frames/batch-tags"
         }
       ]
     },
@@ -426,6 +442,22 @@
         {
           "method": "GET",
           "path": "/api/automation/scene/calibration"
+        },
+        {
+          "method": "GET",
+          "path": "/api/automation/execution-policies"
+        },
+        {
+          "method": "POST",
+          "path": "/api/automation/execution-policies"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/automation/execution-policies/{id}"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/automation/execution-policies/{id}"
         }
       ]
     },
@@ -550,6 +582,10 @@
         {
           "method": "GET",
           "path": "/api/digests/daily/today"
+        },
+        {
+          "method": "GET",
+          "path": "/api/digests/daily/export"
         }
       ]
     },
@@ -597,6 +633,27 @@
         {
           "method": "PUT",
           "path": "/api/coaching/goals"
+        },
+        {
+          "method": "GET",
+          "path": "/api/coaching/stats/today"
+        },
+        {
+          "method": "GET",
+          "path": "/api/coaching/habits"
+        }
+      ]
+    },
+    {
+      "module": "playbooks",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/playbooks/coaching"
+        },
+        {
+          "method": "GET",
+          "path": "/api/playbooks/presets"
         }
       ]
     },

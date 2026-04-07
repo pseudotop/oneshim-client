@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.31-rc.1] - 2026-04-07
+
+### Fixed
+
+- Replace hardcoded Tailwind classes with design tokens across 21 frontend
+  files, resolving all 6 design-token lint violation categories (colors,
+  typography, transitions, spacing, icon sizes).
+
+- Repair 3 broken E2E tests: P151 wrong section selector, P121 removed
+  prerelease checkbox, dashboard stat cards text matching.
+
 ## [0.4.30] - 2026-04-07
 
 ### Added

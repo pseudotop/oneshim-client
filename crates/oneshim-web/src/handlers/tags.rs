@@ -1,22 +1,12 @@
 use axum::extract::{Path, State};
 use axum::Json;
-use oneshim_api_contracts::tags::{CreateTagRequest, TagResponse, UpdateTagRequest};
-use serde::{Deserialize, Serialize};
+use oneshim_api_contracts::tags::{
+    BatchTagRequest, BatchTagResponse, CreateTagRequest, TagResponse, UpdateTagRequest,
+};
 
 use crate::error::ApiError;
 use crate::services::tags_service::{TagsCommandService, TagsQueryService};
 use crate::services::web_contexts::StorageWebContext;
-
-#[derive(Debug, Deserialize)]
-pub struct BatchTagRequest {
-    pub frame_ids: Vec<i64>,
-    pub tag_id: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BatchTagResponse {
-    pub tagged_count: u32,
-}
 
 /// GET /api/tags
 pub async fn list_tags(
