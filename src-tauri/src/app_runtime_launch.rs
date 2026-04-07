@@ -171,6 +171,7 @@ impl AppRuntimeLaunchBuilder {
             use oneshim_network::auth::TokenManager;
             use oneshim_network::http_client::HttpApiClient;
 
+            #[allow(deprecated)] // Fallback to non-TLS TokenManager when TLS config unavailable
             let token_manager = Arc::new(
                 TokenManager::new_with_tls(
                     &config.server.base_url,
