@@ -18,6 +18,7 @@ use tracing::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // Variants constructed per-platform; serialized to frontend via serde
 pub enum DesktopPermissionState {
     Granted,
     NeedsAttention,

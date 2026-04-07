@@ -1,7 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use oneshim_core::models::suggestion::{Priority, Suggestion, SuggestionSource, SuggestionType};
 use oneshim_suggestion::queue::SuggestionQueue;
 use oneshim_suggestion::scorer::FeedbackScorer;
+use std::hint::black_box;
 
 fn make_suggestion(id: &str, priority: Priority, content: &str) -> Suggestion {
     Suggestion {
