@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface TypeCount {
@@ -100,7 +101,7 @@ export function SuggestionStats() {
   return (
     <div className="flex flex-col gap-3 p-3">
       <div className="text-center">
-        <div className="text-2xl font-bold text-brand">{stats.acceptance_rate}%</div>
+        <div className={cn('text-2xl text-brand', typography.weight.bold)}>{stats.acceptance_rate}%</div>
         <div className="text-[10px] text-content-secondary">
           {t('suggestionStats.acceptanceRate', 'Acceptance Rate')}
         </div>
@@ -114,7 +115,7 @@ export function SuggestionStats() {
             <span className="text-[10px] text-content-secondary w-14">{label}</span>
             <div className="flex-1 h-3 rounded-full bg-content-inverse/5 overflow-hidden">
               <div
-                className={cn('h-full rounded-full transition-all', barColors[key])}
+                className={cn('h-full rounded-full', motion.all, barColors[key])}
                 style={{ width: `${stats.total > 0 ? (count / stats.total) * 100 : 0}%` }}
               />
             </div>
@@ -126,7 +127,7 @@ export function SuggestionStats() {
       {/* Type Distribution */}
       {stats.by_type.length > 0 && (
         <>
-          <div className="text-[10px] text-content-secondary font-medium pt-1">
+          <div className={cn('text-[10px] text-content-secondary pt-1', typography.weight.medium)}>
             {t('suggestionStats.typeDistribution', 'Type Distribution')}
           </div>
           <div className="flex flex-col gap-1">
@@ -139,7 +140,7 @@ export function SuggestionStats() {
                   </span>
                   <div className="flex-1 h-2.5 rounded-full bg-content-inverse/5 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-brand/60 transition-all"
+                      className={cn('h-full rounded-full bg-brand/60', motion.all)}
                       style={{ width: `${maxCount > 0 ? (count / maxCount) * 100 : 0}%` }}
                     />
                   </div>
@@ -154,7 +155,7 @@ export function SuggestionStats() {
       {/* Source Quality */}
       {stats.by_source.length > 0 && (
         <>
-          <div className="text-[10px] text-content-secondary font-medium pt-1">
+          <div className={cn('text-[10px] text-content-secondary pt-1', typography.weight.medium)}>
             {t('suggestionStats.sourceQuality', 'Source Quality')}
           </div>
           <div className="flex flex-col gap-1">
@@ -168,7 +169,8 @@ export function SuggestionStats() {
                 </span>
                 <span
                   className={cn(
-                    'text-[10px] font-medium w-12 text-right',
+                    'text-[10px] w-12 text-right',
+                    typography.weight.medium,
                     acceptance_rate >= 50 ? 'text-semantic-success' : 'text-content-secondary',
                   )}
                 >
@@ -186,7 +188,7 @@ export function SuggestionStats() {
           const maxTotal = Math.max(...dailyTrends.map((d) => d.total), 1)
           return (
             <>
-              <div className="text-[10px] text-content-secondary font-medium pt-1">
+              <div className={cn('text-[10px] text-content-secondary pt-1', typography.weight.medium)}>
                 {t('suggestionStats.dailyTrends', 'Daily Trends (7d)')}
               </div>
               <div className="flex flex-col gap-1">
@@ -195,11 +197,11 @@ export function SuggestionStats() {
                     <span className="text-[10px] text-content-secondary w-14 tabular-nums">{day.slice(5)}</span>
                     <div className="flex-1 h-3 rounded-full bg-content-inverse/5 overflow-hidden relative">
                       <div
-                        className="absolute inset-y-0 left-0 rounded-full bg-brand/30 transition-all"
+                        className={cn('absolute inset-y-0 left-0 rounded-full bg-brand/30', motion.all)}
                         style={{ width: `${(total / maxTotal) * 100}%` }}
                       />
                       <div
-                        className="absolute inset-y-0 left-0 rounded-full bg-brand transition-all"
+                        className={cn('absolute inset-y-0 left-0 rounded-full bg-brand', motion.all)}
                         style={{ width: `${(acted / maxTotal) * 100}%` }}
                       />
                     </div>

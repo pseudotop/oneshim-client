@@ -87,16 +87,16 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
   return (
     <div className="fixed inset-0 z-overlay flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-content-inverse/30 backdrop-blur-sm" />
 
       {/* Modal */}
-      <div className="relative w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-content-inverse/10 bg-surface-sunken/95 p-5 shadow-2xl backdrop-blur-md">
+      <div className="relative w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-content-inverse/10 bg-surface-sunken/95 p-6 shadow-2xl backdrop-blur-md">
         {/* Header */}
         <div className="mb-3 flex items-center justify-between">
           <h3 className={cn(typography.h4, 'text-content')}>
             {t('automation.confirmTitle', 'Automation Confirmation')}
           </h3>
-          <span className={cn('rounded-full px-2 py-0.5 font-semibold text-[10px]', badgeColor)}>
+          <span className={cn('rounded-full px-2 py-0.5 text-[10px]', typography.weight.semibold, badgeColor)}>
             {confirmation.audit_level}
           </span>
         </div>
@@ -114,7 +114,7 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
               <span className={cn(typography.caption, 'shrink-0 pt-0.5 text-content-tertiary')}>
                 {t('automation.confirmArgs', 'Args')}
               </span>
-              <code className="break-all font-mono text-[11px] text-content-secondary">
+              <code className={cn('break-all text-[11px] text-content-secondary', typography.family.mono)}>
                 {confirmation.args.map(sanitizeArg).join(' ')}
               </code>
             </div>
@@ -143,7 +143,8 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
               disabled={submitting}
               onClick={() => void handleSubmit(false)}
               className={cn(
-                'rounded-lg px-4 py-1.5 font-medium text-xs',
+                'rounded-lg px-4 py-1.5 text-xs',
+                typography.weight.medium,
                 motion.colors,
                 'bg-semantic-error/15 text-semantic-error hover:bg-semantic-error/25',
                 'disabled:cursor-not-allowed disabled:opacity-50',
@@ -156,7 +157,8 @@ export function AutomationConfirmModal({ confirmation, onDismiss }: AutomationCo
               disabled={submitting}
               onClick={() => void handleSubmit(true)}
               className={cn(
-                'rounded-lg px-4 py-1.5 font-medium text-xs',
+                'rounded-lg px-4 py-1.5 text-xs',
+                typography.weight.medium,
                 motion.colors,
                 'bg-semantic-success/15 text-semantic-success hover:bg-semantic-success/25',
                 'disabled:cursor-not-allowed disabled:opacity-50',

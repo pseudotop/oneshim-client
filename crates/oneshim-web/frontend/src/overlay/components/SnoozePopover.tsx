@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface SnoozeOption {
@@ -43,7 +44,10 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
         <button
           key={opt.i18nKey}
           type="button"
-          className="w-full text-left px-3 py-1.5 text-xs text-content-primary rounded hover:bg-content-inverse/10 transition-colors"
+          className={cn(
+            'w-full text-left px-3 py-1.5 text-xs text-content-primary rounded hover:bg-content-inverse/10',
+            motion.colors,
+          )}
           onClick={() => onSelect(opt.minutes === 0 ? minutesToTomorrow9AM() : opt.minutes)}
         >
           {t(opt.i18nKey, opt.fallback)}
@@ -51,7 +55,10 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
       ))}
       <button
         type="button"
-        className="w-full text-left px-3 py-1.5 text-xs text-content-secondary rounded hover:bg-content-inverse/10 transition-colors mt-0.5 border-t border-border-default"
+        className={cn(
+          'w-full text-left px-3 py-1.5 text-xs text-content-secondary rounded hover:bg-content-inverse/10 mt-0.5 border-t border-border-default',
+          motion.colors,
+        )}
         onClick={onCancel}
       >
         {t('suggestions.snoozeCancel', 'Cancel')}

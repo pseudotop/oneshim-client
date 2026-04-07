@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchUpdateStatus, postUpdateAction, type UpdateAction, type UpdateStatus } from '../api/client'
 import { useUpdateStream } from '../hooks/useUpdateStream'
-import { typography } from '../styles/tokens'
+import { motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { Badge, Button, Card, CardTitle, Spinner } from './ui'
 
@@ -179,7 +179,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
         <div className="mt-3 space-y-1">
           <div className="h-2 w-full rounded-full bg-surface-secondary">
             <div
-              className="h-full rounded-full bg-brand-text transition-all duration-300"
+              className={cn('h-full rounded-full bg-brand-text', motion.all)}
               style={{ width: `${Math.min(status.download_progress.percent, 100)}%` }}
             />
           </div>

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { AppSettings, CoachingSettings, ProfileConfig, TimeRange } from '../../api/contracts'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '../../components/ui'
 import { useGoalProgress, useUpdateGoals } from '../../hooks/useCoaching'
-import { colors, radius, typography } from '../../styles/tokens'
+import { colors, motion, radius, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import ToggleRow from './ToggleRow'
 
@@ -106,7 +106,8 @@ export default function CoachingSettingsTab({ formData, onCoachingChange }: Coac
                   g.target_minutes > 0
                     ? Math.min(100, Math.round(((g.current_minutes ?? 0) / g.target_minutes) * 100))
                     : 0
-                const barColor = percent >= 100 ? 'bg-green-500' : percent >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                const barColor =
+                  percent >= 100 ? 'bg-semantic-success' : percent >= 50 ? 'bg-semantic-warning' : 'bg-semantic-error'
 
                 return (
                   <div key={g.regime_label} className="flex items-center gap-3">
@@ -114,7 +115,7 @@ export default function CoachingSettingsTab({ formData, onCoachingChange }: Coac
                     <div className="flex-1">
                       <div className="h-2 w-full rounded-full bg-surface-elevated">
                         <div
-                          className={`h-2 rounded-full transition-all ${barColor}`}
+                          className={cn('h-2 rounded-full', motion.all, barColor)}
                           style={{ width: `${percent}%` }}
                         />
                       </div>

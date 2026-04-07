@@ -88,12 +88,12 @@ function CoachingCard({ template }: CoachingCardProps) {
           >
             {expanded ? (
               <>
-                <ChevronUp className="h-3 w-3" aria-hidden="true" />
+                <ChevronUp className={iconSize.xs} aria-hidden="true" />
                 {t('common.less', 'Show less')}
               </>
             ) : (
               <>
-                <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                <ChevronDown className={iconSize.xs} aria-hidden="true" />
                 {t('common.more')}
               </>
             )}
@@ -213,7 +213,8 @@ export default function Playbooks() {
 
   const tabClass = (active: boolean) =>
     cn(
-      'px-4 py-2 text-sm font-medium rounded-t transition-colors',
+      'px-4 py-2 text-sm rounded-t',
+      typography.weight.medium,
       motion.colors,
       active
         ? 'bg-surface-elevated text-content-strong border-b-2 border-brand-signal'

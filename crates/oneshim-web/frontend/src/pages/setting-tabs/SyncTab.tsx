@@ -85,7 +85,7 @@ export default function SyncTab() {
         <h2 className={cn(typography.h2, colors.text.primary)}>{t('syncTab.title')}</h2>
         <div className={cn('rounded-lg border p-4', colors.surface.muted)}>
           <p className={cn('text-sm', colors.text.secondary)}>{t('syncTab.notEnabled')}</p>
-          <ol className={cn('mt-2 list-decimal pl-5 text-sm space-y-1', colors.text.tertiary)}>
+          <ol className={cn('mt-2 list-decimal pl-6 text-sm space-y-1', colors.text.tertiary)}>
             <li>
               {t('syncTab.step1')} <code className={cn('rounded px-1', 'bg-surface-muted')}>sync.enabled = true</code>{' '}
               {t('syncTab.step1Suffix')}
@@ -109,12 +109,16 @@ export default function SyncTab() {
 
       {/* Device Info */}
       <div className={cn('rounded-lg border p-4', colors.surface.elevated)}>
-        <h3 className={cn('text-sm font-semibold mb-2', colors.text.primary)}>{t('syncTab.thisDevice')}</h3>
+        <h3 className={cn('text-sm mb-2', typography.weight.semibold, colors.text.primary)}>
+          {t('syncTab.thisDevice')}
+        </h3>
         <div className="grid grid-cols-2 gap-2 text-sm">
           <span className={colors.text.tertiary}>{t('syncTab.deviceName')}</span>
           <span className={colors.text.primary}>{status.device_name}</span>
           <span className={colors.text.tertiary}>{t('syncTab.deviceId')}</span>
-          <span className={cn('font-mono text-xs', colors.text.secondary)}>{status.device_id.slice(0, 12)}...</span>
+          <span className={cn(typography.family.mono, 'text-xs', colors.text.secondary)}>
+            {status.device_id.slice(0, 12)}...
+          </span>
         </div>
       </div>
 
@@ -134,7 +138,7 @@ export default function SyncTab() {
 
       {/* Peers */}
       <div>
-        <h3 className={cn('text-sm font-semibold mb-2', colors.text.primary)}>
+        <h3 className={cn('text-sm mb-2', typography.weight.semibold, colors.text.primary)}>
           {t('syncTab.discoveredPeers')} ({peers.length})
         </h3>
         {peers.length === 0 ? (
@@ -147,8 +151,10 @@ export default function SyncTab() {
                 className={cn('flex items-center justify-between rounded-lg border p-3', colors.surface.elevated)}
               >
                 <div>
-                  <span className={cn('text-sm font-medium', colors.text.primary)}>{peer.device_name}</span>
-                  <span className={cn('ml-2 text-xs font-mono', colors.text.tertiary)}>
+                  <span className={cn('text-sm', typography.weight.medium, colors.text.primary)}>
+                    {peer.device_name}
+                  </span>
+                  <span className={cn('ml-2 text-xs', typography.family.mono, colors.text.tertiary)}>
                     {peer.device_id.slice(0, 8)}
                   </span>
                 </div>
