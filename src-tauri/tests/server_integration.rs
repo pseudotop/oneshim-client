@@ -1,4 +1,5 @@
 #![cfg(feature = "server")]
+#![allow(deprecated)] // Tests use TokenManager::new / HttpApiClient::new (non-TLS ok in tests)
 //! ```
 //! cargo test -p oneshim-app --test server_integration_test -- --nocapture
 //! ```
