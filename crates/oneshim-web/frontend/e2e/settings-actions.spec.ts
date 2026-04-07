@@ -4,7 +4,7 @@ import { expect, test } from './helpers/test'
 const notificationEnabledName = i18nRegex('settings.notifEnabled')
 const notificationIdleName = i18nRegex('settings.notifIdle')
 const languageSelectorName = i18nRegex('settings.language')
-const updateChannelName = i18nRegex('settings.updateChannel', ['Update channel'])
+// update channel selector tested via #update-channel id (no i18n lookup needed)
 
 test.describe('Settings Actions', () => {
   test('P117: notification toggles exist', async ({ page }) => {
