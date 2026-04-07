@@ -93,6 +93,9 @@ pre-commit:
           echo "❌ monitor.rs is $LINES lines (max 500). Extract into a helper."
           exit 1
         fi
+    web-contracts:
+      glob: "crates/oneshim-web/src/{routes,handlers/**}.rs"
+      run: ./scripts/verify-web-contract-boundary.sh && ./scripts/verify-http-interface-manifest.sh
     cargo-fmt:
       glob: "*.rs"
       run: cargo fmt --check
