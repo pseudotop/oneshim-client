@@ -106,7 +106,7 @@ pre-commit:
           echo "clippy: skipped (subagent mode)"
           exit 0
         fi
-        cargo clippy --workspace --quiet -- -D warnings
+        cargo clippy --workspace --all-targets --quiet -- -D warnings
       stage_fixed: true
     frontend-typecheck:
       glob: "*.{ts,tsx}"

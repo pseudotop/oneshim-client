@@ -94,7 +94,7 @@ mod tests {
     fn pii_filter_level_serde_matches_debug() {
         use oneshim_core::config::PiiFilterLevel;
         let level = PiiFilterLevel::Standard;
-        let json = serde_json::to_value(&level).unwrap();
+        let json = serde_json::to_value(level).unwrap();
         assert_eq!(json.as_str().unwrap(), format!("{level:?}"));
     }
 }
