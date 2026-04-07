@@ -1214,7 +1214,6 @@ export async function fetchCoachingStatsToday(): Promise<CoachingStatsToday> {
   return res.json()
 }
 
-
 // ── Playbook Library API ─────────────────────────────────────
 
 export async function fetchCoachingTemplates(): Promise<CoachingTemplateListDto> {

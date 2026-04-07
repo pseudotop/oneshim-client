@@ -15,7 +15,7 @@ import {
 import UpdatePanel from '../components/UpdatePanel'
 import { Badge, Button, Card, CardTitle, Spinner } from '../components/ui'
 import { addToast } from '../hooks/useToast'
-import { colors, typography } from '../styles/tokens'
+import { colors, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 declare const __APP_VERSION__: string
@@ -146,11 +146,15 @@ export default function Updates() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-lg bg-surface-muted p-3">
                 <span className="block text-content-secondary text-xs">{t('updates.currentVersion')}</span>
-                <span className="font-mono text-content-strong text-sm">{versionSummary.current}</span>
+                <span className={cn(typography.family.mono, 'text-content-strong text-sm')}>
+                  {versionSummary.current}
+                </span>
               </div>
               <div className="rounded-lg bg-surface-muted p-3">
                 <span className="block text-content-secondary text-xs">{t('updates.latestVersion')}</span>
-                <span className="font-mono text-content-strong text-sm">{versionSummary.latest}</span>
+                <span className={cn(typography.family.mono, 'text-content-strong text-sm')}>
+                  {versionSummary.latest}
+                </span>
               </div>
               {versionSummary.releaseName && (
                 <div className="rounded-lg bg-surface-muted p-3 sm:col-span-2">
@@ -208,14 +212,21 @@ export default function Updates() {
                 disabled={savingChannel}
                 onClick={() => handleChannelChange(opt.value)}
                 className={cn(
-                  'rounded-lg border p-3 text-left transition-colors',
+                  'rounded-lg border p-3 text-left',
+                  motion.colors,
                   isActive
                     ? 'border-brand-text bg-brand-muted/10'
                     : 'border-muted bg-surface hover:border-brand-muted hover:bg-surface-muted',
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span className={cn('font-medium text-sm', isActive ? 'text-brand-text' : 'text-content-strong')}>
+                  <span
+                    className={cn(
+                      'text-sm',
+                      typography.weight.medium,
+                      isActive ? 'text-brand-text' : 'text-content-strong',
+                    )}
+                  >
                     {t(opt.labelKey, opt.value)}
                   </span>
                   {isActive && (

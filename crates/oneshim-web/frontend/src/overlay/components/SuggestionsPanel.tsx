@@ -145,7 +145,9 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         <button
           type="button"
           className={cn(
-            'flex-1 py-2 text-xs font-medium transition-colors',
+            'flex-1 py-2 text-xs',
+            typography.weight.medium,
+            motion.colors,
             activeTab === 'active'
               ? 'text-brand border-b-2 border-brand'
               : 'text-content-secondary hover:text-content-primary',
@@ -157,7 +159,9 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         <button
           type="button"
           className={cn(
-            'flex-1 py-2 text-xs font-medium transition-colors',
+            'flex-1 py-2 text-xs',
+            typography.weight.medium,
+            motion.colors,
             activeTab === 'history'
               ? 'text-brand border-b-2 border-brand'
               : 'text-content-secondary hover:text-content-primary',
@@ -169,7 +173,9 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         <button
           type="button"
           className={cn(
-            'flex-1 py-2 text-xs font-medium transition-colors',
+            'flex-1 py-2 text-xs',
+            typography.weight.medium,
+            motion.colors,
             activeTab === 'stats'
               ? 'text-brand border-b-2 border-brand'
               : 'text-content-secondary hover:text-content-primary',
@@ -194,7 +200,9 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                   key={src}
                   type="button"
                   className={cn(
-                    'px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors',
+                    'px-2 py-0.5 rounded-full text-[10px]',
+                    typography.weight.medium,
+                    motion.colors,
                     sourceFilter.has(src) ? 'bg-brand/20 text-brand' : 'bg-content-inverse/5 text-content-tertiary',
                   )}
                   onClick={() => toggleSource(src)}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionHistoryDto } from '../types'
 
@@ -76,9 +77,11 @@ export function SuggestionHistory() {
           return (
             <li key={entry.id} className="px-3 py-2 rounded-lg bg-surface-default/60 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-content-primary truncate">{entry.title}</span>
+                <span className={cn(typography.weight.medium, 'text-content-primary truncate')}>{entry.title}</span>
                 {badgeClass && badgeKey && (
-                  <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0', badgeClass)}>
+                  <span
+                    className={cn('px-1.5 py-0.5 rounded text-[10px] shrink-0', typography.weight.medium, badgeClass)}
+                  >
                     {t(badgeKey)}
                   </span>
                 )}

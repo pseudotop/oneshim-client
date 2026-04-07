@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { ToastItem } from '../types'
 
@@ -6,8 +7,8 @@ const MAX_TOASTS = 3
 const TOAST_DURATION = 4000
 
 const typeStyles: Record<ToastItem['type'], string> = {
-  success: 'bg-semantic-success/90 text-white',
-  error: 'bg-semantic-error/90 text-white',
+  success: 'bg-semantic-success/90 text-content-inverse',
+  error: 'bg-semantic-error/90 text-content-inverse',
   info: 'bg-surface-sunken/95 text-content-primary border border-border-default',
 }
 
@@ -49,7 +50,7 @@ export function ToastContainer() {
         <div
           key={toast.id}
           className={cn(
-            'px-4 py-2 rounded-lg text-xs font-medium shadow-lg backdrop-blur-sm',
+            `px-4 py-2 rounded-lg text-xs ${typography.weight.medium} shadow-lg backdrop-blur-sm`,
             'animate-[slideIn_200ms_ease-out]',
             typeStyles[toast.type],
           )}

@@ -11,7 +11,7 @@ import { fetchSemanticSearch, fetchTags, type SearchResult, search } from '../ap
 import type { SemanticSearchResult } from '../api/contracts'
 import { TagBadge } from '../components/TagBadge'
 import { Badge, Button, Card, Input, Spinner } from '../components/ui'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { escapeRegex, formatDateTime } from '../utils/formatters'
 
@@ -132,7 +132,8 @@ export default function Search() {
             type="button"
             data-testid="mode-text"
             className={cn(
-              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm',
+              motion.colors,
               searchMode === 'text' ? 'bg-surface text-content shadow-sm' : 'text-content-secondary hover:text-content',
             )}
             onClick={() => {
@@ -147,7 +148,8 @@ export default function Search() {
             type="button"
             data-testid="mode-semantic"
             className={cn(
-              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm',
+              motion.colors,
               searchMode === 'semantic'
                 ? 'bg-surface text-content shadow-sm'
                 : 'text-content-secondary hover:text-content',
@@ -452,7 +454,7 @@ function SemanticResultCard({ result }: SemanticResultCardProps) {
           )}
           {result.duration_secs != null && result.duration_secs > 0 && (
             <span className="flex items-center gap-1 text-content-tertiary text-xs">
-              <Clock className="h-3 w-3" />
+              <Clock className={iconSize.xs} />
               {formatDuration(result.duration_secs)}
             </span>
           )}

@@ -9,7 +9,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { HabitStreak } from '../api/coaching'
 import { useHabitStreaks } from '../hooks/useCoaching'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { Card, CardContent, CardTitle, Skeleton } from './ui'
 
@@ -56,10 +56,10 @@ function computeStreak(dateMap: Map<string, HabitStreak>, days: string[]): numbe
 /** Return a Tailwind background class based on progress ratio. */
 function cellBg(entry: HabitStreak | undefined): string {
   if (!entry) return 'bg-surface-muted'
-  if (entry.met) return 'bg-emerald-500'
+  if (entry.met) return 'bg-semantic-success'
   const ratio = entry.target_minutes > 0 ? entry.minutes_logged / entry.target_minutes : 0
-  if (ratio >= 0.5) return 'bg-amber-400'
-  return 'bg-red-400'
+  if (ratio >= 0.5) return 'bg-semantic-warning'
+  return 'bg-semantic-error'
 }
 
 /** Short day label (Mon, Tue, ...) from YYYY-MM-DD string. */
@@ -116,7 +116,7 @@ export default function HabitTrackerWidget() {
                   </th>
                 ))}
                 <th className={cn('pb-2 text-center', typography.weight.medium, colors.text.secondary)}>
-                  <Flame className="mx-auto h-4 w-4" />
+                  <Flame className={cn('mx-auto', iconSize.base)} />
                 </th>
               </tr>
             </thead>
@@ -153,19 +153,19 @@ export default function HabitTrackerWidget() {
         </div>
         <div className="mt-3 flex items-center gap-4 text-xs">
           <span className="flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded bg-emerald-500" />
+            <span className={cn('inline-block rounded bg-semantic-success', iconSize.xs)} />
             {t('coaching.habits.met', 'Met')}
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded bg-amber-400" />
+            <span className={cn('inline-block rounded bg-semantic-warning', iconSize.xs)} />
             {t('coaching.habits.partial', '>50%')}
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded bg-red-400" />
+            <span className={cn('inline-block rounded bg-semantic-error', iconSize.xs)} />
             {t('coaching.habits.missed', '<50%')}
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded bg-surface-muted" />
+            <span className={cn('inline-block rounded bg-surface-muted', iconSize.xs)} />
             {t('coaching.habits.noData', 'No data')}
           </span>
         </div>

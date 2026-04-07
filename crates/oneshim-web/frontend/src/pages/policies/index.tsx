@@ -14,7 +14,7 @@ import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
 import { addToast } from '../../hooks/useToast'
-import { colors, interaction, motion, typography } from '../../styles/tokens'
+import { colors, iconSize, interaction, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 const CONFIRMATION_OPTIONS = ['Auto', 'Confirm', 'Block']
@@ -305,7 +305,7 @@ function Policies() {
         <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('policies.title', 'Execution Policies')}</h1>
         {!showForm && !editPolicy && (
           <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
-            <Plus className="mr-1.5 h-4 w-4" />
+            <Plus className={cn('mr-1.5', iconSize.base)} />
             {t('policies.addPolicy', 'Add Policy')}
           </Button>
         )}
@@ -421,7 +421,7 @@ function Policies() {
                             )}
                             aria-label={t('common.edit', 'Edit')}
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className={iconSize.base} />
                           </button>
                           <button
                             type="button"
@@ -432,7 +432,7 @@ function Policies() {
                             )}
                             aria-label={t('common.delete', 'Delete')}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className={iconSize.base} />
                           </button>
                         </div>
                       </td>

@@ -374,7 +374,7 @@ export default function Timeline() {
               size="sm"
               onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
             >
-              <CheckSquare className="mr-1 h-4 w-4" />
+              <CheckSquare className={cn('mr-1', iconSize.base)} />
               {selectMode ? t('timeline.cancelSelect') : t('timeline.select')}
             </Button>
           </div>
@@ -474,9 +474,9 @@ export default function Timeline() {
                 {selectMode && (
                   <div className="absolute top-1 left-1">
                     {selectedFrames.has(frame.id) ? (
-                      <CheckSquare className="h-5 w-5 text-brand-signal drop-shadow" />
+                      <CheckSquare className={cn(iconSize.md, 'text-brand-signal drop-shadow')} />
                     ) : (
-                      <Square className="h-5 w-5 text-content-inverse drop-shadow" />
+                      <Square className={cn(iconSize.md, 'text-content-inverse drop-shadow')} />
                     )}
                   </div>
                 )}
@@ -523,9 +523,9 @@ export default function Timeline() {
                   {selectMode && (
                     <div className="flex-shrink-0">
                       {selectedFrames.has(frame.id) ? (
-                        <CheckSquare className="h-5 w-5 text-brand-signal" />
+                        <CheckSquare className={cn(iconSize.md, 'text-brand-signal')} />
                       ) : (
-                        <Square className="h-5 w-5 text-content-tertiary" />
+                        <Square className={cn(iconSize.md, 'text-content-tertiary')} />
                       )}
                     </div>
                   )}

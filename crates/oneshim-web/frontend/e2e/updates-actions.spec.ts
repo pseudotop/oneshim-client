@@ -9,8 +9,8 @@ test.describe('Updates Actions', () => {
     await expect(page.locator('#section-status')).toBeVisible()
   })
 
-  test('P151: #section-history exists', async ({ page }) => {
-    await expect(page.locator('#section-history')).toBeVisible()
+  test('P151: #section-channel exists', async ({ page }) => {
+    await expect(page.locator('#section-channel')).toBeVisible()
   })
 
   test('P152: version display exists', async ({ page }) => {

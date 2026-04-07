@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface SuggestionBadgeProps {
@@ -17,9 +18,9 @@ export function SuggestionBadge({ count, onClick }: SuggestionBadgeProps) {
       className={cn(
         'fixed top-4 right-4 z-50',
         'flex items-center gap-1.5 px-3 py-1.5 rounded-full',
-        'bg-brand text-white text-xs font-medium',
+        `bg-brand text-content-inverse text-xs ${typography.weight.medium}`,
         'shadow-lg cursor-pointer',
-        'hover:bg-brand/90 transition-colors',
+        `hover:bg-brand/90 ${motion.colors}`,
         'animate-pulse',
       )}
     >

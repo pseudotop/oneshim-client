@@ -198,7 +198,7 @@ export function ChatSidebar({
             onChange={(e) => setSearchFilter(e.target.value)}
             placeholder={t('chat.searchSessions', 'Search sessions...')}
             className={cn(
-              'w-full border bg-surface-base py-1 pr-2 pl-7 text-xs placeholder-content-tertiary',
+              'w-full border bg-surface-base py-1 pr-2 pl-8 text-xs placeholder-content-tertiary',
               radius.md,
               interaction.focusRing,
               colors.text.primary,
