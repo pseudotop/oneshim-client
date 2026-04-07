@@ -61,6 +61,7 @@ impl UnifiedClient {
         );
 
         let timeout = Duration::from_secs(config.request_timeout_secs);
+        #[allow(deprecated)] // Non-TLS fallback when rest_tls config is absent
         let http_client = if let Some(ref tls) = config.rest_tls {
             HttpApiClient::new_with_tls(&config.rest_endpoint, token_manager.clone(), timeout, tls)?
         } else {
