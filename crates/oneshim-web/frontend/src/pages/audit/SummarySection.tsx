@@ -1,4 +1,7 @@
+import { ClipboardList } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '../../components/ui'
 import { Card, CardContent } from '../../components/ui/Card'
 import { useTypedOutletContext } from '../../routes'
 import { typography } from '../../styles/tokens'
@@ -6,7 +9,21 @@ import type { AuditOutletContext } from './AuditLayout'
 
 export default function SummarySection() {
   const { t } = useTranslation()
-  const { stats } = useTypedOutletContext<AuditOutletContext>('Audit')
+  const navigate = useNavigate()
+  const { auditLogs, stats } = useTypedOutletContext<AuditOutletContext>('Audit')
+
+  // Empty state lives here (rather than in AuditLayout) so that the layout can
+  // keep rendering <Outlet> unconditionally — see AuditLayout comment for why.
+  if ((auditLogs?.length ?? 0) === 0 && (stats?.total_executions ?? 0) === 0) {
+    return (
+      <EmptyState
+        icon={<ClipboardList className="h-8 w-8" />}
+        title={t('emptyState.auditLog.title')}
+        description={t('emptyState.auditLog.description')}
+        action={{ label: t('emptyState.auditLog.action'), onClick: () => navigate('/automation') }}
+      />
+    )
+  }
 
   return (
     <div id="section-summary" className="grid grid-cols-2 gap-4 md:grid-cols-5">

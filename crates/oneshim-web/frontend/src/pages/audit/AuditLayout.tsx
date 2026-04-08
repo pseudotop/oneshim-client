@@ -1,10 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardList } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { type AuditEntry, fetchAuditLogs, fetchAutomationStats } from '../../api/client'
 import type { AutomationStats } from '../../api/contracts'
-import { EmptyState, ListSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
+import { ListSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -17,7 +16,6 @@ export interface AuditOutletContext {
 
 export default function AuditLayout() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
 
   const { data: auditLogs, isLoading: logsLoading } = useQuery({
     queryKey: ['auditLogPage', ''],
@@ -42,17 +40,11 @@ export default function AuditLayout() {
     )
   }
 
-  if ((auditLogs?.length ?? 0) === 0 && (stats?.total_executions ?? 0) === 0) {
-    return (
-      <EmptyState
-        icon={<ClipboardList className="h-8 w-8" />}
-        title={t('emptyState.auditLog.title')}
-        description={t('emptyState.auditLog.description')}
-        action={{ label: t('emptyState.auditLog.action'), onClick: () => navigate('/automation') }}
-      />
-    )
-  }
-
+  // The empty-state UX is owned by SummarySection so that AuditLayout can keep
+  // rendering <Outlet> on every path. An earlier revision short-circuited the
+  // layout with EmptyState when no audit data existed, which suppressed the
+  // index <Navigate to="summary" replace /> emitted by RouteRenderer and left
+  // /audit stuck without redirecting to /audit/summary (caught by routing.spec).
   const ctx: AuditOutletContext = { auditLogs, logsLoading, stats, statsLoading }
 
   return (
