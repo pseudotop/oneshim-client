@@ -1212,8 +1212,7 @@
       "title": "이 섹션에서 오류가 발생했습니다",
       "description": "오류가 보고되었습니다. 다시 시도하거나 대시보드로 돌아갈 수 있습니다.",
       "tryAgain": "다시 시도",
-      "goHome": "대시보드로 이동",
-      "recovering": "복구 중..."
+      "goHome": "대시보드로 이동"
     }
   },
   "recalibration": {

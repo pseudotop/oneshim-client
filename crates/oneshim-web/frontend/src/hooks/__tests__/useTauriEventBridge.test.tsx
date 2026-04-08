@@ -144,6 +144,80 @@ describe('useTauriEventBridge', () => {
     })
   })
 
+  it('dispatches route-error-reset CustomEvent on frontend-recovery reset-route signal', async () => {
+    const { invalidateQueries, listeners } = await renderBridgeHarness()
+
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+
+    act(() => {
+      listeners.get('frontend-recovery')?.({
+        payload: {
+          strategy: 'reset-route',
+          route: '/focus',
+          reason: 'render crash',
+        },
+      })
+    })
+
+    // Queries are invalidated
+    expect(invalidateQueries).toHaveBeenCalled()
+
+    // CustomEvent dispatched with the right detail
+    const customEventCall = dispatchSpy.mock.calls.find(([event]) => (event as Event).type === 'route-error-reset')
+    expect(customEventCall).toBeDefined()
+    const event = customEventCall?.[0] as CustomEvent
+    expect(event.detail).toEqual({ route: '/focus' })
+
+    dispatchSpy.mockRestore()
+  })
+
+  it('triggers full reload on frontend-recovery full-reload signal', async () => {
+    const { listeners } = await renderBridgeHarness()
+
+    // jsdom does not implement window.location.reload — stub it
+    const reloadMock = vi.fn()
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, reload: reloadMock },
+    })
+
+    act(() => {
+      listeners.get('frontend-recovery')?.({
+        payload: {
+          strategy: 'full-reload',
+          route: '/focus',
+          reason: 'critical escalation',
+        },
+      })
+    })
+
+    expect(reloadMock).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    })
+  })
+
+  it('ignores frontend-recovery payloads that fail the type guard', async () => {
+    const { invalidateQueries, listeners } = await renderBridgeHarness()
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+
+    act(() => {
+      // Missing required fields
+      listeners.get('frontend-recovery')?.({ payload: { strategy: 42 } })
+    })
+
+    expect(invalidateQueries).not.toHaveBeenCalled()
+    const customEventCall = dispatchSpy.mock.calls.find(([event]) => (event as Event).type === 'route-error-reset')
+    expect(customEventCall).toBeUndefined()
+
+    dispatchSpy.mockRestore()
+  })
+
   it('shows a toast for inbound integration prompts', async () => {
     const addToast = vi.fn()
     vi.doMock('../useToast', () => ({

@@ -1,3 +1,36 @@
+/**
+ * RouteErrorBoundary — Per-route error isolation with native forwarding.
+ *
+ * Architecture: TWO-COMPONENT design.
+ *
+ *   RouteErrorBoundary (functional wrapper)
+ *     ├─ Hooks: useNavigate, useQueryClient, useState(resetKey), useEffect(window listener)
+ *     ├─ Listens for `route-error-reset` CustomEvent from Rust recovery
+ *     └─ Renders RouteErrorBoundaryInner with key={resetKey}
+ *           ↓
+ *   RouteErrorBoundaryInner (class component)
+ *     ├─ getDerivedStateFromError + componentDidCatch (React error boundary contract)
+ *     └─ Renders RouteErrorFallback when hasError
+ *
+ * Why two components? React error boundaries MUST be class components, but the
+ * recovery flow needs hooks (useNavigate, useQueryClient, useEffect window
+ * listener). The wrapper gives hooks; the inner gives error catching. Reset is
+ * propagated via the `key={resetKey}` prop, which forces React to remount the
+ * inner boundary when resetKey changes.
+ *
+ * Recovery flow:
+ *   1. Section throws error
+ *   2. Inner componentDidCatch → onCatch callback → reportToNative
+ *   3. reportToNative → Tauri invoke('report_frontend_error')
+ *   4. Rust logs + maybe notifies + maybe emits 'frontend-recovery' event
+ *   5. useTauriEventBridge listens → window.dispatchEvent('route-error-reset')
+ *   6. Wrapper's useEffect listener → invalidateQueries + setResetKey++
+ *   7. Inner remounts (new key) → fresh render attempt
+ *
+ * Escalation: Module-level resetTracker counts retries per route. If a route
+ * resets 3+ times within 60s, severity escalates to 'critical' which triggers
+ * full-reload via Rust recovery emission.
+ */
 import { useQueryClient } from '@tanstack/react-query'
 import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'

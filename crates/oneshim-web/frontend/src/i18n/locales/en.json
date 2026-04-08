@@ -1212,8 +1212,7 @@
       "title": "Something went wrong in this section",
       "description": "The error has been reported. You can try again or go back to the dashboard.",
       "tryAgain": "Try Again",
-      "goHome": "Go to Dashboard",
-      "recovering": "Recovering..."
+      "goHome": "Go to Dashboard"
     }
   },
   "recalibration": {

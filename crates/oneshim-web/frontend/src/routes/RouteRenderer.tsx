@@ -4,38 +4,36 @@ import { Spinner } from '../components/ui'
 import { RouteErrorBoundary } from './RouteErrorBoundary'
 import { routeTree } from './route-tree'
 
-function validateRouteTree() {
-  if (import.meta.env.DEV) {
-    for (const node of routeTree) {
-      if (node.children && node.defaultChild) {
-        const match = node.children.some((c) => c.path === node.defaultChild)
-        if (!match) {
-          throw new Error(
-            `[RouteRenderer] ${node.path} defaultChild="${node.defaultChild}" ` +
-              `not found in children: [${node.children.map((c) => c.path).join(', ')}]`,
-          )
-        }
+// Validate routeTree once at module load (dev only).
+// Catches misconfiguration before any render — fail fast.
+if (import.meta.env.DEV) {
+  for (const node of routeTree) {
+    if (node.children && node.defaultChild) {
+      const match = node.children.some((c) => c.path === node.defaultChild)
+      if (!match) {
+        throw new Error(
+          `[RouteRenderer] ${node.path} defaultChild="${node.defaultChild}" ` +
+            `not found in children: [${node.children.map((c) => c.path).join(', ')}]`,
+        )
       }
-      if (node.children && !node.defaultChild) {
-        throw new Error(`[RouteRenderer] ${node.path} has children but no defaultChild`)
-      }
+    }
+    if (node.children && !node.defaultChild) {
+      throw new Error(`[RouteRenderer] ${node.path} has children but no defaultChild`)
     }
   }
 }
 
+// Sort once at module load: leaf routes first, parent routes after, root "/" last.
+// Prevents "/" catch-all from consuming other routes.
+const sortedRouteTree = [...routeTree].sort((a, b) => {
+  if (a.path === '/') return 1
+  if (b.path === '/') return -1
+  if (a.children && !b.children) return 1
+  if (!a.children && b.children) return -1
+  return 0
+})
+
 export default function RouteRenderer() {
-  validateRouteTree()
-
-  // Sort: leaf routes first, parent routes after, root "/" last.
-  // Prevents "/" catch-all from consuming other routes.
-  const sorted = [...routeTree].sort((a, b) => {
-    if (a.path === '/') return 1
-    if (b.path === '/') return -1
-    if (a.children && !b.children) return 1
-    if (!a.children && b.children) return -1
-    return 0
-  })
-
   return (
     <Suspense
       fallback={
@@ -45,7 +43,7 @@ export default function RouteRenderer() {
       }
     >
       <Routes>
-        {sorted.map((node) =>
+        {sortedRouteTree.map((node) =>
           node.children ? (
             <Route key={node.path} path={`${node.path}/*`} element={<node.component />}>
               {node.defaultChild && <Route index element={<Navigate to={node.defaultChild} replace />} />}

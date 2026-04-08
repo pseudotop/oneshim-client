@@ -103,6 +103,42 @@ describe('RouteErrorBoundary', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('resets via route-error-reset CustomEvent matching the route', () => {
+    const recoveryRoute = `/test-recovery-${Date.now()}-${Math.random()}`
+    // Module-level state controls thrower behavior. After error caught,
+    // we flip the flag, then dispatch the reset event.
+    const state = { shouldThrow: true }
+    const ControlledThrower = () => {
+      if (state.shouldThrow) throw new Error('controlled crash')
+      return <div>Recovered</div>
+    }
+
+    renderBoundary(<ControlledThrower />, recoveryRoute)
+    // Fallback should be visible after the throw
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    // Now stop throwing and dispatch the recovery event for THIS route
+    state.shouldThrow = false
+    fireEvent(window, new CustomEvent('route-error-reset', { detail: { route: recoveryRoute } }))
+
+    // Boundary remounts and renders the now-working component
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Recovered')).toBeInTheDocument()
+  })
+
+  it('ignores route-error-reset events for a different route', () => {
+    const myRoute = `/test-my-route-${Date.now()}`
+    const otherRoute = `/test-other-route-${Date.now()}`
+    renderBoundary(<Thrower shouldThrow={true} />, myRoute)
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    // Dispatch event for a DIFFERENT route — boundary should NOT reset
+    fireEvent(window, new CustomEvent('route-error-reset', { detail: { route: otherRoute } }))
+
+    // Fallback still visible
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+  })
+
   it('escalates to critical severity after repeated retries within the window', () => {
     // Use a unique route per test to avoid leaking module-level reset state
     // between cases. Three retries within 60s on the same route → critical.
