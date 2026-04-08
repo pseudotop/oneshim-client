@@ -1,11 +1,16 @@
 /**
  * Focus score section — circular gauge, trend stat cards, and weekly trend chart.
+ *
+ * Owns the Focus empty state (`focus_score === 0`) and error state so that
+ * FocusLayout can always render <Outlet>, letting the `/focus` → `/focus/score`
+ * index redirect fire even when metrics are empty or errored.
  */
 
-import { Clock, MessageSquare, TrendingDown, TrendingUp, Zap } from 'lucide-react'
+import { Brain, Clock, MessageSquare, TrendingDown, TrendingUp, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import StatCard from '../../components/StatCard'
+import { EmptyState } from '../../components/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
 import { useTypedOutletContext } from '../../routes'
 import { chart, dataViz, iconSize, motion, typography } from '../../styles/tokens'
@@ -55,7 +60,27 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
 
 export default function ScoreSection() {
   const { t } = useTranslation()
-  const { metrics } = useTypedOutletContext<FocusContext>('Focus')
+  const { metrics, metricsError } = useTypedOutletContext<FocusContext>('Focus')
+
+  if (metricsError || !metrics) {
+    return (
+      <Card variant="danger">
+        <CardContent>
+          <p className="text-semantic-error">{metricsError || t('common.error')}</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (metrics.today.focus_score === 0) {
+    return (
+      <EmptyState
+        icon={<Brain className="h-8 w-8" />}
+        title={t('emptyState.focus.title')}
+        description={t('emptyState.focus.description')}
+      />
+    )
+  }
 
   const today = metrics.today
 

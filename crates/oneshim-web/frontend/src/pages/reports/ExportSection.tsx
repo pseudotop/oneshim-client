@@ -7,11 +7,16 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'rec
 import { Card, CardTitle } from '../../components/ui'
 import { useTypedOutletContext } from '../../routes'
 import { chart, iconSize, palette } from '../../styles/tokens'
+import { ReportsEmptyState } from './ReportsEmptyState'
 import type { ReportsContext } from './ReportsLayout'
 
 export default function ExportSection() {
   const { t } = useTranslation()
-  const { report } = useTypedOutletContext<ReportsContext>('Reports')
+  const { report, reportError } = useTypedOutletContext<ReportsContext>('Reports')
+
+  if (reportError || !report) {
+    return <ReportsEmptyState reportError={reportError} />
+  }
 
   return (
     <Card id="section-export" padding="md">

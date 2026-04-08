@@ -4,14 +4,13 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { Monitor } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { fetchSummary } from '../../api/client'
 import type { DailySummary } from '../../api/contracts'
 import DateRangePicker from '../../components/DateRangePicker'
-import { ChartSkeleton, EmptyState, Skeleton, StatCardsSkeleton } from '../../components/ui'
+import { ChartSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
 import { type ConnectionStatus, type IdleUpdate, type MetricsUpdate, useSSE } from '../../hooks/useSSE'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
@@ -88,21 +87,11 @@ export default function DashboardLayout() {
     )
   }
 
-  if (
-    !latestMetrics &&
-    !summary?.events_logged &&
-    !summary?.frames_captured &&
-    (summary?.total_active_secs ?? 0) === 0
-  ) {
-    return (
-      <EmptyState
-        icon={<Monitor className="h-8 w-8" />}
-        title={t('emptyState.dashboard.title')}
-        description={t('emptyState.dashboard.description')}
-      />
-    )
-  }
-
+  // Empty-state UX is owned by the defaultChild (OverviewSection) so the
+  // layout can always render <Outlet>. An earlier revision short-circuited
+  // here with EmptyState, which suppressed the index <Navigate to="overview"
+  // replace /> emitted by RouteRenderer and left `/` stuck without redirecting
+  // to `/overview`. Same bug class as AuditLayout's empty-state regression.
   const ctx: DashboardContext = {
     status,
     latestMetrics,

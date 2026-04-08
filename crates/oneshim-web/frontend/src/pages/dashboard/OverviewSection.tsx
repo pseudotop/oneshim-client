@@ -1,12 +1,18 @@
 /**
  * Overview section — realtime metrics card, TodaySummary, and stat cards.
+ *
+ * Owns the Dashboard empty state. Lives here (not DashboardLayout) so that
+ * the layout can always render <Outlet>, letting RouteRenderer's
+ * <Navigate to="overview" replace /> index redirect fire on `/` → `/overview`
+ * even when no data has been captured yet. Same empty-state-in-child pattern
+ * AuditLayout adopted after the 2026-04-08 routing.spec regression.
  */
 
-import { BarChart3, Camera, Clock, Moon } from 'lucide-react'
+import { BarChart3, Camera, Clock, Monitor, Moon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import StatCard from '../../components/StatCard'
 import TodaySummary from '../../components/TodaySummary'
-import { Badge, Card } from '../../components/ui'
+import { Badge, Card, EmptyState } from '../../components/ui'
 import { useTypedOutletContext } from '../../routes'
 import { colors, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
@@ -16,6 +22,19 @@ import type { DashboardContext } from './DashboardLayout'
 export default function OverviewSection() {
   const { t } = useTranslation()
   const { latestMetrics, idleState, metricsHistory, summary } = useTypedOutletContext<DashboardContext>('Dashboard')
+
+  const isEmpty =
+    !latestMetrics && !summary?.events_logged && !summary?.frames_captured && (summary?.total_active_secs ?? 0) === 0
+
+  if (isEmpty) {
+    return (
+      <EmptyState
+        icon={<Monitor className="h-8 w-8" />}
+        title={t('emptyState.dashboard.title')}
+        description={t('emptyState.dashboard.description')}
+      />
+    )
+  }
 
   return (
     <>

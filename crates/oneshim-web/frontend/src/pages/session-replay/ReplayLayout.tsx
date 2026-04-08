@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Play } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { fetchAutomationScene, fetchSceneCalibration, fetchSettings, fetchTimeline } from '../../api/client'
 import type { TimelineResponse, UiScene } from '../../api/contracts'
 import DateRangePicker from '../../components/DateRangePicker'
-import { Alert, EmptyState } from '../../components/ui'
+import { Alert } from '../../components/ui'
 import { Spinner } from '../../components/ui/Spinner'
 import { colors, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
@@ -16,7 +16,14 @@ import { useSceneState } from './SceneOverlay'
 import type { PlaybackState } from './types'
 
 export interface ReplayOutletContext {
-  timeline: TimelineResponse
+  /**
+   * Nullable so the defaultChild (TimelineSection) can own the empty-state
+   * UX and this layout can always render <Outlet>, letting RouteRenderer's
+   * `/replay` → `/replay/timeline` index redirect fire even when no session
+   * has been captured yet. Same empty-state-in-child pattern AuditLayout
+   * adopted after the 2026-04-08 routing.spec regression.
+   */
+  timeline: TimelineResponse | null
   playback: PlaybackState
   scene: SceneState
   currentScene: UiScene | undefined
@@ -42,20 +49,24 @@ export default function ReplayLayout() {
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 16))
 
   const {
-    data: timeline,
+    data: timelineData,
     isLoading: loading,
     error: timelineError,
   } = useQuery({
     queryKey: ['timeline', fromDate, toDate],
     queryFn: () => fetchTimeline({ from: new Date(fromDate).toISOString(), to: new Date(toDate).toISOString() }),
   })
+  const timeline = timelineData ?? null
   const error = timelineError
     ? timelineError instanceof Error
       ? timelineError.message
       : '타임라인 로드 failure'
     : null
 
-  const playback = usePlaybackState(timeline)
+  // usePlaybackState's signature accepts `TimelineData | undefined`; pass the
+  // raw query data so the hook's own undefined checks handle the loading/
+  // empty states without a null-coercion dance.
+  const playback = usePlaybackState(timelineData)
   const { currentFrame } = playback
 
   const [imageLoadFailed, setImageLoadFailed] = useState(false)
@@ -141,17 +152,11 @@ export default function ReplayLayout() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && (!timeline || timeline.items.length === 0) && !error && (
-        <EmptyState
-          icon={<Play className="h-8 w-8" />}
-          title={t('emptyState.replay.title')}
-          description={t('emptyState.replay.description')}
-        />
-      )}
-
-      {/* Main content */}
-      {!loading && timeline && timeline.items.length > 0 && (
+      {/* Main content — Outlet is rendered unconditionally (post-loading) so
+          that the `/replay` → `/replay/timeline` index redirect always fires.
+          TimelineSection (the defaultChild) owns the empty state when
+          timeline is null or has zero items. */}
+      {!loading && (
         <Outlet
           context={
             {

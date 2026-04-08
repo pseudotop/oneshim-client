@@ -1,14 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import {
   type AutomationStats,
   type AutomationStatus,
   fetchAutomationStats,
   fetchAutomationStatus,
 } from '../../api/client'
-import { EmptyState, ListSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
+import { ListSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
 import { Badge } from '../../components/ui/Badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
 import { colors, typography } from '../../styles/tokens'
@@ -38,7 +37,6 @@ export interface AutomationContext {
 
 export default function AutomationLayout() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
 
   const { data: status, isLoading: statusLoading } = useQuery({
     queryKey: ['automationStatus'],
@@ -71,17 +69,12 @@ export default function AutomationLayout() {
     )
   }
 
-  if ((stats?.total_executions ?? 0) === 0 && !status?.enabled) {
-    return (
-      <EmptyState
-        icon={<Bot className="h-8 w-8" />}
-        title={t('emptyState.automation.title')}
-        description={t('emptyState.automation.description')}
-        action={{ label: t('emptyState.automation.action'), onClick: () => navigate('/settings') }}
-      />
-    )
-  }
-
+  // Empty-state UX is owned by PoliciesSection (the defaultChild) so the
+  // layout can always render <Outlet>. An earlier revision early-returned
+  // EmptyState here when `stats.total_executions === 0 && !status.enabled`,
+  // which suppressed the index <Navigate to="policies" replace /> and left
+  // `/automation` stuck without redirecting to `/automation/policies`.
+  // Same bug class as the AuditLayout empty-state regression.
   const ctx: AutomationContext = { status, stats }
 
   return (

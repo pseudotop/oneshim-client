@@ -4,17 +4,23 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { BarChart3 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { fetchReport, type ReportPeriod, type ReportResponse } from '../../api/client'
-import { Button, Card, ChartSkeleton, EmptyState, Input, Skeleton, StatCardsSkeleton } from '../../components/ui'
+import { Button, ChartSkeleton, Input, Skeleton, StatCardsSkeleton } from '../../components/ui'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 export interface ReportsContext {
-  report: ReportResponse
+  /**
+   * Nullable so child sections can own the empty- and error-state UX while
+   * ReportsLayout always renders <Outlet>, keeping the `/reports` →
+   * `/reports/activity` index redirect fire even when the report is missing.
+   * Same empty-state-in-child pattern AuditLayout uses.
+   */
+  report: ReportResponse | null
+  reportError: string | null
 }
 
 export default function ReportsLayout() {
@@ -123,21 +129,14 @@ export default function ReportsLayout() {
         </div>
       </div>
 
-      {error && (
-        <Card variant="danger" padding="md">
-          <p className="text-semantic-error">{t('reports.error')}</p>
-        </Card>
-      )}
-
-      {!report && !isLoading && !error && (
-        <EmptyState
-          icon={<BarChart3 className="h-8 w-8" />}
-          title={t('emptyState.reports.title')}
-          description={t('emptyState.reports.description')}
-        />
-      )}
-
-      {report && <Outlet context={{ report } satisfies ReportsContext} />}
+      <Outlet
+        context={
+          {
+            report: report ?? null,
+            reportError: error ? t('reports.error') : null,
+          } satisfies ReportsContext
+        }
+      />
     </div>
   )
 }
