@@ -13,7 +13,6 @@ import DateRangePicker from '../../components/DateRangePicker'
 import { EmptyState } from '../../components/ui'
 import { Card, CardContent } from '../../components/ui/Card'
 import { Spinner } from '../../components/ui/Spinner'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -101,9 +100,7 @@ export default function FocusLayout() {
         />
       </div>
 
-      <RouteErrorBoundary route="/focus">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
     </div>
   )
 }

@@ -3,7 +3,6 @@ import { Outlet } from 'react-router-dom'
 import type { CoachingEvent, GoalProgress } from '../../api/coaching'
 import HabitTrackerWidget from '../../components/HabitTrackerWidget'
 import { useCoachingHistory, useGoalProgress } from '../../hooks/useCoaching'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -25,9 +24,7 @@ export default function CoachingLayout() {
     <div className="min-h-full p-6">
       <h1 className={cn(typography.h1, colors.text.pageTitle, 'mb-6')}>{t('coaching.title', 'Coaching History')}</h1>
 
-      <RouteErrorBoundary route="/coaching">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
 
       {/* Habit streak tracker */}
       <section className="mb-6">

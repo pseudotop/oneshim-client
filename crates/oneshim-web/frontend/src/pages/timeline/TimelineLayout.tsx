@@ -24,7 +24,6 @@ import Lightbox from '../../components/Lightbox'
 import { EmptyState, Skeleton } from '../../components/ui'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { addToast } from '../../hooks/useToast'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { resolveImageUrl } from '../../utils/api-base'
 import { cn } from '../../utils/cn'
@@ -381,9 +380,7 @@ export default function TimelineLayout() {
         <DateRangePicker onRangeChange={handleRangeChange} />
       </div>
 
-      <RouteErrorBoundary route="/timeline">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
 
       {/* Lightbox */}
       {lightboxOpen && selectedFrame?.image_url && (

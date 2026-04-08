@@ -8,7 +8,6 @@ import type { TimelineResponse, UiScene } from '../../api/contracts'
 import DateRangePicker from '../../components/DateRangePicker'
 import { Alert, EmptyState } from '../../components/ui'
 import { Spinner } from '../../components/ui/Spinner'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { usePlaybackState } from './hooks/usePlaybackState'
@@ -153,27 +152,25 @@ export default function ReplayLayout() {
 
       {/* Main content */}
       {!loading && timeline && timeline.items.length > 0 && (
-        <RouteErrorBoundary route="/replay">
-          <Outlet
-            context={
-              {
-                timeline,
-                playback,
-                scene,
-                currentScene,
-                sceneFetching,
-                sceneError,
-                sceneCalibration,
-                calibrationFetching,
-                sceneIntelligenceEnabled,
-                overlayAllowed,
-                sceneExecutionAllowed,
-                imageLoadFailed,
-                onImageLoadFailed: () => setImageLoadFailed(true),
-              } satisfies ReplayOutletContext
-            }
-          />
-        </RouteErrorBoundary>
+        <Outlet
+          context={
+            {
+              timeline,
+              playback,
+              scene,
+              currentScene,
+              sceneFetching,
+              sceneError,
+              sceneCalibration,
+              calibrationFetching,
+              sceneIntelligenceEnabled,
+              overlayAllowed,
+              sceneExecutionAllowed,
+              imageLoadFailed,
+              onImageLoadFailed: () => setImageLoadFailed(true),
+            } satisfies ReplayOutletContext
+          }
+        />
       )}
     </div>
   )

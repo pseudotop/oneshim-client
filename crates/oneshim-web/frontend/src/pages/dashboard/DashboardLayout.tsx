@@ -13,7 +13,6 @@ import type { DailySummary } from '../../api/contracts'
 import DateRangePicker from '../../components/DateRangePicker'
 import { ChartSkeleton, EmptyState, Skeleton, StatCardsSkeleton } from '../../components/ui'
 import { type ConnectionStatus, type IdleUpdate, type MetricsUpdate, useSSE } from '../../hooks/useSSE'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -126,9 +125,7 @@ export default function DashboardLayout() {
         <DateRangePicker onRangeChange={handleRangeChange} />
       </div>
 
-      <RouteErrorBoundary route="/">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
     </div>
   )
 }

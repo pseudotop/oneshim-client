@@ -11,7 +11,6 @@ import {
 import { EmptyState, ListSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
 import { Badge } from '../../components/ui/Badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import type { BadgeColor } from '../../styles/variants'
 import { cn } from '../../utils/cn'
@@ -245,9 +244,7 @@ export default function AutomationLayout() {
         </CardContent>
       </Card>
 
-      <RouteErrorBoundary route="/automation">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
     </div>
   )
 }

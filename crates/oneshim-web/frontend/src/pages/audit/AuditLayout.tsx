@@ -5,7 +5,6 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { type AuditEntry, fetchAuditLogs, fetchAutomationStats } from '../../api/client'
 import type { AutomationStats } from '../../api/contracts'
 import { EmptyState, ListSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -59,9 +58,7 @@ export default function AuditLayout() {
   return (
     <div className="min-h-full space-y-6 p-6">
       <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('auditLog.title')}</h1>
-      <RouteErrorBoundary route="/audit">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
     </div>
   )
 }

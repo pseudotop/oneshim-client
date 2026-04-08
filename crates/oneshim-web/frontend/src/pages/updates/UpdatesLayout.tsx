@@ -15,7 +15,6 @@ import {
 } from '../../api/client'
 import { Badge, Button } from '../../components/ui'
 import { addToast } from '../../hooks/useToast'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -132,9 +131,7 @@ export default function UpdatesLayout() {
         </div>
       </div>
 
-      <RouteErrorBoundary route="/updates">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
     </div>
   )
 }

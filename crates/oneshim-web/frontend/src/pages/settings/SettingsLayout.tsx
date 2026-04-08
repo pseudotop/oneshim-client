@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Button, Spinner, Tabs } from '../../components/ui'
 import { useShellLayoutContext } from '../../contexts/ShellLayoutContext'
-import { RouteErrorBoundary, routeTree } from '../../routes'
+import { routeTree } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { SettingsFormProvider, useSettingsFormContext } from './SettingsFormContext'
@@ -88,17 +88,15 @@ function SettingsContent() {
       )}
 
       <form id="settings-form" className="space-y-6" onSubmit={form.handleSubmit}>
-        <RouteErrorBoundary route="/settings">
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center py-12">
-                <Spinner />
-              </div>
-            }
-          >
-            <Outlet />
-          </Suspense>
-        </RouteErrorBoundary>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-12">
+              <Spinner />
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
 
         <div className="flex justify-end">
           <Button

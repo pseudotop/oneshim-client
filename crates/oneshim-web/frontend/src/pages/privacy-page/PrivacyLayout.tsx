@@ -23,7 +23,6 @@ import {
 } from '../../api/client'
 import { Alert, Button, Card, CardTitle, Spinner } from '../../components/ui'
 import { addToast } from '../../hooks/useToast'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, elevation, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -379,9 +378,7 @@ export default function PrivacyLayout() {
         </Alert>
       )}
 
-      <RouteErrorBoundary route="/privacy">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
 
       {/* Data info card */}
       <Card variant="default" padding="lg">

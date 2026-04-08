@@ -17,7 +17,6 @@ import type {
 import DateRangePicker from '../../components/DateRangePicker'
 import { Button, Card, Spinner } from '../../components/ui'
 import { useCreateOverride, useDeleteOverride, useOverrides, useRecluster } from '../../hooks/useRecalibration'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -198,9 +197,7 @@ export default function RecalibrationLayout() {
         </div>
       </Card>
 
-      <RouteErrorBoundary route="/recalibration">
-        <Outlet context={ctx} />
-      </RouteErrorBoundary>
+      <Outlet context={ctx} />
     </div>
   )
 }

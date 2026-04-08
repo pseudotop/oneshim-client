@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { fetchReport, type ReportPeriod, type ReportResponse } from '../../api/client'
 import { Button, Card, ChartSkeleton, EmptyState, Input, Skeleton, StatCardsSkeleton } from '../../components/ui'
-import { RouteErrorBoundary } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -138,11 +137,7 @@ export default function ReportsLayout() {
         />
       )}
 
-      {report && (
-        <RouteErrorBoundary route="/reports">
-          <Outlet context={{ report } satisfies ReportsContext} />
-        </RouteErrorBoundary>
-      )}
+      {report && <Outlet context={{ report } satisfies ReportsContext} />}
     </div>
   )
 }
