@@ -7,6 +7,7 @@ import { Card, CardTitle } from '../../components/ui'
 import { useTypedOutletContext } from '../../routes'
 import { typography } from '../../styles/tokens'
 import { formatDuration } from '../../utils/formatters'
+import { ReportsEmptyState } from './ReportsEmptyState'
 import type { ReportsContext } from './ReportsLayout'
 
 function getScoreColor(score: number): string {
@@ -28,7 +29,11 @@ function TrendIndicator({ trend }: { trend: number }) {
 
 export default function FocusReport() {
   const { t } = useTranslation()
-  const { report } = useTypedOutletContext<ReportsContext>('Reports')
+  const { report, reportError } = useTypedOutletContext<ReportsContext>('Reports')
+
+  if (reportError || !report) {
+    return <ReportsEmptyState reportError={reportError} />
+  }
 
   return (
     <>

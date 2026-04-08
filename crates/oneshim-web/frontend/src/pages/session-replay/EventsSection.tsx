@@ -1,5 +1,7 @@
+import { Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import EventLog from '../../components/EventLog'
+import { EmptyState } from '../../components/ui'
 import { Card, CardContent } from '../../components/ui/Card'
 import { useTypedOutletContext } from '../../routes'
 import { typography } from '../../styles/tokens'
@@ -10,6 +12,19 @@ export default function EventsSection() {
   const { t } = useTranslation()
   const { timeline, playback, scene, currentScene, sceneIntelligenceEnabled, sceneExecutionAllowed, sceneCalibration } =
     useTypedOutletContext<ReplayOutletContext>('Replay')
+
+  // Mirror the EmptyState guard in TimelineSection — with no timeline data
+  // there is nothing to render for events either. ReplayLayout is intentionally
+  // neutral so its index redirect can always fire.
+  if (!timeline || timeline.items.length === 0) {
+    return (
+      <EmptyState
+        icon={<Play className="h-8 w-8" />}
+        title={t('emptyState.replay.title')}
+        description={t('emptyState.replay.description')}
+      />
+    )
+  }
 
   const { currentFrame } = playback
 

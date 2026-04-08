@@ -1,11 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
+import { Bot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { fetchAutomationContracts, fetchPolicies } from '../../api/client'
+import { EmptyState } from '../../components/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
+import { useTypedOutletContext } from '../../routes'
 import { typography } from '../../styles/tokens'
+import type { AutomationContext } from './AutomationLayout'
 
 export default function PoliciesSection() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { status, stats } = useTypedOutletContext<AutomationContext>('Automation')
 
   const { data: policies } = useQuery({
     queryKey: ['policies'],
@@ -16,6 +23,20 @@ export default function PoliciesSection() {
     queryKey: ['automationContracts'],
     queryFn: fetchAutomationContracts,
   })
+
+  // Automation-wide empty state — owned here (not AutomationLayout) so the
+  // layout can always render <Outlet> and `/automation` → `/automation/policies`
+  // keeps redirecting. Same AuditLayout empty-state-in-child pattern.
+  if ((stats?.total_executions ?? 0) === 0 && !status?.enabled) {
+    return (
+      <EmptyState
+        icon={<Bot className="h-8 w-8" />}
+        title={t('emptyState.automation.title')}
+        description={t('emptyState.automation.description')}
+        action={{ label: t('emptyState.automation.action'), onClick: () => navigate('/settings') }}
+      />
+    )
+  }
 
   return (
     <Card id="section-policies">

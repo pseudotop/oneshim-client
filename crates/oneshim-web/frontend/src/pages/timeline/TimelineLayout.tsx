@@ -4,10 +4,9 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Outlet, useNavigate, useSearchParams } from 'react-router-dom'
+import { Outlet, useSearchParams } from 'react-router-dom'
 import {
   addTagToFrame,
   batchAddTag,
@@ -21,7 +20,7 @@ import {
 import { isStandaloneModeEnabled } from '../../api/standalone'
 import DateRangePicker from '../../components/DateRangePicker'
 import Lightbox from '../../components/Lightbox'
-import { EmptyState, Skeleton } from '../../components/ui'
+import { Skeleton } from '../../components/ui'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { addToast } from '../../hooks/useToast'
 import { colors, typography } from '../../styles/tokens'
@@ -73,11 +72,16 @@ export interface TimelineContext {
   lightboxOpen: boolean
   setLightboxOpen: React.Dispatch<React.SetStateAction<boolean>>
   standaloneMode: boolean
+  /**
+   * Undefined while `/settings` is still loading; otherwise the last known
+   * value of `capture_enabled`. Consumed by the AllFrames empty-state branch
+   * that decides between "waiting" vs "capture disabled" messaging.
+   */
+  captureEnabled: boolean | undefined
 }
 
 export default function TimelineLayout() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number>(-1)
@@ -286,44 +290,11 @@ export default function TimelineLayout() {
     )
   }
 
-  if (frames.length === 0) {
-    const emptyState = standaloneMode
-      ? {
-          title: t('emptyState.timelineStandalone.title', 'Desktop Capture Unavailable'),
-          description: t(
-            'emptyState.timelineStandalone.description',
-            'ONESHIM is currently running without the live desktop capture connection. Reopen the app in live desktop mode, then wait for frames to appear.',
-          ),
-          action: undefined,
-        }
-      : settings?.capture_enabled === false
-        ? {
-            title: t('emptyState.timeline.title'),
-            description: t('emptyState.timeline.description'),
-            action: {
-              label: t('emptyState.timeline.action'),
-              onClick: () => navigate('/settings/monitoring'),
-            },
-          }
-        : {
-            title: t('emptyState.timelineWaiting.title', 'No Screenshots Captured Yet'),
-            description: t(
-              'emptyState.timelineWaiting.description',
-              'ONESHIM has not stored any timeline frames yet. Keep the app running for a moment and confirm desktop capture permissions if this persists.',
-            ),
-            action: undefined,
-          }
-
-    return (
-      <EmptyState
-        icon={<Camera className="h-8 w-8" />}
-        title={emptyState.title}
-        description={emptyState.description}
-        action={emptyState.action}
-      />
-    )
-  }
-
+  // Empty-state UX is owned by AllFrames (the defaultChild) so that this
+  // layout can always render <Outlet> — otherwise the index
+  // <Navigate to="all" replace /> emitted by RouteRenderer would never fire
+  // and `/timeline` would get stuck without redirecting to `/timeline/all`.
+  // Same bug class as the AuditLayout empty-state regression.
   const ctx: TimelineContext = {
     frames,
     filteredFrames,
@@ -364,6 +335,7 @@ export default function TimelineLayout() {
     lightboxOpen,
     setLightboxOpen,
     standaloneMode,
+    captureEnabled: settings?.capture_enabled,
   }
 
   return (

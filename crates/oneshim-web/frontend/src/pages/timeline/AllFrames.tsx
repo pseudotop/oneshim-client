@@ -1,13 +1,19 @@
 /**
  * Timeline all-frames section — grid/list view with inline filter bar,
  * pagination, lightbox, tag management, selection mode, and detail panel.
+ *
+ * Owns the Timeline empty state (frames.length === 0) so that TimelineLayout
+ * can always render <Outlet> and the `/timeline` → `/timeline/all` index
+ * redirect keeps firing even when no frames have been captured yet.
+ * Matches the AuditLayout empty-state-in-child pattern.
  */
 
-import { CheckSquare, Copy, Square } from 'lucide-react'
+import { Camera, CheckSquare, Copy, Square } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { TagBadge } from '../../components/TagBadge'
 import { TagInput } from '../../components/TagInput'
-import { Badge, Button, Card, CardTitle, Select } from '../../components/ui'
+import { Badge, Button, Card, CardTitle, EmptyState, Select } from '../../components/ui'
 import { useTypedOutletContext } from '../../routes'
 import { iconSize, interaction, motion, typography } from '../../styles/tokens'
 import { resolveImageUrl } from '../../utils/api-base'
@@ -23,6 +29,7 @@ function getImportanceBadge(importance: number) {
 
 export default function AllFrames() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const {
     frames,
     filteredFrames,
@@ -59,7 +66,47 @@ export default function AllFrames() {
     openLightbox,
     handleCopyOcr,
     setLightboxOpen,
+    standaloneMode,
+    captureEnabled,
   } = useTypedOutletContext<TimelineContext>('Timeline')
+
+  if (frames.length === 0) {
+    const emptyState = standaloneMode
+      ? {
+          title: t('emptyState.timelineStandalone.title', 'Desktop Capture Unavailable'),
+          description: t(
+            'emptyState.timelineStandalone.description',
+            'ONESHIM is currently running without the live desktop capture connection. Reopen the app in live desktop mode, then wait for frames to appear.',
+          ),
+          action: undefined as { label: string; onClick: () => void } | undefined,
+        }
+      : captureEnabled === false
+        ? {
+            title: t('emptyState.timeline.title'),
+            description: t('emptyState.timeline.description'),
+            action: {
+              label: t('emptyState.timeline.action'),
+              onClick: () => navigate('/settings/monitoring'),
+            },
+          }
+        : {
+            title: t('emptyState.timelineWaiting.title', 'No Screenshots Captured Yet'),
+            description: t(
+              'emptyState.timelineWaiting.description',
+              'ONESHIM has not stored any timeline frames yet. Keep the app running for a moment and confirm desktop capture permissions if this persists.',
+            ),
+            action: undefined as { label: string; onClick: () => void } | undefined,
+          }
+
+    return (
+      <EmptyState
+        icon={<Camera className="h-8 w-8" />}
+        title={emptyState.title}
+        description={emptyState.description}
+        action={emptyState.action}
+      />
+    )
+  }
 
   return (
     <>

@@ -4,14 +4,12 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { Brain, Focus as FocusIcon } from 'lucide-react'
+import { Focus as FocusIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { type FocusMetricsResponse, fetchFocusMetrics } from '../../api/client'
 import DateRangePicker from '../../components/DateRangePicker'
-import { EmptyState } from '../../components/ui'
-import { Card, CardContent } from '../../components/ui/Card'
 import { Spinner } from '../../components/ui/Spinner'
 import { colors, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
@@ -28,7 +26,14 @@ function createInitialWeekRange() {
 }
 
 export interface FocusContext {
-  metrics: FocusMetricsResponse
+  /**
+   * Nullable so ScoreSection (defaultChild) can own both the empty-state
+   * (`focus_score === 0`) and error-state UX while this layout always
+   * renders <Outlet>. Needed so RouteRenderer's `/focus` → `/focus/score`
+   * index redirect fires even when metrics are missing/empty.
+   */
+  metrics: FocusMetricsResponse | null
+  metricsError: string | null
   dateRange: { from: Date; to: Date }
   setDateRange: React.Dispatch<React.SetStateAction<{ from: Date; to: Date }>>
 }
@@ -55,30 +60,14 @@ export default function FocusLayout() {
     )
   }
 
-  const error = metricsError ? (metricsError instanceof Error ? metricsError.message : String(metricsError)) : null
+  const errorText = metricsError ? (metricsError instanceof Error ? metricsError.message : String(metricsError)) : null
 
-  if (error || !metrics) {
-    return (
-      <Card variant="danger">
-        <CardContent>
-          <p className="text-semantic-error">{error || t('common.error')}</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (metrics.today.focus_score === 0) {
-    return (
-      <EmptyState
-        icon={<Brain className="h-8 w-8" />}
-        title={t('emptyState.focus.title')}
-        description={t('emptyState.focus.description')}
-      />
-    )
-  }
-
+  // Empty-state and error-state UX live in ScoreSection so the layout can
+  // always render <Outlet> and the `/focus` → `/focus/score` index redirect
+  // keeps firing. Same pattern AuditLayout adopted for the same bug class.
   const ctx: FocusContext = {
-    metrics,
+    metrics: metrics ?? null,
+    metricsError: errorText,
     dateRange,
     setDateRange,
   }
