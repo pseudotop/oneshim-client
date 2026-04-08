@@ -45,11 +45,14 @@ export default function RouteRenderer() {
       <Routes>
         {sortedRouteTree.map((node) =>
           node.children ? (
-            // IMPORTANT-4: parent layouts get an outer RouteErrorBoundary so
-            // a crash in the layout's own render (e.g. useQuery throws during
-            // initial fetch) is isolated per-route. The inner boundary inside
-            // each Layout (around <Outlet>) becomes a defense-in-depth
-            // second layer for child Section crashes.
+            // Parent layouts get exactly ONE outer RouteErrorBoundary so a
+            // crash anywhere in the layout (header, useQuery, Outlet child)
+            // is isolated per-route. Earlier revisions also wrapped the
+            // <Outlet> inside each Layout with a second boundary, but two
+            // boundaries on the same route key produced duplicate
+            // recoverySignals subscribers — halving the escalation threshold
+            // from 3 to 2 (commit e5bab2e1). Do not re-introduce the inner
+            // wrapping without also re-keying the recovery channel.
             <Route
               key={node.path}
               path={`${node.path}/*`}
