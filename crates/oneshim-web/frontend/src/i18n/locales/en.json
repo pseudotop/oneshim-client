@@ -1212,7 +1212,10 @@
       "title": "Something went wrong in this section",
       "description": "The error has been reported. You can try again or go back to the dashboard.",
       "tryAgain": "Try Again",
-      "goHome": "Go to Dashboard"
+      "goHome": "Go to Dashboard",
+      "recoveringTitle": "Recovering the app...",
+      "recoveringDescription": "This section has crashed repeatedly. Reloading the app to restore normal operation.",
+      "recovering": "Reloading..."
     }
   },
   "recalibration": {

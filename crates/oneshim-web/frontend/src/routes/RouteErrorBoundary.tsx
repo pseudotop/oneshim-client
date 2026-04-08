@@ -90,6 +90,7 @@ function classifySeverity(error: Error): Severity {
 interface InnerProps {
   route: string
   children: ReactNode
+  isRecovering: boolean
   onCatch: (error: Error, info: ErrorInfo) => void
   onRetry: () => void
   onGoHome: () => void
@@ -123,6 +124,7 @@ class RouteErrorBoundaryInner extends Component<InnerProps, InnerState> {
           error={this.state.error}
           route={this.props.route}
           componentStack={this.state.componentStack}
+          isRecovering={this.props.isRecovering}
           onRetry={this.props.onRetry}
           onGoHome={this.props.onGoHome}
         />
@@ -139,8 +141,15 @@ interface RouteErrorBoundaryProps {
   children: ReactNode
 }
 
+// How long (in ms) to wait for Rust to emit a full-reload after a critical
+// escalation. If Rust doesn't fire (e.g., cooldown-suppressed), the frontend
+// falls back to window.location.reload() itself — prevents the user being
+// permanently stuck in the error fallback.
+const CRITICAL_RELOAD_FALLBACK_MS = 5_000
+
 export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps) {
   const [resetKey, setResetKey] = useState(0)
+  const [isRecovering, setIsRecovering] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -172,13 +181,17 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
       const escalated = trackReset(route)
       if (escalated === 'critical') {
         // Tell Rust to upgrade — Rust will emit `full-reload` recovery on
-        // the next allowed cycle (cooldown permitting). Skip the local
-        // remount; the full-reload will replace it.
+        // the next allowed cycle (cooldown permitting). Show the recovering
+        // state and schedule a safety-net reload in case Rust is cooldowned.
         reportToNative({
           route,
           severity: 'critical',
           message: `Auto-recovery escalation: 3+ crashes in 60s on ${route}`,
         })
+        setIsRecovering(true)
+        window.setTimeout(() => {
+          window.location.reload()
+        }, CRITICAL_RELOAD_FALLBACK_MS)
         return
       }
       // Within threshold — reset locally. Note: queries are NOT invalidated
@@ -220,7 +233,13 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
         severity: 'critical',
         message: `Manual retry escalation: 3+ resets in 60s on ${route}`,
       })
-      // Don't remount locally — wait for Rust full-reload signal
+      // Show a "Recovering..." state so the user sees progress instead of
+      // the app appearing frozen. Schedule a safety-net reload in case
+      // Rust's recovery cooldown suppresses the emit.
+      setIsRecovering(true)
+      window.setTimeout(() => {
+        window.location.reload()
+      }, CRITICAL_RELOAD_FALLBACK_MS)
       return
     }
     setResetKey((k) => k + 1)
@@ -234,6 +253,7 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
     <RouteErrorBoundaryInner
       key={resetKey}
       route={route}
+      isRecovering={isRecovering}
       onCatch={handleCatch}
       onRetry={handleRetry}
       onGoHome={handleGoHome}

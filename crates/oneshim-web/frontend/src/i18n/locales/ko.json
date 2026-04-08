@@ -1212,7 +1212,10 @@
       "title": "이 섹션에서 오류가 발생했습니다",
       "description": "오류가 보고되었습니다. 다시 시도하거나 대시보드로 돌아갈 수 있습니다.",
       "tryAgain": "다시 시도",
-      "goHome": "대시보드로 이동"
+      "goHome": "대시보드로 이동",
+      "recoveringTitle": "앱 복구 중...",
+      "recoveringDescription": "이 섹션이 반복적으로 충돌했습니다. 정상 상태로 복원하기 위해 앱을 재로드합니다.",
+      "recovering": "재로드 중..."
     }
   },
   "recalibration": {

@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{Emitter, EventTarget};
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use crate::commands::system::{sanitize_frontend_surface, truncate_log_field};
 
@@ -268,12 +268,12 @@ pub async fn report_frontend_error(
     // Apply per-route logging cooldown only for non-critical severities.
     // Critical bypasses the cooldown AND should not reset the bucket so a
     // subsequent warning/error within 10s is not silently suppressed.
+    //
+    // Severity contract matches the TS `Severity` type in reportToNative.ts:
+    // `'warning' | 'error' | 'critical'`. The frontend type system forbids
+    // any other value — any unknown severity is rejected as a contract
+    // violation (likely a compromised/malicious caller).
     match severity.as_str() {
-        "info" => {
-            if should_log(&route) {
-                info!(route, error_message, "frontend route info");
-            }
-        }
         "warning" => {
             if should_log(&route) {
                 warn!(route, error_message, "frontend route warning");
@@ -306,7 +306,14 @@ pub async fn report_frontend_error(
             maybe_emit_recovery(&app, &route, "full-reload", &error_message);
         }
         other => {
-            warn!(route, error_message, severity = other, "unknown severity");
+            // Contract violation: the TS type forbids anything other than
+            // warning/error/critical. An unknown severity indicates a
+            // compromised caller or a contract drift — reject loudly but
+            // without logging the raw `other` string (which is attacker-
+            // controlled and already length-bounded by MAX_SEVERITY_LEN,
+            // but we still truncate defensively to a tiny preview).
+            let preview: String = other.chars().take(16).collect();
+            return Err(format!("invalid severity: {preview}"));
         }
     }
     Ok(())
