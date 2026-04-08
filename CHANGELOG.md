@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32-rc.1] - 2026-04-08
+
+### Added
+
+- Sub-pathname routing + route error middleware (production-hardened) ([#376](https://github.com/pseudotop/oneshim-client/pull/376))
+  * docs: add sidebar sub-pathname routing design spec
+
+  Single source of truth route config, sub-pathname navigation,
+  Layout+Outlet pattern, pre-commit route integrity verification.
+
+
+### Fixed
+
+- Release build errors — unused vars + stale advisory ignore ([#375](https://github.com/pseudotop/oneshim-client/pull/375))
+  - open_devtools: suppress unused app/label on release builds
+  - deny.toml: remove RUSTSEC-2024-0429 (no longer matched)
+
 ## [0.4.31] - 2026-04-07
 
 ### Fixed
