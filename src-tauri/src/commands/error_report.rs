@@ -83,6 +83,24 @@ struct RecoveryPayload {
 
 // ── Helpers ──
 
+/// Build the cooldown key for the recovery map.
+///
+/// Composite (route, strategy) so reset-route and full-reload have
+/// independent cooldowns — fixes NC-1 where the critical full-reload
+/// emission was always suppressed by the in-flight reset-route cooldown.
+fn recovery_cooldown_key(route: &str, strategy: &str) -> String {
+    format!("{route}|{strategy}")
+}
+
+/// Build the cooldown key for the notification map.
+///
+/// Composite (route, severity) so a benign warning notification does
+/// not silently suppress a subsequent critical notification on the same
+/// route — fixes NC-NEW-4.
+fn notification_cooldown_key(route: &str, severity: &str) -> String {
+    format!("{route}|{severity}")
+}
+
 /// Drop entries older than `keep_for` from the cooldown map.
 /// Called on each access to bound memory usage.
 fn prune_stale(map: &mut HashMap<String, Instant>, keep_for: Duration) {
@@ -118,10 +136,15 @@ fn check_and_update_cooldown(
 }
 
 /// Show a native desktop notification via tauri_plugin_notification.
-/// Respects a 30-second per-route cooldown.
-fn maybe_notify(app: &tauri::AppHandle, route: &str, message: &str) {
+/// Respects a 30-second per-(route, severity) cooldown.
+///
+/// Severity is part of the cooldown key so a benign warning notification
+/// does not silently suppress a subsequent critical notification on the
+/// same route within the cooldown window.
+fn maybe_notify(app: &tauri::AppHandle, route: &str, severity: &str, message: &str) {
     let cooldown = Duration::from_secs(NOTIFICATION_COOLDOWN_SECS);
-    if !check_and_update_cooldown(&NOTIFICATION_COOLDOWN, route, cooldown) {
+    let cooldown_key = notification_cooldown_key(route, severity);
+    if !check_and_update_cooldown(&NOTIFICATION_COOLDOWN, &cooldown_key, cooldown) {
         return;
     }
 
@@ -150,7 +173,7 @@ fn maybe_notify(app: &tauri::AppHandle, route: &str, message: &str) {
 /// bucket as the rapid reset-route signals that triggered the escalation.
 fn maybe_emit_recovery(app: &tauri::AppHandle, route: &str, strategy: &str, reason: &str) {
     let cooldown = Duration::from_secs(RECOVERY_COOLDOWN_SECS);
-    let cooldown_key = format!("{route}|{strategy}");
+    let cooldown_key = recovery_cooldown_key(route, strategy);
     if !check_and_update_cooldown(&RECOVERY_COOLDOWN, &cooldown_key, cooldown) {
         return;
     }
@@ -230,7 +253,7 @@ pub async fn report_frontend_error(
             if do_log {
                 warn!(route, error_message, "frontend route warning");
             }
-            maybe_notify(&app, &route, &error_message);
+            maybe_notify(&app, &route, severity.as_str(), &error_message);
         }
         "error" => {
             if do_log {
@@ -242,7 +265,7 @@ pub async fn report_frontend_error(
                     "frontend route error"
                 );
             }
-            maybe_notify(&app, &route, &error_message);
+            maybe_notify(&app, &route, severity.as_str(), &error_message);
             maybe_emit_recovery(&app, &route, "reset-route", &error_message);
         }
         "critical" => {
@@ -254,7 +277,7 @@ pub async fn report_frontend_error(
                 ?component_stack,
                 "CRITICAL frontend route error"
             );
-            maybe_notify(&app, &route, &error_message);
+            maybe_notify(&app, &route, severity.as_str(), &error_message);
             maybe_emit_recovery(&app, &route, "full-reload", &error_message);
         }
         other => {
@@ -384,6 +407,49 @@ mod tests {
         let truncated_emoji = truncate_log_field(emoji, 4000);
         assert!(truncated_emoji.len() <= 4050);
         assert!(truncated_emoji.ends_with("(truncated)"));
+    }
+
+    #[test]
+    fn recovery_cooldown_key_format() {
+        assert_eq!(
+            recovery_cooldown_key("/focus", "reset-route"),
+            "/focus|reset-route"
+        );
+        assert_eq!(recovery_cooldown_key("/", "full-reload"), "/|full-reload");
+    }
+
+    #[test]
+    fn notification_cooldown_key_format() {
+        assert_eq!(
+            notification_cooldown_key("/focus", "warning"),
+            "/focus|warning"
+        );
+        assert_eq!(
+            notification_cooldown_key("/audit", "critical"),
+            "/audit|critical"
+        );
+    }
+
+    #[test]
+    fn notification_cooldown_separates_severities() {
+        // NC-NEW-4 regression: warning/error/critical on the same route
+        // must not share a cooldown bucket. A benign warning notification
+        // should not silently suppress a subsequent critical notification.
+        reset_all_cooldowns();
+        let cooldown = Duration::from_secs(30);
+        let warn_key = notification_cooldown_key("/focus", "warning");
+        let critical_key = notification_cooldown_key("/focus", "critical");
+        assert!(check_and_update_cooldown(
+            &NOTIFICATION_COOLDOWN,
+            &warn_key,
+            cooldown
+        ));
+        // Immediate critical call must NOT be blocked by the warning cooldown
+        assert!(check_and_update_cooldown(
+            &NOTIFICATION_COOLDOWN,
+            &critical_key,
+            cooldown
+        ));
     }
 
     #[test]

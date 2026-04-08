@@ -77,12 +77,28 @@ export function useTauriEventBridge() {
 
       try {
         const { listen } = await import('@tauri-apps/api/event')
+
         // For events that must NOT leak to other webviews (overlay /
         // tracking-panel), use the current-webview-scoped listener instead
         // of the global one. The Rust side then uses emit_to with the
         // matching label to actually filter the delivery.
-        const { getCurrentWebview } = await import('@tauri-apps/api/webview')
-        const currentWebview = getCurrentWebview()
+        //
+        // The webview import is in its own try so a failure here (version
+        // skew, missing module) does not nuke the unrelated global listeners.
+        // If unavailable, we fall back to the global `listen` for the
+        // recovery event — it still works, just without per-webview filtering.
+        let currentWebview: { listen: typeof listen } | null = null
+        try {
+          const webviewModule = await import('@tauri-apps/api/webview')
+          currentWebview = webviewModule.getCurrentWebview()
+        } catch (e) {
+          console.warn('[useTauriEventBridge] webview API unavailable, falling back to global listen:', e)
+        }
+
+        // Sentinel error class — distinguishes intentional disposal from a
+        // bona-fide registration failure. Caught in the surrounding try/catch
+        // which drains the already-registered listeners (NC-NEW-3 fix).
+        class DisposedDuringRegistration extends Error {}
 
         const registerListener = async (
           eventName: string,
@@ -91,7 +107,7 @@ export function useTauriEventBridge() {
           const unlisten = await listen(eventName, handler)
           if (disposed) {
             unlisten()
-            return false
+            throw new DisposedDuringRegistration()
           }
           pendingUnlistenCallbacks.push(unlisten)
           return true
@@ -101,10 +117,13 @@ export function useTauriEventBridge() {
           eventName: string,
           handler: (event: TauriEventPayload) => void,
         ): Promise<boolean> => {
-          const unlisten = await currentWebview.listen(eventName, handler)
+          // Fall back to the global listen if the webview API is unavailable
+          // (still functional, just without per-webview filtering).
+          const listenFn = currentWebview?.listen ?? listen
+          const unlisten = await listenFn(eventName, handler)
           if (disposed) {
             unlisten()
-            return false
+            throw new DisposedDuringRegistration()
           }
           pendingUnlistenCallbacks.push(unlisten)
           return true

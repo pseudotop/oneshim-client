@@ -74,6 +74,7 @@ async function renderBridgeHarness({ expectedListenCalls = 8, listenImpl }: Rend
     invalidateQueries,
     listeners,
     listen,
+    webviewListen,
     unlistenCallbacks,
   }
 }
@@ -155,6 +156,15 @@ describe('useTauriEventBridge', () => {
     })
   })
 
+  it('registers frontend-recovery via webview-scoped listener (NC-3 + NC-NEW-2)', async () => {
+    vi.doMock('../../routes/recoverySignals', () => ({
+      notifyRouteRecovery: vi.fn(),
+    }))
+    const { webviewListen } = await renderBridgeHarness()
+    expect(webviewListen).toHaveBeenCalledTimes(1)
+    expect(webviewListen).toHaveBeenCalledWith('frontend-recovery', expect.any(Function))
+  })
+
   it('calls notifyRouteRecovery on frontend-recovery reset-route signal', async () => {
     // Mock the recoverySignals module BEFORE importing useTauriEventBridge
     const notifySpy = vi.fn()
@@ -214,9 +224,6 @@ describe('useTauriEventBridge', () => {
       value: { ...originalLocation, reload: reloadMock },
     })
 
-    // Spy on the before-full-reload event used by unsaved-data guards
-    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
-
     act(() => {
       listeners.get('frontend-recovery')?.({
         payload: {
@@ -230,8 +237,6 @@ describe('useTauriEventBridge', () => {
     expect(reloadMock).toHaveBeenCalledTimes(1)
     // The browser fires `beforeunload` automatically on location.reload();
     // SettingsFormProvider listens for that to guard unsaved data.
-
-    dispatchSpy.mockRestore()
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,

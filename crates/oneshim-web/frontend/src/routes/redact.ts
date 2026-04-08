@@ -35,7 +35,7 @@ const HOME_PATH_PATTERNS: ReadonlyArray<RegExp> = [
 // - Generic "key=" / "token=" pairs
 const SECRET_PATTERNS: ReadonlyArray<RegExp> = [
   /\bsk-[A-Za-z0-9_-]{16,}/g,
-  /\bBearer\s+[A-Za-z0-9._~+-/]+={0,2}/gi,
+  /\bBearer\s+[A-Za-z0-9._~+/-]+={0,2}/gi,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
   /\b(?:api[_-]?key|password|token|secret)\s*[=:]\s*"?[^\s"]{6,}/gi,
 ]
