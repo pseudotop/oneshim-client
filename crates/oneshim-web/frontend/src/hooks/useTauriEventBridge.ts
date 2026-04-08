@@ -87,10 +87,6 @@ export function useTauriEventBridge() {
       void queryClientRef.current.invalidateQueries({ queryKey: ['update-status'] })
     }
 
-    const refreshAutomationStatus = () => {
-      void queryClientRef.current.invalidateQueries({ queryKey: ['automationStatus'] })
-    }
-
     const registerListeners = async () => {
       let pendingUnlistenCallbacks: Array<() => void> = []
 
@@ -153,23 +149,15 @@ export function useTauriEventBridge() {
           return
         }
 
-        if (
-          !(await registerListener('tray-toggle-automation', () => {
-            refreshAutomationStatus()
-            navigateTo('/settings/ai-automation')
-          }))
-        ) {
-          return
-        }
-
-        if (
-          !(await registerListener('automation:quick-access', () => {
-            refreshAutomationStatus()
-            navigateTo('/automation')
-          }))
-        ) {
-          return
-        }
+        // Tray "Settings", "AI Automation Preferences" and "Automation Page"
+        // all emit the single `navigate` event above with a deep-link path.
+        // Earlier revisions wired dedicated `tray-toggle-automation` /
+        // `automation:quick-access` events, but the only extra behaviour they
+        // added was an `automationStatus` query invalidation that the target
+        // routes did not consume, so the indirection was pure drag. Keep
+        // custom events here only when they carry side effects the target
+        // route genuinely needs (e.g. `tray-approve-update` below pairs a
+        // navigation with an `updateStatus` refetch).
 
         if (
           !(await registerListener('tray-approve-update', () => {
