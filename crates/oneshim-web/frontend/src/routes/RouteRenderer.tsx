@@ -77,7 +77,17 @@ export default function RouteRenderer() {
           // live ABOVE the boundary so its state survives recovery reset
           // (e.g., SettingsFormProvider preserves unsaved form edits).
           node.children ? (
-            <Route key={node.path} path={`${node.path}/*`} element={renderRouteElement(node)}>
+            // For the root node ("/") the splat path is just "/*" — naively
+            // concatenating would produce "//*", which react-router treats as
+            // a literal double-slash and silently breaks child path resolution
+            // (e.g. /monitoring would fall through to the index Navigate
+            // instead of mounting MonitoringSection). Caught after sub-route
+            // direct-navigation tests started failing — see e2e/dashboard.spec.
+            <Route
+              key={node.path}
+              path={node.path === '/' ? '/*' : `${node.path}/*`}
+              element={renderRouteElement(node)}
+            >
               {node.defaultChild && <Route index element={<Navigate to={node.defaultChild} replace />} />}
               {node.children.map((child) => {
                 const ChildComponent = child.component
