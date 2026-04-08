@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32-rc.2] - 2026-04-09
+
+### Changed
+
+- CommandPalette drift, Replay IA split, label collisions, tray IPC ([#380](https://github.com/pseudotop/oneshim-client/pull/380))
+  * refactor(shell): derive CommandPalette from routeTree + fix focus trap
+
+  The previous CommandPalette hardcoded 10 navigation entries and was missing
+  7 top-level routes (/day, /audit, /policies, /recalibration, /coaching,
+  /playbooks, /chat) because it drifted from \`routeTree\`. Users couldn't
+  jump to Coaching, Audit, etc. from the palette even though those pages
+  were reachable from the ActivityBar.
+
+  - Navigation items are now generated from \`routeTree\` (single source of
+    truth, same as ActivityBar), with deep-link entries of the form
+    "Parent › Child" so every sub-route is searchable by name
+  - Icons come from the \`node.icon\` already declared in routeTree, so
+    adding a new route automatically gets a palette entry
+  - \`shell-command-palette.spec.ts P014\` (filter count ≥1 and <15) still
+    holds: "settings" filter matches 10 entries (Settings + 9 tabs)
+
+  Focus trap fix (\`shell-command-palette.spec.ts:54 P018\` un-skipped):
+  - The old trap compared activeElement === first/last, but with only the
+    combobox input as a focusable inside the dialog and transient focus
+    states (autofocus timer, backdrop click) neither branch caught the
+    drift. Tab would then walk the page behind the backdrop.
+  - New guard: when Tab fires and \`document.activeElement\` is outside the
+    dialog entirely, redirect focus back to the first focusable inside.
+    Regular wrap-around still applies when focus is already in-dialog.
+
+  Also teach \`scripts/verify-route-integrity.sh\` to expand parent/child
+  combinations when validating Rust emit paths, so deep-link tray navigates
+  (e.g. \`/settings/ai-automation\`) don't trip the guard.
+
+  CommandPalette.test.tsx filter assertion updated to verify behaviour
+  (every match contains the query) instead of hardcoding a count the next
+  route addition would silently break.
+
+
+### Fixed
+
+- 6 layouts were suppressing <Outlet> on empty data ([#378](https://github.com/pseudotop/oneshim-client/pull/378))
+  DashboardLayout, TimelineLayout, ReplayLayout, AutomationLayout, FocusLayout,
+  and ReportsLayout each early-returned EmptyState (or gated Outlet behind a
+  data check) when their query produced no rows, which suppressed
+  RouteRenderer's `<Navigate to="<defaultChild>" replace />` index element and
+  left every parent route stuck without redirecting to its default child.
+
+  This is the same bug class AuditLayout hit post-PR #376 — the fix then was
+  to move the empty state into SummarySection so the layout could always
+  render `<Outlet>`. That fix addressed only one instance of a systemic
+  pattern; the other six layouts were quietly broken for any user with empty
+  data (notably first-install users).
+
+  This change applies the AuditLayout pattern to the remaining six:
+
+  - DashboardLayout → empty state owned by OverviewSection
+  - TimelineLayout → empty state owned by AllFrames (3-variant capture
+    messaging preserved; captureEnabled added to the outlet context)
+  - ReplayLayout → empty state owned by TimelineSection and EventsSection
+    (timeline made nullable on the outlet context; usePlaybackState keeps
+    its undefined-tolerant signature)
+  - AutomationLayout → empty state owned by PoliciesSection
+  - FocusLayout → empty state AND error state owned by ScoreSection
+    (metrics nullable, metricsError surfaced on context)
+  - ReportsLayout → error + empty state owned by all three children via a
+    new ReportsEmptyState shared guard (report/reportError on context)
+
+  Each layout now always renders <Outlet> and the index redirect fires the
+  first render after loading, regardless of data presence.
+
+  Regression test: crates/oneshim-web/frontend/e2e/routing-empty-data.spec.ts
+  overrides the relevant mocks to reproduce each previously-buggy branch and
+  asserts the parent-route URL still lands on the default child. 7 scenarios,
+  all pass. Existing routing.spec.ts (12 scenarios) still pass. No change to
+  the rest of the web e2e suite (56 tests across dashboard/timeline/reports/
+  focus/replay/navigation verified green).
+
 ## [0.4.32-rc.1] - 2026-04-08
 
 ### Added
