@@ -48,12 +48,12 @@ describe('storybook review coverage', () => {
     expect(previewSource).toContain("defaultTheme: 'light'")
   })
 
-  it('keeps permission review surfaces wired in settings and onboarding', () => {
+  it('keeps permission review surfaces wired in onboarding', () => {
+    // NOTE: The Settings.stories.tsx file was removed when the Settings page
+    // was split into a Layout/Section structure. Permission review coverage
+    // for the settings surface is expected to live in the new per-tab stories
+    // once they are authored; for now we only guard the onboarding copy here.
     const currentFile = fileURLToPath(import.meta.url)
-    const settingsStoryPath = resolve(dirname(currentFile), '../../pages/Settings.stories.tsx')
-    const settingsStorySource = readFileSync(settingsStoryPath, 'utf8')
-    expect(settingsStorySource).toContain("['desktop-permission-status']")
-
     const onboardingSourcePath = resolve(dirname(currentFile), '../../pages/Onboarding.tsx')
     const onboardingSource = readFileSync(onboardingSourcePath, 'utf8')
     expect(onboardingSource).toContain('step2DescWindows')

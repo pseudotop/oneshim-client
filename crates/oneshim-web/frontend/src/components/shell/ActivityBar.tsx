@@ -1,68 +1,30 @@
-import {
-  BarChart3,
-  BookOpen,
-  Calendar,
-  ClipboardList,
-  Clock,
-  FileText,
-  Image,
-  Info,
-  LayoutDashboard,
-  MessageCircle,
-  MessageSquare,
-  Monitor,
-  RefreshCw,
-  Settings,
-  Shield,
-  Tag,
-  Zap,
-} from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { type RouteNode, routeTree } from '../../routes'
 import { interaction, layout, motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { Divider } from '../ui'
 
-interface NavItem {
-  id: string
-  to: string
-  icon: React.ElementType
-  labelKey: string
-  group: 'monitor' | 'data' | 'manage'
-}
-
 const ACTIVITYBAR_WIDTH_PX = 48
 const TOOLTIP_ID = 'activity-bar-tooltip'
 
-const navItems: NavItem[] = [
-  { id: 'dashboard', to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', group: 'monitor' },
-  { id: 'dashboard-day', to: '/dashboard/day', icon: Calendar, labelKey: 'nav.dashboardDay', group: 'monitor' },
-  { id: 'timeline', to: '/timeline', icon: Clock, labelKey: 'nav.timeline', group: 'monitor' },
-  { id: 'replay', to: '/replay', icon: Zap, labelKey: 'nav.replay', group: 'monitor' },
-  { id: 'automation', to: '/automation', icon: Monitor, labelKey: 'nav.automation', group: 'monitor' },
-  { id: 'audit', to: '/audit', icon: ClipboardList, labelKey: 'nav.audit', group: 'monitor' },
-  { id: 'policies', to: '/policies', icon: Shield, labelKey: 'nav.policies', group: 'monitor' },
-  { id: 'recalibration', to: '/recalibration', icon: RefreshCw, labelKey: 'nav.recalibration', group: 'data' },
-  { id: 'coaching', to: '/coaching', icon: MessageCircle, labelKey: 'nav.coaching', group: 'data' },
-  { id: 'playbooks', to: '/playbooks', icon: BookOpen, labelKey: 'nav.playbooks', group: 'data' },
-  { id: 'chat', to: '/chat', icon: MessageSquare, labelKey: 'nav.chat', group: 'data' },
-  { id: 'focus', to: '/focus', icon: Image, labelKey: 'nav.focus', group: 'data' },
-  { id: 'reports', to: '/reports', icon: BarChart3, labelKey: 'nav.reports', group: 'data' },
-  { id: 'search', to: '/search', icon: Tag, labelKey: 'nav.search', group: 'data' },
-  { id: 'updates', to: '/updates', icon: FileText, labelKey: 'nav.updates', group: 'manage' },
-]
+// Derive nav items from routeTree (single source of truth).
+// Stable IDs for data-testid: strip leading "/" and replace "/" with "-".
+function pathToId(path: string): string {
+  if (path === '/') return 'dashboard'
+  if (path === '/day') return 'dashboard-day'
+  return path.slice(1).replace(/\//g, '-')
+}
 
-const bottomItems: NavItem[] = [
-  { id: 'settings', to: '/settings', icon: Settings, labelKey: 'nav.settings', group: 'manage' },
-  { id: 'privacy', to: '/privacy', icon: Info, labelKey: 'nav.privacy', group: 'manage' },
-]
+const mainItems = routeTree.filter((r) => !r.bottom && r.icon)
+const bottomItems = routeTree.filter((r) => r.bottom && r.icon)
 
 // Static grouping — computed once outside render
 const groups = {
-  monitor: navItems.filter((i) => i.group === 'monitor'),
-  data: navItems.filter((i) => i.group === 'data'),
-  manage: navItems.filter((i) => i.group === 'manage'),
+  monitor: mainItems.filter((r) => r.group === 'monitor'),
+  data: mainItems.filter((r) => r.group === 'data'),
+  manage: mainItems.filter((r) => r.group === 'manage'),
 }
 
 interface ActivityBarProps {
@@ -78,39 +40,49 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
   const [tooltipY, setTooltipY] = useState(0)
 
   const isActive = useCallback(
-    (to: string) => {
-      if (to === '/') return location.pathname === '/'
-      return location.pathname.startsWith(to)
+    (node: RouteNode) => {
+      if (node.path === '/') {
+        // Root dashboard: match exact "/" or any of its child sub-paths
+        if (location.pathname === '/') return true
+        return (
+          node.children?.some(
+            (c) => location.pathname === `/${c.path}` || location.pathname.startsWith(`/${c.path}/`),
+          ) ?? false
+        )
+      }
+      return location.pathname === node.path || location.pathname.startsWith(`${node.path}/`)
     },
     [location.pathname],
   )
 
   const handleClick = useCallback(
-    (item: NavItem) => {
-      if (isActive(item.to)) {
+    (node: RouteNode) => {
+      if (isActive(node)) {
         if (sidebarCollapsed) {
           onToggleSidebar()
         }
         return
       }
 
-      navigate(item.to)
+      navigate(node.path)
       if (sidebarCollapsed) onToggleSidebar()
     },
     [isActive, sidebarCollapsed, onToggleSidebar, navigate],
   )
 
-  const renderItem = (item: NavItem) => {
-    const Icon = item.icon
-    const active = isActive(item.to)
-    const label = t(item.labelKey)
+  const renderItem = (node: RouteNode) => {
+    if (!node.icon) return null
+    const Icon = node.icon
+    const active = isActive(node)
+    const label = t(node.labelKey)
+    const id = pathToId(node.path)
 
     return (
       <button
         type="button"
-        key={item.id}
-        data-testid={`nav-${item.id}`}
-        onClick={() => handleClick(item)}
+        key={node.path}
+        data-testid={`nav-${id}`}
+        onClick={() => handleClick(node)}
         onMouseEnter={(e) => {
           setTooltip(label)
           setTooltipY(e.currentTarget.getBoundingClientRect().top)

@@ -108,6 +108,9 @@ pre-commit:
         fi
         cargo clippy --workspace --all-targets --quiet -- -D warnings
       stage_fixed: true
+    route-integrity:
+      glob: "crates/oneshim-web/frontend/src/{routes,pages,components/shell}/**/*.{ts,tsx}"
+      run: ./scripts/verify-route-integrity.sh
     frontend-typecheck:
       glob: "*.{ts,tsx}"
       run: |

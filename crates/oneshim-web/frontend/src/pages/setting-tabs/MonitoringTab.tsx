@@ -1,27 +1,12 @@
 import { Bell, Camera, CircleAlert, CircleCheckBig, Monitor, RotateCcw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DesktopPermissionSnapshot, DesktopPermissionState, MonitorControlSettings } from '../../api/client'
+import type { AppSettings, DesktopPermissionState } from '../../api/client'
 import { Alert, Badge, Button, Card, CardTitle, Checkbox, Input } from '../../components/ui'
 import { colors, form, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { useSettingsFormContext } from '../settings/SettingsFormContext'
 import ToggleRow from './ToggleRow'
-import type { SettingsFormTabProps } from './types'
-
-interface MonitoringTabProps extends SettingsFormTabProps {
-  permissionStatus?: DesktopPermissionSnapshot | null
-  permissionStatusLoading?: boolean
-  permissionStatusRefreshing?: boolean
-  permissionStatusError?: string | null
-  notificationPermissionRequesting?: boolean
-  onRootChange: (
-    field: 'capture_enabled' | 'idle_threshold_secs' | 'metrics_interval_secs' | 'process_interval_secs',
-    value: boolean | number,
-  ) => void
-  onMonitorChange: (field: keyof MonitorControlSettings, value: boolean) => void
-  onRefreshPermissionStatus?: () => void
-  onRequestNotificationPermission?: () => void
-}
 
 interface PermissionRowAction {
   label: string
@@ -85,18 +70,24 @@ function describeMacNotificationPermission(
   }
 }
 
-export default function MonitoringTab({
-  formData,
-  permissionStatus,
-  permissionStatusLoading = false,
-  permissionStatusRefreshing = false,
-  permissionStatusError = null,
-  notificationPermissionRequesting = false,
-  onRootChange,
-  onMonitorChange,
-  onRefreshPermissionStatus,
-  onRequestNotificationPermission,
-}: MonitoringTabProps) {
+export default function MonitoringTab() {
+  const { form: settingsForm, data } = useSettingsFormContext()
+  const formData = settingsForm.formData!
+  const permissionStatus = data.desktopPermissionStatus ?? null
+  const permissionStatusLoading = data.desktopPermissionStatusLoading
+  const permissionStatusRefreshing = data.desktopPermissionStatusRefreshing
+  const permissionStatusError = data.desktopPermissionStatusError
+  const notificationPermissionRequesting = settingsForm.requestNotificationPermissionMutation.isPending
+  const onRootChange = (field: string, value: boolean | number) =>
+    settingsForm.handleRootChange(field as keyof AppSettings, value)
+  const onMonitorChange = settingsForm.handleMonitorChange
+  const onRefreshPermissionStatus = data.canQueryDesktopCapabilities
+    ? data.handleRefreshDesktopPermissionStatus
+    : undefined
+  const onRequestNotificationPermission = data.canQueryDesktopCapabilities
+    ? () => settingsForm.requestNotificationPermissionMutation.mutate()
+    : undefined
+
   const { t } = useTranslation()
   const permissionStateLabels: Record<DesktopPermissionState, string> = {
     granted: t('settings.permissionStateGranted', 'Ready'),

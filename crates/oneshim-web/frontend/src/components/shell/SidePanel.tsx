@@ -1,146 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { routeTree } from '../../routes'
 import { interaction, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import TreeView, { type TreeNode } from './TreeView'
-
-interface SidebarConfig {
-  titleKey: string
-  nodes: { id: string; labelKey: string; children?: { id: string; labelKey: string }[] }[]
-}
-
-const pageSidebarConfig: Record<string, SidebarConfig> = {
-  '/': {
-    titleKey: 'nav.dashboard',
-    nodes: [
-      { id: 'overview', labelKey: 'sidebar.overview' },
-      { id: 'metrics', labelKey: 'sidebar.systemMetrics' },
-      { id: 'processes', labelKey: 'sidebar.activeProcesses' },
-      { id: 'focus', labelKey: 'sidebar.focusScore' },
-      { id: 'heatmap', labelKey: 'sidebar.activityHeatmap' },
-      { id: 'updates', labelKey: 'sidebar.updateStatus' },
-    ],
-  },
-  '/dashboard/day': {
-    titleKey: 'nav.dashboardDay',
-    nodes: [],
-  },
-  '/recalibration': {
-    titleKey: 'nav.recalibration',
-    nodes: [
-      { id: 'segments', labelKey: 'sidebar.segments' },
-      { id: 'overrides', labelKey: 'sidebar.overrideHistory' },
-    ],
-  },
-  '/timeline': {
-    titleKey: 'nav.timeline',
-    nodes: [
-      { id: 'all', labelKey: 'sidebar.allFrames' },
-      {
-        id: 'filters',
-        labelKey: 'sidebar.filters',
-        children: [
-          { id: 'by-app', labelKey: 'sidebar.byApplication' },
-          { id: 'by-tag', labelKey: 'sidebar.byTag' },
-          { id: 'by-importance', labelKey: 'sidebar.byImportance' },
-        ],
-      },
-    ],
-  },
-  '/reports': {
-    titleKey: 'nav.reports',
-    nodes: [
-      { id: 'activity', labelKey: 'sidebar.activityReport' },
-      { id: 'focus', labelKey: 'sidebar.focusReport' },
-      { id: 'export', labelKey: 'sidebar.exportData' },
-    ],
-  },
-  '/coaching': {
-    titleKey: 'nav.coaching',
-    nodes: [
-      { id: 'goals', labelKey: 'sidebar.coachingGoals' },
-      { id: 'events', labelKey: 'sidebar.coachingEvents' },
-    ],
-  },
-  '/focus': {
-    titleKey: 'nav.focus',
-    nodes: [
-      { id: 'score', labelKey: 'sidebar.currentScore' },
-      { id: 'trend', labelKey: 'sidebar.weeklyTrend' },
-      { id: 'sessions', labelKey: 'sidebar.focusSessions' },
-      { id: 'interruptions', labelKey: 'sidebar.interruptions' },
-    ],
-  },
-  '/replay': {
-    titleKey: 'nav.replay',
-    nodes: [
-      { id: 'timeline', labelKey: 'sidebar.timeline' },
-      { id: 'events', labelKey: 'sidebar.eventLog' },
-    ],
-  },
-  '/automation': {
-    titleKey: 'nav.automation',
-    nodes: [
-      { id: 'policies', labelKey: 'sidebar.policies' },
-      { id: 'commands', labelKey: 'sidebar.commands' },
-      { id: 'history', labelKey: 'sidebar.executionHistory' },
-    ],
-  },
-  '/audit': {
-    titleKey: 'nav.audit',
-    nodes: [
-      { id: 'summary', labelKey: 'sidebar.auditSummary' },
-      { id: 'entries', labelKey: 'sidebar.auditEntries' },
-    ],
-  },
-  '/updates': {
-    titleKey: 'nav.updates',
-    nodes: [
-      { id: 'status', labelKey: 'sidebar.currentStatus' },
-      { id: 'history', labelKey: 'sidebar.updateHistory' },
-    ],
-  },
-  '/settings': {
-    titleKey: 'nav.settings',
-    nodes: [
-      { id: 'general', labelKey: 'settings.tabs.general' },
-      { id: 'privacy', labelKey: 'settings.tabs.privacy' },
-      { id: 'monitoring', labelKey: 'settings.tabs.monitoring' },
-      { id: 'ai-automation', labelKey: 'settings.tabs.aiAutomation' },
-      { id: 'data', labelKey: 'settings.tabs.dataStorage' },
-      { id: 'coaching', labelKey: 'settings.tabs.coaching' },
-    ],
-  },
-  '/privacy': {
-    titleKey: 'nav.privacy',
-    nodes: [
-      { id: 'data', labelKey: 'sidebar.dataControls' },
-      { id: 'consent', labelKey: 'sidebar.consent' },
-      { id: 'export', labelKey: 'sidebar.dataExport' },
-    ],
-  },
-  '/search': {
-    titleKey: 'nav.search',
-    nodes: [
-      { id: 'recent', labelKey: 'sidebar.recentSearches' },
-      { id: 'tags', labelKey: 'sidebar.browseTags' },
-    ],
-  },
-}
-
-function translateNodes(nodes: SidebarConfig['nodes'], t: (key: string) => string): TreeNode[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    label: t(node.labelKey),
-    children: node.children
-      ? node.children.map((child) => ({
-          id: child.id,
-          label: t(child.labelKey),
-        }))
-      : undefined,
-  }))
-}
 
 interface SidePanelProps {
   collapsed: boolean
@@ -151,40 +15,49 @@ interface SidePanelProps {
 
 export default function SidePanel({ collapsed, width, onResizeStart, onResizeByKeyboard }: SidePanelProps) {
   const location = useLocation()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { t } = useTranslation()
-  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>()
 
-  const path = location.pathname
-  const config =
-    pageSidebarConfig[path] ??
-    Object.entries(pageSidebarConfig).find(([key]) => key !== '/' && path.startsWith(key))?.[1] ??
-    pageSidebarConfig['/']
+  const currentRoute = useMemo(() => {
+    // Find the matching route node from routeTree.
+    // For root path "/", match exact or any child sub-path.
+    // For other paths, match by prefix.
+    // Note: assumes single-level nesting (children are direct sub-paths).
+    return (
+      routeTree.find((r) => {
+        if (r.path === '/') {
+          if (location.pathname === '/') return true
+          return r.children?.some(
+            (c) => location.pathname === `/${c.path}` || location.pathname.startsWith(`/${c.path}/`),
+          )
+        }
+        return location.pathname === r.path || location.pathname.startsWith(`${r.path}/`)
+      }) ?? routeTree.find((r) => r.path === '/')
+    )
+  }, [location.pathname])
 
-  const effectiveSelectedNodeId = path === '/settings' ? (searchParams.get('tab') ?? 'general') : selectedNodeId
-  const translatedNodes = useMemo(() => translateNodes(config.nodes, t), [config.nodes, t])
+  const sidebarNodes: TreeNode[] = useMemo(() => {
+    if (!currentRoute?.children) return []
+    return currentRoute.children.map((child) => ({
+      id: child.path,
+      label: t(child.labelKey),
+    }))
+  }, [currentRoute, t])
+
+  const activeChild = useMemo(() => {
+    if (!currentRoute?.children) return undefined
+    const segments = location.pathname.split('/')
+    const lastSegment = segments[segments.length - 1]
+    return currentRoute.children.find((c) => c.path === lastSegment)?.path
+  }, [currentRoute, location.pathname])
 
   const handleNodeSelect = useCallback(
-    (id: string) => {
-      if (path === '/settings') {
-        const nextParams = new URLSearchParams(searchParams)
-        nextParams.set('tab', id)
-        setSearchParams(nextParams, { replace: true })
-        return
-      }
-
-      setSelectedNodeId(id)
-      const el = document.getElementById(`section-${id}`)
-      if (!el) return
-
-      // Find the actual scroll container: <main id="main-content"> or nearest scrollable ancestor
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
-      // Brief highlight animation on the target section
-      el.classList.add('section-highlight')
-      setTimeout(() => el.classList.remove('section-highlight'), 1500)
+    (childPath: string) => {
+      if (!currentRoute) return
+      const basePath = currentRoute.path === '/' ? '' : currentRoute.path
+      navigate(`${basePath}/${childPath}`)
     },
-    [path, searchParams, setSearchParams],
+    [currentRoute, navigate],
   )
 
   const handleResizeKeyDown = useCallback(
@@ -203,20 +76,24 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
 
   if (collapsed) return null
 
+  const titleKey = currentRoute?.labelKey ?? 'nav.dashboard'
+
   return (
     <div className="relative flex" style={{ width }}>
       <div className={cn('flex flex-1 flex-col overflow-hidden', layout.sidePanel.bg, layout.sidePanel.border)}>
         <div className={cn('flex-shrink-0 px-4 py-2', layout.sidePanel.headerBg)}>
-          <span className={layout.sidePanel.headerText}>{t(config.titleKey)}</span>
+          <span className={layout.sidePanel.headerText}>{t(titleKey)}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-1 py-1">
-          <TreeView
-            key={path}
-            nodes={translatedNodes}
-            selectedId={effectiveSelectedNodeId}
-            onSelect={handleNodeSelect}
-          />
+          {sidebarNodes.length > 0 ? (
+            <TreeView
+              key={currentRoute?.path}
+              nodes={sidebarNodes}
+              selectedId={activeChild}
+              onSelect={handleNodeSelect}
+            />
+          ) : null}
         </div>
       </div>
 

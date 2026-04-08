@@ -1,11 +1,10 @@
 import { useTranslation } from 'react-i18next'
-import type { ExportDataType, ExportFormat, StorageStats, TelemetrySettings } from '../../api/client'
 import { Card, CardTitle, Input, Spinner } from '../../components/ui'
 import { colors, form, iconSize, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { formatBytes, formatNumber } from '../../utils/formatters'
+import { useSettingsFormContext } from '../settings/SettingsFormContext'
 import ToggleRow from './ToggleRow'
-import type { SettingsFormTabProps } from './types'
 
 interface StorageCardProps {
   label: string
@@ -61,29 +60,14 @@ function ExportButton({ label, description, onClick, loading }: ExportButtonProp
   )
 }
 
-interface DataStorageTabProps extends SettingsFormTabProps {
-  storageStats?: StorageStats
-  storageLoading: boolean
-  exportFormat: ExportFormat
-  exportLoading: ExportDataType | null
-  onExportFormatChange: (format: ExportFormat) => void
-  onExport: (dataType: ExportDataType) => void
-  onRootChange: (field: 'retention_days' | 'max_storage_mb', value: number) => void
-  onTelemetryChange: (field: keyof TelemetrySettings, value: boolean) => void
-}
-
-export default function DataStorageTab({
-  formData,
-  storageStats,
-  storageLoading,
-  exportFormat,
-  exportLoading,
-  onExportFormatChange,
-  onExport,
-  onRootChange,
-  onTelemetryChange,
-}: DataStorageTabProps) {
+export default function DataStorageTab() {
   const { t } = useTranslation()
+  const { form: formCtx, data } = useSettingsFormContext()
+  const formData = formCtx.formData!
+  const storageStats = data.storageStats
+  const storageLoading = data.storageLoading
+  const exportFormat = formCtx.exportFormat
+  const exportLoading = formCtx.exportLoading
 
   return (
     <div className="space-y-6">
@@ -141,7 +125,7 @@ export default function DataStorageTab({
               name="exportFormat"
               value="json"
               checked={exportFormat === 'json'}
-              onChange={() => onExportFormatChange('json')}
+              onChange={() => formCtx.setExportFormat('json')}
               className={form.radio}
             />
             <span className="ml-2 text-content-strong">JSON</span>
@@ -152,7 +136,7 @@ export default function DataStorageTab({
               name="exportFormat"
               value="csv"
               checked={exportFormat === 'csv'}
-              onChange={() => onExportFormatChange('csv')}
+              onChange={() => formCtx.setExportFormat('csv')}
               className={form.radio}
             />
             <span className="ml-2 text-content-strong">CSV</span>
@@ -163,19 +147,19 @@ export default function DataStorageTab({
           <ExportButton
             label={t('settings.exportMetricsLabel')}
             description={t('settings.exportMetricsDesc')}
-            onClick={() => onExport('metrics')}
+            onClick={() => formCtx.handleExport('metrics')}
             loading={exportLoading === 'metrics'}
           />
           <ExportButton
             label={t('settings.exportEventsLabel')}
             description={t('settings.exportEventsDesc')}
-            onClick={() => onExport('events')}
+            onClick={() => formCtx.handleExport('events')}
             loading={exportLoading === 'events'}
           />
           <ExportButton
             label={t('settings.exportFramesLabel')}
             description={t('settings.exportFramesDesc')}
-            onClick={() => onExport('frames')}
+            onClick={() => formCtx.handleExport('frames')}
             loading={exportLoading === 'frames'}
           />
         </div>
@@ -194,7 +178,7 @@ export default function DataStorageTab({
               min={1}
               max={365}
               value={formData.retention_days}
-              onChange={(e) => onRootChange('retention_days', parseInt(e.target.value, 10) || 30)}
+              onChange={(e) => formCtx.handleRootChange('retention_days', parseInt(e.target.value, 10) || 30)}
             />
             <p className={form.helper}>{t('settings.retentionAutoDelete')}</p>
           </div>
@@ -209,7 +193,7 @@ export default function DataStorageTab({
               max={10000}
               step={100}
               value={formData.max_storage_mb}
-              onChange={(e) => onRootChange('max_storage_mb', parseInt(e.target.value, 10) || 500)}
+              onChange={(e) => formCtx.handleRootChange('max_storage_mb', parseInt(e.target.value, 10) || 500)}
             />
             <p className={form.helper}>{t('settings.maxStorageOverflow')}</p>
           </div>
@@ -224,7 +208,7 @@ export default function DataStorageTab({
             label={t('settings.telemetryEnabled')}
             description={t('settings.telemetryEnabledDesc')}
             checked={formData.telemetry.enabled}
-            onChange={(value) => onTelemetryChange('enabled', value)}
+            onChange={(value) => formCtx.handleTelemetryChange('enabled', value)}
           />
 
           <div
@@ -234,19 +218,19 @@ export default function DataStorageTab({
               label={t('settings.crashReports')}
               description={t('settings.crashReportsDesc')}
               checked={formData.telemetry.crash_reports}
-              onChange={(value) => onTelemetryChange('crash_reports', value)}
+              onChange={(value) => formCtx.handleTelemetryChange('crash_reports', value)}
             />
             <ToggleRow
               label={t('settings.usageStats')}
               description={t('settings.usageStatsDesc')}
               checked={formData.telemetry.usage_analytics}
-              onChange={(value) => onTelemetryChange('usage_analytics', value)}
+              onChange={(value) => formCtx.handleTelemetryChange('usage_analytics', value)}
             />
             <ToggleRow
               label={t('settings.perfMetrics')}
               description={t('settings.perfMetricsDesc')}
               checked={formData.telemetry.performance_metrics}
-              onChange={(value) => onTelemetryChange('performance_metrics', value)}
+              onChange={(value) => formCtx.handleTelemetryChange('performance_metrics', value)}
             />
           </div>
         </div>

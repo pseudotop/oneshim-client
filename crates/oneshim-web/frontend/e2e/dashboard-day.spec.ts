@@ -58,7 +58,7 @@ async function mockDashboardDayApis(page: Page) {
 test.describe('Dashboard Day', () => {
   test.beforeEach(async ({ page }) => {
     await mockDashboardDayApis(page)
-    await page.goto('/dashboard/day')
+    await page.goto('/day')
     await expect(page.getByRole('heading', { name: dailyTimetableName })).toBeVisible({ timeout: 10000 })
   })
 

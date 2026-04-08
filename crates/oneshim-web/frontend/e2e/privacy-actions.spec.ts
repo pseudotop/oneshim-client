@@ -1,36 +1,38 @@
 import { expect, test } from './helpers/test'
 
 test.describe('Privacy Actions', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/privacy')
-  })
-
   test('P131: #section-data exists', async ({ page }) => {
+    await page.goto('/privacy/data')
     await expect(page.locator('#section-data')).toBeVisible()
   })
 
   test('P132: date inputs exist', async ({ page }) => {
+    await page.goto('/privacy/data')
     const startDate = page.locator('#privacy-start-date')
     await expect(startDate).toBeVisible()
   })
 
   test('P133: data type toggle buttons exist', async ({ page }) => {
+    await page.goto('/privacy/data')
     const buttons = page.locator('button')
     const count = await buttons.count()
     expect(count).toBeGreaterThanOrEqual(2)
   })
 
   test('P134: delete-range button exists', async ({ page }) => {
+    await page.goto('/privacy/data')
     const btn = page.getByTestId('delete-range')
     await expect(btn).toBeVisible()
   })
 
   test('P135: delete-all button exists', async ({ page }) => {
+    await page.goto('/privacy/data')
     const btn = page.getByTestId('delete-all')
     await expect(btn).toBeVisible()
   })
 
   test('P136: delete button opens confirm modal', async ({ page }) => {
+    await page.goto('/privacy/data')
     const btn = page.getByTestId('delete-all')
     await btn.click()
     const modal = page.locator('[role="alertdialog"]')
@@ -38,6 +40,7 @@ test.describe('Privacy Actions', () => {
   })
 
   test('P137: confirm modal has aria-modal', async ({ page }) => {
+    await page.goto('/privacy/data')
     const btn = page.getByTestId('delete-all')
     await btn.click()
     const modal = page.locator('[aria-modal="true"]')
@@ -45,6 +48,7 @@ test.describe('Privacy Actions', () => {
   })
 
   test('P138: confirm modal Escape closes', async ({ page }) => {
+    await page.goto('/privacy/data')
     const btn = page.getByTestId('delete-all')
     await btn.click()
     await expect(page.locator('[role="alertdialog"]')).toBeVisible()
@@ -53,15 +57,18 @@ test.describe('Privacy Actions', () => {
   })
 
   test('P139: #section-export exists', async ({ page }) => {
+    await page.goto('/privacy/export')
     await expect(page.locator('#section-export')).toBeVisible()
   })
 
   test('P140: download-backup button exists', async ({ page }) => {
+    await page.goto('/privacy/export')
     const btn = page.getByTestId('download-backup')
     await expect(btn).toBeVisible()
   })
 
   test('P141: backup option buttons exist', async ({ page }) => {
+    await page.goto('/privacy/export')
     const section = page.locator('#section-export')
     await expect(section.getByRole('button', { name: 'Settings' })).toBeVisible()
     await expect(section.getByRole('button', { name: 'Tags' })).toBeVisible()
@@ -70,6 +77,7 @@ test.describe('Privacy Actions', () => {
   })
 
   test('P142: #section-consent exists', async ({ page }) => {
+    await page.goto('/privacy/consent')
     await expect(page.locator('#section-consent')).toBeVisible()
   })
 })

@@ -3,12 +3,8 @@ import type { AppSettings } from '../../api/client'
 import { Card, CardTitle, Input } from '../../components/ui'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { useSettingsFormContext } from '../settings/SettingsFormContext'
 import ToggleRow from './ToggleRow'
-
-interface AdvancedTabProps {
-  formData: AppSettings
-  onChange: <K extends keyof AppSettings>(section: K, field: string, value: unknown) => void
-}
 
 function SectionLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
   return (
@@ -49,8 +45,21 @@ function NumberField({
   )
 }
 
-export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
+export default function AdvancedTab() {
   const { t } = useTranslation()
+  const { form } = useSettingsFormContext()
+  const formData = form.formData!
+
+  const handleChange = <K extends keyof AppSettings>(section: K, field: string, value: unknown) => {
+    form.setFormData((prev) => {
+      if (!prev) return prev
+      const sectionData = prev[section]
+      if (typeof sectionData === 'object' && sectionData !== null) {
+        return { ...prev, [section]: { ...sectionData, [field]: value } }
+      }
+      return prev
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -62,7 +71,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             id="ai-session-max-concurrent"
             label="Max concurrent sessions"
             value={formData.ai_session.max_concurrent_sessions}
-            onChange={(v) => onChange('ai_session', 'max_concurrent_sessions', v)}
+            onChange={(v) => handleChange('ai_session', 'max_concurrent_sessions', v)}
             min={1}
             max={10}
           />
@@ -70,21 +79,21 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             id="ai-session-idle-timeout"
             label="Idle timeout (seconds)"
             value={formData.ai_session.idle_timeout_secs}
-            onChange={(v) => onChange('ai_session', 'idle_timeout_secs', v)}
+            onChange={(v) => handleChange('ai_session', 'idle_timeout_secs', v)}
             min={30}
           />
           <NumberField
             id="ai-session-timeout"
             label="Session timeout (seconds)"
             value={formData.ai_session.session_timeout_secs}
-            onChange={(v) => onChange('ai_session', 'session_timeout_secs', v)}
+            onChange={(v) => handleChange('ai_session', 'session_timeout_secs', v)}
             min={60}
           />
           <NumberField
             id="ai-session-retries"
             label="Max retries"
             value={formData.ai_session.max_retries}
-            onChange={(v) => onChange('ai_session', 'max_retries', v)}
+            onChange={(v) => handleChange('ai_session', 'max_retries', v)}
             min={0}
             max={10}
           />
@@ -92,14 +101,14 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             id="ai-session-history"
             label="Max history turns"
             value={formData.ai_session.max_history_turns}
-            onChange={(v) => onChange('ai_session', 'max_history_turns', v)}
+            onChange={(v) => handleChange('ai_session', 'max_history_turns', v)}
             min={10}
           />
           <NumberField
             id="ai-session-health"
             label="Health check interval (seconds)"
             value={formData.ai_session.health_check_interval_secs}
-            onChange={(v) => onChange('ai_session', 'health_check_interval_secs', v)}
+            onChange={(v) => handleChange('ai_session', 'health_check_interval_secs', v)}
             min={5}
           />
         </div>
@@ -112,7 +121,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
           label="Enable suggestions"
           description="Receive AI-powered suggestions based on your activity"
           checked={formData.suggestion.enabled}
-          onChange={(v) => onChange('suggestion', 'enabled', v)}
+          onChange={(v) => handleChange('suggestion', 'enabled', v)}
         />
       </Card>
 
@@ -124,19 +133,19 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             label="Show border"
             description="Display a colored border around the screen when monitoring"
             checked={formData.indicator.show_border}
-            onChange={(v) => onChange('indicator', 'show_border', v)}
+            onChange={(v) => handleChange('indicator', 'show_border', v)}
           />
           <ToggleRow
             label="Show panel"
             description="Display the tracking status panel"
             checked={formData.indicator.show_panel}
-            onChange={(v) => onChange('indicator', 'show_panel', v)}
+            onChange={(v) => handleChange('indicator', 'show_panel', v)}
           />
           <NumberField
             id="indicator-opacity"
             label="Border opacity (0.0 - 1.0)"
             value={formData.indicator.border_opacity}
-            onChange={(v) => onChange('indicator', 'border_opacity', v)}
+            onChange={(v) => handleChange('indicator', 'border_opacity', v)}
             min={0}
             max={1}
           />
@@ -151,21 +160,21 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             label="Enable analysis"
             description="Run LLM analysis on activity segments"
             checked={formData.analysis.enabled}
-            onChange={(v) => onChange('analysis', 'enabled', v)}
+            onChange={(v) => handleChange('analysis', 'enabled', v)}
           />
           <div className="grid grid-cols-2 gap-4">
             <NumberField
               id="analysis-interval"
               label="Analysis interval (seconds)"
               value={formData.analysis.interval_secs}
-              onChange={(v) => onChange('analysis', 'interval_secs', v)}
+              onChange={(v) => handleChange('analysis', 'interval_secs', v)}
               min={10}
             />
             <NumberField
               id="analysis-confidence"
               label="Min confidence (0.0 - 1.0)"
               value={formData.analysis.min_confidence}
-              onChange={(v) => onChange('analysis', 'min_confidence', v)}
+              onChange={(v) => handleChange('analysis', 'min_confidence', v)}
               min={0}
               max={1}
             />
@@ -173,7 +182,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
               id="analysis-max-suggestions"
               label="Max suggestions"
               value={formData.analysis.max_suggestions}
-              onChange={(v) => onChange('analysis', 'max_suggestions', v)}
+              onChange={(v) => handleChange('analysis', 'max_suggestions', v)}
               min={1}
               max={20}
             />
@@ -181,7 +190,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
               id="regime-detection-interval"
               label="Regime detection interval (hours)"
               value={formData.analysis.tiered_memory?.regime_detection_interval_hours ?? 2}
-              onChange={(v) => onChange('analysis', 'regime_detection_interval_hours' as never, v)}
+              onChange={(v) => handleChange('analysis', 'regime_detection_interval_hours' as never, v)}
               min={1}
               max={24}
             />
@@ -190,25 +199,25 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             label="Embedding"
             description="Enable vector embedding for semantic search"
             checked={formData.analysis.embedding_enabled}
-            onChange={(v) => onChange('analysis', 'embedding_enabled', v)}
+            onChange={(v) => handleChange('analysis', 'embedding_enabled', v)}
           />
           <ToggleRow
             label="GUI intelligence"
             description="Detect and aggregate GUI interaction patterns"
             checked={formData.analysis.gui_intelligence_enabled}
-            onChange={(v) => onChange('analysis', 'gui_intelligence_enabled', v)}
+            onChange={(v) => handleChange('analysis', 'gui_intelligence_enabled', v)}
           />
           <ToggleRow
             label="Text intelligence"
             description="Extract and classify text patterns from activity"
             checked={formData.analysis.text_intelligence_enabled}
-            onChange={(v) => onChange('analysis', 'text_intelligence_enabled', v)}
+            onChange={(v) => handleChange('analysis', 'text_intelligence_enabled', v)}
           />
           <ToggleRow
             label="Auto-tuner"
             description="EMA-based drift detection and automatic re-clustering of behavioral regimes"
             checked={formData.analysis.auto_tuner_enabled}
-            onChange={(v) => onChange('analysis', 'auto_tuner_enabled', v)}
+            onChange={(v) => handleChange('analysis', 'auto_tuner_enabled', v)}
           />
         </div>
       </Card>
@@ -222,7 +231,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             <Input
               id="network-base-url"
               value={formData.network.server_base_url}
-              onChange={(e) => onChange('network', 'server_base_url', e.target.value)}
+              onChange={(e) => handleChange('network', 'server_base_url', e.target.value)}
               className={cn('w-full', typography.family.mono)}
             />
           </div>
@@ -230,14 +239,14 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             id="network-timeout"
             label="Request timeout (ms)"
             value={formData.network.request_timeout_ms}
-            onChange={(v) => onChange('network', 'request_timeout_ms', v)}
+            onChange={(v) => handleChange('network', 'request_timeout_ms', v)}
             min={1000}
           />
           <ToggleRow
             label="gRPC enabled"
             description="Use gRPC for server communication (requires server support)"
             checked={formData.network.grpc_enabled}
-            onChange={(v) => onChange('network', 'grpc_enabled', v)}
+            onChange={(v) => handleChange('network', 'grpc_enabled', v)}
           />
           {formData.network.grpc_enabled && (
             <div>
@@ -245,7 +254,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
               <Input
                 id="network-grpc-endpoint"
                 value={formData.network.grpc_endpoint}
-                onChange={(e) => onChange('network', 'grpc_endpoint', e.target.value)}
+                onChange={(e) => handleChange('network', 'grpc_endpoint', e.target.value)}
                 className={cn('w-full', typography.family.mono)}
               />
             </div>
@@ -254,7 +263,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             label="TLS enabled"
             description="Encrypt outbound connections with TLS"
             checked={formData.network.tls_enabled}
-            onChange={(v) => onChange('network', 'tls_enabled', v)}
+            onChange={(v) => handleChange('network', 'tls_enabled', v)}
           />
         </div>
       </Card>
@@ -267,14 +276,14 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             label="Enable coaching"
             description="Proactive productivity coaching and goal tracking"
             checked={formData.coaching.enabled}
-            onChange={(v) => onChange('coaching', 'enabled', v)}
+            onChange={(v) => handleChange('coaching', 'enabled', v)}
           />
           <div>
             <SectionLabel htmlFor="coaching-locale">Locale</SectionLabel>
             <Input
               id="coaching-locale"
               value={formData.coaching.locale}
-              onChange={(e) => onChange('coaching', 'locale', e.target.value)}
+              onChange={(e) => handleChange('coaching', 'locale', e.target.value)}
               className="w-full"
             />
           </div>
@@ -289,21 +298,21 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             label="Enable integration"
             description="Connect to external integration hub"
             checked={formData.integration.enabled}
-            onChange={(v) => onChange('integration', 'enabled', v)}
+            onChange={(v) => handleChange('integration', 'enabled', v)}
           />
           <div className="grid grid-cols-2 gap-4">
             <NumberField
               id="integration-timeout"
               label="Request timeout (seconds)"
               value={formData.integration.request_timeout_secs}
-              onChange={(v) => onChange('integration', 'request_timeout_secs', v)}
+              onChange={(v) => handleChange('integration', 'request_timeout_secs', v)}
               min={5}
             />
             <NumberField
               id="integration-sync"
               label="Sync interval (seconds)"
               value={formData.integration.sync_interval_secs}
-              onChange={(v) => onChange('integration', 'sync_interval_secs', v)}
+              onChange={(v) => handleChange('integration', 'sync_interval_secs', v)}
               min={10}
             />
           </div>
@@ -318,7 +327,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
             label="Enable sync"
             description="Synchronize data across devices"
             checked={formData.sync.enabled}
-            onChange={(v) => onChange('sync', 'enabled', v)}
+            onChange={(v) => handleChange('sync', 'enabled', v)}
           />
           {formData.sync.enabled && (
             <>
@@ -327,7 +336,7 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
                 <Input
                   id="sync-device-name"
                   value={formData.sync.device_name}
-                  onChange={(e) => onChange('sync', 'device_name', e.target.value)}
+                  onChange={(e) => handleChange('sync', 'device_name', e.target.value)}
                   className="w-full"
                 />
               </div>
@@ -335,20 +344,20 @@ export default function AdvancedTab({ formData, onChange }: AdvancedTabProps) {
                 id="sync-interval"
                 label="Sync interval (seconds)"
                 value={formData.sync.interval_secs}
-                onChange={(v) => onChange('sync', 'interval_secs', v)}
+                onChange={(v) => handleChange('sync', 'interval_secs', v)}
                 min={30}
               />
               <ToggleRow
                 label="LAN discovery"
                 description="Advertise this device on the local network for peer sync"
                 checked={formData.sync.lan_advertise}
-                onChange={(v) => onChange('sync', 'lan_advertise', v)}
+                onChange={(v) => handleChange('sync', 'lan_advertise', v)}
               />
               <ToggleRow
                 label="Payload compression"
                 description="Compress changeset payloads before encryption to reduce bandwidth"
                 checked={formData.sync.compression_enabled}
-                onChange={(v) => onChange('sync', 'compression_enabled', v)}
+                onChange={(v) => handleChange('sync', 'compression_enabled', v)}
               />
             </>
           )}

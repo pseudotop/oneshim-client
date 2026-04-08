@@ -12,7 +12,7 @@ type RenderBridgeHarnessOptions = {
   listenImpl?: (eventName: string, callback: EventCallback) => Promise<() => void>
 }
 
-async function renderBridgeHarness({ expectedListenCalls = 6, listenImpl }: RenderBridgeHarnessOptions = {}) {
+async function renderBridgeHarness({ expectedListenCalls = 9, listenImpl }: RenderBridgeHarnessOptions = {}) {
   const listeners = new Map<string, EventCallback>()
   const unlistenCallbacks: Array<ReturnType<typeof vi.fn>> = []
   const defaultListenImpl = async (eventName: string, callback: EventCallback) => {
@@ -84,7 +84,7 @@ describe('useTauriEventBridge', () => {
 
     unmount()
 
-    expect(unlistenCallbacks).toHaveLength(6)
+    expect(unlistenCallbacks).toHaveLength(9)
     unlistenCallbacks.forEach((unlisten) => {
       expect(unlisten).toHaveBeenCalledTimes(1)
     })

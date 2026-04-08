@@ -11,7 +11,7 @@ import {
 
 function DesktopShellTemplate() {
   return (
-    <ShellStoryFrame route="/settings?tab=monitoring" contentClassName="min-h-[calc(100vh-3.5rem)]">
+    <ShellStoryFrame route="/settings/monitoring" contentClassName="min-h-[calc(100vh-3.5rem)]">
       <div className="space-y-6 p-6">
         <ReviewHeader
           eyebrow="Template Review"

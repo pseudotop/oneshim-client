@@ -8,14 +8,14 @@ const languageSelectorName = i18nRegex('settings.language')
 
 test.describe('Settings Actions', () => {
   test('P117: notification toggles exist', async ({ page }) => {
-    await page.goto('/settings?tab=general')
+    await page.goto('/settings/general')
     const section = page.locator('#section-notification')
     await expect(section).toContainText(notificationEnabledName)
     await expect(section).toContainText(notificationIdleName)
   })
 
   test('P118: monitor interval input exists', async ({ page }) => {
-    await page.goto('/settings?tab=monitoring')
+    await page.goto('/settings/monitoring')
     const input = page.locator('#settings-metrics-interval')
     await expect(input).toBeVisible()
   })
@@ -27,12 +27,12 @@ test.describe('Settings Actions', () => {
   })
 
   test('P120: language selector exists', async ({ page }) => {
-    await page.goto('/settings?tab=general')
+    await page.goto('/settings/general')
     await expect(page.getByLabel(languageSelectorName)).toBeVisible()
   })
 
   test('P121: update channel selector exists', async ({ page }) => {
-    await page.goto('/settings?tab=general')
+    await page.goto('/settings/general')
     await expect(page.locator('#update-channel')).toBeVisible()
   })
 })

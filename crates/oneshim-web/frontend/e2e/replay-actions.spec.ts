@@ -31,6 +31,7 @@ test.describe('Replay Actions', () => {
   })
 
   test('P084: #section-events exists', async ({ page }) => {
+    await page.goto('/replay/events')
     const section = page.locator('#section-events')
     await expect(section).toBeVisible()
   })

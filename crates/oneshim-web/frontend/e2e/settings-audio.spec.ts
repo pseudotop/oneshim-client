@@ -1,5 +1,5 @@
 /**
- * E2E tests for the AudioTab in Settings (/settings?tab=audio).
+ * E2E tests for the AudioTab in Settings (/settings/audio).
  *
  * Covers tab navigation, enable toggle, model size selector,
  * language selector, download button, STT provider radio group,
@@ -155,7 +155,7 @@ function settingsHeading(page: Page) {
 }
 
 async function gotoAudioTab(page: Page) {
-  await page.goto('/settings?tab=audio')
+  await page.goto('/settings/audio')
   await expect(settingsHeading(page)).toBeVisible({ timeout: 10000 })
 }
 

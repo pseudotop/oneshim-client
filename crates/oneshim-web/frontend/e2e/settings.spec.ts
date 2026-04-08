@@ -151,7 +151,7 @@ function settingsHeading(page: Page) {
 }
 
 async function gotoSettingsTab(page: Page, tabSlug: string) {
-  await page.goto(`/settings?tab=${tabSlug}`)
+  await page.goto(`/settings/${tabSlug}`)
   await expect(settingsHeading(page)).toBeVisible({ timeout: 10000 })
 }
 

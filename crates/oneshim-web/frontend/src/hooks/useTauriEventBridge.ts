@@ -22,6 +22,17 @@ function isIntegrationPromptPayload(payload: unknown): payload is IntegrationPro
   return typeof payload === 'object' && payload !== null
 }
 
+function isRecoveryPayload(payload: unknown): payload is { strategy: string; route: string; reason: string } {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'strategy' in payload &&
+    'route' in payload &&
+    typeof (payload as Record<string, unknown>).strategy === 'string' &&
+    typeof (payload as Record<string, unknown>).route === 'string'
+  )
+}
+
 export function useTauriEventBridge() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -92,7 +103,7 @@ export function useTauriEventBridge() {
         if (
           !(await registerListener('tray-toggle-automation', () => {
             refreshAutomationStatus()
-            navigateTo('/settings')
+            navigateTo('/settings/ai-automation')
           }))
         ) {
           return
@@ -158,6 +169,24 @@ export function useTauriEventBridge() {
             const message = [title, body].filter(Boolean).join(': ')
             if (message.length > 0) {
               addToast('info', message, 10000)
+            }
+          }))
+        ) {
+          return
+        }
+
+        if (
+          !(await registerListener('frontend-recovery', (event: TauriEventPayload) => {
+            if (!isRecoveryPayload(event.payload)) return
+            const { strategy, route, reason } = event.payload
+            if (strategy === 'full-reload') {
+              console.warn(`[recovery] full-reload: ${reason}`)
+              window.location.reload()
+              return
+            }
+            if (strategy === 'reset-route') {
+              queryClientRef.current.invalidateQueries()
+              window.dispatchEvent(new CustomEvent('route-error-reset', { detail: { route } }))
             }
           }))
         ) {

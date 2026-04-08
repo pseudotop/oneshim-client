@@ -34,14 +34,17 @@ test.describe('Automation Actions', () => {
   })
 
   test('P098: #section-history exists', async ({ page }) => {
+    await page.goto('/automation/history')
     await expect(page.locator('#section-history')).toBeVisible()
   })
 
   test('P099: #section-commands exists', async ({ page }) => {
+    await page.goto('/automation/commands')
     await expect(page.locator('#section-commands')).toBeVisible()
   })
 
   test('P100: #section-policies exists', async ({ page }) => {
+    await page.goto('/automation/policies')
     await expect(page.locator('#section-policies')).toBeVisible()
   })
 })
