@@ -132,9 +132,14 @@ fn build_tray_menu<R: Runtime>(
 
     let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let automation =
-        MenuItem::with_id(app, "automation", "Automation Settings", true, None::<&str>)?;
-    let run_preset = MenuItem::with_id(app, "run-preset", "Run Preset...", true, None::<&str>)?;
+    let automation = MenuItem::with_id(
+        app,
+        "automation",
+        "AI Automation Preferences",
+        true,
+        None::<&str>,
+    )?;
+    let run_preset = MenuItem::with_id(app, "run-preset", "Automation Page", true, None::<&str>)?;
     let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
     let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -279,6 +284,13 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                     }
                 }
             }
+            // All three menu items emit the standard `navigate` event with a
+            // deep-link path, matching the "Settings" entry. Earlier revisions
+            // used custom `tray-toggle-automation` / `automation:quick-access`
+            // events that were bridged back to navigate calls in the frontend
+            // listener — the indirection added nothing beyond a React Query
+            // invalidation the target routes did not even consume. Unified so
+            // new tray entries only need a path, not a bespoke event name.
             "settings" => {
                 focus_main_window(app);
                 app.emit_to("main", "navigate", "/settings")
@@ -286,12 +298,12 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
             }
             "automation" => {
                 focus_main_window(app);
-                app.emit_to("main", "tray-toggle-automation", ())
+                app.emit_to("main", "navigate", "/settings/ai-automation")
                     .unwrap_or_default();
             }
             "run-preset" => {
                 focus_main_window(app);
-                app.emit_to("main", "automation:quick-access", ())
+                app.emit_to("main", "navigate", "/automation")
                     .unwrap_or_default();
             }
             "approve_update" => {

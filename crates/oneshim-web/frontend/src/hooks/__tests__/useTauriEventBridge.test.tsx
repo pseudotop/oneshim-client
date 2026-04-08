@@ -12,10 +12,13 @@ type RenderBridgeHarnessOptions = {
   listenImpl?: (eventName: string, callback: EventCallback) => Promise<() => void>
 }
 
-// 8 global listen calls (navigate, tray-toggle-automation, automation:quick-access,
-// tray-approve-update, tray-defer-update, oauth-reauth-required, navigate:chat,
-// integration-proactive-prompt) + 1 webview-scoped listen for frontend-recovery.
-async function renderBridgeHarness({ expectedListenCalls = 8, listenImpl }: RenderBridgeHarnessOptions = {}) {
+// 6 global listen calls (navigate, tray-approve-update, tray-defer-update,
+// oauth-reauth-required, navigate:chat, integration-proactive-prompt) + 1
+// webview-scoped listen for frontend-recovery. The previous
+// `tray-toggle-automation` and `automation:quick-access` events were folded
+// into the single `navigate` event after the tray IPC unification — tray.rs
+// now emits plain `navigate` with a deep-link path for those menu items.
+async function renderBridgeHarness({ expectedListenCalls = 6, listenImpl }: RenderBridgeHarnessOptions = {}) {
   const listeners = new Map<string, EventCallback>()
   const unlistenCallbacks: Array<ReturnType<typeof vi.fn>> = []
   const defaultListenImpl = async (eventName: string, callback: EventCallback) => {
@@ -96,21 +99,18 @@ describe('useTauriEventBridge', () => {
 
     unmount()
 
-    expect(unlistenCallbacks).toHaveLength(9)
+    expect(unlistenCallbacks).toHaveLength(7)
     unlistenCallbacks.forEach((unlisten) => {
       expect(unlisten).toHaveBeenCalledTimes(1)
     })
   })
 
-  it('routes tray automation and update events to their target pages', async () => {
+  it('routes tray update events to /updates and refreshes update-status', async () => {
+    // Post tray-IPC unification, the "AI Automation Preferences" and
+    // "Automation Page" menu items emit plain `navigate` events, so only the
+    // update-approve / update-defer events still need their own listeners
+    // (they pair navigation with an `update-status` refetch).
     const { invalidateQueries, listeners } = await renderBridgeHarness()
-
-    act(() => {
-      listeners.get('tray-toggle-automation')?.({})
-    })
-
-    expect(screen.getByTestId('path')).toHaveTextContent('/settings')
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['automationStatus'] })
 
     act(() => {
       listeners.get('tray-approve-update')?.({})
@@ -231,7 +231,7 @@ describe('useTauriEventBridge', () => {
 
   it('falls back to global listen when webview API import fails (NC-NEW-1 + U2)', async () => {
     // Simulates a missing or broken @tauri-apps/api/webview module.
-    // The bridge should still register all 9 listeners — frontend-recovery
+    // The bridge should still register all 7 listeners — frontend-recovery
     // falls back to the global listen() instead of the scoped variant.
     const listeners = new Map<string, EventCallback>()
     const unlistenCallbacks: Array<ReturnType<typeof vi.fn>> = []
@@ -272,8 +272,8 @@ describe('useTauriEventBridge', () => {
 
     render(<Probe />, { wrapper })
 
-    // All 9 listeners (8 normal + 1 fallback frontend-recovery) registered via global listen
-    await waitFor(() => expect(listen).toHaveBeenCalledTimes(9))
+    // All 7 listeners (6 normal + 1 fallback frontend-recovery) registered via global listen
+    await waitFor(() => expect(listen).toHaveBeenCalledTimes(7))
     expect(listeners.has('frontend-recovery')).toBe(true)
     // Fallback warning was logged
     expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('webview API unavailable'), expect.any(Error))
