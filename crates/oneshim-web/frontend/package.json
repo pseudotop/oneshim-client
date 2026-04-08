@@ -23,6 +23,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report",
+    "verify:web-e2e": "pnpm build && playwright test --reporter=line",
     "test:e2e:live": "playwright test --config playwright-live.config.ts",
     "test:e2e:live:headed": "playwright test --config playwright-live.config.ts --headed",
     "test:e2e:live:report": "playwright show-report playwright-live-report",

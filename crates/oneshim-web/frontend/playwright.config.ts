@@ -17,7 +17,10 @@ export default defineConfig({
 
   fullyParallel: true,
 
-  retries: process.env.CI ? 2 : 0,
+  // Local runs match CI retry budget (2). Without this, parallel-worker
+  // contention against the vite preview server occasionally hides random
+  // tests behind a transient network/hydration race that disappears on rerun.
+  retries: 2,
 
   timeout: 30000,
 
