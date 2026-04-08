@@ -29,6 +29,13 @@ export interface RouteNode {
   children?: RouteLeaf[]
   group?: 'monitor' | 'data' | 'manage'
   bottom?: boolean
+  /**
+   * When true, RouteRenderer does NOT wrap the component in a RouteErrorBoundary.
+   * The component is responsible for its own error boundary placement — useful
+   * when stateful providers (e.g., SettingsFormProvider) need to live ABOVE
+   * the boundary so their state survives recovery reset.
+   */
+  selfWraps?: boolean
 }
 
 export interface RouteLeaf {
@@ -301,6 +308,10 @@ export const routeTree: RouteNode[] = [
     icon: Settings,
     defaultChild: 'general',
     component: SettingsLayout,
+    // SettingsLayout wraps its own RouteErrorBoundary so that
+    // SettingsFormProvider lives ABOVE the boundary. Without this, a recovery
+    // reset would remount the provider and silently destroy unsaved form edits.
+    selfWraps: true,
     children: [
       { path: 'general', labelKey: 'settings.tabs.general', component: GeneralTab },
       { path: 'privacy', labelKey: 'settings.tabs.privacy', component: PrivacyTab },

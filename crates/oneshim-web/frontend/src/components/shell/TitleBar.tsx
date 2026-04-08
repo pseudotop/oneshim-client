@@ -1,25 +1,12 @@
 import { Search } from 'lucide-react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation } from 'react-router-dom'
+import { useCurrentRoute } from '../../routes'
 import { iconSize, interaction, layout, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { MOD_KEY } from '../../utils/platform'
 
 const IS_MAC = typeof navigator !== 'undefined' && (/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent))
-
-const pageTitleKeys: Record<string, string> = {
-  '/': 'nav.dashboard',
-  '/timeline': 'nav.timeline',
-  '/reports': 'nav.reports',
-  '/focus': 'nav.focus',
-  '/replay': 'nav.replay',
-  '/automation': 'nav.automation',
-  '/updates': 'nav.updates',
-  '/settings': 'nav.settings',
-  '/privacy': 'nav.privacy',
-  '/search': 'nav.search',
-}
 
 interface TitleBarProps {
   onSearchOpen: () => void
@@ -27,10 +14,14 @@ interface TitleBarProps {
 
 export default function TitleBar({ onSearchOpen }: TitleBarProps) {
   const { t } = useTranslation()
-  const location = useLocation()
+  const { node, child } = useCurrentRoute()
 
-  const titleKey = pageTitleKeys[location.pathname] ?? pageTitleKeys['/']
-  const pageTitle = t(titleKey)
+  // Title is "Parent › Child" when on a non-default sub-route (provides
+  // location awareness after deep links / parent-path redirects). Falls back
+  // to just the parent label when at the default child (e.g., /settings/general).
+  const parentLabel = t(node.labelKey)
+  const isDefaultChild = !child || child.path === node.defaultChild
+  const pageTitle = isDefaultChild || !child ? parentLabel : `${parentLabel} › ${t(child.labelKey)}`
 
   const handleMinimize = useCallback(async () => {
     try {

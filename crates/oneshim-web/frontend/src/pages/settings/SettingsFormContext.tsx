@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { AppSettings } from '../../api/client'
 import type { SettingsDataResult } from '../hooks/useSettingsData'
 import { useSettingsData } from '../hooks/useSettingsData'
@@ -36,7 +36,12 @@ export function SettingsFormProvider({ children }: { children: React.ReactNode }
     return () => window.removeEventListener('beforeunload', handler)
   }, [form.hasUnsavedChanges])
 
-  return <SettingsFormContext.Provider value={{ form, data }}>{children}</SettingsFormContext.Provider>
+  // Memoize the context value so consumers only re-render when the actual
+  // form/data references change — not on every provider re-render. Without
+  // this, any re-render here would cascade into all 9 settings tabs.
+  const value = useMemo(() => ({ form, data }), [form, data])
+
+  return <SettingsFormContext.Provider value={value}>{children}</SettingsFormContext.Provider>
 }
 
 export function useSettingsFormContext(): SettingsContextValue {

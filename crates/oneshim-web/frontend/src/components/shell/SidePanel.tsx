@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { routeTree } from '../../routes'
+import { useNavigate } from 'react-router-dom'
+import { useCurrentRoute } from '../../routes'
 import { interaction, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import TreeView, { type TreeNode } from './TreeView'
@@ -14,46 +14,20 @@ interface SidePanelProps {
 }
 
 export default function SidePanel({ collapsed, width, onResizeStart, onResizeByKeyboard }: SidePanelProps) {
-  const location = useLocation()
   const navigate = useNavigate()
   const { t } = useTranslation()
-
-  const currentRoute = useMemo(() => {
-    // Find the matching route node from routeTree.
-    // For root path "/", match exact or any child sub-path.
-    // For other paths, match by prefix.
-    // Note: assumes single-level nesting (children are direct sub-paths).
-    return (
-      routeTree.find((r) => {
-        if (r.path === '/') {
-          if (location.pathname === '/') return true
-          return r.children?.some(
-            (c) => location.pathname === `/${c.path}` || location.pathname.startsWith(`/${c.path}/`),
-          )
-        }
-        return location.pathname === r.path || location.pathname.startsWith(`${r.path}/`)
-      }) ?? routeTree.find((r) => r.path === '/')
-    )
-  }, [location.pathname])
+  const { node: currentRoute, child: activeChild } = useCurrentRoute()
 
   const sidebarNodes: TreeNode[] = useMemo(() => {
-    if (!currentRoute?.children) return []
+    if (!currentRoute.children) return []
     return currentRoute.children.map((child) => ({
       id: child.path,
       label: t(child.labelKey),
     }))
   }, [currentRoute, t])
 
-  const activeChild = useMemo(() => {
-    if (!currentRoute?.children) return undefined
-    const segments = location.pathname.split('/')
-    const lastSegment = segments[segments.length - 1]
-    return currentRoute.children.find((c) => c.path === lastSegment)?.path
-  }, [currentRoute, location.pathname])
-
   const handleNodeSelect = useCallback(
     (childPath: string) => {
-      if (!currentRoute) return
       const basePath = currentRoute.path === '/' ? '' : currentRoute.path
       navigate(`${basePath}/${childPath}`)
     },
@@ -74,26 +48,25 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
     [onResizeByKeyboard],
   )
 
-  if (collapsed) return null
-
-  const titleKey = currentRoute?.labelKey ?? 'nav.dashboard'
+  // Collapsed OR the current route has no children → hide the sidebar entirely.
+  // Routes like /day, /chat, /search, /playbooks, /policies have no sub-nav and
+  // an empty panel would just steal horizontal space from the main content.
+  if (collapsed || sidebarNodes.length === 0) return null
 
   return (
     <div className="relative flex" style={{ width }}>
       <div className={cn('flex flex-1 flex-col overflow-hidden', layout.sidePanel.bg, layout.sidePanel.border)}>
         <div className={cn('flex-shrink-0 px-4 py-2', layout.sidePanel.headerBg)}>
-          <span className={layout.sidePanel.headerText}>{t(titleKey)}</span>
+          <span className={layout.sidePanel.headerText}>{t(currentRoute.labelKey)}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-1 py-1">
-          {sidebarNodes.length > 0 ? (
-            <TreeView
-              key={currentRoute?.path}
-              nodes={sidebarNodes}
-              selectedId={activeChild}
-              onSelect={handleNodeSelect}
-            />
-          ) : null}
+          <TreeView
+            key={currentRoute.path}
+            nodes={sidebarNodes}
+            selectedId={activeChild?.path}
+            onSelect={handleNodeSelect}
+          />
         </div>
       </div>
 

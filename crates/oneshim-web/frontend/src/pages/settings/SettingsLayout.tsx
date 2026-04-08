@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Button, Spinner, Tabs } from '../../components/ui'
 import { useShellLayoutContext } from '../../contexts/ShellLayoutContext'
-import { routeTree } from '../../routes'
+import { RouteErrorBoundary, routeTree } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { SettingsFormProvider, useSettingsFormContext } from './SettingsFormContext'
@@ -116,9 +116,15 @@ function SettingsContent() {
 }
 
 export default function SettingsLayout() {
+  // Provider is OUTSIDE the error boundary so a recovery reset does not
+  // remount the provider and destroy unsaved form edits. The boundary still
+  // isolates settings-tab crashes per-route — it just can't take out the
+  // form state on reset.
   return (
     <SettingsFormProvider>
-      <SettingsContent />
+      <RouteErrorBoundary route="/settings">
+        <SettingsContent />
+      </RouteErrorBoundary>
     </SettingsFormProvider>
   )
 }

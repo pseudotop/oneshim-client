@@ -2,7 +2,26 @@ import { Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Spinner } from '../components/ui'
 import { RouteErrorBoundary } from './RouteErrorBoundary'
-import { routeTree } from './route-tree'
+import { type RouteNode, routeTree } from './route-tree'
+
+/**
+ * Render a route node's component, optionally wrapped in RouteErrorBoundary.
+ *
+ * Extracted into a function so biome's `useJsxKeyInIterable` lint doesn't
+ * flag the JSX as if it were a direct list item. The result is used inside
+ * a `<Route element={...}>` prop which carries its own key on the Route.
+ */
+function renderRouteElement(node: RouteNode) {
+  const Component = node.component
+  if (node.selfWraps) {
+    return <Component />
+  }
+  return (
+    <RouteErrorBoundary route={node.path}>
+      <Component />
+    </RouteErrorBoundary>
+  )
+}
 
 // Validate routeTree once at module load (dev only).
 // Catches misconfiguration before any render — fail fast.
@@ -44,39 +63,29 @@ export default function RouteRenderer() {
     >
       <Routes>
         {sortedRouteTree.map((node) =>
+          // Parent layouts get exactly ONE outer RouteErrorBoundary so a
+          // crash anywhere in the layout (header, useQuery, Outlet child)
+          // is isolated per-route. Earlier revisions also wrapped the
+          // <Outlet> inside each Layout with a second boundary, but two
+          // boundaries on the same route key produced duplicate
+          // recoverySignals subscribers — halving the escalation threshold
+          // from 3 to 2 (commit e5bab2e1). Do not re-introduce the inner
+          // wrapping without also re-keying the recovery channel.
+          //
+          // Exception: nodes with `selfWraps: true` are responsible for
+          // placing their own boundary. Used when a stateful Provider must
+          // live ABOVE the boundary so its state survives recovery reset
+          // (e.g., SettingsFormProvider preserves unsaved form edits).
           node.children ? (
-            // Parent layouts get exactly ONE outer RouteErrorBoundary so a
-            // crash anywhere in the layout (header, useQuery, Outlet child)
-            // is isolated per-route. Earlier revisions also wrapped the
-            // <Outlet> inside each Layout with a second boundary, but two
-            // boundaries on the same route key produced duplicate
-            // recoverySignals subscribers — halving the escalation threshold
-            // from 3 to 2 (commit e5bab2e1). Do not re-introduce the inner
-            // wrapping without also re-keying the recovery channel.
-            <Route
-              key={node.path}
-              path={`${node.path}/*`}
-              element={
-                <RouteErrorBoundary route={node.path}>
-                  <node.component />
-                </RouteErrorBoundary>
-              }
-            >
+            <Route key={node.path} path={`${node.path}/*`} element={renderRouteElement(node)}>
               {node.defaultChild && <Route index element={<Navigate to={node.defaultChild} replace />} />}
-              {node.children.map((child) => (
-                <Route key={child.path} path={child.path} element={<child.component />} />
-              ))}
+              {node.children.map((child) => {
+                const ChildComponent = child.component
+                return <Route key={child.path} path={child.path} element={<ChildComponent />} />
+              })}
             </Route>
           ) : (
-            <Route
-              key={node.path}
-              path={node.path}
-              element={
-                <RouteErrorBoundary route={node.path}>
-                  <node.component />
-                </RouteErrorBoundary>
-              }
-            />
+            <Route key={node.path} path={node.path} element={renderRouteElement(node)} />
           ),
         )}
         <Route path="*" element={<Navigate to="/" replace />} />

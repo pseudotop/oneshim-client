@@ -33,8 +33,8 @@
  * Cleanup: On unmount, the route's resetTracker entry is cleared so a fresh
  * visit (after navigating away and back) starts with a clean trust window.
  */
-import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { OutletContextError } from './OutletContextError'
 import { RouteErrorFallback } from './RouteErrorFallback'
 import { subscribeToRouteRecovery } from './recoverySignals'
@@ -142,6 +142,23 @@ interface RouteErrorBoundaryProps {
 export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps) {
   const [resetKey, setResetKey] = useState(0)
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Reset the boundary on in-route navigation. If the user is stuck on an
+  // error in one sub-route (e.g. /focus/score) and clicks a sibling
+  // (/focus/sessions), the parent boundary stays mounted and would otherwise
+  // persist the error state — appearing frozen. Resetting on pathname change
+  // gives the new sub-route a fresh chance to render.
+  //
+  // The ref skips the initial mount so we don't waste a remount cycle on the
+  // first render before any navigation has happened.
+  const initialPathnameRef = useRef(location.pathname)
+  useEffect(() => {
+    if (location.pathname !== initialPathnameRef.current) {
+      initialPathnameRef.current = location.pathname
+      setResetKey((k) => k + 1)
+    }
+  }, [location.pathname])
 
   // Subscribe to recovery signals for this specific route.
   // The registry replaces the prior `window.addEventListener` to avoid
