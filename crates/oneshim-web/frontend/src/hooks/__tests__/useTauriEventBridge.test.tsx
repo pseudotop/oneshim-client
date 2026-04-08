@@ -144,10 +144,14 @@ describe('useTauriEventBridge', () => {
     })
   })
 
-  it('dispatches route-error-reset CustomEvent on frontend-recovery reset-route signal', async () => {
-    const { invalidateQueries, listeners } = await renderBridgeHarness()
+  it('calls notifyRouteRecovery on frontend-recovery reset-route signal', async () => {
+    // Mock the recoverySignals module BEFORE importing useTauriEventBridge
+    const notifySpy = vi.fn()
+    vi.doMock('../../routes/recoverySignals', () => ({
+      notifyRouteRecovery: notifySpy,
+    }))
 
-    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+    const { listeners } = await renderBridgeHarness()
 
     act(() => {
       listeners.get('frontend-recovery')?.({
@@ -159,19 +163,35 @@ describe('useTauriEventBridge', () => {
       })
     })
 
-    // Queries are invalidated
-    expect(invalidateQueries).toHaveBeenCalled()
+    expect(notifySpy).toHaveBeenCalledWith('/focus')
+  })
 
-    // CustomEvent dispatched with the right detail
-    const customEventCall = dispatchSpy.mock.calls.find(([event]) => (event as Event).type === 'route-error-reset')
-    expect(customEventCall).toBeDefined()
-    const event = customEventCall?.[0] as CustomEvent
-    expect(event.detail).toEqual({ route: '/focus' })
+  it('does NOT globally invalidate queries on reset-route (boundary handles it)', async () => {
+    vi.doMock('../../routes/recoverySignals', () => ({
+      notifyRouteRecovery: vi.fn(),
+    }))
 
-    dispatchSpy.mockRestore()
+    const { invalidateQueries, listeners } = await renderBridgeHarness()
+
+    act(() => {
+      listeners.get('frontend-recovery')?.({
+        payload: {
+          strategy: 'reset-route',
+          route: '/focus',
+          reason: 'render crash',
+        },
+      })
+    })
+
+    // Bridge should NOT trigger a global invalidate — that's the boundary's job.
+    // Earlier impl invalidated here AND in the boundary (IA-3 double invalidation).
+    expect(invalidateQueries).not.toHaveBeenCalled()
   })
 
   it('triggers full reload on frontend-recovery full-reload signal', async () => {
+    vi.doMock('../../routes/recoverySignals', () => ({
+      notifyRouteRecovery: vi.fn(),
+    }))
     const { listeners } = await renderBridgeHarness()
 
     // jsdom does not implement window.location.reload — stub it
@@ -182,6 +202,9 @@ describe('useTauriEventBridge', () => {
       writable: true,
       value: { ...originalLocation, reload: reloadMock },
     })
+
+    // Spy on the before-full-reload event used by unsaved-data guards
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
 
     act(() => {
       listeners.get('frontend-recovery')?.({
@@ -194,7 +217,11 @@ describe('useTauriEventBridge', () => {
     })
 
     expect(reloadMock).toHaveBeenCalledTimes(1)
+    // Unsaved-data guards are notified via a separate event
+    const guardEvent = dispatchSpy.mock.calls.find(([event]) => (event as Event).type === 'oneshim:before-full-reload')
+    expect(guardEvent).toBeDefined()
 
+    dispatchSpy.mockRestore()
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
@@ -203,8 +230,12 @@ describe('useTauriEventBridge', () => {
   })
 
   it('ignores frontend-recovery payloads that fail the type guard', async () => {
+    const notifySpy = vi.fn()
+    vi.doMock('../../routes/recoverySignals', () => ({
+      notifyRouteRecovery: notifySpy,
+    }))
+
     const { invalidateQueries, listeners } = await renderBridgeHarness()
-    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
 
     act(() => {
       // Missing required fields
@@ -212,10 +243,7 @@ describe('useTauriEventBridge', () => {
     })
 
     expect(invalidateQueries).not.toHaveBeenCalled()
-    const customEventCall = dispatchSpy.mock.calls.find(([event]) => (event as Event).type === 'route-error-reset')
-    expect(customEventCall).toBeUndefined()
-
-    dispatchSpy.mockRestore()
+    expect(notifySpy).not.toHaveBeenCalled()
   })
 
   it('shows a toast for inbound integration prompts', async () => {

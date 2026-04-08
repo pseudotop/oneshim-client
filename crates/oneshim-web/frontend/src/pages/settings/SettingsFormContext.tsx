@@ -21,6 +21,21 @@ export function SettingsFormProvider({ children }: { children: React.ReactNode }
     setFormDataForProbes(form.formData)
   }, [form.formData])
 
+  // Guard against silent data loss when the page is reloaded (browser refresh
+  // or Rust-triggered full-reload recovery) while the user has unsaved
+  // settings changes. The browser shows a generic confirm dialog.
+  useEffect(() => {
+    if (!form.hasUnsavedChanges) return
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      // Modern browsers ignore the returnValue but require it set for the
+      // dialog to appear at all.
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [form.hasUnsavedChanges])
+
   return <SettingsFormContext.Provider value={{ form, data }}>{children}</SettingsFormContext.Provider>
 }
 

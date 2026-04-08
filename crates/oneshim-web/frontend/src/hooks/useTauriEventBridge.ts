@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { notifyRouteRecovery } from '../routes/recoverySignals'
 import { IS_TAURI } from '../utils/platform'
 import { addToast } from './useToast'
 
@@ -181,12 +182,16 @@ export function useTauriEventBridge() {
             const { strategy, route, reason } = event.payload
             if (strategy === 'full-reload') {
               console.warn(`[recovery] full-reload: ${reason}`)
+              // Notify any unsaved-data guards before reload (Settings form, etc)
+              window.dispatchEvent(new Event('oneshim:before-full-reload'))
               window.location.reload()
               return
             }
             if (strategy === 'reset-route') {
-              queryClientRef.current.invalidateQueries()
-              window.dispatchEvent(new CustomEvent('route-error-reset', { detail: { route } }))
+              // Notify the route's error boundary via the typed registry.
+              // The boundary handles its own query invalidation and remount;
+              // we don't invalidateQueries globally here (avoids IA-3 double).
+              notifyRouteRecovery(route)
             }
           }))
         ) {

@@ -39,7 +39,7 @@ fn runtime_log_snapshot_from_dir(
     })
 }
 
-fn sanitize_frontend_surface(surface: &str) -> String {
+pub(crate) fn sanitize_frontend_surface(surface: &str) -> String {
     let trimmed = surface.trim();
     if trimmed.is_empty() {
         return "unknown".to_string();
@@ -59,7 +59,7 @@ fn sanitize_frontend_surface(surface: &str) -> String {
     normalized.trim_matches('-').to_string()
 }
 
-fn truncate_log_field(value: String, limit: usize) -> String {
+pub(crate) fn truncate_log_field(value: String, limit: usize) -> String {
     if value.len() <= limit {
         return value;
     }

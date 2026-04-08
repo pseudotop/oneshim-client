@@ -4,8 +4,8 @@
  * Architecture: TWO-COMPONENT design.
  *
  *   RouteErrorBoundary (functional wrapper)
- *     ├─ Hooks: useNavigate, useQueryClient, useState(resetKey), useEffect(window listener)
- *     ├─ Listens for `route-error-reset` CustomEvent from Rust recovery
+ *     ├─ Hooks: useNavigate, useQueryClient, useState(resetKey), useEffect
+ *     ├─ Subscribes to recoverySignals registry for its route
  *     └─ Renders RouteErrorBoundaryInner with key={resetKey}
  *           ↓
  *   RouteErrorBoundaryInner (class component)
@@ -13,32 +13,37 @@
  *     └─ Renders RouteErrorFallback when hasError
  *
  * Why two components? React error boundaries MUST be class components, but the
- * recovery flow needs hooks (useNavigate, useQueryClient, useEffect window
- * listener). The wrapper gives hooks; the inner gives error catching. Reset is
- * propagated via the `key={resetKey}` prop, which forces React to remount the
- * inner boundary when resetKey changes.
+ * recovery flow needs hooks (useNavigate, useQueryClient, useEffect). The
+ * wrapper gives hooks; the inner gives error catching. Reset is propagated via
+ * the `key={resetKey}` prop, which forces React to remount the inner boundary.
  *
  * Recovery flow:
  *   1. Section throws error
  *   2. Inner componentDidCatch → onCatch callback → reportToNative
  *   3. reportToNative → Tauri invoke('report_frontend_error')
- *   4. Rust logs + maybe notifies + maybe emits 'frontend-recovery' event
- *   5. useTauriEventBridge listens → window.dispatchEvent('route-error-reset')
- *   6. Wrapper's useEffect listener → invalidateQueries + setResetKey++
+ *   4. Rust logs (cooldowned) + maybe notifies + maybe emits 'frontend-recovery'
+ *   5. useTauriEventBridge listens → calls notifyRouteRecovery(route)
+ *   6. Wrapper's recoverySignals subscriber → trackReset → setResetKey++
  *   7. Inner remounts (new key) → fresh render attempt
  *
- * Escalation: Module-level resetTracker counts retries per route. If a route
- * resets 3+ times within 60s, severity escalates to 'critical' which triggers
- * full-reload via Rust recovery emission.
+ * Escalation: Module-level resetTracker counts both manual retries AND
+ * automatic recoveries per route. If a route resets 3+ times within 60s,
+ * severity escalates to 'critical' which triggers full-reload via Rust.
+ *
+ * Cleanup: On unmount, the route's resetTracker entry is cleared so a fresh
+ * visit (after navigating away and back) starts with a clean trust window.
  */
-import { useQueryClient } from '@tanstack/react-query'
 import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { OutletContextError } from './OutletContextError'
 import { RouteErrorFallback } from './RouteErrorFallback'
+import { subscribeToRouteRecovery } from './recoverySignals'
 import { reportToNative, type Severity } from './reportToNative'
 
 // ── Module-level reset escalation tracking ──
+//
+// Counts both manual retries (button click) and automatic recoveries (Rust
+// `reset-route` signal). Scoped per route. Cleared on boundary unmount.
 
 const resetTracker = new Map<string, { count: number; firstAt: number }>()
 const ESCALATION_THRESHOLD = 3
@@ -59,6 +64,11 @@ function trackReset(route: string): 'error' | 'critical' {
     return 'critical'
   }
   return 'error'
+}
+
+/** Test-only helper to inspect reset tracker state. */
+export function _getResetTrackerSizeForTest(): number {
+  return resetTracker.size
 }
 
 // ── Local helpers ──
@@ -132,20 +142,44 @@ interface RouteErrorBoundaryProps {
 export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps) {
   const [resetKey, setResetKey] = useState(0)
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
-  // Listen for programmatic reset events (from Rust recovery signals)
+  // Subscribe to recovery signals for this specific route.
+  // The registry replaces the prior `window.addEventListener` to avoid
+  // global-event spoofability and to provide a typed pub/sub.
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { route?: string } | undefined
-      if (detail?.route === route) {
-        queryClient.invalidateQueries()
-        setResetKey((k) => k + 1)
+    const unsubscribe = subscribeToRouteRecovery(route, () => {
+      // Auto-recovery path: Rust signaled `reset-route`. We must also count
+      // this towards the escalation threshold — if the same crash recurs 3+
+      // times in 60s, escalate to critical (full-reload) regardless of who
+      // triggered the reset.
+      const escalated = trackReset(route)
+      if (escalated === 'critical') {
+        // Tell Rust to upgrade — Rust will emit `full-reload` recovery on
+        // the next allowed cycle (cooldown permitting). Skip the local
+        // remount; the full-reload will replace it.
+        reportToNative({
+          route,
+          severity: 'critical',
+          message: `Auto-recovery escalation: 3+ crashes in 60s on ${route}`,
+        })
+        return
       }
+      // Within threshold — reset locally. Note: queries are NOT invalidated
+      // here because the boundary's children re-mount fresh, and react-query
+      // will refetch on remount if needed. Avoiding the global invalidate
+      // prevents IA-3's "kicks every cached query for the whole app".
+      setResetKey((k) => k + 1)
+    })
+    return unsubscribe
+  }, [route])
+
+  // Cleanup the resetTracker entry on unmount so a fresh visit gets a fresh
+  // trust window (IA-1: prevents counter leakage across navigation).
+  useEffect(() => {
+    return () => {
+      resetTracker.delete(route)
     }
-    window.addEventListener('route-error-reset', handler)
-    return () => window.removeEventListener('route-error-reset', handler)
-  }, [route, queryClient])
+  }, [route])
 
   const handleCatch = useCallback(
     (error: Error, info: ErrorInfo) => {
@@ -167,12 +201,13 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
       reportToNative({
         route,
         severity: 'critical',
-        message: `Reset escalation threshold reached for route: ${route}`,
+        message: `Manual retry escalation: 3+ resets in 60s on ${route}`,
       })
+      // Don't remount locally — wait for Rust full-reload signal
+      return
     }
-    queryClient.invalidateQueries()
     setResetKey((k) => k + 1)
-  }, [route, queryClient])
+  }, [route])
 
   const handleGoHome = useCallback(() => {
     navigate('/')

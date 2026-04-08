@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -14,6 +14,7 @@ vi.mock('../reportToNative', () => ({
 import { renderWithProviders } from '../../__tests__/helpers/render-helpers'
 import { OutletContextError } from '../OutletContextError'
 import { RouteErrorBoundary } from '../RouteErrorBoundary'
+import { _resetRecoverySignalsForTest, notifyRouteRecovery } from '../recoverySignals'
 
 interface ThrowerProps {
   shouldThrow: boolean
@@ -34,6 +35,7 @@ function renderBoundary(children: ReactNode, route = '/test') {
 describe('RouteErrorBoundary', () => {
   beforeEach(() => {
     reportToNativeMock.mockReset()
+    _resetRecoverySignalsForTest()
     // React error boundaries log the caught error to console.error — silence
     // it so the test output stays clean.
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -103,10 +105,10 @@ describe('RouteErrorBoundary', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('resets via route-error-reset CustomEvent matching the route', () => {
+  it('resets via notifyRouteRecovery for the matching route', () => {
     const recoveryRoute = `/test-recovery-${Date.now()}-${Math.random()}`
     // Module-level state controls thrower behavior. After error caught,
-    // we flip the flag, then dispatch the reset event.
+    // we flip the flag, then notify the registry for this route.
     const state = { shouldThrow: true }
     const ControlledThrower = () => {
       if (state.shouldThrow) throw new Error('controlled crash')
@@ -117,26 +119,74 @@ describe('RouteErrorBoundary', () => {
     // Fallback should be visible after the throw
     expect(screen.getByRole('alert')).toBeInTheDocument()
 
-    // Now stop throwing and dispatch the recovery event for THIS route
+    // Now stop throwing and notify the registry for THIS route.
+    // Wrap in act() so React flushes the resulting setResetKey state update.
     state.shouldThrow = false
-    fireEvent(window, new CustomEvent('route-error-reset', { detail: { route: recoveryRoute } }))
+    act(() => {
+      notifyRouteRecovery(recoveryRoute)
+    })
 
     // Boundary remounts and renders the now-working component
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByText('Recovered')).toBeInTheDocument()
   })
 
-  it('ignores route-error-reset events for a different route', () => {
+  it('ignores notifyRouteRecovery for a different route', () => {
     const myRoute = `/test-my-route-${Date.now()}`
     const otherRoute = `/test-other-route-${Date.now()}`
     renderBoundary(<Thrower shouldThrow={true} />, myRoute)
     expect(screen.getByRole('alert')).toBeInTheDocument()
 
-    // Dispatch event for a DIFFERENT route — boundary should NOT reset
-    fireEvent(window, new CustomEvent('route-error-reset', { detail: { route: otherRoute } }))
+    // Notify for a DIFFERENT route — boundary should NOT reset
+    act(() => {
+      notifyRouteRecovery(otherRoute)
+    })
 
     // Fallback still visible
     expect(screen.getByRole('alert')).toBeInTheDocument()
+  })
+
+  it('escalates auto-recovery to critical after 3+ signals within window', () => {
+    // The auto-recovery path (via notifyRouteRecovery) should also count
+    // towards the escalation threshold. After 3 auto-recoveries on the same
+    // crashing component, severity escalates to critical and the local
+    // remount is skipped (Rust will trigger full-reload).
+    const route = `/test-auto-escalation-${Date.now()}`
+    renderBoundary(<Thrower shouldThrow={true} />, route)
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    // Initial caught error
+    expect(reportToNativeMock).toHaveBeenLastCalledWith(expect.objectContaining({ severity: 'error' }))
+
+    // Trigger 3 auto-recoveries in rapid succession (synchronous within
+    // the 60s window). On the 3rd, escalation must fire.
+    act(() => {
+      notifyRouteRecovery(route)
+      notifyRouteRecovery(route)
+      notifyRouteRecovery(route)
+    })
+
+    // The escalation path reports critical without local remount
+    const criticalCall = reportToNativeMock.mock.calls.find(([payload]) => payload?.severity === 'critical')
+    expect(criticalCall).toBeDefined()
+    expect(criticalCall?.[0]).toMatchObject({ route })
+  })
+
+  it('clears resetTracker entry on unmount', () => {
+    const route = `/test-cleanup-${Date.now()}`
+    const { unmount } = renderBoundary(<Thrower shouldThrow={true} />, route)
+    // Trigger one tracked reset to populate the entry
+    const buttons = screen.getAllByRole('button')
+    fireEvent.click(buttons[0])
+
+    unmount()
+
+    // After unmount, a fresh visit must start with a clean window.
+    // Render a new boundary at the same route — the prior count must NOT carry over.
+    reportToNativeMock.mockClear()
+    renderBoundary(<Thrower shouldThrow={true} />, route)
+    // Only one error should have been reported (the new mount), not an escalation
+    expect(reportToNativeMock).toHaveBeenCalledTimes(1)
+    expect(reportToNativeMock).toHaveBeenLastCalledWith(expect.objectContaining({ severity: 'error' }))
   })
 
   it('escalates to critical severity after repeated retries within the window', () => {

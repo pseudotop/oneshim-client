@@ -127,4 +127,50 @@ describe('reportToNative', () => {
     // fire-and-forget and the caller should not need a .catch.
     expect(invokeMock).toHaveBeenCalled()
   })
+
+  it('forwards componentStack to the Rust command', async () => {
+    reportToNative({
+      route: '/focus',
+      severity: 'error',
+      message: 'Component crashed',
+      componentStack: '\n    at FocusSection\n    at FocusLayout',
+    })
+
+    await flushMicrotasks()
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      'report_frontend_error',
+      expect.objectContaining({
+        componentStack: expect.stringContaining('FocusSection'),
+      }),
+    )
+  })
+
+  it('redacts file paths in the error message', async () => {
+    reportToNative({
+      route: '/focus',
+      severity: 'error',
+      message: 'Failed at /Users/alice/project/src/file.tsx',
+    })
+
+    await flushMicrotasks()
+
+    const [, payload] = invokeMock.mock.calls[0]
+    expect(payload.errorMessage).not.toContain('/Users/alice')
+  })
+
+  it('redacts API keys in the stack', async () => {
+    reportToNative({
+      route: '/test',
+      severity: 'error',
+      message: 'auth failed',
+      stack: 'Error\n  at fetch (sk-1234567890abcdefghij)',
+    })
+
+    await flushMicrotasks()
+
+    const [, payload] = invokeMock.mock.calls[0]
+    expect(payload.stack).not.toContain('sk-1234567890abcdefghij')
+    expect(payload.stack).toContain('[REDACTED]')
+  })
 })
