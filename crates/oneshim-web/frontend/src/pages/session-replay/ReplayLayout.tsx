@@ -7,12 +7,13 @@ import { fetchAutomationScene, fetchSceneCalibration, fetchSettings, fetchTimeli
 import type { TimelineResponse, UiScene } from '../../api/contracts'
 import DateRangePicker from '../../components/DateRangePicker'
 import { Alert } from '../../components/ui'
+import { Card, CardContent } from '../../components/ui/Card'
 import { Spinner } from '../../components/ui/Spinner'
 import { colors, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { usePlaybackState } from './hooks/usePlaybackState'
-import type { SceneState } from './SceneOverlay'
-import { useSceneState } from './SceneOverlay'
+import { SceneAssistantPanel, type SceneState, useSceneState } from './SceneOverlay'
+import { TimelineScrubberSection } from './SessionPlayback'
 import type { PlaybackState } from './types'
 
 export interface ReplayOutletContext {
@@ -126,6 +127,8 @@ export default function ReplayLayout() {
     if (to) setToDate(to)
   }, [])
 
+  const hasTimelineData = Boolean(timeline && timeline.items.length > 0)
+
   return (
     <div className="min-h-full space-y-4 p-6">
       {/* Header + date range */}
@@ -154,28 +157,97 @@ export default function ReplayLayout() {
 
       {/* Main content — Outlet is rendered unconditionally (post-loading) so
           that the `/replay` → `/replay/timeline` index redirect always fires.
-          TimelineSection (the defaultChild) owns the empty state when
-          timeline is null or has zero items. */}
+          TimelineSection and EventsSection each own the empty state when
+          timeline is null or has zero items. The shared chrome
+          (TimelineScrubberSection, SceneAssistantPanel sidebar, session
+          stats footer) lives here so it persists across both sub-routes —
+          the click-then-act flow broke after PR #376 moved
+          SceneAssistantPanel into EventsSection but kept SceneViewport in
+          TimelineSection. Hoisting the assistant panel back to the layout
+          keeps it visible next to the viewport on /replay/timeline while
+          still showing it on /replay/events alongside the event log. */}
       {!loading && (
-        <Outlet
-          context={
-            {
-              timeline,
-              playback,
-              scene,
-              currentScene,
-              sceneFetching,
-              sceneError,
-              sceneCalibration,
-              calibrationFetching,
-              sceneIntelligenceEnabled,
-              overlayAllowed,
-              sceneExecutionAllowed,
-              imageLoadFailed,
-              onImageLoadFailed: () => setImageLoadFailed(true),
-            } satisfies ReplayOutletContext
-          }
-        />
+        <>
+          {timeline && timeline.items.length > 0 && <TimelineScrubberSection timeline={timeline} playback={playback} />}
+
+          <div className={cn('grid grid-cols-1 gap-4', hasTimelineData && 'lg:grid-cols-3')}>
+            <div className={cn('min-w-0 space-y-4', hasTimelineData && 'lg:col-span-2')}>
+              <Outlet
+                context={
+                  {
+                    timeline,
+                    playback,
+                    scene,
+                    currentScene,
+                    sceneFetching,
+                    sceneError,
+                    sceneCalibration,
+                    calibrationFetching,
+                    sceneIntelligenceEnabled,
+                    overlayAllowed,
+                    sceneExecutionAllowed,
+                    imageLoadFailed,
+                    onImageLoadFailed: () => setImageLoadFailed(true),
+                  } satisfies ReplayOutletContext
+                }
+              />
+            </div>
+
+            {hasTimelineData && currentFrame && (
+              <aside className="space-y-4 lg:col-span-1">
+                <SceneAssistantPanel
+                  currentFrame={currentFrame}
+                  currentScene={currentScene}
+                  sceneIntelligenceEnabled={sceneIntelligenceEnabled}
+                  sceneExecutionAllowed={sceneExecutionAllowed}
+                  sceneCalibration={sceneCalibration}
+                  scene={scene}
+                />
+              </aside>
+            )}
+          </div>
+
+          {timeline && timeline.items.length > 0 && (
+            <Card>
+              <CardContent className="py-3">
+                <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-5">
+                  <div>
+                    <p className="text-content-secondary text-xs">{t('replay.duration', 'session 시간')}</p>
+                    <p className={`${typography.weight.semibold} text-content text-lg`}>
+                      {Math.round(timeline.session.duration_secs / 60)}
+                      {t('dashboard.minutes', '분')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-content-secondary text-xs">{t('replay.totalEvents', '총 event')}</p>
+                    <p className={`${typography.weight.semibold} text-content text-lg`}>
+                      {timeline.session.total_events}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-content-secondary text-xs">{t('replay.totalFrames', '총 frame')}</p>
+                    <p className={`${typography.weight.semibold} text-content text-lg`}>
+                      {timeline.session.total_frames}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-content-secondary text-xs">{t('replay.totalIdle', '총 idle')}</p>
+                    <p className={`${typography.weight.semibold} text-content text-lg`}>
+                      {Math.round(timeline.session.total_idle_secs / 60)}
+                      {t('dashboard.minutes', '분')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-content-secondary text-xs">{t('replay.apps', '앱 수')}</p>
+                    <p className={`${typography.weight.semibold} text-content text-lg`}>
+                      {new Set(timeline.segments.map((s) => s.app_name)).size}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
     </div>
   )
