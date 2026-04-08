@@ -12,7 +12,10 @@ type RenderBridgeHarnessOptions = {
   listenImpl?: (eventName: string, callback: EventCallback) => Promise<() => void>
 }
 
-async function renderBridgeHarness({ expectedListenCalls = 9, listenImpl }: RenderBridgeHarnessOptions = {}) {
+// 8 global listen calls (navigate, tray-toggle-automation, automation:quick-access,
+// tray-approve-update, tray-defer-update, oauth-reauth-required, navigate:chat,
+// integration-proactive-prompt) + 1 webview-scoped listen for frontend-recovery.
+async function renderBridgeHarness({ expectedListenCalls = 8, listenImpl }: RenderBridgeHarnessOptions = {}) {
   const listeners = new Map<string, EventCallback>()
   const unlistenCallbacks: Array<ReturnType<typeof vi.fn>> = []
   const defaultListenImpl = async (eventName: string, callback: EventCallback) => {
@@ -24,12 +27,20 @@ async function renderBridgeHarness({ expectedListenCalls = 9, listenImpl }: Rend
     return unlisten
   }
   const listen = vi.fn(listenImpl ?? defaultListenImpl)
+  // Webview-scoped listener (used for frontend-recovery so emit_to filters
+  // delivery on the Rust side). Same shape as global listen for the test.
+  const webviewListen = vi.fn(listenImpl ?? defaultListenImpl)
 
   vi.doMock('../../utils/platform', () => ({
     IS_TAURI: true,
   }))
   vi.doMock('@tauri-apps/api/event', () => ({
     listen,
+  }))
+  vi.doMock('@tauri-apps/api/webview', () => ({
+    getCurrentWebview: () => ({
+      listen: webviewListen,
+    }),
   }))
 
   const { useTauriEventBridge } = await import('../useTauriEventBridge')
@@ -217,9 +228,8 @@ describe('useTauriEventBridge', () => {
     })
 
     expect(reloadMock).toHaveBeenCalledTimes(1)
-    // Unsaved-data guards are notified via a separate event
-    const guardEvent = dispatchSpy.mock.calls.find(([event]) => (event as Event).type === 'oneshim:before-full-reload')
-    expect(guardEvent).toBeDefined()
+    // The browser fires `beforeunload` automatically on location.reload();
+    // SettingsFormProvider listens for that to guard unsaved data.
 
     dispatchSpy.mockRestore()
     Object.defineProperty(window, 'location', {

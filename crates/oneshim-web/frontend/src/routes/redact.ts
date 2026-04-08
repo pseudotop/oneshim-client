@@ -16,11 +16,16 @@ const REDACTED = '[REDACTED]'
 // File path patterns:
 // - macOS / Linux: /Users/<name>/, /home/<name>/, /var/folders/<id>/
 // - Windows: C:\Users\<name>\
+//
+// The Windows pattern's character class must exclude backslash, whitespace,
+// and quote — written as `[^\\\s"]+`. The earlier `[^\\s"]+` was a typo that
+// excluded the literal letter 's' instead of whitespace, leaving any
+// username containing 's' (Sam, Steven, Tess, ...) un-redacted.
 const HOME_PATH_PATTERNS: ReadonlyArray<RegExp> = [
   /\/Users\/[^/\s"]+/g,
   /\/home\/[^/\s"]+/g,
   /\/var\/folders\/[a-zA-Z0-9_+/]+/g,
-  /[A-Z]:\\Users\\[^\\s"]+/g,
+  /[A-Z]:\\Users\\[^\\\s"]+/g,
 ]
 
 // Common secret patterns:

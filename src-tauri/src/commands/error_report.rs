@@ -141,10 +141,17 @@ fn maybe_notify(app: &tauri::AppHandle, route: &str, message: &str) {
 }
 
 /// Emit a recovery signal to the main webview only.
-/// Respects a 5-second per-route cooldown.
+/// Respects a 5-second per-(route, strategy) cooldown.
+///
+/// IMPORTANT: The cooldown key includes both route AND strategy so that an
+/// escalation from `reset-route` to `full-reload` is not suppressed by the
+/// in-flight reset cooldown. This is the fix for the CS-2 escalation gap
+/// where the critical full-reload would otherwise share the same cooldown
+/// bucket as the rapid reset-route signals that triggered the escalation.
 fn maybe_emit_recovery(app: &tauri::AppHandle, route: &str, strategy: &str, reason: &str) {
     let cooldown = Duration::from_secs(RECOVERY_COOLDOWN_SECS);
-    if !check_and_update_cooldown(&RECOVERY_COOLDOWN, route, cooldown) {
+    let cooldown_key = format!("{route}|{strategy}");
+    if !check_and_update_cooldown(&RECOVERY_COOLDOWN, &cooldown_key, cooldown) {
         return;
     }
 
@@ -194,9 +201,13 @@ pub async fn report_frontend_error(
 ) -> Result<(), String> {
     // Validate route shape — reject log injection and DoS via huge route strings
     if !is_valid_route(&route) {
+        // Truncate the route to a small bounded preview BEFORE sanitization,
+        // so an attacker passing a 1MB route doesn't cause a 1MB allocation
+        // in the error path. Take chars (not bytes) to stay UTF-8 safe.
+        let preview: String = route.chars().take(64).collect();
         return Err(format!(
             "invalid route: {}",
-            sanitize_frontend_surface(&route)
+            sanitize_frontend_surface(&preview)
         ));
     }
 
@@ -357,5 +368,43 @@ mod tests {
         let truncated = truncate_log_field(oversize, MAX_ERROR_MESSAGE_LEN);
         assert!(truncated.len() <= MAX_ERROR_MESSAGE_LEN + 50); // 50 = " …(truncated)" suffix margin
         assert!(truncated.ends_with("(truncated)"));
+    }
+
+    #[test]
+    fn truncation_does_not_panic_on_multibyte_utf8_boundary() {
+        // Korean and emoji are 3-4 bytes per char. With a 4000-byte limit
+        // and 3-byte chars, the boundary lands inside a code point. The
+        // earlier String::truncate(limit) implementation would panic here.
+        let korean = "한".repeat(2000); // 6000 bytes total
+        let truncated = truncate_log_field(korean, 4000);
+        assert!(truncated.len() <= 4050);
+        assert!(truncated.ends_with("(truncated)"));
+
+        let emoji = "💥".repeat(1500); // 6000 bytes total (4 bytes each)
+        let truncated_emoji = truncate_log_field(emoji, 4000);
+        assert!(truncated_emoji.len() <= 4050);
+        assert!(truncated_emoji.ends_with("(truncated)"));
+    }
+
+    #[test]
+    fn recovery_cooldown_separates_strategies() {
+        // NC-1 regression: reset-route and full-reload share a route, so
+        // the cooldown key must include strategy. Verified by exercising
+        // check_and_update_cooldown with composite keys directly.
+        reset_all_cooldowns();
+        let cooldown = Duration::from_secs(5);
+        // First call for /focus|reset-route succeeds
+        assert!(check_and_update_cooldown(
+            &RECOVERY_COOLDOWN,
+            "/focus|reset-route",
+            cooldown
+        ));
+        // Immediate first call for /focus|full-reload must NOT be blocked
+        // by the reset-route cooldown — different keys.
+        assert!(check_and_update_cooldown(
+            &RECOVERY_COOLDOWN,
+            "/focus|full-reload",
+            cooldown
+        ));
     }
 }

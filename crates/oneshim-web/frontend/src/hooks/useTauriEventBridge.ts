@@ -77,12 +77,31 @@ export function useTauriEventBridge() {
 
       try {
         const { listen } = await import('@tauri-apps/api/event')
+        // For events that must NOT leak to other webviews (overlay /
+        // tracking-panel), use the current-webview-scoped listener instead
+        // of the global one. The Rust side then uses emit_to with the
+        // matching label to actually filter the delivery.
+        const { getCurrentWebview } = await import('@tauri-apps/api/webview')
+        const currentWebview = getCurrentWebview()
 
         const registerListener = async (
           eventName: string,
           handler: (event: TauriEventPayload) => void,
         ): Promise<boolean> => {
           const unlisten = await listen(eventName, handler)
+          if (disposed) {
+            unlisten()
+            return false
+          }
+          pendingUnlistenCallbacks.push(unlisten)
+          return true
+        }
+
+        const registerWebviewListener = async (
+          eventName: string,
+          handler: (event: TauriEventPayload) => void,
+        ): Promise<boolean> => {
+          const unlisten = await currentWebview.listen(eventName, handler)
           if (disposed) {
             unlisten()
             return false
@@ -176,14 +195,17 @@ export function useTauriEventBridge() {
           return
         }
 
+        // frontend-recovery is registered via the webview-scoped listener so
+        // that emit_to(EventTarget::webview("main"), ...) on the Rust side
+        // actually filters delivery to this webview only. With the global
+        // `listen()` the listener target is `Any` and emit_to broadcasts to
+        // all matching listeners regardless of label.
         if (
-          !(await registerListener('frontend-recovery', (event: TauriEventPayload) => {
+          !(await registerWebviewListener('frontend-recovery', (event: TauriEventPayload) => {
             if (!isRecoveryPayload(event.payload)) return
             const { strategy, route, reason } = event.payload
             if (strategy === 'full-reload') {
               console.warn(`[recovery] full-reload: ${reason}`)
-              // Notify any unsaved-data guards before reload (Settings form, etc)
-              window.dispatchEvent(new Event('oneshim:before-full-reload'))
               window.location.reload()
               return
             }

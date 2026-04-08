@@ -31,6 +31,16 @@ describe('redact', () => {
     expect(output).not.toContain('C:\\Users\\Charlie')
   })
 
+  it('masks Windows usernames containing the letter s (regex regression)', () => {
+    // Earlier bug: the character class `[^\\s"]` excluded literal 's', not
+    // whitespace, so "Sam", "Steven", etc. leaked. Verify the fix.
+    for (const name of ['Sam', 'Steven', 'Tess', 'Sasha']) {
+      const input = `Failed in C:\\Users\\${name}\\AppData\\app.log`
+      const output = redact(input)
+      expect(output).not.toContain(`C:\\Users\\${name}`)
+    }
+  })
+
   it('masks /var/folders temp paths', () => {
     const input = 'Cache miss /var/folders/xy/abc123/T/cache.dat'
     const output = redact(input)

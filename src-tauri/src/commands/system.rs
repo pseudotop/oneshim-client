@@ -64,8 +64,16 @@ pub(crate) fn truncate_log_field(value: String, limit: usize) -> String {
         return value;
     }
 
+    // Walk back to the previous UTF-8 char boundary so we never panic on
+    // multi-byte sequences (Korean, emoji, accented Latin, etc.) that
+    // straddle the byte limit.
+    let mut cut = limit;
+    while cut > 0 && !value.is_char_boundary(cut) {
+        cut -= 1;
+    }
+
     let mut truncated = value;
-    truncated.truncate(limit);
+    truncated.truncate(cut);
     truncated.push_str(" …(truncated)");
     truncated
 }
