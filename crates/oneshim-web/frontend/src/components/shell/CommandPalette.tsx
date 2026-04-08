@@ -1,29 +1,17 @@
-import {
-  BarChart3,
-  Clock,
-  FileText,
-  Image,
-  Info,
-  LayoutDashboard,
-  Monitor,
-  Moon,
-  PanelLeft,
-  Search,
-  Settings,
-  Sun,
-  Zap,
-} from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { Moon, PanelLeft, Search, Sun } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../contexts/ThemeContext'
+import { type RouteNode, routeTree } from '../../routes'
 import { iconSize, layout, motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface PaletteItem {
   id: string
-  labelKey: string
-  labelFallback: string
+  /** Pre-resolved label used for filtering. Recomputed each render via useMemo. */
+  label: string
   icon: React.ReactNode
   type: 'page' | 'action'
   action: () => void
@@ -37,6 +25,56 @@ interface CommandPaletteProps {
 
 const LISTBOX_ID = 'command-palette-listbox'
 
+/**
+ * Build a flat list of navigable palette entries from routeTree.
+ *
+ * For each top-level route we emit one "parent" entry, and for every child
+ * one deep-link entry whose label is `Parent > Child`. This keeps the palette
+ * in lockstep with `routeTree` — if we add a route, the palette picks it up
+ * automatically. No more hardcoded drift like the pre-refactor version that
+ * was missing 7 top-level routes.
+ */
+function buildNavigationItems(
+  nodes: readonly RouteNode[],
+  navigate: (path: string) => void,
+  t: TFunction,
+): PaletteItem[] {
+  const items: PaletteItem[] = []
+
+  for (const node of nodes) {
+    if (!node.icon) continue
+    const Icon = node.icon
+    const parentLabel = t(node.labelKey)
+    const icon = <Icon className={iconSize.base} aria-hidden="true" />
+
+    // Parent entry — also acts as the defaultChild redirect.
+    items.push({
+      id: `route-${node.path}`,
+      label: parentLabel,
+      icon,
+      type: 'page',
+      action: () => navigate(node.path),
+    })
+
+    // Deep-link entries for every child so users can jump to a sub-tab
+    // without going through the parent.
+    if (node.children) {
+      const basePath = node.path === '/' ? '' : node.path
+      for (const child of node.children) {
+        items.push({
+          id: `route-${node.path}-${child.path}`,
+          label: `${parentLabel} › ${t(child.labelKey)}`,
+          icon,
+          type: 'page',
+          action: () => navigate(`${basePath}/${child.path}`),
+        })
+      }
+    }
+  }
+
+  return items
+}
+
 export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: CommandPaletteProps) {
   const navigate = useNavigate()
   const navigateRef = useRef(navigate)
@@ -48,92 +86,16 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  const items = useMemo<PaletteItem[]>(
-    () => [
-      {
-        id: 'dashboard',
-        labelKey: 'nav.dashboard',
-        labelFallback: 'Dashboard',
-        icon: <LayoutDashboard className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/'),
-      },
-      {
-        id: 'timeline',
-        labelKey: 'nav.timeline',
-        labelFallback: 'Timeline',
-        icon: <Clock className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/timeline'),
-      },
-      {
-        id: 'reports',
-        labelKey: 'nav.reports',
-        labelFallback: 'Reports',
-        icon: <BarChart3 className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/reports'),
-      },
-      {
-        id: 'focus',
-        labelKey: 'nav.focus',
-        labelFallback: 'Focus',
-        icon: <Image className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/focus'),
-      },
-      {
-        id: 'replay',
-        labelKey: 'nav.replay',
-        labelFallback: 'Session Replay',
-        icon: <Zap className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/replay'),
-      },
-      {
-        id: 'automation',
-        labelKey: 'nav.automation',
-        labelFallback: 'Automation',
-        icon: <Monitor className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/automation'),
-      },
-      {
-        id: 'updates',
-        labelKey: 'nav.updates',
-        labelFallback: 'Updates',
-        icon: <FileText className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/updates'),
-      },
-      {
-        id: 'settings',
-        labelKey: 'nav.settings',
-        labelFallback: 'Settings',
-        icon: <Settings className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/settings'),
-      },
-      {
-        id: 'privacy',
-        labelKey: 'nav.privacy',
-        labelFallback: 'Privacy',
-        icon: <Info className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/privacy'),
-      },
-      {
-        id: 'search',
-        labelKey: 'nav.search',
-        labelFallback: 'Search',
-        icon: <Search className={iconSize.base} aria-hidden="true" />,
-        type: 'page',
-        action: () => navigateRef.current('/search'),
-      },
+  const items = useMemo<PaletteItem[]>(() => {
+    const nav = (path: string) => navigateRef.current(path)
+    const pages = buildNavigationItems(routeTree, nav, t)
+    const actions: PaletteItem[] = [
       {
         id: 'theme',
-        labelKey: theme === 'dark' ? 'shell.switchToLight' : 'shell.switchToDark',
-        labelFallback: theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+        label:
+          theme === 'dark'
+            ? t('shell.switchToLight', 'Switch to Light Mode')
+            : t('shell.switchToDark', 'Switch to Dark Mode'),
         icon:
           theme === 'dark' ? (
             <Sun className={iconSize.base} aria-hidden="true" />
@@ -145,33 +107,20 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
       },
       {
         id: 'sidebar',
-        labelKey: 'shell.toggleSidebar',
-        labelFallback: 'Toggle Sidebar',
+        label: t('shell.toggleSidebar', 'Toggle Sidebar'),
         icon: <PanelLeft className={iconSize.base} aria-hidden="true" />,
         type: 'action',
         action: onToggleSidebar,
       },
-    ],
-    [theme, toggleTheme, onToggleSidebar],
-  )
-
-  const getLabel = useCallback(
-    (item: PaletteItem) => {
-      if (item.id === 'theme') {
-        return theme === 'dark'
-          ? t('shell.switchToLight', 'Switch to Light Mode')
-          : t('shell.switchToDark', 'Switch to Dark Mode')
-      }
-      return item.labelKey ? t(item.labelKey, item.labelFallback) : item.labelFallback
-    },
-    [t, theme],
-  )
+    ]
+    return [...pages, ...actions]
+  }, [theme, toggleTheme, onToggleSidebar, t])
 
   const filtered = useMemo(() => {
     if (!query) return items
     const q = query.toLowerCase()
-    return items.filter((item) => getLabel(item).toLowerCase().includes(q))
-  }, [items, query, getLabel])
+    return items.filter((item) => item.label.toLowerCase().includes(q))
+  }, [items, query])
 
   const activeDescendant = filtered[selectedIndex] ? `palette-option-${filtered[selectedIndex].id}` : undefined
 
@@ -190,7 +139,17 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
     }
   }, [filtered.length, selectedIndex])
 
-  // Focus trap: keep focus within the dialog
+  // Focus trap — keep keyboard focus inside the dialog.
+  //
+  // Unlike the previous revision, we also handle the "focus escaped the
+  // dialog" case: if Tab fires while the currently-focused element is
+  // outside the dialog (e.g. the autofocus timer has not yet run, or the
+  // user clicked something behind the backdrop), we intercept and pull
+  // focus back to the first focusable inside. That was the root cause of
+  // the `shell-command-palette.spec.ts P018` skip — with only a single
+  // focusable (the combobox input), the original trap silently let Tab
+  // walk the page behind the dialog whenever activeElement was neither
+  // first nor last.
   useEffect(() => {
     if (!isOpen) return
 
@@ -204,11 +163,19 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
 
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      const focusInDialog = active instanceof Node && dialogRef.current.contains(active)
 
-      if (e.shiftKey && document.activeElement === first) {
+      if (!focusInDialog) {
+        e.preventDefault()
+        first.focus()
+        return
+      }
+
+      if (e.shiftKey && active === first) {
         e.preventDefault()
         last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && active === last) {
         e.preventDefault()
         first.focus()
       }
@@ -325,7 +292,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
                 )}
               >
                 <span className="flex-shrink-0 text-content-muted">{item.icon}</span>
-                <span className="flex-1 truncate">{getLabel(item)}</span>
+                <span className="flex-1 truncate">{item.label}</span>
                 <span className={layout.commandPalette.badge}>{item.type}</span>
               </div>
             ))
