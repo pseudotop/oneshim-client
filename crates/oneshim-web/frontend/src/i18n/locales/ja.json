@@ -38,7 +38,7 @@
     "recalibration": "再キャリブレーション",
     "chat": "チャット",
     "audit": "監査ログ",
-    "policies": "ポリシー",
+    "policies": "実行ポリシー",
     "playbooks": "プレイブック"
   },
   "dashboard": {
@@ -158,7 +158,7 @@
     "title": "設定",
     "tabs": {
       "general": "一般",
-      "privacy": "プライバシー",
+      "privacy": "テレメトリ",
       "monitoring": "モニタリング",
       "aiAutomation": "AI & 自動化",
       "dataStorage": "データ & ストレージ",
@@ -1050,7 +1050,7 @@
     "interruptions": "中断",
     "timeline": "タイムライン",
     "eventLog": "イベントログ",
-    "policies": "ポリシー",
+    "policies": "ランタイム状態",
     "commands": "コマンド",
     "executionHistory": "実行履歴",
     "currentStatus": "現在のステータス",

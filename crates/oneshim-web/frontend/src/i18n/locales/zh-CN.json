@@ -38,7 +38,7 @@
     "recalibration": "重新校准",
     "chat": "聊天",
     "audit": "审计日志",
-    "policies": "策略",
+    "policies": "执行策略",
     "playbooks": "剧本库"
   },
   "dashboard": {
@@ -158,7 +158,7 @@
     "title": "设置",
     "tabs": {
       "general": "常规",
-      "privacy": "隐私",
+      "privacy": "遥测",
       "monitoring": "监控",
       "aiAutomation": "AI与自动化",
       "dataStorage": "数据与存储",
@@ -1050,7 +1050,7 @@
     "interruptions": "中断记录",
     "timeline": "时间线",
     "eventLog": "事件日志",
-    "policies": "策略",
+    "policies": "运行时状态",
     "commands": "命令",
     "executionHistory": "执行历史",
     "currentStatus": "当前状态",
