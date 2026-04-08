@@ -34,6 +34,18 @@ function isRecoveryPayload(payload: unknown): payload is { strategy: string; rou
   )
 }
 
+/**
+ * Sentinel error thrown when the listener-registration loop notices that the
+ * effect has been disposed mid-await. The catch block uses `instanceof` to
+ * distinguish this from a real registration failure.
+ *
+ * Module-scoped (not nested inside the effect) so that minifiers like esbuild
+ * keep the prototype chain intact even when the class identifier is renamed.
+ * The earlier `e.constructor.name` check broke under Vite's default minifier
+ * because the local class name was mangled to a single letter.
+ */
+class DisposedDuringRegistration extends Error {}
+
 export function useTauriEventBridge() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -94,11 +106,6 @@ export function useTauriEventBridge() {
         } catch (e) {
           console.warn('[useTauriEventBridge] webview API unavailable, falling back to global listen:', e)
         }
-
-        // Sentinel error class — distinguishes intentional disposal from a
-        // bona-fide registration failure. Caught in the surrounding try/catch
-        // which drains the already-registered listeners (NC-NEW-3 fix).
-        class DisposedDuringRegistration extends Error {}
 
         const registerListener = async (
           eventName: string,
@@ -246,9 +253,13 @@ export function useTauriEventBridge() {
         //  1. Browser mode or unavailable Tauri event bridge (silent OK)
         //  2. DisposedDuringRegistration sentinel — also silent OK
         //  3. A real listener registration failure — log for debugging
+        //
+        // Use `instanceof` (not `constructor.name`) so the check survives
+        // minification — esbuild renames the class identifier but the
+        // prototype chain is preserved.
         for (const unlisten of pendingUnlistenCallbacks) unlisten()
         pendingUnlistenCallbacks = []
-        if (e instanceof Error && e.constructor.name !== 'DisposedDuringRegistration') {
+        if (e instanceof Error && !(e instanceof DisposedDuringRegistration)) {
           console.warn('[useTauriEventBridge] listener registration failed:', e)
         }
       }
