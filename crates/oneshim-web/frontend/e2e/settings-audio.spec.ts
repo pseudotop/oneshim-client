@@ -1,5 +1,5 @@
 /**
- * E2E tests for the AudioTab in Settings (/settings?tab=audio).
+ * E2E tests for the AudioTab in Settings (/settings/audio).
  *
  * Covers tab navigation, enable toggle, model size selector,
  * language selector, download button, STT provider radio group,
@@ -155,8 +155,17 @@ function settingsHeading(page: Page) {
 }
 
 async function gotoAudioTab(page: Page) {
-  await page.goto('/settings?tab=audio')
+  await page.goto('/settings/audio')
   await expect(settingsHeading(page)).toBeVisible({ timeout: 10000 })
+}
+
+/**
+ * Returns the AudioTab scope. SettingsLayout renders the active tab inside
+ * <form id="settings-form"> via <Outlet>, so at /settings/audio the form is
+ * the natural panel scope (only AudioTab is mounted).
+ */
+function audioPanel(page: Page) {
+  return page.locator('form#settings-form')
 }
 
 test.describe('Settings Audio Tab', () => {
@@ -167,15 +176,17 @@ test.describe('Settings Audio Tab', () => {
   test('should display audio tab panel', async ({ page }) => {
     await gotoAudioTab(page)
 
-    const panel = page.locator('#settings-panel-audio')
-    await expect(panel).toBeVisible()
+    // The legacy `#settings-panel-audio` wrapper was removed when SettingsLayout
+    // switched to <Outlet>. Verify AudioTab actually rendered by asserting an
+    // audio-specific control exists.
+    await expect(page.locator('#audio-model-size')).toBeVisible()
   })
 
   test('should display audio section heading', async ({ page }) => {
     await gotoAudioTab(page)
 
     // AudioTab renders an h3 with fallback text "Audio & Speech-to-Text"
-    const heading = page.locator('#settings-panel-audio h3')
+    const heading = audioPanel(page).locator('h3').first()
     await expect(heading).toBeVisible()
     await expect(heading).toContainText(/Audio/i)
   })
@@ -183,7 +194,7 @@ test.describe('Settings Audio Tab', () => {
   test('should display enable audio checkbox', async ({ page }) => {
     await gotoAudioTab(page)
 
-    const panel = page.locator('#settings-panel-audio')
+    const panel = audioPanel(page)
     const checkbox = panel.locator('input[type="checkbox"]').first()
     await expect(checkbox).toBeVisible()
     // Should be checked since mockedSettings.audio.enabled = true
@@ -224,7 +235,7 @@ test.describe('Settings Audio Tab', () => {
     await gotoAudioTab(page)
 
     // The AudioTab always renders a download or re-download button
-    const panel = page.locator('#settings-panel-audio')
+    const panel = audioPanel(page)
     const downloadBtn = panel.locator('button').filter({ hasText: /Download|Re-download/i })
     await expect(downloadBtn).toBeVisible()
   })
@@ -232,7 +243,7 @@ test.describe('Settings Audio Tab', () => {
   test('should display STT provider radio group', async ({ page }) => {
     await gotoAudioTab(page)
 
-    const panel = page.locator('#settings-panel-audio')
+    const panel = audioPanel(page)
 
     // Local (Whisper) radio
     const localRadio = panel.locator('input[name="stt_provider"][value="local"]')
@@ -248,7 +259,7 @@ test.describe('Settings Audio Tab', () => {
   test('should show cloud API key field when cloud provider selected', async ({ page }) => {
     await gotoAudioTab(page)
 
-    const panel = page.locator('#settings-panel-audio')
+    const panel = audioPanel(page)
 
     // API key field should be hidden when local is selected
     await expect(page.locator('#cloud-api-key')).toBeHidden()
@@ -267,7 +278,7 @@ test.describe('Settings Audio Tab', () => {
   test('should display input mode radio group with PTT and VAD options', async ({ page }) => {
     await gotoAudioTab(page)
 
-    const panel = page.locator('#settings-panel-audio')
+    const panel = audioPanel(page)
 
     // Push-to-Talk radio
     const pttRadio = panel.locator('input[name="mic_input_mode"][value="push_to_talk"]')
@@ -283,7 +294,7 @@ test.describe('Settings Audio Tab', () => {
   test('should show VAD settings when voice activity mode selected', async ({ page }) => {
     await gotoAudioTab(page)
 
-    const panel = page.locator('#settings-panel-audio')
+    const panel = audioPanel(page)
 
     // VAD threshold slider should be hidden when PTT is selected
     await expect(page.locator('#audio-vad-threshold')).toBeHidden()

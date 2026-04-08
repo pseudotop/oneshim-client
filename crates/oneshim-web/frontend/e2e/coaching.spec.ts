@@ -60,17 +60,20 @@ async function mockCoachingApis(page: Page, opts?: { emptyGoals?: boolean; empty
 }
 
 test.describe('Coaching', () => {
+  // /coaching now splits into two sub-routes (defaultChild=goals):
+  //   /coaching/goals   → GoalsSection (goal progress cards)
+  //   /coaching/history → HistorySection (recent events list)
   test.beforeEach(async ({ page }) => {
     await mockCoachingApis(page)
-    await page.goto('/coaching')
-    await expect(page.getByRole('heading', { name: coachingTitleName })).toBeVisible({ timeout: 10000 })
   })
 
   test('should display coaching page title', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: coachingTitleName })).toBeVisible()
+    await page.goto('/coaching/goals')
+    await expect(page.getByRole('heading', { name: coachingTitleName })).toBeVisible({ timeout: 10000 })
   })
 
   test('should display goal progress section', async ({ page }) => {
+    await page.goto('/coaching/goals')
     await expect(page.getByRole('heading', { name: goalsTitleName })).toBeVisible()
     await expect(page.getByText('Deep Work')).toBeVisible()
     await expect(page.getByText('Communication')).toBeVisible()
@@ -78,17 +81,20 @@ test.describe('Coaching', () => {
   })
 
   test('should display coaching events section', async ({ page }) => {
+    await page.goto('/coaching/history')
     await expect(page.getByRole('heading', { name: recentEventsName })).toBeVisible()
     await expect(page.getByText('FocusGuard')).toBeVisible()
     await expect(page.getByText('TimeAware')).toBeVisible()
   })
 
   test('should display event messages', async ({ page }) => {
+    await page.goto('/coaching/history')
     await expect(page.getByText('Great focus session! Consider a short break.')).toBeVisible()
     await expect(page.getByText('Frequent context switches detected.')).toBeVisible()
   })
 
   test('should display feedback indicator on events that have feedback', async ({ page }) => {
+    await page.goto('/coaching/history')
     await expect(page.getByText('helpful')).toBeVisible()
   })
 })
@@ -96,10 +102,11 @@ test.describe('Coaching', () => {
 test.describe('Coaching — empty state', () => {
   test('should show empty state when no goals or events', async ({ page }) => {
     await mockCoachingApis(page, { emptyGoals: true, emptyHistory: true })
-    await page.goto('/coaching')
-    await expect(page.getByRole('heading', { name: coachingTitleName })).toBeVisible({ timeout: 10000 })
 
-    await expect(page.getByText(noGoalsName)).toBeVisible()
-    await expect(page.getByText(noEventsName)).toBeVisible()
+    await page.goto('/coaching/goals')
+    await expect(page.getByText(noGoalsName)).toBeVisible({ timeout: 10000 })
+
+    await page.goto('/coaching/history')
+    await expect(page.getByText(noEventsName)).toBeVisible({ timeout: 10000 })
   })
 })

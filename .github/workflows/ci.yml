@@ -72,6 +72,13 @@ jobs:
         working-directory: crates/oneshim-web/frontend
         run: npx tsc --noEmit
 
+      - name: Run frontend unit tests (vitest)
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm test
+
+      - name: Verify route integrity
+        run: ./scripts/verify-route-integrity.sh
+
       - name: Build frontend bundle
         working-directory: crates/oneshim-web/frontend
         run: pnpm build

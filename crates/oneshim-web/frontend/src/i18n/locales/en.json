@@ -188,7 +188,9 @@
       "aiAutomation": "AI & Automation",
       "dataStorage": "Data & Storage",
       "coaching": "Coaching",
-      "audio": "Audio"
+      "audio": "Audio",
+      "sync": "Sync",
+      "advanced": "Advanced"
     },
     "dataCollection": "Data Collection",
     "enableCapture": "Enable Screenshot Capture",
@@ -1205,7 +1207,16 @@
     "retryConnection": "Retry Connection",
     "agentUnreachable": "Network error: unable to reach agent",
     "agentCheck": "Check that the ONESHIM agent is running",
-    "unknownFetchError": "Unknown error fetching metrics"
+    "unknownFetchError": "Unknown error fetching metrics",
+    "route": {
+      "title": "Something went wrong in this section",
+      "description": "The error has been reported. You can try again or go back to the dashboard.",
+      "tryAgain": "Try Again",
+      "goHome": "Go to Dashboard",
+      "recoveringTitle": "Recovering the app...",
+      "recoveringDescription": "This section has crashed repeatedly. Reloading the app to restore normal operation.",
+      "recovering": "Reloading..."
+    }
   },
   "recalibration": {
     "title": "Recalibration",

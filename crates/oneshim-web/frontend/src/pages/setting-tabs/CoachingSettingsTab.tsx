@@ -1,29 +1,37 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { AppSettings, CoachingSettings, ProfileConfig, TimeRange } from '../../api/contracts'
+import type { CoachingSettings, ProfileConfig, TimeRange } from '../../api/contracts'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '../../components/ui'
 import { useGoalProgress, useUpdateGoals } from '../../hooks/useCoaching'
 import { colors, motion, radius, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { useSettingsFormContext } from '../settings/SettingsFormContext'
 import ToggleRow from './ToggleRow'
 
 const COACHING_TONES = ['Direct', 'Gentle', 'DataDriven'] as const
 
 const PROFILE_KEYS = ['FocusGuard', 'TimeAware', 'DeepWorkCoach', 'ContextRestore', 'GoalTracker'] as const
 
-interface CoachingSettingsTabProps {
-  formData: AppSettings | null
-  onCoachingChange: (field: string, value: unknown) => void
-}
-
-export default function CoachingSettingsTab({ formData, onCoachingChange }: CoachingSettingsTabProps) {
+export default function CoachingSettingsTab() {
   const { t } = useTranslation()
+  const { form } = useSettingsFormContext()
+  const formData = form.formData
   const { data: goals } = useGoalProgress()
   const updateGoalsMutation = useUpdateGoals()
   const [newLabel, setNewLabel] = useState('')
   const [newMinutes, setNewMinutes] = useState(60)
   const [newQuietStart, setNewQuietStart] = useState('22:00')
   const [newQuietEnd, setNewQuietEnd] = useState('08:00')
+
+  const handleCoachingChange = useCallback(
+    (field: string, value: unknown) => {
+      form.setFormData((prev) => {
+        if (!prev) return prev
+        return { ...prev, coaching: { ...prev.coaching, [field]: value } }
+      })
+    },
+    [form.setFormData],
+  )
 
   const coaching: CoachingSettings | undefined = formData?.coaching
 
@@ -58,15 +66,15 @@ export default function CoachingSettingsTab({ formData, onCoachingChange }: Coac
 
   const handleAddQuietHour = useCallback(() => {
     const updated = [...quietHours, { start: newQuietStart, end: newQuietEnd }]
-    onCoachingChange('quiet_hours', updated)
-  }, [quietHours, newQuietStart, newQuietEnd, onCoachingChange])
+    handleCoachingChange('quiet_hours', updated)
+  }, [quietHours, newQuietStart, newQuietEnd, handleCoachingChange])
 
   const handleDeleteQuietHour = useCallback(
     (index: number) => {
       const updated = quietHours.filter((_, i) => i !== index)
-      onCoachingChange('quiet_hours', updated)
+      handleCoachingChange('quiet_hours', updated)
     },
-    [quietHours, onCoachingChange],
+    [quietHours, handleCoachingChange],
   )
 
   // ---- Tone handler -------------------------------------------------------
@@ -74,9 +82,9 @@ export default function CoachingSettingsTab({ formData, onCoachingChange }: Coac
 
   const handleToneChange = useCallback(
     (tone: string) => {
-      onCoachingChange('tone', tone)
+      handleCoachingChange('tone', tone)
     },
-    [onCoachingChange],
+    [handleCoachingChange],
   )
 
   // ---- Profile toggle handler ---------------------------------------------
@@ -86,9 +94,9 @@ export default function CoachingSettingsTab({ formData, onCoachingChange }: Coac
     (profileKey: string, enabled: boolean) => {
       const current = profiles[profileKey] ?? { enabled: true, min_interval_secs: 300 }
       const updatedProfiles = { ...profiles, [profileKey]: { ...current, enabled } }
-      onCoachingChange('profiles', updatedProfiles)
+      handleCoachingChange('profiles', updatedProfiles)
     },
-    [profiles, onCoachingChange],
+    [profiles, handleCoachingChange],
   )
 
   return (

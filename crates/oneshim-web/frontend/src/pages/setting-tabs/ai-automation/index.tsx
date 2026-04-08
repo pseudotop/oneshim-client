@@ -17,6 +17,7 @@ import {
   surfaceSupportsModelSelection,
 } from '../../../features/providerSurfaces'
 import { form, typography } from '../../../styles/tokens'
+import { useSettingsFormContext } from '../../settings/SettingsFormContext'
 import {
   executionKindLabel,
   placementKindDescription,
@@ -33,38 +34,35 @@ import OcrEndpointConfig from './OcrEndpointConfig'
 import ProfileManager from './ProfileManager'
 import SandboxConfig from './SandboxConfig'
 import SceneIntelligenceConfig from './SceneIntelligenceConfig'
-import type { AiAutomationTabProps } from './types'
 
-export default function AiAutomationTab({
-  formData,
-  allProviderSurfaces,
-  providerSurfaceOptions,
-  featureCapabilities,
-  secretBackendCapabilities,
-  modelCatalogNotice,
-  modelCompatibilityNotice,
-  modelCatalogLoading,
-  endpointProbeResult,
-  endpointProbeLoading,
-  onAutomationChange,
-  onSandboxChange,
-  onAiProviderChange,
-  onOcrValidationChange,
-  onSceneActionOverrideChange,
-  onSceneIntelligenceChange,
-  onExternalApiChange,
-  resolveProviderSurface,
-  onProviderSurfaceChange,
-  onSelectAiProviderProfile,
-  onSaveAiProviderProfile,
-  onDeleteAiProviderProfile,
-  onDiscoverModels,
-  getModelOptions,
-  canDiscoverModels,
-}: AiAutomationTabProps) {
+export default function AiAutomationTab() {
+  const { form: settingsForm, data } = useSettingsFormContext()
   const { t } = useTranslation()
-  const currentOcrSurface = resolveProviderSurface('ocr_api')
-  const currentLlmSurface = resolveProviderSurface('llm_api')
+  const formData = settingsForm.formData!
+  const allProviderSurfaces = data.providerCatalog.surfaces
+  const featureCapabilities = data.featureCapabilities
+  const secretBackendCapabilities = data.secretBackendCapabilities
+  const providerSurfaceOptions = {
+    ocr_api: settingsForm.getCompatibleSurfaceOptions('ocr_api'),
+    llm_api: settingsForm.getCompatibleSurfaceOptions('llm_api'),
+  }
+  const modelCatalogNotice = settingsForm.modelCatalogNotice
+  const modelCompatibilityNotice = {
+    ocr_api: settingsForm.getModelCompatibilityNotice('ocr_api'),
+    llm_api: settingsForm.getModelCompatibilityNotice('llm_api'),
+  }
+  const modelCatalogLoading = settingsForm.modelCatalogLoading
+  const endpointProbeResult = {
+    ocr_api: data.ocrEndpointProbe,
+    llm_api: data.llmEndpointProbe,
+  }
+  const endpointProbeLoading = {
+    ocr_api: data.ocrEndpointProbeLoading,
+    llm_api: data.llmEndpointProbeLoading,
+  }
+
+  const currentOcrSurface = settingsForm.resolveEndpointSurface('ocr_api')
+  const currentLlmSurface = settingsForm.resolveEndpointSurface('llm_api')
   const isCliAccessMode = formData.ai_provider.access_mode === 'ProviderSubscriptionCli'
   const isOAuthAccessMode = isProviderOAuthAccessMode(formData.ai_provider.access_mode)
   const showOcrRemoteSection = formData.ai_provider.ocr_provider === 'Remote'
@@ -189,9 +187,9 @@ export default function AiAutomationTab({
     endpointKind: EndpointSurfaceKind,
     preferredCliSurface: ProviderSurfaceSpec | undefined,
   ) => {
-    onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
+    settingsForm.handleAiProviderChange('access_mode', 'ProviderSubscriptionCli')
     if (preferredCliSurface) {
-      onProviderSurfaceChange(endpointKind, preferredCliSurface.surface_id)
+      settingsForm.handleProviderSurfaceChange(endpointKind, preferredCliSurface.surface_id)
     }
   }
 
@@ -318,13 +316,13 @@ export default function AiAutomationTab({
     surface?.execution_kind === 'subprocess_cli'
 
   const handleProviderWizardSelect = (provider: ProviderDef, apiKey: string) => {
-    onAiProviderChange('access_mode', 'ProviderApiKey')
-    onAiProviderChange('llm_provider', provider.tier === 'local' ? 'Local' : 'Remote')
-    onProviderSurfaceChange('llm_api', provider.surfaceId)
+    settingsForm.handleAiProviderChange('access_mode', 'ProviderApiKey')
+    settingsForm.handleAiProviderChange('llm_provider', provider.tier === 'local' ? 'Local' : 'Remote')
+    settingsForm.handleProviderSurfaceChange('llm_api', provider.surfaceId)
     if (apiKey) {
-      onExternalApiChange('llm_api', 'api_key_masked', apiKey)
+      settingsForm.handleExternalApiChange('llm_api', 'api_key_masked', apiKey)
     }
-    onExternalApiChange('llm_api', 'model', provider.defaultModel)
+    settingsForm.handleExternalApiChange('llm_api', 'model', provider.defaultModel)
   }
 
   return (
@@ -338,12 +336,12 @@ export default function AiAutomationTab({
             label={t('settingsAutomation.enabled')}
             description={t('settingsAutomation.enabledDescription')}
             checked={formData.automation.enabled}
-            onChange={(value) => onAutomationChange('enabled', value)}
+            onChange={(value) => settingsForm.handleAutomationChange('enabled', value)}
           />
         </div>
       </Card>
 
-      <SandboxConfig formData={formData} onSandboxChange={onSandboxChange} />
+      <SandboxConfig formData={formData} onSandboxChange={settingsForm.handleSandboxChange} />
 
       <Card id="section-ai" variant="default" padding="lg">
         <CardTitle sticky>{t('settingsAutomation.aiTitle')}</CardTitle>
@@ -356,7 +354,7 @@ export default function AiAutomationTab({
               <Select
                 id="settings-ai-access-mode"
                 value={formData.ai_provider.access_mode}
-                onChange={(e) => onAiProviderChange('access_mode', e.target.value)}
+                onChange={(e) => settingsForm.handleAiProviderChange('access_mode', e.target.value)}
               >
                 {accessModeOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -383,9 +381,9 @@ export default function AiAutomationTab({
 
           <ProfileManager
             formData={formData}
-            onSelectAiProviderProfile={onSelectAiProviderProfile}
-            onSaveAiProviderProfile={onSaveAiProviderProfile}
-            onDeleteAiProviderProfile={onDeleteAiProviderProfile}
+            onSelectAiProviderProfile={settingsForm.handleSelectAiProviderProfile}
+            onSaveAiProviderProfile={settingsForm.handleSaveAiProviderProfile}
+            onDeleteAiProviderProfile={settingsForm.handleDeleteAiProviderProfile}
           />
 
           {showOcrRemoteSection && currentOcrSurface && (
@@ -406,10 +404,12 @@ export default function AiAutomationTab({
                 <Select
                   id="settings-ocr-provider-surface"
                   value={
-                    formData.ai_provider.ocr_api?.surface_id ?? resolveProviderSurface('ocr_api')?.surface_id ?? ''
+                    formData.ai_provider.ocr_api?.surface_id ??
+                    settingsForm.resolveEndpointSurface('ocr_api')?.surface_id ??
+                    ''
                   }
                   disabled={providerSurfaceOptions.ocr_api.length === 0}
-                  onChange={(e) => onProviderSurfaceChange('ocr_api', e.target.value)}
+                  onChange={(e) => settingsForm.handleProviderSurfaceChange('ocr_api', e.target.value)}
                 >
                   {providerSurfaceOptions.ocr_api.length === 0 ? (
                     <option value="">{t('settingsAutomation.noCompatibleProviderSurface')}</option>
@@ -468,10 +468,12 @@ export default function AiAutomationTab({
                 <Select
                   id="settings-llm-provider-surface"
                   value={
-                    formData.ai_provider.llm_api?.surface_id ?? resolveProviderSurface('llm_api')?.surface_id ?? ''
+                    formData.ai_provider.llm_api?.surface_id ??
+                    settingsForm.resolveEndpointSurface('llm_api')?.surface_id ??
+                    ''
                   }
                   disabled={providerSurfaceOptions.llm_api.length === 0}
-                  onChange={(e) => onProviderSurfaceChange('llm_api', e.target.value)}
+                  onChange={(e) => settingsForm.handleProviderSurfaceChange('llm_api', e.target.value)}
                 >
                   {providerSurfaceOptions.llm_api.length === 0 ? (
                     <option value="">{t('settingsAutomation.noCompatibleProviderSurface')}</option>
@@ -611,7 +613,7 @@ export default function AiAutomationTab({
               <Select
                 id="settings-ocr-provider"
                 value={formData.ai_provider.ocr_provider}
-                onChange={(e) => onAiProviderChange('ocr_provider', e.target.value)}
+                onChange={(e) => settingsForm.handleAiProviderChange('ocr_provider', e.target.value)}
               >
                 <option value="Local">{t('settingsAutomation.providerLocal')}</option>
                 <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
@@ -633,7 +635,7 @@ export default function AiAutomationTab({
                 id="settings-llm-provider"
                 value={isCliAccessMode ? 'Remote' : formData.ai_provider.llm_provider}
                 disabled={llmProviderLocked}
-                onChange={(e) => onAiProviderChange('llm_provider', e.target.value)}
+                onChange={(e) => settingsForm.handleAiProviderChange('llm_provider', e.target.value)}
               >
                 <option value="Local">{t('settingsAutomation.providerLocal')}</option>
                 <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
@@ -655,7 +657,7 @@ export default function AiAutomationTab({
             <Select
               id="settings-data-policy"
               value={formData.ai_provider.external_data_policy}
-              onChange={(e) => onAiProviderChange('external_data_policy', e.target.value)}
+              onChange={(e) => settingsForm.handleAiProviderChange('external_data_policy', e.target.value)}
             >
               <option value="PiiFilterStrict">{t('settingsAutomation.dataPolicyStrict')}</option>
               <option value="PiiFilterStandard">{t('settingsAutomation.dataPolicyStandard')}</option>
@@ -667,21 +669,21 @@ export default function AiAutomationTab({
             label={t('settingsAutomation.allowUnredactedExternalOcr')}
             description={t('settingsAutomation.allowUnredactedExternalOcrDescription')}
             checked={formData.ai_provider.allow_unredacted_external_ocr}
-            onChange={(value) => onAiProviderChange('allow_unredacted_external_ocr', value)}
+            onChange={(value) => settingsForm.handleAiProviderChange('allow_unredacted_external_ocr', value)}
           />
 
           <SceneIntelligenceConfig
             formData={formData}
-            onSceneActionOverrideChange={onSceneActionOverrideChange}
-            onSceneIntelligenceChange={onSceneIntelligenceChange}
-            onOcrValidationChange={onOcrValidationChange}
+            onSceneActionOverrideChange={settingsForm.handleSceneActionOverrideChange}
+            onSceneIntelligenceChange={settingsForm.handleSceneIntelligenceChange}
+            onOcrValidationChange={settingsForm.handleOcrValidationChange}
           />
 
           <ToggleRow
             label={t('settingsAutomation.fallbackToLocal')}
             description={t('settingsAutomation.fallbackToLocalDescription')}
             checked={formData.ai_provider.fallback_to_local}
-            onChange={(value) => onAiProviderChange('fallback_to_local', value)}
+            onChange={(value) => settingsForm.handleAiProviderChange('fallback_to_local', value)}
           />
 
           {isOAuthAccessMode &&
@@ -717,10 +719,10 @@ export default function AiAutomationTab({
               modelCatalogLoading={modelCatalogLoading}
               endpointProbeResult={endpointProbeResult.ocr_api}
               endpointProbeLoading={endpointProbeLoading.ocr_api}
-              onExternalApiChange={onExternalApiChange}
-              onDiscoverModels={onDiscoverModels}
-              getModelOptions={getModelOptions}
-              canDiscoverModels={canDiscoverModels}
+              onExternalApiChange={settingsForm.handleExternalApiChange}
+              onDiscoverModels={settingsForm.discoverModels}
+              getModelOptions={settingsForm.getModelOptions}
+              canDiscoverModels={settingsForm.canDiscoverModels}
               showDirectApiFields={showDirectApiFields(currentOcrSurface)}
               showManagedHttpFields={showManagedHttpFields(currentOcrSurface)}
               showSubprocessFields={showSubprocessFields(currentOcrSurface)}
@@ -740,10 +742,10 @@ export default function AiAutomationTab({
               modelCatalogLoading={modelCatalogLoading}
               endpointProbeResult={endpointProbeResult.llm_api}
               endpointProbeLoading={endpointProbeLoading.llm_api}
-              onExternalApiChange={onExternalApiChange}
-              onDiscoverModels={onDiscoverModels}
-              getModelOptions={getModelOptions}
-              canDiscoverModels={canDiscoverModels}
+              onExternalApiChange={settingsForm.handleExternalApiChange}
+              onDiscoverModels={settingsForm.discoverModels}
+              getModelOptions={settingsForm.getModelOptions}
+              canDiscoverModels={settingsForm.canDiscoverModels}
               showDirectApiFields={showDirectApiFields(currentLlmSurface)}
               showManagedHttpFields={showManagedHttpFields(currentLlmSurface)}
               showSubprocessFields={showSubprocessFields(currentLlmSurface)}

@@ -60,7 +60,12 @@ test.describe('Onboarding (simulated first-run)', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       // Patch globalThis so the dynamic import('@tauri-apps/api/core') resolves
-      // with a fake invoke that returns completed: false for onboarding.
+      // with a fake invoke. Anything we don't explicitly stub resolves with
+      // `null` so that when the user clicks Skip, AppShell can mount its
+      // useTauriEventBridge → listen() chain without rejecting on unrelated
+      // Tauri commands like `plugin:event|listen` (an earlier version
+      // rejected and the unhandled error fell into ErrorBoundary, hiding
+      // the dashboard heading the spec is asserting on).
       ;(globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {
         invoke: (cmd: string) => {
           if (cmd === 'get_onboarding_status') {
@@ -69,7 +74,7 @@ test.describe('Onboarding (simulated first-run)', () => {
           if (cmd === 'complete_onboarding') {
             return Promise.resolve()
           }
-          return Promise.reject(new Error(`unhandled cmd: ${cmd}`))
+          return Promise.resolve(null)
         },
       }
     })

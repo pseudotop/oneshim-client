@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { AudioSettings } from '../../api/contracts'
 import { Badge, Button, Checkbox, Spinner } from '../../components/ui'
 import { colors, radius, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { useSettingsFormContext } from '../settings/SettingsFormContext'
 
 const ipc = async <T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
   const { invoke } = await import('@tauri-apps/api/core')
@@ -29,13 +29,17 @@ const MODEL_LABELS: Record<ModelSize, string> = {
   medium: 'Medium (~1.5 GB)',
 }
 
-interface AudioTabProps {
-  formData: { audio?: AudioSettings } | null
-  onAudioChange: (field: string, value: unknown) => void
-}
-
-export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
+export default function AudioTab() {
   const { t } = useTranslation()
+  const { form } = useSettingsFormContext()
+  const formData = form.formData
+
+  const handleAudioChange = (field: string, value: unknown) => {
+    form.setFormData((prev) => {
+      if (!prev) return prev
+      return { ...prev, audio: { ...prev.audio, [field]: value } }
+    })
+  }
   const [audioStatus, setAudioStatus] = useState<AudioStatusResponse | null>(null)
   const [downloading, setDownloading] = useState(false)
 
@@ -154,7 +158,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
 
       <Checkbox
         checked={enabled}
-        onChange={(e) => onAudioChange('enabled', e.target.checked)}
+        onChange={(e) => handleAudioChange('enabled', e.target.checked)}
         label={t('settings.audio.enable', 'Enable audio capture and STT')}
       />
 
@@ -165,7 +169,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
         <select
           id="audio-model-size"
           value={modelSize}
-          onChange={(e) => onAudioChange('model_size', e.target.value)}
+          onChange={(e) => handleAudioChange('model_size', e.target.value)}
           disabled={downloading || !enabled}
           className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
         >
@@ -241,7 +245,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
         <select
           id="audio-language"
           value={language}
-          onChange={(e) => onAudioChange('language', e.target.value)}
+          onChange={(e) => handleAudioChange('language', e.target.value)}
           disabled={!enabled}
           className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
         >
@@ -263,7 +267,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               name="mic_input_mode"
               value="push_to_talk"
               checked={micInputMode === 'push_to_talk'}
-              onChange={() => onAudioChange('mic_input_mode', 'push_to_talk')}
+              onChange={() => handleAudioChange('mic_input_mode', 'push_to_talk')}
             />
             <span className={colors.text.primary}>{t('settings.audio.ptt', 'Push-to-Talk')}</span>
           </label>
@@ -273,7 +277,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               name="mic_input_mode"
               value="voice_activity"
               checked={micInputMode === 'voice_activity'}
-              onChange={() => onAudioChange('mic_input_mode', 'voice_activity')}
+              onChange={() => handleAudioChange('mic_input_mode', 'voice_activity')}
             />
             <span className={colors.text.primary}>{t('settings.audio.vad', 'Voice Activity')}</span>
           </label>
@@ -295,7 +299,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
                 max="0.1"
                 step="0.005"
                 value={vadThreshold}
-                onChange={(e) => onAudioChange('vad_threshold', Number.parseFloat(e.target.value))}
+                onChange={(e) => handleAudioChange('vad_threshold', Number.parseFloat(e.target.value))}
                 className="flex-1"
               />
               <span className={cn('w-12 text-right text-sm tabular-nums', colors.text.secondary)}>
@@ -320,7 +324,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               max="3000"
               step="100"
               value={vadSilenceMs}
-              onChange={(e) => onAudioChange('vad_silence_ms', Number.parseInt(e.target.value, 10) || 800)}
+              onChange={(e) => handleAudioChange('vad_silence_ms', Number.parseInt(e.target.value, 10) || 800)}
               className={cn('w-32 border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
             />
             <p className={cn(typography.caption, colors.text.tertiary)}>
@@ -342,7 +346,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               name="stt_provider"
               value="local"
               checked={sttProvider === 'local'}
-              onChange={() => onAudioChange('stt_provider', 'local')}
+              onChange={() => handleAudioChange('stt_provider', 'local')}
             />
             <span className={colors.text.primary}>{t('settings.audio.local', 'Local (Whisper)')}</span>
           </label>
@@ -352,7 +356,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               name="stt_provider"
               value="cloud"
               checked={sttProvider === 'cloud'}
-              onChange={() => onAudioChange('stt_provider', 'cloud')}
+              onChange={() => handleAudioChange('stt_provider', 'cloud')}
             />
             <span className={colors.text.primary}>{t('settings.audio.cloud', 'Cloud (OpenAI)')}</span>
           </label>
@@ -370,7 +374,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               id="cloud-api-key"
               type="password"
               value={cloudApiKey}
-              onChange={(e) => onAudioChange('cloud_api_key', e.target.value)}
+              onChange={(e) => handleAudioChange('cloud_api_key', e.target.value)}
               placeholder="sk-..."
               className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
             />
@@ -386,7 +390,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               id="cloud-endpoint"
               type="url"
               value={cloudEndpoint}
-              onChange={(e) => onAudioChange('cloud_stt_endpoint', e.target.value)}
+              onChange={(e) => handleAudioChange('cloud_stt_endpoint', e.target.value)}
               placeholder="https://api.openai.com/v1/audio/transcriptions"
               className={cn('w-full border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
             />
@@ -405,7 +409,7 @@ export default function AudioTab({ formData, onAudioChange }: AudioTabProps) {
               max="120"
               step="5"
               value={cloudTimeoutSecs}
-              onChange={(e) => onAudioChange('cloud_timeout_secs', Number.parseInt(e.target.value, 10) || 30)}
+              onChange={(e) => handleAudioChange('cloud_timeout_secs', Number.parseInt(e.target.value, 10) || 30)}
               className={cn('w-32 border bg-surface-base px-3 py-2 text-sm', radius.md, colors.text.primary)}
             />
           </div>

@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  type AppSettings,
-  type DiagnosticsBundleResponse,
-  fetchSupportDiagnostics,
-  type NotificationSettings as NotificationSettingsType,
-  type ScheduleSettings as ScheduleSettingsType,
-  type UpdateAction,
-  type UpdateStatus,
-} from '../../api/client'
+import { type AppSettings, type DiagnosticsBundleResponse, fetchSupportDiagnostics } from '../../api/client'
 import BugReportWizard from '../../components/BugReportWizard'
 import LanguageSelector from '../../components/LanguageSelector'
 import {
@@ -28,10 +20,10 @@ import { DEFAULT_WEB_PORT } from '../../constants'
 import { addToast } from '../../hooks/useToast'
 import { form } from '../../styles/tokens'
 import { IS_TAURI } from '../../utils/platform'
+import { useSettingsFormContext } from '../settings/SettingsFormContext'
 import NotificationSettings from './NotificationSettings'
 import ScheduleSettings from './ScheduleSettings'
 import ToggleRow from './ToggleRow'
-import type { SettingsFormTabProps } from './types'
 
 const SUPPORT_DEVELOPER_DETAILS_KEY = 'oneshim-support-developer-details'
 
@@ -64,27 +56,10 @@ async function invokeDesktop<T>(cmd: string, args?: Record<string, unknown>): Pr
   return invoke<T>(cmd, args)
 }
 
-interface GeneralTabProps extends SettingsFormTabProps {
-  updateStatus?: UpdateStatus
-  updateActionPending: boolean
-  onRootChange: (field: 'web_port' | 'allow_external', value: number | boolean) => void
-  onNotificationChange: (field: keyof NotificationSettingsType, value: number | boolean) => void
-  onScheduleChange: (field: keyof ScheduleSettingsType, value: boolean | number | string[]) => void
-  onUpdateChange: (field: keyof AppSettings['update'], value: boolean | number | string) => void
-  onUpdateAction: (action: UpdateAction) => void
-}
-
-export default function GeneralTab({
-  formData,
-  updateStatus,
-  updateActionPending,
-  onRootChange,
-  onNotificationChange,
-  onScheduleChange,
-  onUpdateChange,
-  onUpdateAction,
-}: GeneralTabProps) {
+export default function GeneralTab() {
+  const { form: settingsForm, data } = useSettingsFormContext()
   const { t } = useTranslation()
+  const formData = settingsForm.formData!
 
   return (
     <div className="space-y-6">
@@ -106,7 +81,12 @@ export default function GeneralTab({
               min={1024}
               max={65535}
               value={formData.web_port}
-              onChange={(e) => onRootChange('web_port', parseInt(e.target.value, 10) || DEFAULT_WEB_PORT)}
+              onChange={(e) =>
+                settingsForm.handleRootChange(
+                  'web_port' as keyof AppSettings,
+                  parseInt(e.target.value, 10) || DEFAULT_WEB_PORT,
+                )
+              }
             />
             <p className={form.helper}>{t('settings.portRestart')}</p>
           </div>
@@ -115,7 +95,9 @@ export default function GeneralTab({
               <label className="flex cursor-pointer items-center">
                 <Checkbox
                   checked={formData.allow_external}
-                  onChange={(e) => onRootChange('allow_external', e.target.checked)}
+                  onChange={(e) =>
+                    settingsForm.handleRootChange('allow_external' as keyof AppSettings, e.target.checked)
+                  }
                   className="mr-3"
                 />
                 <div>
@@ -130,11 +112,11 @@ export default function GeneralTab({
       </Card>
 
       <div id="section-notification">
-        <NotificationSettings notification={formData.notification} onChange={onNotificationChange} />
+        <NotificationSettings notification={formData.notification} onChange={settingsForm.handleNotificationChange} />
       </div>
 
       <div id="section-schedule">
-        <ScheduleSettings schedule={formData.schedule} onChange={onScheduleChange} />
+        <ScheduleSettings schedule={formData.schedule} onChange={settingsForm.handleScheduleChange} />
       </div>
 
       <Card variant="default" padding="lg">
@@ -144,14 +126,14 @@ export default function GeneralTab({
             label={t('settings.updateEnabled')}
             description={t('settings.updateEnabledDesc')}
             checked={formData.update.enabled}
-            onChange={(value) => onUpdateChange('enabled', value)}
+            onChange={(value) => settingsForm.handleUpdateChange('enabled', value)}
           />
 
           <ToggleRow
             label={t('settings.updateAutoInstall')}
             description={t('settings.updateAutoInstallDesc')}
             checked={formData.update.auto_install}
-            onChange={(value) => onUpdateChange('auto_install', value)}
+            onChange={(value) => settingsForm.handleUpdateChange('auto_install', value)}
           />
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -165,7 +147,9 @@ export default function GeneralTab({
                 min={1}
                 max={168}
                 value={formData.update.check_interval_hours}
-                onChange={(e) => onUpdateChange('check_interval_hours', parseInt(e.target.value, 10) || 24)}
+                onChange={(e) =>
+                  settingsForm.handleUpdateChange('check_interval_hours', parseInt(e.target.value, 10) || 24)
+                }
               />
             </div>
             <div className="flex items-end">
@@ -176,7 +160,7 @@ export default function GeneralTab({
                 <select
                   id="update-channel"
                   value={formData.update.channel ?? 'stable'}
-                  onChange={(e) => onUpdateChange('channel', e.target.value)}
+                  onChange={(e) => settingsForm.handleUpdateChange('channel', e.target.value)}
                   className="rounded-md border border-border bg-surface px-3 py-1.5 text-content text-sm"
                 >
                   <option value="stable">{t('settings.channelStable', 'Stable')}</option>
@@ -192,18 +176,18 @@ export default function GeneralTab({
 
           <Alert variant="info" title={t('settings.updateRuntimeStatus')} className="mt-2">
             <div className="mt-1 text-content-strong text-sm">
-              {updateStatus?.message ?? t('settings.updateStatusUnavailable')}
+              {data.updateStatus?.message ?? t('settings.updateStatusUnavailable')}
             </div>
-            {updateStatus?.pending && (
+            {data.updateStatus?.pending && (
               <div className="mt-2 space-y-1 text-content-secondary text-xs">
                 <div>
-                  {t('settings.updateCurrentVersion')}: {updateStatus.pending.current_version}
+                  {t('settings.updateCurrentVersion')}: {data.updateStatus.pending.current_version}
                 </div>
                 <div>
-                  {t('settings.updateLatestVersion')}: {updateStatus.pending.latest_version}
+                  {t('settings.updateLatestVersion')}: {data.updateStatus.pending.latest_version}
                 </div>
                 <a
-                  href={updateStatus.pending.release_url}
+                  href={data.updateStatus.pending.release_url}
                   target="_blank"
                   rel="noreferrer"
                   className="text-brand-text underline"
@@ -217,8 +201,8 @@ export default function GeneralTab({
                 type="button"
                 variant="secondary"
                 size="sm"
-                isLoading={updateActionPending}
-                onClick={() => onUpdateAction('CheckNow')}
+                isLoading={settingsForm.updateActionMutation.isPending}
+                onClick={() => settingsForm.updateActionMutation.mutate('CheckNow')}
               >
                 {t('settings.updateCheckNow')}
               </Button>
@@ -226,8 +210,8 @@ export default function GeneralTab({
                 type="button"
                 variant="primary"
                 size="sm"
-                isLoading={updateActionPending}
-                onClick={() => onUpdateAction('Approve')}
+                isLoading={settingsForm.updateActionMutation.isPending}
+                onClick={() => settingsForm.updateActionMutation.mutate('Approve')}
               >
                 {t('settings.updateApproveNow')}
               </Button>
@@ -235,8 +219,8 @@ export default function GeneralTab({
                 type="button"
                 variant="ghost"
                 size="sm"
-                isLoading={updateActionPending}
-                onClick={() => onUpdateAction('Defer')}
+                isLoading={settingsForm.updateActionMutation.isPending}
+                onClick={() => settingsForm.updateActionMutation.mutate('Defer')}
               >
                 {t('settings.updateDefer')}
               </Button>

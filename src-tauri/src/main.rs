@@ -299,6 +299,7 @@ fn main() {
             commands::audio::start_vad_listening,
             commands::audio::stop_vad_listening,
             commands::bug_report::export_bug_report,
+            commands::error_report::report_frontend_error,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

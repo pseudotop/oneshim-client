@@ -5,17 +5,20 @@ test.describe('ActivityBar Actions', () => {
     await page.goto('/')
   })
 
+  // After clicking a nav button the URL settles on the parent's defaultChild
+  // (e.g. /timeline → /timeline/all, / → /overview), so the assertion needs
+  // to know the post-redirect target.
   const NAV_ITEMS = [
-    { id: 'dashboard', path: '/' },
-    { id: 'timeline', path: '/timeline' },
-    { id: 'replay', path: '/replay' },
-    { id: 'automation', path: '/automation' },
-    { id: 'focus', path: '/focus' },
-    { id: 'reports', path: '/reports' },
-    { id: 'search', path: '/search' },
-    { id: 'updates', path: '/updates' },
-    { id: 'settings', path: '/settings' },
-    { id: 'privacy', path: '/privacy' },
+    { id: 'dashboard', expectedUrl: /\/overview$/ },
+    { id: 'timeline', expectedUrl: /\/timeline\/all$/ },
+    { id: 'replay', expectedUrl: /\/replay\/timeline$/ },
+    { id: 'automation', expectedUrl: /\/automation\/policies$/ },
+    { id: 'focus', expectedUrl: /\/focus\/score$/ },
+    { id: 'reports', expectedUrl: /\/reports\/activity$/ },
+    { id: 'search', expectedUrl: /\/search$/ },
+    { id: 'updates', expectedUrl: /\/updates\/status$/ },
+    { id: 'settings', expectedUrl: /\/settings\/general$/ },
+    { id: 'privacy', expectedUrl: /\/privacy\/data$/ },
   ]
 
   for (const item of NAV_ITEMS) {
@@ -23,7 +26,7 @@ test.describe('ActivityBar Actions', () => {
       const btn = page.getByTestId(`nav-${item.id}`)
       await expect(btn).toBeVisible()
       await btn.click()
-      await expect(page).toHaveURL(new RegExp(item.path === '/' ? '/$' : item.path))
+      await expect(page).toHaveURL(item.expectedUrl)
     })
   }
 

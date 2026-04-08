@@ -151,7 +151,7 @@ function settingsHeading(page: Page) {
 }
 
 async function gotoSettingsTab(page: Page, tabSlug: string) {
-  await page.goto(`/settings?tab=${tabSlug}`)
+  await page.goto(`/settings/${tabSlug}`)
   await expect(settingsHeading(page)).toBeVisible({ timeout: 10000 })
 }
 
@@ -173,7 +173,10 @@ test.describe('Settings', () => {
 
   test('should display capture enable checkbox', async ({ page }) => {
     await gotoSettingsTab(page, 'monitoring')
-    const captureCheckbox = page.locator('#settings-panel-monitoring input[type="checkbox"]').first()
+    // SettingsLayout renders the active tab inside <form id="settings-form"> via <Outlet>.
+    // Since only MonitoringTab is mounted at /settings/monitoring, the first checkbox
+    // in the form is the "capture enabled" toggle owned by that tab.
+    const captureCheckbox = page.locator('form#settings-form input[type="checkbox"]').first()
     await expect(captureCheckbox).toBeVisible()
   })
 
@@ -208,7 +211,12 @@ test.describe('Settings', () => {
     const exportSection = page.getByText(exportSectionName)
     await exportSection.scrollIntoViewIfNeeded()
 
-    const buttons = page.locator('#settings-panel-data button')
+    // The form holds both the tab content (via <Outlet>) and the SettingsLayout
+    // save button. Exclude the save button testids so we only count tab-specific
+    // action buttons (the export buttons in DataStorageTab).
+    const buttons = page.locator(
+      'form#settings-form button:not([data-testid="settings-save"]):not([data-testid="settings-save-floating"])',
+    )
     const count = await buttons.count()
     expect(count).toBeGreaterThan(0)
   })
@@ -225,7 +233,8 @@ test.describe('Settings', () => {
 
   test('should save settings', async ({ page }) => {
     await gotoSettingsTab(page, 'monitoring')
-    const captureCheckbox = page.locator('#settings-panel-monitoring input[type="checkbox"]').first()
+    // See "should display capture enable checkbox" for the selector rationale.
+    const captureCheckbox = page.locator('form#settings-form input[type="checkbox"]').first()
     await captureCheckbox.uncheck()
 
     let saveRequests = 0

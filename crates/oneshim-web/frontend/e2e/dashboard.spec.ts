@@ -111,17 +111,21 @@ async function mockDashboardApis(page: Page) {
 }
 
 test.describe('Dashboard', () => {
+  // Sub-route ownership after the Dashboard refactor:
+  //   /overview   (default) → OverviewSection (metric cards, connection status)
+  //   /monitoring           → MonitoringSection (CPU/Memory chart, app usage)
+  //   /insights             → InsightsSection (activity heatmap, system status)
   test.beforeEach(async ({ page }) => {
     await mockDashboardApis(page)
-    await page.goto('/')
-    await expect(dashboardHeading(page)).toBeVisible({ timeout: 10000 })
   })
 
   test('should display dashboard title', async ({ page }) => {
-    await expect(dashboardHeading(page)).toBeVisible()
+    await page.goto('/overview')
+    await expect(dashboardHeading(page)).toBeVisible({ timeout: 10000 })
   })
 
   test('should display stat cards', async ({ page }) => {
+    await page.goto('/overview')
     await expect(page.getByTestId('metric-card-active-time')).toBeVisible()
     await expect(page.getByTestId('metric-card-idle-time')).toBeVisible()
     await expect(page.getByTestId('metric-card-captures')).toBeVisible()
@@ -129,26 +133,32 @@ test.describe('Dashboard', () => {
   })
 
   test('should display realtime monitoring section', async ({ page }) => {
+    await page.goto('/overview')
     await expect(page.getByText(connectionStatusName).first()).toBeVisible()
   })
 
   test('should display CPU/Memory chart section', async ({ page }) => {
+    await page.goto('/monitoring')
     await expect(page.getByText(cpuMemorySectionName)).toBeVisible()
   })
 
   test('should display app usage section', async ({ page }) => {
+    await page.goto('/monitoring')
     await expect(page.getByText(appUsageSectionName)).toBeVisible()
   })
 
   test('should display activity heatmap', async ({ page }) => {
+    await page.goto('/insights')
     await expect(page.getByRole('heading', { name: activityHeatmapName })).toBeVisible()
   })
 
   test('should display system status section', async ({ page }) => {
+    await page.goto('/insights')
     await expect(page.getByText(systemStatusName)).toBeVisible()
   })
 
   test('should show connection status indicator', async ({ page }) => {
+    await page.goto('/overview')
     const connectionStatus = page.getByText(connectionStatusName)
     await expect(connectionStatus.first()).toBeVisible({ timeout: 10000 })
   })

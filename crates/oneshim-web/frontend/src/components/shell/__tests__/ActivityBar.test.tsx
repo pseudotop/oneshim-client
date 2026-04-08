@@ -2,12 +2,16 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/helpers/render-helpers'
+import { routeTree } from '../../../routes'
 import ActivityBar from '../ActivityBar'
 
 const defaultProps = {
   onToggleSidebar: vi.fn(),
   sidebarCollapsed: false,
 }
+
+// Derived from routeTree: items with icons in main groups + bottom items with icons.
+const expectedNavButtonCount = routeTree.filter((r) => r.icon).length
 
 describe('ActivityBar', () => {
   it('has displayName', () => {
@@ -19,10 +23,10 @@ describe('ActivityBar', () => {
     expect(screen.getByRole('navigation')).toBeInTheDocument()
   })
 
-  it('renders 13 nav buttons', () => {
+  it('renders one nav button per routeTree entry with an icon', () => {
     renderWithProviders(<ActivityBar {...defaultProps} />)
     const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(13)
+    expect(buttons).toHaveLength(expectedNavButtonCount)
   })
 
   it('active route has aria-current="page"', () => {
