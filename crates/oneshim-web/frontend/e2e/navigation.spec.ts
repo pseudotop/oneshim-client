@@ -25,34 +25,36 @@ test.describe('Navigation', () => {
     await expect(page.getByTitle(searchName)).toBeVisible()
   })
 
+  // Each parent route redirects to its defaultChild after navigation, so the
+  // assertion needs to match the post-redirect URL (e.g. / → /overview).
   test('should navigate to Dashboard', async ({ page }) => {
     await page.getByTitle(dashboardName).click()
-    await expect(page).toHaveURL('/')
+    await expect(page).toHaveURL(/\/overview$/)
   })
 
   test('should navigate to Timeline', async ({ page }) => {
     await page.getByTitle(timelineName).click()
-    await expect(page).toHaveURL('/timeline')
+    await expect(page).toHaveURL(/\/timeline\/all$/)
   })
 
   test('should navigate to Reports', async ({ page }) => {
     await page.getByTitle(reportsName).click()
-    await expect(page).toHaveURL('/reports')
+    await expect(page).toHaveURL(/\/reports\/activity$/)
   })
 
   test('should navigate to Settings', async ({ page }) => {
     await page.getByTitle(settingsName).click()
-    await expect(page).toHaveURL('/settings')
+    await expect(page).toHaveURL(/\/settings\/general$/)
   })
 
   test('should navigate to Privacy', async ({ page }) => {
     await page.getByTitle(privacyName).click()
-    await expect(page).toHaveURL('/privacy')
+    await expect(page).toHaveURL(/\/privacy\/data$/)
   })
 
   test('should navigate to Search', async ({ page }) => {
     await page.getByTitle(searchName).click()
-    await expect(page).toHaveURL('/search')
+    await expect(page).toHaveURL(/\/search$/)
   })
 
   test('should show keyboard shortcuts help with ? key', async ({ page }) => {
@@ -67,15 +69,15 @@ test.describe('Navigation', () => {
 
   test('should navigate with keyboard shortcuts', async ({ page }) => {
     await page.keyboard.press('d')
-    await expect(page).toHaveURL('/')
+    await expect(page).toHaveURL(/\/overview$/)
 
     await page.keyboard.press('t')
-    await expect(page).toHaveURL('/timeline')
+    await expect(page).toHaveURL(/\/timeline\/all$/)
 
     await page.keyboard.press('s')
-    await expect(page).toHaveURL('/settings')
+    await expect(page).toHaveURL(/\/settings\/general$/)
 
     await page.keyboard.press('p')
-    await expect(page).toHaveURL('/privacy')
+    await expect(page).toHaveURL(/\/privacy\/data$/)
   })
 })

@@ -14,9 +14,15 @@ test.describe('Privacy Actions', () => {
 
   test('P133: data type toggle buttons exist', async ({ page }) => {
     await page.goto('/privacy/data')
-    const buttons = page.locator('button')
-    const count = await buttons.count()
-    expect(count).toBeGreaterThanOrEqual(2)
+    // DataSection renders the data type toggle buttons inside the second
+    // "Delete by range" Card (sibling of #section-data). Scope to the shell's
+    // <main> region so we ignore sidebar / ActivityBar / shell chrome, and
+    // poll the first match before counting (count() is one-shot — without
+    // the toBeVisible() poll the assertion can race the React hydration on
+    // parallel workers).
+    const buttons = page.getByRole('main').getByRole('button')
+    await expect(buttons.first()).toBeVisible()
+    expect(await buttons.count()).toBeGreaterThanOrEqual(2)
   })
 
   test('P134: delete-range button exists', async ({ page }) => {
@@ -26,13 +32,15 @@ test.describe('Privacy Actions', () => {
   })
 
   test('P135: delete-all button exists', async ({ page }) => {
-    await page.goto('/privacy/data')
+    // The delete-all button moved to ConsentSection (/privacy/consent) when
+    // /privacy was split into data/consent/export sub-routes.
+    await page.goto('/privacy/consent')
     const btn = page.getByTestId('delete-all')
     await expect(btn).toBeVisible()
   })
 
   test('P136: delete button opens confirm modal', async ({ page }) => {
-    await page.goto('/privacy/data')
+    await page.goto('/privacy/consent')
     const btn = page.getByTestId('delete-all')
     await btn.click()
     const modal = page.locator('[role="alertdialog"]')
@@ -40,7 +48,7 @@ test.describe('Privacy Actions', () => {
   })
 
   test('P137: confirm modal has aria-modal', async ({ page }) => {
-    await page.goto('/privacy/data')
+    await page.goto('/privacy/consent')
     const btn = page.getByTestId('delete-all')
     await btn.click()
     const modal = page.locator('[aria-modal="true"]')
@@ -48,7 +56,7 @@ test.describe('Privacy Actions', () => {
   })
 
   test('P138: confirm modal Escape closes', async ({ page }) => {
-    await page.goto('/privacy/data')
+    await page.goto('/privacy/consent')
     const btn = page.getByTestId('delete-all')
     await btn.click()
     await expect(page.locator('[role="alertdialog"]')).toBeVisible()

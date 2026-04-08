@@ -49,6 +49,9 @@ test.describe('Recalibration', () => {
   })
 
   test('should display override history section with empty state', async ({ page }) => {
+    // Override history lives in OverridesSection at /recalibration/overrides
+    // (the default sub-route is /recalibration/segments).
+    await page.goto('/recalibration/overrides')
     await expect(page.getByRole('heading', { name: overrideHistoryName })).toBeVisible()
     await expect(page.getByText(noOverridesName)).toBeVisible()
   })

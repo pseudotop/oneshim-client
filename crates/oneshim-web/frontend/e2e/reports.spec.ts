@@ -81,58 +81,72 @@ async function mockReportsApis(page: Page) {
 }
 
 test.describe('Reports', () => {
+  // /reports splits into three sub-routes (defaultChild=activity); the period
+  // selector lives in ReportsLayout so it appears on every sub-route.
+  //   /reports/activity → ActivityReport (daily/hourly activity, app usage)
+  //   /reports/focus    → FocusReport (productivity score, summary, trend)
+  //   /reports/export   → ExportSection (system metrics)
   test.beforeEach(async ({ page }) => {
     await mockReportsApis(page)
-    await page.goto('/reports')
-    await expect(page.getByRole('heading', { name: reportsTitleName })).toBeVisible({ timeout: 10000 })
   })
 
   test('should display reports title', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: reportsTitleName })).toBeVisible()
+    await page.goto('/reports/activity')
+    await expect(page.getByRole('heading', { name: reportsTitleName })).toBeVisible({ timeout: 10000 })
   })
 
   test('should display period selector', async ({ page }) => {
+    await page.goto('/reports/activity')
     await expect(page.getByRole('button', { name: weekPeriodName })).toBeVisible()
     await expect(page.getByRole('button', { name: monthPeriodName })).toBeVisible()
     await expect(page.getByRole('button', { name: customPeriodName })).toBeVisible()
   })
 
   test('should display productivity score', async ({ page }) => {
+    await page.goto('/reports/focus')
     await expect(page.getByText(productivityScoreName)).toBeVisible()
   })
 
   test('should display summary statistics', async ({ page }) => {
+    await page.goto('/reports/focus')
     await expect(page.getByText(activeTimeName)).toBeVisible()
   })
 
   test('should display daily activity chart section', async ({ page }) => {
+    await page.goto('/reports/activity')
     await expect(page.getByText(dailyActivityName)).toBeVisible()
   })
 
   test('should display app usage section', async ({ page }) => {
+    await page.goto('/reports/activity')
     await expect(page.getByText(appUsageName)).toBeVisible()
   })
 
   test('should switch period', async ({ page }) => {
+    await page.goto('/reports/focus')
     const monthButton = page.getByRole('button', { name: monthPeriodName })
     await monthButton.click()
     await expect(page.getByText(productivityScoreName)).toBeVisible()
   })
 
   test('should display trend indicator', async ({ page }) => {
+    await page.goto('/reports/focus')
     await expect(page.locator('p').filter({ hasText: trendName }).first()).toBeVisible()
     await expect(page.getByText(/[↑↓→]/).first()).toBeVisible()
   })
 
   test('should display hourly activity section', async ({ page }) => {
+    await page.goto('/reports/activity')
     await expect(page.getByText(hourlyActivityName)).toBeVisible()
   })
 
   test('should display system metrics section', async ({ page }) => {
+    await page.goto('/reports/export')
     await expect(page.getByText(systemMetricsName)).toBeVisible()
   })
 
   test('should select custom date range', async ({ page }) => {
+    await page.goto('/reports/focus')
     await page.getByRole('button', { name: customPeriodName }).click()
 
     const dateInputs = page.locator('input[type="date"]')
