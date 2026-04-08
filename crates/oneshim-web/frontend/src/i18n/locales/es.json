@@ -38,7 +38,7 @@
     "dashboardDay": "Vista diaria",
     "chat": "Chat",
     "audit": "Registro de auditoría",
-    "policies": "Políticas",
+    "policies": "Políticas de ejecución",
     "playbooks": "Cuadernos de jugadas"
   },
   "dashboard": {
@@ -158,7 +158,7 @@
     "title": "Configuración",
     "tabs": {
       "general": "General",
-      "privacy": "Privacidad",
+      "privacy": "Telemetría",
       "monitoring": "Monitoreo",
       "aiAutomation": "IA y Automatización",
       "dataStorage": "Datos y Almacenamiento",
@@ -1050,7 +1050,7 @@
     "interruptions": "Interrupciones",
     "timeline": "Línea de tiempo",
     "eventLog": "Registro de eventos",
-    "policies": "Políticas",
+    "policies": "Estado de ejecución",
     "commands": "Comandos",
     "executionHistory": "Historial de ejecución",
     "currentStatus": "Estado actual",
