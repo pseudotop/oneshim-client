@@ -20,8 +20,9 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
   // location awareness after deep links / parent-path redirects). Falls back
   // to just the parent label when at the default child (e.g., /settings/general).
   const parentLabel = t(node.labelKey)
+  // `isDefaultChild` already handles the null-child case (returns true).
   const isDefaultChild = !child || child.path === node.defaultChild
-  const pageTitle = isDefaultChild || !child ? parentLabel : `${parentLabel} › ${t(child.labelKey)}`
+  const pageTitle = isDefaultChild ? parentLabel : `${parentLabel} › ${t(child.labelKey)}`
 
   const handleMinimize = useCallback(async () => {
     try {

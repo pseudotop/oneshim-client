@@ -311,9 +311,13 @@ pub async fn report_frontend_error(
             // compromised caller or a contract drift — reject loudly but
             // without logging the raw `other` string (which is attacker-
             // controlled and already length-bounded by MAX_SEVERITY_LEN,
-            // but we still truncate defensively to a tiny preview).
+            // but we still truncate + sanitize defensively to match the
+            // invalid-route rejection path's hardening.
             let preview: String = other.chars().take(16).collect();
-            return Err(format!("invalid severity: {preview}"));
+            return Err(format!(
+                "invalid severity: {}",
+                sanitize_frontend_surface(&preview)
+            ));
         }
     }
     Ok(())

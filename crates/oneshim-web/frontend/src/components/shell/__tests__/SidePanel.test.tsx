@@ -37,4 +37,27 @@ describe('SidePanel', () => {
     const separator = screen.getByRole('separator')
     expect(separator).toHaveAttribute('aria-valuenow', '300')
   })
+
+  it('returns null for childless routes (C3 auto-hide)', () => {
+    // /day, /chat, /search, /playbooks, /policies have no children.
+    // The panel should collapse entirely rather than show empty dead space.
+    const { container } = renderWithProviders(<SidePanel {...defaultProps} />, {
+      routerProps: { initialEntries: ['/day'] },
+    })
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('returns null for /chat (childless leaf route)', () => {
+    const { container } = renderWithProviders(<SidePanel {...defaultProps} />, {
+      routerProps: { initialEntries: ['/chat'] },
+    })
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('renders tree for /focus (parent route with children)', () => {
+    renderWithProviders(<SidePanel {...defaultProps} />, {
+      routerProps: { initialEntries: ['/focus/score'] },
+    })
+    expect(screen.getByRole('tree')).toBeInTheDocument()
+  })
 })

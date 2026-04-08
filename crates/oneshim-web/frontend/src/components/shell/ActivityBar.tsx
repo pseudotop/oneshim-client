@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { type RouteNode, routeTree } from '../../routes'
+import { matchesRoute, type RouteNode, routeTree } from '../../routes'
 import { interaction, layout, motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { Divider } from '../ui'
@@ -39,21 +39,9 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
   const [tooltip, setTooltip] = useState<string | null>(null)
   const [tooltipY, setTooltipY] = useState(0)
 
-  const isActive = useCallback(
-    (node: RouteNode) => {
-      if (node.path === '/') {
-        // Root dashboard: match exact "/" or any of its child sub-paths
-        if (location.pathname === '/') return true
-        return (
-          node.children?.some(
-            (c) => location.pathname === `/${c.path}` || location.pathname.startsWith(`/${c.path}/`),
-          ) ?? false
-        )
-      }
-      return location.pathname === node.path || location.pathname.startsWith(`${node.path}/`)
-    },
-    [location.pathname],
-  )
+  // Delegates to the shared `matchesRoute` helper so ActivityBar and
+  // useCurrentRoute cannot drift on pathname matching rules.
+  const isActive = useCallback((node: RouteNode) => matchesRoute(node, location.pathname), [location.pathname])
 
   const handleClick = useCallback(
     (node: RouteNode) => {

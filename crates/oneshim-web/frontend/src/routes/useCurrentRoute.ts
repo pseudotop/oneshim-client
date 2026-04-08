@@ -3,21 +3,34 @@ import { useLocation } from 'react-router-dom'
 import { type RouteLeaf, type RouteNode, routeTree } from './route-tree'
 
 /**
- * Resolve the current route from the location pathname against routeTree.
+ * Determine whether a given pathname maps to the specified route node.
  *
- * Returns the matching top-level RouteNode and, if applicable, the active
- * child RouteLeaf. Used by SidePanel, ActivityBar, and TitleBar to derive
- * navigation state from the single source of truth (routeTree) instead of
- * maintaining parallel lookup tables.
+ * Single source of truth for pathname-to-route matching. Used by
+ * `useCurrentRoute` (which iterates routeTree to find ONE matching node)
+ * and `ActivityBar` (which tests EACH top-level node for active state).
  *
  * Matching rules (must stay in sync with RouteRenderer):
  *  - Root path "/" matches exactly OR any of its direct child sub-paths
  *    (e.g., "/overview", "/monitoring", "/insights").
- *  - Other paths match by exact match or prefix (e.g., "/focus/score" matches
- *    the "/focus" route).
- *  - Returns null if no route matches (fallback should be the root route).
+ *  - Other paths match by exact match or prefix (e.g., "/focus/score"
+ *    matches the "/focus" route).
  *
- * Assumes single-level nesting — children are direct sub-paths of their parent.
+ * Assumes single-level nesting — children are direct sub-paths.
+ */
+export function matchesRoute(node: RouteNode, pathname: string): boolean {
+  if (node.path === '/') {
+    if (pathname === '/') return true
+    return node.children?.some((c) => pathname === `/${c.path}` || pathname.startsWith(`/${c.path}/`)) ?? false
+  }
+  return pathname === node.path || pathname.startsWith(`${node.path}/`)
+}
+
+/**
+ * Resolve the current route from the location pathname against routeTree.
+ *
+ * Returns the matching top-level RouteNode and, if applicable, the active
+ * child RouteLeaf. Used by SidePanel and TitleBar to derive navigation
+ * state from the single source of truth (routeTree).
  */
 export interface CurrentRoute {
   node: RouteNode
@@ -30,13 +43,7 @@ export function useCurrentRoute(): CurrentRoute {
   return useMemo(() => {
     const pathname = location.pathname
 
-    const node = routeTree.find((r) => {
-      if (r.path === '/') {
-        if (pathname === '/') return true
-        return r.children?.some((c) => pathname === `/${c.path}` || pathname.startsWith(`/${c.path}/`))
-      }
-      return pathname === r.path || pathname.startsWith(`${r.path}/`)
-    })
+    const node = routeTree.find((r) => matchesRoute(r, pathname))
 
     // Fallback to root route if nothing matched
     const resolvedNode = node ?? routeTree.find((r) => r.path === '/')

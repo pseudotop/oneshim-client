@@ -23,12 +23,20 @@ export function RouteErrorFallback({
 }: RouteErrorFallbackProps) {
   const { t } = useTranslation()
   const retryButtonRef = useRef<HTMLButtonElement | null>(null)
+  const recoveringHeadingRef = useRef<HTMLHeadingElement | null>(null)
 
   // Move keyboard focus to the primary recovery action on mount so keyboard
   // users don't have to tab through whatever focus remained from the crashed
   // component. Pairs with `role="alert"` to announce the error via SR.
+  //
+  // When transitioning from error → recovering, move focus to the recovering
+  // heading so the user's focus stays in the fallback container instead of
+  // being dropped to <body>. The heading has tabIndex={-1} for
+  // programmatic focus without affecting tab order.
   useEffect(() => {
-    if (!isRecovering) {
+    if (isRecovering) {
+      recoveringHeadingRef.current?.focus()
+    } else {
       retryButtonRef.current?.focus()
     }
   }, [isRecovering])
@@ -49,7 +57,13 @@ export function RouteErrorFallback({
               <RefreshCw className={`${iconSize.lg} animate-spin text-semantic-warning`} />
             </div>
           </div>
-          <h1 className={`mb-2 ${typography.h3} text-content`}>{t('errors.route.recoveringTitle')}</h1>
+          <h1
+            ref={recoveringHeadingRef}
+            tabIndex={-1}
+            className={`mb-2 ${typography.h3} text-content focus:outline-none`}
+          >
+            {t('errors.route.recoveringTitle')}
+          </h1>
           <p className={`mb-6 ${typography.body} text-content-secondary`}>{t('errors.route.recoveringDescription')}</p>
           <div className="flex items-center justify-center gap-3">
             <Spinner size="sm" />
