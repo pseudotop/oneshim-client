@@ -1,6 +1,6 @@
 import { ClipboardList } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { EmptyState } from '../../components/ui'
 import { Card, CardContent } from '../../components/ui/Card'
 import { useTypedOutletContext } from '../../routes'
