@@ -44,9 +44,17 @@ describe('CommandPalette', () => {
     const input = screen.getByRole('combobox')
     await user.type(input, 'Dashboard')
 
+    // After the routeTree refactor, the palette generates one parent entry
+    // plus one "Parent › Child" entry per sub-route, so a "Dashboard" query
+    // now legitimately matches multiple items (the top-level Dashboard plus
+    // each of its children). Assert behaviour (every match contains the
+    // query) instead of hardcoding a count the next route addition will
+    // silently break.
     const options = screen.getAllByRole('option')
-    expect(options.length).toBe(1)
-    expect(options[0]).toHaveTextContent(/dashboard/i)
+    expect(options.length).toBeGreaterThanOrEqual(1)
+    for (const option of options) {
+      expect(option).toHaveTextContent(/dashboard/i)
+    }
   })
 
   it('shows no results message for non-matching query', async () => {

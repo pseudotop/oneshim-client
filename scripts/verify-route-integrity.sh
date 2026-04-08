@@ -71,14 +71,34 @@ if [ -f "$EVENT_BRIDGE" ]; then
   RUST_PATHS="$RUST_PATHS $BRIDGE_PATHS"
 fi
 
-# Extract all route paths from route-tree.ts
-ROUTE_PATHS=$(grep -oE "path: '[^']+'" "$ROUTE_TREE" | sed "s/path: '//;s/'//" | sort -u)
+# Extract all route paths from route-tree.ts — both top-level parents and
+# parent/child combinations (e.g. `/settings/ai-automation`). We use node to
+# walk the routeTree structure so deep-link Rust emits (e.g. the tray menu
+# navigating straight to `/settings/ai-automation`) validate against a child
+# entry instead of failing because only the parent path was listed.
+ROUTE_PATHS=$(node -e "
+  const fs = require('fs');
+  const src = fs.readFileSync('$ROUTE_TREE', 'utf8');
+  const parents = [];
+  // Match each top-level route entry: path + optional children block.
+  const re = /\{\s*path:\s*'([^']+)'[\s\S]*?(?:children:\s*\[([\s\S]*?)\]\s*,)?[^\{]*?(?:group:|bottom:)/g;
+  for (const m of src.matchAll(re)) {
+    const parentPath = m[1];
+    parents.push(parentPath);
+    if (m[2]) {
+      const childPaths = [...m[2].matchAll(/path:\s*'([^']+)'/g)].map((c) => c[1]);
+      const base = parentPath === '/' ? '' : parentPath;
+      for (const child of childPaths) parents.push(base + '/' + child);
+    }
+  }
+  console.log([...new Set(parents)].join('\n'));
+" 2>/dev/null | sort -u)
 
 for rpath in $RUST_PATHS; do
   # Skip empty and non-path values
   [ -z "$rpath" ] && continue
   [[ "$rpath" != /* ]] && continue
-  # Check if path exists as a top-level route (parent paths get redirected)
+  # Check if path exists as any known route (top-level parent or child combo)
   if ! echo "$ROUTE_PATHS" | grep -qx "$rpath"; then
     log_error "Rust emit path not in routeTree: $rpath"
   fi
