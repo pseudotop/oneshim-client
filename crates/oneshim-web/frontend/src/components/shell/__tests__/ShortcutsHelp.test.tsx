@@ -35,7 +35,13 @@ describe('ShortcutsHelp', () => {
 
   it('has labelled title', () => {
     renderWithProviders(<ShortcutsHelp onClose={vi.fn()} />)
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'shortcuts-help-title')
-    expect(document.getElementById('shortcuts-help-title')).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    // Dialog auto-generates the labelledby ID via React useId().
+    // Verify the attribute exists and points to an element in the document.
+    const labelledById = dialog.getAttribute('aria-labelledby')
+    expect(labelledById).toBeTruthy()
+    if (labelledById) {
+      expect(document.getElementById(labelledById)).toBeInTheDocument()
+    }
   })
 })

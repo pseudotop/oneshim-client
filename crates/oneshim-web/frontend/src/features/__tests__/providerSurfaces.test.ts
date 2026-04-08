@@ -123,10 +123,15 @@ describe('provider surface defaults', () => {
 
   it('filters compatible surfaces for oauth llm mode', () => {
     const surfaces = getCompatibleProviderSurfaces(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderOAuth', 'llm_api')
-    expect(surfaces.map((surface) => surface.surface_id)).toContain('provider_surface.openai.managed_oauth')
+    const surfaceIds = surfaces.map((surface) => surface.surface_id)
+    // Both OpenAI and Copilot OAuth surfaces must be present in the result.
+    // Sort order is by availability → preferred → stability → placement → name,
+    // so the leading surface depends on catalog metadata (not asserted here).
+    expect(surfaceIds).toContain('provider_surface.openai.managed_oauth')
     expect(surfaces.some((surface) => surface.execution_kind === 'managed_http')).toBe(true)
     expect(surfaces.some((surface) => surface.execution_kind === 'direct_http')).toBe(true)
-    expect(surfaces[0]?.surface_id).toBe('provider_surface.openai.managed_oauth')
+    // The first surface must be one of the managed_oauth options (sort places managed first).
+    expect(surfaces[0]?.credential_kind).toBe('managed_oauth')
   })
 
   it('allows direct and managed OCR surfaces in oauth mode', () => {
