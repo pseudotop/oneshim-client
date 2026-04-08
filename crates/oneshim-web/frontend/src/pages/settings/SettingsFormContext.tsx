@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import type { AppSettings } from '../../api/client'
 import type { SettingsDataResult } from '../hooks/useSettingsData'
 import { useSettingsData } from '../hooks/useSettingsData'
@@ -36,12 +36,17 @@ export function SettingsFormProvider({ children }: { children: React.ReactNode }
     return () => window.removeEventListener('beforeunload', handler)
   }, [form.hasUnsavedChanges])
 
-  // Memoize the context value so consumers only re-render when the actual
-  // form/data references change — not on every provider re-render. Without
-  // this, any re-render here would cascade into all 9 settings tabs.
-  const value = useMemo(() => ({ form, data }), [form, data])
-
-  return <SettingsFormContext.Provider value={value}>{children}</SettingsFormContext.Provider>
+  // PERF: the context value is a fresh object literal on every render because
+  // `form` (from useSettingsForm) and `data` (from useSettingsData) return
+  // fresh objects on every render — most of their handlers are not yet
+  // wrapped in useCallback, and their return object isn't useMemo'd. A
+  // downstream `useMemo(() => ({ form, data }), [form, data])` would be a
+  // no-op (the deps would change every render). Fixing this requires a
+  // larger refactor: wrap ~25 handlers in useSettingsForm and ~8 in
+  // useSettingsData in useCallback, then useMemo both hook return objects,
+  // then useMemo the context value. Tracked as follow-up — currently all
+  // 9 tab consumers re-render on every keystroke, same as before.
+  return <SettingsFormContext.Provider value={{ form, data }}>{children}</SettingsFormContext.Provider>
 }
 
 export function useSettingsFormContext(): SettingsContextValue {

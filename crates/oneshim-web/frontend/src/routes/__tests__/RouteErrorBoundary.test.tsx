@@ -1,5 +1,6 @@
-import { act, fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Hoisted mock — vi.mock is hoisted to the top of the file by Vitest, so any
@@ -211,5 +212,179 @@ describe('RouteErrorBoundary', () => {
     const criticalCall = reportToNativeMock.mock.calls.find(([payload]) => payload?.severity === 'critical')
     expect(criticalCall).toBeDefined()
     expect(criticalCall?.[0]).toMatchObject({ route: escalationRoute })
+  })
+
+  it('shows recovering state after critical escalation', () => {
+    // IMPORTANT-3 regression: verify the isRecovering UI path renders when
+    // escalation fires. Without this test, a regression that breaks the
+    // prop wiring or the fallback early-return would ship silently.
+    const route = `/test-recovering-${Date.now()}-${Math.random()}`
+    renderBoundary(<Thrower shouldThrow={true} />, route)
+
+    // Click retry 3 times to hit the escalation threshold
+    for (let i = 0; i < 3; i++) {
+      const buttons = screen.getAllByRole('button')
+      fireEvent.click(buttons[0])
+    }
+
+    // The recovering state has NO "Try Again" button — it has a spinner
+    // and the i18n-translated title. Using role='alert' is still present
+    // but the primary button should be gone.
+    const recoveringAlert = screen.getByRole('alert')
+    expect(recoveringAlert).toBeInTheDocument()
+    // No buttons in recovering state (Try Again + Go Home are both hidden)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('schedules a safety-net reload on critical escalation and cancels on unmount (CRITICAL-1)', () => {
+    // The safety-net setTimeout must be cleared on unmount — otherwise
+    // an uncleared timer fires window.location.reload() after the user
+    // has navigated away, destroying unrelated work.
+    vi.useFakeTimers()
+    const originalLocation = window.location
+    const reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, reload: reloadMock },
+    })
+
+    const route = `/test-safety-net-${Date.now()}-${Math.random()}`
+    const { unmount } = renderBoundary(<Thrower shouldThrow={true} />, route)
+
+    // Trigger escalation via 3 retries
+    for (let i = 0; i < 3; i++) {
+      const buttons = screen.getAllByRole('button')
+      fireEvent.click(buttons[0])
+    }
+
+    // Safety-net is armed. Unmount BEFORE the 5s timer fires.
+    unmount()
+
+    // Advance past the 5s window
+    vi.advanceTimersByTime(6_000)
+
+    // reload was NOT called because the timer was cleared on unmount
+    expect(reloadMock).not.toHaveBeenCalled()
+
+    // Cleanup
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    })
+    vi.useRealTimers()
+  })
+
+  it('safety-net reload fires after 5s if not cancelled', () => {
+    vi.useFakeTimers()
+    const originalLocation = window.location
+    const reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, reload: reloadMock },
+    })
+
+    const route = `/test-safety-fires-${Date.now()}-${Math.random()}`
+    renderBoundary(<Thrower shouldThrow={true} />, route)
+
+    for (let i = 0; i < 3; i++) {
+      const buttons = screen.getAllByRole('button')
+      fireEvent.click(buttons[0])
+    }
+
+    // Safety-net is armed. Without intervention, after 5s it fires reload.
+    vi.advanceTimersByTime(6_000)
+    expect(reloadMock).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    })
+    vi.useRealTimers()
+  })
+
+  it('resets the error state when pathname changes (IMPORTANT-2 / IA I3)', () => {
+    // When the user is stuck on an error at /focus/score and clicks a
+    // sibling route (/focus/sessions), the parent boundary stays mounted
+    // but must reset its error state so the new sub-route can render.
+    const BadChild = () => {
+      throw new Error('boom')
+    }
+    const GoodChild = () => <div>Good content</div>
+
+    function Harness() {
+      const navigate = useNavigate()
+      return (
+        <div>
+          <button type="button" onClick={() => navigate('/focus/sessions')}>
+            go-sessions
+          </button>
+          <Routes>
+            <Route
+              path="/focus/score"
+              element={
+                <RouteErrorBoundary route="/focus">
+                  <BadChild />
+                </RouteErrorBoundary>
+              }
+            />
+            <Route
+              path="/focus/sessions"
+              element={
+                <RouteErrorBoundary route="/focus">
+                  <GoodChild />
+                </RouteErrorBoundary>
+              }
+            />
+          </Routes>
+        </div>
+      )
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/focus/score']}>
+        <Harness />
+      </MemoryRouter>,
+    )
+
+    // Error shown at /focus/score
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    // Navigate to sibling — the boundary should reset
+    fireEvent.click(screen.getByText('go-sessions'))
+
+    // New sub-route renders without the error fallback
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Good content')).toBeInTheDocument()
+  })
+
+  it('does not double-escalate when another recovery signal arrives while already recovering (IMPORTANT-1)', () => {
+    // Once isRecovering is true, subsequent notifyRouteRecovery calls must
+    // be ignored — otherwise multiple safety-net timers get scheduled.
+    const route = `/test-no-double-${Date.now()}-${Math.random()}`
+    renderBoundary(<Thrower shouldThrow={true} />, route)
+
+    // Trigger escalation via 3 manual retries
+    for (let i = 0; i < 3; i++) {
+      const buttons = screen.getAllByRole('button')
+      fireEvent.click(buttons[0])
+    }
+
+    // Clear the mock after the escalation
+    const criticalCallsBefore = reportToNativeMock.mock.calls.filter(
+      ([payload]) => payload?.severity === 'critical',
+    ).length
+    reportToNativeMock.mockClear()
+
+    // Fire another recovery notification — it should be ignored
+    act(() => {
+      notifyRouteRecovery(route)
+    })
+
+    // No NEW critical reports fired (the ref-guard blocks it)
+    const criticalCallsAfter = reportToNativeMock.mock.calls.filter(
+      ([payload]) => payload?.severity === 'critical',
+    ).length
+    expect(criticalCallsBefore).toBeGreaterThanOrEqual(1)
+    expect(criticalCallsAfter).toBe(0)
   })
 })

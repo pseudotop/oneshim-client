@@ -153,11 +153,42 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
   const navigate = useNavigate()
   const location = useLocation()
 
+  // Ref-gated `isRecovering` so the recovery subscriber closure can read the
+  // current value without re-subscribing on every state change. Prevents
+  // duplicate escalations if another `reset-route` signal arrives while
+  // already recovering.
+  const isRecoveringRef = useRef(false)
+  useEffect(() => {
+    isRecoveringRef.current = isRecovering
+  }, [isRecovering])
+
+  // Safety-net reload timer handle — stored in a ref so we can clear it on
+  // unmount, pathname change, or explicit cancellation. Prevents CRITICAL-1:
+  // a leaked timer firing window.location.reload() after the user has
+  // navigated away, destroying unrelated work.
+  const reloadTimerRef = useRef<number | null>(null)
+  const clearSafetyNet = useCallback(() => {
+    if (reloadTimerRef.current !== null) {
+      window.clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = null
+    }
+  }, [])
+  const scheduleSafetyNet = useCallback(() => {
+    if (reloadTimerRef.current !== null) return // already armed — idempotent
+    reloadTimerRef.current = window.setTimeout(() => {
+      reloadTimerRef.current = null
+      window.location.reload()
+    }, CRITICAL_RELOAD_FALLBACK_MS)
+  }, [])
+
   // Reset the boundary on in-route navigation. If the user is stuck on an
   // error in one sub-route (e.g. /focus/score) and clicks a sibling
   // (/focus/sessions), the parent boundary stays mounted and would otherwise
   // persist the error state — appearing frozen. Resetting on pathname change
   // gives the new sub-route a fresh chance to render.
+  //
+  // Also clears any in-flight safety-net reload and exits the recovering
+  // state, since the user has explicitly navigated away.
   //
   // The ref skips the initial mount so we don't waste a remount cycle on the
   // first render before any navigation has happened.
@@ -166,14 +197,20 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
     if (location.pathname !== initialPathnameRef.current) {
       initialPathnameRef.current = location.pathname
       setResetKey((k) => k + 1)
+      setIsRecovering(false)
+      clearSafetyNet()
     }
-  }, [location.pathname])
+  }, [location.pathname, clearSafetyNet])
 
   // Subscribe to recovery signals for this specific route.
   // The registry replaces the prior `window.addEventListener` to avoid
   // global-event spoofability and to provide a typed pub/sub.
   useEffect(() => {
     const unsubscribe = subscribeToRouteRecovery(route, () => {
+      // Already recovering — another subscriber call while the safety-net is
+      // armed should not trigger a second escalation or a duplicate timer.
+      if (isRecoveringRef.current) return
+
       // Auto-recovery path: Rust signaled `reset-route`. We must also count
       // this towards the escalation threshold — if the same crash recurs 3+
       // times in 60s, escalate to critical (full-reload) regardless of who
@@ -189,9 +226,7 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
           message: `Auto-recovery escalation: 3+ crashes in 60s on ${route}`,
         })
         setIsRecovering(true)
-        window.setTimeout(() => {
-          window.location.reload()
-        }, CRITICAL_RELOAD_FALLBACK_MS)
+        scheduleSafetyNet()
         return
       }
       // Within threshold — reset locally. Note: queries are NOT invalidated
@@ -201,15 +236,17 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
       setResetKey((k) => k + 1)
     })
     return unsubscribe
-  }, [route])
+  }, [route, scheduleSafetyNet])
 
-  // Cleanup the resetTracker entry on unmount so a fresh visit gets a fresh
-  // trust window (IA-1: prevents counter leakage across navigation).
+  // Cleanup the resetTracker entry AND any pending safety-net timer on
+  // unmount so a fresh visit gets a fresh trust window (IA-1) and the timer
+  // doesn't fire after unmount (CRITICAL-1).
   useEffect(() => {
     return () => {
       resetTracker.delete(route)
+      clearSafetyNet()
     }
-  }, [route])
+  }, [route, clearSafetyNet])
 
   const handleCatch = useCallback(
     (error: Error, info: ErrorInfo) => {
@@ -234,16 +271,15 @@ export function RouteErrorBoundary({ route, children }: RouteErrorBoundaryProps)
         message: `Manual retry escalation: 3+ resets in 60s on ${route}`,
       })
       // Show a "Recovering..." state so the user sees progress instead of
-      // the app appearing frozen. Schedule a safety-net reload in case
-      // Rust's recovery cooldown suppresses the emit.
+      // the app appearing frozen. Schedule a safety-net reload (via the
+      // ref-tracked helper) in case Rust's recovery cooldown suppresses
+      // the emit. The timer is cleared on unmount / pathname change.
       setIsRecovering(true)
-      window.setTimeout(() => {
-        window.location.reload()
-      }, CRITICAL_RELOAD_FALLBACK_MS)
+      scheduleSafetyNet()
       return
     }
     setResetKey((k) => k + 1)
-  }, [route])
+  }, [route, scheduleSafetyNet])
 
   const handleGoHome = useCallback(() => {
     navigate('/')
