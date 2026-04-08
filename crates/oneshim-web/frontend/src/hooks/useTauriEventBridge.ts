@@ -240,10 +240,17 @@ export function useTauriEventBridge() {
         }
 
         unlistenCallbacks = pendingUnlistenCallbacks
-      } catch {
+      } catch (e) {
+        // Drain any listeners that registered before the failure to avoid
+        // leaks. Catches three cases:
+        //  1. Browser mode or unavailable Tauri event bridge (silent OK)
+        //  2. DisposedDuringRegistration sentinel — also silent OK
+        //  3. A real listener registration failure — log for debugging
         for (const unlisten of pendingUnlistenCallbacks) unlisten()
         pendingUnlistenCallbacks = []
-        // Browser mode or unavailable Tauri event bridge.
+        if (e instanceof Error && e.constructor.name !== 'DisposedDuringRegistration') {
+          console.warn('[useTauriEventBridge] listener registration failed:', e)
+        }
       }
     }
 

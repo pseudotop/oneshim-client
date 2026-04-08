@@ -455,21 +455,22 @@ mod tests {
     #[test]
     fn recovery_cooldown_separates_strategies() {
         // NC-1 regression: reset-route and full-reload share a route, so
-        // the cooldown key must include strategy. Verified by exercising
-        // check_and_update_cooldown with composite keys directly.
+        // the cooldown key must include strategy. Use the helper (NC-NEW-5)
+        // so the test exercises the same code path as production.
         reset_all_cooldowns();
         let cooldown = Duration::from_secs(5);
-        // First call for /focus|reset-route succeeds
+        let reset_key = recovery_cooldown_key("/focus", "reset-route");
+        let reload_key = recovery_cooldown_key("/focus", "full-reload");
         assert!(check_and_update_cooldown(
             &RECOVERY_COOLDOWN,
-            "/focus|reset-route",
+            &reset_key,
             cooldown
         ));
-        // Immediate first call for /focus|full-reload must NOT be blocked
+        // Immediate first call for the full-reload key must NOT be blocked
         // by the reset-route cooldown — different keys.
         assert!(check_and_update_cooldown(
             &RECOVERY_COOLDOWN,
-            "/focus|full-reload",
+            &reload_key,
             cooldown
         ));
     }

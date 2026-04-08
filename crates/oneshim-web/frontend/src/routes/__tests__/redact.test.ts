@@ -61,6 +61,17 @@ describe('redact', () => {
     expect(output).toContain('[REDACTED]')
   })
 
+  it('masks Bearer tokens containing the full base64url alphabet (NC-NEW-7 + U3)', () => {
+    // Verify the regex character class still matches all valid base64url
+    // characters: A-Z, a-z, 0-9, plus +, /, -, _, ~, .
+    // After NC-NEW-7 fix the class is [A-Za-z0-9._~+/-]+, where `-` is
+    // literal (last in class) instead of accidentally forming a range.
+    const input = 'Authorization: Bearer abc+def/ghi-jkl_mno~pqr.stu=='
+    const output = redact(input)
+    expect(output).not.toContain('abc+def/ghi-jkl_mno~pqr.stu')
+    expect(output).toContain('[REDACTED]')
+  })
+
   it('masks JWT shape tokens standalone', () => {
     const input = 'token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
     const output = redact(input)
