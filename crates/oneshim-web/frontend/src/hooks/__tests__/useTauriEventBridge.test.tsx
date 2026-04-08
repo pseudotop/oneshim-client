@@ -156,11 +156,18 @@ describe('useTauriEventBridge', () => {
     })
   })
 
-  it('drains earlier listeners when unmount fires during registration (NC-NEW-3)', async () => {
+  it('drains earlier listeners when unmount fires during registration (NC-NEW-3 + IMPORTANT-3)', async () => {
     // Simulates: unmount() called while one of the listen() calls is still
     // pending. The pre-fix code would early-return after the await completed
     // (because `disposed` was true), leaking the already-pushed callbacks.
     // The fix throws DisposedDuringRegistration which the catch block drains.
+    //
+    // IMPORTANT-3 regression: also verify that console.warn is NOT called
+    // for the disposal path (the U4 fix at useTauriEventBridge.ts uses
+    // `instanceof DisposedDuringRegistration` to suppress the noisy warning).
+    // Without this assertion, a regression to `e.constructor.name !== ...`
+    // would silently re-emit warnings in production builds.
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const listenerMap = new Map<string, EventCallback>()
     const allUnlistens: Array<ReturnType<typeof vi.fn>> = []
     let pendingResolve: ((value: () => void) => void) | null = null
@@ -203,6 +210,14 @@ describe('useTauriEventBridge', () => {
     for (const unlisten of allUnlistens) {
       expect(unlisten).toHaveBeenCalled()
     }
+    // Critical: warn must NOT have been called for the disposal path.
+    // Catches a regression where the catch block goes back to using
+    // `e.constructor.name`, which mangles under esbuild minification.
+    expect(consoleWarn).not.toHaveBeenCalledWith(
+      expect.stringContaining('listener registration failed'),
+      expect.anything(),
+    )
+    consoleWarn.mockRestore()
   })
 
   it('registers frontend-recovery via webview-scoped listener (NC-3 + NC-NEW-2)', async () => {

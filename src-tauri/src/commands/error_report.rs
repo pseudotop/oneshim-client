@@ -35,6 +35,15 @@ use crate::commands::system::{sanitize_frontend_surface, truncate_log_field};
 const MAX_ERROR_MESSAGE_LEN: usize = 4_000;
 const MAX_STACK_LEN: usize = 12_000;
 const MAX_ROUTE_LEN: usize = 256;
+const MAX_SEVERITY_LEN: usize = 16;
+
+// ── Bounded map size (prevent memory DoS via distinct routes) ──
+//
+// 256 comfortably covers the legitimate routeTree (~30 routes × ~3 severities
+// or strategies = ~90 entries) with headroom for future growth. When the map
+// is full, new routes are rejected — existing entries continue to honor
+// cooldowns until they expire and are pruned by `prune_stale`.
+const MAX_COOLDOWN_ENTRIES: usize = 256;
 
 // ── Cooldown windows ──
 
@@ -111,6 +120,13 @@ fn prune_stale(map: &mut HashMap<String, Instant>, keep_for: Duration) {
 /// Check the cooldown map: returns true if the route should be allowed
 /// (not in cooldown), false if it should be suppressed. On allow, the
 /// route's last-seen timestamp is updated.
+///
+/// Two layers of memory protection:
+///  1. `prune_stale` drops entries older than 2× the cooldown window
+///  2. If the map is at MAX_COOLDOWN_ENTRIES capacity AND the key is new,
+///     the call is rejected (suppressed). Existing keys can still update.
+///     This prevents an attacker flooding distinct routes from ballooning
+///     map memory before pruning catches up.
 fn check_and_update_cooldown(
     map_mutex: &Mutex<Option<HashMap<String, Instant>>>,
     route: &str,
@@ -130,6 +146,9 @@ fn check_and_update_cooldown(
         if now.duration_since(*last) < cooldown {
             return false;
         }
+    } else if map.len() >= MAX_COOLDOWN_ENTRIES {
+        // Map is at capacity and this is a new route — suppress to bound memory
+        return false;
     }
     map.insert(route.to_owned(), now);
     true
@@ -234,29 +253,35 @@ pub async fn report_frontend_error(
         ));
     }
 
+    // Validate severity length — prevent log DoS via attacker-controlled
+    // severity string (the only string field that previously had no cap).
+    if severity.len() > MAX_SEVERITY_LEN {
+        return Err("invalid severity: too long".to_string());
+    }
+
     // Truncate inputs to bounded sizes
     let error_message = truncate_log_field(error_message.trim().to_string(), MAX_ERROR_MESSAGE_LEN);
     let stack = stack.map(|s| truncate_log_field(s.trim().to_string(), MAX_STACK_LEN));
     let component_stack =
         component_stack.map(|s| truncate_log_field(s.trim().to_string(), MAX_STACK_LEN));
 
-    // Apply per-route logging cooldown — prevents disk fill from crash loops
-    let do_log = should_log(&route);
-
+    // Apply per-route logging cooldown only for non-critical severities.
+    // Critical bypasses the cooldown AND should not reset the bucket so a
+    // subsequent warning/error within 10s is not silently suppressed.
     match severity.as_str() {
         "info" => {
-            if do_log {
+            if should_log(&route) {
                 info!(route, error_message, "frontend route info");
             }
         }
         "warning" => {
-            if do_log {
+            if should_log(&route) {
                 warn!(route, error_message, "frontend route warning");
             }
             maybe_notify(&app, &route, severity.as_str(), &error_message);
         }
         "error" => {
-            if do_log {
+            if should_log(&route) {
                 error!(
                     route,
                     error_message,
@@ -359,19 +384,6 @@ mod tests {
     }
 
     #[test]
-    fn prune_stale_drops_old_entries() {
-        let mut map = HashMap::new();
-        let now = Instant::now();
-        // Insert an entry that is artificially old by using an Instant from
-        // the past via subtraction (not directly possible — instead, sleep is
-        // not desirable in tests). Use a no-op to verify prune doesn't drop
-        // fresh entries; staleness behavior is covered by integration test.
-        map.insert("/fresh".to_string(), now);
-        prune_stale(&mut map, Duration::from_secs(60));
-        assert!(map.contains_key("/fresh"));
-    }
-
-    #[test]
     fn recovery_payload_serializes_correctly() {
         let payload = RecoveryPayload {
             strategy: "reset-route".to_owned(),
@@ -391,6 +403,50 @@ mod tests {
         let truncated = truncate_log_field(oversize, MAX_ERROR_MESSAGE_LEN);
         assert!(truncated.len() <= MAX_ERROR_MESSAGE_LEN + 50); // 50 = " …(truncated)" suffix margin
         assert!(truncated.ends_with("(truncated)"));
+    }
+
+    #[test]
+    fn check_and_update_cooldown_caps_distinct_route_count() {
+        // IMPORTANT-2 regression: an attacker flooding distinct routes must
+        // not balloon the cooldown map beyond MAX_COOLDOWN_ENTRIES.
+        //
+        // Uses a local Mutex (not LOG_COOLDOWN) to isolate from other tests
+        // that may run in parallel and share the static map.
+        let local_map: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+        let cooldown = Duration::from_secs(60);
+        // Fill up to capacity
+        for i in 0..MAX_COOLDOWN_ENTRIES {
+            let route = format!("/cap-test-{i}");
+            assert!(
+                check_and_update_cooldown(&local_map, &route, cooldown),
+                "expected slot {i} to be free"
+            );
+        }
+        // The next NEW route must be rejected (suppressed)
+        assert!(!check_and_update_cooldown(
+            &local_map,
+            "/cap-test-overflow",
+            cooldown
+        ));
+        // Existing keys are also blocked by their own cooldown
+        assert!(!check_and_update_cooldown(
+            &local_map,
+            "/cap-test-0",
+            cooldown
+        ));
+    }
+
+    #[test]
+    fn prune_stale_keeps_fresh_entries() {
+        // SUGGESTION-1 (rename): documents that prune_stale does NOT drop
+        // entries within the keep window. The original test name was
+        // misleading. A future deterministic-clock test could exercise the
+        // drop path; for now we verify the no-op behavior.
+        let mut map = HashMap::new();
+        let now = Instant::now();
+        map.insert("/fresh".to_string(), now);
+        prune_stale(&mut map, Duration::from_secs(60));
+        assert!(map.contains_key("/fresh"));
     }
 
     #[test]

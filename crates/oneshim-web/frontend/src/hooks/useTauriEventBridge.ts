@@ -34,6 +34,13 @@ function isRecoveryPayload(payload: unknown): payload is { strategy: string; rou
   )
 }
 
+function isChatPayload(payload: unknown): payload is { sessionId?: string } {
+  if (typeof payload !== 'object' || payload === null) return false
+  const obj = payload as Record<string, unknown>
+  // sessionId is optional, but if present must be a string
+  return !('sessionId' in obj) || typeof obj.sessionId === 'string'
+}
+
 /**
  * Sentinel error thrown when the listener-registration loop notices that the
  * effect has been disposed mid-await. The catch block uses `instanceof` to
@@ -193,8 +200,11 @@ export function useTauriEventBridge() {
 
         if (
           !(await registerListener('navigate:chat', (event: TauriEventPayload) => {
-            const payload = event.payload as { sessionId?: string } | undefined
-            const sid = payload?.sessionId
+            if (!isChatPayload(event.payload)) {
+              navigateTo('/chat')
+              return
+            }
+            const sid = event.payload.sessionId
             if (sid) {
               navigateTo(`/chat?sid=${encodeURIComponent(sid)}`)
             } else {

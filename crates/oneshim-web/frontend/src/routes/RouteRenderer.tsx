@@ -45,7 +45,20 @@ export default function RouteRenderer() {
       <Routes>
         {sortedRouteTree.map((node) =>
           node.children ? (
-            <Route key={node.path} path={`${node.path}/*`} element={<node.component />}>
+            // IMPORTANT-4: parent layouts get an outer RouteErrorBoundary so
+            // a crash in the layout's own render (e.g. useQuery throws during
+            // initial fetch) is isolated per-route. The inner boundary inside
+            // each Layout (around <Outlet>) becomes a defense-in-depth
+            // second layer for child Section crashes.
+            <Route
+              key={node.path}
+              path={`${node.path}/*`}
+              element={
+                <RouteErrorBoundary route={node.path}>
+                  <node.component />
+                </RouteErrorBoundary>
+              }
+            >
               {node.defaultChild && <Route index element={<Navigate to={node.defaultChild} replace />} />}
               {node.children.map((child) => (
                 <Route key={child.path} path={child.path} element={<child.component />} />
