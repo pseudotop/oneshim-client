@@ -38,7 +38,7 @@
     "mainNavLabel": "Main Navigation",
     "chat": "Chat",
     "audit": "Audit Log",
-    "policies": "Policies",
+    "policies": "Execution Policies",
     "playbooks": "Playbooks"
   },
   "dashboard": {
@@ -183,7 +183,7 @@
     "title": "Settings",
     "tabs": {
       "general": "General",
-      "privacy": "Privacy",
+      "privacy": "Telemetry",
       "monitoring": "Monitoring",
       "aiAutomation": "AI & Automation",
       "dataStorage": "Data & Storage",
@@ -1257,7 +1257,7 @@
     "interruptions": "Interruptions",
     "timeline": "Timeline",
     "eventLog": "Event Log",
-    "policies": "Policies",
+    "policies": "Runtime Status",
     "commands": "Commands",
     "executionHistory": "Execution History",
     "currentStatus": "Current Status",
