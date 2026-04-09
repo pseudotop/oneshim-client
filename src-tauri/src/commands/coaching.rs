@@ -140,6 +140,39 @@ pub async fn toggle_overlay_interactive(
     Ok(())
 }
 
+/// Toggle overlay suggestions panel mode.
+///
+/// When `open = true`, resizes the overlay to a compact strip on the right
+/// edge so only the panel area captures mouse events (the rest of the desktop
+/// remains interactive). When `open = false`, recalculates layout based on
+/// remaining active modes (detection, automation may keep it full-screen).
+#[command]
+pub async fn toggle_suggestions_panel(
+    state: tauri::State<'_, AppState>,
+    open: bool,
+) -> Result<(), String> {
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_panel_mode(open);
+    }
+    Ok(())
+}
+
+/// Toggle overlay automation confirmation mode.
+///
+/// Full-screen interactive — highest priority mode. The modal has a
+/// full-screen backdrop so the entire overlay must capture events.
+/// When dismissed, recalculates layout based on remaining active modes.
+#[command]
+pub async fn toggle_automation_confirm(
+    state: tauri::State<'_, AppState>,
+    active: bool,
+) -> Result<(), String> {
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_automation_confirm_mode(active);
+    }
+    Ok(())
+}
+
 /// Get coaching event history with pagination.
 #[command]
 pub async fn get_coaching_history(

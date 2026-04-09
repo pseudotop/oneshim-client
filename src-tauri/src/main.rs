@@ -247,6 +247,8 @@ fn main() {
             commands::coaching::toggle_overlay_mode,
             commands::coaching::get_overlay_state,
             commands::coaching::toggle_overlay_interactive,
+            commands::coaching::toggle_suggestions_panel,
+            commands::coaching::toggle_automation_confirm,
             commands::coaching::get_coaching_history,
             commands::coaching::get_goal_progress,
             commands::coaching::update_regime_goals,

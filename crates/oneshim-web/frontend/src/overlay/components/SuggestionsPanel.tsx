@@ -120,7 +120,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     <aside
       aria-label={t('suggestions.panelLabel', 'Suggestions panel')}
       className={cn(
-        'fixed top-20 right-4 z-panel max-h-[calc(100vh-10rem)] w-80 max-w-[calc(100vw-2rem)] transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md',
+        'fixed top-20 right-4 z-panel max-h-[calc(100vh-6rem)] w-80 max-w-[calc(100vw-2rem)] transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md',
         motion.transform,
         open ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]',
       )}

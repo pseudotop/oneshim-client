@@ -215,11 +215,12 @@ export function App() {
   const handleSuggestions = useCallback(async () => {
     try {
       const { emit } = await import('@tauri-apps/api/event')
+      // Emit toggle event — the overlay's useEffect handles window resize
+      // via toggle_suggestions_panel IPC (compact panel mode).
       await emit('overlay:toggle-suggestions')
-      await invoke('toggle_overlay_interactive', { interactive: true })
       showFeedback(t('trackingPanel.suggestionsOpened'))
     } catch (e) {
-      console.warn('toggle_overlay_interactive failed:', e)
+      console.warn('overlay:toggle-suggestions failed:', e)
       showFeedback(t('trackingPanel.suggestionsUnavailable'))
     }
   }, [showFeedback, t])
