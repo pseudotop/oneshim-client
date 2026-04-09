@@ -43,7 +43,7 @@ describe('ActivityBar', () => {
       routerProps: { initialEntries: ['/automation/policies'] },
     })
     const activeButton = screen.getByRole('button', { current: 'page' })
-    expect(activeButton).toHaveAttribute('data-testid', 'nav-group-monitor')
+    expect(activeButton).toHaveAttribute('data-testid', 'nav-group-manage')
   })
 
   it('clicking an inactive group navigates to its default path', async () => {
@@ -55,7 +55,7 @@ describe('ActivityBar', () => {
 
     // Clicking the data group from monitor → group changes + sidebar toggles
     // (because the sidebar was collapsed).
-    await user.click(screen.getByTestId('nav-group-data'))
+    await user.click(screen.getByTestId('nav-group-insights'))
     expect(onToggleSidebar).toHaveBeenCalled()
   })
 
@@ -69,7 +69,7 @@ describe('ActivityBar', () => {
     })
 
     // From monitor, click data while sidebar is already expanded.
-    await user.click(screen.getByTestId('nav-group-data'))
+    await user.click(screen.getByTestId('nav-group-insights'))
     expect(onToggleSidebar).not.toHaveBeenCalled()
   })
 
@@ -77,12 +77,12 @@ describe('ActivityBar', () => {
     const user = userEvent.setup()
     const onToggleSidebar = vi.fn()
     renderWithProviders(<ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={false} />, {
-      routerProps: { initialEntries: ['/focus/score'] },
+      routerProps: { initialEntries: ['/reports/activity'] },
     })
 
-    // /focus is in the data group — clicking data while sidebar is open should
-    // collapse it without navigating elsewhere.
-    await user.click(screen.getByTestId('nav-group-data'))
+    // /reports is in the insights group — clicking insights while sidebar is
+    // open should collapse it without navigating elsewhere.
+    await user.click(screen.getByTestId('nav-group-insights'))
     expect(onToggleSidebar).toHaveBeenCalledTimes(1)
   })
 
