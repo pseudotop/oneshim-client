@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32-rc.5] - 2026-04-09
+
+### Fixed
+
+- Polish detection cap, coaching timer, and toast queue ([#387](https://github.com/pseudotop/oneshim-client/pull/387))
+  Three low-severity overlay issues found during the rc.4 review:
+
+  1. Detection scene truncation was silent — elements beyond the 200-cap
+     were dropped without any signal.  Now the payload is sorted by
+     confidence descending before truncation so the most valuable
+     detections survive, and a `warn!` log records how many were dropped
+     with the scene ID for debugging.
+
+  2. Coaching popup auto-dismiss timer reset on every LLM text upgrade,
+     extending the popup's lifetime unpredictably.  Users expected the
+     original 15-second window and were surprised when the popup lingered
+     after a personalization arrived.  The timer now runs uninterrupted;
+     the text-fade transition still plays but doesn't restart the clock.
+
+  3. Toast overflow was silently dropped — when >3 toasts arrived in
+     rapid succession, `slice(-MAX_TOASTS)` discarded the oldest without
+     ever showing them.  Replaced with a pending queue: excess toasts
+     wait and promote into the visible stack as earlier toasts expire.
+     No toast is lost; they just appear in sequence.
+
+  Issue 4 (HeatmapGhost ResizeObserver cleanup) was confirmed already
+  correct — `ro.disconnect()` is called in the useEffect cleanup.
+
 ## [0.4.32-rc.4] - 2026-04-09
 
 ### Changed
