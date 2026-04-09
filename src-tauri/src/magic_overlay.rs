@@ -469,11 +469,12 @@ impl MagicOverlayHandle {
             if interactive {
                 let _ = window.show();
                 let _ = window.set_ignore_cursor_events(false);
-            } else {
-                // Read state to check if another mode needs the window
-                let state = self.state.blocking_read();
+            } else if let Ok(state) = self.state.try_read() {
                 self.apply_window_layout(&state);
                 return;
+            } else {
+                // Fallback: couldn't acquire lock, just set click-through
+                let _ = window.set_ignore_cursor_events(true);
             }
         }
         debug!("Overlay set_interactive={interactive}");
@@ -482,17 +483,23 @@ impl MagicOverlayHandle {
     /// Enter or leave compact panel mode for the suggestions panel.
     /// Recalculates window layout respecting mode priority.
     pub fn set_panel_mode(&self, open: bool) {
-        let mut state = self.state.blocking_write();
-        state.suggestions_panel_open = open;
-        self.apply_window_layout(&state);
+        if let Ok(mut state) = self.state.try_write() {
+            state.suggestions_panel_open = open;
+            self.apply_window_layout(&state);
+        } else {
+            debug!("set_panel_mode: lock contention, skipping");
+        }
     }
 
     /// Enter or leave automation confirmation mode.
     /// Full-screen interactive — highest priority overlay mode.
     pub fn set_automation_confirm_mode(&self, active: bool) {
-        let mut state = self.state.blocking_write();
-        state.automation_confirm_active = active;
-        self.apply_window_layout(&state);
+        if let Ok(mut state) = self.state.try_write() {
+            state.automation_confirm_active = active;
+            self.apply_window_layout(&state);
+        } else {
+            debug!("set_automation_confirm_mode: lock contention, skipping");
+        }
     }
 
     /// Emit focus mode state change to overlay frontend.
