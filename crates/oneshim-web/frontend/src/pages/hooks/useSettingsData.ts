@@ -33,7 +33,6 @@ import {
   surfaceKnownModel,
   surfaceSupportsModelSelection,
 } from '../../features/providerSurfaces'
-import { IS_TAURI } from '../../utils/platform'
 import { backendAllowsSecretEditing, supportsProjectionFor } from '../settings-utils'
 
 // ---------------------------------------------------------------------------
@@ -91,7 +90,14 @@ export interface SettingsDataResult {
 // ---------------------------------------------------------------------------
 
 export function useSettingsData(formData: AppSettings | null): SettingsDataResult {
-  const canQueryDesktopCapabilities = IS_TAURI && !isStandaloneModeEnabled()
+  // Runtime detection rather than the module-level IS_TAURI const.
+  // IS_TAURI is evaluated once at module load; in some DMG/packaged webview
+  // builds the first evaluation can miss `__TAURI_INTERNALS__` before the
+  // injection completes, permanently hiding the desktop permission section
+  // for the entire session. Checking at render time (after React has mounted)
+  // is reliable because Tauri always attaches the internals before user code.
+  const canQueryDesktopCapabilities =
+    typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window && !isStandaloneModeEnabled()
 
   // ---- Core settings query ------------------------------------------------
   const { data: settings, isLoading: settingsLoading } = useQuery({
