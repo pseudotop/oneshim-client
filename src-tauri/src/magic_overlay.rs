@@ -272,10 +272,11 @@ impl MagicOverlayHandle {
     pub async fn emit_detection_scene(&self, scene: &oneshim_core::models::ui_scene::UiScene) {
         self.clear_focus_highlight();
 
-        let elements: Vec<DetectionElementPayload> = scene
+        const DETECTION_ELEMENT_LIMIT: usize = 200;
+
+        let mut elements: Vec<DetectionElementPayload> = scene
             .elements
             .iter()
-            .take(200)
             .map(|el| DetectionElementPayload {
                 element_id: el.element_id.clone(),
                 x: el.bbox_abs.x,
@@ -288,6 +289,25 @@ impl MagicOverlayHandle {
                 source: "composite".to_string(),
             })
             .collect();
+
+        // Sort highest-confidence elements first so the cap retains the most
+        // valuable detections rather than silently dropping them.
+        elements.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let total = elements.len();
+        if total > DETECTION_ELEMENT_LIMIT {
+            warn!(
+                scene_id = %scene.scene_id,
+                total = total,
+                limit = DETECTION_ELEMENT_LIMIT,
+                "detection scene truncated — showing top {DETECTION_ELEMENT_LIMIT} of {total} elements by confidence",
+            );
+            elements.truncate(DETECTION_ELEMENT_LIMIT);
+        }
 
         let payload = DetectionScenePayload {
             scene_id: scene.scene_id.clone(),

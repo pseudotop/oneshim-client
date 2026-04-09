@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { ToastItem } from '../types'
 
-const MAX_TOASTS = 3
+const MAX_VISIBLE = 3
 const TOAST_DURATION = 4000
 
 const typeStyles: Record<ToastItem['type'], string> = {
@@ -19,13 +19,28 @@ export function showToast(message: string, type: ToastItem['type'] = 'info') {
 }
 
 export function ToastContainer() {
-  const [toasts, setToasts] = useState<ToastItem[]>([])
+  const [visible, setVisible] = useState<ToastItem[]>([])
+  const pendingRef = useRef<ToastItem[]>([])
+
+  const promoteFromQueue = useCallback(() => {
+    setVisible((prev) => {
+      if (pendingRef.current.length === 0 || prev.length >= MAX_VISIBLE) return prev
+      const next = pendingRef.current.shift()!
+      return [...prev, next]
+    })
+  }, [])
 
   const addToast = useCallback((toast: Omit<ToastItem, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    setToasts((prev) => {
-      const next = [...prev, { ...toast, id }]
-      return next.slice(-MAX_TOASTS)
+    const item: ToastItem = { ...toast, id }
+
+    setVisible((prev) => {
+      if (prev.length >= MAX_VISIBLE) {
+        // Queue overflow — hold until a slot opens.
+        pendingRef.current.push(item)
+        return prev
+      }
+      return [...prev, item]
     })
   }, [])
 
@@ -36,17 +51,21 @@ export function ToastContainer() {
     }
   }, [addToast])
 
+  // Dismiss the oldest visible toast after TOAST_DURATION, then pull from
+  // the queue if anything is waiting.
   useEffect(() => {
-    if (toasts.length === 0) return
+    if (visible.length === 0) return
     const timer = setTimeout(() => {
-      setToasts((prev) => prev.slice(1))
+      setVisible((prev) => prev.slice(1))
+      // Use a microtask so the state update above settles first.
+      queueMicrotask(promoteFromQueue)
     }, TOAST_DURATION)
     return () => clearTimeout(timer)
-  }, [toasts])
+  }, [visible, promoteFromQueue])
 
   return (
     <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col gap-2">
-      {toasts.map((toast) => (
+      {visible.map((toast) => (
         <div
           key={toast.id}
           className={cn(

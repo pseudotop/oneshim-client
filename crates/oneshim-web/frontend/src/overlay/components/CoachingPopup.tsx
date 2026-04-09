@@ -46,18 +46,17 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
     [message.message_id, message.profile],
   )
 
-  const { reset } = useAutoDismiss(
+  // The auto-dismiss timer is intentionally NOT reset when an LLM text
+  // upgrade arrives.  Previously the timer restarted on every text change,
+  // which extended popup visibility unpredictably — users expected the
+  // original 15-second window and were surprised when the popup lingered.
+  // The text still fades in (via the transition effect above), but the
+  // countdown continues from where it was.
+  useAutoDismiss(
     true,
     autoDismissSecs,
     () => void dismiss('timeout').catch((e) => console.warn('dismiss_coaching_message(timeout) failed:', e)),
   )
-
-  // Reset auto-dismiss when LLM upgrade arrives
-  useEffect(() => {
-    if (message.text !== prevTextRef.current) {
-      reset()
-    }
-  }, [message.text, reset])
 
   const [feedbackSent, setFeedbackSent] = useState<'positive' | 'negative' | null>(null)
 
