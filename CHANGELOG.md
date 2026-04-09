@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32-rc.4] - 2026-04-09
+
 ### Changed
 
 - Consolidate ActivityBar to category icons with group tree ([#385](https://github.com/pseudotop/oneshim-client/pull/385))
