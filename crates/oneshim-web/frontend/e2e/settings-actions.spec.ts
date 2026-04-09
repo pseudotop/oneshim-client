@@ -35,4 +35,25 @@ test.describe('Settings Actions', () => {
     await page.goto('/settings/general')
     await expect(page.locator('#update-channel')).toBeVisible()
   })
+
+  test('P122: coaching settings tab renders three sections', async ({ page }) => {
+    // Smoke test for the v0.5 UX polish spec: CoachingSettingsTab must mount
+    // all four cards (Goals, Quiet Hours, Coaching Tone, Coaching Profiles)
+    // so users can reach the full coaching configuration surface.
+    await page.goto('/settings/coaching')
+
+    // Use role=heading to hit each Card's <h2> without coupling to raw copy
+    await expect(page.getByRole('heading', { name: i18nRegex('coaching.settingsTitle') })).toBeVisible()
+    await expect(page.getByRole('heading', { name: i18nRegex('coaching.quietHoursTitle') })).toBeVisible()
+    await expect(page.getByRole('heading', { name: i18nRegex('coaching.toneTitle') })).toBeVisible()
+    await expect(page.getByRole('heading', { name: i18nRegex('coaching.profilesTitle') })).toBeVisible()
+
+    // Tone radio group: 3 options all rendered with the default (Gentle) checked
+    const direct = page.getByRole('radio', { name: i18nRegex('coaching.toneOption.Direct') })
+    const gentle = page.getByRole('radio', { name: i18nRegex('coaching.toneOption.Gentle') })
+    const dataDriven = page.getByRole('radio', { name: i18nRegex('coaching.toneOption.DataDriven') })
+    await expect(direct).toBeVisible()
+    await expect(gentle).toBeVisible()
+    await expect(dataDriven).toBeVisible()
+  })
 })
