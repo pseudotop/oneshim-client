@@ -15,6 +15,7 @@
  * Outlet" anti-pattern, these tests will fail.
  */
 
+import { i18nRegex } from './helpers/i18n'
 import { expect, test } from './helpers/test'
 import { mockStaticJson } from './helpers/mock-api'
 
@@ -37,6 +38,7 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await page.goto('/')
     await page.waitForURL('**/overview')
     await expect(page).toHaveURL(/\/overview$/)
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.dashboard.title') })).toBeVisible({ timeout: 5000 })
   })
 
   test('/timeline → /timeline/all when no frames are stored yet', async ({ page }) => {
@@ -48,6 +50,7 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await page.goto('/timeline')
     await page.waitForURL('**/timeline/all')
     await expect(page).toHaveURL(/\/timeline\/all$/)
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.timelineWaiting.title') })).toBeVisible({ timeout: 5000 })
   })
 
   test('/replay → /replay/timeline when the session has no items', async ({ page }) => {
@@ -67,6 +70,7 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await page.goto('/replay')
     await page.waitForURL('**/replay/timeline')
     await expect(page).toHaveURL(/\/replay\/timeline$/)
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.replay.title') })).toBeVisible({ timeout: 5000 })
   })
 
   test('/automation → /automation/policies when automation is disabled and has zero runs', async ({ page }) => {
@@ -89,6 +93,7 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await page.goto('/automation')
     await page.waitForURL('**/automation/policies')
     await expect(page).toHaveURL(/\/automation\/policies$/)
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.automation.title') })).toBeVisible({ timeout: 5000 })
   })
 
   test('/focus → /focus/score when focus score is zero', async ({ page }) => {
@@ -110,6 +115,7 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await page.goto('/focus')
     await page.waitForURL('**/focus/score')
     await expect(page).toHaveURL(/\/focus\/score$/)
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.focus.title') })).toBeVisible({ timeout: 5000 })
   })
 
   test('/reports → /reports/activity when the report query fails', async ({ page }) => {
@@ -127,6 +133,10 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await page.goto('/reports')
     await page.waitForURL('**/reports/activity')
     await expect(page).toHaveURL(/\/reports\/activity$/)
+    // Note: empty state content assertion skipped for reports because
+    // fetchWithRetry's standalone fallback provides a default response
+    // even after a 500, bypassing the page.route mock. The redirect
+    // assertion above is sufficient to prove the layout renders <Outlet>.
   })
 
   test('/audit → /audit/summary when there are no audit entries (regression baseline)', async ({ page }) => {
@@ -135,6 +145,7 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await page.goto('/audit')
     await page.waitForURL('**/audit/summary')
     await expect(page).toHaveURL(/\/audit\/summary$/)
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.auditLog.title') })).toBeVisible({ timeout: 5000 })
   })
 })
 
@@ -161,6 +172,12 @@ test.describe('Shell sidebar-hidden grid toggle', () => {
 
     const shell = page.locator('.app-shell')
     await expect(shell).not.toHaveClass(/sidebar-hidden/)
+  })
+
+  test('/chat also has sidebar-hidden (no children)', async ({ page }) => {
+    await page.goto('/chat')
+    await page.waitForTimeout(500)
+    await expect(page.locator('.app-shell')).toHaveClass(/sidebar-hidden/)
   })
 
   test('/day → / restores the sidebar column', async ({ page }) => {
@@ -195,5 +212,51 @@ test.describe('Empty state CTA navigation', () => {
 
     await ctaButton.click()
     await expect(page).toHaveURL(/\/settings\/monitoring$/)
+  })
+
+  test('automation empty state CTA navigates to settings', async ({ page }) => {
+    await mockStaticJson(page, '**/api/automation/status**', {
+      enabled: false,
+      sandbox_enabled: false,
+      sandbox_profile: 'balanced',
+      ocr_provider: 'local',
+      llm_provider: 'local',
+      ocr_source: 'local',
+      llm_source: 'local',
+      ocr_fallback_reason: null,
+      llm_fallback_reason: null,
+      external_data_policy: 'disabled',
+      pending_audit_entries: 0,
+    })
+
+    await page.goto('/automation/policies')
+    const ctaButton = page.getByRole('button', { name: i18nRegex('emptyState.automation.action') })
+    await expect(ctaButton).toBeVisible({ timeout: 10000 })
+    await ctaButton.click()
+    await expect(page).toHaveURL(/\/settings/)
+  })
+})
+
+test.describe('Playbooks empty states', () => {
+  test('coaching tab shows empty template message', async ({ page }) => {
+    await mockStaticJson(page, '**/api/playbooks/coaching', [])
+    await mockStaticJson(page, '**/api/playbooks/presets', [])
+
+    await page.goto('/playbooks')
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.playbooksCoaching.title') })).toBeVisible({ timeout: 10000 })
+  })
+
+  test('presets tab shows empty preset message', async ({ page }) => {
+    await mockStaticJson(page, '**/api/playbooks/coaching', [])
+    await mockStaticJson(page, '**/api/playbooks/presets', [])
+
+    await page.goto('/playbooks')
+
+    // Switch to presets tab — find by text (tab label)
+    const presetsTab = page.getByText(i18nRegex('playbooks.presets'))
+    await expect(presetsTab).toBeVisible({ timeout: 10000 })
+    await presetsTab.click()
+
+    await expect(page.getByRole('heading', { name: i18nRegex('emptyState.playbooksPresets.title') })).toBeVisible({ timeout: 5000 })
   })
 })
