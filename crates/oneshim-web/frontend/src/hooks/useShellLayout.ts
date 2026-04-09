@@ -6,9 +6,10 @@ const STORAGE_KEY_COLLAPSED = 'oneshim-sidebar-collapsed'
 
 function loadPersistedWidth(): number {
   try {
-    const width = localStorage.getItem(STORAGE_KEY_WIDTH)
-    return width
-      ? Math.min(Math.max(Number(width), layout.sidePanel.minWidth), layout.sidePanel.maxWidth)
+    const raw = localStorage.getItem(STORAGE_KEY_WIDTH)
+    const parsed = Number(raw)
+    return raw && Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, layout.sidePanel.minWidth), layout.sidePanel.maxWidth)
       : layout.sidePanel.defaultWidth
   } catch {
     return layout.sidePanel.defaultWidth

@@ -308,10 +308,7 @@ export default function Chat() {
             />
             {createError && (
               <div className="mt-2 w-full max-w-md px-6">
-                <Alert
-                  variant="error"
-                  title={t('chat.create_failed_title', 'Could not create a session')}
-                >
+                <Alert variant="error" title={t('chat.create_failed_title', 'Could not create a session')}>
                   <p>{createError}</p>
                 </Alert>
               </div>

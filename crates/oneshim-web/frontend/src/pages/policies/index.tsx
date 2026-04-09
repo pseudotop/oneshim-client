@@ -195,7 +195,7 @@ function PolicyForm({ initial, onSubmit, onCancel, isSubmitting, isEdit }: Polic
         <textarea
           id="policy-allowed-args"
           className={cn(
-            'w-full rounded-md border border-muted bg-surface px-3 py-2 text-sm text-content',
+            'w-full rounded-md border border-muted bg-surface px-3 py-2 text-content text-sm',
             interaction.focusRing,
             'min-h-[80px] resize-y',
           )}
@@ -398,7 +398,7 @@ function Policies() {
                 <tbody>
                   {(policies ?? []).map((policy) => (
                     <tr key={policy.policy_id} className={cn('border-muted border-b', motion.colors)}>
-                      <td className={cn('px-3 py-2', typography.family.mono, 'text-xs text-content-strong')}>
+                      <td className={cn('px-3 py-2', typography.family.mono, 'text-content-strong text-xs')}>
                         {policy.policy_id}
                       </td>
                       <td className="px-3 py-2 text-content-strong">{policy.process_name}</td>
