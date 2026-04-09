@@ -32,16 +32,16 @@ export default function OverlayApp() {
     })()
   }, [state.suggestionsPanelOpen])
 
-  // Sync automation confirmation modal → Rust overlay interactivity.
-  // The modal has a full-screen backdrop so full-screen interactive is correct here.
-  // When dismissed, return to click-through.
+  // Sync automation confirmation modal → Rust overlay mode.
+  // Uses dedicated IPC so the mode priority system can recalculate
+  // the correct window layout when the modal is dismissed.
   useEffect(() => {
     ;(async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('toggle_overlay_interactive', { interactive: !!state.pendingConfirmation })
+        await invoke('toggle_automation_confirm', { active: !!state.pendingConfirmation })
       } catch (e) {
-        console.warn('toggle_overlay_interactive failed:', e)
+        console.warn('toggle_automation_confirm failed:', e)
       }
     })()
   }, [state.pendingConfirmation])
