@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32-rc.7] - 2026-04-09
+
+### Fixed
+
+- Replace blocking_read/write with try_read/write ([#391](https://github.com/pseudotop/oneshim-client/pull/391))
+  blocking_read/blocking_write panics when called from a tokio runtime
+  context ("Cannot block the current thread"). Replace with try_read/
+  try_write which return an error instead of panicking, with fallback
+  behavior on lock contention.
+
 ## [0.4.32-rc.6] - 2026-04-09
 
 ### Fixed
