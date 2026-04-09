@@ -960,43 +960,56 @@
   },
   "emptyState": {
     "dashboard": {
-      "title": "仪表盘准备中",
-      "description": "代理开始采集数据后，实时仪表盘将在此显示"
+      "title": "正在收集数据",
+      "description": "ONESHIM 正在后台收集活动数据。打开任意应用继续工作，通常 1 分钟内会出现首批指标。"
     },
     "timeline": {
-      "title": "暂无截图",
-      "description": "请在设置中启用截图捕获",
-      "action": "前往设置"
+      "title": "截图捕获已关闭",
+      "description": "在设置中开启截图捕获，即可为一天的活动建立可视化时间线。稍后可将捕获限制到特定应用。",
+      "action": "打开设置"
     },
     "reports": {
-      "title": "数据不足",
-      "description": "使用应用至少一天后再查看报告"
+      "title": "正在准备首份报告",
+      "description": "只有在连续使用被监控的应用 1 小时后才会生成报告。完成首次工作会话后再回来查看活动明细。"
     },
     "focus": {
-      "title": "专注度分析准备中",
-      "description": "使用应用后将自动开始分析"
+      "title": "正在学习您的专注模式",
+      "description": "专注度分数依据 15 分钟以上的深度工作计算。在任意任务上连续工作一段时间后，这里将显示您的首个分数。"
     },
     "replay": {
       "title": "暂无会话记录",
-      "description": "所选时段内没有已记录的会话，请尝试调整日期范围"
+      "description": "所选时段内没有已记录的会话。请尝试其他日期范围，或保持应用运行以创建新会话。"
     },
     "automation": {
       "title": "自动化未激活",
-      "description": "自动化系统当前未激活，请在设置中启用",
-      "action": "前往设置"
+      "description": "自动化已关闭。请在设置中启用，以便 ONESHIM 代您执行已批准的命令。",
+      "action": "打开设置"
     },
     "auditLog": {
       "title": "暂无审计条目",
-      "description": "执行自动化命令后审计条目将在此显示",
-      "action": "前往自动化"
+      "description": "一旦 ONESHIM 代您执行自动化命令，此处将显示审计条目。",
+      "action": "打开自动化"
     },
     "timelineWaiting": {
-      "title": "尚未捕获任何截图",
-      "description": "ONESHIM 尚未存储任何时间线帧。请保持应用运行，如果此情况持续请确认桌面捕获权限。"
+      "title": "正在捕获您的首批截图",
+      "description": "ONESHIM 每隔几秒捕获一次活动窗口。打开首个应用后 2–3 分钟内应会出现帧。若 5 分钟后仍无显示，请在设置中检查「屏幕录制」权限。"
     },
     "timelineStandalone": {
       "title": "桌面捕获不可用",
-      "description": "ONESHIM 当前在没有实时桌面捕获连接的情况下运行。请在实时桌面模式下重新打开应用。"
+      "description": "应用在没有实时桌面访问的情况下运行。请在实时桌面模式下重新打开 ONESHIM，然后再回来开始捕获活动。"
+    },
+    "chat": {
+      "title": "开启一次对话",
+      "description": "向 ONESHIM 询问您的工作模式、专注历史，或如何改进您的例行安排。从侧边栏创建一个新会话即可开始。",
+      "action": "新会话"
+    },
+    "playbooksCoaching": {
+      "title": "暂无辅导模板",
+      "description": "辅导模板可自定义 ONESHIM 何时如何提示您。新模板添加后将显示在此。"
+    },
+    "playbooksPresets": {
+      "title": "暂无自动化预设",
+      "description": "自动化预设是针对常见任务的现成工作流。您可从目录中安装，或在设置中自行创建。"
     }
   },
   "commandPalette": {
@@ -1296,6 +1309,7 @@
     "step3Suggestions": "智能建议",
     "step4Title": "准备就绪",
     "step4Desc": "一切就绪，现在开始使用 ONESHIM 吧。",
+    "step4Tip": "提示：随时按 {{shortcut}} 打开命令面板，快速跳转到任意页面。",
     "next": "下一步",
     "back": "返回",
     "skip": "跳过",

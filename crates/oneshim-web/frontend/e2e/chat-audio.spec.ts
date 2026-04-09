@@ -13,7 +13,7 @@ import { mockStaticJson } from './helpers/mock-api'
 import { expect, type Page, test } from './helpers/test'
 
 const chatTitleName = i18nRegex('chat.title')
-const createHintName = i18nRegex('chat.create_session')
+const emptyChatTitleName = i18nRegex('emptyState.chat.title')
 
 async function mockChatApis(page: Page) {
   await mockStaticJson(page, '**/api/ai/provider-surfaces', {
@@ -33,7 +33,7 @@ test.describe('Chat Audio', () => {
 
   test('should show empty state (no mic button) when no session is active', async ({ page }) => {
     // Without an active session, the ChatInput form is not rendered
-    await expect(page.getByText(createHintName)).toBeVisible()
+    await expect(page.getByRole('heading', { name: emptyChatTitleName })).toBeVisible()
 
     // Mic button should not exist since no session is active (form is hidden)
     const micButtons = page.locator('button').filter({ has: page.locator('svg.lucide-mic') })
@@ -41,7 +41,7 @@ test.describe('Chat Audio', () => {
   })
 
   test('should not render send button when no session is active', async ({ page }) => {
-    await expect(page.getByText(createHintName)).toBeVisible()
+    await expect(page.getByRole('heading', { name: emptyChatTitleName })).toBeVisible()
 
     // The send button only appears inside the ChatInput form
     const sendButtons = page.locator('button[type="submit"]').filter({ has: page.locator('svg.lucide-send') })
@@ -49,7 +49,7 @@ test.describe('Chat Audio', () => {
   })
 
   test('should not render textarea when no session is active', async ({ page }) => {
-    await expect(page.getByText(createHintName)).toBeVisible()
+    await expect(page.getByRole('heading', { name: emptyChatTitleName })).toBeVisible()
 
     // The main input textarea only renders when a session is selected
     const mainTextarea = page.locator('form textarea')

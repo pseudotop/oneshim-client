@@ -11,7 +11,7 @@ import { expect, type Page, test } from './helpers/test'
 
 const chatTitleName = i18nRegex('chat.title')
 const noSessionsName = i18nRegex('chat.no_sessions')
-const createHintName = i18nRegex('chat.create_session')
+const emptyChatTitleName = i18nRegex('emptyState.chat.title')
 const advancedName = i18nRegex('chat.advanced')
 
 /** Mock AI sessions list returned by the Tauri IPC fallback (REST). */
@@ -86,7 +86,7 @@ test.describe('Chat', () => {
   })
 
   test('should show empty state when no sessions exist', async ({ page }) => {
-    await expect(page.getByText(createHintName)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: emptyChatTitleName })).toBeVisible({ timeout: 10000 })
     await expect(page.getByText(noSessionsName)).toBeVisible()
   })
 
@@ -142,7 +142,7 @@ test.describe('Chat', () => {
     // The search button in the header only appears when an active session is selected,
     // so on the empty state we just confirm the sidebar search is not yet rendered.
     // This validates the base rendering path.
-    await expect(page.getByText(createHintName)).toBeVisible()
+    await expect(page.getByRole('heading', { name: emptyChatTitleName })).toBeVisible()
   })
 
   test('should change transport to HTTP API', async ({ page }) => {

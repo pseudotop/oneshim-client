@@ -960,43 +960,56 @@
   },
   "emptyState": {
     "dashboard": {
-      "title": "Dashboard en preparación",
-      "description": "El dashboard en tiempo real aparecerá aquí cuando el agente comience a recopilar datos"
+      "title": "Recopilando datos",
+      "description": "ONESHIM está recopilando datos de actividad en segundo plano. Abra cualquier aplicación y siga trabajando: sus primeras métricas suelen aparecer en un minuto."
     },
     "timeline": {
-      "title": "No hay capturas de pantalla",
-      "description": "Habilite la captura de pantalla en Configuración",
-      "action": "Ir a Configuración"
+      "title": "La captura de pantalla está desactivada",
+      "description": "Active la captura de pantalla en Configuración para crear una línea de tiempo visual de su día. Más tarde puede limitar las capturas a aplicaciones específicas.",
+      "action": "Abrir Configuración"
     },
     "reports": {
-      "title": "Datos insuficientes",
-      "description": "Consulte los reportes después de usar la aplicación durante al menos un día"
+      "title": "Preparando su primer reporte",
+      "description": "Los reportes se generan cuando haya usado una aplicación monitoreada durante una hora continua. Regrese después de su primera sesión de trabajo para ver los desgloses de actividad."
     },
     "focus": {
-      "title": "Análisis de concentración en preparación",
-      "description": "El análisis comenzará automáticamente a medida que use las aplicaciones"
+      "title": "Aprendiendo sus patrones de concentración",
+      "description": "Su puntuación de concentración se calcula a partir de períodos de trabajo profundo de 15 minutos o más. Dedique un rato sin interrupciones a cualquier tarea y su primera puntuación aparecerá aquí."
     },
     "replay": {
       "title": "No hay registros de sesión",
-      "description": "No se registraron sesiones en el período seleccionado. Intente ajustar el rango de fechas"
+      "description": "No se registraron sesiones en el período seleccionado. Pruebe con un rango de fechas diferente o mantenga la aplicación en ejecución para crear nuevas sesiones."
     },
     "automation": {
       "title": "Automatización inactiva",
-      "description": "El sistema de automatización está inactivo. Habilítelo en Configuración",
-      "action": "Ir a Configuración"
+      "description": "La automatización está desactivada. Actívela en Configuración para permitir que ONESHIM ejecute comandos aprobados en su nombre.",
+      "action": "Abrir Configuración"
     },
     "auditLog": {
       "title": "Sin entradas de auditoría",
-      "description": "Las entradas de auditoría aparecerán aquí una vez que se ejecuten comandos de automatización",
-      "action": "Ir a Automatización"
+      "description": "Las entradas de auditoría aparecerán aquí una vez que ONESHIM ejecute comandos de automatización en su nombre.",
+      "action": "Abrir Automatización"
     },
     "timelineWaiting": {
-      "title": "Aún no se han capturado capturas de pantalla",
-      "description": "ONESHIM aún no ha almacenado ningún fotograma. Mantenga la aplicación en ejecución y confirme los permisos de captura de escritorio si esto persiste."
+      "title": "Capturando sus primeras capturas de pantalla",
+      "description": "ONESHIM captura la ventana activa cada pocos segundos. Los fotogramas deberían aparecer en 2–3 minutos después de abrir su primera aplicación. Si no aparece nada después de 5 minutos, verifique el permiso de Grabación de pantalla en Configuración."
     },
     "timelineStandalone": {
       "title": "Captura de escritorio no disponible",
-      "description": "ONESHIM se está ejecutando sin la conexión de captura de escritorio en vivo. Reabra la aplicación en modo de escritorio en vivo."
+      "description": "La aplicación se está ejecutando sin acceso de escritorio en vivo. Reabra ONESHIM en modo de escritorio en vivo y luego regrese para comenzar a capturar su actividad."
+    },
+    "chat": {
+      "title": "Iniciar una conversación",
+      "description": "Pregunte a ONESHIM sobre sus patrones de trabajo, historial de concentración o cómo mejorar su rutina. Cree una nueva sesión desde la barra lateral para comenzar.",
+      "action": "Nueva sesión"
+    },
+    "playbooksCoaching": {
+      "title": "Sin plantillas de coaching",
+      "description": "Las plantillas de coaching personalizan qué dice ONESHIM y cuándo. Las nuevas plantillas aparecerán aquí a medida que usted o su equipo las agreguen."
+    },
+    "playbooksPresets": {
+      "title": "Sin preajustes de automatización",
+      "description": "Los preajustes de automatización son flujos de trabajo listos para tareas comunes. Instálelos desde el catálogo o cree los suyos en Configuración."
     }
   },
   "commandPalette": {
@@ -1296,6 +1309,7 @@
     "step3Suggestions": "Sugerencias inteligentes",
     "step4Title": "Listo para empezar",
     "step4Desc": "Todo esta configurado. Comience a usar ONESHIM ahora.",
+    "step4Tip": "Consejo: presione {{shortcut}} en cualquier momento para abrir la Paleta de comandos y saltar a cualquier página.",
     "next": "Siguiente",
     "back": "Atras",
     "skip": "Omitir",

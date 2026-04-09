@@ -73,11 +73,8 @@ export default function AllFrames() {
   if (frames.length === 0) {
     const emptyState = standaloneMode
       ? {
-          title: t('emptyState.timelineStandalone.title', 'Desktop Capture Unavailable'),
-          description: t(
-            'emptyState.timelineStandalone.description',
-            'ONESHIM is currently running without the live desktop capture connection. Reopen the app in live desktop mode, then wait for frames to appear.',
-          ),
+          title: t('emptyState.timelineStandalone.title'),
+          description: t('emptyState.timelineStandalone.description'),
           action: undefined as { label: string; onClick: () => void } | undefined,
         }
       : captureEnabled === false
@@ -90,11 +87,8 @@ export default function AllFrames() {
             },
           }
         : {
-            title: t('emptyState.timelineWaiting.title', 'No Screenshots Captured Yet'),
-            description: t(
-              'emptyState.timelineWaiting.description',
-              'ONESHIM has not stored any timeline frames yet. Keep the app running for a moment and confirm desktop capture permissions if this persists.',
-            ),
+            title: t('emptyState.timelineWaiting.title'),
+            description: t('emptyState.timelineWaiting.description'),
             action: undefined as { label: string; onClick: () => void } | undefined,
           }
 
