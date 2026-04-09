@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidate ActivityBar to category icons with group tree ([#385](https://github.com/pseudotop/oneshim-client/pull/385))
+
+  The ActivityBar was restructured from 17 per-route icons to 5:
+  3 category icons (Monitor / Data / Manage) plus 2 direct bottom icons
+  (Settings / Privacy). Clicking a category navigates to its default
+  path; clicking the already-active category toggles the SidePanel
+  VS Code-style. The SidePanel now renders in two modes — group mode
+  shows the entire group tree (top-level routes + nested children), and
+  bottom mode keeps the legacy per-route tab flat for Settings / Privacy.
+  A dedicated collapse button and `aria-live="polite"` header were added
+  for a11y. New helpers (`navGroups`, `getRoutesForGroup`,
+  `joinChildPath`, `useCurrentGroup`) live in `routes/` as the single
+  source of truth. Storybook covers every group mode; 230 unit tests
+  and 236 e2e tests pass.
+
+- Remove the custom dark DMG background from the macOS installer
+  ([#385](https://github.com/pseudotop/oneshim-client/pull/385)) so the
+  drag-to-Applications arrow and folder icon stay legible.
+
+### Fixed
+
+- Always render the Desktop Permissions section in
+  Settings → Monitoring when the app runs in a desktop context
+  ([#385](https://github.com/pseudotop/oneshim-client/pull/385)).
+  The section was silently hidden in packaged DMG builds because
+  `canQueryDesktopCapabilities` was gated on a module-level `IS_TAURI`
+  const that occasionally evaluated before Tauri attached
+  `__TAURI_INTERNALS__`. The gate is now a runtime check, and the
+  section fails open so loading / error states render instead of an
+  empty card.
+
 ## [0.4.32-rc.3] - 2026-04-09
 
 ### Changed
