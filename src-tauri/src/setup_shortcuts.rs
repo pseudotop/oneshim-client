@@ -123,8 +123,10 @@ fn register_suggestions_shortcut(app: &App) {
                             handle.try_state::<crate::runtime_state::SuggestionRuntimeState>()
                         {
                             if let Some(overlay) = state.overlay() {
+                                // Only emit the toggle event — the frontend's useEffect
+                                // calls toggle_suggestions_panel IPC which handles both
+                                // window resize and interactivity.
                                 overlay.emit_toggle_suggestions();
-                                overlay.set_interactive(true);
                             }
                         }
                     });

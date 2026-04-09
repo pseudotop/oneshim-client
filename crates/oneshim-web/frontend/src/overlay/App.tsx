@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { AutomationConfirmModal } from './components/AutomationConfirmModal'
 import { CaptureFlash } from './components/CaptureFlash'
 import CoachingPopup from './components/CoachingPopup'
@@ -18,10 +18,22 @@ export default function OverlayApp() {
   const { state, dispatch } = useOverlayEvents()
   const isRich = state.mode === 'rich' || state.mode === 'adaptive'
 
-  async function handleClosePanel() {
+  // Sync suggestions panel open/close → Rust window resize.
+  // When open, the overlay shrinks to a compact right-edge strip so it
+  // doesn't block mouse events on the rest of the desktop.
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('toggle_suggestions_panel', { open: state.suggestionsPanelOpen })
+      } catch (e) {
+        console.warn('toggle_suggestions_panel failed:', e)
+      }
+    })()
+  }, [state.suggestionsPanelOpen])
+
+  function handleClosePanel() {
     dispatch({ type: 'toggle-suggestions-panel', payload: false })
-    const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('toggle_overlay_interactive', { interactive: false })
   }
 
   const handleRefreshSuggestions = useCallback(async () => {
