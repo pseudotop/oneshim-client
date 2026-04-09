@@ -142,6 +142,13 @@ body {
   overflow: hidden;
 }
 
+/* When SidePanel is hidden (route has no sub-nav OR user-collapsed), drop
+ * column 2 entirely so <main> auto-places into the 1fr cell instead of
+ * getting stuck in a 0-width ghost column 2. */
+.app-shell.sidebar-hidden {
+  grid-template-columns: var(--activitybar-width) 1fr;
+}
+
 .app-shell-titlebar {
   grid-column: 1 / -1;
 }

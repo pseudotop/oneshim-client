@@ -1140,43 +1140,56 @@
   },
   "emptyState": {
     "dashboard": {
-      "title": "대시보드 준비 중",
-      "description": "에이전트가 데이터를 수집하면 여기에 실시간 대시보드가 표시됩니다"
+      "title": "데이터 수집 중",
+      "description": "ONESHIM이 백그라운드에서 활동 데이터를 수집하고 있어요. 아무 앱이나 열고 작업을 시작해 보세요. 보통 1분 안에 첫 지표가 나타납니다."
     },
     "timeline": {
-      "title": "캡처된 스크린샷 없음",
-      "description": "Settings에서 스크린샷 캡처를 활성화하세요",
-      "action": "설정으로 이동"
+      "title": "스크린샷 캡처가 꺼져 있어요",
+      "description": "설정에서 스크린샷 캡처를 켜면 하루 활동의 시각적 타임라인을 만들 수 있어요. 나중에 특정 앱으로 제한할 수도 있습니다.",
+      "action": "설정 열기"
     },
     "timelineWaiting": {
-      "title": "아직 캡처된 스크린샷이 없습니다",
-      "description": "ONESHIM이 아직 타임라인 프레임을 저장하지 않았습니다. 잠시 앱을 실행한 상태로 두고, 계속 이 상태면 데스크톱 캡처 권한을 다시 확인하세요."
+      "title": "첫 스크린샷 캡처 중",
+      "description": "ONESHIM은 몇 초마다 활성 창을 캡처합니다. 첫 앱을 연 후 2–3분 안에 프레임이 나타나요. 5분 후에도 아무것도 보이지 않으면 설정에서 화면 기록 권한을 확인해 보세요."
     },
     "timelineStandalone": {
-      "title": "데스크톱 캡처를 사용할 수 없습니다",
-      "description": "ONESHIM이 현재 live desktop capture 연결 없이 실행 중입니다. 앱을 다시 열어 live desktop mode로 연결한 뒤 프레임이 쌓이는지 확인하세요."
+      "title": "데스크톱 캡처를 사용할 수 없어요",
+      "description": "데스크톱 연결 없이 실행 중입니다. ONESHIM을 라이브 데스크톱 모드로 다시 연 뒤 돌아오시면 활동 캡처가 시작됩니다."
     },
     "reports": {
-      "title": "분석 데이터 부족",
-      "description": "하루 이상 사용 후 리포트를 확인하세요"
+      "title": "첫 리포트를 준비하는 중",
+      "description": "모니터링되는 앱을 1시간 연속 사용하면 리포트가 생성됩니다. 첫 작업 세션 후에 다시 오시면 활동 분석을 확인할 수 있어요."
     },
     "focus": {
-      "title": "집중도 분석 준비 중",
-      "description": "앱을 사용하면 자동으로 분석이 시작됩니다"
+      "title": "집중 패턴을 학습하는 중",
+      "description": "집중도 점수는 15분 이상의 몰입 작업을 기준으로 계산됩니다. 잠시 중단 없이 작업하시면 여기에 첫 점수가 나타납니다."
     },
     "replay": {
       "title": "세션 기록 없음",
-      "description": "선택한 기간에 기록된 세션이 없습니다. 날짜 범위를 조정해보세요"
+      "description": "선택한 기간에 기록된 세션이 없습니다. 다른 날짜 범위를 시도하거나 앱을 계속 실행해 새 세션을 만드세요."
     },
     "automation": {
       "title": "자동화 비활성",
-      "description": "자동화 시스템이 비활성 상태입니다. Settings에서 활성화하세요",
-      "action": "설정으로 이동"
+      "description": "자동화가 꺼져 있습니다. 설정에서 활성화하면 ONESHIM이 승인된 명령을 대신 실행할 수 있어요.",
+      "action": "설정 열기"
     },
     "auditLog": {
       "title": "감사 항목 없음",
-      "description": "자동화 명령이 실행되면 감사 항목이 여기에 표시됩니다",
-      "action": "자동화로 이동"
+      "description": "ONESHIM이 자동화 명령을 대신 실행하면 여기에 감사 항목이 표시됩니다.",
+      "action": "자동화 열기"
+    },
+    "chat": {
+      "title": "대화를 시작하세요",
+      "description": "업무 패턴, 집중 기록, 루틴 개선 등 무엇이든 ONESHIM에게 물어보세요. 사이드바에서 새 세션을 만들어 시작하세요.",
+      "action": "새 세션"
+    },
+    "playbooksCoaching": {
+      "title": "코칭 템플릿 없음",
+      "description": "코칭 템플릿은 ONESHIM이 언제 어떻게 말할지를 설정합니다. 새 템플릿이 추가되면 여기에 표시됩니다."
+    },
+    "playbooksPresets": {
+      "title": "자동화 프리셋 없음",
+      "description": "자동화 프리셋은 일반 작업을 위한 미리 만들어진 워크플로우입니다. 카탈로그에서 설치하거나 설정에서 직접 만드세요."
     }
   },
   "commandPalette": {
@@ -1385,6 +1398,7 @@
     "step3Suggestions": "스마트 제안",
     "step4Title": "준비 완료",
     "step4Desc": "모든 설정이 완료되었습니다. ONESHIM을 시작하세요.",
+    "step4Tip": "팁: 언제든 {{shortcut}}을 눌러 커맨드 팔레트를 열고 원하는 페이지로 바로 이동할 수 있습니다.",
     "next": "다음",
     "back": "이전",
     "skip": "건너뛰기",

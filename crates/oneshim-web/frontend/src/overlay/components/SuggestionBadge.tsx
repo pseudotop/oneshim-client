@@ -17,9 +17,9 @@ export function SuggestionBadge({ count, onClick }: SuggestionBadgeProps) {
       onClick={onClick}
       className={cn(
         'fixed top-4 right-4 z-50',
-        'flex items-center gap-1.5 px-3 py-1.5 rounded-full',
+        'flex items-center gap-1.5 rounded-full px-3 py-1.5',
         `bg-brand text-content-inverse text-xs ${typography.weight.medium}`,
-        'shadow-lg cursor-pointer',
+        'cursor-pointer shadow-lg',
         `hover:bg-brand/90 ${motion.colors}`,
         'animate-pulse',
       )}

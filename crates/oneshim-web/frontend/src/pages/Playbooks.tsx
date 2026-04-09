@@ -296,9 +296,9 @@ export default function Playbooks() {
             </div>
           ) : filteredTemplates.length === 0 ? (
             <EmptyState
-              icon={<MessageSquare className="h-8 w-8 text-content-muted" aria-hidden="true" />}
-              title={t('playbooks.coaching')}
-              description={t('common.noData')}
+              icon={<MessageSquare className="h-8 w-8" aria-hidden="true" />}
+              title={t('emptyState.playbooksCoaching.title')}
+              description={t('emptyState.playbooksCoaching.description')}
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -336,9 +336,9 @@ export default function Playbooks() {
             </div>
           ) : filteredPresets.length === 0 ? (
             <EmptyState
-              icon={<BookOpen className="h-8 w-8 text-content-muted" aria-hidden="true" />}
-              title={t('playbooks.presets')}
-              description={t('common.noData')}
+              icon={<BookOpen className="h-8 w-8" aria-hidden="true" />}
+              title={t('emptyState.playbooksPresets.title')}
+              description={t('emptyState.playbooksPresets.description')}
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

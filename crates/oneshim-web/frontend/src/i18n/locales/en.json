@@ -1140,43 +1140,56 @@
   },
   "emptyState": {
     "dashboard": {
-      "title": "Dashboard Preparing",
-      "description": "The realtime dashboard will appear here once the agent starts collecting data"
+      "title": "Warming Up",
+      "description": "ONESHIM is collecting activity data in the background. Open any app and keep working — your first metrics usually appear within a minute."
     },
     "timeline": {
-      "title": "No Screenshots Captured",
-      "description": "Enable screenshot capture in Settings",
-      "action": "Go to Settings"
+      "title": "Screenshot Capture Is Off",
+      "description": "Turn on screenshot capture in Settings to build a visual timeline of your day. You can limit captures to specific apps later.",
+      "action": "Open Settings"
     },
     "timelineWaiting": {
-      "title": "No Screenshots Captured Yet",
-      "description": "ONESHIM has not stored any timeline frames yet. Keep the app running for a moment and confirm desktop capture permissions if this persists."
+      "title": "Capturing Your First Screenshots",
+      "description": "ONESHIM captures the active window every few seconds. Frames should appear within 2–3 minutes after opening your first app. If nothing shows up after 5 minutes, check Screen Recording permission in Settings."
     },
     "timelineStandalone": {
       "title": "Desktop Capture Unavailable",
-      "description": "ONESHIM is currently running without the live desktop capture connection. Reopen the app in live desktop mode, then wait for frames to appear."
+      "description": "The app is running without live desktop access. Reopen ONESHIM in live desktop mode, then come back to start capturing your activity."
     },
     "reports": {
-      "title": "Insufficient Data",
-      "description": "Check reports after using the app for at least one day"
+      "title": "Building Your First Report",
+      "description": "Reports are generated once you've used any monitored app for a continuous hour. Come back after your first work session to see activity breakdowns."
     },
     "focus": {
-      "title": "Focus Analysis Preparing",
-      "description": "Analysis will start automatically as you use apps"
+      "title": "Learning Your Focus Patterns",
+      "description": "Your focus score is calculated from deep-work periods of 15 minutes or longer. Spend some uninterrupted time on any task and your first score will appear here."
     },
     "replay": {
       "title": "No Session Records",
-      "description": "No sessions recorded in the selected period. Try adjusting the date range"
+      "description": "No sessions were recorded in the selected period. Try a different date range or keep the app running to build new sessions."
     },
     "automation": {
       "title": "Automation Inactive",
-      "description": "The automation system is inactive. Enable it in Settings",
-      "action": "Go to Settings"
+      "description": "Automation is turned off. Enable it in Settings to let ONESHIM run approved commands on your behalf.",
+      "action": "Open Settings"
     },
     "auditLog": {
       "title": "No Audit Entries",
-      "description": "Audit entries will appear here once automation commands are executed",
-      "action": "Go to Automation"
+      "description": "Audit entries will appear once ONESHIM executes automation commands on your behalf.",
+      "action": "Open Automation"
+    },
+    "chat": {
+      "title": "Start a Conversation",
+      "description": "Ask ONESHIM about your work patterns, focus history, or how to improve your routine. Create a new session from the sidebar to begin.",
+      "action": "New Session"
+    },
+    "playbooksCoaching": {
+      "title": "No Coaching Templates",
+      "description": "Coaching templates customize what ONESHIM says and when. New templates will appear here as you or your team add them."
+    },
+    "playbooksPresets": {
+      "title": "No Automation Presets",
+      "description": "Automation presets are ready-made workflows for common tasks. Install presets from the catalog or create your own in Settings."
     }
   },
   "commandPalette": {
@@ -1385,6 +1398,7 @@
     "step3Suggestions": "Smart suggestions",
     "step4Title": "Ready to Go",
     "step4Desc": "You're all set. Start using ONESHIM now.",
+    "step4Tip": "Tip: Press {{shortcut}} anytime to open the Command Palette and jump to any page.",
     "next": "Next",
     "back": "Back",
     "skip": "Skip",

@@ -6,9 +6,10 @@ const STORAGE_KEY_COLLAPSED = 'oneshim-sidebar-collapsed'
 
 function loadPersistedWidth(): number {
   try {
-    const width = localStorage.getItem(STORAGE_KEY_WIDTH)
-    return width
-      ? Math.min(Math.max(Number(width), layout.sidePanel.minWidth), layout.sidePanel.maxWidth)
+    const raw = localStorage.getItem(STORAGE_KEY_WIDTH)
+    const parsed = Number(raw)
+    return raw && Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, layout.sidePanel.minWidth), layout.sidePanel.maxWidth)
       : layout.sidePanel.defaultWidth
   } catch {
     return layout.sidePanel.defaultWidth
@@ -42,11 +43,10 @@ export function useShellLayout() {
     }
   }, [sidebarWidth, sidebarCollapsed, isResizing])
 
-  useEffect(() => {
-    const width = sidebarCollapsed ? 0 : sidebarWidth
-    if (!Number.isFinite(width)) return
-    document.documentElement.style.setProperty('--sidebar-width', `${width}px`)
-  }, [sidebarWidth, sidebarCollapsed])
+  // NOTE: --sidebar-width is set by AppShell, not here.
+  // AppShell combines sidebarCollapsed with the active route's sub-nav
+  // presence so routes like /day with no children collapse the CSS grid
+  // column to 0 instead of leaving a phantom 260px cell behind.
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => !prev)

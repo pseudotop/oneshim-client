@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DevToolbar } from './components/DevToolbar'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -9,7 +9,7 @@ import { useCommandPalette } from './hooks/useCommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useShellLayout } from './hooks/useShellLayout'
 import { useTauriEventBridge } from './hooks/useTauriEventBridge'
-import { RouteRenderer } from './routes'
+import { RouteRenderer, useCurrentRoute } from './routes'
 import { layout } from './styles/tokens'
 import { cn } from './utils/cn'
 
@@ -18,10 +18,24 @@ const Onboarding = lazy(() => import('./pages/Onboarding'))
 function AppShell() {
   const { t } = useTranslation()
   const { sidebarWidth, sidebarCollapsed, toggleSidebar, onResizeStart, onResizeByKeyboard } = useShellLayout()
+  const { node: currentRoute } = useCurrentRoute()
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette, toggle: togglePalette } = useCommandPalette()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const openHelp = useCallback(() => setIsHelpOpen(true), [])
   const closeHelp = useCallback(() => setIsHelpOpen(false), [])
+
+  // Drive --sidebar-width from both the user toggle AND the route sub-nav
+  // presence. Routes like /day, /chat, /search with no children would
+  // otherwise leave a phantom 260px grid column and push <main> into the
+  // wrong cell, collapsing page content widths to 0. useLayoutEffect so the
+  // first paint already has the correct column width (no flicker).
+  const routeHasChildren = (currentRoute.children?.length ?? 0) > 0
+  const sidebarHidden = sidebarCollapsed || !routeHasChildren
+  useLayoutEffect(() => {
+    const width = sidebarHidden ? 0 : sidebarWidth
+    if (!Number.isFinite(width)) return
+    document.documentElement.style.setProperty('--sidebar-width', `${width}px`)
+  }, [sidebarHidden, sidebarWidth])
 
   const shortcutHandlers = useMemo(
     () => ({
@@ -41,7 +55,7 @@ function AppShell() {
 
   return (
     <ShellLayoutProvider sidebarCollapsed={sidebarCollapsed}>
-      <div className="app-shell bg-surface-sunken text-content">
+      <div className={cn('app-shell bg-surface-sunken text-content', sidebarHidden && 'sidebar-hidden')}>
         {/* Skip navigation link for keyboard users (WCAG 2.4.1) */}
         <a
           href="#main-content"

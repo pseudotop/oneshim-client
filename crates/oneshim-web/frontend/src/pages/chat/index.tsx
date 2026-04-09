@@ -1,7 +1,7 @@
 import { ChevronDown, Download, FileText, Loader2, MessageSquarePlus, RefreshCw, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Input } from '../../components/ui'
+import { Alert, Button, EmptyState, Input } from '../../components/ui'
 import { defaultSurfaceModel } from '../../features/providerSurfaces'
 import { addToast } from '../../hooks/useToast'
 import { colors, iconSize, interaction, motion, radius, typography } from '../../styles/tokens'
@@ -138,8 +138,9 @@ export default function Chat() {
   })
 
   const handleCreate = useCallback(() => {
+    if (creating) return
     handleCreateInner(setCreating, setCreateError)
-  }, [handleCreateInner])
+  }, [creating, handleCreateInner])
 
   const handleRename = useCallback(
     async (id: string, title: string) => {
@@ -296,26 +297,26 @@ export default function Chat() {
       {/* Main area */}
       <div className="flex min-w-0 flex-1 flex-col bg-surface-sunken">
         {!activeId ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-elevated">
-              <MessageSquarePlus className="h-6 w-6 text-content-muted" />
-            </div>
-            <p className={cn('text-sm', typography.weight.medium, colors.text.primary)}>{t('chat.create_session')}</p>
-            <p className={cn('text-xs', colors.text.secondary)}>{t('chat.create_hint')}</p>
+          <div className="flex flex-1 flex-col items-center justify-center">
+            <EmptyState
+              icon={<MessageSquarePlus className="h-8 w-8" />}
+              title={t('emptyState.chat.title')}
+              description={t('emptyState.chat.description')}
+              action={{
+                label: creating ? t('common.loading') : t('emptyState.chat.action'),
+                onClick: handleCreate,
+              }}
+            />
             {createError && (
-              <div className="w-full max-w-md px-6">
-                <Alert
-                  variant="error"
-                  title={t('chat.create_failed_title', 'Could not create a session')}
-                  className="mt-2"
-                >
+              <div className="mt-2 w-full max-w-md px-6">
+                <Alert variant="error" title={t('chat.create_failed_title', 'Could not create a session')}>
                   <p>{createError}</p>
                 </Alert>
               </div>
             )}
             {sessionLoadError && (
-              <div className="w-full max-w-md px-6">
-                <Alert variant="error" title={t('chat.load_failed_title', 'Could not load sessions')} className="mt-2">
+              <div className="mt-2 w-full max-w-md px-6">
+                <Alert variant="error" title={t('chat.load_failed_title', 'Could not load sessions')}>
                   <p>{sessionLoadError}</p>
                 </Alert>
               </div>

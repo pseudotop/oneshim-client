@@ -45,12 +45,12 @@ export function ToastContainer() {
   }, [toasts])
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+    <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col gap-2">
       {toasts.map((toast) => (
         <div
           key={toast.id}
           className={cn(
-            `px-4 py-2 rounded-lg text-xs ${typography.weight.medium} shadow-lg backdrop-blur-sm`,
+            `rounded-lg px-4 py-2 text-xs ${typography.weight.medium} shadow-lg backdrop-blur-sm`,
             'animate-[slideIn_200ms_ease-out]',
             typeStyles[toast.type],
           )}

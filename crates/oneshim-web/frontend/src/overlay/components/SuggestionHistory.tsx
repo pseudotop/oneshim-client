@@ -40,11 +40,11 @@ export function SuggestionHistory() {
   }, [])
 
   if (loading) {
-    return <p className="text-content-secondary text-xs p-4">{t('common.loading', 'Loading...')}</p>
+    return <p className="p-4 text-content-secondary text-xs">{t('common.loading', 'Loading...')}</p>
   }
 
   if (entries.length === 0) {
-    return <p className="text-content-secondary text-xs p-4">{t('suggestions.noHistory', 'No history yet')}</p>
+    return <p className="p-4 text-content-secondary text-xs">{t('suggestions.noHistory', 'No history yet')}</p>
   }
 
   const stats = {
@@ -56,7 +56,7 @@ export function SuggestionHistory() {
 
   return (
     <div className="flex flex-col gap-2 p-2">
-      <div className="flex gap-3 text-xs text-content-secondary px-2 pb-2 border-b border-border-default">
+      <div className="flex gap-3 border-border-default border-b px-2 pb-2 text-content-secondary text-xs">
         <span>
           {stats.accepted} {t('suggestions.statsAccepted', 'accepted')}
         </span>
@@ -75,18 +75,18 @@ export function SuggestionHistory() {
           const badgeClass = entry.feedback ? feedbackBadgeClassName[entry.feedback] : null
           const badgeKey = entry.feedback ? feedbackBadgeKey[entry.feedback] : null
           return (
-            <li key={entry.id} className="px-3 py-2 rounded-lg bg-surface-default/60 text-xs">
+            <li key={entry.id} className="rounded-lg bg-surface-default/60 px-3 py-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span className={cn(typography.weight.medium, 'text-content-primary truncate')}>{entry.title}</span>
+                <span className={cn(typography.weight.medium, 'truncate text-content-primary')}>{entry.title}</span>
                 {badgeClass && badgeKey && (
                   <span
-                    className={cn('px-1.5 py-0.5 rounded text-[10px] shrink-0', typography.weight.medium, badgeClass)}
+                    className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px]', typography.weight.medium, badgeClass)}
                   >
                     {t(badgeKey)}
                   </span>
                 )}
               </div>
-              <p className="text-content-secondary line-clamp-1 mt-0.5">{entry.body}</p>
+              <p className="mt-0.5 line-clamp-1 text-content-secondary">{entry.body}</p>
             </li>
           )
         })}

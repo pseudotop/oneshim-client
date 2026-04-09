@@ -492,13 +492,25 @@ function StepFeatures() {
 
 function StepReady() {
   const { t } = useTranslation()
+  const shortcut = IS_MAC ? '⌘K' : 'Ctrl+K'
   return (
     <div className="flex flex-col items-center text-center">
       <div className={cn('mb-6 flex items-center justify-center rounded-full bg-brand-signal/15 p-4', motion.opacity)}>
         <Rocket className={cn(iconSize.hero, 'text-brand-text')} />
       </div>
       <h2 className={cn(typography.h1, colors.text.primary, 'mb-3')}>{t('onboarding.step4Title')}</h2>
-      <p className={cn(typography.body, colors.text.secondary, 'max-w-sm')}>{t('onboarding.step4Desc')}</p>
+      <p className={cn(typography.body, colors.text.secondary, 'mb-4 max-w-sm')}>{t('onboarding.step4Desc')}</p>
+      <div
+        role="note"
+        className={cn(
+          'flex items-start gap-2 rounded-lg bg-surface-muted px-4 py-3 text-left',
+          'max-w-sm',
+          motion.colors,
+        )}
+      >
+        <Lightbulb className={cn(iconSize.sm, 'mt-0.5 flex-shrink-0 text-brand-text')} aria-hidden="true" />
+        <p className={cn(typography.small, colors.text.secondary)}>{t('onboarding.step4Tip', { shortcut })}</p>
+      </div>
     </div>
   )
 }
