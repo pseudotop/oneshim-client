@@ -4,7 +4,9 @@ import { expect, type Page, test } from './helpers/test'
 
 const dashboardHeadingName = i18nRegex('dashboard.title')
 const timelineHeadingName = i18nRegex('timeline.title')
-const timelineName = i18nRegex('nav.timeline')
+// Category labels replaced individual nav icons — Timeline is now reached
+// by clicking the Monitor group and picking the Timeline subtree leaf.
+const monitorName = i18nRegex('nav.groupMonitor')
 
 async function mockResponsiveApis(page: Page) {
   await mockStaticJson(page, '**/api/stats/summary**', {
@@ -115,8 +117,13 @@ test.describe('Responsive', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: dashboardHeadingName })).toBeVisible()
 
-    // ActivityBar buttons use title attribute for labels
-    await page.getByTitle(timelineName).click()
+    // Click the Monitor group icon, then pick Timeline from the tree.  On a
+    // narrow viewport the SidePanel still uses the persisted width so the
+    // tree should render and be reachable.
+    await page.getByTitle(monitorName).click()
+    const tree = page.locator('[role="tree"]')
+    await expect(tree).toBeVisible()
+    await tree.getByRole('treeitem', { name: /^timeline$/i }).click()
 
     await expect(page).toHaveURL(/\/timeline/)
     await expect(page.getByRole('heading', { name: timelineHeadingName })).toBeVisible()

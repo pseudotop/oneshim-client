@@ -39,7 +39,11 @@
     "chat": "チャット",
     "audit": "監査ログ",
     "policies": "実行ポリシー",
-    "playbooks": "プレイブック"
+    "playbooks": "プレイブック",
+    "groupMonitor": "モニター",
+    "groupData": "データ",
+    "groupManage": "管理",
+    "groupSystem": "システム"
   },
   "dashboard": {
     "title": "アクティビティサマリー",
@@ -1026,6 +1030,7 @@
     "connected": "接続済み",
     "offline": "オフライン",
     "resizeSidebar": "サイドバーのサイズを変更",
+    "collapseSidebar": "サイドパネルを折りたたむ",
     "skipToContent": "メインコンテンツへスキップ",
     "minimize": "最小化",
     "maximize": "最大化",

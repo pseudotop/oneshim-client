@@ -92,6 +92,7 @@ export function ShellStoryFrame({
           width={sidebarWidth}
           onResizeStart={() => {}}
           onResizeByKeyboard={() => {}}
+          onCollapse={() => {}}
         />
         <main id="main-content" className={cn('overflow-y-auto', layout.mainContent.bg, contentClassName)}>
           {children}

@@ -39,7 +39,11 @@
     "chat": "채팅",
     "audit": "감사 로그",
     "policies": "실행 정책",
-    "playbooks": "플레이북"
+    "playbooks": "플레이북",
+    "groupMonitor": "모니터",
+    "groupData": "데이터",
+    "groupManage": "관리",
+    "groupSystem": "시스템"
   },
   "dashboard": {
     "title": "활동 요약",
@@ -1206,6 +1210,7 @@
     "connected": "연결됨",
     "offline": "오프라인",
     "resizeSidebar": "사이드바 크기 조절",
+    "collapseSidebar": "사이드 패널 접기",
     "skipToContent": "본문으로 건너뛰기",
     "minimize": "최소화",
     "maximize": "최대화",

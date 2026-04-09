@@ -4,7 +4,9 @@ import {
   Calendar,
   ClipboardList,
   Clock,
+  Database,
   FileText,
+  Gauge,
   Image,
   Info,
   LayoutDashboard,
@@ -14,6 +16,7 @@ import {
   RefreshCw,
   Settings,
   Shield,
+  ShieldCheck,
   Tag,
   Zap,
 } from 'lucide-react'
@@ -339,3 +342,55 @@ export const routeTree: RouteNode[] = [
     bottom: true,
   },
 ]
+
+// ---------------------------------------------------------------------------
+// Top-level category navigation
+// ---------------------------------------------------------------------------
+//
+// The ActivityBar renders a small fixed set of category icons rather than one
+// icon per top-level route.  Clicking a category icon navigates to its
+// `defaultPath` and the SidePanel expands to show the entire group's routes
+// (top-level + their `children`) as a nested tree.  This keeps the 48px rail
+// uncluttered while still making every route reachable in two clicks.
+
+export type NavGroupId = 'monitor' | 'data' | 'manage'
+
+export interface NavGroup {
+  id: NavGroupId
+  labelKey: string
+  icon: ComponentType<{ className?: string }>
+  /**
+   * Where the group icon navigates to when it's not already active.
+   * Should correspond to a route whose `group` field matches `id`.
+   */
+  defaultPath: string
+}
+
+export const navGroups: NavGroup[] = [
+  { id: 'monitor', labelKey: 'nav.groupMonitor', icon: Gauge, defaultPath: '/' },
+  { id: 'data', labelKey: 'nav.groupData', icon: Database, defaultPath: '/reports' },
+  { id: 'manage', labelKey: 'nav.groupManage', icon: ShieldCheck, defaultPath: '/audit' },
+]
+
+/**
+ * Return every top-level route that belongs to a nav group, preserving the
+ * declaration order in `routeTree`.  Used by `SidePanel` (group mode) to
+ * build the tree shown in the resizable panel.
+ *
+ * @param group The nav group ID — `'monitor' | 'data' | 'manage'`.
+ * @returns The routes whose `group` field matches. Empty if the group has
+ *          no routes (e.g. `manage` during an IA experiment), in which case
+ *          the SidePanel falls back to rendering `null`.
+ */
+export function getRoutesForGroup(group: NavGroupId): RouteNode[] {
+  return routeTree.filter((r) => r.group === group)
+}
+
+/**
+ * Build the full child-qualified path for a nested route leaf.
+ * e.g. (`/`, `overview`) → `/overview`; (`/timeline`, `all`) → `/timeline/all`.
+ */
+export function joinChildPath(parent: RouteNode, child: RouteLeaf): string {
+  if (parent.path === '/') return `/${child.path}`
+  return `${parent.path}/${child.path}`
+}

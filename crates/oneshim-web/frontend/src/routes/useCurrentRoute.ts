@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
-import { type RouteLeaf, type RouteNode, routeTree } from './route-tree'
+import { type NavGroupId, type RouteLeaf, type RouteNode, routeTree } from './route-tree'
 
 /**
  * Determine whether a given pathname maps to the specified route node.
@@ -68,5 +68,36 @@ export function useCurrentRoute(): CurrentRoute {
     }
 
     return { node: resolvedNode, child: activeChild }
+  }, [location.pathname])
+}
+
+/**
+ * Resolve the current nav group from the pathname.  Returns `null` when the
+ * active route is a bottom item (Settings, Privacy) that has no `group`
+ * membership — callers can then fall back to the legacy per-route SidePanel
+ * tree for bottom items.
+ *
+ * Mirrors `useCurrentRoute`'s fallback for unknown pathnames: any pathname
+ * that doesn't resolve to a concrete route falls back to the root route
+ * (and therefore the root route's group), so the ActivityBar highlight stays
+ * in sync with the fallback page `useCurrentRoute` renders.
+ */
+export function useCurrentGroup(): NavGroupId | null {
+  const location = useLocation()
+  return useMemo(() => {
+    const pathname = location.pathname
+    for (const node of routeTree) {
+      if (matchesRoute(node, pathname)) {
+        // Matched route's group — may be null (bottom routes like /settings,
+        // /privacy are intentionally outside the group hierarchy so their
+        // ActivityBar icons render separately).
+        return (node.group as NavGroupId | undefined) ?? null
+      }
+    }
+    // Unknown pathname — fall back to the root route's group so an
+    // in-flight React Router redirect still highlights the correct
+    // ActivityBar icon while `useCurrentRoute` settles on the root fallback.
+    const root = routeTree.find((r) => r.path === '/')
+    return (root?.group as NavGroupId | undefined) ?? null
   }, [location.pathname])
 }

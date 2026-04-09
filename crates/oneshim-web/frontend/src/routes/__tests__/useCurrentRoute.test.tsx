@@ -2,7 +2,7 @@ import { renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import { useCurrentRoute } from '../useCurrentRoute'
+import { useCurrentGroup, useCurrentRoute } from '../useCurrentRoute'
 
 function wrapperForPath(path: string) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -73,4 +73,41 @@ describe('useCurrentRoute', () => {
     expect(result.current.node.path).toBe('/')
     expect(result.current.child).toBeNull()
   })
+})
+
+describe('useCurrentGroup', () => {
+  const cases: Array<[path: string, expected: string | null]> = [
+    // Monitor group — root + all monitor sub-routes
+    ['/', 'monitor'],
+    ['/overview', 'monitor'],
+    ['/day', 'monitor'],
+    ['/timeline/all', 'monitor'],
+    ['/replay/timeline', 'monitor'],
+    ['/automation/policies', 'monitor'],
+    // Data group
+    ['/recalibration/segments', 'data'],
+    ['/coaching/goals', 'data'],
+    ['/playbooks', 'data'],
+    ['/chat', 'data'],
+    ['/focus/score', 'data'],
+    ['/reports/activity', 'data'],
+    ['/search', 'data'],
+    // Manage group
+    ['/audit/summary', 'manage'],
+    ['/policies', 'manage'],
+    ['/updates/status', 'manage'],
+    // Bottom routes — not in any group
+    ['/settings/general', null],
+    ['/settings/monitoring', null],
+    ['/privacy/data', null],
+    // Fallback — unknown path falls back to "/" which is monitor
+    ['/nonexistent', 'monitor'],
+  ]
+
+  for (const [path, expected] of cases) {
+    it(`returns ${expected ?? 'null'} for ${path}`, () => {
+      const { result } = renderHook(() => useCurrentGroup(), { wrapper: wrapperForPath(path) })
+      expect(result.current).toBe(expected)
+    })
+  }
 })
