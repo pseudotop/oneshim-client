@@ -87,9 +87,9 @@ export function SuggestionStats() {
     }
   }, [])
 
-  if (!stats) return <p className="text-content-secondary text-xs p-4">{t('common.loading', 'Loading...')}</p>
+  if (!stats) return <p className="p-4 text-content-secondary text-xs">{t('common.loading', 'Loading...')}</p>
   if (stats.total === 0)
-    return <p className="text-content-secondary text-xs p-4">{t('suggestionStats.noData', 'No data yet')}</p>
+    return <p className="p-4 text-content-secondary text-xs">{t('suggestionStats.noData', 'No data yet')}</p>
 
   const entries = [
     { key: 'accepted', label: t('suggestionStats.accepted', 'Accepted'), count: stats.accepted },
@@ -106,20 +106,20 @@ export function SuggestionStats() {
           {t('suggestionStats.acceptanceRate', 'Acceptance Rate')}
         </div>
       </div>
-      <div className="text-[10px] text-content-secondary text-center">
+      <div className="text-center text-[10px] text-content-secondary">
         {t('suggestionStats.totalSuggestions', '{{count}} total suggestions', { count: stats.total })}
       </div>
       <div className="flex flex-col gap-1.5">
         {entries.map(({ key, label, count }) => (
           <div key={key} className="flex items-center gap-2">
-            <span className="text-[10px] text-content-secondary w-14">{label}</span>
-            <div className="flex-1 h-3 rounded-full bg-content-inverse/5 overflow-hidden">
+            <span className="w-14 text-[10px] text-content-secondary">{label}</span>
+            <div className="h-3 flex-1 overflow-hidden rounded-full bg-content-inverse/5">
               <div
                 className={cn('h-full rounded-full', motion.all, barColors[key])}
                 style={{ width: `${stats.total > 0 ? (count / stats.total) * 100 : 0}%` }}
               />
             </div>
-            <span className="text-[10px] text-content-primary w-6 text-right">{count}</span>
+            <span className="w-6 text-right text-[10px] text-content-primary">{count}</span>
           </div>
         ))}
       </div>
@@ -127,7 +127,7 @@ export function SuggestionStats() {
       {/* Type Distribution */}
       {stats.by_type.length > 0 && (
         <>
-          <div className={cn('text-[10px] text-content-secondary pt-1', typography.weight.medium)}>
+          <div className={cn('pt-1 text-[10px] text-content-secondary', typography.weight.medium)}>
             {t('suggestionStats.typeDistribution', 'Type Distribution')}
           </div>
           <div className="flex flex-col gap-1">
@@ -135,16 +135,16 @@ export function SuggestionStats() {
               const maxCount = stats.by_type[0]?.count ?? 1
               return (
                 <div key={suggestion_type} className="flex items-center gap-2">
-                  <span className="text-[10px] text-content-secondary w-24 truncate" title={suggestion_type}>
+                  <span className="w-24 truncate text-[10px] text-content-secondary" title={suggestion_type}>
                     {suggestion_type}
                   </span>
-                  <div className="flex-1 h-2.5 rounded-full bg-content-inverse/5 overflow-hidden">
+                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-content-inverse/5">
                     <div
                       className={cn('h-full rounded-full bg-brand/60', motion.all)}
                       style={{ width: `${maxCount > 0 ? (count / maxCount) * 100 : 0}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-content-primary w-6 text-right">{count}</span>
+                  <span className="w-6 text-right text-[10px] text-content-primary">{count}</span>
                 </div>
               )
             })}
@@ -155,13 +155,13 @@ export function SuggestionStats() {
       {/* Source Quality */}
       {stats.by_source.length > 0 && (
         <>
-          <div className={cn('text-[10px] text-content-secondary pt-1', typography.weight.medium)}>
+          <div className={cn('pt-1 text-[10px] text-content-secondary', typography.weight.medium)}>
             {t('suggestionStats.sourceQuality', 'Source Quality')}
           </div>
           <div className="flex flex-col gap-1">
             {stats.by_source.map(({ source, count, acceptance_rate }) => (
               <div key={source} className="flex items-center justify-between">
-                <span className="text-[10px] text-content-secondary w-20 truncate" title={source}>
+                <span className="w-20 truncate text-[10px] text-content-secondary" title={source}>
                   {source}
                 </span>
                 <span className="text-[10px] text-content-primary">
@@ -169,7 +169,7 @@ export function SuggestionStats() {
                 </span>
                 <span
                   className={cn(
-                    'text-[10px] w-12 text-right',
+                    'w-12 text-right text-[10px]',
                     typography.weight.medium,
                     acceptance_rate >= 50 ? 'text-semantic-success' : 'text-content-secondary',
                   )}
@@ -188,14 +188,14 @@ export function SuggestionStats() {
           const maxTotal = Math.max(...dailyTrends.map((d) => d.total), 1)
           return (
             <>
-              <div className={cn('text-[10px] text-content-secondary pt-1', typography.weight.medium)}>
+              <div className={cn('pt-1 text-[10px] text-content-secondary', typography.weight.medium)}>
                 {t('suggestionStats.dailyTrends', 'Daily Trends (7d)')}
               </div>
               <div className="flex flex-col gap-1">
                 {dailyTrends.map(({ day, total, acted }) => (
                   <div key={day} className="flex items-center gap-2">
-                    <span className="text-[10px] text-content-secondary w-14 tabular-nums">{day.slice(5)}</span>
-                    <div className="flex-1 h-3 rounded-full bg-content-inverse/5 overflow-hidden relative">
+                    <span className="w-14 text-[10px] text-content-secondary tabular-nums">{day.slice(5)}</span>
+                    <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-content-inverse/5">
                       <div
                         className={cn('absolute inset-y-0 left-0 rounded-full bg-brand/30', motion.all)}
                         style={{ width: `${(total / maxTotal) * 100}%` }}
@@ -205,19 +205,19 @@ export function SuggestionStats() {
                         style={{ width: `${(acted / maxTotal) * 100}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-content-primary w-10 text-right tabular-nums">
+                    <span className="w-10 text-right text-[10px] text-content-primary tabular-nums">
                       {acted}/{total}
                     </span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-3 justify-center text-[9px] text-content-secondary">
+              <div className="flex items-center justify-center gap-3 text-[9px] text-content-secondary">
                 <span className="flex items-center gap-1">
-                  <span className="inline-block w-2 h-2 rounded-full bg-brand" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-brand" />
                   {t('suggestionStats.acted', 'Acted')}
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="inline-block w-2 h-2 rounded-full bg-brand/30" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-brand/30" />
                   {t('suggestionStats.total', 'Total')}
                 </span>
               </div>

@@ -141,7 +141,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-content-inverse/5">
+      <div className="flex border-content-inverse/5 border-b">
         <button
           type="button"
           className={cn(
@@ -149,7 +149,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
             typography.weight.medium,
             motion.colors,
             activeTab === 'active'
-              ? 'text-brand border-b-2 border-brand'
+              ? 'border-brand border-b-2 text-brand'
               : 'text-content-secondary hover:text-content-primary',
           )}
           onClick={() => setActiveTab('active')}
@@ -163,7 +163,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
             typography.weight.medium,
             motion.colors,
             activeTab === 'history'
-              ? 'text-brand border-b-2 border-brand'
+              ? 'border-brand border-b-2 text-brand'
               : 'text-content-secondary hover:text-content-primary',
           )}
           onClick={() => setActiveTab('history')}
@@ -177,7 +177,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
             typography.weight.medium,
             motion.colors,
             activeTab === 'stats'
-              ? 'text-brand border-b-2 border-brand'
+              ? 'border-brand border-b-2 text-brand'
               : 'text-content-secondary hover:text-content-primary',
           )}
           onClick={() => setActiveTab('stats')}
@@ -200,7 +200,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                   key={src}
                   type="button"
                   className={cn(
-                    'px-2 py-0.5 rounded-full text-[10px]',
+                    'rounded-full px-2 py-0.5 text-[10px]',
                     typography.weight.medium,
                     motion.colors,
                     sourceFilter.has(src) ? 'bg-brand/20 text-brand' : 'bg-content-inverse/5 text-content-tertiary',

@@ -35,9 +35,9 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
   return (
     <div
       className={cn(
-        'absolute bottom-full right-0 mb-1 z-10',
-        'bg-surface-sunken/95 backdrop-blur-md rounded-lg shadow-lg',
-        'border border-border-default p-1 min-w-[140px]',
+        'absolute right-0 bottom-full z-10 mb-1',
+        'rounded-lg bg-surface-sunken/95 shadow-lg backdrop-blur-md',
+        'min-w-[140px] border border-border-default p-1',
       )}
     >
       {options.map((opt) => (
@@ -45,7 +45,7 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
           key={opt.i18nKey}
           type="button"
           className={cn(
-            'w-full text-left px-3 py-1.5 text-xs text-content-primary rounded hover:bg-content-inverse/10',
+            'w-full rounded px-3 py-1.5 text-left text-content-primary text-xs hover:bg-content-inverse/10',
             motion.colors,
           )}
           onClick={() => onSelect(opt.minutes === 0 ? minutesToTomorrow9AM() : opt.minutes)}
@@ -56,7 +56,7 @@ export function SnoozePopover({ onSelect, onCancel }: SnoozePopoverProps) {
       <button
         type="button"
         className={cn(
-          'w-full text-left px-3 py-1.5 text-xs text-content-secondary rounded hover:bg-content-inverse/10 mt-0.5 border-t border-border-default',
+          'mt-0.5 w-full rounded border-border-default border-t px-3 py-1.5 text-left text-content-secondary text-xs hover:bg-content-inverse/10',
           motion.colors,
         )}
         onClick={onCancel}
