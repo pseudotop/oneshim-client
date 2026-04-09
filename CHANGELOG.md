@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32-rc.3] - 2026-04-09
+
+### Changed
+
+- V0.4.32-rc.3 UX polish — IA balance, flex fix, empty states, onboarding ([#382](https://github.com/pseudotop/oneshim-client/pull/382))
+  * fix(shell): collapse grid column when SidePanel is route-hidden
+
+  Routes with no sub-nav (/day, /chat, /search, /playbooks) had SidePanel
+  return null but --sidebar-width stayed at 260px, leaving a phantom grid
+  column 2. <main> was then auto-placed into that 260px ghost cell and the
+  1fr column 3 was left empty. On /day this squeezed InsightCard to ~36px
+  and the narrative wrapped one character per line, which the e2e suite
+  papered over with toBeAttached() instead of toBeVisible().
+
+  Fix is shell-level, not DashboardDay-local:
+
+  - AppShell now reads useCurrentRoute() and computes
+    sidebarHidden = sidebarCollapsed || !routeHasChildren.
+  - A useLayoutEffect drives --sidebar-width from that combined state so
+    there is no flicker on first paint.
+  - When sidebarHidden, the .sidebar-hidden class on .app-shell drops
+    grid-template-columns to "activitybar-width 1fr" (only two columns),
+    so <main> auto-places into the 1fr cell instead of a zero-width ghost.
+  - useShellLayout no longer sets --sidebar-width — single source of truth
+    moves to AppShell since it now needs route awareness too.
+
+  dashboard-day.spec.ts reverts to toBeVisible() and the probe workaround
+  comment is deleted.
+
+  All 227 e2e tests pass (225 pass / 1 skip / 1 pre-existing flaky).
+
+  * refactor(nav): move /audit and /policies into the manage group
+
+  The ActivityBar manage group had only /updates after the monitor/data/
+  manage split in PR #376. The group looked off-balance and the semantic
+  grouping was inconsistent — /audit (compliance trail) and /policies
+  (execution policy CRUD) lived in "monitor" alongside runtime views like
+  Dashboard and Automation, even though both are about governance rather
+  than observability.
+
+  New balance:
+  - monitor (5): /, /day, /timeline, /replay, /automation
+    — observability / "what's happening now"
+  - data (7): /recalibration, /coaching, /playbooks, /chat, /focus,
+    /reports, /search — unchanged
+  - manage (3): /audit, /policies, /updates
+    — governance / "how it's configured and audited"
+
+  No UI surfaces besides the ActivityBar ordering change. All 12
+  shell-activitybar e2e tests still pass.
+
+  * chore(lint): sort Tailwind classes in overlay components
+
+  Biome useSortedClasses (nursery) auto-fix across 6 overlay components.
+  Pure class reordering — no logic changes, no markup changes, no behaviour
+  changes. biome check --write --unsafe on src/overlay/components/ brings
+  the nursery warning count in that directory from 41 to 0.
+
 ## [0.4.32-rc.2] - 2026-04-09
 
 ### Changed
