@@ -137,3 +137,63 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
     await expect(page).toHaveURL(/\/audit\/summary$/)
   })
 })
+
+test.describe('Shell sidebar-hidden grid toggle', () => {
+  test('/day has no sidebar and main fills the viewport', async ({ page }) => {
+    // /day has no route children → SidePanel returns null → .sidebar-hidden
+    // class collapses the grid to 2 columns. Main content should be wide.
+    await page.goto('/day')
+    await page.waitForTimeout(500)
+
+    const shell = page.locator('.app-shell')
+    await expect(shell).toHaveClass(/sidebar-hidden/)
+
+    const main = page.locator('main#main-content')
+    const mainBox = await main.boundingBox()
+    // With a 1280px viewport and 48px activitybar, main ≈ 1232px
+    expect(mainBox!.width).toBeGreaterThan(1000)
+  })
+
+  test('/ has sidebar visible (no sidebar-hidden)', async ({ page }) => {
+    // / has children (overview, monitoring, insights) → sidebar shows
+    await page.goto('/')
+    await page.waitForURL('**/overview')
+
+    const shell = page.locator('.app-shell')
+    await expect(shell).not.toHaveClass(/sidebar-hidden/)
+  })
+
+  test('/day → / restores the sidebar column', async ({ page }) => {
+    // Navigate to no-children route, then back to children route
+    await page.goto('/day')
+    await page.waitForTimeout(500)
+    await expect(page.locator('.app-shell')).toHaveClass(/sidebar-hidden/)
+
+    // Navigate to Dashboard (has children)
+    await page.getByTestId('nav-dashboard').click()
+    await page.waitForURL('**/overview')
+    await expect(page.locator('.app-shell')).not.toHaveClass(/sidebar-hidden/)
+  })
+})
+
+test.describe('Empty state CTA navigation', () => {
+  test('timeline empty state "Open Settings" navigates to /settings/monitoring', async ({ page }) => {
+    // Mock frames as empty with capture disabled
+    await mockStaticJson(page, '**/api/frames**', {
+      data: [],
+      pagination: { total: 0, offset: 0, limit: 50, has_more: false },
+    })
+    await mockStaticJson(page, '**/api/settings', {
+      capture_enabled: false,
+    })
+
+    await page.goto('/timeline/all')
+
+    // The EmptyState CTA button should be visible
+    const ctaButton = page.getByRole('button', { name: /Open Settings|설정 열기|設定を開く|Abrir Configuración|打开设置/ })
+    await expect(ctaButton).toBeVisible({ timeout: 10000 })
+
+    await ctaButton.click()
+    await expect(page).toHaveURL(/\/settings\/monitoring$/)
+  })
+})

@@ -30,6 +30,7 @@ const step4TitleName = i18nRegex('onboarding.step4Title')
 const nextButtonName = i18nRegex('onboarding.next')
 const skipButtonName = i18nRegex('onboarding.skip')
 const completeButtonName = i18nRegex('onboarding.complete')
+const step4TipName = /⌘K|Ctrl\+K/
 
 test.describe('Onboarding (standalone mode)', () => {
   test('standalone mode skips onboarding and shows dashboard', async ({ page }) => {
@@ -118,5 +119,25 @@ test.describe('Onboarding (simulated first-run)', () => {
     await page.getByRole('button', { name: skipButtonName }).click()
     // After skip, the main shell should load
     await expect(page.getByRole('heading', { name: dashboardTitleName })).toBeVisible({ timeout: 10000 })
+  })
+
+  test('step 4 shows CommandPalette keyboard shortcut tip', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText(step1TitleName)).toBeVisible({ timeout: 10000 })
+
+    // Advance to step 4 (step 1 → 2 → 3 → 4)
+    const nextBtn = page.getByRole('button', { name: nextButtonName })
+    await nextBtn.click()
+    await expect(page.getByText(step2TitleName)).toBeVisible({ timeout: 5000 })
+    await nextBtn.click()
+    // step 3 (features)
+    await nextBtn.click()
+    // step 4 (ready)
+    await expect(page.getByText(step4TitleName)).toBeVisible({ timeout: 5000 })
+
+    // The tip card with role="note" should mention the keyboard shortcut
+    const tipNote = page.locator('[role="note"]')
+    await expect(tipNote).toBeVisible()
+    await expect(tipNote).toContainText(step4TipName)
   })
 })
