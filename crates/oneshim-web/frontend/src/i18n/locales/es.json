@@ -39,7 +39,11 @@
     "chat": "Chat",
     "audit": "Registro de auditoría",
     "policies": "Políticas de ejecución",
-    "playbooks": "Cuadernos de jugadas"
+    "playbooks": "Cuadernos de jugadas",
+    "groupMonitor": "Monitor",
+    "groupData": "Datos",
+    "groupManage": "Gestión",
+    "groupSystem": "Sistema"
   },
   "dashboard": {
     "title": "Resumen de actividad",
@@ -1026,6 +1030,7 @@
     "connected": "Conectado",
     "offline": "Sin conexión",
     "resizeSidebar": "Redimensionar barra lateral",
+    "collapseSidebar": "Contraer panel lateral",
     "skipToContent": "Ir al contenido principal",
     "minimize": "Minimizar",
     "maximize": "Maximizar",

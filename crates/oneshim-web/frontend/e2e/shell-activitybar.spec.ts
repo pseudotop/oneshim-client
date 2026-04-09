@@ -5,31 +5,25 @@ test.describe('ActivityBar Actions', () => {
     await page.goto('/')
   })
 
-  // After clicking a nav button the URL settles on the parent's defaultChild
-  // (e.g. /timeline → /timeline/all, / → /overview), so the assertion needs
-  // to know the post-redirect target.
-  const NAV_ITEMS = [
-    // monitor group
-    { id: 'dashboard', expectedUrl: /\/overview$/ },
-    { id: 'timeline', expectedUrl: /\/timeline\/all$/ },
-    { id: 'replay', expectedUrl: /\/replay\/timeline$/ },
-    { id: 'automation', expectedUrl: /\/automation\/policies$/ },
-    // data group
-    { id: 'focus', expectedUrl: /\/focus\/score$/ },
-    { id: 'reports', expectedUrl: /\/reports\/activity$/ },
-    { id: 'search', expectedUrl: /\/search$/ },
-    // manage group
-    { id: 'audit', expectedUrl: /\/audit\/summary$/ },
-    { id: 'policies', expectedUrl: /\/policies$/ },
-    { id: 'updates', expectedUrl: /\/updates\/status$/ },
-    // bottom
-    { id: 'settings', expectedUrl: /\/settings\/general$/ },
-    { id: 'privacy', expectedUrl: /\/privacy\/data$/ },
+  // After the category restructure the ActivityBar only exposes 3 group icons
+  // (monitor/data/manage) for the main area and 2 direct icons (settings/
+  // privacy) at the bottom.  Clicking a group icon navigates to that group's
+  // default path; from there sub-routes are reached through the SidePanel
+  // tree, not from the ActivityBar.
+  const GROUP_BUTTONS = [
+    { id: 'nav-group-monitor', expectedUrl: /\/overview$/ },
+    { id: 'nav-group-data', expectedUrl: /\/reports\/activity$/ },
+    { id: 'nav-group-manage', expectedUrl: /\/audit\/summary$/ },
   ]
 
-  for (const item of NAV_ITEMS) {
+  const BOTTOM_BUTTONS = [
+    { id: 'nav-settings', expectedUrl: /\/settings\/general$/ },
+    { id: 'nav-privacy', expectedUrl: /\/privacy\/data$/ },
+  ]
+
+  for (const item of [...GROUP_BUTTONS, ...BOTTOM_BUTTONS]) {
     test(`P00x-${item.id}: nav button exists and navigates`, async ({ page }) => {
-      const btn = page.getByTestId(`nav-${item.id}`)
+      const btn = page.getByTestId(item.id)
       await expect(btn).toBeVisible()
       await btn.click()
       await expect(page).toHaveURL(item.expectedUrl)
@@ -37,7 +31,7 @@ test.describe('ActivityBar Actions', () => {
   }
 
   test('P011: only one button has aria-current="page"', async ({ page }) => {
-    await page.getByTestId('nav-timeline').click()
+    await page.getByTestId('nav-group-monitor').click()
     const activeButtons = page.locator('nav button[aria-current="page"]')
     await expect(activeButtons).toHaveCount(1)
   })
@@ -50,27 +44,55 @@ test.describe('ActivityBar Actions', () => {
     await expect(tooltip).toHaveText(/.+/)
   })
 
-  test('P013: audit and policies are in the manage group (below second divider)', async ({ page }) => {
-    // After the ActivityBar rebalance, /audit and /policies sit in the manage
-    // group — the third section separated by <hr> dividers.  Verify both
-    // buttons appear after the automation button (last monitor item) so the
-    // visual grouping is correct.
+  test('P013: monitor group highlights when on a monitor route', async ({ page }) => {
+    // Navigate to /automation/policies — this should activate the monitor
+    // group icon (not a hypothetical per-route icon that no longer exists).
+    await page.goto('/automation/policies')
+    const active = page.locator('nav button[aria-current="page"]')
+    await expect(active).toHaveCount(1)
+    await expect(active).toHaveAttribute('data-testid', 'nav-group-monitor')
+  })
+
+  test('P014: activity bar exposes exactly five nav buttons', async ({ page }) => {
+    // 3 group icons + 2 bottom direct icons = 5 total.  Guards against
+    // accidental re-introduction of per-route icons in the 48px rail.
     const nav = page.locator('nav[aria-label]')
     const buttons = nav.locator('button[data-testid]')
-    const ids = await buttons.evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-testid')))
+    await expect(buttons).toHaveCount(5)
+  })
 
-    const automationIdx = ids.indexOf('nav-automation')
-    const auditIdx = ids.indexOf('nav-audit')
-    const policiesIdx = ids.indexOf('nav-policies')
-    const updatesIdx = ids.indexOf('nav-updates')
+  test('P015: clicking the active group toggles the SidePanel', async ({ page }) => {
+    await page.goto('/overview')
+    // Sidepanel visible initially (on /overview which is in monitor group).
+    const sidePanel = page.locator('[role="tree"]')
+    await expect(sidePanel).toBeVisible()
 
-    // audit, policies, updates must all come after automation (monitor group ends there)
-    expect(auditIdx).toBeGreaterThan(automationIdx)
-    expect(policiesIdx).toBeGreaterThan(automationIdx)
-    expect(updatesIdx).toBeGreaterThan(automationIdx)
+    // Click the already-active monitor icon → sidepanel should collapse.
+    await page.getByTestId('nav-group-monitor').click()
+    await expect(sidePanel).toHaveCount(0)
 
-    // manage group order: audit → policies → updates
-    expect(policiesIdx).toBeGreaterThan(auditIdx)
-    expect(updatesIdx).toBeGreaterThan(policiesIdx)
+    // Click again → sidepanel re-opens.
+    await page.getByTestId('nav-group-monitor').click()
+    await expect(sidePanel).toBeVisible()
+  })
+
+  test('P016: SidePanel shows the full group tree with nested children', async ({ page }) => {
+    await page.goto('/automation/policies')
+    const tree = page.locator('[role="tree"]')
+    await expect(tree).toBeVisible()
+
+    // Top-level treeitems correspond to each monitor route.  Auto-expand
+    // means the nested /automation children are also reachable — but their
+    // labels come from i18n (sidebar.policies → "Runtime Status",
+    // sidebar.executionHistory → "Execution History"), NOT from the route
+    // path segments.
+    await expect(tree.getByRole('treeitem', { name: /dashboard/i })).toBeVisible()
+    await expect(tree.getByRole('treeitem', { name: /automation/i })).toBeVisible()
+    await expect(tree.getByRole('treeitem', { name: /runtime status/i })).toBeVisible()
+
+    // The current route's selected leaf is "Runtime Status" (the i18n label
+    // for the automation.policies tab, not "Policies").
+    const selected = tree.getByRole('treeitem', { selected: true })
+    await expect(selected).toHaveText(/runtime status/i)
   })
 })

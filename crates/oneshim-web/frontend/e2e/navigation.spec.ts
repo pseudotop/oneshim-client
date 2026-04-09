@@ -1,45 +1,44 @@
 import { i18nRegex } from './helpers/i18n'
 import { expect, test } from './helpers/test'
 
-const dashboardName = i18nRegex('nav.dashboard')
-const timelineName = i18nRegex('nav.timeline')
-const reportsName = i18nRegex('nav.reports')
+const monitorName = i18nRegex('nav.groupMonitor')
+const dataName = i18nRegex('nav.groupData')
+const manageName = i18nRegex('nav.groupManage')
 const settingsName = i18nRegex('nav.settings')
 const privacyName = i18nRegex('nav.privacy')
-const searchName = i18nRegex('nav.search')
 const shortcutsTitle = i18nRegex('shortcuts.title')
 
 test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    // ActivityBar uses buttons with title attribute for navigation
+    // ActivityBar uses buttons with title attribute for navigation.
     await expect(page.locator('nav')).toBeVisible()
   })
 
-  test('should display navigation buttons in ActivityBar', async ({ page }) => {
-    await expect(page.getByTitle(dashboardName)).toBeVisible()
-    await expect(page.getByTitle(timelineName)).toBeVisible()
-    await expect(page.getByTitle(reportsName)).toBeVisible()
+  test('ActivityBar exposes the category icons + bottom direct icons', async ({ page }) => {
+    // After the category restructure the 48px rail holds just 3 group icons
+    // for main navigation and 2 direct icons for Settings / Privacy.  Every
+    // sub-route is reached via the SidePanel tree.
+    await expect(page.getByTitle(monitorName)).toBeVisible()
+    await expect(page.getByTitle(dataName)).toBeVisible()
+    await expect(page.getByTitle(manageName)).toBeVisible()
     await expect(page.getByTitle(settingsName)).toBeVisible()
     await expect(page.getByTitle(privacyName)).toBeVisible()
-    await expect(page.getByTitle(searchName)).toBeVisible()
   })
 
-  // Each parent route redirects to its defaultChild after navigation, so the
-  // assertion needs to match the post-redirect URL (e.g. / → /overview).
-  test('should navigate to Dashboard', async ({ page }) => {
-    await page.getByTitle(dashboardName).click()
+  test('clicking Monitor lands on the dashboard overview', async ({ page }) => {
+    await page.getByTitle(monitorName).click()
     await expect(page).toHaveURL(/\/overview$/)
   })
 
-  test('should navigate to Timeline', async ({ page }) => {
-    await page.getByTitle(timelineName).click()
-    await expect(page).toHaveURL(/\/timeline\/all$/)
+  test('clicking Data lands on the reports activity view', async ({ page }) => {
+    await page.getByTitle(dataName).click()
+    await expect(page).toHaveURL(/\/reports\/activity$/)
   })
 
-  test('should navigate to Reports', async ({ page }) => {
-    await page.getByTitle(reportsName).click()
-    await expect(page).toHaveURL(/\/reports\/activity$/)
+  test('clicking Manage lands on the audit summary', async ({ page }) => {
+    await page.getByTitle(manageName).click()
+    await expect(page).toHaveURL(/\/audit\/summary$/)
   })
 
   test('should navigate to Settings', async ({ page }) => {
@@ -52,9 +51,16 @@ test.describe('Navigation', () => {
     await expect(page).toHaveURL(/\/privacy\/data$/)
   })
 
-  test('should navigate to Search', async ({ page }) => {
-    await page.getByTitle(searchName).click()
-    await expect(page).toHaveURL(/\/search$/)
+  test('SidePanel tree navigates to any leaf in the active group', async ({ page }) => {
+    // beforeEach already lands on / (Monitor group) so the SidePanel tree is
+    // already visible — clicking Monitor again would toggle the panel rather
+    // than navigate.  Use the existing tree to drill into Timeline > All
+    // Frames, which proves the ActivityBar + SidePanel pair covers every
+    // route that used to have its own rail icon.
+    const tree = page.locator('[role="tree"]')
+    await expect(tree).toBeVisible()
+    await tree.getByRole('treeitem', { name: /all frames/i }).click()
+    await expect(page).toHaveURL(/\/timeline\/all$/)
   })
 
   test('should show keyboard shortcuts help with ? key', async ({ page }) => {

@@ -9,7 +9,7 @@ import { useCommandPalette } from './hooks/useCommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useShellLayout } from './hooks/useShellLayout'
 import { useTauriEventBridge } from './hooks/useTauriEventBridge'
-import { RouteRenderer, useCurrentRoute } from './routes'
+import { RouteRenderer, useCurrentGroup, useCurrentRoute } from './routes'
 import { layout } from './styles/tokens'
 import { cn } from './utils/cn'
 
@@ -19,18 +19,23 @@ function AppShell() {
   const { t } = useTranslation()
   const { sidebarWidth, sidebarCollapsed, toggleSidebar, onResizeStart, onResizeByKeyboard } = useShellLayout()
   const { node: currentRoute } = useCurrentRoute()
+  const activeGroup = useCurrentGroup()
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette, toggle: togglePalette } = useCommandPalette()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const openHelp = useCallback(() => setIsHelpOpen(true), [])
   const closeHelp = useCallback(() => setIsHelpOpen(false), [])
 
-  // Drive --sidebar-width from both the user toggle AND the route sub-nav
-  // presence. Routes like /day, /chat, /search with no children would
-  // otherwise leave a phantom 260px grid column and push <main> into the
-  // wrong cell, collapsing page content widths to 0. useLayoutEffect so the
-  // first paint already has the correct column width (no flicker).
+  // Drive --sidebar-width from both the user toggle AND the presence of any
+  // sidebar content.  SidePanel has two modes:
+  //   (1) inside a nav group → shows the full group tree (always has content)
+  //   (2) on a bottom route with children → shows the route's children
+  //       (Settings/Privacy)
+  // Anything else (e.g. a hypothetical childless bottom route) collapses the
+  // grid column to 0 so <main> fills the viewport without a phantom 260px
+  // cell.  useLayoutEffect so the first paint already has the correct width.
   const routeHasChildren = (currentRoute.children?.length ?? 0) > 0
-  const sidebarHidden = sidebarCollapsed || !routeHasChildren
+  const sidebarHasContent = activeGroup !== null || routeHasChildren
+  const sidebarHidden = sidebarCollapsed || !sidebarHasContent
   useLayoutEffect(() => {
     const width = sidebarHidden ? 0 : sidebarWidth
     if (!Number.isFinite(width)) return
@@ -73,6 +78,7 @@ function AppShell() {
           width={sidebarWidth}
           onResizeStart={onResizeStart}
           onResizeByKeyboard={onResizeByKeyboard}
+          onCollapse={toggleSidebar}
         />
 
         <main id="main-content" className={cn('overflow-y-auto', layout.mainContent.bg)} aria-label="Main content">

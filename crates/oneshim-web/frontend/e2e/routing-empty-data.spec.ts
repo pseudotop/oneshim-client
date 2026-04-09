@@ -150,46 +150,51 @@ test.describe('Sub-pathname routing redirects survive empty data', () => {
 })
 
 test.describe('Shell sidebar-hidden grid toggle', () => {
-  test('/day has no sidebar and main fills the viewport', async ({ page }) => {
-    // /day has no route children → SidePanel returns null → .sidebar-hidden
-    // class collapses the grid to 2 columns. Main content should be wide.
+  // After the category restructure, SidePanel always shows the active group's
+  // full tree — even for previously-childless routes like /day and /chat.
+  // The `sidebar-hidden` class now only applies when the user manually
+  // collapses via Cmd/Ctrl+B (or clicks the active group icon).
+  test('/day shows the monitor group tree (no longer sidebar-hidden)', async ({ page }) => {
     await page.goto('/day')
-    await page.waitForTimeout(500)
-
-    const shell = page.locator('.app-shell')
-    await expect(shell).toHaveClass(/sidebar-hidden/)
-
-    const main = page.locator('main#main-content')
-    const mainBox = await main.boundingBox()
-    // With a 1280px viewport and 48px activitybar, main ≈ 1232px
-    expect(mainBox!.width).toBeGreaterThan(1000)
-  })
-
-  test('/ has sidebar visible (no sidebar-hidden)', async ({ page }) => {
-    // / has children (overview, monitoring, insights) → sidebar shows
-    await page.goto('/')
-    await page.waitForURL('**/overview')
+    await page.waitForURL('**/day')
 
     const shell = page.locator('.app-shell')
     await expect(shell).not.toHaveClass(/sidebar-hidden/)
+
+    // Sidebar should render the monitor group tree with Day selected.
+    const tree = page.locator('[role="tree"]')
+    await expect(tree).toBeVisible()
+    const selected = tree.getByRole('treeitem', { selected: true })
+    await expect(selected).toHaveText(/day view/i)
   })
 
-  test('/chat also has sidebar-hidden (no children)', async ({ page }) => {
-    await page.goto('/chat')
-    await page.waitForTimeout(500)
-    await expect(page.locator('.app-shell')).toHaveClass(/sidebar-hidden/)
-  })
-
-  test('/day → / restores the sidebar column', async ({ page }) => {
-    // Navigate to no-children route, then back to children route
-    await page.goto('/day')
-    await page.waitForTimeout(500)
-    await expect(page.locator('.app-shell')).toHaveClass(/sidebar-hidden/)
-
-    // Navigate to Dashboard (has children)
-    await page.getByTestId('nav-dashboard').click()
+  test('/ has sidebar visible', async ({ page }) => {
+    await page.goto('/')
     await page.waitForURL('**/overview')
     await expect(page.locator('.app-shell')).not.toHaveClass(/sidebar-hidden/)
+  })
+
+  test('/chat shows the data group tree (no longer sidebar-hidden)', async ({ page }) => {
+    await page.goto('/chat')
+    await page.waitForURL('**/chat')
+    await expect(page.locator('.app-shell')).not.toHaveClass(/sidebar-hidden/)
+
+    const tree = page.locator('[role="tree"]')
+    await expect(tree).toBeVisible()
+    const selected = tree.getByRole('treeitem', { selected: true })
+    await expect(selected).toHaveText(/chat/i)
+  })
+
+  test('clicking the active group collapses to sidebar-hidden', async ({ page }) => {
+    // VS Code-style toggle: clicking the active ActivityBar group icon while
+    // the panel is open collapses it, applying the `sidebar-hidden` class to
+    // free the grid column for <main>.
+    await page.goto('/day')
+    await page.waitForURL('**/day')
+    await expect(page.locator('.app-shell')).not.toHaveClass(/sidebar-hidden/)
+
+    await page.getByTestId('nav-group-monitor').click()
+    await expect(page.locator('.app-shell')).toHaveClass(/sidebar-hidden/)
   })
 })
 

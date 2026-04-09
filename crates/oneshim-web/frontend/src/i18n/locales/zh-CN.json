@@ -39,7 +39,11 @@
     "chat": "聊天",
     "audit": "审计日志",
     "policies": "执行策略",
-    "playbooks": "剧本库"
+    "playbooks": "剧本库",
+    "groupMonitor": "监控",
+    "groupData": "数据",
+    "groupManage": "管理",
+    "groupSystem": "系统"
   },
   "dashboard": {
     "title": "活动概览",
@@ -1026,6 +1030,7 @@
     "connected": "已连接",
     "offline": "离线",
     "resizeSidebar": "调整侧边栏大小",
+    "collapseSidebar": "折叠侧边面板",
     "skipToContent": "跳转到主内容",
     "minimize": "最小化",
     "maximize": "最大化",

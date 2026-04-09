@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/helpers/render-helpers'
-import { routeTree } from '../../../routes'
+import { navGroups, routeTree } from '../../../routes'
 import ActivityBar from '../ActivityBar'
 
 const defaultProps = {
@@ -10,8 +10,10 @@ const defaultProps = {
   sidebarCollapsed: false,
 }
 
-// Derived from routeTree: items with icons in main groups + bottom items with icons.
-const expectedNavButtonCount = routeTree.filter((r) => r.icon).length
+// New activity bar shape: 3 category buttons + every bottom item (settings,
+// privacy, …) still rendered as its own direct icon.
+const expectedBottomItems = routeTree.filter((r) => r.bottom && r.icon).length
+const expectedNavButtonCount = navGroups.length + expectedBottomItems
 
 describe('ActivityBar', () => {
   it('has displayName', () => {
@@ -23,43 +25,62 @@ describe('ActivityBar', () => {
     expect(screen.getByRole('navigation')).toBeInTheDocument()
   })
 
-  it('renders one nav button per routeTree entry with an icon', () => {
+  it('renders exactly one button per nav group + one per bottom item', () => {
     renderWithProviders(<ActivityBar {...defaultProps} />)
     const buttons = screen.getAllByRole('button')
     expect(buttons).toHaveLength(expectedNavButtonCount)
   })
 
-  it('active route has aria-current="page"', () => {
-    renderWithProviders(<ActivityBar {...defaultProps} />, {
-      routerProps: { initialEntries: ['/'] },
-    })
-    const activeButton = screen.getByRole('button', { current: 'page' })
-    expect(activeButton).toBeInTheDocument()
+  it('renders a testid for every nav group', () => {
+    renderWithProviders(<ActivityBar {...defaultProps} />)
+    for (const group of navGroups) {
+      expect(screen.getByTestId(`nav-group-${group.id}`)).toBeInTheDocument()
+    }
   })
 
-  it('clicking a nav button navigates', async () => {
+  it('group icon is active when pathname matches a route in that group', () => {
+    renderWithProviders(<ActivityBar {...defaultProps} />, {
+      routerProps: { initialEntries: ['/automation/policies'] },
+    })
+    const activeButton = screen.getByRole('button', { current: 'page' })
+    expect(activeButton).toHaveAttribute('data-testid', 'nav-group-monitor')
+  })
+
+  it('clicking an inactive group navigates to its default path', async () => {
     const user = userEvent.setup()
     const onToggleSidebar = vi.fn()
     renderWithProviders(<ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={true} />, {
       routerProps: { initialEntries: ['/'] },
     })
 
-    const buttons = screen.getAllByRole('button')
-    // Click the timeline button (2nd nav item)
-    await user.click(buttons[1])
-    // Should have called onToggleSidebar (because sidebar is collapsed)
+    // Clicking the data group from monitor → group changes + sidebar toggles
+    // (because the sidebar was collapsed).
+    await user.click(screen.getByTestId('nav-group-data'))
     expect(onToggleSidebar).toHaveBeenCalled()
   })
 
-  it('clicking the active nav item does not collapse the sidebar', async () => {
+  it('clicking the active group toggles the sidebar (VS Code-style)', async () => {
     const user = userEvent.setup()
     const onToggleSidebar = vi.fn()
     renderWithProviders(<ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={false} />, {
-      routerProps: { initialEntries: ['/focus'] },
+      routerProps: { initialEntries: ['/focus/score'] },
     })
 
-    await user.click(screen.getByTestId('nav-focus'))
-    expect(onToggleSidebar).not.toHaveBeenCalled()
+    // /focus is in the data group — clicking data while sidebar is open should
+    // collapse it without navigating elsewhere.
+    await user.click(screen.getByTestId('nav-group-data'))
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking the active bottom item toggles the sidebar', async () => {
+    const user = userEvent.setup()
+    const onToggleSidebar = vi.fn()
+    renderWithProviders(<ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={false} />, {
+      routerProps: { initialEntries: ['/settings/general'] },
+    })
+
+    await user.click(screen.getByTestId('nav-settings'))
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1)
   })
 
   it('each button has an aria-label', () => {

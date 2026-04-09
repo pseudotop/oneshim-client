@@ -39,7 +39,11 @@
     "chat": "Chat",
     "audit": "Audit Log",
     "policies": "Execution Policies",
-    "playbooks": "Playbooks"
+    "playbooks": "Playbooks",
+    "groupMonitor": "Monitor",
+    "groupData": "Data",
+    "groupManage": "Manage",
+    "groupSystem": "System"
   },
   "dashboard": {
     "title": "Activity Summary",
@@ -1206,6 +1210,7 @@
     "connected": "Connected",
     "offline": "Offline",
     "resizeSidebar": "Resize sidebar",
+    "collapseSidebar": "Collapse side panel",
     "skipToContent": "Skip to main content",
     "minimize": "Minimize",
     "maximize": "Maximize",

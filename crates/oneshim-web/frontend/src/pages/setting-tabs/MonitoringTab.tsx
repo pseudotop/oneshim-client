@@ -96,8 +96,16 @@ export default function MonitoringTab() {
     unavailable: t('settings.permissionStateUnavailable', 'Unavailable'),
   }
 
+  // Always render the section when the desktop can be queried, even before the
+  // first fetch resolves. This guarantees users always see the permissions UI
+  // in the packaged app rather than a silently hidden card if React Query has
+  // not transitioned into a loading state yet.
   const showPermissionSection =
-    permissionStatusLoading || permissionStatusRefreshing || Boolean(permissionStatus) || Boolean(permissionStatusError)
+    data.canQueryDesktopCapabilities ||
+    permissionStatusLoading ||
+    permissionStatusRefreshing ||
+    Boolean(permissionStatus) ||
+    Boolean(permissionStatusError)
   const isMac = permissionStatus?.platform === 'macos'
   const isWindows = permissionStatus?.platform === 'windows'
   const isLinux = permissionStatus?.platform === 'linux'
