@@ -77,22 +77,22 @@ describe('useCurrentRoute', () => {
 
 describe('useCurrentGroup', () => {
   const cases: Array<[path: string, expected: string | null]> = [
-    // Monitor group — root + all monitor sub-routes
+    // Monitor group — real-time observation
     ['/', 'monitor'],
     ['/overview', 'monitor'],
     ['/day', 'monitor'],
     ['/timeline/all', 'monitor'],
     ['/replay/timeline', 'monitor'],
-    ['/automation/policies', 'monitor'],
-    // Data group
-    ['/recalibration/segments', 'data'],
-    ['/coaching/goals', 'data'],
-    ['/playbooks', 'data'],
-    ['/chat', 'data'],
-    ['/focus/score', 'data'],
-    ['/reports/activity', 'data'],
-    ['/search', 'data'],
-    // Manage group
+    ['/focus/score', 'monitor'],
+    // Insights group — analysis & AI
+    ['/reports/activity', 'insights'],
+    ['/coaching/goals', 'insights'],
+    ['/chat', 'insights'],
+    ['/playbooks', 'insights'],
+    ['/search', 'insights'],
+    // Manage group — control & administration
+    ['/automation/policies', 'manage'],
+    ['/recalibration/segments', 'manage'],
     ['/audit/summary', 'manage'],
     ['/policies', 'manage'],
     ['/updates/status', 'manage'],

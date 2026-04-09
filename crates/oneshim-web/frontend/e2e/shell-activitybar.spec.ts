@@ -12,8 +12,8 @@ test.describe('ActivityBar Actions', () => {
   // tree, not from the ActivityBar.
   const GROUP_BUTTONS = [
     { id: 'nav-group-monitor', expectedUrl: /\/overview$/ },
-    { id: 'nav-group-data', expectedUrl: /\/reports\/activity$/ },
-    { id: 'nav-group-manage', expectedUrl: /\/audit\/summary$/ },
+    { id: 'nav-group-insights', expectedUrl: /\/reports\/activity$/ },
+    { id: 'nav-group-manage', expectedUrl: /\/automation\/policies$/ },
   ]
 
   const BOTTOM_BUTTONS = [
@@ -44,13 +44,13 @@ test.describe('ActivityBar Actions', () => {
     await expect(tooltip).toHaveText(/.+/)
   })
 
-  test('P013: monitor group highlights when on a monitor route', async ({ page }) => {
-    // Navigate to /automation/policies — this should activate the monitor
-    // group icon (not a hypothetical per-route icon that no longer exists).
+  test('P013: manage group highlights when on a manage route', async ({ page }) => {
+    // Navigate to /automation/policies — this should activate the manage
+    // group icon (automation moved from monitor to manage group).
     await page.goto('/automation/policies')
     const active = page.locator('nav button[aria-current="page"]')
     await expect(active).toHaveCount(1)
-    await expect(active).toHaveAttribute('data-testid', 'nav-group-monitor')
+    await expect(active).toHaveAttribute('data-testid', 'nav-group-manage')
   })
 
   test('P014: activity bar exposes exactly five nav buttons', async ({ page }) => {
@@ -81,13 +81,13 @@ test.describe('ActivityBar Actions', () => {
     const tree = page.locator('[role="tree"]')
     await expect(tree).toBeVisible()
 
-    // Top-level treeitems correspond to each monitor route.  Auto-expand
+    // Top-level treeitems correspond to each manage route.  Auto-expand
     // means the nested /automation children are also reachable — but their
     // labels come from i18n (sidebar.policies → "Runtime Status",
     // sidebar.executionHistory → "Execution History"), NOT from the route
     // path segments.
-    await expect(tree.getByRole('treeitem', { name: /dashboard/i })).toBeVisible()
     await expect(tree.getByRole('treeitem', { name: /automation/i })).toBeVisible()
+    await expect(tree.getByRole('treeitem', { name: /audit/i })).toBeVisible()
     await expect(tree.getByRole('treeitem', { name: /runtime status/i })).toBeVisible()
 
     // The current route's selected leaf is "Runtime Status" (the i18n label
