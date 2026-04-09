@@ -368,6 +368,9 @@ export interface NavGroup {
 
 export const navGroups: NavGroup[] = [
   { id: 'monitor', labelKey: 'nav.groupMonitor', icon: Gauge, defaultPath: '/' },
+  // /reports is intentionally the Data landing (not /recalibration, the first
+  // route) because it surfaces charts and activity summaries that give users
+  // the broadest overview of their collected data.
   { id: 'data', labelKey: 'nav.groupData', icon: Database, defaultPath: '/reports' },
   { id: 'manage', labelKey: 'nav.groupManage', icon: ShieldCheck, defaultPath: '/audit' },
 ]

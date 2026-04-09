@@ -59,6 +59,20 @@ describe('ActivityBar', () => {
     expect(onToggleSidebar).toHaveBeenCalled()
   })
 
+  it('clicking an inactive group while sidebar is open navigates without toggling', async () => {
+    // VS Code pattern: switching to a different group should keep the sidebar
+    // in its current state (open). Only clicking the ACTIVE group toggles.
+    const user = userEvent.setup()
+    const onToggleSidebar = vi.fn()
+    renderWithProviders(<ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={false} />, {
+      routerProps: { initialEntries: ['/overview'] },
+    })
+
+    // From monitor, click data while sidebar is already expanded.
+    await user.click(screen.getByTestId('nav-group-data'))
+    expect(onToggleSidebar).not.toHaveBeenCalled()
+  })
+
   it('clicking the active group toggles the sidebar (VS Code-style)', async () => {
     const user = userEvent.setup()
     const onToggleSidebar = vi.fn()
