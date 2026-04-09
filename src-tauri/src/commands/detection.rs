@@ -18,11 +18,15 @@ pub async fn toggle_detection_overlay(
 
     if active {
         info!("detection overlay activated — running scene analysis");
+        if let Some(overlay) = state.overlay() {
+            overlay.set_interactive(true);
+        }
         spawn_detection_analysis_from_state(&state);
     } else {
         info!("detection overlay deactivated");
         if let Some(overlay) = state.overlay() {
             overlay.clear_detection_scene().await;
+            overlay.set_interactive(false);
         }
     }
 
