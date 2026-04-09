@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.33-rc.1] - 2026-04-09
+
+### Changed
+
+- Restructure IA — Monitor/Insights/Manage with balanced groups ([#393](https://github.com/pseudotop/oneshim-client/pull/393))
+  Reorganize navigation categories based on desktop app UX research
+  (VS Code, Claude, Linear, ChatGPT patterns):
+
+  Monitor (real-time): Dashboard, Day View, Timeline, Replay, Focus
+  Insights (analysis/AI): Reports, Coaching, Chat, Playbooks, Search
+  Manage (control): Automation, Recalibration, Policies, Audit, Updates
+
+  Key changes:
+  - Focus moved from Data→Monitor (real-time monitoring feature)
+  - Automation moved from Monitor→Manage (control/admin feature)
+  - Recalibration moved from Data→Manage (calibration management)
+  - "Data" group renamed to "Insights" (Lightbulb icon)
+  - Manage icon changed from ShieldCheck to Wrench
+  - Manage default landing changed from /audit to /automation
+  - All 5 i18n locales updated (en/ko/ja/es/zh-CN)
+  - 231 unit tests + E2E specs aligned with new structure
+
 ## [0.4.32] - 2026-04-09
 
 ### Fixed
