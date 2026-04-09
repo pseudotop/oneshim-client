@@ -138,8 +138,9 @@ export default function Chat() {
   })
 
   const handleCreate = useCallback(() => {
+    if (creating) return
     handleCreateInner(setCreating, setCreateError)
-  }, [handleCreateInner])
+  }, [creating, handleCreateInner])
 
   const handleRename = useCallback(
     async (id: string, title: string) => {
