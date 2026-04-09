@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32-rc.6] - 2026-04-09
+
+### Fixed
+
+- Clean DMG background + compact panel mode ([#389](https://github.com/pseudotop/oneshim-client/pull/389))
+  * fix(dmg): replace cluttered DMG background with clean dark gradient
+
+  Remove guide text, icons, and arrow from DMG background image.
+  macOS natively renders the app icon and Applications folder alias,
+  so the baked-in elements were redundant and visually cluttered.
+
 ## [0.4.32-rc.5] - 2026-04-09
 
 ### Fixed
