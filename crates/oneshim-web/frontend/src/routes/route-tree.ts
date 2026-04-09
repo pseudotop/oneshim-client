@@ -194,25 +194,6 @@ export const routeTree: RouteNode[] = [
     ],
     group: 'monitor',
   },
-  {
-    path: '/audit',
-    labelKey: 'nav.audit',
-    icon: ClipboardList,
-    defaultChild: 'summary',
-    component: AuditLayout,
-    children: [
-      { path: 'summary', labelKey: 'sidebar.auditSummary', component: AuditSummary },
-      { path: 'entries', labelKey: 'sidebar.auditEntries', component: AuditEntries },
-    ],
-    group: 'monitor',
-  },
-  {
-    path: '/policies',
-    labelKey: 'nav.policies',
-    icon: Shield,
-    component: Policies,
-    group: 'monitor',
-  },
 
   // --- Data group ---
   {
@@ -288,6 +269,25 @@ export const routeTree: RouteNode[] = [
   },
 
   // --- Manage group ---
+  {
+    path: '/audit',
+    labelKey: 'nav.audit',
+    icon: ClipboardList,
+    defaultChild: 'summary',
+    component: AuditLayout,
+    children: [
+      { path: 'summary', labelKey: 'sidebar.auditSummary', component: AuditSummary },
+      { path: 'entries', labelKey: 'sidebar.auditEntries', component: AuditEntries },
+    ],
+    group: 'manage',
+  },
+  {
+    path: '/policies',
+    labelKey: 'nav.policies',
+    icon: Shield,
+    component: Policies,
+    group: 'manage',
+  },
   {
     path: '/updates',
     labelKey: 'nav.updates',
