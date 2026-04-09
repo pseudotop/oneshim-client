@@ -52,12 +52,11 @@ test.describe('Navigation', () => {
   })
 
   test('SidePanel tree navigates to any leaf in the active group', async ({ page }) => {
-    // Activate the monitor group, then drill into Timeline → All Frames via
-    // the rendered TreeView.  This proves the ActivityBar + SidePanel pair
-    // covers every route that used to have its own rail icon.
-    await page.getByTitle(monitorName).click()
-    await expect(page).toHaveURL(/\/overview$/)
-
+    // beforeEach already lands on / (Monitor group) so the SidePanel tree is
+    // already visible — clicking Monitor again would toggle the panel rather
+    // than navigate.  Use the existing tree to drill into Timeline > All
+    // Frames, which proves the ActivityBar + SidePanel pair covers every
+    // route that used to have its own rail icon.
     const tree = page.locator('[role="tree"]')
     await expect(tree).toBeVisible()
     await tree.getByRole('treeitem', { name: /all frames/i }).click()

@@ -81,14 +81,18 @@ test.describe('ActivityBar Actions', () => {
     const tree = page.locator('[role="tree"]')
     await expect(tree).toBeVisible()
 
-    // Top-level treeitems correspond to each monitor route.  Because the
-    // sub-routes auto-expand, Policies must be reachable as a nested item.
+    // Top-level treeitems correspond to each monitor route.  Auto-expand
+    // means the nested /automation children are also reachable — but their
+    // labels come from i18n (sidebar.policies → "Runtime Status",
+    // sidebar.executionHistory → "Execution History"), NOT from the route
+    // path segments.
     await expect(tree.getByRole('treeitem', { name: /dashboard/i })).toBeVisible()
     await expect(tree.getByRole('treeitem', { name: /automation/i })).toBeVisible()
-    await expect(tree.getByRole('treeitem', { name: /^policies$/i })).toBeVisible()
+    await expect(tree.getByRole('treeitem', { name: /runtime status/i })).toBeVisible()
 
-    // The current route's leaf should be marked selected.
+    // The current route's selected leaf is "Runtime Status" (the i18n label
+    // for the automation.policies tab, not "Policies").
     const selected = tree.getByRole('treeitem', { selected: true })
-    await expect(selected).toHaveText(/policies/i)
+    await expect(selected).toHaveText(/runtime status/i)
   })
 })
