@@ -42,11 +42,10 @@ export function useShellLayout() {
     }
   }, [sidebarWidth, sidebarCollapsed, isResizing])
 
-  useEffect(() => {
-    const width = sidebarCollapsed ? 0 : sidebarWidth
-    if (!Number.isFinite(width)) return
-    document.documentElement.style.setProperty('--sidebar-width', `${width}px`)
-  }, [sidebarWidth, sidebarCollapsed])
+  // NOTE: --sidebar-width is set by AppShell, not here.
+  // AppShell combines sidebarCollapsed with the active route's sub-nav
+  // presence so routes like /day with no children collapse the CSS grid
+  // column to 0 instead of leaving a phantom 260px cell behind.
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => !prev)
