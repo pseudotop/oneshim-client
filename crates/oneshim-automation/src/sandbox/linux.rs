@@ -4,8 +4,9 @@
 //! - **Resource limits**: Enforced via `setrlimit(2)` — always available.
 //! - **Landlock**: Enforced when `linux-sandbox` feature is enabled and kernel >= 5.13.
 //!   Uses ABI v3 with graceful fallback if unsupported.
-//! - **seccomp-BPF**: Deferred — requires `seccompiler` crate + arch-specific
-//!   syscall tables (x86_64/aarch64).
+//! - **seccomp-BPF**: Enforced when `linux-sandbox` feature is enabled.
+//!   Uses deny-list approach: default ALLOW, blocks network/process syscalls
+//!   based on `SeccompAllowlist` flags. Denied calls return EPERM.
 
 use async_trait::async_trait;
 
@@ -171,8 +172,14 @@ impl Sandbox for LinuxSandbox {
             filesystem_isolation: self.landlock_available,
             #[cfg(not(feature = "linux-sandbox"))]
             filesystem_isolation: false,
-            syscall_filtering: false, // seccomp deferred
-            network_isolation: false, // requires seccomp
+            #[cfg(feature = "linux-sandbox")]
+            syscall_filtering: true,
+            #[cfg(not(feature = "linux-sandbox"))]
+            syscall_filtering: false,
+            #[cfg(feature = "linux-sandbox")]
+            network_isolation: true, // via seccomp socket deny
+            #[cfg(not(feature = "linux-sandbox"))]
+            network_isolation: false,
             resource_limits: true,    // setrlimit always available
             process_isolation: false, // requires subprocess model
         }
@@ -286,16 +293,96 @@ fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), AutomationError> {
 
 /// Apply seccomp-BPF syscall filtering.
 ///
-/// **Deferred** — requires `seccompiler` crate with arch-specific syscall tables.
-/// Logs the allowlist and returns `Ok(())`.
+/// When `linux-sandbox` feature is enabled, installs a BPF filter that denies
+/// network and/or process syscalls based on the allowlist. Default action is
+/// ALLOW — only explicitly blocked categories are denied (returns EPERM).
 fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationError> {
-    tracing::debug!(
-        basic = allowlist.allow_basic,
-        network = allowlist.allow_network,
-        process = allowlist.allow_process,
-        "seccomp filter (enforcement deferred — requires seccompiler crate)"
-    );
-    Ok(())
+    #[cfg(feature = "linux-sandbox")]
+    {
+        use seccompiler::{apply_filter, BpfProgram, SeccompAction, SeccompFilter, SeccompRule};
+        use std::collections::BTreeMap;
+
+        // Default ALLOW — deny specific dangerous syscall categories
+        let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
+        let deny = vec![SeccompRule::new(vec![]).unwrap()];
+
+        // Block network syscalls when not allowed
+        if !allowlist.allow_network {
+            for &nr in &[
+                libc::SYS_socket,
+                libc::SYS_connect,
+                libc::SYS_bind,
+                libc::SYS_listen,
+                libc::SYS_accept,
+                libc::SYS_accept4,
+                libc::SYS_sendto,
+                libc::SYS_recvfrom,
+                libc::SYS_sendmsg,
+                libc::SYS_recvmsg,
+                libc::SYS_shutdown,
+                libc::SYS_setsockopt,
+                libc::SYS_getsockopt,
+            ] {
+                rules.insert(nr as i64, deny.clone());
+            }
+        }
+
+        // Block process creation syscalls when not allowed
+        if !allowlist.allow_process {
+            for &nr in &[
+                libc::SYS_clone,
+                libc::SYS_fork,
+                libc::SYS_vfork,
+                libc::SYS_execve,
+                libc::SYS_execveat,
+                libc::SYS_kill,
+                libc::SYS_tkill,
+                libc::SYS_tgkill,
+            ] {
+                rules.insert(nr as i64, deny.clone());
+            }
+        }
+
+        if rules.is_empty() {
+            tracing::debug!("seccomp: no syscalls to block (all categories allowed)");
+            return Ok(());
+        }
+
+        let filter: BpfProgram = SeccompFilter::new(
+            rules,
+            SeccompAction::Allow,                     // default: allow
+            SeccompAction::Errno(libc::EPERM as u32), // denied → EPERM
+            std::env::consts::ARCH.try_into().map_err(|_| {
+                AutomationError::SandboxEnforcement("unsupported arch for seccomp".into())
+            })?,
+        )
+        .map_err(|e| AutomationError::SandboxEnforcement(format!("seccomp filter build: {e}")))?
+        .try_into()
+        .map_err(|e| AutomationError::SandboxEnforcement(format!("seccomp BPF compile: {e}")))?;
+
+        apply_filter(&filter)
+            .map_err(|e| AutomationError::SandboxEnforcement(format!("seccomp apply: {e}")))?;
+
+        tracing::info!(
+            blocked_network = !allowlist.allow_network,
+            blocked_process = !allowlist.allow_process,
+            rules_count = filter.len(),
+            "seccomp-BPF filter applied"
+        );
+
+        return Ok(());
+    }
+
+    #[cfg(not(feature = "linux-sandbox"))]
+    {
+        tracing::debug!(
+            basic = allowlist.allow_basic,
+            network = allowlist.allow_network,
+            process = allowlist.allow_process,
+            "seccomp filter (enforcement requires linux-sandbox feature)"
+        );
+        Ok(())
+    }
 }
 
 /// Apply resource limits via `setrlimit(2)`.
