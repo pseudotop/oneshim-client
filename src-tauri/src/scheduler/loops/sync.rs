@@ -268,6 +268,9 @@ impl Scheduler {
                 ts.gui_pipeline_state = Some(GuiPipelineState {
                     detector,
                     aggregator,
+                    uncertain_queue: std::collections::VecDeque::new(),
+                    feedback_tick_counter: 0,
+                    app_type_cache: std::collections::HashMap::new(),
                 });
                 info!("GUI Activity Intelligence pipeline enabled");
             }

@@ -5,6 +5,7 @@
 //! Always ready, works out of the box on all platforms.
 
 pub mod features;
+pub mod feedback;
 mod signatures;
 
 use async_trait::async_trait;
