@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.34-rc.1] - 2026-04-10
+
+### Added
+
+- Wire ML classifier into GUI element detection pipeline
+  Connect the existing OnnxGuiClassifier infrastructure to the runtime:
+  - Add ml_model_path config field to GuiIntelligenceConfig
+  - Add raw_rgba field to ProcessedFrame (serde-skipped) for ML input
+  - Propagate RGBA through capture pipeline → monitor loop
+  - Make run_gui_tick() async with ML-aware click classification
+  - Load OnnxGuiClassifier at scheduler init behind ml-detect feature flag
+  - Add 10 tests (mock classifier, confidence threshold, crop bounds)
+
+  When no ONNX model file is present, behavior is identical to heuristic-only.
+
+- Implement Windows DACL + Linux sandbox enforcement
+  Windows (encryption.rs):
+  - Replace TODO stub with real SetNamedSecurityInfoW DACL implementation
+  - Set owner-only ACL on .db_key file (equivalent to Unix 0o600)
+  - Get current user SID via OpenProcessToken + GetTokenInformation
+  - Build protected DACL with single ACCESS_ALLOWED_ACE
+  - Add Win32_Security features to windows-sys workspace dep
+
+  Linux (sandbox/linux.rs):
+  - Implement real setrlimit(2) enforcement for RLIMIT_AS and RLIMIT_CPU
+  - Add Landlock enforcement behind linux-sandbox feature flag (landlock v0.4)
+  - Update is_available() and capabilities() to reflect real enforcement
+  - seccomp-BPF remains deferred (requires seccompiler crate)
+
+- Implement seccomp-BPF syscall filtering for Linux
+  Add real seccomp enforcement behind linux-sandbox feature flag:
+  - Deny-list approach: default ALLOW, block specific syscall categories
+  - Network deny: socket, connect, bind, listen, accept, sendto, recvfrom, etc.
+  - Process deny: clone, fork, vfork, execve, kill, tkill, tgkill
+  - Denied calls return EPERM (not SIGKILL) for graceful error handling
+  - Uses seccompiler crate (Firecracker) — pure Rust, x86_64/aarch64
+  - Update capabilities to reflect full sandbox enforcement
+
+  Linux sandbox now has complete enforcement stack:
+  - Landlock (filesystem isolation, kernel >= 5.13)
+  - seccomp-BPF (syscall filtering)
+  - setrlimit (resource limits)
+
 ## [0.4.33-rc.3] - 2026-04-10
 
 ### Fixed
