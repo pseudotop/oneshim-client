@@ -228,6 +228,37 @@ impl Scheduler {
                     (1920, 1080), // sensible default; updated per tick from WindowLayoutEvent
                     oneshim_core::config::PiiFilterLevel::Standard,
                 );
+
+                // Wire ML classifier when feature is enabled
+                #[cfg(feature = "ml-detect")]
+                let detector = {
+                    use oneshim_vision::ml_classifier::OnnxGuiClassifier;
+
+                    let model_path = if gui_config.ml_model_path.is_empty() {
+                        match oneshim_core::config_manager::ConfigManager::data_dir() {
+                            Ok(dir) => dir.join("models").join("gui-classifier.onnx"),
+                            Err(e) => {
+                                warn!("Cannot resolve data_dir for ML model: {e}");
+                                std::path::PathBuf::from("gui-classifier.onnx")
+                            }
+                        }
+                    } else {
+                        std::path::PathBuf::from(&gui_config.ml_model_path)
+                    };
+
+                    match OnnxGuiClassifier::load(&model_path) {
+                        Ok(Some(classifier)) => {
+                            info!("GUI ML classifier loaded: {}", model_path.display());
+                            detector.with_ml_classifier(std::sync::Arc::new(classifier))
+                        }
+                        Ok(None) => detector,
+                        Err(e) => {
+                            warn!("GUI ML classifier load failed: {e}");
+                            detector
+                        }
+                    }
+                };
+
                 let aggregator = GuiActivityAggregator::new(&gui_config);
                 ts.gui_pipeline_state = Some(GuiPipelineState {
                     detector,

@@ -43,7 +43,7 @@ pub(crate) struct GuiPipelineState {
 /// The caller (monitor loop) feeds the returned summary into
 /// `ContentTracker::update()`.
 #[allow(dead_code, clippy::too_many_arguments)]
-pub(crate) fn run_gui_tick(
+pub(crate) async fn run_gui_tick(
     state: &mut GuiPipelineState,
     ocr_regions: &[OcrRegion],
     input_snap: &InputActivityEvent,
@@ -52,6 +52,9 @@ pub(crate) fn run_gui_tick(
     window_title: &str,
     content_label: &str,
     focused_element: Option<&FocusedElementInfo>,
+    frame_rgba: Option<&[u8]>,
+    frame_width: u32,
+    frame_height: u32,
 ) -> Option<GuiActivitySummary> {
     let now = Utc::now();
     let mut result: Option<GuiActivitySummary> = None;
@@ -67,10 +70,27 @@ pub(crate) fn run_gui_tick(
             .map(|(x, y)| (x as u32, y as u32))
             .unwrap_or((0, 0));
 
-        let element =
+        let mut element =
             state
                 .detector
                 .correlate_click_with_app(click_x, click_y, ocr_regions, app_name);
+
+        // ML classifier upgrade: re-classify the matched element for higher accuracy
+        if element.is_some() && state.detector.ml_classifier().is_some() && frame_rgba.is_some() {
+            // Find the clicked OCR region directly (avoids fragile bbox reverse-lookup)
+            let region_for_ml = ocr_regions
+                .iter()
+                .filter(|r| r.bbox.contains_point(click_x, click_y))
+                .min_by_key(|r| r.bbox.area());
+
+            if let Some(region) = region_for_ml {
+                let ml_elem = state
+                    .detector
+                    .build_gui_element_with_frame(region, frame_rgba, frame_width, frame_height)
+                    .await;
+                element = Some(ml_elem);
+            }
+        }
 
         let gui_element = element.unwrap_or_else(|| {
             // If accessibility provides a focused element label, use it as
@@ -206,6 +226,7 @@ mod tests {
             aggregation_window_secs: window_secs,
             max_events_per_segment: max_events,
             proximity_threshold_px: 40,
+            ml_model_path: String::new(),
         };
         GuiPipelineState {
             detector: GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off),
@@ -256,8 +277,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn click_with_ocr_produces_correlated_event() {
+    #[tokio::test]
+    async fn click_with_ocr_produces_correlated_event() {
         let mut state = make_state(60, 100);
 
         // Place an OCR region ("Save" button) near the click position
@@ -274,7 +295,11 @@ mod tests {
             "main.rs",
             "main.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         // No flush yet (only 1 event, window not expired)
         assert!(result.is_none());
@@ -290,15 +315,19 @@ mod tests {
             "lib.rs",
             "lib.rs", // different content_label triggers flush
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         let summary = result.expect("content label change should flush");
         assert_eq!(summary.content_label, "main.rs");
         assert!(summary.button_clicks > 0 || summary.save_count > 0);
     }
 
-    #[test]
-    fn click_with_empty_ocr_produces_unknown_element() {
+    #[tokio::test]
+    async fn click_with_empty_ocr_produces_unknown_element() {
         // max_events=1 so the 2nd event triggers a flush of the 1st window
         let mut state = make_state(60, 1);
 
@@ -314,7 +343,11 @@ mod tests {
             "main.rs",
             "main.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         // Push second event — triggers flush due to max_events=1
         let result = run_gui_tick(
@@ -326,15 +359,19 @@ mod tests {
             "main.rs",
             "main.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         let summary = result.expect("max_events should trigger flush");
         // No OCR regions → the click lands on an Unknown element
         assert_eq!(summary.unmatched_click_count, 1);
     }
 
-    #[test]
-    fn keyboard_only_produces_text_entry() {
+    #[tokio::test]
+    async fn keyboard_only_produces_text_entry() {
         let mut state = make_state(60, 1);
 
         // No clicks, just keystrokes
@@ -349,7 +386,11 @@ mod tests {
             "main.rs",
             "main.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         // Second event to flush
         let result = run_gui_tick(
@@ -361,14 +402,18 @@ mod tests {
             "main.rs",
             "main.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         let summary = result.expect("should flush via max_events");
         assert!(summary.text_entries > 0);
     }
 
-    #[test]
-    fn shortcuts_iterate_all() {
+    #[tokio::test]
+    async fn shortcuts_iterate_all() {
         let mut state = make_state(60, 100);
 
         let input = make_input(0, None, 3, 3);
@@ -388,7 +433,11 @@ mod tests {
             "main.rs",
             "main.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         // Flush via content change
         let input2 = make_input(1, Some((100.0, 100.0)), 0, 0);
@@ -401,7 +450,11 @@ mod tests {
             "lib.rs",
             "lib.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         let summary = result.expect("content change should flush");
         // All 3 shortcuts were fed as events
@@ -410,8 +463,8 @@ mod tests {
         assert_eq!(summary.undo_redo_count, 1); // Cmd+Z
     }
 
-    #[test]
-    fn mixed_clicks_and_typing() {
+    #[tokio::test]
+    async fn mixed_clicks_and_typing() {
         let mut state = make_state(60, 100);
 
         // Click + typing in same tick
@@ -427,7 +480,11 @@ mod tests {
             "Google",
             "search",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         // Flush via content change
         let input2 = make_input(1, Some((100.0, 100.0)), 0, 0);
@@ -440,15 +497,19 @@ mod tests {
             "Results",
             "results",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         let summary = result.expect("should flush on content change");
         assert!(summary.button_clicks > 0 || summary.search_count > 0);
         assert!(summary.text_entries > 0);
     }
 
-    #[test]
-    fn no_input_produces_nothing() {
+    #[tokio::test]
+    async fn no_input_produces_nothing() {
         let mut state = make_state(60, 100);
 
         // Zero clicks, zero keystrokes
@@ -463,11 +524,250 @@ mod tests {
             "main.rs",
             "main.rs",
             None,
-        );
+            None,
+            0,
+            0,
+        )
+        .await;
 
         assert!(result.is_none());
         // Even flushing should return None since no events were pushed
         let flushed = state.aggregator.flush();
         assert!(flushed.is_none());
+    }
+
+    // --- ML classifier integration tests ---
+
+    use async_trait::async_trait;
+    use oneshim_core::error::CoreError;
+    use oneshim_core::ports::gui_element_classifier::GuiElementClassifier;
+    use std::sync::Arc;
+
+    /// Mock ML classifier that always returns Button with configurable confidence.
+    struct MockClassifier {
+        confidence: f32,
+    }
+
+    #[async_trait]
+    impl GuiElementClassifier for MockClassifier {
+        async fn classify_crop(
+            &self,
+            _crop_rgba: &[u8],
+            _width: u32,
+            _height: u32,
+        ) -> Result<Option<(GuiElementType, f32)>, CoreError> {
+            if self.confidence > 0.0 {
+                Ok(Some((GuiElementType::Button, self.confidence)))
+            } else {
+                Ok(None)
+            }
+        }
+
+        fn is_ready(&self) -> bool {
+            true
+        }
+    }
+
+    fn make_state_with_ml(
+        window_secs: u64,
+        max_events: usize,
+        confidence: f32,
+    ) -> GuiPipelineState {
+        let config = GuiIntelligenceConfig {
+            enabled: true,
+            aggregation_window_secs: window_secs,
+            max_events_per_segment: max_events,
+            proximity_threshold_px: 40,
+            ml_model_path: String::new(),
+        };
+        let classifier: Arc<dyn GuiElementClassifier> = Arc::new(MockClassifier { confidence });
+        GuiPipelineState {
+            detector: GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off)
+                .with_ml_classifier(classifier),
+            aggregator: GuiActivityAggregator::new(&config),
+        }
+    }
+
+    /// Make a minimal RGBA frame buffer (all gray pixels).
+    fn make_frame_rgba(width: u32, height: u32) -> Vec<u8> {
+        vec![128u8; (width * height * 4) as usize]
+    }
+
+    #[tokio::test]
+    async fn ml_classifier_overrides_heuristic_on_high_confidence() {
+        // ML returns Button with 0.95 confidence
+        let mut state = make_state_with_ml(60, 1, 0.95);
+
+        // OCR region: "Ln 42, Col 10" at bottom of screen → heuristic = StatusBar
+        let regions = vec![make_ocr_region("Ln 42, Col 10", 0, 1050, 200, 20)];
+        let frame = make_frame_rgba(1920, 1080);
+        let input = make_input(1, Some((100.0, 1060.0)), 0, 0);
+
+        // First tick (buffer)
+        run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            Some(&frame),
+            1920,
+            1080,
+        )
+        .await;
+
+        // Flush via max_events
+        let result = run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            Some(&frame),
+            1920,
+            1080,
+        )
+        .await;
+
+        let summary = result.expect("should flush");
+        // ML classified as Button (overriding StatusBar heuristic)
+        assert!(summary.button_clicks > 0, "ML should override to Button");
+    }
+
+    #[tokio::test]
+    async fn ml_classifier_fallback_when_no_frame_data() {
+        let mut state = make_state_with_ml(60, 1, 0.95);
+
+        // StatusBar region, no frame data → heuristic should win
+        let regions = vec![make_ocr_region("Ln 42, Col 10", 0, 1050, 200, 20)];
+        let input = make_input(1, Some((100.0, 1060.0)), 0, 0);
+
+        run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            None,
+            0,
+            0, // No frame data
+        )
+        .await;
+
+        let result = run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            None,
+            0,
+            0,
+        )
+        .await;
+
+        let summary = result.expect("should flush");
+        // Without frame data, heuristic StatusBar classification should be used
+        assert_eq!(summary.button_clicks, 0, "no ML without frame data");
+    }
+
+    #[tokio::test]
+    async fn ml_classifier_low_confidence_still_produces_events() {
+        // ML returns 0.5 confidence (below 0.7 threshold in build_gui_element_with_frame)
+        // The pipeline should still work — heuristic is used as fallback
+        let mut state = make_state_with_ml(60, 1, 0.5);
+
+        let regions = vec![make_ocr_region("Save", 490, 490, 60, 30)];
+        let frame = make_frame_rgba(1920, 1080);
+        let input = make_input(1, Some((500.0, 500.0)), 0, 0);
+
+        run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            Some(&frame),
+            1920,
+            1080,
+        )
+        .await;
+
+        let result = run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            Some(&frame),
+            1920,
+            1080,
+        )
+        .await;
+
+        let summary = result.expect("should flush even with low ML confidence");
+        // Heuristic classifies "Save" as Button — event should be recorded
+        assert!(summary.button_clicks > 0 || summary.save_count > 0);
+    }
+
+    #[tokio::test]
+    async fn no_ml_classifier_preserves_existing_behavior() {
+        // Standard state without ML classifier
+        let mut state = make_state(60, 1);
+        let frame = make_frame_rgba(1920, 1080);
+
+        let regions = vec![make_ocr_region("Save", 490, 490, 60, 30)];
+        let input = make_input(1, Some((500.0, 500.0)), 0, 0);
+
+        run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            Some(&frame),
+            1920,
+            1080, // Frame provided but no classifier
+        )
+        .await;
+
+        let result = run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+            None,
+            Some(&frame),
+            1920,
+            1080,
+        )
+        .await;
+
+        let summary = result.expect("should flush");
+        assert!(summary.button_clicks > 0 || summary.save_count > 0);
     }
 }

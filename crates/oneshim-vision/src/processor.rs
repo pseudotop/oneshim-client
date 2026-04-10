@@ -115,6 +115,7 @@ impl FrameProcessor for EdgeFrameProcessor {
         };
 
         let mut ocr_regions = Vec::new();
+        let mut raw_rgba: Option<Vec<u8>> = None;
 
         let image_payload =
             if importance >= 0.8 {
@@ -128,6 +129,10 @@ impl FrameProcessor for EdgeFrameProcessor {
                 .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
                 let ocr_text = extract_ocr_text(&current_frame, self);
                 ocr_regions = extract_ocr_regions(&current_frame, self);
+                // Preserve raw RGBA for ML classifier (before current_frame is moved)
+                if !ocr_regions.is_empty() {
+                    raw_rgba = Some(current_frame.to_rgba8().into_vec());
+                }
                 Some(ImagePayload::Full {
                     data: encoded,
                     format: "webp".to_string(),
@@ -213,6 +218,7 @@ impl FrameProcessor for EdgeFrameProcessor {
             metadata,
             image_payload,
             ocr_regions,
+            raw_rgba,
         })
     }
 

@@ -92,6 +92,10 @@ pub struct ProcessedFrame {
     /// Empty when OCR is disabled or the frame importance is too low for OCR.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ocr_regions: Vec<OcrRegion>,
+    /// Raw RGBA bytes for ML classification (row-major, 4 bytes/pixel).
+    /// Only populated when importance >= 0.8 and OCR regions are non-empty.
+    #[serde(skip)]
+    pub raw_rgba: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

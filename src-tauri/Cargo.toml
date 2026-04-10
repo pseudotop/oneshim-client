@@ -88,6 +88,7 @@ hnsw = ["oneshim-analysis/hnsw"]
 linux-atspi = ["oneshim-vision/linux-atspi"]
 lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
+ml-detect = ["oneshim-vision/ml-detect"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"

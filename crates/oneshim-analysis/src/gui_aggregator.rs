@@ -306,6 +306,7 @@ mod tests {
             aggregation_window_secs: 60,
             max_events_per_segment: 100,
             proximity_threshold_px: 40,
+            ml_model_path: String::new(),
         }
     }
 

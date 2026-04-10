@@ -95,11 +95,8 @@ impl GuiElementDetector {
 
     /// Build a `GuiElement` from an OCR region using heuristic inference.
     ///
-    /// **Phase 2 TODO**: Add `build_gui_element_with_frame()` async variant that
-    /// accepts the frame image, crops the region bbox, and calls
-    /// `ml_classifier.classify_crop()` before falling back to heuristic inference.
-    /// The ML result should override heuristics when confidence > 0.7.
-    /// See `infer_element_type_scored()` doc comment for the full integration plan.
+    /// For ML-enhanced classification, use `build_gui_element_with_frame()` which
+    /// consults the ML classifier when available and falls back to heuristics.
     pub(super) fn build_gui_element(&self, region: &OcrRegion) -> GuiElement {
         let filtered_text = sanitize_title_with_level(&region.text, self.pii_filter_level);
         let (element_type, type_confidence) =
