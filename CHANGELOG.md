@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.35-rc.1] - 2026-04-11
+
+### Added
+
+- Add ContourGuiClassifier with LLM feedback loop
+  * feat(vision): add ContourGuiClassifier — CV-based element classification
+
+  Replace ML model dependency with pure visual feature analysis:
+  - Extract border contrast, fill uniformity, aspect ratio from RGBA crops
+  - Match against 12 element type signatures (Button, TextInput, Link, etc.)
+  - Always ready — no model file, GPU, or training data needed
+  - Wire as default classifier in scheduler (ONNX overrides if model exists)
+  - 16 unit tests for features, signatures, and classifier trait
+
 ## [0.4.34] - 2026-04-10
 
 ### Added
