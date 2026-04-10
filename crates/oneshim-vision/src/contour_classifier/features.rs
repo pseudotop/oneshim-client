@@ -181,6 +181,15 @@ mod tests {
     }
 
     #[test]
+    fn misaligned_buffer_returns_defaults() {
+        // Buffer too short for claimed dimensions — should not panic
+        let rgba = vec![0u8; 100]; // 100 bytes, but 60×30 needs 7200
+        let f = extract_visual_features(&rgba, 60, 30);
+        assert_eq!(f.border_contrast, 0.0);
+        assert_eq!(f.fill_uniformity, 1.0);
+    }
+
+    #[test]
     fn aspect_ratio_calculation() {
         let rgba = solid_rgba(120, 30, 0, 0, 0);
         let f = extract_visual_features(&rgba, 120, 30);

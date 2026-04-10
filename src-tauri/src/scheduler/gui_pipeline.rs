@@ -112,6 +112,7 @@ pub(crate) async fn run_gui_tick(
                 for (from, to) in corrections {
                     if elem.element_type == *from {
                         elem.element_type = to.clone();
+                        elem.type_confidence = 1.0; // Prevent re-queuing corrected elements
                         break;
                     }
                 }
@@ -124,7 +125,6 @@ pub(crate) async fn run_gui_tick(
                 // Extract visual features from crop if frame data available
                 let features = if let Some(frame) = frame_rgba {
                     use oneshim_vision::contour_classifier::features::extract_visual_features;
-                    use oneshim_vision::gui_detector::GuiElementDetector;
                     if let Some(crop) = GuiElementDetector::crop_region_rgba(
                         frame,
                         frame_width,
