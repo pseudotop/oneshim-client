@@ -86,6 +86,7 @@ impl Scheduler {
             // pipeline uses these for click-to-element correlation via
             // `GuiElementDetector::correlate_click()`.
             let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
+            let mut last_frame_rgba: Option<(Vec<u8>, u32, u32)> = None;
             let mut focus_hl = super::detection_helper::FocusHighlightState::new();
             let mut coaching_tick_state = CoachingTickState::new();
             let mut last_retention_check = Instant::now();
@@ -273,7 +274,7 @@ impl Scheduler {
                                             }
                                         }
 
-                                        let (ocr_hint, regions) = handle_frame_capture(
+                                        let (ocr_hint, regions, frame_rgba) = handle_frame_capture(
                                             &capture_req,
                                             &processor,
                                             &frame_storage1,
@@ -283,6 +284,9 @@ impl Scheduler {
                                         focus_ocr_hint = ocr_hint;
                                         if !regions.is_empty() {
                                             last_ocr_regions = regions;
+                                            last_frame_rgba = frame_rgba;
+                                        } else {
+                                            last_frame_rgba = None;
                                         }
                                     } else if force_post {
                                         // Post-event forced capture (dashcam "after" frames)
@@ -389,16 +393,12 @@ impl Scheduler {
 
                                         let recent_shortcuts = input_collector.take_recent_shortcuts();
 
+                                        let (fs, fw, fh) = last_frame_rgba.as_ref().map_or((None, 0, 0), |(r, w, h)| (Some(r.as_slice()), *w, *h));
                                         let gui_summary = super::super::gui_pipeline::run_gui_tick(
-                                            gui_state,
-                                            &last_ocr_regions,
-                                            &input_snap,
-                                            &recent_shortcuts,
-                                            &app_name,
-                                            &focus_window_title,
-                                            &parsed_content_label,
-                                            last_focused_element.as_ref(),
-                                        );
+                                            gui_state, &last_ocr_regions, &input_snap, &recent_shortcuts,
+                                            &app_name, &focus_window_title, &parsed_content_label,
+                                            last_focused_element.as_ref(), fs, fw, fh,
+                                        ).await;
 
                                         if gui_summary.is_some() {
                                             last_gui_summary = gui_summary;

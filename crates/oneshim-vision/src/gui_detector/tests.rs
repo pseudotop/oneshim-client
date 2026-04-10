@@ -642,3 +642,135 @@ fn scored_build_gui_element_populates_type_confidence() {
     // OCR confidence should still be the region's value
     assert!((element.confidence - 0.9).abs() < f32::EPSILON);
 }
+
+// --- ML classifier integration tests ---
+
+use async_trait::async_trait;
+use oneshim_core::error::CoreError;
+use oneshim_core::ports::gui_element_classifier::GuiElementClassifier;
+use std::sync::Arc;
+
+struct MockMlClassifier {
+    return_type: GuiElementType,
+    confidence: f32,
+}
+
+#[async_trait]
+impl GuiElementClassifier for MockMlClassifier {
+    async fn classify_crop(
+        &self,
+        _crop_rgba: &[u8],
+        _width: u32,
+        _height: u32,
+    ) -> Result<Option<(GuiElementType, f32)>, CoreError> {
+        Ok(Some((self.return_type.clone(), self.confidence)))
+    }
+
+    fn is_ready(&self) -> bool {
+        true
+    }
+}
+
+#[tokio::test]
+async fn build_gui_element_with_frame_uses_ml_on_high_confidence() {
+    let classifier: Arc<dyn GuiElementClassifier> = Arc::new(MockMlClassifier {
+        return_type: GuiElementType::Link,
+        confidence: 0.85,
+    });
+    let d =
+        GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off).with_ml_classifier(classifier);
+
+    // Region must fit inside the frame dimensions
+    let region = make_region("Save", 10, 10, 60, 30, 0.9);
+    let frame = vec![128u8; 200 * 100 * 4];
+    let elem = d
+        .build_gui_element_with_frame(&region, Some(&frame), 200, 100)
+        .await;
+
+    // ML says Link with 0.85 (> 0.7 threshold) → should override heuristic
+    assert_eq!(elem.element_type, GuiElementType::Link);
+    assert!((elem.type_confidence - 0.85).abs() < f32::EPSILON);
+}
+
+#[tokio::test]
+async fn build_gui_element_with_frame_falls_back_on_low_confidence() {
+    let classifier: Arc<dyn GuiElementClassifier> = Arc::new(MockMlClassifier {
+        return_type: GuiElementType::Link,
+        confidence: 0.5, // Below 0.7 threshold
+    });
+    let d =
+        GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off).with_ml_classifier(classifier);
+
+    // Region must fit inside the frame dimensions
+    let region = make_region("Save", 10, 10, 60, 30, 0.9);
+    let frame = vec![128u8; 200 * 100 * 4];
+    let elem = d
+        .build_gui_element_with_frame(&region, Some(&frame), 200, 100)
+        .await;
+
+    // ML confidence 0.5 < 0.7 threshold → heuristic should be used
+    // "Save" at (10,10) with 1920x1080 screen → TitleBar (y < 43px title_bar_max)
+    assert_ne!(
+        elem.element_type,
+        GuiElementType::Link,
+        "low ML should not override"
+    );
+}
+
+#[tokio::test]
+async fn build_gui_element_with_frame_no_frame_data() {
+    let classifier: Arc<dyn GuiElementClassifier> = Arc::new(MockMlClassifier {
+        return_type: GuiElementType::Link,
+        confidence: 0.95,
+    });
+    let d =
+        GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off).with_ml_classifier(classifier);
+
+    let region = make_region("Save", 100, 500, 60, 30, 0.9);
+    let elem = d.build_gui_element_with_frame(&region, None, 0, 0).await;
+
+    // No frame data → heuristic fallback
+    assert_eq!(elem.element_type, GuiElementType::Button);
+}
+
+#[tokio::test]
+async fn build_gui_element_with_frame_no_classifier() {
+    let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+
+    let region = make_region("Save", 100, 500, 60, 30, 0.9);
+    let frame = vec![128u8; 200 * 100 * 4];
+    let elem = d
+        .build_gui_element_with_frame(&region, Some(&frame), 200, 100)
+        .await;
+
+    // No classifier → heuristic fallback
+    assert_eq!(elem.element_type, GuiElementType::Button);
+}
+
+#[test]
+fn crop_region_rgba_valid_region() {
+    // 10x10 frame, crop 3x3 region starting at (2,2)
+    let frame = vec![128u8; 10 * 10 * 4];
+    let bbox = BoundingBox {
+        x: 2,
+        y: 2,
+        width: 3,
+        height: 3,
+    };
+    let result = GuiElementDetector::crop_region_rgba(&frame, 10, 10, &bbox);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().len(), 3 * 3 * 4);
+}
+
+#[test]
+fn crop_region_rgba_out_of_bounds() {
+    let frame = vec![128u8; 10 * 10 * 4];
+    let bbox = BoundingBox {
+        x: 8,
+        y: 8,
+        width: 5,
+        height: 5,
+    };
+    let result = GuiElementDetector::crop_region_rgba(&frame, 10, 10, &bbox);
+    assert!(result.is_none(), "out-of-bounds crop should return None");
+}

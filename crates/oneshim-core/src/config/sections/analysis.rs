@@ -405,6 +405,11 @@ pub struct GuiIntelligenceConfig {
     /// this distance is used.
     #[serde(default = "default_proximity_threshold_px")]
     pub proximity_threshold_px: u32,
+
+    /// Path to the ONNX model file for ML-based GUI element classification.
+    /// Empty string (default) auto-detects from `{data_dir}/models/gui-classifier.onnx`.
+    #[serde(default)]
+    pub ml_model_path: String,
 }
 
 impl Default for GuiIntelligenceConfig {
@@ -414,6 +419,7 @@ impl Default for GuiIntelligenceConfig {
             aggregation_window_secs: default_aggregation_window_secs(),
             max_events_per_segment: default_max_events_per_segment(),
             proximity_threshold_px: default_proximity_threshold_px(),
+            ml_model_path: String::new(),
         }
     }
 }

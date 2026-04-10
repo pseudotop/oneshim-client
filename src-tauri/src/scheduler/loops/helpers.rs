@@ -113,6 +113,11 @@ pub(super) async fn handle_event_analysis(
 /// Capture a frame, process it (full/delta/thumbnail), save image data and
 /// metadata.  Returns the OCR text extracted from the frame (if any) and
 /// any OCR regions with bounding boxes for GUI element correlation.
+///
+/// Returns `(ocr_text_hint, ocr_regions, raw_rgba)` where `raw_rgba` contains
+/// the frame's RGBA bytes + dimensions for ML classification.
+type FrameCaptureResult = (Option<String>, Vec<OcrRegion>, Option<(Vec<u8>, u32, u32)>);
+
 #[tracing::instrument(skip_all)]
 pub(super) async fn handle_frame_capture(
     capture_req: &CaptureRequest,
@@ -120,13 +125,17 @@ pub(super) async fn handle_frame_capture(
     frame_storage: &Option<Arc<dyn FrameStoragePort>>,
     sqlite: &Arc<dyn SchedulerStorage>,
     session_id: &str,
-) -> (Option<String>, Vec<OcrRegion>) {
+) -> FrameCaptureResult {
     match processor.capture_and_process(capture_req).await {
         Ok(frame) => {
             debug!("frame completed: {:?}", frame.metadata.trigger_type);
 
-            // Grab OCR regions from the processed frame before consuming payload
+            // Grab OCR regions and raw RGBA before consuming other fields
             let ocr_regions = frame.ocr_regions.clone();
+            let raw_rgba = frame.raw_rgba.map(|rgba| {
+                let (w, h) = frame.metadata.resolution;
+                (rgba, w, h)
+            });
 
             let (file_path, ocr_text) = if let Some(ref payload) = frame.image_payload {
                 let (data_str, ocr) = match payload {
@@ -173,11 +182,11 @@ pub(super) async fn handle_frame_capture(
                 debug!("increment_session_counters failed: {e}");
             }
 
-            (ocr_text, ocr_regions)
+            (ocr_text, ocr_regions, raw_rgba)
         }
         Err(e) => {
             warn!("frame failure: {e}");
-            (None, Vec::new())
+            (None, Vec::new(), None)
         }
     }
 }

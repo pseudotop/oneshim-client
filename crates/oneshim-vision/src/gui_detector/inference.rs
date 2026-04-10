@@ -15,19 +15,9 @@ impl GuiElementDetector {
     /// Multi-signal scored inference: evaluates all candidate types and returns
     /// the highest-scoring type along with a classification confidence (0.0--1.0).
     ///
-    /// **Phase 2 TODO**: Wire the ML classifier (`self.ml_classifier`) into this
-    /// flow. The `GuiElementClassifier::classify_crop()` trait requires image crop
-    /// data (`crop_rgba`, `width`, `height`) and is async, while this method is
-    /// synchronous and receives only text + bbox. Integration requires:
-    ///
-    /// 1. Passing the frame image (or a pre-cropped region) into the inference path.
-    /// 2. Making the call site async (e.g., `build_gui_element` becomes async, or
-    ///    a separate `build_gui_element_with_frame` method is added).
-    /// 3. If `ml_classifier.is_ready()` and its result confidence > 0.7, use the
-    ///    ML result; otherwise fall back to the heuristic scoring below.
-    ///
-    /// See `crates/oneshim-core/src/ports/gui_element_classifier.rs` for the trait
-    /// and `docs/specs/gui-ml-detection-phase2-spec.md` for the full design.
+    /// For ML-enhanced classification, use `build_gui_element_with_frame()` which
+    /// consults the ML classifier when confidence > 0.7, falling back to this
+    /// heuristic scoring otherwise.
     pub fn infer_element_type_scored(
         &self,
         text: &str,
