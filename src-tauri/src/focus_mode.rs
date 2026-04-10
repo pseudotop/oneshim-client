@@ -57,7 +57,7 @@ impl FocusModeState {
         }
         let activated = self.activated_at.read();
         let at = (*activated)?;
-        let elapsed = (Utc::now() - at).num_minutes() as u32;
+        let elapsed = (Utc::now() - at).num_minutes().max(0) as u32;
         Some(dur.saturating_sub(elapsed))
     }
 
@@ -73,7 +73,7 @@ impl FocusModeState {
         }
         let activated = self.activated_at.read();
         let Some(at) = *activated else { return false };
-        let elapsed = (Utc::now() - at).num_minutes() as u32;
+        let elapsed = (Utc::now() - at).num_minutes().max(0) as u32;
         if elapsed >= dur {
             drop(activated); // release read lock before write
             self.deactivate();

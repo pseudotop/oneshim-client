@@ -21,8 +21,8 @@ export const FocusModeIndicator = memo(function FocusModeIndicator({ active, aut
           colors.text.inverse,
         )}
       >
-        {t('overlay.focusMode', 'Focus Mode')}
-        {auto && ` (${t('focusAuto.auto', 'Auto')})`}
+        {t('overlay.focusMode')}
+        {auto && ` (${t('focusAuto.auto')})`}
       </div>
     </div>
   )

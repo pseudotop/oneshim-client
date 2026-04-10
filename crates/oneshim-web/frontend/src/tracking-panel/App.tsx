@@ -1,7 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
-import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+// Dynamic imports for @tauri-apps/* — graceful degradation outside Tauri (ADR-004)
 import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb, Settings, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -31,6 +28,12 @@ interface SceneAnalysisResult {
   work_type?: string
 }
 
+/** Lazy-loaded invoke — graceful degradation outside Tauri (ADR-004). */
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke: inv } = await import('@tauri-apps/api/core')
+  return inv<T>(cmd, args)
+}
+
 const COLLAPSED_WIDTH = 260
 const COLLAPSED_HEIGHT = 36
 const EXPANDED_WIDTH = 320
@@ -53,11 +56,14 @@ export function App() {
   }, [])
 
   // Explicit drag initiation — backup for data-tauri-drag-region
-  const handleDragMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleDragMouseDown = useCallback(async (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
-    getCurrentWindow()
-      .startDragging()
-      .catch((e) => console.debug('startDragging failed:', e))
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      getCurrentWindow().startDragging()
+    } catch (err) {
+      console.debug('startDragging failed:', err)
+    }
   }, [])
 
   useEffect(() => {
@@ -93,32 +99,37 @@ export function App() {
       }
     })()
 
-    invoke<CaptureState>('get_capture_status')
-      .then(setState)
-      .catch((e) => {
-        console.warn('get_capture_status failed:', e)
-        showFeedback(t('trackingPanel.statusUnavailable'))
-      })
-    invoke<ConnectionStatus>('get_connection_status')
-      .then(setConn)
-      .catch((e) => {
-        console.warn('get_connection_status failed:', e)
-        showFeedback(t('trackingPanel.connectionUnavailable'))
-      })
-
-    // Restore saved position
-    invoke<string | null>('get_panel_position')
-      .then((pos) => {
+    ;(async () => {
+      try {
+        const { invoke: inv } = await import('@tauri-apps/api/core')
+        inv<CaptureState>('get_capture_status')
+          .then(setState)
+          .catch((e) => {
+            console.warn('get_capture_status failed:', e)
+            showFeedback(t('trackingPanel.statusUnavailable'))
+          })
+        inv<ConnectionStatus>('get_connection_status')
+          .then(setConn)
+          .catch((e) => {
+            console.warn('get_connection_status failed:', e)
+            showFeedback(t('trackingPanel.connectionUnavailable'))
+          })
+        // Restore saved position
+        const pos = await inv<string | null>('get_panel_position').catch(() => null)
         if (pos) {
           const [x, y] = pos.split(',').map(Number)
           if (Number.isFinite(x) && Number.isFinite(y)) {
+            const { getCurrentWindow } = await import('@tauri-apps/api/window')
+            const { LogicalPosition } = await import('@tauri-apps/api/dpi')
             getCurrentWindow()
               .setPosition(new LogicalPosition(x, y))
               .catch((e) => console.debug('setPosition failed:', e))
           }
         }
-      })
-      .catch((e) => console.warn('get_panel_position failed:', e))
+      } catch {
+        /* not in Tauri */
+      }
+    })()
 
     return () => {
       disposed = true
@@ -131,19 +142,27 @@ export function App() {
   // Save position on window move (debounced)
   useEffect(() => {
     let unlisten: (() => void) | undefined
-    listen('tauri://move', (e) => {
-      if (positionSaveTimer.current) clearTimeout(positionSaveTimer.current)
-      const payload = e.payload as { x?: number; y?: number } | undefined
-      if (payload && typeof payload.x === 'number' && typeof payload.y === 'number') {
-        positionSaveTimer.current = window.setTimeout(() => {
-          invoke('save_panel_position', { x: payload.x, y: payload.y }).catch((e) =>
-            console.debug('save_panel_position failed:', e),
-          )
-        }, 1000)
+    ;(async () => {
+      try {
+        const { listen: listenMove } = await import('@tauri-apps/api/event')
+        unlisten = await listenMove('tauri://move', (e) => {
+          if (positionSaveTimer.current) clearTimeout(positionSaveTimer.current)
+          const payload = e.payload as { x?: number; y?: number } | undefined
+          if (payload && typeof payload.x === 'number' && typeof payload.y === 'number') {
+            positionSaveTimer.current = window.setTimeout(async () => {
+              try {
+                const { invoke: inv } = await import('@tauri-apps/api/core')
+                await inv('save_panel_position', { x: payload.x, y: payload.y })
+              } catch (err) {
+                console.debug('save_panel_position failed:', err)
+              }
+            }, 1000)
+          }
+        })
+      } catch {
+        /* not in Tauri */
       }
-    }).then((fn) => {
-      unlisten = fn
-    })
+    })()
     return () => unlisten?.()
   }, [])
 
@@ -152,10 +171,12 @@ export function App() {
     setExpanded(next)
     const w = next ? EXPANDED_WIDTH : COLLAPSED_WIDTH
     const h = next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT
-    const win = getCurrentWindow()
     const heightDiff = EXPANDED_HEIGHT - COLLAPSED_HEIGHT
 
     try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const { LogicalPosition, LogicalSize } = await import('@tauri-apps/api/dpi')
+      const win = getCurrentWindow()
       const scale = await win.scaleFactor()
 
       if (next) {
@@ -168,12 +189,7 @@ export function App() {
         await win.setPosition(new LogicalPosition(pos.x / scale, pos.y / scale + heightDiff))
       }
     } catch (e) {
-      console.warn('toggleExpanded position failed:', e)
-      try {
-        await win.setSize(new LogicalSize(w, h))
-      } catch (e2) {
-        console.warn('toggleExpanded setSize fallback failed:', e2)
-      }
+      console.warn('toggleExpanded failed:', e)
     }
   }, [expanded])
 
