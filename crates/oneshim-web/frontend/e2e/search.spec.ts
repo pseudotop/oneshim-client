@@ -94,11 +94,11 @@ test.describe('Search', () => {
   test.beforeEach(async ({ page }) => {
     await mockSearchApis(page)
     await page.goto('/search')
-    await expect(page.getByRole('heading', { name: searchTitleName })).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('h1').filter({ hasText: searchTitleName })).toBeVisible({ timeout: 10000 })
   })
 
   test('should display search title', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: searchTitleName })).toBeVisible()
+    await expect(page.locator('h1').filter({ hasText: searchTitleName })).toBeVisible()
   })
 
   test('should display search input', async ({ page }) => {
