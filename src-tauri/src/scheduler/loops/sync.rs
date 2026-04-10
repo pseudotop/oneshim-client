@@ -229,7 +229,12 @@ impl Scheduler {
                     oneshim_core::config::PiiFilterLevel::Standard,
                 );
 
-                // Wire ML classifier when feature is enabled
+                // Default: CV-based contour classifier (always available, no model file needed)
+                let detector = detector.with_ml_classifier(std::sync::Arc::new(
+                    oneshim_vision::contour_classifier::ContourGuiClassifier::new(),
+                ));
+
+                // Override with ONNX ML classifier when feature is enabled and model exists
                 #[cfg(feature = "ml-detect")]
                 let detector = {
                     use oneshim_vision::ml_classifier::OnnxGuiClassifier;
