@@ -194,6 +194,7 @@
       "coaching": "코칭",
       "audio": "오디오",
       "sync": "동기화",
+      "focusAuto": "집중 자동",
       "advanced": "고급"
     },
     "groupCore": "기본",
@@ -1160,6 +1161,27 @@
     "heatmap": "활동 히트맵",
     "systemStatus": "시스템 상태",
     "minOneRequired": "최소 하나의 위젯은 표시되어야 합니다"
+  },
+  "focusAuto": {
+    "title": "집중 모드 자동 전환",
+    "description": "규칙에 따라 집중 모드를 자동으로 활성화합니다",
+    "enabled": "자동 전환 활성화",
+    "duration": "집중 시간",
+    "durationDesc": "자동 활성화된 세션의 지속 시간",
+    "cooldown": "쿨다운",
+    "cooldownDesc": "비활성화 후 재트리거까지 대기 시간",
+    "triggerApps": "트리거 앱",
+    "triggerAppsDesc": "이 앱이 포그라운드에 있을 때 집중 모드 활성화",
+    "addApp": "앱 추가",
+    "appPlaceholder": "앱 이름 (예: Visual Studio Code)",
+    "schedules": "스케줄",
+    "schedulesDesc": "이 시간대에 집중 모드 자동 활성화",
+    "addSchedule": "스케줄 추가",
+    "minutes": "분",
+    "auto": "자동",
+    "weekdays": "평일",
+    "everyday": "매일",
+    "custom": "사용자 지정"
   },
   "emptyState": {
     "dashboard": {

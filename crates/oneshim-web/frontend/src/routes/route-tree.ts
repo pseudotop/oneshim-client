@@ -80,6 +80,7 @@ const CoachingSettingsTab = lazy(() => import('../pages/setting-tabs/CoachingSet
 const SyncTab = lazy(() => import('../pages/setting-tabs/SyncTab'))
 const AudioTab = lazy(() => import('../pages/setting-tabs/AudioTab'))
 const AdvancedTab = lazy(() => import('../pages/setting-tabs/AdvancedTab'))
+const FocusAutoTab = lazy(() => import('../pages/setting-tabs/FocusAutoTab'))
 
 // --- Lazy imports: Dashboard sub-routes ---
 const OverviewSection = lazy(() => import('../pages/dashboard/OverviewSection'))
@@ -319,7 +320,7 @@ export const routeTree: RouteNode[] = [
     selfWraps: true,
     childGroups: [
       { labelKey: 'settings.groupCore', tabs: ['general', 'privacy', 'monitoring', 'coaching', 'audio'] },
-      { labelKey: 'settings.groupAdvanced', tabs: ['ai-automation', 'data', 'sync', 'advanced'] },
+      { labelKey: 'settings.groupAdvanced', tabs: ['ai-automation', 'data', 'sync', 'focus-auto', 'advanced'] },
     ],
     children: [
       // Core group
@@ -332,6 +333,7 @@ export const routeTree: RouteNode[] = [
       { path: 'ai-automation', labelKey: 'settings.tabs.aiAutomation', component: AiAutomationTab },
       { path: 'data', labelKey: 'settings.tabs.dataStorage', component: DataStorageTab },
       { path: 'sync', labelKey: 'settings.tabs.sync', component: SyncTab },
+      { path: 'focus-auto', labelKey: 'settings.tabs.focusAuto', component: FocusAutoTab },
       { path: 'advanced', labelKey: 'settings.tabs.advanced', component: AdvancedTab },
     ],
     bottom: true,

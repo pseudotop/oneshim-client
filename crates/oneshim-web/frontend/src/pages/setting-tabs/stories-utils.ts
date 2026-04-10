@@ -154,6 +154,13 @@ export function makeDefaultFormData(overrides?: Partial<AppSettings>): AppSettin
       vad_silence_ms: 800,
       vad_min_speech_ms: 300,
     },
+    focus_auto: {
+      enabled: false,
+      duration_minutes: 25,
+      trigger_apps: [],
+      trigger_schedules: [],
+      cooldown_secs: 300,
+    },
     ...overrides,
   }
 }

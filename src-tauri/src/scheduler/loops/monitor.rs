@@ -101,11 +101,10 @@ impl Scheduler {
                         // A4: Focus mode auto-expiry check
                         if focus_mode.check_expiry() {
                             if let Some(ref overlay) = overlay_ref {
-                                overlay.emit_focus_mode(false);
+                                overlay.emit_focus_mode(false, false);
                             }
                             info!("Focus mode expired — auto-deactivated");
                         }
-
                         prev_idle_secs = handle_idle_tick(
                             &mut idle_tracker,
                             &sqlite1,
@@ -129,6 +128,7 @@ impl Scheduler {
                                 let mut focus_ocr_hint: Option<String> = None;
 
                                 input_collector.set_current_app(&app_name);
+                                if let Some(ref cm) = config_manager1 { super::focus_auto_helper::evaluate_focus_auto(&cm.get().focus_auto, &focus_mode, &app_name, overlay_ref.as_ref()); }
 
                                 // ── Accessibility API extraction (Phase 2) ──
                                 // Extract focused element info per tick when enabled.

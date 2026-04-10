@@ -144,7 +144,7 @@ export default function OverlayApp() {
       )}
 
       {/* Focus mode pill indicator (top center) */}
-      <FocusModeIndicator active={state.focusMode} />
+      <FocusModeIndicator active={state.focusMode} auto={state.focusModeAuto} />
 
       {/* Focus area highlight (when no detection mode) */}
       {!state.detectionScene && state.focusHighlight && <FocusHighlight highlight={state.focusHighlight} />}

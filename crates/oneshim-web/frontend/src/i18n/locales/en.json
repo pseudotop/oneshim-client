@@ -194,6 +194,7 @@
       "coaching": "Coaching",
       "audio": "Audio",
       "sync": "Sync",
+      "focusAuto": "Focus Auto",
       "advanced": "Advanced"
     },
     "groupCore": "Core",
@@ -1160,6 +1161,27 @@
     "heatmap": "Activity Heatmap",
     "systemStatus": "System Status",
     "minOneRequired": "At least one widget must remain visible"
+  },
+  "focusAuto": {
+    "title": "Focus Auto-Switch",
+    "description": "Automatically activate Focus mode based on rules",
+    "enabled": "Enable auto-switch",
+    "duration": "Focus duration",
+    "durationDesc": "Duration for auto-activated sessions",
+    "cooldown": "Cooldown",
+    "cooldownDesc": "Wait time after deactivation before re-triggering",
+    "triggerApps": "Trigger Apps",
+    "triggerAppsDesc": "Focus activates when these apps are in foreground",
+    "addApp": "Add app",
+    "appPlaceholder": "App name (e.g., Visual Studio Code)",
+    "schedules": "Schedules",
+    "schedulesDesc": "Focus activates during these time windows",
+    "addSchedule": "Add schedule",
+    "minutes": "min",
+    "auto": "Auto",
+    "weekdays": "Weekdays",
+    "everyday": "Every day",
+    "custom": "Custom"
   },
   "emptyState": {
     "dashboard": {

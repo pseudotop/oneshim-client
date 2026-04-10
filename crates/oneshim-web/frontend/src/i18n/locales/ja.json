@@ -166,7 +166,8 @@
       "monitoring": "モニタリング",
       "aiAutomation": "AI & 自動化",
       "dataStorage": "データ & ストレージ",
-      "coaching": "コーチング"
+      "coaching": "コーチング",
+      "focusAuto": "フォーカス自動"
     },
     "groupCore": "基本",
     "groupAdvanced": "詳細",
@@ -980,6 +981,27 @@
     "heatmap": "アクティビティヒートマップ",
     "systemStatus": "システム状態",
     "minOneRequired": "少なくとも1つのウィジェットを表示する必要があります"
+  },
+  "focusAuto": {
+    "title": "フォーカス自動切替",
+    "description": "ルールに基づいてフォーカスモードを自動的に有効にします",
+    "enabled": "自動切替を有効にする",
+    "duration": "フォーカス時間",
+    "durationDesc": "自動有効化セッションの継続時間",
+    "cooldown": "クールダウン",
+    "cooldownDesc": "無効化後の再トリガーまでの待機時間",
+    "triggerApps": "トリガーアプリ",
+    "triggerAppsDesc": "これらのアプリがフォアグラウンドにあるとフォーカスモードが有効になります",
+    "addApp": "アプリを追加",
+    "appPlaceholder": "アプリ名（例：Visual Studio Code）",
+    "schedules": "スケジュール",
+    "schedulesDesc": "この時間帯にフォーカスモードが自動的に有効になります",
+    "addSchedule": "スケジュールを追加",
+    "minutes": "分",
+    "auto": "自動",
+    "weekdays": "平日",
+    "everyday": "毎日",
+    "custom": "カスタム"
   },
   "emptyState": {
     "dashboard": {

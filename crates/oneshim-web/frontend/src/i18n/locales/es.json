@@ -166,7 +166,8 @@
       "monitoring": "Monitoreo",
       "aiAutomation": "IA y Automatización",
       "dataStorage": "Datos y Almacenamiento",
-      "coaching": "Coaching"
+      "coaching": "Coaching",
+      "focusAuto": "Enfoque auto"
     },
     "groupCore": "Básico",
     "groupAdvanced": "Avanzado",
@@ -980,6 +981,27 @@
     "heatmap": "Mapa de calor de actividad",
     "systemStatus": "Estado del sistema",
     "minOneRequired": "Al menos un widget debe permanecer visible"
+  },
+  "focusAuto": {
+    "title": "Cambio automático de enfoque",
+    "description": "Activa automáticamente el modo de enfoque según reglas",
+    "enabled": "Activar cambio automático",
+    "duration": "Duración del enfoque",
+    "durationDesc": "Duración de las sesiones activadas automáticamente",
+    "cooldown": "Enfriamiento",
+    "cooldownDesc": "Tiempo de espera después de la desactivación antes de volver a activar",
+    "triggerApps": "Aplicaciones de activación",
+    "triggerAppsDesc": "El enfoque se activa cuando estas aplicaciones están en primer plano",
+    "addApp": "Agregar aplicación",
+    "appPlaceholder": "Nombre de la aplicación (ej.: Visual Studio Code)",
+    "schedules": "Horarios",
+    "schedulesDesc": "El enfoque se activa durante estas ventanas de tiempo",
+    "addSchedule": "Agregar horario",
+    "minutes": "min",
+    "auto": "Auto",
+    "weekdays": "Días laborales",
+    "everyday": "Todos los días",
+    "custom": "Personalizado"
   },
   "emptyState": {
     "dashboard": {

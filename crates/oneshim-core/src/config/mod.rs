@@ -64,6 +64,8 @@ pub struct AppConfig {
     pub suggestions: SuggestionConfig,
     #[serde(default)]
     pub audio: AudioConfig,
+    #[serde(default)]
+    pub focus_auto: FocusAutoConfig,
 }
 
 // AppConfig impl
@@ -119,6 +121,7 @@ impl AppConfig {
             indicator: IndicatorConfig::default(),
             suggestions: SuggestionConfig::default(),
             audio: AudioConfig::default(),
+            focus_auto: FocusAutoConfig::default(),
         }
     }
 
