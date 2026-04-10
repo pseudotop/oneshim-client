@@ -224,12 +224,6 @@ impl ConfigManager {
     }
 }
 
-impl Default for ConfigManager {
-    fn default() -> Self {
-        Self::new().expect("Failed to create default config manager")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
