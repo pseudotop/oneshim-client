@@ -10,7 +10,6 @@ import { Outlet } from 'react-router-dom'
 import { fetchSummary } from '../../api/client'
 import type { DailySummary } from '../../api/contracts'
 import DateRangePicker from '../../components/DateRangePicker'
-import { ChartSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
 import WidgetCustomizer from '../../components/WidgetCustomizer'
 import type { SectionId } from '../../components/widget-registry'
 import { useDashboardWidgets } from '../../hooks/useDashboardWidgets'
@@ -81,25 +80,8 @@ export default function DashboardLayout() {
     queryFn: () => fetchSummary(selectedDate),
   })
 
-  if (summaryLoading) {
-    return (
-      <div className="min-h-full space-y-6 p-6">
-        <Skeleton className="h-8 w-48" />
-        <StatCardsSkeleton count={4} />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ChartSkeleton />
-          <ChartSkeleton />
-        </div>
-        <ChartSkeleton height="h-40" />
-      </div>
-    )
-  }
-
-  // Empty-state UX is owned by the defaultChild (OverviewSection) so the
-  // layout can always render <Outlet>. An earlier revision short-circuited
-  // here with EmptyState, which suppressed the index <Navigate to="overview"
-  // replace /> emitted by RouteRenderer and left `/` stuck without redirecting
-  // to `/overview`. Same bug class as AuditLayout's empty-state regression.
+  // Never conditionally suppress <Outlet> — same class as AuditLayout regression.
+  // Sections handle undefined summary gracefully via null coalescing.
   const ctx: DashboardContext = {
     status,
     latestMetrics,

@@ -50,6 +50,19 @@ export default function WidgetCustomizer({ section, isVisible, canToggle, onTogg
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, close])
 
+  // Close when focus leaves the container (Tab-out)
+  useEffect(() => {
+    if (!isOpen) return
+    const handleFocusOut = (e: FocusEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.relatedTarget as Node)) {
+        close()
+      }
+    }
+    containerRef.current?.addEventListener('focusout', handleFocusOut)
+    const el = containerRef.current
+    return () => el?.removeEventListener('focusout', handleFocusOut)
+  }, [isOpen, close])
+
   return (
     <div ref={containerRef} className="relative">
       <button

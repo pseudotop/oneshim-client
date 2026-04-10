@@ -205,6 +205,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
                     motion.colors,
                     sourceFilter.has(src) ? 'bg-brand/20 text-brand' : 'bg-content-inverse/5 text-content-tertiary',
                   )}
+                  aria-pressed={sourceFilter.has(src)}
                   onClick={() => toggleSource(src)}
                 >
                   {src === 'server'

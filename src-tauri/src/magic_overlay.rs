@@ -458,11 +458,13 @@ impl MagicOverlayHandle {
             let _ = window.set_ignore_cursor_events(false);
             debug!("Overlay panel mode ON (compact strip)");
         } else {
-            // Restore full-screen click-through
+            // Restore full-screen click-through (use LogicalSize for DPI consistency)
             if let Ok(Some(monitor)) = self.app_handle.primary_monitor() {
-                let size = monitor.size();
+                let scale = monitor.scale_factor();
+                let logical_w = monitor.size().width as f64 / scale;
+                let logical_h = monitor.size().height as f64 / scale;
                 let _ = window.set_position(tauri::LogicalPosition::new(0.0, 0.0));
-                let _ = window.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                let _ = window.set_size(tauri::LogicalSize::new(logical_w, logical_h));
             }
 
             let _ = window.set_ignore_cursor_events(true);
