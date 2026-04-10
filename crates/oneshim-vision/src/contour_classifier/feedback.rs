@@ -44,6 +44,19 @@ pub struct FeatureSummary {
     pub aspect_ratio: f32,
 }
 
+impl FeatureSummary {
+    /// Fallback when no frame crop data is available.
+    pub fn from_aspect_ratio(aspect_ratio: f32) -> Self {
+        Self {
+            border_contrast: 0.0,
+            fill_uniformity: 0.0,
+            has_distinct_border: false,
+            has_background_fill: false,
+            aspect_ratio,
+        }
+    }
+}
+
 impl From<&VisualFeatures> for FeatureSummary {
     fn from(v: &VisualFeatures) -> Self {
         Self {

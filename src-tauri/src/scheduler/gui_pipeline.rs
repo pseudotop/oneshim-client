@@ -56,7 +56,7 @@ pub(crate) struct GuiPipelineState {
 ///
 /// The caller (monitor loop) feeds the returned summary into
 /// `ContentTracker::update()`.
-#[allow(dead_code, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_gui_tick(
     state: &mut GuiPipelineState,
     ocr_regions: &[OcrRegion],
@@ -117,22 +117,38 @@ pub(crate) async fn run_gui_tick(
                 }
             }
 
-            // Queue uncertain elements for LLM feedback
+            // Queue uncertain elements for LLM feedback with visual features
             if elem.type_confidence < UNCERTAIN_THRESHOLD
                 && state.uncertain_queue.len() < MAX_UNCERTAIN_QUEUE
             {
+                // Extract visual features from crop if frame data available
+                let features = if let Some(frame) = frame_rgba {
+                    use oneshim_vision::contour_classifier::features::extract_visual_features;
+                    use oneshim_vision::gui_detector::GuiElementDetector;
+                    if let Some(crop) = GuiElementDetector::crop_region_rgba(
+                        frame,
+                        frame_width,
+                        frame_height,
+                        &elem.bbox,
+                    ) {
+                        let vf = extract_visual_features(&crop, elem.bbox.width, elem.bbox.height);
+                        feedback::FeatureSummary::from(&vf)
+                    } else {
+                        feedback::FeatureSummary::from_aspect_ratio(
+                            elem.bbox.width as f32 / elem.bbox.height.max(1) as f32,
+                        )
+                    }
+                } else {
+                    feedback::FeatureSummary::from_aspect_ratio(
+                        elem.bbox.width as f32 / elem.bbox.height.max(1) as f32,
+                    )
+                };
                 state.uncertain_queue.push_back(UncertainElement {
                     app_name: app_name.to_string(),
                     text: elem.text.clone(),
                     current_type: format!("{:?}", elem.element_type),
                     confidence: elem.type_confidence,
-                    features: feedback::FeatureSummary {
-                        border_contrast: 0.0,
-                        fill_uniformity: 0.0,
-                        has_distinct_border: false,
-                        has_background_fill: false,
-                        aspect_ratio: elem.bbox.width as f32 / elem.bbox.height.max(1) as f32,
-                    },
+                    features,
                 });
             }
         }
@@ -260,7 +276,6 @@ pub(crate) async fn run_gui_tick(
 ///
 /// Called periodically from the monitor loop when `feedback_tick_counter`
 /// reaches `FEEDBACK_INTERVAL_TICKS` and the uncertain queue is non-empty.
-#[allow(dead_code)]
 pub(crate) async fn process_gui_feedback(
     state: &mut GuiPipelineState,
     provider: &dyn oneshim_core::ports::analysis_provider::AnalysisProvider,
@@ -314,12 +329,19 @@ pub(crate) async fn process_gui_feedback(
                         let from_type = feedback::validate_element_type(&elem.current_type)
                             .unwrap_or(GuiElementType::Unknown);
 
-                        // Cache the correction for this app
-                        state
-                            .app_type_cache
-                            .entry(elem.app_name.clone())
-                            .or_default()
-                            .push((from_type, correct_type));
+                        // Cache the correction for this app (bounded: 24 per app, 256 apps)
+                        if state.app_type_cache.len() < 256
+                            || state.app_type_cache.contains_key(&elem.app_name)
+                        {
+                            let entries = state
+                                .app_type_cache
+                                .entry(elem.app_name.clone())
+                                .or_default();
+                            if entries.len() >= 24 {
+                                entries.remove(0);
+                            }
+                            entries.push((from_type, correct_type));
+                        }
 
                         applied += 1;
                     }

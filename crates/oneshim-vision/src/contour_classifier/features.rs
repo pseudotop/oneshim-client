@@ -19,8 +19,8 @@ pub struct VisualFeatures {
 pub fn extract_visual_features(rgba: &[u8], w: u32, h: u32) -> VisualFeatures {
     let aspect_ratio = w as f32 / h.max(1) as f32;
 
-    // Guard: crops smaller than 5×5 can't split border from interior
-    if w < 5 || h < 5 {
+    // Guard: buffer length must match dimensions; tiny crops can't split border from interior
+    if rgba.len() != (w as usize * h as usize * 4) || w < 5 || h < 5 {
         return VisualFeatures {
             border_contrast: 0.0,
             fill_uniformity: 1.0,
