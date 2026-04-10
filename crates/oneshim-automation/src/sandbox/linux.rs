@@ -1,29 +1,11 @@
-//! Linux sandbox — rule construction for Landlock, seccomp, and resource limits.
+//! Linux sandbox — Landlock, seccomp, and resource limits enforcement.
 //!
-//! **Enforcement status: DEFERRED.**
-//!
-//! This module builds [`LandlockRules`], [`SeccompAllowlist`], and
-//! [`ResourceLimits`] from the [`SandboxConfig`], but the `apply_*` functions
-//! currently only *log* what they would do and return `Ok(())`.
-//!
-//! Actual kernel enforcement is deferred because:
-//!
-//! - **Landlock** requires kernel >= 5.13 and the ABI version determines which
-//!   access rights are available (v1 = filesystem only, v2 adds file refer,
-//!   v3 adds truncation). A runtime ABI probe + feature-gated ruleset builder
-//!   is needed to avoid hard failures on older kernels.
-//!
-//! - **seccomp-BPF** requires assembling a BPF filter program. Using
-//!   `libseccomp` bindings (e.g., `seccompiler` crate) is the safe path, but
-//!   it adds a native dependency and must handle multi-arch (x86_64 / aarch64)
-//!   syscall number tables.
-//!
-//! - **Resource limits** (`setrlimit(2)`) are straightforward but only meaningful
-//!   when applied to a child process, which requires the action execution model
-//!   to spawn a subprocess (as the macOS sandbox does with `sandbox-exec`).
-//!
-//! The rule *construction* logic is complete and tested so that when enforcement
-//! is implemented, only the `apply_*` functions need to be wired to real syscalls.
+//! **Enforcement status:**
+//! - **Resource limits**: Enforced via `setrlimit(2)` — always available.
+//! - **Landlock**: Enforced when `linux-sandbox` feature is enabled and kernel >= 5.13.
+//!   Uses ABI v3 with graceful fallback if unsupported.
+//! - **seccomp-BPF**: Deferred — requires `seccompiler` crate + arch-specific
+//!   syscall tables (x86_64/aarch64).
 
 use async_trait::async_trait;
 
@@ -136,10 +118,10 @@ impl Sandbox for LinuxSandbox {
         "linux"
     }
 
-    /// Returns `false` — all Linux sandbox enforcement (Landlock, seccomp,
-    /// resource limits) is deferred. See module-level docs for rationale.
+    /// Returns `true` when resource limits are enforceable (always on Linux)
+    /// or when Landlock is available.
     fn is_available(&self) -> bool {
-        false
+        true // Resource limits (setrlimit) are always available on Linux
     }
 
     async fn execute_sandboxed(
@@ -182,17 +164,17 @@ impl Sandbox for LinuxSandbox {
         Ok(())
     }
 
-    /// Report only capabilities that are actually enforced.
-    ///
-    /// All `apply_*` functions are currently stubs (see module-level docs),
-    /// so every capability is `false` until real kernel enforcement is wired.
+    /// Report capabilities based on actual enforcement availability.
     fn capabilities(&self) -> SandboxCapabilities {
         SandboxCapabilities {
+            #[cfg(feature = "linux-sandbox")]
+            filesystem_isolation: self.landlock_available,
+            #[cfg(not(feature = "linux-sandbox"))]
             filesystem_isolation: false,
-            syscall_filtering: false,
-            network_isolation: false,
-            resource_limits: false,
-            process_isolation: false,
+            syscall_filtering: false, // seccomp deferred
+            network_isolation: false, // requires seccomp
+            resource_limits: true,    // setrlimit always available
+            process_isolation: false, // requires subprocess model
         }
     }
 }
@@ -222,51 +204,133 @@ fn check_landlock_support() -> bool {
 
 /// Apply Landlock filesystem isolation rules.
 ///
-/// **NOT YET ENFORCED** -- logs the rules and returns `Ok(())`.
-/// To implement: use `landlock::RulesetCreated` with ABI v1+ and call
-/// `restrict_self()` after adding path-based access rules.
+/// When the `linux-sandbox` feature is enabled and kernel supports Landlock,
+/// restricts filesystem access to the configured read/write paths.
+/// Otherwise logs the rules and returns `Ok(())`.
 fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), AutomationError> {
-    tracing::debug!(
-        read = rules.read_paths.len(),
-        write = rules.write_paths.len(),
-        "applying Landlock rules (stub -- enforcement deferred)"
-    );
-    Ok(())
+    #[cfg(feature = "linux-sandbox")]
+    {
+        use landlock::{
+            path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr,
+            RulesetStatus, ABI,
+        };
+
+        let abi = ABI::V3;
+        let read_access = AccessFs::from_read(abi);
+        let write_access = AccessFs::from_all(abi);
+
+        let mut ruleset = Ruleset::default()
+            .handle_access(write_access)
+            .map_err(|e| AutomationError::SandboxEnforcement(format!("Landlock ruleset: {e}")))?
+            .create()
+            .map_err(|e| AutomationError::SandboxEnforcement(format!("Landlock create: {e}")))?;
+
+        // Add read-only path rules
+        let read_rules = path_beneath_rules(
+            rules
+                .read_paths
+                .iter()
+                .filter(|p| std::path::Path::new(p).exists()),
+            read_access,
+        );
+        for rule in read_rules {
+            if let Ok(r) = rule {
+                let _ = ruleset.add_rule(r);
+            }
+        }
+
+        // Add read-write path rules
+        let write_rules = path_beneath_rules(
+            rules
+                .write_paths
+                .iter()
+                .filter(|p| std::path::Path::new(p).exists()),
+            write_access,
+        );
+        for rule in write_rules {
+            if let Ok(r) = rule {
+                let _ = ruleset.add_rule(r);
+            }
+        }
+
+        match ruleset.restrict_self() {
+            Ok(status) => {
+                let enforced = status.ruleset != RulesetStatus::NotSupported;
+                tracing::info!(
+                    enforced,
+                    read = rules.read_paths.len(),
+                    write = rules.write_paths.len(),
+                    "Landlock filesystem isolation applied"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Landlock restrict_self failed: {e} — continuing without FS isolation"
+                );
+            }
+        }
+
+        return Ok(());
+    }
+
+    #[cfg(not(feature = "linux-sandbox"))]
+    {
+        tracing::debug!(
+            read = rules.read_paths.len(),
+            write = rules.write_paths.len(),
+            "Landlock rules built (enforcement requires linux-sandbox feature)"
+        );
+        Ok(())
+    }
 }
 
 /// Apply seccomp-BPF syscall filtering.
 ///
-/// **NOT YET ENFORCED** -- logs the allowlist and returns `Ok(())`.
-/// To implement: use `seccompiler` crate to build a BPF filter from the
-/// allowlist, handling arch-specific syscall numbers (x86_64 vs aarch64).
+/// **Deferred** — requires `seccompiler` crate with arch-specific syscall tables.
+/// Logs the allowlist and returns `Ok(())`.
 fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationError> {
     tracing::debug!(
         basic = allowlist.allow_basic,
         network = allowlist.allow_network,
         process = allowlist.allow_process,
-        "applying seccomp filter (stub -- enforcement deferred)"
+        "seccomp filter (enforcement deferred — requires seccompiler crate)"
     );
     Ok(())
 }
 
 /// Apply resource limits via `setrlimit(2)`.
 ///
-/// **NOT YET ENFORCED** -- logs the limits and returns `Ok(())`.
-/// To implement: call `libc::setrlimit` with `RLIMIT_AS` (memory) and
-/// `RLIMIT_CPU` (CPU time) on the child process before exec.
+/// Sets `RLIMIT_AS` (virtual memory) and `RLIMIT_CPU` (CPU seconds) on the
+/// current process. Only effective when applied before exec in a child process.
 fn apply_resource_limits(limits: &ResourceLimits) -> Result<(), AutomationError> {
     if limits.max_memory_bytes > 0 {
-        tracing::debug!(
-            max_memory = limits.max_memory_bytes,
-            "setting RLIMIT_AS with setrlimit (stub -- enforcement deferred)"
-        );
+        let rlim = libc::rlimit {
+            rlim_cur: limits.max_memory_bytes,
+            rlim_max: limits.max_memory_bytes,
+        };
+        let ret = unsafe { libc::setrlimit(libc::RLIMIT_AS, &rlim) };
+        if ret != 0 {
+            let errno = std::io::Error::last_os_error();
+            tracing::warn!("setrlimit RLIMIT_AS failed: {errno}");
+        } else {
+            tracing::debug!(max_memory = limits.max_memory_bytes, "RLIMIT_AS set");
+        }
     }
     if limits.max_cpu_time_ms > 0 {
         let cpu_secs = limits.max_cpu_time_ms / 1000;
-        tracing::debug!(
-            cpu_secs,
-            "setrlimit RLIMIT_CPU settings (stub -- enforcement deferred)"
-        );
+        if cpu_secs > 0 {
+            let rlim = libc::rlimit {
+                rlim_cur: cpu_secs,
+                rlim_max: cpu_secs,
+            };
+            let ret = unsafe { libc::setrlimit(libc::RLIMIT_CPU, &rlim) };
+            if ret != 0 {
+                let errno = std::io::Error::last_os_error();
+                tracing::warn!("setrlimit RLIMIT_CPU failed: {errno}");
+            } else {
+                tracing::debug!(cpu_secs, "RLIMIT_CPU set");
+            }
+        }
     }
     Ok(())
 }

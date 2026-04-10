@@ -132,15 +132,107 @@ impl EncryptionKey {
 
         #[cfg(windows)]
         {
-            // TODO: Set owner-only DACL using windows-sys SetNamedSecurityInfoW
-            // to restrict key file access to the current user (equivalent to
-            // Unix 0o600). For now the file inherits the parent directory's ACL,
-            // which is typically user-only under %LOCALAPPDATA%.
-            tracing::debug!(
-                "Windows: key file ACL not explicitly restricted — relying on parent directory ACL"
-            );
+            if let Err(e) = set_owner_only_dacl(path) {
+                tracing::warn!("Failed to set owner-only DACL on key file: {e}");
+            }
         }
 
+        Ok(())
+    }
+}
+
+/// Set an owner-only DACL on a file (Windows equivalent of Unix chmod 0o600).
+///
+/// Creates an ACL with a single ACE granting the current user GENERIC_ALL,
+/// and applies it as a protected DACL (no inheritance from parent).
+#[cfg(windows)]
+fn set_owner_only_dacl(path: &std::path::Path) -> Result<(), StorageError> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Authorization::{SetNamedSecurityInfoW, SE_FILE_OBJECT};
+    use windows_sys::Win32::Security::{
+        AddAccessAllowedAce, GetTokenInformation, InitializeAcl, OpenProcessToken, TokenUser,
+        ACL as WIN_ACL, ACL_REVISION, DACL_SECURITY_INFORMATION, GENERIC_ALL,
+        PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    let wide_path: Vec<u16> = path
+        .to_string_lossy()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    unsafe {
+        // 1. Get the current user's SID
+        let mut token_handle = 0;
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle) == 0 {
+            return Err(StorageError::Internal("OpenProcessToken failed".into()));
+        }
+
+        // Query token user size
+        let mut needed: u32 = 0;
+        GetTokenInformation(
+            token_handle,
+            TokenUser,
+            std::ptr::null_mut(),
+            0,
+            &mut needed,
+        );
+        let mut user_buf = vec![0u8; needed as usize];
+        if GetTokenInformation(
+            token_handle,
+            TokenUser,
+            user_buf.as_mut_ptr().cast(),
+            needed,
+            &mut needed,
+        ) == 0
+        {
+            windows_sys::Win32::Foundation::CloseHandle(token_handle);
+            return Err(StorageError::Internal("GetTokenInformation failed".into()));
+        }
+        windows_sys::Win32::Foundation::CloseHandle(token_handle);
+
+        let token_user = &*(user_buf.as_ptr() as *const TOKEN_USER);
+        let user_sid = token_user.User.Sid;
+
+        // 2. Build an ACL with a single owner-only ACE
+        let sid_len = windows_sys::Win32::Security::GetLengthSid(user_sid);
+        let acl_size = std::mem::size_of::<WIN_ACL>() as u32
+            + std::mem::size_of::<windows_sys::Win32::Security::ACCESS_ALLOWED_ACE>() as u32
+            + sid_len
+            - std::mem::size_of::<u32>() as u32; // SidStart already counted once
+        let mut acl_buf = vec![0u8; acl_size as usize];
+        let acl_ptr = acl_buf.as_mut_ptr() as *mut WIN_ACL;
+
+        if InitializeAcl(acl_ptr, acl_size, ACL_REVISION) == 0 {
+            return Err(StorageError::Internal("InitializeAcl failed".into()));
+        }
+
+        if AddAccessAllowedAce(acl_ptr, ACL_REVISION, GENERIC_ALL, user_sid) == 0 {
+            return Err(StorageError::Internal("AddAccessAllowedAce failed".into()));
+        }
+
+        // 3. Apply as protected DACL (blocks inheritance from parent)
+        let result = SetNamedSecurityInfoW(
+            wide_path.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            acl_ptr,
+            std::ptr::null_mut(),
+        );
+
+        // acl_buf is stack-allocated, no LocalFree needed
+        let _ = LocalFree; // suppress unused import warning
+
+        if result != 0 {
+            return Err(StorageError::Internal(format!(
+                "SetNamedSecurityInfoW failed with error {result}"
+            )));
+        }
+
+        tracing::debug!("Key file DACL set to owner-only: {:?}", path);
         Ok(())
     }
 }
