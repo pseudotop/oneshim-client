@@ -4,6 +4,7 @@ import { cn } from '../../utils/cn'
 import type { ToastItem } from '../types'
 
 const MAX_VISIBLE = 3
+const MAX_PENDING = 20
 const TOAST_DURATION = 4000
 
 const typeStyles: Record<ToastItem['type'], string> = {
@@ -36,7 +37,8 @@ export function ToastContainer() {
 
     setVisible((prev) => {
       if (prev.length >= MAX_VISIBLE) {
-        // Queue overflow — hold until a slot opens.
+        // Queue overflow — hold until a slot opens (bounded to MAX_PENDING).
+        if (pendingRef.current.length >= MAX_PENDING) pendingRef.current.shift()
         pendingRef.current.push(item)
         return prev
       }

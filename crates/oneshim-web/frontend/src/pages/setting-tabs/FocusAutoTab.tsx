@@ -190,8 +190,9 @@ export default function FocusAutoTab() {
         <p className={cn('mb-3 text-xs', colors.text.secondary)}>{t('focusAuto.schedulesDesc')}</p>
 
         <div className="space-y-2">
+          {/* biome-ignore lint/suspicious/noArrayIndexKey: schedules have no stable ID */}
           {focusAuto.trigger_schedules.map((sched, i) => (
-            <div key={`${sched.start}-${sched.end}-${sched.days.join(',')}`} className="flex items-center gap-2">
+            <div key={i} className="flex items-center gap-2">
               <input
                 type="time"
                 value={sched.start}
