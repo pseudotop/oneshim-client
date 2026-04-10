@@ -323,3 +323,273 @@ pub(crate) fn records_to_csv<T: Serialize>(records: &[T]) -> Result<String, ApiE
 
     Ok(csv)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a sample `FocusWorkSessionRecord` with sensible defaults.
+    fn sample_session() -> FocusWorkSessionRecord {
+        FocusWorkSessionRecord {
+            id: 1,
+            started_at: "2026-04-10T09:00:00Z".to_string(),
+            ended_at: Some("2026-04-10T10:30:00Z".to_string()),
+            primary_app: "VS Code".to_string(),
+            category: "Development".to_string(),
+            state: "completed".to_string(),
+            interruption_count: 2,
+            deep_work_secs: 4800,
+            duration_secs: 5400,
+        }
+    }
+
+    // ── sessions_to_ical ──────────────────────────────────────────
+
+    #[test]
+    fn ical_empty_sessions() {
+        let result = sessions_to_ical(&[]);
+        assert!(result.contains("BEGIN:VCALENDAR"));
+        assert!(result.contains("END:VCALENDAR"));
+        assert!(!result.contains("BEGIN:VEVENT"));
+    }
+
+    #[test]
+    fn ical_session_with_ended_at() {
+        let session = sample_session();
+        let result = sessions_to_ical(&[session]);
+
+        assert!(result.contains("BEGIN:VEVENT"));
+        assert!(result.contains("UID:session-1@oneshim"));
+        assert!(result.contains("DTSTART:20260410T090000Z"));
+        assert!(result.contains("DTEND:20260410T103000Z"));
+        assert!(result.contains("SUMMARY:VS Code (Development)"));
+        assert!(
+            result.contains("DESCRIPTION:Duration: 5400s | Deep work: 4800s | Interruptions: 2")
+        );
+        assert!(result.contains("END:VEVENT"));
+    }
+
+    #[test]
+    fn ical_session_without_ended_at_is_skipped() {
+        let mut session = sample_session();
+        session.ended_at = None;
+        let result = sessions_to_ical(&[session]);
+
+        assert!(result.contains("BEGIN:VCALENDAR"));
+        assert!(!result.contains("BEGIN:VEVENT"));
+    }
+
+    #[test]
+    fn ical_multiple_sessions() {
+        let s1 = sample_session();
+        let mut s2 = sample_session();
+        s2.id = 2;
+        s2.started_at = "2026-04-10T14:00:00Z".to_string();
+        s2.ended_at = Some("2026-04-10T15:00:00Z".to_string());
+        s2.primary_app = "Terminal".to_string();
+
+        // One session without ended_at — should be skipped.
+        let mut s3 = sample_session();
+        s3.id = 3;
+        s3.ended_at = None;
+
+        let result = sessions_to_ical(&[s1, s2, s3]);
+
+        let vevent_count = result.matches("BEGIN:VEVENT").count();
+        assert_eq!(vevent_count, 2);
+    }
+
+    // ── sessions_to_toggl_csv ─────────────────────────────────────
+
+    #[test]
+    fn toggl_csv_empty_sessions() {
+        let result = sessions_to_toggl_csv(&[]);
+        assert_eq!(result, "Description,Start date,Start time,Duration,Tags\n");
+    }
+
+    #[test]
+    fn toggl_csv_single_session() {
+        let session = sample_session();
+        let result = sessions_to_toggl_csv(&[session]);
+
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "Description,Start date,Start time,Duration,Tags");
+        assert!(lines[1].contains("VS Code (Development)"));
+        assert!(lines[1].contains("2026-04-10"));
+        assert!(lines[1].contains("09:00:00"));
+        assert!(lines[1].contains("01:30:00"));
+        assert!(lines[1].contains("Development"));
+    }
+
+    #[test]
+    fn toggl_csv_escapes_commas_in_app_name() {
+        let mut session = sample_session();
+        session.primary_app = "App, with comma".to_string();
+
+        let result = sessions_to_toggl_csv(&[session]);
+        let data_line = result.lines().nth(1).unwrap();
+
+        // The description field must be quoted because it contains a comma.
+        assert!(data_line.starts_with('"'));
+    }
+
+    // ── rfc3339_to_ical ───────────────────────────────────────────
+
+    #[test]
+    fn rfc3339_to_ical_valid() {
+        let result = rfc3339_to_ical("2026-04-10T12:00:00Z");
+        assert_eq!(result, "20260410T120000Z");
+    }
+
+    #[test]
+    fn rfc3339_to_ical_invalid_fallback() {
+        let result = rfc3339_to_ical("not-a-date");
+        // Fallback strips dashes and colons.
+        assert_eq!(result, "notadate");
+    }
+
+    // ── split_rfc3339_date_time ───────────────────────────────────
+
+    #[test]
+    fn split_rfc3339_valid() {
+        let (date, time) = split_rfc3339_date_time("2026-04-10T12:30:45Z");
+        assert_eq!(date, "2026-04-10");
+        assert_eq!(time, "12:30:45");
+    }
+
+    #[test]
+    fn split_rfc3339_invalid_fallback() {
+        let (date, time) = split_rfc3339_date_time("garbage");
+        assert_eq!(date, "garbage");
+        assert_eq!(time, "00:00:00");
+    }
+
+    // ── format_toggl_duration ─────────────────────────────────────
+
+    #[test]
+    fn toggl_duration_zero() {
+        assert_eq!(format_toggl_duration(0), "00:00:00");
+    }
+
+    #[test]
+    fn toggl_duration_mixed() {
+        // 1h 1m 1s = 3661s
+        assert_eq!(format_toggl_duration(3661), "01:01:01");
+    }
+
+    #[test]
+    fn toggl_duration_full_day() {
+        assert_eq!(format_toggl_duration(86400), "24:00:00");
+    }
+
+    // ── csv_escape ────────────────────────────────────────────────
+
+    #[test]
+    fn csv_escape_no_special_chars() {
+        assert_eq!(csv_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn csv_escape_comma() {
+        assert_eq!(csv_escape("a,b"), "\"a,b\"");
+    }
+
+    #[test]
+    fn csv_escape_quote() {
+        assert_eq!(csv_escape("say \"hi\""), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn csv_escape_newline() {
+        assert_eq!(csv_escape("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    // ── records_to_csv ────────────────────────────────────────────
+
+    #[test]
+    fn records_to_csv_empty() {
+        let empty: Vec<serde_json::Value> = vec![];
+        let result = records_to_csv(&empty).unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn records_to_csv_simple_struct() {
+        #[derive(Serialize)]
+        struct Row {
+            name: String,
+            value: u32,
+        }
+
+        let rows = vec![
+            Row {
+                name: "alpha".to_string(),
+                value: 1,
+            },
+            Row {
+                name: "beta".to_string(),
+                value: 2,
+            },
+        ];
+        let csv = records_to_csv(&rows).unwrap();
+        let lines: Vec<&str> = csv.lines().collect();
+
+        assert_eq!(lines.len(), 3);
+        // Header contains both field names.
+        assert!(lines[0].contains("name"));
+        assert!(lines[0].contains("value"));
+        // Data rows present.
+        assert!(lines[1].contains("alpha"));
+        assert!(lines[2].contains("beta"));
+    }
+
+    #[test]
+    fn records_to_csv_escapes_comma_in_field() {
+        #[derive(Serialize)]
+        struct Row {
+            label: String,
+        }
+
+        let rows = vec![Row {
+            label: "a,b".to_string(),
+        }];
+        let csv = records_to_csv(&rows).unwrap();
+        let data_line = csv.lines().nth(1).unwrap();
+        // The value should be quoted.
+        assert!(data_line.contains("\"a,b\""));
+    }
+
+    // ── resolve_export_range ──────────────────────────────────────
+
+    #[test]
+    fn resolve_export_range_with_explicit_values() {
+        let params = ExportQuery {
+            from: Some("2026-04-01T00:00:00Z".to_string()),
+            to: Some("2026-04-10T23:59:59Z".to_string()),
+            format: "json".to_string(),
+        };
+        let (from, to) = resolve_export_range(&params);
+
+        assert!(from.to_rfc3339().starts_with("2026-04-01"));
+        assert!(to.to_rfc3339().starts_with("2026-04-10"));
+    }
+
+    #[test]
+    fn resolve_export_range_defaults() {
+        let params = ExportQuery {
+            from: None,
+            to: None,
+            format: "json".to_string(),
+        };
+        let before = Utc::now();
+        let (from, to) = resolve_export_range(&params);
+        let after = Utc::now();
+
+        // `to` should be approximately now.
+        assert!(to >= before && to <= after);
+        // `from` should be roughly 7 days before `to`.
+        let gap = to - from;
+        assert!(gap.num_days() >= 6 && gap.num_days() <= 7);
+    }
+}

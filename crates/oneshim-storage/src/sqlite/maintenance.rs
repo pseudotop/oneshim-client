@@ -835,3 +835,554 @@ impl SqliteStorage {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Helper: insert test data via sync upsert methods ────────────
+
+    fn insert_events(storage: &SqliteStorage, timestamps: &[&str]) {
+        for (i, ts) in timestamps.iter().enumerate() {
+            storage
+                .upsert_backup_event(
+                    &format!("evt-{i}"),
+                    "WindowChange",
+                    ts,
+                    Some("Code"),
+                    Some("test.rs"),
+                )
+                .unwrap();
+        }
+    }
+
+    fn insert_frame(storage: &SqliteStorage, id: i64, timestamp: &str) {
+        storage
+            .upsert_backup_frame(
+                id, timestamp, "manual", "Code", "main.rs", 0.5, 1920, 1080, None,
+            )
+            .unwrap();
+    }
+
+    fn insert_metric(storage: &SqliteStorage, timestamp: &str) {
+        let conn = storage.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO system_metrics (timestamp, cpu_usage, memory_used, memory_total, disk_used, disk_total, network_upload, network_download)
+             VALUES (?1, 45.5, 8589934592, 17179869184, 107374182400, 536870912000, 1000, 5000)",
+            rusqlite::params![timestamp],
+        )
+        .unwrap();
+    }
+
+    // ── maybe_vacuum ────────────────────────────────────────────────
+
+    #[test]
+    fn maybe_vacuum_fresh_db_returns_false() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let vacuumed = storage.maybe_vacuum(10).unwrap();
+        assert!(
+            !vacuumed,
+            "fresh DB has no freelist pages, should skip VACUUM"
+        );
+    }
+
+    #[test]
+    fn maybe_vacuum_after_bulk_delete() {
+        // In-memory databases may not accumulate freelist pages the same way
+        // as disk databases, so we just verify the method runs without error.
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("vacuum_test.db");
+        let storage = SqliteStorage::open(&db_path, 30, None).unwrap();
+
+        // Insert and delete bulk data to create freelist pages.
+        for i in 0..500 {
+            storage
+                .upsert_backup_event(
+                    &format!("bulk-{i}"),
+                    "WindowChange",
+                    "2025-06-01T00:00:00Z",
+                    Some("App"),
+                    Some("Title"),
+                )
+                .unwrap();
+        }
+        storage
+            .delete_data_in_range(
+                "2025-01-01T00:00:00Z",
+                "2025-12-31T23:59:59Z",
+                true,
+                false,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+
+        // With threshold 0, any freelist pages will trigger VACUUM.
+        let result = storage.maybe_vacuum(0);
+        assert!(result.is_ok());
+    }
+
+    // ── wal_checkpoint_passive ──────────────────────────────────────
+
+    #[test]
+    fn wal_checkpoint_passive_on_fresh_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.wal_checkpoint_passive();
+        assert!(result.is_ok());
+    }
+
+    // ── run_analyze ─────────────────────────────────────────────────
+
+    #[test]
+    fn run_analyze_on_fresh_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.run_analyze();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn run_analyze_with_conn_on_fresh_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let conn = storage.conn.lock().unwrap();
+        let result = SqliteStorage::run_analyze_with_conn(&conn);
+        assert!(result.is_ok());
+    }
+
+    // ── get_storage_stats_summary ───────────────────────────────────
+
+    #[test]
+    fn stats_summary_empty_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let stats = storage.get_storage_stats_summary().unwrap();
+
+        assert_eq!(stats.event_count, 0);
+        assert_eq!(stats.frame_count, 0);
+        assert_eq!(stats.metric_count, 0);
+        assert!(stats.oldest_data_date.is_none());
+        assert!(stats.newest_data_date.is_none());
+        assert!(stats.page_size > 0, "page_size should be positive");
+    }
+
+    #[test]
+    fn stats_summary_after_inserts() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        insert_events(&storage, &["2025-06-01T10:00:00Z", "2025-06-02T12:00:00Z"]);
+        insert_frame(&storage, 1, "2025-06-01T11:00:00Z");
+        insert_metric(&storage, "2025-06-03T08:00:00Z");
+
+        let stats = storage.get_storage_stats_summary().unwrap();
+        assert_eq!(stats.event_count, 2);
+        assert_eq!(stats.frame_count, 1);
+        assert_eq!(stats.metric_count, 1);
+        assert!(stats.oldest_data_date.is_some());
+        assert!(stats.newest_data_date.is_some());
+    }
+
+    // ── delete_data_in_range ────────────────────────────────────────
+
+    #[test]
+    fn delete_range_empty_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let counts = storage
+            .delete_data_in_range(
+                "2025-01-01T00:00:00Z",
+                "2025-12-31T23:59:59Z",
+                true,
+                true,
+                true,
+                true,
+                true,
+            )
+            .unwrap();
+
+        assert_eq!(counts.events_deleted, 0);
+        assert_eq!(counts.frames_deleted, 0);
+        assert_eq!(counts.metrics_deleted, 0);
+        assert_eq!(counts.process_snapshots_deleted, 0);
+        assert_eq!(counts.idle_periods_deleted, 0);
+    }
+
+    #[test]
+    fn delete_range_removes_matching_events() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        insert_events(
+            &storage,
+            &[
+                "2025-06-01T10:00:00Z",
+                "2025-06-15T10:00:00Z",
+                "2025-07-01T10:00:00Z",
+            ],
+        );
+
+        // Delete only June events
+        let counts = storage
+            .delete_data_in_range(
+                "2025-06-01T00:00:00Z",
+                "2025-06-30T23:59:59Z",
+                true,
+                false,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+
+        assert_eq!(counts.events_deleted, 2);
+
+        // July event should remain — verify via count_events_in_range
+        let remaining = storage
+            .count_events_in_range("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert_eq!(remaining, 1);
+    }
+
+    #[test]
+    fn delete_range_selective_flags() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let ts = "2025-06-15T10:00:00Z";
+
+        insert_events(&storage, &[ts]);
+        insert_frame(&storage, 1, ts);
+        insert_metric(&storage, ts);
+
+        // Delete only events, not frames or metrics
+        let counts = storage
+            .delete_data_in_range(
+                "2025-06-01T00:00:00Z",
+                "2025-06-30T23:59:59Z",
+                true,
+                false,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+
+        assert_eq!(counts.events_deleted, 1);
+        assert_eq!(counts.frames_deleted, 0);
+
+        // Frames and metrics should still exist
+        let frames = storage
+            .list_frame_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert_eq!(frames.len(), 1);
+
+        let metrics = storage
+            .list_metric_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert_eq!(metrics.len(), 1);
+    }
+
+    // ── delete_all_data ─────────────────────────────────────────────
+
+    #[test]
+    fn delete_all_data_clears_everything() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        insert_events(&storage, &["2025-06-01T10:00:00Z", "2025-06-02T10:00:00Z"]);
+        insert_frame(&storage, 1, "2025-06-01T11:00:00Z");
+        insert_metric(&storage, "2025-06-01T12:00:00Z");
+
+        storage.delete_all_data().unwrap();
+
+        let stats = storage.get_storage_stats_summary().unwrap();
+        assert_eq!(stats.event_count, 0);
+        assert_eq!(stats.frame_count, 0);
+        assert_eq!(stats.metric_count, 0);
+    }
+
+    #[test]
+    fn delete_all_data_on_empty_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.delete_all_data();
+        assert!(result.is_ok(), "delete_all_data should succeed on empty DB");
+    }
+
+    // ── list_event_exports ──────────────────────────────────────────
+    //
+    // NOTE: list_event_exports() queries columns (app_name, window_title)
+    // that do not exist on the `events` table (the schema stores them in
+    // the JSON `data` column). These tests document the current schema
+    // mismatch — the method returns Err on the real schema.
+
+    #[test]
+    fn list_event_exports_returns_err_due_to_schema_mismatch() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.list_event_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z");
+        assert!(
+            result.is_err(),
+            "list_event_exports should fail: events table lacks app_name/window_title columns"
+        );
+    }
+
+    // ── count_events_in_range (exercised as event-query alternative) ─
+
+    #[test]
+    fn count_events_in_range_empty() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let count = storage
+            .count_events_in_range("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn count_events_in_range_filters_by_range() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        insert_events(
+            &storage,
+            &[
+                "2025-03-01T10:00:00Z",
+                "2025-06-15T10:00:00Z",
+                "2025-09-01T10:00:00Z",
+            ],
+        );
+
+        let count = storage
+            .count_events_in_range("2025-06-01T00:00:00Z", "2025-06-30T23:59:59Z")
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    // ── list_metric_exports ─────────────────────────────────────────
+
+    #[test]
+    fn list_metric_exports_empty() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let exports = storage
+            .list_metric_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert!(exports.is_empty());
+    }
+
+    #[test]
+    fn list_metric_exports_filters_by_range() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        insert_metric(&storage, "2025-03-01T10:00:00Z");
+        insert_metric(&storage, "2025-06-15T10:00:00Z");
+
+        let exports = storage
+            .list_metric_exports("2025-06-01T00:00:00Z", "2025-06-30T23:59:59Z")
+            .unwrap();
+        assert_eq!(exports.len(), 1);
+        assert!(exports[0].cpu_usage > 40.0);
+    }
+
+    // ── list_frame_exports ──────────────────────────────────────────
+
+    #[test]
+    fn list_frame_exports_empty() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let exports = storage
+            .list_frame_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert!(exports.is_empty());
+    }
+
+    #[test]
+    fn list_frame_exports_filters_by_range() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        insert_frame(&storage, 1, "2025-03-01T10:00:00Z");
+        insert_frame(&storage, 2, "2025-06-15T10:00:00Z");
+        insert_frame(&storage, 3, "2025-09-01T10:00:00Z");
+
+        let exports = storage
+            .list_frame_exports("2025-06-01T00:00:00Z", "2025-06-30T23:59:59Z")
+            .unwrap();
+        assert_eq!(exports.len(), 1);
+        assert_eq!(exports[0].app_name, "Code");
+        assert!((exports[0].importance - 0.5).abs() < f32::EPSILON);
+    }
+
+    // ── fts_merge ───────────────────────────────────────────────────
+
+    #[test]
+    fn fts_merge_runs_without_error() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        // FTS_AVAILABLE is set true after migrations in open_in_memory.
+        let result = storage.fts_merge(64);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn fts_merge_skipped_when_unavailable() {
+        // Temporarily set FTS_AVAILABLE to false
+        let prev = FTS_AVAILABLE.load(Ordering::Relaxed);
+        FTS_AVAILABLE.store(false, Ordering::Relaxed);
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        // Restore the flag before calling — open_in_memory resets it to true,
+        // so we set it again after opening.
+        FTS_AVAILABLE.store(false, Ordering::Relaxed);
+
+        let result = storage.fts_merge(64);
+        assert!(result.is_ok(), "should no-op when FTS unavailable");
+
+        FTS_AVAILABLE.store(prev, Ordering::Relaxed);
+    }
+
+    // ── fts_optimize ────────────────────────────────────────────────
+
+    #[test]
+    fn fts_optimize_runs_without_error() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.fts_optimize();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn fts_optimize_skipped_when_unavailable() {
+        let prev = FTS_AVAILABLE.load(Ordering::Relaxed);
+        FTS_AVAILABLE.store(false, Ordering::Relaxed);
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        FTS_AVAILABLE.store(false, Ordering::Relaxed);
+
+        let result = storage.fts_optimize();
+        assert!(result.is_ok(), "should no-op when FTS unavailable");
+
+        FTS_AVAILABLE.store(prev, Ordering::Relaxed);
+    }
+
+    // ── Backup upsert helpers ───────────────────────────────────────
+
+    #[test]
+    fn upsert_backup_event_roundtrip() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        storage
+            .upsert_backup_event(
+                "evt-100",
+                "Idle",
+                "2025-08-01T09:00:00Z",
+                Some("Finder"),
+                Some("Desktop"),
+            )
+            .unwrap();
+
+        // Verify the event was persisted via count_events_in_range
+        let count = storage
+            .count_events_in_range("2025-08-01T00:00:00Z", "2025-08-01T23:59:59Z")
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Verify event_id and event_type via direct SQL
+        let conn = storage.conn.lock().unwrap();
+        let (eid, etype): (String, String) = conn
+            .query_row(
+                "SELECT event_id, event_type FROM events WHERE event_id = 'evt-100'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(eid, "evt-100");
+        assert_eq!(etype, "Idle");
+    }
+
+    #[test]
+    fn upsert_backup_frame_roundtrip() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        storage
+            .upsert_backup_frame(
+                42,
+                "2025-08-01T09:00:00Z",
+                "smart",
+                "Safari",
+                "Google",
+                0.9,
+                2560,
+                1440,
+                Some("Hello World"),
+            )
+            .unwrap();
+
+        let exports = storage
+            .list_frame_exports("2025-08-01T00:00:00Z", "2025-08-01T23:59:59Z")
+            .unwrap();
+        assert_eq!(exports.len(), 1);
+        assert_eq!(exports[0].id, 42);
+        assert_eq!(exports[0].trigger_type, "smart");
+        assert_eq!(exports[0].ocr_text.as_deref(), Some("Hello World"));
+    }
+
+    // ── list_frame_file_paths_in_range ──────────────────────────────
+
+    #[test]
+    fn list_frame_file_paths_empty_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let paths = storage
+            .list_frame_file_paths_in_range("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert!(paths.is_empty());
+    }
+
+    // ── search_events ───────────────────────────────────────────────
+    //
+    // NOTE: count_search_events() and search_events() reference
+    // app_name/window_title columns that do not exist on the `events`
+    // table. These tests document the schema mismatch.
+
+    #[test]
+    fn search_events_returns_err_due_to_schema_mismatch() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        insert_events(&storage, &["2025-06-01T10:00:00Z"]);
+
+        let result = storage.count_search_events("%Code%");
+        assert!(
+            result.is_err(),
+            "count_search_events should fail: events table lacks app_name column"
+        );
+
+        let result = storage.search_events("%Code%", 10, 0);
+        assert!(
+            result.is_err(),
+            "search_events should fail: events table lacks app_name column"
+        );
+    }
+
+    // ── Backup tag helpers ──────────────────────────────────────────
+
+    #[test]
+    fn backup_tag_roundtrip() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        storage
+            .upsert_backup_tag(1, "work", "#3b82f6", "2025-06-01T00:00:00Z")
+            .unwrap();
+        storage
+            .upsert_backup_tag(2, "personal", "#ef4444", "2025-06-01T00:00:00Z")
+            .unwrap();
+
+        let tags = storage.list_backup_tags().unwrap();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "work");
+        assert_eq!(tags[1].name, "personal");
+    }
+
+    #[test]
+    fn backup_frame_tag_roundtrip() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Create prerequisite frame and tag
+        insert_frame(&storage, 1, "2025-06-01T10:00:00Z");
+        storage
+            .upsert_backup_tag(10, "important", "#f59e0b", "2025-06-01T00:00:00Z")
+            .unwrap();
+
+        storage
+            .upsert_backup_frame_tag(1, 10, "2025-06-01T10:00:00Z")
+            .unwrap();
+
+        let links = storage.list_backup_frame_tags().unwrap();
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].frame_id, 1);
+        assert_eq!(links[0].tag_id, 10);
+    }
+}
