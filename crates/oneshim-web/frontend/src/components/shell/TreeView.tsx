@@ -131,7 +131,7 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
         const isSelected = selectedId === node.id
 
         return (
-          <div key={node.id} role="none">
+          <div key={node.id} role="none" className={depth === 0 && index > 0 ? 'mt-1' : undefined}>
             <button
               type="button"
               role="treeitem"
@@ -148,10 +148,16 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
                 'flex w-full items-center gap-1.5 rounded-sm px-2 py-1',
                 motion.colors,
                 isSelected ? layout.sidePanel.itemActive : layout.sidePanel.itemBg,
-                layout.sidePanel.itemText,
+                isSelected
+                  ? 'text-sm'
+                  : depth === 0 && hasChildren
+                    ? layout.sidePanel.itemTextParent
+                    : depth >= 1
+                      ? layout.sidePanel.itemTextChild
+                      : layout.sidePanel.itemText,
                 interaction.focusRing,
               )}
-              style={{ paddingLeft: `${depth * 12 + 8}px` }}
+              style={{ paddingLeft: `${depth * 16 + 8}px` }}
             >
               {hasChildren ? (
                 isExpanded ? (
@@ -169,7 +175,9 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
               )}
             </button>
             {hasChildren && isExpanded && (
-              <TreeView nodes={node.children ?? []} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />
+              <div role="none" className={layout.sidePanel.childBorder}>
+                <TreeView nodes={node.children ?? []} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />
+              </div>
             )}
           </div>
         )

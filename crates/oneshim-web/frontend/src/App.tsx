@@ -79,6 +79,7 @@ function AppShell() {
           onResizeStart={onResizeStart}
           onResizeByKeyboard={onResizeByKeyboard}
           onCollapse={toggleSidebar}
+          onSearchOpen={openPalette}
         />
 
         <main id="main-content" className={cn('overflow-y-auto', layout.mainContent.bg)} aria-label="Main content">

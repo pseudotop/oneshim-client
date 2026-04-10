@@ -16,6 +16,8 @@ export interface TabsProps {
   className?: string
   ariaLabel?: string
   idBase?: string
+  /** Insert extra right margin after the tab at this index to visually separate groups. */
+  groupBreakAfter?: number
 }
 
 function getEnabledIndexes(tabs: Tab[]) {
@@ -28,7 +30,7 @@ function getEnabledIndexes(tabs: Tab[]) {
   }, [])
 }
 
-export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel, idBase }: TabsProps) {
+export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel, idBase, groupBreakAfter }: TabsProps) {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([])
   const enabledIndexes = getEnabledIndexes(tabs)
   const activeIndex = tabs.findIndex((tab) => tab.id === activeTab && !tab.disabled)
@@ -125,6 +127,7 @@ export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel, idBas
                 : 'text-content-secondary hover:bg-surface-elevated/70 hover:text-content',
               tab.disabled &&
                 'cursor-not-allowed text-content-tertiary opacity-60 hover:bg-transparent hover:text-content-tertiary',
+              index === groupBreakAfter && 'mr-4',
             )}
           >
             {tab.icon}

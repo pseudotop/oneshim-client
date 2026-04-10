@@ -420,6 +420,56 @@ impl MagicOverlayHandle {
         debug!("Overlay interactive={interactive}");
     }
 
+    /// Enter or leave compact panel mode for the suggestions panel.
+    ///
+    /// When `open = true`, the overlay window is resized to a narrow strip
+    /// on the right edge of the screen (panel width only) and made interactive.
+    /// This prevents the full-screen overlay from blocking mouse events on
+    /// the rest of the desktop.
+    ///
+    /// When `open = false`, the window is restored to full-screen dimensions
+    /// and set back to click-through mode.
+    pub fn set_panel_mode(&self, open: bool) {
+        if let Err(e) = self.ensure_window() {
+            debug!("ensure_window failed: {e}");
+            return;
+        }
+
+        let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) else {
+            return;
+        };
+
+        if open {
+            // Resize to a compact strip on the right edge.
+            // Panel is w-80 (320px) + right-4 (16px) margin + extra for toasts.
+            const PANEL_STRIP_WIDTH: f64 = 380.0;
+
+            if let Ok(Some(monitor)) = self.app_handle.primary_monitor() {
+                let scale = monitor.scale_factor();
+                let logical_w = monitor.size().width as f64 / scale;
+                let logical_h = monitor.size().height as f64 / scale;
+                let x = logical_w - PANEL_STRIP_WIDTH;
+
+                let _ = window.set_size(tauri::LogicalSize::new(PANEL_STRIP_WIDTH, logical_h));
+                let _ = window.set_position(tauri::LogicalPosition::new(x, 0.0));
+            }
+
+            let _ = window.show();
+            let _ = window.set_ignore_cursor_events(false);
+            debug!("Overlay panel mode ON (compact strip)");
+        } else {
+            // Restore full-screen click-through
+            if let Ok(Some(monitor)) = self.app_handle.primary_monitor() {
+                let size = monitor.size();
+                let _ = window.set_position(tauri::LogicalPosition::new(0.0, 0.0));
+                let _ = window.set_size(tauri::PhysicalSize::new(size.width, size.height));
+            }
+
+            let _ = window.set_ignore_cursor_events(true);
+            debug!("Overlay panel mode OFF (full-screen click-through)");
+        }
+    }
+
     /// Emit focus mode state change to overlay frontend.
     pub fn emit_focus_mode(&self, active: bool) {
         let _ = self.app_handle.emit(

@@ -39,6 +39,8 @@ export interface RouteNode {
    * the boundary so their state survives recovery reset.
    */
   selfWraps?: boolean
+  /** Optional child grouping for sidebar section headers (e.g., Settings Core/Advanced). */
+  childGroups?: { labelKey: string; tabs: string[] }[]
 }
 
 export interface RouteLeaf {
@@ -315,15 +317,21 @@ export const routeTree: RouteNode[] = [
     // SettingsFormProvider lives ABOVE the boundary. Without this, a recovery
     // reset would remount the provider and silently destroy unsaved form edits.
     selfWraps: true,
+    childGroups: [
+      { labelKey: 'settings.groupCore', tabs: ['general', 'privacy', 'monitoring', 'coaching', 'audio'] },
+      { labelKey: 'settings.groupAdvanced', tabs: ['ai-automation', 'data', 'sync', 'advanced'] },
+    ],
     children: [
+      // Core group
       { path: 'general', labelKey: 'settings.tabs.general', component: GeneralTab },
       { path: 'privacy', labelKey: 'settings.tabs.privacy', component: PrivacyTab },
       { path: 'monitoring', labelKey: 'settings.tabs.monitoring', component: MonitoringTab },
+      { path: 'coaching', labelKey: 'settings.tabs.coaching', component: CoachingSettingsTab },
+      { path: 'audio', labelKey: 'settings.tabs.audio', component: AudioTab },
+      // Advanced group
       { path: 'ai-automation', labelKey: 'settings.tabs.aiAutomation', component: AiAutomationTab },
       { path: 'data', labelKey: 'settings.tabs.dataStorage', component: DataStorageTab },
-      { path: 'coaching', labelKey: 'settings.tabs.coaching', component: CoachingSettingsTab },
       { path: 'sync', labelKey: 'settings.tabs.sync', component: SyncTab },
-      { path: 'audio', labelKey: 'settings.tabs.audio', component: AudioTab },
       { path: 'advanced', labelKey: 'settings.tabs.advanced', component: AdvancedTab },
     ],
     bottom: true,

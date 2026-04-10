@@ -168,6 +168,8 @@
       "dataStorage": "数据与存储",
       "coaching": "教练"
     },
+    "groupCore": "基本",
+    "groupAdvanced": "高级",
     "dataCollection": "数据采集",
     "enableCapture": "启用截图捕获",
     "idleThreshold": "空闲检测阈值（分钟）",
@@ -545,6 +547,7 @@
     "searchError": "搜索时发生错误。",
     "enterQuery": "请输入搜索关键词",
     "searchHint": "可通过应用名称、窗口标题、OCR 文本或标签进行搜索",
+    "browseTimeline": "浏览时间线",
     "screenshot": "截图",
     "event": "事件",
     "importance": "重要度"
@@ -1009,12 +1012,16 @@
     },
     "playbooksCoaching": {
       "title": "暂无辅导模板",
-      "description": "辅导模板可自定义 ONESHIM 何时如何提示您。新模板添加后将显示在此。"
+      "description": "辅导模板可自定义 ONESHIM 何时如何提示您。新模板添加后将显示在此。",
+      "action": "辅导设置"
     },
     "playbooksPresets": {
       "title": "暂无自动化预设",
-      "description": "自动化预设是针对常见任务的现成工作流。您可从目录中安装，或在设置中自行创建。"
-    }
+      "description": "自动化预设是针对常见任务的现成工作流。您可从目录中安装，或在设置中自行创建。",
+      "action": "配置策略"
+    },
+    "filterEmpty": "没有与当前筛选条件匹配的项目。",
+    "clearFilters": "清除筛选"
   },
   "commandPalette": {
     "dialogLabel": "命令面板",
@@ -1035,6 +1042,7 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "closeToTray": "最小化到托盘",
+    "search": "搜索...",
     "searchShortcut": "搜索（{{key}}+K）"
   },
   "errors": {
@@ -1283,6 +1291,17 @@
       "ContextRestore": "帮助在中断后恢复工作",
       "GoalTracker": "追踪每日模式目标的进度"
     },
+    "frequencyTitle": "辅导频率",
+    "frequencyDesc": "辅导消息的显示频率。适用于所有配置文件。",
+    "frequencySaved": "已保存",
+    "frequencyCustom": "自定义 ({{min}}分钟)",
+    "freq1": "1分钟",
+    "freq2": "2分钟",
+    "freq5": "5分钟",
+    "freq10": "10分钟",
+    "freq15": "15分钟",
+    "freq30": "30分钟",
+    "freq60": "60分钟",
     "habits": {
       "title": "习惯追踪器",
       "regime": "模式",
@@ -1505,7 +1524,8 @@
     "neverSynced": "从未同步"
   },
   "overlay": {
-    "focusMode": "专注模式"
+    "focusMode": "专注模式",
+    "hint": "{{mod}}O 互动辅导  ·  {{mod}}S 建议面板"
   },
   "detection": {
     "mode": "检测模式",

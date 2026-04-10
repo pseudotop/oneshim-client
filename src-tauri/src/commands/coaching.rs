@@ -140,6 +140,23 @@ pub async fn toggle_overlay_interactive(
     Ok(())
 }
 
+/// Toggle overlay suggestions panel mode.
+///
+/// When `open = true`, resizes the overlay to a compact strip on the right
+/// edge so only the panel area captures mouse events (the rest of the desktop
+/// remains interactive). When `open = false`, restores the full-screen
+/// click-through overlay.
+#[command]
+pub async fn toggle_suggestions_panel(
+    state: tauri::State<'_, AppState>,
+    open: bool,
+) -> Result<(), String> {
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_panel_mode(open);
+    }
+    Ok(())
+}
+
 /// Get coaching event history with pagination.
 #[command]
 pub async fn get_coaching_history(

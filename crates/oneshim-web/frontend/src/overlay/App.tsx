@@ -1,4 +1,6 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import { MOD_KEY } from '../utils/platform'
 import { AutomationConfirmModal } from './components/AutomationConfirmModal'
 import { CaptureFlash } from './components/CaptureFlash'
 import CoachingPopup from './components/CoachingPopup'
@@ -10,18 +12,75 @@ import GoalProgressBar from './components/GoalProgressBar'
 import HeatmapGhost from './components/HeatmapGhost'
 import { SuggestionBadge } from './components/SuggestionBadge'
 import { SuggestionsPanel } from './components/SuggestionsPanel'
-import { ToastContainer } from './components/Toast'
+import { showToast, ToastContainer } from './components/Toast'
 import { useOverlayEvents } from './hooks/useOverlayEvents'
 import type { SuggestionViewDto } from './types'
 
 export default function OverlayApp() {
   const { state, dispatch } = useOverlayEvents()
+  const { t } = useTranslation()
   const isRich = state.mode === 'rich' || state.mode === 'adaptive'
 
-  async function handleClosePanel() {
+  // Sync suggestions panel open/close → Rust window resize.
+  // When open, the overlay shrinks to a compact right-edge strip so it
+  // doesn't block mouse events on the rest of the desktop.
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('toggle_suggestions_panel', { open: state.suggestionsPanelOpen })
+      } catch (e) {
+        console.warn('toggle_suggestions_panel failed:', e)
+      }
+    })()
+  }, [state.suggestionsPanelOpen])
+
+  // Sync automation confirmation modal → Rust overlay interactivity.
+  // The modal has a full-screen backdrop so full-screen interactive is correct here.
+  // When dismissed, return to click-through.
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('toggle_overlay_interactive', { interactive: !!state.pendingConfirmation })
+      } catch (e) {
+        console.warn('toggle_overlay_interactive failed:', e)
+      }
+    })()
+  }, [state.pendingConfirmation])
+
+  // Show keyboard shortcut hint toast on first overlay activation.
+  const overlayVisible = !!state.coaching || state.suggestionsPanelOpen
+  const hintShownRef = useRef(false)
+
+  useEffect(() => {
+    if (!overlayVisible || hintShownRef.current) return
+    const HINT_KEY = 'oneshim-overlay-hints-shown'
+    try {
+      if (localStorage.getItem(HINT_KEY)) {
+        hintShownRef.current = true
+        return
+      }
+    } catch {
+      return
+    }
+
+    const mod = MOD_KEY === '\u2318' ? '\u2318\u21e7' : 'Ctrl+Shift+'
+    const timer = setTimeout(() => {
+      showToast(t('overlay.hint', { mod }), 'info', 8000)
+      try {
+        localStorage.setItem(HINT_KEY, '1')
+      } catch {
+        /* non-critical — hint re-shows next session */
+      }
+      hintShownRef.current = true
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [overlayVisible, t])
+
+  function handleClosePanel() {
     dispatch({ type: 'toggle-suggestions-panel', payload: false })
-    const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('toggle_overlay_interactive', { interactive: false })
   }
 
   const handleRefreshSuggestions = useCallback(async () => {

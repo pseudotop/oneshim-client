@@ -196,6 +196,8 @@
       "sync": "동기화",
       "advanced": "고급"
     },
+    "groupCore": "기본",
+    "groupAdvanced": "고급",
     "dataCollection": "데이터 수집",
     "enableCapture": "스크린샷 캡처 활성화",
     "idleThreshold": "유휴 감지 임계값 (분)",
@@ -605,6 +607,7 @@
     "searchError": "검색 중 오류가 발생했습니다.",
     "enterQuery": "검색어를 입력하세요",
     "searchHint": "앱 이름, 창 제목, OCR 텍스트 또는 태그로 검색할 수 있습니다",
+    "browseTimeline": "타임라인 둘러보기",
     "screenshot": "스크린샷",
     "event": "이벤트",
     "importance": "중요도",
@@ -1189,12 +1192,16 @@
     },
     "playbooksCoaching": {
       "title": "코칭 템플릿 없음",
-      "description": "코칭 템플릿은 ONESHIM이 언제 어떻게 말할지를 설정합니다. 새 템플릿이 추가되면 여기에 표시됩니다."
+      "description": "코칭 템플릿은 ONESHIM이 언제 어떻게 말할지를 설정합니다. 새 템플릿이 추가되면 여기에 표시됩니다.",
+      "action": "코칭 설정"
     },
     "playbooksPresets": {
       "title": "자동화 프리셋 없음",
-      "description": "자동화 프리셋은 일반 작업을 위한 미리 만들어진 워크플로우입니다. 카탈로그에서 설치하거나 설정에서 직접 만드세요."
-    }
+      "description": "자동화 프리셋은 일반 작업을 위한 미리 만들어진 워크플로우입니다. 카탈로그에서 설치하거나 설정에서 직접 만드세요.",
+      "action": "정책 설정"
+    },
+    "filterEmpty": "현재 필터와 일치하는 항목이 없습니다.",
+    "clearFilters": "필터 초기화"
   },
   "commandPalette": {
     "dialogLabel": "커맨드 팔레트",
@@ -1215,6 +1222,7 @@
     "minimize": "최소화",
     "maximize": "최대화",
     "closeToTray": "트레이로 닫기",
+    "search": "검색...",
     "searchShortcut": "검색 ({{key}}+K)"
   },
   "errors": {
@@ -1359,6 +1367,17 @@
       "ContextRestore": "중단 후 작업 재개를 도움",
       "GoalTracker": "일일 레짐 목표 달성 추적"
     },
+    "frequencyTitle": "코칭 빈도",
+    "frequencyDesc": "코칭 메시지 표시 빈도. 모든 프로필에 적용됩니다.",
+    "frequencySaved": "저장됨",
+    "frequencyCustom": "사용자 지정 ({{min}}분)",
+    "freq1": "1분",
+    "freq2": "2분",
+    "freq5": "5분",
+    "freq10": "10분",
+    "freq15": "15분",
+    "freq30": "30분",
+    "freq60": "60분",
     "habits": {
       "title": "습관 트래커",
       "regime": "레짐",
@@ -1585,7 +1604,8 @@
     "neverSynced": "동기화한 적 없음"
   },
   "overlay": {
-    "focusMode": "집중 모드"
+    "focusMode": "집중 모드",
+    "hint": "{{mod}}O 코칭 상호작용  ·  {{mod}}S 제안 패널 열기"
   },
   "detection": {
     "mode": "감지 모드",

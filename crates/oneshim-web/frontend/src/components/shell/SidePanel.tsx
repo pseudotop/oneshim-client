@@ -1,10 +1,18 @@
-import { PanelLeftClose } from 'lucide-react'
+import { PanelLeftClose, Search } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { getRoutesForGroup, joinChildPath, navGroups, useCurrentGroup, useCurrentRoute } from '../../routes'
+import {
+  getRoutesForGroup,
+  joinChildPath,
+  navGroups,
+  type RouteLeaf,
+  useCurrentGroup,
+  useCurrentRoute,
+} from '../../routes'
 import { iconSize, interaction, layout, motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { MOD_KEY } from '../../utils/platform'
 import TreeView, { type TreeNode } from './TreeView'
 
 interface SidePanelProps {
@@ -18,6 +26,8 @@ interface SidePanelProps {
    * the Cmd/Ctrl+B shortcut or clicking the active ActivityBar icon.
    */
   onCollapse?: () => void
+  /** Opens the command palette. Renders a search trigger between header and tree. */
+  onSearchOpen?: () => void
 }
 
 interface PanelContents {
@@ -28,7 +38,14 @@ interface PanelContents {
   treeKey: string
 }
 
-export default function SidePanel({ collapsed, width, onResizeStart, onResizeByKeyboard, onCollapse }: SidePanelProps) {
+export default function SidePanel({
+  collapsed,
+  width,
+  onResizeStart,
+  onResizeByKeyboard,
+  onCollapse,
+  onSearchOpen,
+}: SidePanelProps) {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const location = useLocation()
@@ -55,6 +72,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
         const node: TreeNode = {
           id: route.path,
           label: t(route.labelKey),
+          icon: route.icon ? <route.icon className={cn(iconSize.sm, 'text-content-muted')} /> : undefined,
         }
 
         // Narrow on `route.children` directly so TypeScript knows it's defined
@@ -91,12 +109,39 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
     // Bottom-item mode: show the active top-level route's children.
     if (!currentRoute.children?.length) return null
 
+    const pathname = location.pathname
+
+    // Grouped bottom-mode: build nested tree from childGroups metadata.
+    if (currentRoute.childGroups) {
+      const childMap = new Map(currentRoute.children.map((c) => [c.path, c]))
+      const nodes: TreeNode[] = currentRoute.childGroups.map((group, gi) => ({
+        id: `__group-${gi}`,
+        label: t(group.labelKey),
+        children: group.tabs
+          .map((tab) => childMap.get(tab))
+          .filter((c): c is RouteLeaf => Boolean(c))
+          .map((child) => ({
+            id: joinChildPath(currentRoute, child),
+            label: t(child.labelKey),
+          })),
+      }))
+      const selectedId =
+        nodes.flatMap((g) => g.children ?? []).find((c) => pathname === c.id || pathname.startsWith(`${c.id}/`))?.id ??
+        null
+      return {
+        headerLabelKey: currentRoute.labelKey,
+        sidebarNodes: nodes,
+        selectedId,
+        treeKey: `route:${currentRoute.path}`,
+      }
+    }
+
+    // Flat bottom-mode (unchanged fallback for Privacy etc.)
     const nodes: TreeNode[] = currentRoute.children.map((child) => ({
       id: joinChildPath(currentRoute, child),
       label: t(child.labelKey),
     }))
 
-    const pathname = location.pathname
     const selectedId =
       currentRoute.children
         .map((c) => joinChildPath(currentRoute, c))
@@ -112,7 +157,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
-      // In both modes the node ID is already a fully-qualified path.
+      if (nodeId.startsWith('__')) return
       navigate(nodeId)
     },
     [navigate],
@@ -172,6 +217,29 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
             </button>
           )}
         </div>
+
+        {onSearchOpen && (
+          <div className="px-2 py-1">
+            <button
+              type="button"
+              onClick={onSearchOpen}
+              className={cn(
+                'flex w-full items-center gap-2 px-2 py-1.5',
+                layout.sidePanel.searchTrigger,
+                motion.colors,
+                interaction.focusRing,
+              )}
+              aria-label={t('shell.searchShortcut', { key: MOD_KEY, defaultValue: `Search (${MOD_KEY}+K)` })}
+              data-testid="sidepanel-search"
+            >
+              <Search className={cn(iconSize.sm, 'flex-shrink-0')} aria-hidden="true" />
+              <span className="flex-1 truncate text-left">{t('shell.search', 'Search...')}</span>
+              <span className={layout.commandPalette.badge} aria-hidden="true">
+                {MOD_KEY}K
+              </span>
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto px-1 py-1">
           <TreeView
