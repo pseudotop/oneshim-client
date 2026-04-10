@@ -41,7 +41,7 @@
     "policies": "実行ポリシー",
     "playbooks": "プレイブック",
     "groupMonitor": "モニター",
-    "groupData": "データ",
+    "groupInsights": "インサイト",
     "groupManage": "管理",
     "groupSystem": "システム"
   },

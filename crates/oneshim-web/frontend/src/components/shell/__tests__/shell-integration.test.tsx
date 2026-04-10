@@ -49,46 +49,46 @@ const CASES: ShellCase[] = [
     activeGroupTestId: 'nav-group-monitor',
     expectedHeaderPattern: /monitor/i,
     selectedLeafPattern: /overview/i,
-    expectedTopLevelItems: [/dashboard/i, /day view/i, /timeline/i, /replay/i, /automation/i],
+    expectedTopLevelItems: [/dashboard/i, /day view/i, /timeline/i, /replay/i, /focus/i],
   },
   {
     // Note: `sidebar.policies` (automation child) translates to "Runtime
     // Status", not "Policies", because it's the first tab of the Automation
-    // page.  The top-level `nav.policies` ("Execution Policies") belongs to
-    // the manage group and is unrelated.
+    // page.  The top-level `nav.policies` ("Execution Policies") is a
+    // separate manage group route.
     route: '/automation/policies',
-    activeGroupTestId: 'nav-group-monitor',
-    expectedHeaderPattern: /monitor/i,
+    activeGroupTestId: 'nav-group-manage',
+    expectedHeaderPattern: /manage/i,
     selectedLeafPattern: /runtime status/i,
-    expectedTopLevelItems: [/dashboard/i, /day view/i, /timeline/i, /replay/i, /automation/i],
+    expectedTopLevelItems: [/automation/i, /recalibration/i, /^execution policies$/i, /audit/i, /updates/i],
   },
   {
     route: '/day',
     activeGroupTestId: 'nav-group-monitor',
     expectedHeaderPattern: /monitor/i,
     selectedLeafPattern: /day view/i,
-    expectedTopLevelItems: [/dashboard/i, /day view/i, /timeline/i, /replay/i, /automation/i],
+    expectedTopLevelItems: [/dashboard/i, /day view/i, /timeline/i, /replay/i, /focus/i],
   },
   {
     route: '/reports/activity',
-    activeGroupTestId: 'nav-group-data',
-    expectedHeaderPattern: /data/i,
+    activeGroupTestId: 'nav-group-insights',
+    expectedHeaderPattern: /insights/i,
     selectedLeafPattern: /activity report/i,
-    expectedTopLevelItems: [/recalibration/i, /coaching/i, /playbooks/i, /chat/i, /focus/i, /reports/i, /search/i],
+    expectedTopLevelItems: [/reports/i, /coaching/i, /chat/i, /playbooks/i, /search/i],
   },
   {
     route: '/chat',
-    activeGroupTestId: 'nav-group-data',
-    expectedHeaderPattern: /data/i,
+    activeGroupTestId: 'nav-group-insights',
+    expectedHeaderPattern: /insights/i,
     selectedLeafPattern: /chat/i,
-    expectedTopLevelItems: [/recalibration/i, /coaching/i, /playbooks/i, /chat/i, /focus/i, /reports/i, /search/i],
+    expectedTopLevelItems: [/reports/i, /coaching/i, /chat/i, /playbooks/i, /search/i],
   },
   {
     route: '/audit/summary',
     activeGroupTestId: 'nav-group-manage',
     expectedHeaderPattern: /manage/i,
     selectedLeafPattern: /summary/i,
-    expectedTopLevelItems: [/audit/i, /^execution policies$/i, /updates/i],
+    expectedTopLevelItems: [/automation/i, /recalibration/i, /^execution policies$/i, /audit/i, /updates/i],
   },
   {
     // Note: settings.tabs.privacy translates to "Telemetry", not "Privacy".

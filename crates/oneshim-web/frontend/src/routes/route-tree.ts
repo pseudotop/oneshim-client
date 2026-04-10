@@ -4,20 +4,20 @@ import {
   Calendar,
   ClipboardList,
   Clock,
-  Database,
   FileText,
   Gauge,
   Image,
   Info,
   LayoutDashboard,
+  Lightbulb,
   MessageCircle,
   MessageSquare,
   Monitor,
   RefreshCw,
   Settings,
   Shield,
-  ShieldCheck,
   Tag,
+  Wrench,
   Zap,
 } from 'lucide-react'
 import type { ComponentType, LazyExoticComponent } from 'react'
@@ -30,7 +30,7 @@ export interface RouteNode {
   defaultChild?: string
   component: LazyExoticComponent<ComponentType> | ComponentType
   children?: RouteLeaf[]
-  group?: 'monitor' | 'data' | 'manage'
+  group?: 'monitor' | 'insights' | 'manage'
   bottom?: boolean
   /**
    * When true, RouteRenderer does NOT wrap the component in a RouteErrorBoundary.
@@ -142,7 +142,7 @@ const AuditEntries = lazy(() => import('../pages/audit/EntriesSection'))
  * so declaration order here is for readability, not route priority.
  */
 export const routeTree: RouteNode[] = [
-  // --- Monitor group ---
+  // --- Monitor group (real-time observation) ---
   {
     path: '/',
     labelKey: 'nav.dashboard',
@@ -188,59 +188,6 @@ export const routeTree: RouteNode[] = [
     group: 'monitor',
   },
   {
-    path: '/automation',
-    labelKey: 'nav.automation',
-    icon: Monitor,
-    defaultChild: 'policies',
-    component: AutomationLayout,
-    children: [
-      { path: 'policies', labelKey: 'sidebar.policies', component: PoliciesSection },
-      { path: 'commands', labelKey: 'sidebar.commands', component: CommandsSection },
-      { path: 'history', labelKey: 'sidebar.executionHistory', component: HistorySection },
-    ],
-    group: 'monitor',
-  },
-
-  // --- Data group ---
-  {
-    path: '/recalibration',
-    labelKey: 'nav.recalibration',
-    icon: RefreshCw,
-    defaultChild: 'segments',
-    component: RecalibrationLayout,
-    children: [
-      { path: 'segments', labelKey: 'sidebar.segments', component: SegmentsSection },
-      { path: 'overrides', labelKey: 'sidebar.overrideHistory', component: OverridesSection },
-    ],
-    group: 'data',
-  },
-  {
-    path: '/coaching',
-    labelKey: 'nav.coaching',
-    icon: MessageCircle,
-    defaultChild: 'goals',
-    component: CoachingLayout,
-    children: [
-      { path: 'goals', labelKey: 'sidebar.coachingGoals', component: GoalsSection },
-      { path: 'history', labelKey: 'sidebar.coachingEvents', component: CoachingHistorySection },
-    ],
-    group: 'data',
-  },
-  {
-    path: '/playbooks',
-    labelKey: 'nav.playbooks',
-    icon: BookOpen,
-    component: Playbooks,
-    group: 'data',
-  },
-  {
-    path: '/chat',
-    labelKey: 'nav.chat',
-    icon: MessageSquare,
-    component: Chat,
-    group: 'data',
-  },
-  {
     path: '/focus',
     labelKey: 'nav.focus',
     icon: Image,
@@ -251,8 +198,10 @@ export const routeTree: RouteNode[] = [
       { path: 'sessions', labelKey: 'sidebar.focusSessions', component: SessionsSection },
       { path: 'interruptions', labelKey: 'sidebar.interruptions', component: InterruptionsSection },
     ],
-    group: 'data',
+    group: 'monitor',
   },
+
+  // --- Insights group (analysis & AI) ---
   {
     path: '/reports',
     labelKey: 'nav.reports',
@@ -264,17 +213,75 @@ export const routeTree: RouteNode[] = [
       { path: 'focus', labelKey: 'sidebar.focusReport', component: FocusReport },
       { path: 'export', labelKey: 'sidebar.exportData', component: ExportSection },
     ],
-    group: 'data',
+    group: 'insights',
+  },
+  {
+    path: '/coaching',
+    labelKey: 'nav.coaching',
+    icon: MessageCircle,
+    defaultChild: 'goals',
+    component: CoachingLayout,
+    children: [
+      { path: 'goals', labelKey: 'sidebar.coachingGoals', component: GoalsSection },
+      { path: 'history', labelKey: 'sidebar.coachingEvents', component: CoachingHistorySection },
+    ],
+    group: 'insights',
+  },
+  {
+    path: '/chat',
+    labelKey: 'nav.chat',
+    icon: MessageSquare,
+    component: Chat,
+    group: 'insights',
+  },
+  {
+    path: '/playbooks',
+    labelKey: 'nav.playbooks',
+    icon: BookOpen,
+    component: Playbooks,
+    group: 'insights',
   },
   {
     path: '/search',
     labelKey: 'nav.search',
     icon: Tag,
     component: Search,
-    group: 'data',
+    group: 'insights',
   },
 
-  // --- Manage group ---
+  // --- Manage group (control & administration) ---
+  {
+    path: '/automation',
+    labelKey: 'nav.automation',
+    icon: Monitor,
+    defaultChild: 'policies',
+    component: AutomationLayout,
+    children: [
+      { path: 'policies', labelKey: 'sidebar.policies', component: PoliciesSection },
+      { path: 'commands', labelKey: 'sidebar.commands', component: CommandsSection },
+      { path: 'history', labelKey: 'sidebar.executionHistory', component: HistorySection },
+    ],
+    group: 'manage',
+  },
+  {
+    path: '/recalibration',
+    labelKey: 'nav.recalibration',
+    icon: RefreshCw,
+    defaultChild: 'segments',
+    component: RecalibrationLayout,
+    children: [
+      { path: 'segments', labelKey: 'sidebar.segments', component: SegmentsSection },
+      { path: 'overrides', labelKey: 'sidebar.overrideHistory', component: OverridesSection },
+    ],
+    group: 'manage',
+  },
+  {
+    path: '/policies',
+    labelKey: 'nav.policies',
+    icon: Shield,
+    component: Policies,
+    group: 'manage',
+  },
   {
     path: '/audit',
     labelKey: 'nav.audit',
@@ -285,13 +292,6 @@ export const routeTree: RouteNode[] = [
       { path: 'summary', labelKey: 'sidebar.auditSummary', component: AuditSummary },
       { path: 'entries', labelKey: 'sidebar.auditEntries', component: AuditEntries },
     ],
-    group: 'manage',
-  },
-  {
-    path: '/policies',
-    labelKey: 'nav.policies',
-    icon: Shield,
-    component: Policies,
     group: 'manage',
   },
   {
@@ -363,7 +363,7 @@ export const routeTree: RouteNode[] = [
 // (top-level + their `children`) as a nested tree.  This keeps the 48px rail
 // uncluttered while still making every route reachable in two clicks.
 
-export type NavGroupId = 'monitor' | 'data' | 'manage'
+export type NavGroupId = 'monitor' | 'insights' | 'manage'
 
 export interface NavGroup {
   id: NavGroupId
@@ -378,11 +378,10 @@ export interface NavGroup {
 
 export const navGroups: NavGroup[] = [
   { id: 'monitor', labelKey: 'nav.groupMonitor', icon: Gauge, defaultPath: '/' },
-  // /reports is intentionally the Data landing (not /recalibration, the first
-  // route) because it surfaces charts and activity summaries that give users
-  // the broadest overview of their collected data.
-  { id: 'data', labelKey: 'nav.groupData', icon: Database, defaultPath: '/reports' },
-  { id: 'manage', labelKey: 'nav.groupManage', icon: ShieldCheck, defaultPath: '/audit' },
+  // /reports is the Insights landing because it surfaces charts and activity
+  // summaries that give users the broadest overview of their analysis data.
+  { id: 'insights', labelKey: 'nav.groupInsights', icon: Lightbulb, defaultPath: '/reports' },
+  { id: 'manage', labelKey: 'nav.groupManage', icon: Wrench, defaultPath: '/automation' },
 ]
 
 /**
@@ -390,7 +389,7 @@ export const navGroups: NavGroup[] = [
  * declaration order in `routeTree`.  Used by `SidePanel` (group mode) to
  * build the tree shown in the resizable panel.
  *
- * @param group The nav group ID — `'monitor' | 'data' | 'manage'`.
+ * @param group The nav group ID — `'monitor' | 'insights' | 'manage'`.
  * @returns The routes whose `group` field matches. Empty if the group has
  *          no routes (e.g. `manage` during an IA experiment), in which case
  *          the SidePanel falls back to rendering `null`.

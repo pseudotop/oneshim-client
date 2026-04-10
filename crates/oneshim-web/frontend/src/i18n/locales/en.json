@@ -41,7 +41,7 @@
     "policies": "Execution Policies",
     "playbooks": "Playbooks",
     "groupMonitor": "Monitor",
-    "groupData": "Data",
+    "groupInsights": "Insights",
     "groupManage": "Manage",
     "groupSystem": "System"
   },

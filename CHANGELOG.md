@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.33-rc.1] - 2026-04-09
+
+### Changed
+
+- Restructure IA — Monitor/Insights/Manage with balanced groups ([#393](https://github.com/pseudotop/oneshim-client/pull/393))
+  Reorganize navigation categories based on desktop app UX research
+  (VS Code, Claude, Linear, ChatGPT patterns):
+
+  Monitor (real-time): Dashboard, Day View, Timeline, Replay, Focus
+  Insights (analysis/AI): Reports, Coaching, Chat, Playbooks, Search
+  Manage (control): Automation, Recalibration, Policies, Audit, Updates
+
+  Key changes:
+  - Focus moved from Data→Monitor (real-time monitoring feature)
+  - Automation moved from Monitor→Manage (control/admin feature)
+  - Recalibration moved from Data→Manage (calibration management)
+  - "Data" group renamed to "Insights" (Lightbulb icon)
+  - Manage icon changed from ShieldCheck to Wrench
+  - Manage default landing changed from /audit to /automation
+  - All 5 i18n locales updated (en/ko/ja/es/zh-CN)
+  - 231 unit tests + E2E specs aligned with new structure
+
+## [0.4.32] - 2026-04-09
+
+### Fixed
+
+- Replace blocking_read/write with try_read/write ([#391](https://github.com/pseudotop/oneshim-client/pull/391))
+  blocking_read/blocking_write panics when called from a tokio runtime
+  context ("Cannot block the current thread"). Replace with try_read/
+  try_write which return an error instead of panicking, with fallback
+  behavior on lock contention.
+
+## [0.4.32-rc.7] - 2026-04-09
+
+### Fixed
+
+- Replace blocking_read/write with try_read/write ([#391](https://github.com/pseudotop/oneshim-client/pull/391))
+  blocking_read/blocking_write panics when called from a tokio runtime
+  context ("Cannot block the current thread"). Replace with try_read/
+  try_write which return an error instead of panicking, with fallback
+  behavior on lock contention.
+
+## [0.4.32-rc.6] - 2026-04-09
+
+### Fixed
+
+- Clean DMG background + compact panel mode ([#389](https://github.com/pseudotop/oneshim-client/pull/389))
+  * fix(dmg): replace cluttered DMG background with clean dark gradient
+
+  Remove guide text, icons, and arrow from DMG background image.
+  macOS natively renders the app icon and Applications folder alias,
+  so the baked-in elements were redundant and visually cluttered.
+
+## [0.4.32-rc.5] - 2026-04-09
+
+### Fixed
+
+- Polish detection cap, coaching timer, and toast queue ([#387](https://github.com/pseudotop/oneshim-client/pull/387))
+  Three low-severity overlay issues found during the rc.4 review:
+
+  1. Detection scene truncation was silent — elements beyond the 200-cap
+     were dropped without any signal.  Now the payload is sorted by
+     confidence descending before truncation so the most valuable
+     detections survive, and a `warn!` log records how many were dropped
+     with the scene ID for debugging.
+
+  2. Coaching popup auto-dismiss timer reset on every LLM text upgrade,
+     extending the popup's lifetime unpredictably.  Users expected the
+     original 15-second window and were surprised when the popup lingered
+     after a personalization arrived.  The timer now runs uninterrupted;
+     the text-fade transition still plays but doesn't restart the clock.
+
+  3. Toast overflow was silently dropped — when >3 toasts arrived in
+     rapid succession, `slice(-MAX_TOASTS)` discarded the oldest without
+     ever showing them.  Replaced with a pending queue: excess toasts
+     wait and promote into the visible stack as earlier toasts expire.
+     No toast is lost; they just appear in sequence.
+
+  Issue 4 (HeatmapGhost ResizeObserver cleanup) was confirmed already
+  correct — `ro.disconnect()` is called in the useEffect cleanup.
+
 ## [0.4.32-rc.4] - 2026-04-09
 
 ### Changed

@@ -78,6 +78,8 @@ struct OverlayState {
     visible: bool,
     current_message_id: Option<String>,
     detection_active: bool,
+    suggestions_panel_open: bool,
+    automation_confirm_active: bool,
 }
 
 /// Handle for managing the MagicOverlay Tauri WebView window.
@@ -110,6 +112,8 @@ impl MagicOverlayHandle {
                 visible: false,
                 current_message_id: None,
                 detection_active: false,
+                suggestions_panel_open: false,
+                automation_confirm_active: false,
             })),
         }
     }
@@ -388,48 +392,17 @@ impl MagicOverlayHandle {
         self.set_mode(new_mode).await;
     }
 
-    /// Toggle overlay interactivity.
+    /// Apply the correct window layout based on active overlay mode priority.
     ///
-    /// When `interactive = true`, the overlay captures mouse/keyboard input
-    /// (user can interact with popup buttons).
-    /// When `interactive = false`, all events pass through to underlying windows.
+    /// Priority (highest wins):
+    ///   1. Automation Confirm — full-screen interactive (modal backdrop)
+    ///   2. Detection — full-screen interactive (inspection mode)
+    ///   3. Suggestions Panel — compact right-edge strip interactive
+    ///   4. Default — full-screen click-through
     ///
-    /// Triggered by:
-    ///   - Global shortcut Cmd+Shift+O: toggle to interactive
-    ///   - Coaching popup dismissed: return to click-through
-    ///   - 5-second no-interaction timeout: return to click-through
-    pub fn set_interactive(&self, interactive: bool) {
-        if interactive {
-            // Ensure overlay window exists and is visible when making interactive
-            if let Err(e) = self.ensure_window() {
-                debug!("ensure_window failed: {e}");
-            }
-            if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-                if let Err(e) = window.show() {
-                    debug!("window show failed: {e}");
-                }
-                if let Err(e) = window.set_ignore_cursor_events(false) {
-                    debug!("set_ignore_cursor_events failed: {e}");
-                }
-            }
-        } else if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-            if let Err(e) = window.set_ignore_cursor_events(true) {
-                debug!("set_ignore_cursor_events failed: {e}");
-            }
-        }
-        debug!("Overlay interactive={interactive}");
-    }
-
-    /// Enter or leave compact panel mode for the suggestions panel.
-    ///
-    /// When `open = true`, the overlay window is resized to a narrow strip
-    /// on the right edge of the screen (panel width only) and made interactive.
-    /// This prevents the full-screen overlay from blocking mouse events on
-    /// the rest of the desktop.
-    ///
-    /// When `open = false`, the window is restored to full-screen dimensions
-    /// and set back to click-through mode.
-    pub fn set_panel_mode(&self, open: bool) {
+    /// Called after any mode flag changes to ensure the window always matches
+    /// the highest-priority active mode.
+    fn apply_window_layout(&self, state: &OverlayState) {
         if let Err(e) = self.ensure_window() {
             debug!("ensure_window failed: {e}");
             return;
@@ -439,36 +412,93 @@ impl MagicOverlayHandle {
             return;
         };
 
-        if open {
-            // Resize to a compact strip on the right edge.
-            // Panel is w-80 (320px) + right-4 (16px) margin + extra for toasts.
+        if state.automation_confirm_active || state.detection_active {
+            // Full-screen interactive
+            if let Ok(Some(monitor)) = self.app_handle.primary_monitor() {
+                let size = monitor.size();
+                let _ = window.set_position(tauri::LogicalPosition::new(0.0, 0.0));
+                let _ = window.set_size(tauri::PhysicalSize::new(size.width, size.height));
+            }
+            let _ = window.show();
+            let _ = window.set_ignore_cursor_events(false);
+            debug!(
+                "Overlay layout: full-screen interactive (automation={}, detection={})",
+                state.automation_confirm_active, state.detection_active
+            );
+        } else if state.suggestions_panel_open {
+            // Compact right-edge strip
             const PANEL_STRIP_WIDTH: f64 = 380.0;
-
             if let Ok(Some(monitor)) = self.app_handle.primary_monitor() {
                 let scale = monitor.scale_factor();
                 let logical_w = monitor.size().width as f64 / scale;
                 let logical_h = monitor.size().height as f64 / scale;
                 let x = logical_w - PANEL_STRIP_WIDTH;
-
                 let _ = window.set_size(tauri::LogicalSize::new(PANEL_STRIP_WIDTH, logical_h));
                 let _ = window.set_position(tauri::LogicalPosition::new(x, 0.0));
             }
-
             let _ = window.show();
             let _ = window.set_ignore_cursor_events(false);
-            debug!("Overlay panel mode ON (compact strip)");
+            debug!("Overlay layout: compact panel strip");
         } else {
-            // Restore full-screen click-through (use LogicalSize for DPI consistency)
+            // Full-screen click-through (default)
             if let Ok(Some(monitor)) = self.app_handle.primary_monitor() {
-                let scale = monitor.scale_factor();
-                let logical_w = monitor.size().width as f64 / scale;
-                let logical_h = monitor.size().height as f64 / scale;
+                let size = monitor.size();
                 let _ = window.set_position(tauri::LogicalPosition::new(0.0, 0.0));
-                let _ = window.set_size(tauri::LogicalSize::new(logical_w, logical_h));
+                let _ = window.set_size(tauri::PhysicalSize::new(size.width, size.height));
             }
-
             let _ = window.set_ignore_cursor_events(true);
-            debug!("Overlay panel mode OFF (full-screen click-through)");
+            debug!("Overlay layout: full-screen click-through");
+        }
+    }
+
+    /// Toggle overlay interactivity for detection or coaching.
+    ///
+    /// Delegates to `apply_window_layout` to respect mode priority. When
+    /// `interactive = true` for detection, the overlay goes full-screen
+    /// interactive only if no higher-priority mode overrides it.
+    pub fn set_interactive(&self, interactive: bool) {
+        // For backwards compat: set_interactive is used by detection toggle
+        // and coaching dismiss. Detection state is tracked separately via
+        // detection_active flag, so this is a best-effort fallback.
+        // Callers that manage specific modes should use the dedicated methods.
+        if let Err(e) = self.ensure_window() {
+            debug!("ensure_window failed: {e}");
+            return;
+        }
+        if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
+            if interactive {
+                let _ = window.show();
+                let _ = window.set_ignore_cursor_events(false);
+            } else if let Ok(state) = self.state.try_read() {
+                self.apply_window_layout(&state);
+                return;
+            } else {
+                // Fallback: couldn't acquire lock, just set click-through
+                let _ = window.set_ignore_cursor_events(true);
+            }
+        }
+        debug!("Overlay set_interactive={interactive}");
+    }
+
+    /// Enter or leave compact panel mode for the suggestions panel.
+    /// Recalculates window layout respecting mode priority.
+    pub fn set_panel_mode(&self, open: bool) {
+        if let Ok(mut state) = self.state.try_write() {
+            state.suggestions_panel_open = open;
+            self.apply_window_layout(&state);
+        } else {
+            debug!("set_panel_mode: lock contention, skipping");
+        }
+    }
+
+    /// Enter or leave automation confirmation mode.
+    /// Full-screen interactive — highest priority overlay mode.
+    pub fn set_automation_confirm_mode(&self, active: bool) {
+        if let Ok(mut state) = self.state.try_write() {
+            state.automation_confirm_active = active;
+            self.apply_window_layout(&state);
+        } else {
+            debug!("set_automation_confirm_mode: lock contention, skipping");
         }
     }
 
@@ -609,11 +639,15 @@ mod tests {
             visible: false,
             current_message_id: None,
             detection_active: false,
+            suggestions_panel_open: false,
+            automation_confirm_active: false,
         };
         assert_eq!(state.mode, OverlayMode::Minimal);
         assert!(!state.visible);
         assert!(state.current_message_id.is_none());
         assert!(!state.detection_active);
+        assert!(!state.suggestions_panel_open);
+        assert!(!state.automation_confirm_active);
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { i18nRegex } from './helpers/i18n'
 import { expect, test } from './helpers/test'
 
 const monitorName = i18nRegex('nav.groupMonitor')
-const dataName = i18nRegex('nav.groupData')
+const insightsName = i18nRegex('nav.groupInsights')
 const manageName = i18nRegex('nav.groupManage')
 const settingsName = i18nRegex('nav.settings')
 const privacyName = i18nRegex('nav.privacy')
@@ -20,7 +20,7 @@ test.describe('Navigation', () => {
     // for main navigation and 2 direct icons for Settings / Privacy.  Every
     // sub-route is reached via the SidePanel tree.
     await expect(page.getByTitle(monitorName)).toBeVisible()
-    await expect(page.getByTitle(dataName)).toBeVisible()
+    await expect(page.getByTitle(insightsName)).toBeVisible()
     await expect(page.getByTitle(manageName)).toBeVisible()
     await expect(page.getByTitle(settingsName)).toBeVisible()
     await expect(page.getByTitle(privacyName)).toBeVisible()
@@ -32,13 +32,13 @@ test.describe('Navigation', () => {
   })
 
   test('clicking Data lands on the reports activity view', async ({ page }) => {
-    await page.getByTitle(dataName).click()
+    await page.getByTitle(insightsName).click()
     await expect(page).toHaveURL(/\/reports\/activity$/)
   })
 
-  test('clicking Manage lands on the audit summary', async ({ page }) => {
+  test('clicking Manage lands on automation', async ({ page }) => {
     await page.getByTitle(manageName).click()
-    await expect(page).toHaveURL(/\/audit\/summary$/)
+    await expect(page).toHaveURL(/\/automation\/policies$/)
   })
 
   test('should navigate to Settings', async ({ page }) => {
