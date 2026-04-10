@@ -194,8 +194,11 @@
       "coaching": "Coaching",
       "audio": "Audio",
       "sync": "Sync",
+      "focusAuto": "Focus Auto",
       "advanced": "Advanced"
     },
+    "groupCore": "Core",
+    "groupAdvanced": "Advanced",
     "dataCollection": "Data Collection",
     "enableCapture": "Enable Screenshot Capture",
     "idleThreshold": "Idle Detection Threshold (min)",
@@ -605,6 +608,7 @@
     "searchError": "An error occurred while searching.",
     "enterQuery": "Enter a search term",
     "searchHint": "Search by app name, window title, OCR text, or tags",
+    "browseTimeline": "Browse Timeline",
     "screenshot": "Screenshot",
     "event": "Event",
     "importance": "Importance",
@@ -1142,6 +1146,43 @@
     "entries": "Audit Entries",
     "details": "Details"
   },
+  "widgets": {
+    "title": "Widgets",
+    "customize": "Customize widgets",
+    "resetDefaults": "Reset to Defaults",
+    "realtime": "Realtime Metrics",
+    "todaySummary": "Today at a Glance",
+    "statCards": "Stat Cards",
+    "metricsChart": "CPU / Memory Chart",
+    "appUsage": "App Usage",
+    "processList": "Process List",
+    "focusWidget": "Focus Overview",
+    "updatePanel": "Updates",
+    "heatmap": "Activity Heatmap",
+    "systemStatus": "System Status",
+    "minOneRequired": "At least one widget must remain visible"
+  },
+  "focusAuto": {
+    "title": "Focus Auto-Switch",
+    "description": "Automatically activate Focus mode based on rules",
+    "enabled": "Enable auto-switch",
+    "duration": "Focus duration",
+    "durationDesc": "Duration for auto-activated sessions",
+    "cooldown": "Cooldown",
+    "cooldownDesc": "Wait time after deactivation before re-triggering",
+    "triggerApps": "Trigger Apps",
+    "triggerAppsDesc": "Focus activates when these apps are in foreground",
+    "addApp": "Add app",
+    "appPlaceholder": "App name (e.g., Visual Studio Code)",
+    "schedules": "Schedules",
+    "schedulesDesc": "Focus activates during these time windows",
+    "addSchedule": "Add schedule",
+    "minutes": "min",
+    "auto": "Auto",
+    "weekdays": "Weekdays",
+    "everyday": "Every day",
+    "custom": "Custom"
+  },
   "emptyState": {
     "dashboard": {
       "title": "Warming Up",
@@ -1189,12 +1230,16 @@
     },
     "playbooksCoaching": {
       "title": "No Coaching Templates",
-      "description": "Coaching templates customize what ONESHIM says and when. New templates will appear here as you or your team add them."
+      "description": "Coaching templates customize what ONESHIM says and when. New templates will appear here as you or your team add them.",
+      "action": "Coaching Settings"
     },
     "playbooksPresets": {
       "title": "No Automation Presets",
-      "description": "Automation presets are ready-made workflows for common tasks. Install presets from the catalog or create your own in Settings."
-    }
+      "description": "Automation presets are ready-made workflows for common tasks. Install presets from the catalog or create your own in Settings.",
+      "action": "Configure Policies"
+    },
+    "filterEmpty": "No items match the current filters.",
+    "clearFilters": "Clear Filters"
   },
   "commandPalette": {
     "dialogLabel": "Command Palette",
@@ -1215,6 +1260,7 @@
     "minimize": "Minimize",
     "maximize": "Maximize",
     "closeToTray": "Close to tray",
+    "search": "Search...",
     "searchShortcut": "Search ({{key}}+K)"
   },
   "errors": {
@@ -1359,6 +1405,17 @@
       "ContextRestore": "Helps resume work after interruptions",
       "GoalTracker": "Tracks progress toward daily regime goals"
     },
+    "frequencyTitle": "Coaching Frequency",
+    "frequencyDesc": "How often coaching messages can appear. Applies to all profiles.",
+    "frequencySaved": "Saved",
+    "frequencyCustom": "Custom ({{min}} min)",
+    "freq1": "1 min",
+    "freq2": "2 min",
+    "freq5": "5 min",
+    "freq10": "10 min",
+    "freq15": "15 min",
+    "freq30": "30 min",
+    "freq60": "60 min",
     "habits": {
       "title": "Habit Tracker",
       "regime": "Regime",
@@ -1585,7 +1642,8 @@
     "neverSynced": "Never synced"
   },
   "overlay": {
-    "focusMode": "Focus Mode"
+    "focusMode": "Focus Mode",
+    "hint": "{{mod}}O Interact with coaching  ·  {{mod}}S Open suggestions"
   },
   "detection": {
     "mode": "Detection Mode",

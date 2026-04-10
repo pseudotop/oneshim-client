@@ -53,6 +53,7 @@ export interface ModePayload {
 
 export interface FocusModePayload {
   active: boolean
+  auto?: boolean
 }
 
 export interface SuggestionViewDto {
@@ -106,6 +107,7 @@ export interface ToastItem {
   id: string
   message: string
   type: 'success' | 'error' | 'info'
+  duration?: number
 }
 
 export interface OverlayState {
@@ -114,6 +116,7 @@ export interface OverlayState {
   coachingQueue: CoachingPayload[]
   focusHighlight: FocusHighlightPayload | null
   focusMode: boolean
+  focusModeAuto: boolean
   goals: GoalProgressItem[]
   captureState: CaptureStatePayload
   suggestionsPanelOpen: boolean

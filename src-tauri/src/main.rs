@@ -33,6 +33,7 @@ mod desktop_startup;
 mod fallback_stt;
 mod feature_capabilities;
 mod focus_analyzer;
+mod focus_auto;
 mod focus_mode;
 mod focus_probe_adapter;
 #[cfg(feature = "server")]

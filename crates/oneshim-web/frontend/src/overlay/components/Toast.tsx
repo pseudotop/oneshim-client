@@ -14,8 +14,8 @@ const typeStyles: Record<ToastItem['type'], string> = {
 
 let addToastGlobal: ((toast: Omit<ToastItem, 'id'>) => void) | null = null
 
-export function showToast(message: string, type: ToastItem['type'] = 'info') {
-  addToastGlobal?.({ message, type })
+export function showToast(message: string, type: ToastItem['type'] = 'info', duration?: number) {
+  addToastGlobal?.({ message, type, duration })
 }
 
 export function ToastContainer() {
@@ -59,12 +59,12 @@ export function ToastContainer() {
       setVisible((prev) => prev.slice(1))
       // Use a microtask so the state update above settles first.
       queueMicrotask(promoteFromQueue)
-    }, TOAST_DURATION)
+    }, visible[0]?.duration ?? TOAST_DURATION)
     return () => clearTimeout(timer)
   }, [visible, promoteFromQueue])
 
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col gap-2">
+    <output className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col gap-2" aria-live="polite">
       {visible.map((toast) => (
         <div
           key={toast.id}
@@ -77,6 +77,6 @@ export function ToastContainer() {
           {toast.message}
         </div>
       ))}
-    </div>
+    </output>
   )
 }

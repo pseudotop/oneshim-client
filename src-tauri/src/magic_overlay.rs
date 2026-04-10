@@ -503,10 +503,10 @@ impl MagicOverlayHandle {
     }
 
     /// Emit focus mode state change to overlay frontend.
-    pub fn emit_focus_mode(&self, active: bool) {
+    pub fn emit_focus_mode(&self, active: bool, auto: bool) {
         let _ = self.app_handle.emit(
             "overlay:focus-mode",
-            serde_json::json!({ "active": active }),
+            serde_json::json!({ "active": active, "auto": auto }),
         );
     }
 

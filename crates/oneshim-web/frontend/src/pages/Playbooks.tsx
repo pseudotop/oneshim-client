@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { BookOpen, ChevronDown, ChevronUp, Layers, MessageSquare } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import {
   type CoachingTemplateDto,
   fetchCoachingTemplates,
@@ -148,6 +149,7 @@ function PresetCard({ preset }: PresetCardProps) {
 
 export default function Playbooks() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [tab, setTab] = useState<PlaybookTab>('coaching')
 
   // Coaching filters
@@ -157,6 +159,13 @@ export default function Playbooks() {
 
   // Preset filters
   const [categoryFilter, setCategoryFilter] = useState<string>('')
+
+  const resetCoachingFilters = () => {
+    setProfileFilter('')
+    setTriggerFilter('')
+    setLocaleFilter('')
+  }
+  const resetPresetFilters = () => setCategoryFilter('')
 
   const { data: coachingData, isLoading: coachingLoading } = useQuery({
     queryKey: ['playbooksCoaching'],
@@ -294,11 +303,22 @@ export default function Playbooks() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <ListSkeleton rows={6} />
             </div>
-          ) : filteredTemplates.length === 0 ? (
+          ) : templates.length === 0 ? (
             <EmptyState
               icon={<MessageSquare className="h-8 w-8" aria-hidden="true" />}
               title={t('emptyState.playbooksCoaching.title')}
               description={t('emptyState.playbooksCoaching.description')}
+              action={{
+                label: t('emptyState.playbooksCoaching.action'),
+                onClick: () => navigate('/settings/coaching'),
+              }}
+            />
+          ) : filteredTemplates.length === 0 ? (
+            <EmptyState
+              icon={<MessageSquare className="h-8 w-8" aria-hidden="true" />}
+              title={t('emptyState.playbooksCoaching.title')}
+              description={t('emptyState.filterEmpty')}
+              action={{ label: t('emptyState.clearFilters'), onClick: resetCoachingFilters }}
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -334,11 +354,22 @@ export default function Playbooks() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <ListSkeleton rows={6} />
             </div>
-          ) : filteredPresets.length === 0 ? (
+          ) : presets.length === 0 ? (
             <EmptyState
               icon={<BookOpen className="h-8 w-8" aria-hidden="true" />}
               title={t('emptyState.playbooksPresets.title')}
               description={t('emptyState.playbooksPresets.description')}
+              action={{
+                label: t('emptyState.playbooksPresets.action'),
+                onClick: () => navigate('/automation/policies'),
+              }}
+            />
+          ) : filteredPresets.length === 0 ? (
+            <EmptyState
+              icon={<BookOpen className="h-8 w-8" aria-hidden="true" />}
+              title={t('emptyState.playbooksPresets.title')}
+              description={t('emptyState.filterEmpty')}
+              action={{ label: t('emptyState.clearFilters'), onClick: resetPresetFilters }}
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

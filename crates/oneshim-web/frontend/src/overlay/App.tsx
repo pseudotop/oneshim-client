@@ -1,4 +1,6 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import { MOD_KEY } from '../utils/platform'
 import { AutomationConfirmModal } from './components/AutomationConfirmModal'
 import { CaptureFlash } from './components/CaptureFlash'
 import CoachingPopup from './components/CoachingPopup'
@@ -10,12 +12,13 @@ import GoalProgressBar from './components/GoalProgressBar'
 import HeatmapGhost from './components/HeatmapGhost'
 import { SuggestionBadge } from './components/SuggestionBadge'
 import { SuggestionsPanel } from './components/SuggestionsPanel'
-import { ToastContainer } from './components/Toast'
+import { showToast, ToastContainer } from './components/Toast'
 import { useOverlayEvents } from './hooks/useOverlayEvents'
 import type { SuggestionViewDto } from './types'
 
 export default function OverlayApp() {
   const { state, dispatch } = useOverlayEvents()
+  const { t } = useTranslation()
   const isRich = state.mode === 'rich' || state.mode === 'adaptive'
 
   // Sync suggestions panel open/close → Rust window resize.
@@ -45,6 +48,36 @@ export default function OverlayApp() {
       }
     })()
   }, [state.pendingConfirmation])
+
+  // Show keyboard shortcut hint toast on first overlay activation.
+  const overlayVisible = !!state.coaching || state.suggestionsPanelOpen
+  const hintShownRef = useRef(false)
+
+  useEffect(() => {
+    if (!overlayVisible || hintShownRef.current) return
+    const HINT_KEY = 'oneshim-overlay-hints-shown'
+    try {
+      if (localStorage.getItem(HINT_KEY)) {
+        hintShownRef.current = true
+        return
+      }
+    } catch {
+      return
+    }
+
+    const mod = MOD_KEY === '\u2318' ? '\u2318\u21e7' : 'Ctrl+Shift+'
+    const timer = setTimeout(() => {
+      showToast(t('overlay.hint', { mod }), 'info', 8000)
+      try {
+        localStorage.setItem(HINT_KEY, '1')
+      } catch {
+        /* non-critical — hint re-shows next session */
+      }
+      hintShownRef.current = true
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [overlayVisible, t])
 
   function handleClosePanel() {
     dispatch({ type: 'toggle-suggestions-panel', payload: false })
@@ -111,7 +144,7 @@ export default function OverlayApp() {
       )}
 
       {/* Focus mode pill indicator (top center) */}
-      <FocusModeIndicator active={state.focusMode} />
+      <FocusModeIndicator active={state.focusMode} auto={state.focusModeAuto} />
 
       {/* Focus area highlight (when no detection mode) */}
       {!state.detectionScene && state.focusHighlight && <FocusHighlight highlight={state.focusHighlight} />}

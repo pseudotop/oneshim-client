@@ -20,7 +20,7 @@ type OverlayAction =
   | { type: 'clear-focus' }
   | { type: 'update-goals'; payload: GoalProgressItem[] }
   | { type: 'set-mode'; payload: OverlayMode }
-  | { type: 'set-focus-mode'; payload: boolean }
+  | { type: 'set-focus-mode'; payload: { active: boolean; auto: boolean } }
   | { type: 'capture-state-changed'; payload: CaptureStatePayload }
   | { type: 'toggle-suggestions-panel'; payload?: boolean }
   | { type: 'capture-feedback'; payload: string }
@@ -40,6 +40,7 @@ const initialState: OverlayState = {
   goals: [],
   captureState: { paused: false, indicator_visible: false },
   focusMode: false,
+  focusModeAuto: false,
   suggestionsPanelOpen: false,
   suggestions: [],
   suggestionBadgeCount: 0,
@@ -81,7 +82,7 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
     case 'set-mode':
       return { ...state, mode: action.payload }
     case 'set-focus-mode':
-      return { ...state, focusMode: action.payload }
+      return { ...state, focusMode: action.payload.active, focusModeAuto: action.payload.auto }
     case 'capture-state-changed':
       return { ...state, captureState: action.payload }
     case 'toggle-suggestions-panel': {
@@ -166,7 +167,7 @@ export function useOverlayEvents() {
       })
 
       const u9 = await listen<FocusModePayload>('overlay:focus-mode', (e) => {
-        dispatch({ type: 'set-focus-mode', payload: e.payload.active })
+        dispatch({ type: 'set-focus-mode', payload: { active: e.payload.active, auto: e.payload.auto ?? false } })
       })
 
       // u10: Suggestions panel toggle (from Cmd+Shift+S)

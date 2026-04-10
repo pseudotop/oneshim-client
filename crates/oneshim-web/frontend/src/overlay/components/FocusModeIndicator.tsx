@@ -5,9 +5,10 @@ import { cn } from '../../utils/cn'
 
 interface FocusModeIndicatorProps {
   active: boolean
+  auto?: boolean
 }
 
-export const FocusModeIndicator = memo(function FocusModeIndicator({ active }: FocusModeIndicatorProps) {
+export const FocusModeIndicator = memo(function FocusModeIndicator({ active, auto }: FocusModeIndicatorProps) {
   const { t } = useTranslation()
   if (!active) return null
 
@@ -21,6 +22,7 @@ export const FocusModeIndicator = memo(function FocusModeIndicator({ active }: F
         )}
       >
         {t('overlay.focusMode', 'Focus Mode')}
+        {auto && ` (${t('focusAuto.auto', 'Auto')})`}
       </div>
     </div>
   )

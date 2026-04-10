@@ -171,6 +171,7 @@ export interface AppSettings {
   integration: IntegrationSettings
   sync: SyncSettings
   audio: AudioSettings
+  focus_auto: FocusAutoSettings
 }
 
 export interface AudioSettings {
@@ -187,6 +188,20 @@ export interface AudioSettings {
   vad_threshold: number
   vad_silence_ms: number
   vad_min_speech_ms: number
+}
+
+export interface FocusAutoSettings {
+  enabled: boolean
+  duration_minutes: number
+  trigger_apps: string[]
+  trigger_schedules: FocusScheduleSettings[]
+  cooldown_secs: number
+}
+
+export interface FocusScheduleSettings {
+  start: string
+  end: string
+  days: string[]
 }
 
 export interface AiSessionSettings {

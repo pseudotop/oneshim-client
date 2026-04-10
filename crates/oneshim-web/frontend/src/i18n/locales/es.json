@@ -166,8 +166,11 @@
       "monitoring": "Monitoreo",
       "aiAutomation": "IA y Automatización",
       "dataStorage": "Datos y Almacenamiento",
-      "coaching": "Coaching"
+      "coaching": "Coaching",
+      "focusAuto": "Enfoque auto"
     },
+    "groupCore": "Básico",
+    "groupAdvanced": "Avanzado",
     "dataCollection": "Recopilación de datos",
     "enableCapture": "Habilitar captura de pantalla",
     "idleThreshold": "Umbral de detección de inactividad (min)",
@@ -545,6 +548,7 @@
     "searchError": "Ocurrió un error durante la búsqueda.",
     "enterQuery": "Ingrese un término de búsqueda",
     "searchHint": "Buscar por nombre de aplicación, título de ventana, texto OCR o etiquetas",
+    "browseTimeline": "Explorar línea de tiempo",
     "screenshot": "Captura de pantalla",
     "event": "Evento",
     "importance": "Importancia"
@@ -962,6 +966,43 @@
     "entries": "Entradas de auditoría",
     "details": "Detalles"
   },
+  "widgets": {
+    "title": "Widgets",
+    "customize": "Personalizar widgets",
+    "resetDefaults": "Restablecer valores predeterminados",
+    "realtime": "Monitoreo en tiempo real",
+    "todaySummary": "Resumen del día",
+    "statCards": "Tarjetas de estadísticas",
+    "metricsChart": "Gráfico CPU / Memoria",
+    "appUsage": "Uso de aplicaciones",
+    "processList": "Lista de procesos",
+    "focusWidget": "Resumen de enfoque",
+    "updatePanel": "Actualizaciones",
+    "heatmap": "Mapa de calor de actividad",
+    "systemStatus": "Estado del sistema",
+    "minOneRequired": "Al menos un widget debe permanecer visible"
+  },
+  "focusAuto": {
+    "title": "Cambio automático de enfoque",
+    "description": "Activa automáticamente el modo de enfoque según reglas",
+    "enabled": "Activar cambio automático",
+    "duration": "Duración del enfoque",
+    "durationDesc": "Duración de las sesiones activadas automáticamente",
+    "cooldown": "Enfriamiento",
+    "cooldownDesc": "Tiempo de espera después de la desactivación antes de volver a activar",
+    "triggerApps": "Aplicaciones de activación",
+    "triggerAppsDesc": "El enfoque se activa cuando estas aplicaciones están en primer plano",
+    "addApp": "Agregar aplicación",
+    "appPlaceholder": "Nombre de la aplicación (ej.: Visual Studio Code)",
+    "schedules": "Horarios",
+    "schedulesDesc": "El enfoque se activa durante estas ventanas de tiempo",
+    "addSchedule": "Agregar horario",
+    "minutes": "min",
+    "auto": "Auto",
+    "weekdays": "Días laborales",
+    "everyday": "Todos los días",
+    "custom": "Personalizado"
+  },
   "emptyState": {
     "dashboard": {
       "title": "Recopilando datos",
@@ -1009,12 +1050,16 @@
     },
     "playbooksCoaching": {
       "title": "Sin plantillas de coaching",
-      "description": "Las plantillas de coaching personalizan qué dice ONESHIM y cuándo. Las nuevas plantillas aparecerán aquí a medida que usted o su equipo las agreguen."
+      "description": "Las plantillas de coaching personalizan qué dice ONESHIM y cuándo. Las nuevas plantillas aparecerán aquí a medida que usted o su equipo las agreguen.",
+      "action": "Configuración de coaching"
     },
     "playbooksPresets": {
       "title": "Sin preajustes de automatización",
-      "description": "Los preajustes de automatización son flujos de trabajo listos para tareas comunes. Instálelos desde el catálogo o cree los suyos en Configuración."
-    }
+      "description": "Los preajustes de automatización son flujos de trabajo listos para tareas comunes. Instálelos desde el catálogo o cree los suyos en Configuración.",
+      "action": "Configurar políticas"
+    },
+    "filterEmpty": "Ningún elemento coincide con los filtros actuales.",
+    "clearFilters": "Limpiar filtros"
   },
   "commandPalette": {
     "dialogLabel": "Paleta de comandos",
@@ -1035,6 +1080,7 @@
     "minimize": "Minimizar",
     "maximize": "Maximizar",
     "closeToTray": "Cerrar a la bandeja",
+    "search": "Buscar...",
     "searchShortcut": "Buscar ({{key}}+K)"
   },
   "errors": {
@@ -1283,6 +1329,17 @@
       "ContextRestore": "Ayuda a retomar el trabajo después de interrupciones",
       "GoalTracker": "Rastrea el progreso hacia las metas diarias"
     },
+    "frequencyTitle": "Frecuencia de coaching",
+    "frequencyDesc": "Frecuencia de los mensajes de coaching. Se aplica a todos los perfiles.",
+    "frequencySaved": "Guardado",
+    "frequencyCustom": "Personalizado ({{min}} min)",
+    "freq1": "1 min",
+    "freq2": "2 min",
+    "freq5": "5 min",
+    "freq10": "10 min",
+    "freq15": "15 min",
+    "freq30": "30 min",
+    "freq60": "60 min",
     "habits": {
       "title": "Rastreador de hábitos",
       "regime": "Régimen",
@@ -1505,7 +1562,8 @@
     "neverSynced": "Nunca sincronizado"
   },
   "overlay": {
-    "focusMode": "Modo de enfoque"
+    "focusMode": "Modo de enfoque",
+    "hint": "{{mod}}O Interactuar con coaching  ·  {{mod}}S Panel de sugerencias"
   },
   "detection": {
     "mode": "Modo de detección",

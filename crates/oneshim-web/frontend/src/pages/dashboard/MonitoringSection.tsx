@@ -17,7 +17,7 @@ import type { DashboardContext } from './DashboardLayout'
 
 export default function MonitoringSection() {
   const { t } = useTranslation()
-  const { summary } = useTypedOutletContext<DashboardContext>('Dashboard')
+  const { summary, isWidgetVisible } = useTypedOutletContext<DashboardContext>('Dashboard')
 
   const { data: hourlyMetrics } = useQuery({
     queryKey: ['hourlyMetrics'],
@@ -33,30 +33,34 @@ export default function MonitoringSection() {
 
   return (
     <>
-      {/* UI note */}
-      <Card id="section-metrics" variant="default" padding="lg">
-        <CardTitle className="mb-4">{t('dashboard.cpuMemory24h')}</CardTitle>
-        <MetricsChart data={hourlyMetrics ?? []} />
-      </Card>
-
-      {/* UI note */}
-      <div id="section-processes" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* UI note */}
-        <Card variant="default" padding="lg">
-          <CardTitle className="mb-4">{t('dashboard.appUsageTime')}</CardTitle>
-          <AppUsageChart apps={summary?.top_apps ?? []} />
+      {isWidgetVisible('monitoring.metrics-chart') && (
+        <Card id="section-metrics" variant="default" padding="lg">
+          <CardTitle className="mb-4">{t('dashboard.cpuMemory24h')}</CardTitle>
+          <MetricsChart data={hourlyMetrics ?? []} />
         </Card>
+      )}
 
-        {/* UI note */}
-        <Card variant="default" padding="lg">
-          <CardTitle className="mb-4">{t('dashboard.recentProcesses')}</CardTitle>
-          {processes && processes.length > 0 ? (
-            <ProcessList snapshot={processes[0]} />
-          ) : (
-            <div className={cn(colors.text.secondary, 'py-8 text-center')}>{t('common.noData')}</div>
+      {(isWidgetVisible('monitoring.app-usage') || isWidgetVisible('monitoring.process-list')) && (
+        <div id="section-processes" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {isWidgetVisible('monitoring.app-usage') && (
+            <Card variant="default" padding="lg">
+              <CardTitle className="mb-4">{t('dashboard.appUsageTime')}</CardTitle>
+              <AppUsageChart apps={summary?.top_apps ?? []} />
+            </Card>
           )}
-        </Card>
-      </div>
+
+          {isWidgetVisible('monitoring.process-list') && (
+            <Card variant="default" padding="lg">
+              <CardTitle className="mb-4">{t('dashboard.recentProcesses')}</CardTitle>
+              {processes && processes.length > 0 ? (
+                <ProcessList snapshot={processes[0]} />
+              ) : (
+                <div className={cn(colors.text.secondary, 'py-8 text-center')}>{t('common.noData')}</div>
+              )}
+            </Card>
+          )}
+        </div>
+      )}
     </>
   )
 }

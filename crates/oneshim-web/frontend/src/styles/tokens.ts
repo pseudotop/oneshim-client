@@ -213,6 +213,10 @@ export const layout = {
     itemBg: 'hover:bg-hover',
     itemText: 'text-sm text-content-strong',
     itemActive: 'bg-surface-elevated text-content',
+    itemTextParent: 'text-sm font-medium text-content-strong',
+    itemTextChild: 'text-[13px] text-content-secondary',
+    childBorder: 'border-l-2 border-muted ml-4',
+    searchTrigger: 'text-xs text-content-muted bg-surface-inset hover:bg-hover border border-muted rounded',
     resizeHandle: 'w-1 cursor-col-resize hover:bg-brand-signal active:bg-brand-signal transition-colors',
   },
   mainContent: {

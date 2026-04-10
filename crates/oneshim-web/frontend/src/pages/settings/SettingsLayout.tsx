@@ -30,6 +30,7 @@ function SettingsContent() {
 
   const activeTab = location.pathname.split('/').pop() ?? 'general'
   const translatedTabs = settingsTabs.map((tab) => ({ id: tab.id, label: t(tab.label) }))
+  const coreCount = settingsNode?.childGroups?.[0]?.tabs.length ?? 0
 
   return (
     <div className="min-h-full space-y-6 p-6 pb-28">
@@ -51,6 +52,7 @@ function SettingsContent() {
           onTabChange={(tab) => navigate(`/settings/${tab}`, { replace: true })}
           ariaLabel={t('settings.title')}
           idBase="settings"
+          groupBreakAfter={coreCount > 0 ? coreCount - 1 : undefined}
         />
       )}
 

@@ -166,8 +166,11 @@
       "monitoring": "モニタリング",
       "aiAutomation": "AI & 自動化",
       "dataStorage": "データ & ストレージ",
-      "coaching": "コーチング"
+      "coaching": "コーチング",
+      "focusAuto": "フォーカス自動"
     },
+    "groupCore": "基本",
+    "groupAdvanced": "詳細",
     "dataCollection": "データ収集",
     "enableCapture": "スクリーンショットキャプチャを有効化",
     "idleThreshold": "アイドル検出しきい値 (分)",
@@ -545,6 +548,7 @@
     "searchError": "検索中にエラーが発生しました。",
     "enterQuery": "検索ワードを入力してください",
     "searchHint": "アプリ名、ウィンドウタイトル、OCRテキスト、またはタグで検索できます",
+    "browseTimeline": "タイムラインを見る",
     "screenshot": "スクリーンショット",
     "event": "イベント",
     "importance": "重要度"
@@ -962,6 +966,43 @@
     "entries": "監査エントリー",
     "details": "詳細"
   },
+  "widgets": {
+    "title": "ウィジェット",
+    "customize": "ウィジェットをカスタマイズ",
+    "resetDefaults": "デフォルトに戻す",
+    "realtime": "リアルタイムモニタリング",
+    "todaySummary": "今日の概要",
+    "statCards": "統計カード",
+    "metricsChart": "CPU / メモリチャート",
+    "appUsage": "アプリ使用量",
+    "processList": "プロセス一覧",
+    "focusWidget": "集中度の概要",
+    "updatePanel": "アップデート",
+    "heatmap": "アクティビティヒートマップ",
+    "systemStatus": "システム状態",
+    "minOneRequired": "少なくとも1つのウィジェットを表示する必要があります"
+  },
+  "focusAuto": {
+    "title": "フォーカス自動切替",
+    "description": "ルールに基づいてフォーカスモードを自動的に有効にします",
+    "enabled": "自動切替を有効にする",
+    "duration": "フォーカス時間",
+    "durationDesc": "自動有効化セッションの継続時間",
+    "cooldown": "クールダウン",
+    "cooldownDesc": "無効化後の再トリガーまでの待機時間",
+    "triggerApps": "トリガーアプリ",
+    "triggerAppsDesc": "これらのアプリがフォアグラウンドにあるとフォーカスモードが有効になります",
+    "addApp": "アプリを追加",
+    "appPlaceholder": "アプリ名（例：Visual Studio Code）",
+    "schedules": "スケジュール",
+    "schedulesDesc": "この時間帯にフォーカスモードが自動的に有効になります",
+    "addSchedule": "スケジュールを追加",
+    "minutes": "分",
+    "auto": "自動",
+    "weekdays": "平日",
+    "everyday": "毎日",
+    "custom": "カスタム"
+  },
   "emptyState": {
     "dashboard": {
       "title": "データを収集中",
@@ -1009,12 +1050,16 @@
     },
     "playbooksCoaching": {
       "title": "コーチングテンプレートなし",
-      "description": "コーチングテンプレートは、ONESHIMが何をいつ話すかをカスタマイズします。新しいテンプレートが追加されるとここに表示されます。"
+      "description": "コーチングテンプレートは、ONESHIMが何をいつ話すかをカスタマイズします。新しいテンプレートが追加されるとここに表示されます。",
+      "action": "コーチング設定"
     },
     "playbooksPresets": {
       "title": "オートメーションプリセットなし",
-      "description": "オートメーションプリセットは一般的な作業のためのすぐに使えるワークフローです。カタログからインストールするか、設定で独自に作成してください。"
-    }
+      "description": "オートメーションプリセットは一般的な作業のためのすぐに使えるワークフローです。カタログからインストールするか、設定で独自に作成してください。",
+      "action": "ポリシー設定"
+    },
+    "filterEmpty": "現在のフィルタに一致する項目がありません。",
+    "clearFilters": "フィルタをクリア"
   },
   "commandPalette": {
     "dialogLabel": "コマンドパレット",
@@ -1035,6 +1080,7 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "closeToTray": "トレイに格納",
+    "search": "検索...",
     "searchShortcut": "検索 ({{key}}+K)"
   },
   "errors": {
@@ -1283,6 +1329,17 @@
       "ContextRestore": "中断後の作業再開をサポート",
       "GoalTracker": "日次レジーム目標の進捗を追跡"
     },
+    "frequencyTitle": "コーチング頻度",
+    "frequencyDesc": "コーチングメッセージの表示頻度。全プロフィールに適用されます。",
+    "frequencySaved": "保存済み",
+    "frequencyCustom": "カスタム ({{min}}分)",
+    "freq1": "1分",
+    "freq2": "2分",
+    "freq5": "5分",
+    "freq10": "10分",
+    "freq15": "15分",
+    "freq30": "30分",
+    "freq60": "60分",
     "habits": {
       "title": "習慣トラッカー",
       "regime": "レジーム",
@@ -1505,7 +1562,8 @@
     "neverSynced": "未同期"
   },
   "overlay": {
-    "focusMode": "集中モード"
+    "focusMode": "集中モード",
+    "hint": "{{mod}}O コーチング操作  ·  {{mod}}S サジェスト パネル"
   },
   "detection": {
     "mode": "検出モード",

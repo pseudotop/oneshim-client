@@ -6,11 +6,11 @@ import { useQuery } from '@tanstack/react-query'
 import { Brain, Clock, FileText, Search as SearchIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchSemanticSearch, fetchTags, type SearchResult, search } from '../api/client'
 import type { SemanticSearchResult } from '../api/contracts'
 import { TagBadge } from '../components/TagBadge'
-import { Badge, Button, Card, Input, Spinner } from '../components/ui'
+import { Badge, Button, Card, EmptyState, Input, Spinner } from '../components/ui'
 import { colors, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { escapeRegex, formatDateTime } from '../utils/formatters'
@@ -42,6 +42,7 @@ type SearchMode = 'text' | 'semantic'
 
 export default function Search() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialQuery = searchParams.get('q') || ''
   const initialTagIds = searchParams.get('tags')?.split(',').map(Number).filter(Boolean) || []
@@ -271,7 +272,11 @@ export default function Search() {
               ))}
             </div>
           ) : (
-            <div className="py-12 text-center text-content-secondary">{t('search.noResults')}</div>
+            <EmptyState
+              icon={<SearchIcon className="h-8 w-8" aria-hidden="true" />}
+              title={t('search.noResults')}
+              description={t('search.searchHint')}
+            />
           )}
 
           {response.total > pageSize && (
@@ -316,18 +321,23 @@ export default function Search() {
               ))}
             </div>
           ) : (
-            <div className="py-12 text-center text-content-secondary">{t('search.noResults')}</div>
+            <EmptyState
+              icon={<Brain className="h-8 w-8" aria-hidden="true" />}
+              title={t('search.noResults')}
+              description={t('search.searchHint')}
+            />
           )}
         </>
       )}
 
       {/* UI note */}
       {!hasSearchCriteria && (
-        <div className="py-12 text-center">
-          <SearchIcon className="mx-auto mb-4 h-16 w-16 text-content-muted" />
-          <div className="text-content-secondary">{t('search.enterQuery')}</div>
-          <div className="mt-2 text-content-tertiary text-sm">{t('search.searchHint')}</div>
-        </div>
+        <EmptyState
+          icon={<SearchIcon className="h-8 w-8" aria-hidden="true" />}
+          title={t('search.enterQuery')}
+          description={t('search.searchHint')}
+          action={{ label: t('search.browseTimeline'), onClick: () => navigate('/timeline/all') }}
+        />
       )}
     </div>
   )
