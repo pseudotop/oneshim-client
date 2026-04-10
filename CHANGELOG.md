@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.33-rc.2] - 2026-04-10
+
+### Added
+
+- V0.4.33 — widget customization, focus auto-switch, overlay polish ([#395](https://github.com/pseudotop/oneshim-client/pull/395))
+  9 features: SidePanel search, overlay panel mode, dashboard widget customization, focus auto-switch (app + schedule), coaching frequency, empty state CTAs, a11y fixes, DMG compression, i18n sync across 5 locales.
+
+
+### Fixed
+
+- Review polish — dynamic imports, bounded queue, clock safety ([#396](https://github.com/pseudotop/oneshim-client/pull/396))
+  ADR-004 tracking-panel dynamic imports, Toast MAX_PENDING=20, FocusModeState .max(0) clock safety, FocusModeIndicator fallback cleanup.
+
 ## [0.4.33-rc.1] - 2026-04-09
 
 ### Changed
