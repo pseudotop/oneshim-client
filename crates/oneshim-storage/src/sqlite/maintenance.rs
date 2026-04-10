@@ -445,7 +445,9 @@ impl SqliteStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT event_id, event_type, timestamp, app_name, window_title
+                "SELECT event_id, event_type, timestamp,
+                        json_extract(data, '$.app_name'),
+                        json_extract(data, '$.window_title')
                  FROM events
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                  ORDER BY timestamp ASC",
@@ -663,7 +665,7 @@ impl SqliteStorage {
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM events
-                 WHERE app_name LIKE ?1 OR window_title LIKE ?1 OR data LIKE ?1",
+                 WHERE data LIKE ?1",
                 rusqlite::params![pattern],
                 |row| row.get(0),
             )
@@ -687,9 +689,12 @@ impl SqliteStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT event_id, timestamp, app_name, window_title, data
+                "SELECT event_id, timestamp,
+                        json_extract(data, '$.app_name'),
+                        json_extract(data, '$.window_title'),
+                        data
                  FROM events
-                 WHERE app_name LIKE ?1 OR window_title LIKE ?1 OR data LIKE ?1
+                 WHERE data LIKE ?1
                  ORDER BY timestamp DESC
                  LIMIT ?2 OFFSET ?3",
             )
@@ -1102,20 +1107,27 @@ mod tests {
     }
 
     // ── list_event_exports ──────────────────────────────────────────
-    //
-    // NOTE: list_event_exports() queries columns (app_name, window_title)
-    // that do not exist on the `events` table (the schema stores them in
-    // the JSON `data` column). These tests document the current schema
-    // mismatch — the method returns Err on the real schema.
 
     #[test]
-    fn list_event_exports_returns_err_due_to_schema_mismatch() {
+    fn list_event_exports_empty() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
-        let result = storage.list_event_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z");
-        assert!(
-            result.is_err(),
-            "list_event_exports should fail: events table lacks app_name/window_title columns"
-        );
+        let result = storage
+            .list_event_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn list_event_exports_extracts_json_fields() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        insert_events(&storage, &["2025-06-15T10:00:00Z"]);
+
+        let records = storage
+            .list_event_exports("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].app_name.as_deref(), Some("Code"));
+        assert_eq!(records[0].window_title.as_deref(), Some("test.rs"));
     }
 
     // ── count_events_in_range (exercised as event-query alternative) ─
@@ -1324,27 +1336,28 @@ mod tests {
     }
 
     // ── search_events ───────────────────────────────────────────────
-    //
-    // NOTE: count_search_events() and search_events() reference
-    // app_name/window_title columns that do not exist on the `events`
-    // table. These tests document the schema mismatch.
 
     #[test]
-    fn search_events_returns_err_due_to_schema_mismatch() {
+    fn count_search_events_searches_data_column() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
         insert_events(&storage, &["2025-06-01T10:00:00Z"]);
 
-        let result = storage.count_search_events("%Code%");
-        assert!(
-            result.is_err(),
-            "count_search_events should fail: events table lacks app_name column"
-        );
+        let count = storage.count_search_events("%Code%").unwrap();
+        assert_eq!(count, 1);
 
-        let result = storage.search_events("%Code%", 10, 0);
-        assert!(
-            result.is_err(),
-            "search_events should fail: events table lacks app_name column"
-        );
+        let count = storage.count_search_events("%nonexistent%").unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn search_events_returns_matching_rows() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        insert_events(&storage, &["2025-06-01T10:00:00Z"]);
+
+        let rows = storage.search_events("%Code%", 10, 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].app_name.as_deref(), Some("Code"));
+        assert_eq!(rows[0].window_title.as_deref(), Some("test.rs"));
     }
 
     // ── Backup tag helpers ──────────────────────────────────────────
