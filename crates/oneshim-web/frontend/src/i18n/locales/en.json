@@ -1145,6 +1145,22 @@
     "entries": "Audit Entries",
     "details": "Details"
   },
+  "widgets": {
+    "title": "Widgets",
+    "customize": "Customize widgets",
+    "resetDefaults": "Reset to Defaults",
+    "realtime": "Realtime Metrics",
+    "todaySummary": "Today at a Glance",
+    "statCards": "Stat Cards",
+    "metricsChart": "CPU / Memory Chart",
+    "appUsage": "App Usage",
+    "processList": "Process List",
+    "focusWidget": "Focus Overview",
+    "updatePanel": "Updates",
+    "heatmap": "Activity Heatmap",
+    "systemStatus": "System Status",
+    "minOneRequired": "At least one widget must remain visible"
+  },
   "emptyState": {
     "dashboard": {
       "title": "Warming Up",

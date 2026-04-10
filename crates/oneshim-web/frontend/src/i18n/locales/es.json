@@ -965,6 +965,22 @@
     "entries": "Entradas de auditoría",
     "details": "Detalles"
   },
+  "widgets": {
+    "title": "Widgets",
+    "customize": "Personalizar widgets",
+    "resetDefaults": "Restablecer valores predeterminados",
+    "realtime": "Monitoreo en tiempo real",
+    "todaySummary": "Resumen del día",
+    "statCards": "Tarjetas de estadísticas",
+    "metricsChart": "Gráfico CPU / Memoria",
+    "appUsage": "Uso de aplicaciones",
+    "processList": "Lista de procesos",
+    "focusWidget": "Resumen de enfoque",
+    "updatePanel": "Actualizaciones",
+    "heatmap": "Mapa de calor de actividad",
+    "systemStatus": "Estado del sistema",
+    "minOneRequired": "Al menos un widget debe permanecer visible"
+  },
   "emptyState": {
     "dashboard": {
       "title": "Recopilando datos",

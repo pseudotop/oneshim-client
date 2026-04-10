@@ -1145,6 +1145,22 @@
     "entries": "감사 항목",
     "details": "상세"
   },
+  "widgets": {
+    "title": "위젯",
+    "customize": "위젯 설정",
+    "resetDefaults": "기본값으로 초기화",
+    "realtime": "실시간 모니터링",
+    "todaySummary": "오늘 한눈에 보기",
+    "statCards": "통계 카드",
+    "metricsChart": "CPU / 메모리 차트",
+    "appUsage": "앱 사용량",
+    "processList": "프로세스 목록",
+    "focusWidget": "집중도 개요",
+    "updatePanel": "업데이트",
+    "heatmap": "활동 히트맵",
+    "systemStatus": "시스템 상태",
+    "minOneRequired": "최소 하나의 위젯은 표시되어야 합니다"
+  },
   "emptyState": {
     "dashboard": {
       "title": "데이터 수집 중",

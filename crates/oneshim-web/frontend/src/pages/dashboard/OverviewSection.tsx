@@ -21,7 +21,8 @@ import type { DashboardContext } from './DashboardLayout'
 
 export default function OverviewSection() {
   const { t } = useTranslation()
-  const { latestMetrics, idleState, metricsHistory, summary } = useTypedOutletContext<DashboardContext>('Dashboard')
+  const { latestMetrics, idleState, metricsHistory, summary, isWidgetVisible } =
+    useTypedOutletContext<DashboardContext>('Dashboard')
 
   const isEmpty =
     !latestMetrics && !summary?.events_logged && !summary?.frames_captured && (summary?.total_active_secs ?? 0) === 0
@@ -38,8 +39,7 @@ export default function OverviewSection() {
 
   return (
     <>
-      {/* UI note */}
-      {latestMetrics && (
+      {isWidgetVisible('overview.realtime') && latestMetrics && (
         <Card variant="default" padding="md">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -85,39 +85,41 @@ export default function OverviewSection() {
         </Card>
       )}
 
-      {/* Today at a Glance */}
-      <TodaySummary
-        totalActiveSecs={summary?.total_active_secs ?? 0}
-        topApps={(summary?.top_apps ?? []).map((a) => ({ name: a.name }))}
-      />
+      {isWidgetVisible('overview.today-summary') && (
+        <TodaySummary
+          totalActiveSecs={summary?.total_active_secs ?? 0}
+          topApps={(summary?.top_apps ?? []).map((a) => ({ name: a.name }))}
+        />
+      )}
 
-      {/* UI note */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard
-          data-testid="metric-card-active-time"
-          title={t('dashboard.activeTime')}
-          value={formatDuration(summary?.total_active_secs ?? 0)}
-          icon={<Clock className={`${iconSize.md}`} />}
-        />
-        <StatCard
-          data-testid="metric-card-idle-time"
-          title={t('dashboard.idleTime')}
-          value={formatDuration(summary?.total_idle_secs ?? 0)}
-          icon={<Moon className={`${iconSize.md}`} />}
-        />
-        <StatCard
-          data-testid="metric-card-captures"
-          title={t('dashboard.captures')}
-          value={summary?.frames_captured?.toLocaleString() ?? '0'}
-          icon={<Camera className={`${iconSize.md}`} />}
-        />
-        <StatCard
-          data-testid="metric-card-events"
-          title={t('dashboard.events')}
-          value={summary?.events_logged?.toLocaleString() ?? '0'}
-          icon={<BarChart3 className={`${iconSize.md}`} />}
-        />
-      </div>
+      {isWidgetVisible('overview.stat-cards') && (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCard
+            data-testid="metric-card-active-time"
+            title={t('dashboard.activeTime')}
+            value={formatDuration(summary?.total_active_secs ?? 0)}
+            icon={<Clock className={`${iconSize.md}`} />}
+          />
+          <StatCard
+            data-testid="metric-card-idle-time"
+            title={t('dashboard.idleTime')}
+            value={formatDuration(summary?.total_idle_secs ?? 0)}
+            icon={<Moon className={`${iconSize.md}`} />}
+          />
+          <StatCard
+            data-testid="metric-card-captures"
+            title={t('dashboard.captures')}
+            value={summary?.frames_captured?.toLocaleString() ?? '0'}
+            icon={<Camera className={`${iconSize.md}`} />}
+          />
+          <StatCard
+            data-testid="metric-card-events"
+            title={t('dashboard.events')}
+            value={summary?.events_logged?.toLocaleString() ?? '0'}
+            icon={<BarChart3 className={`${iconSize.md}`} />}
+          />
+        </div>
+      )}
     </>
   )
 }

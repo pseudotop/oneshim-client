@@ -11,7 +11,11 @@ import { fetchSummary } from '../../api/client'
 import type { DailySummary } from '../../api/contracts'
 import DateRangePicker from '../../components/DateRangePicker'
 import { ChartSkeleton, Skeleton, StatCardsSkeleton } from '../../components/ui'
+import WidgetCustomizer from '../../components/WidgetCustomizer'
+import type { SectionId } from '../../components/widget-registry'
+import { useDashboardWidgets } from '../../hooks/useDashboardWidgets'
 import { type ConnectionStatus, type IdleUpdate, type MetricsUpdate, useSSE } from '../../hooks/useSSE'
+import { useCurrentRoute } from '../../routes'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -54,6 +58,7 @@ export interface DashboardContext {
   summaryLoading: boolean
   dateRange: { from?: string; to?: string }
   handleRangeChange: (range: { from?: string; to?: string }) => void
+  isWidgetVisible: (widgetId: string) => boolean
 }
 
 export default function DashboardLayout() {
@@ -61,6 +66,9 @@ export default function DashboardLayout() {
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({})
 
   const { status, latestMetrics, idleState, metricsHistory } = useSSE()
+  const { isVisible, canToggle, toggle, resetToDefaults } = useDashboardWidgets()
+  const { child } = useCurrentRoute()
+  const activeSection = (child?.path ?? 'overview') as SectionId
 
   const handleRangeChange = useCallback((from: string | undefined, to: string | undefined) => {
     setDateRange({ from, to })
@@ -101,6 +109,7 @@ export default function DashboardLayout() {
     summaryLoading,
     dateRange,
     handleRangeChange: (range) => handleRangeChange(range.from, range.to),
+    isWidgetVisible: isVisible,
   }
 
   return (
@@ -111,7 +120,16 @@ export default function DashboardLayout() {
           <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('dashboard.title')}</h1>
           <ConnectionIndicator status={status} t={t} />
         </div>
-        <DateRangePicker onRangeChange={handleRangeChange} />
+        <div className="flex items-center gap-3">
+          <DateRangePicker onRangeChange={handleRangeChange} />
+          <WidgetCustomizer
+            section={activeSection}
+            isVisible={isVisible}
+            canToggle={canToggle}
+            onToggle={toggle}
+            onReset={resetToDefaults}
+          />
+        </div>
       </div>
 
       <Outlet context={ctx} />

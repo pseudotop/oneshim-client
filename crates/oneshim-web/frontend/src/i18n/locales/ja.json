@@ -965,6 +965,22 @@
     "entries": "監査エントリー",
     "details": "詳細"
   },
+  "widgets": {
+    "title": "ウィジェット",
+    "customize": "ウィジェットをカスタマイズ",
+    "resetDefaults": "デフォルトに戻す",
+    "realtime": "リアルタイムモニタリング",
+    "todaySummary": "今日の概要",
+    "statCards": "統計カード",
+    "metricsChart": "CPU / メモリチャート",
+    "appUsage": "アプリ使用量",
+    "processList": "プロセス一覧",
+    "focusWidget": "集中度の概要",
+    "updatePanel": "アップデート",
+    "heatmap": "アクティビティヒートマップ",
+    "systemStatus": "システム状態",
+    "minOneRequired": "少なくとも1つのウィジェットを表示する必要があります"
+  },
   "emptyState": {
     "dashboard": {
       "title": "データを収集中",

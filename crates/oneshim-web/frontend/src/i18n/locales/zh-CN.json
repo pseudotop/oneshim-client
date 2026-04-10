@@ -965,6 +965,22 @@
     "entries": "审计条目",
     "details": "详情"
   },
+  "widgets": {
+    "title": "小组件",
+    "customize": "自定义小组件",
+    "resetDefaults": "恢复默认",
+    "realtime": "实时监控",
+    "todaySummary": "今日概览",
+    "statCards": "统计卡片",
+    "metricsChart": "CPU / 内存图表",
+    "appUsage": "应用使用量",
+    "processList": "进程列表",
+    "focusWidget": "专注概览",
+    "updatePanel": "更新",
+    "heatmap": "活动热力图",
+    "systemStatus": "系统状态",
+    "minOneRequired": "至少需要显示一个小组件"
+  },
   "emptyState": {
     "dashboard": {
       "title": "正在收集数据",
