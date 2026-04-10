@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.33-rc.3] - 2026-04-10
+
+### Fixed
+
+- Review polish, tests, and event query schema fix ([#398](https://github.com/pseudotop/oneshim-client/pull/398))
+  * test: add 120 unit tests for settings validation, maintenance, and export
+
+  Cover previously untested pure-logic functions:
+  - settings_validation: 68 tests for all 15 parsers and validators
+  - maintenance: 29 tests for DB maintenance ops (documents schema mismatch in event exports)
+  - export_service: 23 tests for iCal/Toggl CSV/CSV escape formatting
+
 ## [0.4.33-rc.2] - 2026-04-10
 
 ### Added
