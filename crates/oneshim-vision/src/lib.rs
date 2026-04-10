@@ -13,6 +13,7 @@ pub use error::VisionError;
 
 pub mod accessibility;
 pub mod capture;
+pub mod contour_classifier;
 pub mod delta;
 pub mod element_finder;
 pub mod encoder;

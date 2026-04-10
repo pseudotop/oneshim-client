@@ -229,7 +229,12 @@ impl Scheduler {
                     oneshim_core::config::PiiFilterLevel::Standard,
                 );
 
-                // Wire ML classifier when feature is enabled
+                // Default: CV-based contour classifier (always available, no model file needed)
+                let detector = detector.with_ml_classifier(std::sync::Arc::new(
+                    oneshim_vision::contour_classifier::ContourGuiClassifier::new(),
+                ));
+
+                // Override with ONNX ML classifier when feature is enabled and model exists
                 #[cfg(feature = "ml-detect")]
                 let detector = {
                     use oneshim_vision::ml_classifier::OnnxGuiClassifier;
@@ -263,6 +268,9 @@ impl Scheduler {
                 ts.gui_pipeline_state = Some(GuiPipelineState {
                     detector,
                     aggregator,
+                    uncertain_queue: std::collections::VecDeque::new(),
+                    feedback_tick_counter: 0,
+                    app_type_cache: std::collections::HashMap::new(),
                 });
                 info!("GUI Activity Intelligence pipeline enabled");
             }

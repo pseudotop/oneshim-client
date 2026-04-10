@@ -8,6 +8,8 @@
 //! Called from the monitor loop after `run_analysis_tick()`. The returned
 //! `GuiActivitySummary` is fed into `ContentTracker` on the next tick.
 
+use std::collections::{HashMap, VecDeque};
+
 use oneshim_analysis::gui_aggregator::GuiActivityAggregator;
 use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::focused_element::FocusedElementInfo;
@@ -16,9 +18,15 @@ use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::gui_interaction::{
     GuiElement, GuiElementType, GuiInteractionEvent, GuiInteractionType, InteractionType,
 };
+use oneshim_vision::contour_classifier::feedback::{self, FeedbackRequest, UncertainElement};
 use oneshim_vision::gui_detector::GuiElementDetector;
 
 use chrono::Utc;
+
+/// Maximum uncertain elements buffered for LLM feedback.
+const MAX_UNCERTAIN_QUEUE: usize = 20;
+/// Confidence threshold below which elements are queued for LLM feedback.
+const UNCERTAIN_THRESHOLD: f32 = 0.6;
 
 /// Mutable state for the GUI pipeline, owned by the monitor loop.
 ///
@@ -30,6 +38,12 @@ use chrono::Utc;
 pub(crate) struct GuiPipelineState {
     pub detector: GuiElementDetector,
     pub aggregator: GuiActivityAggregator,
+    /// Uncertain elements queued for LLM feedback.
+    pub uncertain_queue: VecDeque<UncertainElement>,
+    /// Ticks since last feedback batch.
+    pub feedback_tick_counter: u32,
+    /// Cached LLM corrections per app: app_name → [(from_type, to_type)].
+    pub app_type_cache: HashMap<String, Vec<(GuiElementType, GuiElementType)>>,
 }
 
 /// Run a single tick of the GUI activity intelligence pipeline.
@@ -42,7 +56,7 @@ pub(crate) struct GuiPipelineState {
 ///
 /// The caller (monitor loop) feeds the returned summary into
 /// `ContentTracker::update()`.
-#[allow(dead_code, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_gui_tick(
     state: &mut GuiPipelineState,
     ocr_regions: &[OcrRegion],
@@ -89,6 +103,53 @@ pub(crate) async fn run_gui_tick(
                     .build_gui_element_with_frame(region, frame_rgba, frame_width, frame_height)
                     .await;
                 element = Some(ml_elem);
+            }
+        }
+
+        // Apply cached LLM corrections for this app
+        if let Some(ref mut elem) = element {
+            if let Some(corrections) = state.app_type_cache.get(app_name) {
+                for (from, to) in corrections {
+                    if elem.element_type == *from {
+                        elem.element_type = to.clone();
+                        elem.type_confidence = 1.0; // Prevent re-queuing corrected elements
+                        break;
+                    }
+                }
+            }
+
+            // Queue uncertain elements for LLM feedback with visual features
+            if elem.type_confidence < UNCERTAIN_THRESHOLD
+                && state.uncertain_queue.len() < MAX_UNCERTAIN_QUEUE
+            {
+                // Extract visual features from crop if frame data available
+                let features = if let Some(frame) = frame_rgba {
+                    use oneshim_vision::contour_classifier::features::extract_visual_features;
+                    if let Some(crop) = GuiElementDetector::crop_region_rgba(
+                        frame,
+                        frame_width,
+                        frame_height,
+                        &elem.bbox,
+                    ) {
+                        let vf = extract_visual_features(&crop, elem.bbox.width, elem.bbox.height);
+                        feedback::FeatureSummary::from(&vf)
+                    } else {
+                        feedback::FeatureSummary::from_aspect_ratio(
+                            elem.bbox.width as f32 / elem.bbox.height.max(1) as f32,
+                        )
+                    }
+                } else {
+                    feedback::FeatureSummary::from_aspect_ratio(
+                        elem.bbox.width as f32 / elem.bbox.height.max(1) as f32,
+                    )
+                };
+                state.uncertain_queue.push_back(UncertainElement {
+                    app_name: app_name.to_string(),
+                    text: elem.text.clone(),
+                    current_type: format!("{:?}", elem.element_type),
+                    confidence: elem.type_confidence,
+                    features,
+                });
             }
         }
 
@@ -211,6 +272,98 @@ pub(crate) async fn run_gui_tick(
     result
 }
 
+/// Process queued uncertain elements by sending them to the LLM for feedback.
+///
+/// Called periodically from the monitor loop when `feedback_tick_counter`
+/// reaches `FEEDBACK_INTERVAL_TICKS` and the uncertain queue is non-empty.
+pub(crate) async fn process_gui_feedback(
+    state: &mut GuiPipelineState,
+    provider: &dyn oneshim_core::ports::analysis_provider::AnalysisProvider,
+) {
+    let batch: Vec<UncertainElement> = state
+        .uncertain_queue
+        .drain(..state.uncertain_queue.len().min(5))
+        .collect();
+
+    if batch.is_empty() {
+        return;
+    }
+
+    let request = FeedbackRequest {
+        uncertain_elements: batch.clone(),
+    };
+    let request_json = match serde_json::to_string(&request) {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::warn!("GUI feedback request serialization failed: {e}");
+            return;
+        }
+    };
+
+    match provider
+        .summarize_text(&request_json, feedback::CONTOUR_FEEDBACK_PROMPT)
+        .await
+    {
+        Ok(response_str) => {
+            match feedback::parse_feedback_response(&response_str) {
+                Ok(response) => {
+                    let mut applied = 0;
+                    for correction in &response.corrections {
+                        if correction.index >= batch.len() {
+                            continue;
+                        }
+                        let Some(correct_type) =
+                            feedback::validate_element_type(&correction.correct_type)
+                        else {
+                            tracing::debug!(
+                                "Ignoring invalid LLM type: {}",
+                                correction.correct_type
+                            );
+                            continue;
+                        };
+                        if correction.confidence < 0.5 {
+                            continue;
+                        }
+
+                        let elem = &batch[correction.index];
+                        let from_type = feedback::validate_element_type(&elem.current_type)
+                            .unwrap_or(GuiElementType::Unknown);
+
+                        // Cache the correction for this app (bounded: 24 per app, 256 apps)
+                        if state.app_type_cache.len() < 256
+                            || state.app_type_cache.contains_key(&elem.app_name)
+                        {
+                            let entries = state
+                                .app_type_cache
+                                .entry(elem.app_name.clone())
+                                .or_default();
+                            if entries.len() >= 24 {
+                                entries.remove(0);
+                            }
+                            entries.push((from_type, correct_type));
+                        }
+
+                        applied += 1;
+                    }
+                    if applied > 0 {
+                        tracing::info!(
+                            applied,
+                            apps = state.app_type_cache.len(),
+                            "GUI feedback corrections applied"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!("GUI feedback response parse failed: {e}");
+                }
+            }
+        }
+        Err(e) => {
+            tracing::debug!("GUI feedback LLM call failed: {e}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +384,9 @@ mod tests {
         GuiPipelineState {
             detector: GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off),
             aggregator: GuiActivityAggregator::new(&config),
+            uncertain_queue: VecDeque::new(),
+            feedback_tick_counter: 0,
+            app_type_cache: HashMap::new(),
         }
     }
 
@@ -585,6 +741,9 @@ mod tests {
             detector: GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off)
                 .with_ml_classifier(classifier),
             aggregator: GuiActivityAggregator::new(&config),
+            uncertain_queue: VecDeque::new(),
+            feedback_tick_counter: 0,
+            app_type_cache: HashMap::new(),
         }
     }
 

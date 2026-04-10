@@ -72,19 +72,10 @@ impl Scheduler {
             let ring_buffer = CaptureRingBuffer::new(6, 2, 0.5); // dashcam: 6 slots, 2 post-event, 0.5 threshold
 
             // GUI Activity Intelligence state (carried across ticks)
-            let mut last_gui_summary: Option<
-                oneshim_core::models::gui_activity::GuiActivitySummary,
-            > = None;
-            // Focused element from accessibility API (Phase 2). Updated each
-            // tick when accessibility extraction is enabled. Fed into the GUI
-            // pipeline for supplementary context alongside OCR regions.
-            let mut last_focused_element: Option<
-                oneshim_core::models::focused_element::FocusedElementInfo,
-            > = None;
-            // OCR regions from the most recent frame capture. Updated each time
-            // a high-importance frame is processed (importance >= 0.8). The GUI
-            // pipeline uses these for click-to-element correlation via
-            // `GuiElementDetector::correlate_click()`.
+            use oneshim_core::models::focused_element::FocusedElementInfo;
+            use oneshim_core::models::gui_activity::GuiActivitySummary;
+            let mut last_gui_summary: Option<GuiActivitySummary> = None;
+            let mut last_focused_element: Option<FocusedElementInfo> = None;
             let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
             let mut last_frame_rgba: Option<(Vec<u8>, u32, u32)> = None;
             let mut focus_hl = super::detection_helper::FocusHighlightState::new();
@@ -423,6 +414,15 @@ impl Scheduler {
 
                                             if let Err(e) = sqlite1.save_gui_interaction(&input) {
                                                 warn!("GUI interaction save failure: {e}");
+                                            }
+                                        }
+
+                                        // LLM feedback: process uncertain GUI elements periodically
+                                        gui_state.feedback_tick_counter += 1;
+                                        if gui_state.feedback_tick_counter >= 30 && !gui_state.uncertain_queue.is_empty() {
+                                            gui_state.feedback_tick_counter = 0;
+                                            if let Some(ref p) = coaching_analysis_provider {
+                                                super::super::gui_pipeline::process_gui_feedback(gui_state, p.as_ref()).await;
                                             }
                                         }
                                     }

@@ -169,7 +169,7 @@ impl GuiElementDetector {
 
     /// Crop a bounding box region from an RGBA frame buffer.
     /// Returns None if the bbox extends outside the frame bounds.
-    fn crop_region_rgba(
+    pub fn crop_region_rgba(
         frame_rgba: &[u8],
         frame_width: u32,
         frame_height: u32,
