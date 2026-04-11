@@ -37,7 +37,7 @@ pub enum ProviderModelSupportStatus {
     Unknown,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 pub struct ProviderModelCapabilityRules {
     #[serde(default)]
     pub llm: ProviderModelCapabilityProfile,
@@ -49,7 +49,7 @@ pub struct ProviderModelCapabilityRules {
     pub structured_output: ProviderModelCapabilityProfile,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 pub struct ProviderModelCapabilityProfile {
     #[serde(default)]
     pub default_support: String,
@@ -92,7 +92,7 @@ pub struct ProviderModelsRequest {
     pub use_saved_secret: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ProviderDiscoveredModel {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -118,4 +118,91 @@ pub struct ProviderModelsResponse {
     pub model_details: Vec<ProviderDiscoveredModel>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notice: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trip_provider_model_support_status() {
+        for status in [
+            ProviderModelSupportStatus::Supported,
+            ProviderModelSupportStatus::Unsupported,
+            ProviderModelSupportStatus::Unknown,
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            let decoded: ProviderModelSupportStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(status, decoded);
+        }
+    }
+
+    #[test]
+    fn round_trip_provider_model_capability_profile() {
+        let original = ProviderModelCapabilityProfile {
+            default_support: "supported".to_string(),
+            allow_patterns: vec!["gpt-4*".to_string(), "claude-*".to_string()],
+            deny_patterns: vec!["*-instruct".to_string()],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: ProviderModelCapabilityProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_provider_model_capability_rules() {
+        let original = ProviderModelCapabilityRules {
+            llm: ProviderModelCapabilityProfile {
+                default_support: "supported".to_string(),
+                allow_patterns: vec!["gpt-4o*".to_string()],
+                deny_patterns: vec![],
+            },
+            ocr: ProviderModelCapabilityProfile {
+                default_support: "unsupported".to_string(),
+                allow_patterns: vec!["gpt-4-vision*".to_string()],
+                deny_patterns: vec![],
+            },
+            image_input: ProviderModelCapabilityProfile::default(),
+            structured_output: ProviderModelCapabilityProfile::default(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: ProviderModelCapabilityRules = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_provider_discovered_model_minimal() {
+        let original = ProviderDiscoveredModel {
+            id: "gpt-4o".to_string(),
+            display_name: Some("GPT-4o".to_string()),
+            llm_support: Some(ProviderModelSupportStatus::Supported),
+            supports_ocr: Some(true),
+            ocr_support: Some(ProviderModelSupportStatus::Supported),
+            image_input_support: Some(ProviderModelSupportStatus::Supported),
+            structured_output_support: Some(ProviderModelSupportStatus::Supported),
+            capability_source: Some("rules".to_string()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: ProviderDiscoveredModel = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn provider_discovered_model_optional_fields_skipped_when_none() {
+        let original = ProviderDiscoveredModel {
+            id: "unknown-model".to_string(),
+            display_name: None,
+            llm_support: None,
+            supports_ocr: None,
+            ocr_support: None,
+            image_input_support: None,
+            structured_output_support: None,
+            capability_source: None,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(!json.contains("display_name"));
+        assert!(!json.contains("llm_support"));
+        let decoded: ProviderDiscoveredModel = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
 }

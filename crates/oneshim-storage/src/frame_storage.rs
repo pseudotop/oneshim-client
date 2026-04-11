@@ -617,11 +617,15 @@ impl FrameFileStorage {
             }
         }
 
-        // Subtract deleted bytes from cached size tracker
+        // Subtract deleted bytes from the cached size tracker using an atomic
+        // fetch_update so that a concurrent save() cannot interleave between
+        // the load() and the fetch_sub(), which would have caused the counter
+        // to underflow (TOCTOU).
         if total_deleted_bytes > 0 {
-            self.cached_size_bytes.fetch_sub(
-                total_deleted_bytes.min(self.cached_size_bytes.load(Ordering::Relaxed)),
+            let _ = self.cached_size_bytes.fetch_update(
                 Ordering::Relaxed,
+                Ordering::Relaxed,
+                |current| Some(current.saturating_sub(total_deleted_bytes)),
             );
         }
 
@@ -682,6 +686,26 @@ impl FrameFileStorage {
         }
 
         Ok(deleted)
+    }
+
+    /// Recalculates `cached_size_bytes` from the actual filesystem state.
+    ///
+    /// Walks all files directly under `<base_dir>/` and sums their sizes, then
+    /// atomically stores the result.  Call this after an unexpected crash or
+    /// whenever the in-memory counter may have drifted (e.g. after a partial
+    /// delete failure).
+    pub fn reconcile_cache_size(&self) -> std::io::Result<u64> {
+        let mut total: u64 = 0;
+        if self.base_dir.exists() {
+            for entry in std::fs::read_dir(&self.base_dir)? {
+                let entry = entry?;
+                if entry.path().is_file() {
+                    total += entry.metadata()?.len();
+                }
+            }
+        }
+        self.cached_size_bytes.store(total, Ordering::Relaxed);
+        Ok(total)
     }
 
     pub fn frames_dir(&self) -> PathBuf {

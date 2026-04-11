@@ -32,8 +32,6 @@ impl GuiElementDetector {
         let status_bar_min_y = (screen_h as f64 * 0.95) as u32;
         let toolbar_max_y = title_bar_max_y * 2;
         let scrollbar_narrow = 20u32;
-        let right_edge = screen_w.saturating_sub(scrollbar_narrow);
-        let bottom_edge = screen_h.saturating_sub(scrollbar_narrow);
 
         // Collect (type, score) candidates from independent signals.
         let mut scores: Vec<(GuiElementType, f32)> = Vec::with_capacity(12);
@@ -55,9 +53,18 @@ impl GuiElementDetector {
         if bbox.y >= status_bar_min_y {
             scores.push((GuiElementType::StatusBar, 0.9));
         }
-        if (bbox.x >= right_edge && bbox.width < scrollbar_narrow)
-            || (bbox.y >= bottom_edge && bbox.height < scrollbar_narrow)
-        {
+        let is_narrow_h = bbox.width < scrollbar_narrow;
+        let is_narrow_v = bbox.height < scrollbar_narrow;
+        let is_narrow = is_narrow_h || is_narrow_v;
+        let edge_margin: u32 = 20;
+        let at_horizontal_edge = bbox.x <= edge_margin
+            || bbox.x.saturating_add(bbox.width) >= screen_w.saturating_sub(edge_margin);
+        let at_vertical_edge = bbox.y <= edge_margin
+            || bbox.y.saturating_add(bbox.height) >= screen_h.saturating_sub(edge_margin);
+
+        // Only classify as scrollbar when the element is narrow AND sits at a screen edge.
+        // A narrow element in the centre of the screen is not a scrollbar.
+        if is_narrow && (at_horizontal_edge || at_vertical_edge) {
             scores.push((GuiElementType::ScrollBar, 0.85));
         }
 

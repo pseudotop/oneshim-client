@@ -61,7 +61,7 @@ impl GuiElementDetector {
                 let gap = region.bbox.x.saturating_sub(prev_right);
 
                 // Estimate avg char width from the previous region
-                let char_count = prev.text.len().max(1) as f32;
+                let char_count = prev.text.chars().count().max(1) as f32;
                 let avg_char_width = prev.bbox.width as f32 / char_count;
                 let max_gap = (avg_char_width * WORD_GROUP_GAP_FACTOR) as u32;
 
@@ -75,9 +75,12 @@ impl GuiElementDetector {
                 // Merge bounding boxes
                 let min_x = prev.bbox.x.min(region.bbox.x);
                 let min_y = prev.bbox.y.min(region.bbox.y);
-                let max_x = (prev.bbox.x + prev.bbox.width).max(region.bbox.x + region.bbox.width);
-                let max_y =
-                    (prev.bbox.y + prev.bbox.height).max(region.bbox.y + region.bbox.height);
+                let prev_right = (prev.bbox.x as u64) + (prev.bbox.width as u64);
+                let prev_bottom = (prev.bbox.y as u64) + (prev.bbox.height as u64);
+                let region_right = (region.bbox.x as u64) + (region.bbox.width as u64);
+                let region_bottom = (region.bbox.y as u64) + (region.bbox.height as u64);
+                let max_x = prev_right.max(region_right).min(u32::MAX as u64) as u32;
+                let max_y = prev_bottom.max(region_bottom).min(u32::MAX as u64) as u32;
                 prev.bbox = BoundingBox {
                     x: min_x,
                     y: min_y,

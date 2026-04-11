@@ -6,13 +6,18 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::api_client::{SseClient, SseEvent};
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
 use crate::auth::TokenManager;
 use crate::http_client::build_reqwest_client;
+
+/// SSE 활동 타임아웃 기본값 — 5분 동안 메시지가 없으면 재연결을 트리거한다.
+const ACTIVITY_TIMEOUT_SECS: u64 = 300;
 
 pub struct SseStreamClient {
     base_url: String,
@@ -21,6 +26,8 @@ pub struct SseStreamClient {
     http_client: reqwest::Client,
     /// Tracks the last SSE event ID for automatic resume on reconnect (RFC 9110 §9.3.4)
     last_event_id: Mutex<Option<String>>,
+    /// 누적 이벤트 ID 갭 카운터 — 수신 누락 추정치
+    gap_count: Arc<AtomicU64>,
 }
 
 impl SseStreamClient {
@@ -32,6 +39,7 @@ impl SseStreamClient {
             max_retry_secs,
             http_client: reqwest::Client::new(),
             last_event_id: Mutex::new(None),
+            gap_count: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -54,12 +62,18 @@ impl SseStreamClient {
             max_retry_secs,
             http_client,
             last_event_id: Mutex::new(None),
+            gap_count: Arc::new(AtomicU64::new(0)),
         })
     }
 
     /// Returns the last received SSE event ID, if any.
     pub fn last_event_id(&self) -> Option<String> {
         self.last_event_id.lock().clone()
+    }
+
+    /// 누적 이벤트 ID 갭 수 반환 — 연결 유지 중 수신 누락 추정치
+    pub fn gap_count(&self) -> u64 {
+        self.gap_count.load(Ordering::Relaxed)
     }
 
     fn parse_event(event_type: &str, data: &str) -> Option<SseEvent> {
@@ -169,9 +183,11 @@ impl SseClient for SseStreamClient {
             debug!("SSE connection established");
             retry_delay = 1;
 
+            let activity_timeout = Duration::from_secs(ACTIVITY_TIMEOUT_SECS);
+
             loop {
-                match stream.next().await {
-                    Some(Ok(msg)) => {
+                match timeout(activity_timeout, stream.next()).await {
+                    Ok(Some(Ok(msg))) => {
                         let event_id = if msg.id.is_empty() {
                             None
                         } else {
@@ -186,8 +202,10 @@ impl SseClient for SseStreamClient {
                                 (last_str.parse::<u64>(), new_str.parse::<u64>())
                             {
                                 if new_n > last_n + 1 {
+                                    let gap = new_n - last_n - 1;
+                                    self.gap_count.fetch_add(gap, Ordering::Relaxed);
                                     warn!(
-                                        gap = new_n - last_n - 1,
+                                        gap,
                                         last = last_n,
                                         current = new_n,
                                         "SSE event ID gap detected"
@@ -213,12 +231,19 @@ impl SseClient for SseStreamClient {
                             }
                         }
                     }
-                    Some(Err(e)) => {
+                    Ok(Some(Err(e))) => {
                         warn!("SSE stream error: {e}");
                         break;
                     }
-                    None => {
+                    Ok(None) => {
                         info!("SSE stream ended");
+                        break;
+                    }
+                    Err(_elapsed) => {
+                        warn!(
+                            timeout_secs = ACTIVITY_TIMEOUT_SECS,
+                            "SSE activity timeout — reconnecting"
+                        );
                         break;
                     }
                 }
@@ -308,5 +333,29 @@ mod tests {
         let tm = TokenManager::new("http://localhost");
         let client = SseStreamClient::new("http://localhost", Arc::new(tm), 30);
         assert!(client.last_event_id().is_none());
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn gap_count_initially_zero() {
+        let tm = TokenManager::new("http://localhost");
+        let client = SseStreamClient::new("http://localhost", Arc::new(tm), 30);
+        assert_eq!(client.gap_count(), 0);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn gap_count_increments_atomically() {
+        let tm = TokenManager::new("http://localhost");
+        let client = SseStreamClient::new("http://localhost", Arc::new(tm), 30);
+        // 직접 AtomicU64 조작으로 카운터 동작 검증
+        client
+            .gap_count
+            .fetch_add(3, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(client.gap_count(), 3);
+        client
+            .gap_count
+            .fetch_add(5, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(client.gap_count(), 8);
     }
 }

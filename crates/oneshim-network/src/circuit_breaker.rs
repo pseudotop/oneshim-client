@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::time::{Duration, Instant};
 use tracing::warn;
 
@@ -69,7 +69,7 @@ impl CircuitBreaker {
 
     /// Check current state, transitioning Open→HalfOpen if cooldown elapsed.
     pub fn check(&self) -> CircuitState {
-        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let mut inner = self.state.lock();
         if let CircuitState::Open { until } = &inner.status {
             if Instant::now() >= *until {
                 inner.status = CircuitState::HalfOpen;
@@ -80,7 +80,7 @@ impl CircuitBreaker {
     }
 
     pub fn record_success(&self) {
-        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let mut inner = self.state.lock();
         let was_half_open = matches!(inner.status, CircuitState::HalfOpen);
         inner.consecutive_failures = 0;
         inner.current_cooldown = self.config.initial_cooldown;
@@ -91,7 +91,7 @@ impl CircuitBreaker {
     }
 
     pub fn record_failure(&self) {
-        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let mut inner = self.state.lock();
         inner.consecutive_failures += 1;
 
         match &inner.status {
@@ -123,15 +123,11 @@ impl CircuitBreaker {
     }
 
     pub fn state(&self) -> CircuitState {
-        self.state
-            .lock()
-            .expect("circuit breaker lock poisoned")
-            .status
-            .clone()
+        self.state.lock().status.clone()
     }
 
     pub fn stats(&self) -> CircuitBreakerStats {
-        let inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let inner = self.state.lock();
         CircuitBreakerStats {
             state: match &inner.status {
                 CircuitState::Closed => "closed",
@@ -258,5 +254,46 @@ mod tests {
         cb.record_failure();
         // Only 1 failure after reset, threshold is 3
         assert!(matches!(cb.check(), CircuitState::Closed));
+    }
+
+    #[test]
+    fn concurrent_failures_transition_to_open() {
+        let cb = std::sync::Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
+            failure_threshold: 5,
+            ..Default::default()
+        }));
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let cb = std::sync::Arc::clone(&cb);
+                std::thread::spawn(move || {
+                    cb.record_failure();
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert!(matches!(cb.check(), CircuitState::Open { .. }));
+    }
+
+    #[test]
+    fn concurrent_checks_dont_panic() {
+        let cb = std::sync::Arc::new(CircuitBreaker::new(Default::default()));
+        let handles: Vec<_> = (0..100)
+            .map(|_| {
+                let cb = std::sync::Arc::clone(&cb);
+                std::thread::spawn(move || {
+                    let _ = cb.check();
+                    cb.record_failure();
+                    let _ = cb.stats();
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
     }
 }

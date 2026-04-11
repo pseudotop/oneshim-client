@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorageStats {
     pub db_size_bytes: u64,
     pub frames_size_bytes: u64,
@@ -60,7 +60,7 @@ pub struct AppSettings {
     pub sync: SyncSettings,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct NotificationSettings {
     pub enabled: bool,
     pub idle_notification: bool,
@@ -96,7 +96,7 @@ impl Default for UpdateSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct TelemetrySettings {
     pub enabled: bool,
     pub crash_reports: bool,
@@ -121,7 +121,7 @@ impl Default for MonitorControlSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct PrivacySettings {
     pub excluded_apps: Vec<String>,
     pub excluded_app_patterns: Vec<String>,
@@ -619,5 +619,90 @@ impl Default for SyncSettings {
             lan_advertise: false,
             compression_enabled: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trip_storage_stats() {
+        let original = StorageStats {
+            db_size_bytes: 1024,
+            frames_size_bytes: 2048,
+            total_size_bytes: 3072,
+            frame_count: 100,
+            event_count: 500,
+            metric_count: 200,
+            oldest_data_date: Some("2026-01-01".to_string()),
+            newest_data_date: Some("2026-04-11".to_string()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: StorageStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_notification_settings() {
+        let original = NotificationSettings {
+            enabled: true,
+            idle_notification: true,
+            idle_notification_mins: 30,
+            long_session_notification: true,
+            long_session_mins: 90,
+            high_usage_notification: false,
+            high_usage_threshold: 80,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: NotificationSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_privacy_settings() {
+        let original = PrivacySettings {
+            excluded_apps: vec!["Signal".to_string(), "1Password".to_string()],
+            excluded_app_patterns: vec!["*password*".to_string()],
+            excluded_title_patterns: vec!["*private*".to_string()],
+            auto_exclude_sensitive: true,
+            pii_filter_level: "Standard".to_string(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: PrivacySettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_telemetry_settings() {
+        let original = TelemetrySettings {
+            enabled: true,
+            crash_reports: true,
+            usage_analytics: false,
+            performance_metrics: true,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TelemetrySettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn storage_stats_none_dates_roundtrip() {
+        let original = StorageStats {
+            db_size_bytes: 0,
+            frames_size_bytes: 0,
+            total_size_bytes: 0,
+            frame_count: 0,
+            event_count: 0,
+            metric_count: 0,
+            oldest_data_date: None,
+            newest_data_date: None,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: StorageStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+        // skip_serializing_if means optional None fields should not appear
+        assert!(!json.contains("oldest_data_date"));
+        assert!(!json.contains("newest_data_date"));
     }
 }
