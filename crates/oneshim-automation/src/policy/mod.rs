@@ -57,6 +57,17 @@ impl PolicyClient {
     }
 
     pub async fn validate_command(&self, cmd: &AutomationCommand) -> Result<bool, AutomationError> {
+        // TTL이 0으로 설정된 경우 모든 캐시된 토큰을 즉시 거부한다.
+        // A configured ttl_seconds of 0 means "never cache" — every token is
+        // treated as a replay to prevent stale token acceptance.
+        {
+            let cache = self.policy_cache.read().await;
+            if cache.ttl_seconds == 0 {
+                tracing::debug!("policy TTL is 0 — rejecting all cached tokens");
+                return Ok(false);
+            }
+        }
+
         let now = Utc::now();
         let token = cmd.policy_token.trim();
         if token.is_empty() {
@@ -438,6 +449,29 @@ mod tests {
             timeout_ms: None,
             policy_token: policy_token.to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn validate_command_rejects_all_when_ttl_is_zero() {
+        // PolicyCache.ttl_seconds == 0 means "never cache" — every token must
+        // be rejected regardless of policy or nonce validity.
+        let client = PolicyClient::new();
+        // Inject a policy whose cache has ttl_seconds = 0.
+        {
+            let mut cache = client.policy_cache.write().await;
+            cache.policies.push(make_policy("pol-1"));
+            cache.ttl_seconds = 0;
+        }
+        {
+            let mut allowed = client.allowed_processes.write().await;
+            allowed.insert("git".to_string());
+        }
+
+        let cmd = make_command("pol-1:nonce_1234");
+        assert!(
+            !client.validate_command(&cmd).await.unwrap(),
+            "ttl_seconds=0 must reject all tokens"
+        );
     }
 
     #[tokio::test]
