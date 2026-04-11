@@ -1,3 +1,15 @@
+// ## Lock Ordering
+//
+// Acquire locks in this order to prevent deadlocks:
+//
+// 1. deferred_suggestions   (tokio::sync::Mutex — async, held briefly)
+// 2. suggestion_queue        (tokio::sync::Mutex — async, held briefly)
+// 3. retry_queue             (tokio::sync::Mutex — async, held briefly)
+// 4. shared_regime_state     (parking_lot::RwLock — sync, <1μs ops)
+// 5. capture_context         (AppState sub-struct fields)
+//
+// Never acquire a lower-numbered lock while holding a higher-numbered one.
+
 mod analysis_pipeline;
 mod config;
 /// GUI Activity Intelligence pipeline — wired into the monitor loop.
