@@ -16,7 +16,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct BackupMetadata {
     pub version: String,
     pub created_at: String,
@@ -24,7 +24,7 @@ pub struct BackupMetadata {
     pub includes: BackupIncludes,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct BackupIncludes {
     pub settings: bool,
     pub tags: bool,
@@ -32,7 +32,7 @@ pub struct BackupIncludes {
     pub frames: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct TagBackup {
     pub id: i64,
     pub name: String,
@@ -47,7 +47,7 @@ pub struct FrameTagBackup {
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SettingsBackup {
     pub capture_enabled: bool,
     pub capture_interval_secs: u64,
@@ -95,6 +95,73 @@ pub struct BackupArchive {
     pub events: Option<Vec<EventBackup>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frames: Option<Vec<FrameBackup>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trip_backup_metadata() {
+        let original = BackupMetadata {
+            version: "1.0".to_string(),
+            created_at: "2026-04-11T00:00:00Z".to_string(),
+            app_version: "0.4.33".to_string(),
+            includes: BackupIncludes {
+                settings: true,
+                tags: true,
+                events: false,
+                frames: false,
+            },
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: BackupMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_tag_backup() {
+        let original = TagBackup {
+            id: 42,
+            name: "focus".to_string(),
+            color: "#ff5733".to_string(),
+            created_at: "2026-01-01T10:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TagBackup = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_settings_backup() {
+        let original = SettingsBackup {
+            capture_enabled: true,
+            capture_interval_secs: 30,
+            idle_threshold_secs: 300,
+            metrics_interval_secs: 5,
+            web_port: 10090,
+            notification_enabled: true,
+            idle_notification_mins: 30,
+            long_session_notification_mins: 90,
+            high_usage_threshold_percent: 80,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: SettingsBackup = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_backup_includes_all_false() {
+        let original = BackupIncludes {
+            settings: false,
+            tags: false,
+            events: false,
+            frames: false,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: BackupIncludes = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
 }
 
 #[derive(Debug, Serialize)]
