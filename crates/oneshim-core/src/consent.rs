@@ -163,23 +163,28 @@ impl ConsentManager {
 
     /// Revokes user consent (GDPR Article 7 §3).
     ///
-    /// Records `revoked_at` and sets `data_deletion_requested = true` on the
-    /// persisted record so downstream components can perform erasure before
-    /// the next upload cycle (GDPR Article 17 — right to erasure).
-    /// The on-disk consent file is removed after the revocation record is saved.
+    /// Sets `data_deletion_requested = true` and `revoked_at` on the record,
+    /// then atomically writes the updated record to disk (write to .tmp, rename)
+    /// so that a crash between write and rename never leaves a partially-written
+    /// or deleted file.  `load_from_file()` treats `data_deletion_requested =
+    /// true` as revoked, so the file's presence does not re-activate consent.
     pub fn revoke_consent(&mut self) -> Result<(), CoreError> {
         if let Some(record) = self.current_consent.as_mut() {
             record.revoked_at = Some(Utc::now());
             record.data_deletion_requested = true;
         }
-        // Clone to release the mutable borrow before calling save_to_file.
+        // Clone to release the mutable borrow before writing.
         if let Some(record) = self.current_consent.clone() {
-            // Persist the revocation record before removing; the file is removed
-            // only after a successful save so callers can read the audit entry.
-            self.save_to_file(&record)?;
-        }
-        if self.storage_path.exists() {
-            std::fs::remove_file(&self.storage_path)?;
+            // Atomic write: serialize to a .tmp file, then rename into place.
+            // This eliminates the TOCTOU window that existed when we saved and
+            // then deleted the file in two separate syscalls.
+            let tmp_path = self.consent_file_path().with_extension("tmp");
+            if let Some(parent) = tmp_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let json = serde_json::to_string_pretty(&record)?;
+            std::fs::write(&tmp_path, &json)?;
+            std::fs::rename(&tmp_path, self.consent_file_path())?;
         }
         self.current_consent = None;
         // current_consent를 None으로 설정한 뒤에도 소거 요청 신호가 소실되지
@@ -221,9 +226,21 @@ impl ConsentManager {
             .unwrap_or(false)
     }
 
+    /// Returns the canonical path of the consent file (same as `storage_path`).
+    fn consent_file_path(&self) -> PathBuf {
+        self.storage_path.clone()
+    }
+
     fn load_from_file(path: &PathBuf) -> Option<ConsentRecord> {
         let data = std::fs::read_to_string(path).ok()?;
-        serde_json::from_str(&data).ok()
+        let record: ConsentRecord = serde_json::from_str(&data).ok()?;
+        // データ削除要求が設定されている場合は同意なしとして扱う。
+        // Treat a revoked-but-not-yet-erased record as absent so that a
+        // process restart after revoke_consent() does not re-activate consent.
+        if record.data_deletion_requested {
+            return None;
+        }
+        Some(record)
     }
 
     fn save_to_file(&self, record: &ConsentRecord) -> Result<(), CoreError> {
@@ -463,6 +480,44 @@ mod tests {
         let perms: ConsentPermissions = serde_json::from_str(json).unwrap();
         assert!(!perms.full_text_extraction);
         assert!(perms.activity_pattern_learning);
+    }
+
+    #[test]
+    fn revoke_persists_file_and_new_manager_sees_not_granted() {
+        // After revoke_consent(), the consent file must still exist on disk (no
+        // TOCTOU delete), but a freshly constructed ConsentManager pointing at
+        // the same path must report NotGranted because data_deletion_requested
+        // is set in the persisted record.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("consent.json");
+        let mut manager = ConsentManager::new(path.clone());
+        manager
+            .grant_consent(ConsentPermissions::default(), 30)
+            .unwrap();
+        assert_eq!(manager.check_consent(), ConsentStatus::Valid);
+        assert!(path.exists(), "consent file must exist after grant");
+
+        manager.revoke_consent().unwrap();
+        assert!(
+            path.exists(),
+            "revoke must keep the file (atomic flag, not delete)"
+        );
+
+        // Verify the on-disk record has data_deletion_requested = true.
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let record: ConsentRecord = serde_json::from_str(&raw).unwrap();
+        assert!(
+            record.data_deletion_requested,
+            "file must have deletion flag set"
+        );
+
+        // A new manager reading the same file must treat it as revoked.
+        let new_manager = ConsentManager::new(path.clone());
+        assert_eq!(
+            new_manager.check_consent(),
+            ConsentStatus::NotGranted,
+            "new manager must see NotGranted for a revoked record"
+        );
     }
 
     #[test]

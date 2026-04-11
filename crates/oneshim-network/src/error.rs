@@ -57,6 +57,9 @@ pub enum NetworkError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("circuit breaker open — requests are being fast-failed")]
+    CircuitOpen,
 }
 
 impl From<NetworkError> for CoreError {
@@ -95,6 +98,9 @@ impl From<NetworkError> for CoreError {
             NetworkError::Ocr(msg) => CoreError::OcrError(msg),
             NetworkError::SecretStore(msg) => CoreError::SecretStoreError(msg),
             NetworkError::Internal(msg) => CoreError::Internal(msg),
+            NetworkError::CircuitOpen => {
+                CoreError::ServiceUnavailable("circuit breaker open".into())
+            }
         }
     }
 }

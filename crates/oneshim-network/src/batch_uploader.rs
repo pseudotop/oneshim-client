@@ -206,8 +206,8 @@ impl BatchUploader {
         // Circuit breaker fast-fail
         match self.circuit_breaker.check() {
             CircuitState::Open { .. } => {
-                debug!("circuit open — skipping flush");
-                return Ok(0);
+                debug!("circuit open — fast-failing flush");
+                return Err(NetworkError::CircuitOpen);
             }
             CircuitState::HalfOpen => {
                 debug!("circuit half-open — probe flush");
