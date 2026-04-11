@@ -178,6 +178,12 @@ fn set_owner_only_dacl(path: &std::path::Path) -> Result<(), StorageError> {
             0,
             &mut needed,
         );
+        if needed == 0 || needed > 4096 {
+            windows_sys::Win32::Foundation::CloseHandle(token_handle);
+            return Err(StorageError::Internal(format!(
+                "unexpected token info size: {needed} bytes"
+            )));
+        }
         let mut user_buf = vec![0u8; needed as usize];
         if GetTokenInformation(
             token_handle,
@@ -197,10 +203,17 @@ fn set_owner_only_dacl(path: &std::path::Path) -> Result<(), StorageError> {
 
         // 2. Build an ACL with a single owner-only ACE
         let sid_len = windows_sys::Win32::Security::GetLengthSid(user_sid);
+        // SidStart field in ACCESS_ALLOWED_ACE is already counted once in the
+        // struct size, so subtract sizeof(u32) to avoid double-counting.
+        if (sid_len as usize) < std::mem::size_of::<u32>() {
+            return Err(StorageError::Internal(format!(
+                "SID length too small: {sid_len} bytes"
+            )));
+        }
         let acl_size = std::mem::size_of::<WIN_ACL>() as u32
             + std::mem::size_of::<windows_sys::Win32::Security::ACCESS_ALLOWED_ACE>() as u32
             + sid_len
-            - std::mem::size_of::<u32>() as u32; // SidStart already counted once
+            - std::mem::size_of::<u32>() as u32;
         let mut acl_buf = vec![0u8; acl_size as usize];
         let acl_ptr = acl_buf.as_mut_ptr() as *mut WIN_ACL;
 
