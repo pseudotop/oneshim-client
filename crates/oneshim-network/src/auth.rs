@@ -3,6 +3,7 @@ use oneshim_core::config::TlsConfig;
 use oneshim_core::error::CoreError;
 use serde::Deserialize;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
@@ -28,6 +29,15 @@ pub struct TokenManager {
     base_url: String,
     client: reqwest::Client,
     state: Arc<RwLock<Option<TokenState>>>,
+}
+
+/// `Retry-After` 헤더 파싱 — 초(integer) 형식만 지원하며 최대 60초로 제한한다.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<StdDuration> {
+    let value = headers.get("retry-after")?.to_str().ok()?;
+    if let Ok(secs) = value.parse::<u64>() {
+        return Some(StdDuration::from_secs(secs.min(60)));
+    }
+    None
 }
 
 impl TokenManager {
@@ -186,6 +196,19 @@ impl TokenManager {
                         return Ok(());
                     }
 
+                    // 429 Too Many Requests — Retry-After 헤더 우선 적용
+                    if status.as_u16() == 429 {
+                        if let Some(retry_duration) = parse_retry_after(resp.headers()) {
+                            warn!(
+                                attempt = attempt + 1,
+                                retry_after_secs = retry_duration.as_secs(),
+                                "token refresh rate-limited, waiting Retry-After"
+                            );
+                            tokio::time::sleep(retry_duration).await;
+                            continue;
+                        }
+                    }
+
                     // 4xx errors (except 429) are not retryable
                     let is_retryable = status.is_server_error() || status.as_u16() == 429;
 
@@ -281,6 +304,39 @@ impl TokenManager {
 #[allow(deprecated)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_retry_after_valid_seconds() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("retry-after", "30".parse().unwrap());
+        let duration = parse_retry_after(&headers);
+        assert_eq!(duration, Some(StdDuration::from_secs(30)));
+    }
+
+    #[test]
+    fn parse_retry_after_caps_at_60() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("retry-after", "120".parse().unwrap());
+        let duration = parse_retry_after(&headers);
+        assert_eq!(duration, Some(StdDuration::from_secs(60)));
+    }
+
+    #[test]
+    fn parse_retry_after_missing_header() {
+        let headers = reqwest::header::HeaderMap::new();
+        assert!(parse_retry_after(&headers).is_none());
+    }
+
+    #[test]
+    fn parse_retry_after_non_integer_ignored() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        // HTTP-date format is not supported — returns None
+        headers.insert(
+            "retry-after",
+            "Wed, 21 Oct 2015 07:28:00 GMT".parse().unwrap(),
+        );
+        assert!(parse_retry_after(&headers).is_none());
+    }
 
     #[test]
     fn token_manager_creation() {

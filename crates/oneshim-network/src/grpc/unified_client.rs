@@ -9,7 +9,7 @@ use std::time::Duration;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::SuggestionFeedback as RestSuggestionFeedback;
 use oneshim_core::ports::api_client::ApiClient; // ApiClient trait for HttpApiClient methods
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use super::auth_client::GrpcAuthClient;
@@ -43,9 +43,10 @@ pub struct SessionResponse {
 pub struct UnifiedClient {
     config: GrpcConfig,
 
-    grpc_auth: RwLock<Option<GrpcAuthClient>>,
-    grpc_session: RwLock<Option<GrpcSessionClient>>,
-    grpc_context: RwLock<Option<GrpcContextClient>>,
+    /// tokio::sync::Mutex を使用して ensure_* メソッドの TOCTOU 競合を防ぐ
+    grpc_auth: Mutex<Option<GrpcAuthClient>>,
+    grpc_session: Mutex<Option<GrpcSessionClient>>,
+    grpc_context: Mutex<Option<GrpcContextClient>>,
 
     token_manager: Arc<TokenManager>,
     http_client: HttpApiClient,
@@ -70,41 +71,38 @@ impl UnifiedClient {
 
         Ok(Self {
             config,
-            grpc_auth: RwLock::new(None),
-            grpc_session: RwLock::new(None),
-            grpc_context: RwLock::new(None),
+            grpc_auth: Mutex::new(None),
+            grpc_session: Mutex::new(None),
+            grpc_context: Mutex::new(None),
             token_manager,
             http_client,
         })
     }
 
+    /// gRPC 인증 클라이언트 초기화 — Mutex로 TOCTOU 경쟁 조건을 방지한다.
     async fn ensure_grpc_auth(&self) -> Result<(), CoreError> {
-        if self.grpc_auth.read().await.is_some() {
-            return Ok(());
+        let mut guard = self.grpc_auth.lock().await;
+        if guard.is_none() {
+            *guard = Some(GrpcAuthClient::connect(self.config.clone()).await?);
         }
-
-        let client = GrpcAuthClient::connect(self.config.clone()).await?;
-        *self.grpc_auth.write().await = Some(client);
         Ok(())
     }
 
+    /// gRPC 세션 클라이언트 초기화 — Mutex로 TOCTOU 경쟁 조건을 방지한다.
     async fn ensure_grpc_session(&self) -> Result<(), CoreError> {
-        if self.grpc_session.read().await.is_some() {
-            return Ok(());
+        let mut guard = self.grpc_session.lock().await;
+        if guard.is_none() {
+            *guard = Some(GrpcSessionClient::connect(self.config.clone()).await?);
         }
-
-        let client = GrpcSessionClient::connect(self.config.clone()).await?;
-        *self.grpc_session.write().await = Some(client);
         Ok(())
     }
 
+    /// gRPC 컨텍스트 클라이언트 초기화 — Mutex로 TOCTOU 경쟁 조건을 방지한다.
     async fn ensure_grpc_context(&self) -> Result<(), CoreError> {
-        if self.grpc_context.read().await.is_some() {
-            return Ok(());
+        let mut guard = self.grpc_context.lock().await;
+        if guard.is_none() {
+            *guard = Some(GrpcContextClient::connect(self.config.clone()).await?);
         }
-
-        let client = GrpcContextClient::connect(self.config.clone()).await?;
-        *self.grpc_context.write().await = Some(client);
         Ok(())
     }
 
@@ -116,7 +114,7 @@ impl UnifiedClient {
             -> Pin<Box<dyn Future<Output = Result<R, CoreError>> + Send + 'a>>,
     {
         self.ensure_grpc_context().await?;
-        let mut guard = self.grpc_context.write().await;
+        let mut guard = self.grpc_context.lock().await;
         let client = guard.as_mut().ok_or_else(|| {
             CoreError::Network(format!("gRPC context client initialize failure ({op})"))
         })?;
@@ -147,7 +145,7 @@ impl UnifiedClient {
     ) -> Result<AuthResponse, CoreError> {
         self.ensure_grpc_auth().await?;
 
-        let mut guard = self.grpc_auth.write().await;
+        let mut guard = self.grpc_auth.lock().await;
         let client = guard.as_mut().ok_or_else(|| {
             CoreError::Network("Failed to initialize gRPC auth client".to_string())
         })?;
@@ -229,7 +227,7 @@ impl UnifiedClient {
     ) -> Result<SessionResponse, CoreError> {
         self.ensure_grpc_session().await?;
 
-        let mut guard = self.grpc_session.write().await;
+        let mut guard = self.grpc_session.lock().await;
         let client = guard.as_mut().ok_or_else(|| {
             CoreError::Network("gRPC session client initialize failure".to_string())
         })?;
@@ -255,7 +253,7 @@ impl UnifiedClient {
     async fn heartbeat_grpc(&self, session_id: &str) -> Result<bool, CoreError> {
         self.ensure_grpc_session().await?;
 
-        let mut guard = self.grpc_session.write().await;
+        let mut guard = self.grpc_session.lock().await;
         let client = guard.as_mut().ok_or_else(|| {
             CoreError::Network("gRPC session client initialize failure".to_string())
         })?;
@@ -291,7 +289,7 @@ impl UnifiedClient {
         );
         self.ensure_grpc_context().await?;
 
-        let mut guard = self.grpc_context.write().await;
+        let mut guard = self.grpc_context.lock().await;
         let client = guard.as_mut().ok_or_else(|| {
             CoreError::Network("gRPC context client initialize failure".to_string())
         })?;
