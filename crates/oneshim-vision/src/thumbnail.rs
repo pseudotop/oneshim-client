@@ -31,15 +31,15 @@ fn compute_image_hash(image: &DynamicImage) -> u64 {
     hash ^= h as u64;
     hash = hash.wrapping_mul(FNV_PRIME);
 
-    let step_x = (w as usize).max(1) / 8;
-    let step_y = (h as usize).max(1) / 8;
+    let step_x = (w as usize).max(1) / 16;
+    let step_y = (h as usize).max(1) / 16;
     let stride = w as usize * 4;
 
-    for sy in 0..8 {
+    for sy in 0..16 {
         let y = (sy * step_y).min((h as usize).saturating_sub(1));
         let row_offset = y * stride;
 
-        for sx in 0..8 {
+        for sx in 0..16 {
             let x = (sx * step_x).min((w as usize).saturating_sub(1));
             let pixel_offset = row_offset + x * 4;
 
