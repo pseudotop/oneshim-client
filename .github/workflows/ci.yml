@@ -226,6 +226,9 @@ jobs:
       - name: Run clippy (lan-sync features)
         run: ./scripts/cargo-cache.sh clippy -p oneshim-network --all-targets --features lan-sync -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
+      - name: Run clippy (linux-sandbox features)
+        run: ./scripts/cargo-cache.sh clippy -p oneshim-automation --all-targets --features linux-sandbox -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
   perf-gates:
     name: Performance Gates
     needs: [changes, check]
@@ -352,6 +355,10 @@ jobs:
       - name: Run tests (lan-sync features)
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test -p oneshim-network --features lan-sync
+
+      - name: Run tests (linux-sandbox features)
+        if: env.RUN_HEAVY_TESTS == 'true'
+        run: ./scripts/cargo-cache.sh test -p oneshim-automation --features linux-sandbox
 
   build:
     name: Build (${{ matrix.target }})

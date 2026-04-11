@@ -101,6 +101,10 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }} -p oneshim-app --features grpc
 
+      - name: Build release binary (linux-sandbox)
+        if: runner.os == 'Linux'
+        run: cargo build --release --target ${{ matrix.target }} -p oneshim-app --features grpc,linux-sandbox
+
       - name: Run clippy (warnings only, non-blocking)
         continue-on-error: true
         run: cargo clippy --target ${{ matrix.target }} -p oneshim-app --features grpc -- -W warnings
