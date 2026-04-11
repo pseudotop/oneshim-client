@@ -175,24 +175,34 @@ impl GuiElementDetector {
         frame_height: u32,
         bbox: &BoundingBox,
     ) -> Option<Vec<u8>> {
-        // Validate bbox is within frame bounds
+        // Validate total buffer size
+        let expected_len = (frame_width as usize)
+            .checked_mul(frame_height as usize)?
+            .checked_mul(4)?;
+        if frame_rgba.len() < expected_len {
+            return None;
+        }
+
         if bbox.x + bbox.width > frame_width || bbox.y + bbox.height > frame_height {
             return None;
         }
-        let stride = (frame_width as usize) * 4; // RGBA = 4 bytes per pixel
+
+        let stride = (frame_width as usize) * 4;
         let crop_stride = (bbox.width as usize) * 4;
         let mut crop = Vec::with_capacity((bbox.width as usize) * (bbox.height as usize) * 4);
 
         for row in 0..bbox.height as usize {
-            let src_offset = ((bbox.y as usize + row) * stride) + (bbox.x as usize * 4);
-            let src_end = src_offset + crop_stride;
+            let y_offset = (bbox.y as usize).checked_add(row)?;
+            let src_offset = y_offset
+                .checked_mul(stride)?
+                .checked_add((bbox.x as usize) * 4)?;
+            let src_end = src_offset.checked_add(crop_stride)?;
             if src_end <= frame_rgba.len() {
                 crop.extend_from_slice(&frame_rgba[src_offset..src_end]);
             } else {
                 return None;
             }
         }
-
         Some(crop)
     }
 }
