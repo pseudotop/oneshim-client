@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::time::{Duration, Instant};
 use tracing::warn;
 
@@ -69,7 +69,7 @@ impl CircuitBreaker {
 
     /// Check current state, transitioning Open→HalfOpen if cooldown elapsed.
     pub fn check(&self) -> CircuitState {
-        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let mut inner = self.state.lock();
         if let CircuitState::Open { until } = &inner.status {
             if Instant::now() >= *until {
                 inner.status = CircuitState::HalfOpen;
@@ -80,7 +80,7 @@ impl CircuitBreaker {
     }
 
     pub fn record_success(&self) {
-        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let mut inner = self.state.lock();
         let was_half_open = matches!(inner.status, CircuitState::HalfOpen);
         inner.consecutive_failures = 0;
         inner.current_cooldown = self.config.initial_cooldown;
@@ -91,7 +91,7 @@ impl CircuitBreaker {
     }
 
     pub fn record_failure(&self) {
-        let mut inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let mut inner = self.state.lock();
         inner.consecutive_failures += 1;
 
         match &inner.status {
@@ -123,15 +123,11 @@ impl CircuitBreaker {
     }
 
     pub fn state(&self) -> CircuitState {
-        self.state
-            .lock()
-            .expect("circuit breaker lock poisoned")
-            .status
-            .clone()
+        self.state.lock().status.clone()
     }
 
     pub fn stats(&self) -> CircuitBreakerStats {
-        let inner = self.state.lock().expect("circuit breaker lock poisoned");
+        let inner = self.state.lock();
         CircuitBreakerStats {
             state: match &inner.status {
                 CircuitState::Closed => "closed",
