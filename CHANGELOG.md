@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.36-rc.1] - 2026-04-11
+
+### Fixed
+
+- 5-domain expert review — 21 fixes across vision, network, core, storage ([#410](https://github.com/pseudotop/oneshim-client/pull/410))
+  * docs(plan): add review-polish implementation plan — 14 tasks, 21 fixes
+
+  Covers all 5 phases from the spec: critical PII/concurrency fixes,
+  vision corrections, network resilience, core/storage improvements,
+  and testing gaps. Each task includes TDD steps with exact code.
+
 ## [0.4.35-rc.1] - 2026-04-11
 
 ### Added
