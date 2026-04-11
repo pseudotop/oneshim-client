@@ -271,30 +271,40 @@ fn find_phone_number_end(chars: &[char], start: usize, len: usize) -> Option<usi
 }
 
 fn mask_credit_cards(text: &str) -> String {
-    let result = text.to_string();
-    let patterns = [r"\d{4}[- ]\d{4}[- ]\d{4}[- ]\d{4}", r"\d{16}"];
-    for _pattern in &patterns {
-        if result.chars().filter(|c| c.is_ascii_digit()).count() >= 16 {
-            let mut masked = String::new();
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut result = String::with_capacity(text.len());
+    let mut i = 0;
+
+    while i < len {
+        if chars[i].is_ascii_digit() {
+            let start = i;
             let mut digit_count = 0;
-            for ch in result.chars() {
-                if ch.is_ascii_digit() {
+
+            while i < len {
+                if chars[i].is_ascii_digit() {
                     digit_count += 1;
-                    if digit_count > 16 {
-                        masked.push(ch);
-                    }
+                    i += 1;
+                } else if (chars[i] == ' ' || chars[i] == '-')
+                    && i + 1 < len
+                    && chars[i + 1].is_ascii_digit()
+                {
+                    i += 1;
                 } else {
-                    if digit_count >= 16 {
-                        masked.push_str("[CARD]");
-                    }
-                    masked.push(ch);
-                    digit_count = 0;
+                    break;
                 }
             }
-            if digit_count >= 16 {
-                masked.push_str("[CARD]");
+
+            if (13..=19).contains(&digit_count) {
+                result.push_str("[CARD]");
+            } else {
+                for ch in &chars[start..i] {
+                    result.push(*ch);
+                }
             }
-            return masked;
+        } else {
+            result.push(chars[i]);
+            i += 1;
         }
     }
     result
@@ -1216,5 +1226,51 @@ mod tests {
             sanitizer.sanitize_text("email: user@example.com path", PiiFilterLevel::Standard);
         assert!(result.contains("[EMAIL]"));
         assert!(!result.contains("user@example.com"));
+    }
+
+    // ── Credit card masking unit tests ─────────────────────────────────
+
+    #[test]
+    fn mask_credit_cards_contiguous() {
+        assert_eq!(mask_credit_cards("4111111111111111"), "[CARD]");
+    }
+
+    #[test]
+    fn mask_credit_cards_spaced() {
+        assert_eq!(
+            mask_credit_cards("Card: 4111 1111 1111 1111"),
+            "Card: [CARD]"
+        );
+    }
+
+    #[test]
+    fn mask_credit_cards_hyphenated() {
+        assert_eq!(mask_credit_cards("4111-1111-1111-1111"), "[CARD]");
+    }
+
+    #[test]
+    fn mask_credit_cards_mixed_text() {
+        assert_eq!(
+            mask_credit_cards("Call 1234567890 or card 4111111111111111 today"),
+            "Call 1234567890 or card [CARD] today"
+        );
+    }
+
+    #[test]
+    fn mask_credit_cards_phone_not_masked() {
+        assert_eq!(mask_credit_cards("Call 1234567890"), "Call 1234567890");
+    }
+
+    #[test]
+    fn mask_credit_cards_multiple() {
+        let input = "Cards: 4111111111111111 and 5500000000000004";
+        let result = mask_credit_cards(input);
+        assert!(!result.contains("4111111111111111"));
+        assert!(!result.contains("5500000000000004"));
+    }
+
+    #[test]
+    fn mask_credit_cards_short_sequence() {
+        assert_eq!(mask_credit_cards("123456789012"), "123456789012");
     }
 }
