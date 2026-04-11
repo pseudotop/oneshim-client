@@ -255,4 +255,45 @@ mod tests {
         // Only 1 failure after reset, threshold is 3
         assert!(matches!(cb.check(), CircuitState::Closed));
     }
+
+    #[test]
+    fn concurrent_failures_transition_to_open() {
+        let cb = std::sync::Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
+            failure_threshold: 5,
+            ..Default::default()
+        }));
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let cb = std::sync::Arc::clone(&cb);
+                std::thread::spawn(move || {
+                    cb.record_failure();
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert!(matches!(cb.check(), CircuitState::Open { .. }));
+    }
+
+    #[test]
+    fn concurrent_checks_dont_panic() {
+        let cb = std::sync::Arc::new(CircuitBreaker::new(Default::default()));
+        let handles: Vec<_> = (0..100)
+            .map(|_| {
+                let cb = std::sync::Arc::clone(&cb);
+                std::thread::spawn(move || {
+                    let _ = cb.check();
+                    cb.record_failure();
+                    let _ = cb.stats();
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+    }
 }

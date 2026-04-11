@@ -68,7 +68,7 @@ impl From<GoalProgressView> for GoalProgressResponse {
 }
 
 /// Response DTO for GET /api/coaching/stats/today — aggregated coaching stats for the current day.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CoachingStatsTodayResponse {
     pub nudges_count: u32,
     pub current_regime: Option<String>,
@@ -89,7 +89,7 @@ pub struct HabitStreakQuery {
 }
 
 /// Response DTO for a single habit streak row.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct HabitStreakResponse {
     pub regime_label: String,
     pub date: String,
@@ -107,5 +107,63 @@ impl From<oneshim_core::models::coaching::HabitStreakRow> for HabitStreakRespons
             target_minutes: row.target_minutes,
             met: row.met,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trip_coaching_stats_today() {
+        let original = CoachingStatsTodayResponse {
+            nudges_count: 3,
+            current_regime: Some("deep_work".to_string()),
+            regime_minutes_today: 120,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: CoachingStatsTodayResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_coaching_stats_today_no_regime() {
+        let original = CoachingStatsTodayResponse {
+            nudges_count: 0,
+            current_regime: None,
+            regime_minutes_today: 0,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: CoachingStatsTodayResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn round_trip_habit_streak_response() {
+        let original = HabitStreakResponse {
+            regime_label: "deep_work".to_string(),
+            date: "2026-04-11".to_string(),
+            minutes_logged: 90,
+            target_minutes: 120,
+            met: false,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: HabitStreakResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn habit_streak_met_roundtrip() {
+        let original = HabitStreakResponse {
+            regime_label: "communication".to_string(),
+            date: "2026-04-10".to_string(),
+            minutes_logged: 150,
+            target_minutes: 60,
+            met: true,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: HabitStreakResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+        assert!(decoded.met);
     }
 }
