@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.37] - 2026-04-12
+
+### Fixed
+
+- Linux clippy, CI sandbox stub, settings test ([#417](https://github.com/pseudotop/oneshim-client/pull/417))
+  - Gate build_seccomp_allowlist behind linux-sandbox feature
+  - Remove unused CommandExt import (tokio::Command has pre_exec)
+  - Use io::Error::other() instead of io::Error::new(ErrorKind::Other)
+  - Add sandbox worker stub to CI and gRPC governance workflows
+  - Update shell-integration test for childGroups settings nav
+
+- Landlock RulesetStatus compat + CI sandbox stubs ([#418](https://github.com/pseudotop/oneshim-client/pull/418))
+  * fix: Linux clippy errors, CI sandbox worker stub, settings tree test
+
+  - Gate build_seccomp_allowlist behind linux-sandbox feature
+  - Remove unused CommandExt import (tokio::Command has pre_exec)
+  - Use io::Error::other() instead of io::Error::new(ErrorKind::Other)
+  - Add sandbox worker stub to CI and gRPC governance workflows
+  - Update shell-integration test for childGroups settings nav
+
+- Landlock 0.4.x builder pattern compat ([#419](https://github.com/pseudotop/oneshim-client/pull/419))
+  * fix: Linux clippy errors, CI sandbox worker stub, settings tree test
+
+  - Gate build_seccomp_allowlist behind linux-sandbox feature
+  - Remove unused CommandExt import (tokio::Command has pre_exec)
+  - Use io::Error::other() instead of io::Error::new(ErrorKind::Other)
+  - Add sandbox worker stub to CI and gRPC governance workflows
+  - Update shell-integration test for childGroups settings nav
+
 ## [0.4.37-rc.3] - 2026-04-12
 
 ### Fixed
