@@ -14,6 +14,7 @@ members = [
     "crates/oneshim-automation",
     "crates/oneshim-analysis",
     "crates/oneshim-embedding",
+    "crates/oneshim-sandbox-worker",
     # "crates/oneshim-app",     # src-tauri로 대체
     "src-tauri",
 ]
