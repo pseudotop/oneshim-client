@@ -5452,6 +5452,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5566,6 +5567,15 @@ dependencies = [
  "url",
  "uuid",
  "zstd",
+]
+
+[[package]]
+name = "oneshim-sandbox-worker"
+version = "0.4.35-rc.1"
+dependencies = [
+ "oneshim-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
