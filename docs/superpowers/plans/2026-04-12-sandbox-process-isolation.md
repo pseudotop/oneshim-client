@@ -96,19 +96,24 @@ pub struct SandboxResponse {
 }
 
 /// Resolve the sandbox worker binary path.
-/// Search order: adjacent to current binary, then PATH.
+/// Search order: exact name adjacent to binary, Tauri platform-suffixed, then PATH.
 pub fn resolve_worker_path() -> Result<PathBuf, oneshim_core::error::CoreError> {
-    let binary_name = if cfg!(target_os = "windows") {
-        "oneshim-sandbox-worker.exe"
-    } else {
-        "oneshim-sandbox-worker"
-    };
+    let base_name = "oneshim-sandbox-worker";
+    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
 
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let candidate = dir.join(binary_name);
+            // 1. Exact name (dev builds: cargo puts binaries in target/debug/)
+            let candidate = dir.join(format!("{base_name}{ext}"));
             if candidate.exists() {
                 return Ok(candidate);
+            }
+            // 2. Tauri sidecar: platform-suffixed name
+            //    e.g., oneshim-sandbox-worker-aarch64-apple-darwin
+            let target = target_triple();
+            let suffixed = dir.join(format!("{base_name}-{target}{ext}"));
+            if suffixed.exists() {
+                return Ok(suffixed);
             }
         }
     }
@@ -142,8 +147,24 @@ pub fn resolve_worker_path() -> Result<PathBuf, oneshim_core::error::CoreError> 
     }
 
     Err(oneshim_core::error::CoreError::SandboxExecution(
-        "sandbox worker binary not found: checked adjacent to executable and PATH".into(),
+        "sandbox worker binary not found: checked adjacent to executable, Tauri sidecar, and PATH".into(),
     ))
+}
+
+/// Returns the Rust target triple for the current platform.
+fn target_triple() -> &'static str {
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    { "x86_64-unknown-linux-gnu" }
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    { "aarch64-unknown-linux-gnu" }
+    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
+    { "x86_64-apple-darwin" }
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    { "aarch64-apple-darwin" }
+    #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
+    { "x86_64-pc-windows-msvc" }
+    #[cfg(all(target_arch = "aarch64", target_os = "windows"))]
+    { "aarch64-pc-windows-msvc" }
 }
 
 /// Parse worker stdout into SandboxResponse.
@@ -496,7 +517,7 @@ Replace the `execute_sandboxed` implementation with:
 2. `resolve_worker_path()` to find the worker binary
 3. Build BPF program BEFORE fork (`build_seccomp_bpf()`)
 4. `tokio::process::Command::new(worker_path)` with piped stdin/stdout/stderr
-5. `cmd.as_std_mut().pre_exec()` applying Landlock, seccomp BPF, and rlimits
+5. `cmd.pre_exec()` applying Landlock, seccomp BPF, and rlimits
 6. Spawn child, write `SandboxRequest` JSON to stdin, close stdin
 7. `tokio::time::timeout` wrapping `child.wait_with_output()`
 8. Parse `SandboxResponse` from stdout
@@ -530,10 +551,12 @@ Also:
 
 See spec section 4.1 for full details.
 
-- [ ] **Step 4: Run tests**
+- [ ] **Step 4: Build worker and run tests**
 
-Run: `cargo test -p oneshim-automation sandbox::linux`
+Run: `cargo build -p oneshim-sandbox-worker && cargo test -p oneshim-automation sandbox::linux`
 Expected: ALL PASS
+
+Note: Worker binary MUST be built first — `execute_sandboxed` now spawns it as a child process. The existing `linux_sandbox_execute` test must be updated to either skip when worker is absent or build the worker as a test prerequisite.
 
 - [ ] **Step 5: Verify workspace**
 
