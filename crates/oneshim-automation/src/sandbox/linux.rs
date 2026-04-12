@@ -458,7 +458,7 @@ fn apply_landlock_rules_sync(rules: &LandlockRules) -> std::io::Result<()> {
 
     match ruleset.restrict_self() {
         Ok(status) => {
-            let enforced = status.ruleset != RulesetStatus::NotSupported;
+            let enforced = status.ruleset == RulesetStatus::FullyEnforced;
             tracing::info!(
                 enforced,
                 read = rules.read_paths.len(),
@@ -564,7 +564,7 @@ fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), AutomationError> {
 
         match ruleset.restrict_self() {
             Ok(status) => {
-                let enforced = status.ruleset != RulesetStatus::NotSupported;
+                let enforced = status.ruleset == RulesetStatus::FullyEnforced;
                 tracing::info!(
                     enforced,
                     read = rules.read_paths.len(),
