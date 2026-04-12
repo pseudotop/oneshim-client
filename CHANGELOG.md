@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.37-rc.2] - 2026-04-12
+
+### Added
+
+- Process isolation with real OS APIs ([#412](https://github.com/pseudotop/oneshim-client/pull/412))
+  * docs(plan): add review-polish implementation plan — 14 tasks, 21 fixes
+
+  Covers all 5 phases from the spec: critical PII/concurrency fixes,
+  vision corrections, network resilience, core/storage improvements,
+  and testing gaps. Each task includes TDD steps with exact code.
+
+
+### Fixed
+
+- Resolve CI lint failures ([#415](https://github.com/pseudotop/oneshim-client/pull/415))
+  - Add oneshim-sandbox-worker to arch-deps allowlist
+  - Replace non-null assertions with safe guards (Toast, PrivacyTab)
+  - Sort Tailwind classes per useSortedClasses (CoachingLayout, SyncTab)
+  - Move biome-ignore to correct line (FocusAutoTab)
+  - Replace hardcoded h-3/h-4/text-white with design tokens
+
 ## [0.4.37-rc.1] - 2026-04-12
 
 ### Added
