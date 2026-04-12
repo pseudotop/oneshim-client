@@ -143,7 +143,7 @@ export default function FocusAutoTab() {
                 className={cn('rounded-full p-0.5 hover:bg-brand/20', motion.colors)}
                 aria-label={`${t('common.remove')} ${app}`}
               >
-                <X className="h-3 w-3" />
+                <X className={iconSize.xs} />
               </button>
             </span>
           ))}
@@ -173,7 +173,7 @@ export default function FocusAutoTab() {
             disabled={!newApp.trim()}
             className={cn(
               'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm',
-              'bg-brand text-white',
+              'bg-brand text-content-inverse',
               motion.colors,
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
@@ -190,8 +190,8 @@ export default function FocusAutoTab() {
         <p className={cn('mb-3 text-xs', colors.text.secondary)}>{t('focusAuto.schedulesDesc')}</p>
 
         <div className="space-y-2">
-          {/* biome-ignore lint/suspicious/noArrayIndexKey: schedules have no stable ID */}
           {focusAuto.trigger_schedules.map((sched, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: schedules have no stable ID
             <div key={i} className="flex items-center gap-2">
               <input
                 type="time"

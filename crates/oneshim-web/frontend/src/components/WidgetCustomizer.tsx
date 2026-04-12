@@ -116,14 +116,16 @@ export default function WidgetCustomizer({ section, isVisible, canToggle, onTogg
               >
                 <span
                   className={cn(
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                    visible ? 'border-brand-signal bg-brand-signal text-white' : 'border-DEFAULT bg-surface-base',
+                    `flex ${iconSize.base} shrink-0 items-center justify-center rounded border`,
+                    visible
+                      ? 'border-brand-signal bg-brand-signal text-content-inverse'
+                      : 'border-DEFAULT bg-surface-base',
                   )}
                 >
                   {visible && (
                     <svg
                       viewBox="0 0 12 12"
-                      className="h-3 w-3"
+                      className={iconSize.xs}
                       fill="none"
                       stroke="currentColor"
                       strokeWidth={2}

@@ -85,7 +85,7 @@ export default function SyncTab() {
         <h2 className={cn(typography.h2, colors.text.primary)}>{t('syncTab.title')}</h2>
         <div className={cn('rounded-lg border p-4', colors.surface.muted)}>
           <p className={cn('text-sm', colors.text.secondary)}>{t('syncTab.notEnabled')}</p>
-          <ol className={cn('mt-2 list-decimal pl-6 text-sm space-y-1', colors.text.tertiary)}>
+          <ol className={cn('mt-2 list-decimal space-y-1 pl-6 text-sm', colors.text.tertiary)}>
             <li>
               {t('syncTab.step1')} <code className={cn('rounded px-1', 'bg-surface-muted')}>sync.enabled = true</code>{' '}
               {t('syncTab.step1Suffix')}
@@ -109,7 +109,7 @@ export default function SyncTab() {
 
       {/* Device Info */}
       <div className={cn('rounded-lg border p-4', colors.surface.elevated)}>
-        <h3 className={cn('text-sm mb-2', typography.weight.semibold, colors.text.primary)}>
+        <h3 className={cn('mb-2 text-sm', typography.weight.semibold, colors.text.primary)}>
           {t('syncTab.thisDevice')}
         </h3>
         <div className="grid grid-cols-2 gap-2 text-sm">
@@ -138,7 +138,7 @@ export default function SyncTab() {
 
       {/* Peers */}
       <div>
-        <h3 className={cn('text-sm mb-2', typography.weight.semibold, colors.text.primary)}>
+        <h3 className={cn('mb-2 text-sm', typography.weight.semibold, colors.text.primary)}>
           {t('syncTab.discoveredPeers')} ({peers.length})
         </h3>
         {peers.length === 0 ? (

@@ -81,7 +81,7 @@ export default function CoachingLayout() {
               <CardTitle>{t('coaching.frequencyTitle')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="mb-3 text-sm text-content-secondary">{t('coaching.frequencyDesc')}</p>
+              <p className="mb-3 text-content-secondary text-sm">{t('coaching.frequencyDesc')}</p>
               <div className="flex items-center gap-3">
                 <Select
                   value={String(intervalSecs)}
@@ -102,7 +102,7 @@ export default function CoachingLayout() {
                   ))}
                 </Select>
                 {saved && (
-                  <span className="text-xs text-semantic-success animate-pulse">{t('coaching.frequencySaved')}</span>
+                  <span className="animate-pulse text-semantic-success text-xs">{t('coaching.frequencySaved')}</span>
                 )}
               </div>
             </CardContent>

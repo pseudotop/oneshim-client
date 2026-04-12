@@ -26,7 +26,8 @@ export function ToastContainer() {
   const promoteFromQueue = useCallback(() => {
     setVisible((prev) => {
       if (pendingRef.current.length === 0 || prev.length >= MAX_VISIBLE) return prev
-      const next = pendingRef.current.shift()!
+      const next = pendingRef.current.shift()
+      if (!next) return prev
       return [...prev, next]
     })
   }, [])
