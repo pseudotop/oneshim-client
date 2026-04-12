@@ -55,6 +55,11 @@ jobs:
       - name: Create frontend dist stub for Tauri generate_context!()
         run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
 
+      - name: Create sandbox worker stub for Tauri externalBin
+        run: |
+          TRIPLE=$(rustc -vV | awk '/^host:/ { print $2 }')
+          touch "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+
       - name: Run gRPC compatibility matrix gate
         run: ./scripts/verify-grpc-compatibility.sh
 

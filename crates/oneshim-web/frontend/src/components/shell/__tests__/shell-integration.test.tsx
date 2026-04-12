@@ -91,13 +91,13 @@ const CASES: ShellCase[] = [
     expectedTopLevelItems: [/automation/i, /recalibration/i, /^execution policies$/i, /audit/i, /updates/i],
   },
   {
-    // Note: settings.tabs.privacy translates to "Telemetry", not "Privacy".
+    // childGroups: tabs grouped under "Core" and "Advanced" top-level treeitems
     route: '/settings/general',
     activeGroupTestId: null,
     activeBottomTestId: 'nav-settings',
     expectedHeaderPattern: /settings/i,
     selectedLeafPattern: /^general$/i,
-    expectedTopLevelItems: [/^general$/i, /^telemetry$/i, /^monitoring$/i, /^sync$/i, /^audio$/i, /^advanced$/i],
+    expectedTopLevelItems: [/^core$/i, /^advanced$/i],
   },
   {
     route: '/privacy/data',

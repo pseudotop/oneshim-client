@@ -214,6 +214,11 @@ jobs:
       - name: Create frontend dist stub for Tauri generate_context!()
         run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
 
+      - name: Create sandbox worker stub for Tauri externalBin
+        run: |
+          TRIPLE=$(rustc -vV | awk '/^host:/ { print $2 }')
+          touch "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+
       - name: Run clippy (standalone)
         run: ./scripts/cargo-cache.sh clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 

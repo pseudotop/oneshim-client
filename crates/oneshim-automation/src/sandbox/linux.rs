@@ -82,6 +82,7 @@ impl LinuxSandbox {
         rules
     }
 
+    #[cfg(feature = "linux-sandbox")]
     fn build_seccomp_allowlist(config: &SandboxConfig) -> SeccompAllowlist {
         let mut allowlist = SeccompAllowlist::default();
 
@@ -199,7 +200,6 @@ impl Sandbox for LinuxSandbox {
         // and setrlimit run post-fork.
         #[cfg(target_os = "linux")]
         {
-            use std::os::unix::process::CommandExt;
             unsafe {
                 cmd.pre_exec(move || {
                     #[cfg(feature = "linux-sandbox")]
@@ -484,10 +484,9 @@ fn apply_resource_limits_sync(limits: &ResourceLimits) -> std::io::Result<()> {
         let ret = unsafe { libc::setrlimit(libc::RLIMIT_AS, &rlim) };
         if ret != 0 {
             let errno = std::io::Error::last_os_error();
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("setrlimit RLIMIT_AS failed: {errno}"),
-            ));
+            return Err(std::io::Error::other(format!(
+                "setrlimit RLIMIT_AS failed: {errno}"
+            )));
         }
     }
     if limits.max_cpu_time_ms > 0 {
@@ -500,10 +499,9 @@ fn apply_resource_limits_sync(limits: &ResourceLimits) -> std::io::Result<()> {
             let ret = unsafe { libc::setrlimit(libc::RLIMIT_CPU, &rlim) };
             if ret != 0 {
                 let errno = std::io::Error::last_os_error();
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("setrlimit RLIMIT_CPU failed: {errno}"),
-                ));
+                return Err(std::io::Error::other(format!(
+                    "setrlimit RLIMIT_CPU failed: {errno}"
+                )));
             }
         }
     }
@@ -759,6 +757,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "linux-sandbox")]
     fn build_seccomp_allowlist_profiles() {
         let permissive = LinuxSandbox::build_seccomp_allowlist(&SandboxConfig {
             profile: SandboxProfile::Permissive,
