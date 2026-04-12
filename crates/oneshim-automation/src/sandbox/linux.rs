@@ -418,42 +418,38 @@ fn apply_landlock_rules_sync(rules: &LandlockRules) -> std::io::Result<()> {
     let read_access = AccessFs::from_read(abi);
     let write_access = AccessFs::from_all(abi);
 
-    let mut ruleset = Ruleset::default()
+    let ruleset = Ruleset::default()
         .handle_access(write_access)
-        .map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Landlock ruleset: {e}"))
-        })?
+        .map_err(|e| std::io::Error::other(format!("Landlock ruleset: {e}")))?
         .create()
-        .map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Landlock create: {e}"))
-        })?;
+        .map_err(|e| std::io::Error::other(format!("Landlock create: {e}")))?;
 
-    // Add read-only path rules
-    let read_rules = path_beneath_rules(
+    // Add path rules — add_rule() takes self by value (builder pattern in landlock 0.4.x)
+    let read_rules: Vec<_> = path_beneath_rules(
         rules
             .read_paths
             .iter()
             .filter(|p| std::path::Path::new(p).exists()),
         read_access,
-    );
-    for rule in read_rules {
-        if let Ok(r) = rule {
-            let _ = ruleset.add_rule(r);
-        }
-    }
+    )
+    .filter_map(|r| r.ok())
+    .collect();
 
-    // Add read-write path rules
-    let write_rules = path_beneath_rules(
+    let write_rules: Vec<_> = path_beneath_rules(
         rules
             .write_paths
             .iter()
             .filter(|p| std::path::Path::new(p).exists()),
         write_access,
-    );
-    for rule in write_rules {
-        if let Ok(r) = rule {
-            let _ = ruleset.add_rule(r);
-        }
+    )
+    .filter_map(|r| r.ok())
+    .collect();
+
+    let mut ruleset = ruleset;
+    for r in read_rules.into_iter().chain(write_rules) {
+        ruleset = ruleset
+            .add_rule(r)
+            .map_err(|e| std::io::Error::other(format!("Landlock add_rule: {e}")))?;
     }
 
     match ruleset.restrict_self() {
@@ -528,38 +524,38 @@ fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), AutomationError> {
         let read_access = AccessFs::from_read(abi);
         let write_access = AccessFs::from_all(abi);
 
-        let mut ruleset = Ruleset::default()
+        let ruleset = Ruleset::default()
             .handle_access(write_access)
             .map_err(|e| AutomationError::SandboxEnforcement(format!("Landlock ruleset: {e}")))?
             .create()
             .map_err(|e| AutomationError::SandboxEnforcement(format!("Landlock create: {e}")))?;
 
-        // Add read-only path rules
-        let read_rules = path_beneath_rules(
+        // Add path rules — add_rule() takes self by value (builder pattern in landlock 0.4.x)
+        let read_rules: Vec<_> = path_beneath_rules(
             rules
                 .read_paths
                 .iter()
                 .filter(|p| std::path::Path::new(p).exists()),
             read_access,
-        );
-        for rule in read_rules {
-            if let Ok(r) = rule {
-                let _ = ruleset.add_rule(r);
-            }
-        }
+        )
+        .filter_map(|r| r.ok())
+        .collect();
 
-        // Add read-write path rules
-        let write_rules = path_beneath_rules(
+        let write_rules: Vec<_> = path_beneath_rules(
             rules
                 .write_paths
                 .iter()
                 .filter(|p| std::path::Path::new(p).exists()),
             write_access,
-        );
-        for rule in write_rules {
-            if let Ok(r) = rule {
-                let _ = ruleset.add_rule(r);
-            }
+        )
+        .filter_map(|r| r.ok())
+        .collect();
+
+        let mut ruleset = ruleset;
+        for r in read_rules.into_iter().chain(write_rules) {
+            ruleset = ruleset.add_rule(r).map_err(|e| {
+                AutomationError::SandboxEnforcement(format!("Landlock add_rule: {e}"))
+            })?;
         }
 
         match ruleset.restrict_self() {
