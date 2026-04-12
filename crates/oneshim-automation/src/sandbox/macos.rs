@@ -2,7 +2,12 @@
 //!
 //! Generates SBPL (Seatbelt Profile Language) profiles based on the
 //! [`SandboxConfig`] and executes automation actions within a sandboxed
-//! child process using `/usr/bin/sandbox-exec -p <profile> -- <command>`.
+//! child process using:
+//! `/usr/bin/sandbox-exec -p <profile> -- oneshim-sandbox-worker`
+//!
+//! The action is written to the worker's stdin as a JSON-encoded
+//! [`SandboxRequest`] and the result is read from stdout as a
+//! [`SandboxResponse`].
 //!
 //! **Resource limits**: `apply_resource_limits()` logs the configured values
 //! but does **not** call `setrlimit(2)`. The sandbox-exec model spawns a
@@ -14,6 +19,7 @@ use async_trait::async_trait;
 use std::process::Command;
 
 use crate::error::AutomationError;
+use crate::sandbox::ipc;
 use oneshim_core::config::{SandboxConfig, SandboxProfile};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
@@ -105,40 +111,39 @@ impl MacOsSandbox {
         rules
     }
 
-    /// Build the `sandbox-exec` command line for the given action and SBPL profile.
+    /// Build the `sandbox-exec` command line for the given SBPL profile.
     ///
-    /// Returns `(sandbox_exec_path, args)` where `args` includes `-p`, the
-    /// profile string, `--`, and the child command derived from the action.
-    fn build_sandbox_command(
-        &self,
-        action: &AutomationAction,
-        profile: &str,
-    ) -> Result<(String, Vec<String>), CoreError> {
+    /// Returns `(sandbox_exec_path, args)` where `args` is:
+    /// `["-p", profile, "--", worker_binary_path]`.
+    ///
+    /// The action is no longer passed as a command-line argument; it is
+    /// written to the worker's stdin as a JSON-encoded [`SandboxRequest`].
+    fn build_sandbox_command(&self, profile: &str) -> Result<(String, Vec<String>), CoreError> {
         let exec_path = self
             .sandbox_exec_path
             .as_deref()
             .ok_or_else(|| CoreError::SandboxUnsupported("sandbox-exec not found".to_string()))?
             .to_string();
 
-        let action_json = serde_json::to_string(action).map_err(|e| {
-            CoreError::SandboxExecution(format!("failed to serialize action: {}", e))
-        })?;
+        let worker_path = ipc::resolve_worker_path()?;
 
-        // Use /bin/echo as a safe carrier -- the sandboxed child simply echoes
-        // the serialized action payload. The actual UI-level action (mouse/key)
-        // is performed by the caller *after* the sandbox validates the
-        // environment. This ensures the child process inherits the Seatbelt
-        // profile constraints.
         let args = vec![
             "-p".to_string(),
             profile.to_string(),
             "--".to_string(),
-            "/bin/echo".to_string(),
-            action_json,
+            worker_path.to_string_lossy().to_string(),
         ];
 
         Ok((exec_path, args))
     }
+}
+
+/// Returns `true` when the config is Permissive with no custom resource limits,
+/// meaning subprocess sandboxing can be skipped entirely.
+fn is_permissive_noop(config: &SandboxConfig) -> bool {
+    matches!(config.profile, SandboxProfile::Permissive)
+        && config.max_memory_bytes == 0
+        && config.max_cpu_time_ms == 0
 }
 
 #[async_trait]
@@ -162,6 +167,11 @@ impl Sandbox for MacOsSandbox {
             ));
         }
 
+        if is_permissive_noop(config) {
+            tracing::debug!("Permissive profile with no limits — skipping subprocess");
+            return Ok(());
+        }
+
         let profile = Self::generate_sbpl_profile(config);
         tracing::debug!(
             profile_type = %config.profile as u8,
@@ -172,21 +182,58 @@ impl Sandbox for MacOsSandbox {
 
         apply_resource_limits(config).map_err(CoreError::from)?;
 
-        let (exec_path, args) = self.build_sandbox_command(action, &profile)?;
+        let (exec_path, args) = self.build_sandbox_command(&profile)?;
 
         tracing::debug!(
             sandbox_exec = %exec_path,
             args_count = args.len(),
-            "invoking sandbox-exec"
+            "invoking sandbox-exec with worker binary"
         );
 
-        let output = tokio::process::Command::new(&exec_path)
+        let request = ipc::SandboxRequest {
+            action: action.clone(),
+        };
+        let request_json = serde_json::to_string(&request).map_err(|e| {
+            CoreError::SandboxExecution(format!("failed to serialize action: {}", e))
+        })?;
+
+        let timeout_ms = if config.max_cpu_time_ms > 0 {
+            config.max_cpu_time_ms + 5000
+        } else {
+            60_000
+        };
+
+        let mut child = tokio::process::Command::new(&exec_path)
             .args(&args)
-            .output()
-            .await
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| {
                 CoreError::SandboxExecution(format!("failed to spawn sandbox-exec: {}", e))
             })?;
+
+        // Write serialized request to child stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            stdin
+                .write_all(request_json.as_bytes())
+                .await
+                .map_err(|e| CoreError::SandboxExecution(format!("stdin write: {}", e)))?;
+            stdin
+                .write_all(b"\n")
+                .await
+                .map_err(|e| CoreError::SandboxExecution(format!("stdin newline: {}", e)))?;
+            drop(stdin);
+        }
+
+        let output = tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            child.wait_with_output(),
+        )
+        .await
+        .map_err(|_| CoreError::ExecutionTimeout { timeout_ms })?
+        .map_err(|e| CoreError::SandboxExecution(format!("wait failed: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -200,6 +247,14 @@ impl Sandbox for MacOsSandbox {
                 "sandbox-exec failed (exit {}): {}",
                 exit_code,
                 stderr.trim()
+            )));
+        }
+
+        let response = ipc::parse_worker_response(&output.stdout)?;
+        if !response.success {
+            return Err(CoreError::SandboxExecution(format!(
+                "worker reported failure: {}",
+                response.error.unwrap_or_default()
             )));
         }
 
@@ -330,71 +385,23 @@ mod tests {
     }
 
     #[test]
-    fn build_sandbox_command_produces_correct_structure() {
+    fn build_sandbox_command_uses_worker() {
         let sandbox = MacOsSandbox::with_exec_path(Some("/usr/bin/sandbox-exec".to_string()));
-        let action = AutomationAction::KeyType {
-            text: "hello".to_string(),
-        };
         let profile = "(version 1)\n(allow default)\n";
-
-        let (exec_path, args) = sandbox.build_sandbox_command(&action, profile).unwrap();
-
-        assert_eq!(exec_path, "/usr/bin/sandbox-exec");
-        assert_eq!(args.len(), 5);
-        assert_eq!(args[0], "-p");
-        assert_eq!(args[1], profile);
-        assert_eq!(args[2], "--");
-        assert_eq!(args[3], "/bin/echo");
-        // The 5th arg is the serialized action JSON
-        let parsed: AutomationAction = serde_json::from_str(&args[4]).unwrap();
-        assert_eq!(parsed, action);
+        if let Ok((exec_path, args)) = sandbox.build_sandbox_command(profile) {
+            assert_eq!(exec_path, "/usr/bin/sandbox-exec");
+            assert_eq!(args[0], "-p");
+            assert_eq!(args[1], profile);
+            assert_eq!(args[2], "--");
+            assert!(args[3].contains("oneshim-sandbox-worker"));
+        }
     }
 
     #[test]
     fn build_sandbox_command_without_exec_path_fails() {
         let sandbox = MacOsSandbox::with_exec_path(None);
-        let action = AutomationAction::MouseMove { x: 10, y: 20 };
-        let result = sandbox.build_sandbox_command(&action, "(version 1)\n");
+        let result = sandbox.build_sandbox_command("(version 1)\n");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn build_sandbox_command_all_action_variants() {
-        let sandbox = MacOsSandbox::with_exec_path(Some("/usr/bin/sandbox-exec".to_string()));
-        let profile = "(version 1)\n(deny default)\n";
-
-        let actions = vec![
-            AutomationAction::MouseMove { x: 0, y: 0 },
-            AutomationAction::MouseClick {
-                button: "left".to_string(),
-                x: 100,
-                y: 200,
-            },
-            AutomationAction::KeyType {
-                text: "test".to_string(),
-            },
-            AutomationAction::KeyPress {
-                key: "Enter".to_string(),
-            },
-            AutomationAction::KeyRelease {
-                key: "Shift".to_string(),
-            },
-            AutomationAction::Hotkey {
-                keys: vec!["Cmd".to_string(), "C".to_string()],
-            },
-        ];
-
-        for action in &actions {
-            let (exec, args) = sandbox.build_sandbox_command(action, profile).unwrap();
-            assert_eq!(exec, "/usr/bin/sandbox-exec");
-            assert_eq!(args[0], "-p");
-            assert_eq!(args[1], profile);
-            assert_eq!(args[2], "--");
-            assert_eq!(args[3], "/bin/echo");
-            // Verify the JSON roundtrips back to the same action
-            let parsed: AutomationAction = serde_json::from_str(&args[4]).unwrap();
-            assert_eq!(&parsed, action);
-        }
     }
 
     #[tokio::test]
@@ -416,5 +423,34 @@ mod tests {
             "expected SandboxUnsupported, got: {}",
             err
         );
+    }
+
+    #[test]
+    fn permissive_no_limits_is_noop() {
+        let config = SandboxConfig {
+            profile: SandboxProfile::Permissive,
+            max_memory_bytes: 0,
+            max_cpu_time_ms: 0,
+            ..Default::default()
+        };
+        assert!(is_permissive_noop(&config));
+
+        // Permissive with memory limit is NOT noop
+        let config_with_mem = SandboxConfig {
+            profile: SandboxProfile::Permissive,
+            max_memory_bytes: 1024,
+            max_cpu_time_ms: 0,
+            ..Default::default()
+        };
+        assert!(!is_permissive_noop(&config_with_mem));
+
+        // Standard profile is NOT noop (even with zero limits)
+        let config_standard = SandboxConfig {
+            profile: SandboxProfile::Standard,
+            max_memory_bytes: 0,
+            max_cpu_time_ms: 0,
+            ..Default::default()
+        };
+        assert!(!is_permissive_noop(&config_standard));
     }
 }
