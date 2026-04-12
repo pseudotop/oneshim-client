@@ -34,6 +34,7 @@ allowed_runtime_edges = {
     "oneshim-automation": {"oneshim-core"},
     "oneshim-analysis": {"oneshim-core"},
     "oneshim-embedding": {"oneshim-core"},
+    "oneshim-sandbox-worker": {"oneshim-core"},
     "oneshim-app": {
         "oneshim-core",
         "oneshim-api-contracts",
