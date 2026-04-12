@@ -28,38 +28,14 @@ impl AutomationActionDispatcher for SandboxActionDispatcher {
             action = ?action,
             sandbox = self.sandbox.platform(),
             profile = ?config.profile,
-            "executing automation command (policy-based sandbox path)"
+            "dispatching to sandboxed worker"
         );
 
-        if let Err(e) = self.sandbox.execute_sandboxed(action, config).await {
-            tracing::error!(error = %e, "sandbox execution failure");
-            return CommandResult::Failed(format!("Sandbox execution failed: {}", e));
-        }
-
-        match action {
-            AutomationAction::MouseMove { x, y } => {
-                tracing::debug!(x, y, "mouse");
-                CommandResult::Success
-            }
-            AutomationAction::MouseClick { button, x, y } => {
-                tracing::debug!(button, x, y, "mouse click");
-                CommandResult::Success
-            }
-            AutomationAction::KeyType { text } => {
-                tracing::debug!(text_len = text.len(), "text");
-                CommandResult::Success
-            }
-            AutomationAction::KeyPress { key } => {
-                tracing::debug!(key, "key");
-                CommandResult::Success
-            }
-            AutomationAction::KeyRelease { key } => {
-                tracing::debug!(key, "key");
-                CommandResult::Success
-            }
-            AutomationAction::Hotkey { keys } => {
-                tracing::debug!(?keys, "key execution");
-                CommandResult::Success
+        match self.sandbox.execute_sandboxed(action, config).await {
+            Ok(()) => CommandResult::Success,
+            Err(e) => {
+                tracing::error!(error = %e, "sandboxed execution failed");
+                CommandResult::Failed(format!("Sandbox execution failed: {}", e))
             }
         }
     }

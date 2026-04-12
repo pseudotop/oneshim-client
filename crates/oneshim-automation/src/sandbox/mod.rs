@@ -1,3 +1,4 @@
+pub mod ipc;
 mod noop;
 
 #[cfg(target_os = "linux")]

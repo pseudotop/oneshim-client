@@ -13,6 +13,7 @@ authors.workspace = true
 default = []
 enigo = ["dep:enigo"]
 linux-sandbox = ["dep:landlock", "dep:seccompiler"]
+windows-sandbox = []
 
 [dependencies]
 oneshim-core = { workspace = true }
@@ -32,6 +33,9 @@ enigo = { workspace = true, optional = true }
 libc = { workspace = true }
 landlock = { version = "0.4", optional = true }
 seccompiler = { version = "0.4", optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

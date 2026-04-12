@@ -89,6 +89,8 @@ linux-atspi = ["oneshim-vision/linux-atspi"]
 lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 ml-detect = ["oneshim-vision/ml-detect"]
+linux-sandbox = ["oneshim-automation/linux-sandbox"]
+windows-sandbox = ["oneshim-automation/windows-sandbox"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"

@@ -15,6 +15,8 @@ pub enum AutomationError {
     SandboxInit(String),
     #[error("sandbox execution failed: {0}")]
     SandboxExecution(String),
+    #[error("sandbox enforcement failed: {0}")]
+    SandboxEnforcement(String),
     #[error("execution timeout after {timeout_ms}ms")]
     ExecutionTimeout { timeout_ms: u64 },
     #[error("element not found: {0}")]
@@ -46,6 +48,7 @@ impl From<AutomationError> for CoreError {
             AutomationError::SandboxUnsupported(msg) => CoreError::SandboxUnsupported(msg),
             AutomationError::SandboxInit(msg) => CoreError::SandboxInit(msg),
             AutomationError::SandboxExecution(msg) => CoreError::SandboxExecution(msg),
+            AutomationError::SandboxEnforcement(msg) => CoreError::SandboxExecution(msg),
             AutomationError::ExecutionTimeout { timeout_ms } => {
                 CoreError::ExecutionTimeout { timeout_ms }
             }
