@@ -107,11 +107,14 @@ impl BootstrapRuntimeBuilder {
         std::fs::create_dir_all(&data_dir_path)?;
         info!("data directory: {}", data_dir_path.display());
 
-        let config_manager = ConfigManager::new().unwrap_or_else(|error| {
-            warn!("settings init failure, using defaults: {error}");
-            let fallback_path = data_dir_path.join("config.json");
-            ConfigManager::with_path(fallback_path).expect("failed to create config manager")
-        });
+        let config_manager = match ConfigManager::new() {
+            Ok(cm) => cm,
+            Err(error) => {
+                warn!("settings init failure, using defaults: {error}");
+                let fallback_path = data_dir_path.join("config.json");
+                ConfigManager::with_path(fallback_path)?
+            }
+        };
         info!("settings file: {:?}", config_manager.config_path());
 
         let background_runtime = spawn_background_runtime()?;

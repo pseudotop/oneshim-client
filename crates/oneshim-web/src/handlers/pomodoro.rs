@@ -61,7 +61,7 @@ pub async fn start_pomodoro(
         .session
         .pomodoro
         .lock()
-        .expect("pomodoro lock poisoned");
+        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
 
     // Reject if a session is already active
     if let Some(existing) = guard.as_ref() {
@@ -90,7 +90,7 @@ pub async fn get_current_pomodoro(
         .session
         .pomodoro
         .lock()
-        .expect("pomodoro lock poisoned");
+        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
     let response = guard.as_ref().map(session_to_response);
     Ok(Json(response))
 }
@@ -105,7 +105,7 @@ pub async fn cancel_pomodoro(
         .session
         .pomodoro
         .lock()
-        .expect("pomodoro lock poisoned");
+        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
     let session = guard
         .as_mut()
         .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;
@@ -133,7 +133,7 @@ pub async fn complete_pomodoro(
         .session
         .pomodoro
         .lock()
-        .expect("pomodoro lock poisoned");
+        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
     let session = guard
         .as_mut()
         .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;

@@ -99,9 +99,9 @@ pub fn resolve_ai_provider_adapters(
                         config,
                         pii_filter_level,
                         external_ocr_privacy_guard.clone(),
-                        oauth
-                            .clone()
-                            .expect("oauth runtime should exist for managed OCR"),
+                        oauth.clone().ok_or_else(|| {
+                            CoreError::Config("oauth runtime required for managed OCR mode".into())
+                        })?,
                     )?
                 } else {
                     resolve_ocr_provider(
@@ -114,9 +114,9 @@ pub fn resolve_ai_provider_adapters(
                 let (llm, llm_source, llm_fallback_reason) = if llm_uses_managed {
                     resolve_llm_provider_oauth(
                         config,
-                        oauth
-                            .clone()
-                            .expect("oauth runtime should exist for managed LLM"),
+                        oauth.clone().ok_or_else(|| {
+                            CoreError::Config("oauth runtime required for managed LLM mode".into())
+                        })?,
                     )?
                 } else {
                     resolve_llm_provider(config, secret_stores.clone())?

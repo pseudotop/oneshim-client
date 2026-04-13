@@ -325,7 +325,8 @@ fn build_seccomp_bpf(
     use std::collections::BTreeMap;
 
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
-    let deny = vec![SeccompRule::new(vec![]).unwrap()];
+    let deny = vec![SeccompRule::new(vec![])
+        .map_err(|e| AutomationError::SandboxInit(format!("seccomp rule: {e}")))?];
 
     // Block network syscalls when not allowed
     if !allowlist.allow_network {
@@ -603,7 +604,8 @@ fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationEr
 
         // Default ALLOW — deny specific dangerous syscall categories
         let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
-        let deny = vec![SeccompRule::new(vec![]).unwrap()];
+        let deny = vec![SeccompRule::new(vec![])
+            .map_err(|e| AutomationError::SandboxInit(format!("seccomp rule: {e}")))?];
 
         // Block network syscalls when not allowed
         if !allowlist.allow_network {

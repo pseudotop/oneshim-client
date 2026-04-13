@@ -27,7 +27,7 @@ impl Default for SysInfoProvider {
 
 impl SystemInfoProvider for SysInfoProvider {
     fn system_info(&self) -> StaticSystemInfo {
-        let mut sys = self.sys.lock().expect("sysinfo lock poisoned");
+        let mut sys = self.sys.lock().unwrap_or_else(|e| e.into_inner());
         sys.refresh_memory();
 
         StaticSystemInfo {
