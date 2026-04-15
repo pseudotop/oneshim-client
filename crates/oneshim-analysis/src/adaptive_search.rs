@@ -10,6 +10,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 use crate::error::AnalysisError;
 #[cfg(feature = "hnsw")]
 use chrono::Utc;
@@ -346,6 +348,27 @@ impl AdaptiveSearchCoordinator {
     #[cfg(test)]
     pub fn set_cached_count(&self, count: u64) {
         self.cached_vector_count.store(count, Ordering::Relaxed);
+    }
+}
+
+#[async_trait]
+impl oneshim_core::ports::adaptive_search::AdaptiveSearchPort for AdaptiveSearchCoordinator {
+    async fn search(
+        &self,
+        query_f32: &[f32],
+        limit: usize,
+        time_decay_hours: f32,
+        filters: &SearchFilters,
+    ) -> Result<Vec<SearchResult>, oneshim_core::error::CoreError> {
+        self.search(query_f32, limit, time_decay_hours, filters)
+            .await
+            .map_err(|e| oneshim_core::error::CoreError::Internal(e.to_string()))
+    }
+
+    async fn refresh_count(&self) -> Result<(), oneshim_core::error::CoreError> {
+        self.refresh_count()
+            .await
+            .map_err(|e| oneshim_core::error::CoreError::Internal(e.to_string()))
     }
 }
 
