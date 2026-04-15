@@ -345,6 +345,12 @@ jobs:
         if: env.RUN_HEAVY_TESTS == 'true'
         run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
 
+      - name: Create sandbox worker stub for Tauri externalBin
+        if: env.RUN_HEAVY_TESTS == 'true'
+        run: |
+          TRIPLE=$(rustc -vV | awk '/^host:/ { print $2 }')
+          touch "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+
       - name: Run tests (standalone)
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test --workspace
