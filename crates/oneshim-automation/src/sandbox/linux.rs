@@ -345,7 +345,7 @@ fn build_seccomp_bpf(
             libc::SYS_setsockopt,
             libc::SYS_getsockopt,
         ] {
-            rules.insert(nr as i64, deny.clone());
+            rules.insert(nr, deny.clone());
         }
     }
 
@@ -362,7 +362,7 @@ fn build_seccomp_bpf(
             libc::SYS_tkill,
             libc::SYS_tgkill,
         ] {
-            rules.insert(nr as i64, deny.clone());
+            rules.insert(nr, deny.clone());
         }
     }
 
@@ -403,8 +403,7 @@ fn build_seccomp_bpf(
 /// Apply a pre-built seccomp BPF program. Only calls prctl — no allocation.
 #[cfg(feature = "linux-sandbox")]
 fn apply_seccomp_bpf_sync(bpf: &seccompiler::BpfProgram) -> std::io::Result<()> {
-    seccompiler::apply_filter(bpf)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("seccomp apply: {e}")))
+    seccompiler::apply_filter(bpf).map_err(|e| std::io::Error::other(format!("seccomp apply: {e}")))
 }
 
 /// Apply Landlock filesystem isolation (sync, returns io::Result for pre_exec).
@@ -576,7 +575,7 @@ fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), AutomationError> {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(feature = "linux-sandbox"))]
@@ -624,7 +623,7 @@ fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationEr
                 libc::SYS_setsockopt,
                 libc::SYS_getsockopt,
             ] {
-                rules.insert(nr as i64, deny.clone());
+                rules.insert(nr, deny.clone());
             }
         }
 
@@ -641,7 +640,7 @@ fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationEr
                 libc::SYS_tkill,
                 libc::SYS_tgkill,
             ] {
-                rules.insert(nr as i64, deny.clone());
+                rules.insert(nr, deny.clone());
             }
         }
 
@@ -672,7 +671,7 @@ fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), AutomationEr
             "seccomp-BPF filter applied"
         );
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(feature = "linux-sandbox"))]
