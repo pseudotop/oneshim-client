@@ -261,6 +261,17 @@ impl SyncTransport for LanSyncTransport {
         debug!(count = peers.len(), "discovered LAN peers");
         Ok(peers)
     }
+
+    async fn forget_peer(&self, device_id: &str) -> Result<(), CoreError> {
+        let removed = self.verified_peers.write().remove(device_id).is_some();
+        self.token_cache.invalidate(device_id);
+        if removed {
+            info!(device_id, "LAN peer forgotten");
+        } else {
+            debug!(device_id, "forget_peer: peer not found in verified list");
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

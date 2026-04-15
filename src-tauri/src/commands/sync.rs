@@ -132,13 +132,17 @@ pub fn set_sync_enabled(
 
 /// Remove a peer from the known-peers list.
 ///
-/// Currently a best-effort stub: logs the removal intent. Full peer-store
-/// eviction requires the sync engine's peer registry, which is not yet
-/// exposed through `SyncRuntimeState`. The command is registered so the
-/// frontend contract is stable and the engine-side wiring can be added
-/// without a breaking IPC change.
+/// Delegates to the sync engine's transport to evict the peer from the
+/// active peer registry (LAN verified-peers map, remote REST endpoint,
+/// or file-transport changeset files).
 #[command]
-pub fn forget_peer(device_id: String) -> Result<(), String> {
-    tracing::info!(device_id = %device_id, "forget_peer: peer removal requested");
-    Ok(())
+pub async fn forget_peer(
+    device_id: String,
+    state: tauri::State<'_, SyncRuntimeState>,
+) -> Result<(), String> {
+    let engine = state.engine().ok_or("Sync not enabled")?;
+    engine
+        .forget_peer(&device_id)
+        .await
+        .map_err(|e| e.to_string())
 }

@@ -281,6 +281,26 @@ impl SyncTransport for RemoteSyncTransport {
         debug!(count = peers.len(), "discovered remote peers");
         Ok(peers)
     }
+
+    async fn forget_peer(&self, device_id: &str) -> Result<(), CoreError> {
+        let (header_name, header_value) = self.auth_header();
+        let resp = self
+            .client
+            .delete(format!("{}/sync/peers/{}", self.endpoint, device_id))
+            .header(header_name, &header_value)
+            .send()
+            .await
+            .map_err(|e| self.map_error(e, "forget peer"))?;
+
+        let status = resp.status();
+        if status.is_success() || status.as_u16() == 404 {
+            debug!(device_id, "remote peer forgotten");
+            Ok(())
+        } else {
+            let body = resp.text().await.unwrap_or_default();
+            Self::check_response_status(status, &body)
+        }
+    }
 }
 
 #[cfg(test)]

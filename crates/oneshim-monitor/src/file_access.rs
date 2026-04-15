@@ -95,6 +95,9 @@ impl FileAccessFilter {
     }
 }
 
+/// Maximum number of files tracked per poll to bound memory usage.
+const MAX_TRACKED_FILES: usize = 10_000;
+
 /// Polling-based file access watcher.
 ///
 /// Scans monitored directories for modification time changes each poll cycle.
@@ -115,6 +118,7 @@ impl FileAccessFilter {
 pub struct FileAccessWatcher {
     filter: FileAccessFilter,
     /// Last-seen modification times for files in monitored directories.
+    /// Bounded to `MAX_TRACKED_FILES` entries per poll cycle.
     file_mtimes: Mutex<HashMap<PathBuf, SystemTime>>,
     /// Cumulative count of file changes since last `take_modified_count()`.
     modified_count: AtomicU32,
@@ -172,6 +176,10 @@ impl FileAccessWatcher {
 
                 if !self.filter.should_collect(&path) {
                     continue;
+                }
+
+                if current_files.len() >= MAX_TRACKED_FILES {
+                    break;
                 }
 
                 current_files.insert(path.clone(), mtime);

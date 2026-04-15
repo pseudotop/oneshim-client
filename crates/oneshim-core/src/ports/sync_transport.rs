@@ -31,4 +31,15 @@ pub trait SyncTransport: Send + Sync {
     /// For remote transport: query the sync endpoint's peer registry.
     /// For LAN transport: mDNS service discovery.
     async fn discover_peers(&self) -> Result<Vec<PeerInfo>, CoreError>;
+
+    /// Remove a peer from the transport's known-peers list.
+    ///
+    /// For LAN transport: evicts the peer from the verified-peers map.
+    /// For remote transport: sends a DELETE request to the peer registry.
+    /// For file transport: removes changeset files originating from the peer.
+    ///
+    /// Default: no-op (transports that don't maintain peer state).
+    async fn forget_peer(&self, _device_id: &str) -> Result<(), CoreError> {
+        Ok(())
+    }
 }

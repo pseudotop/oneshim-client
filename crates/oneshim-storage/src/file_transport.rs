@@ -278,6 +278,35 @@ impl SyncTransport for FileSyncTransport {
         .await
         .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
     }
+
+    async fn forget_peer(&self, device_id: &str) -> Result<(), CoreError> {
+        let folder = self.sync_folder.clone();
+        let device_id = device_id.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let entries = std::fs::read_dir(&folder)
+                .map_err(|e| CoreError::Internal(format!("read sync folder: {e}")))?;
+
+            let mut removed = 0u32;
+            for entry in entries {
+                let entry = entry.map_err(|e| CoreError::Internal(format!("dir entry: {e}")))?;
+                let name = entry.file_name().to_string_lossy().to_string();
+                if let Some((file_device_id, _, _)) = Self::parse_filename(&name) {
+                    if file_device_id == device_id {
+                        std::fs::remove_file(entry.path()).map_err(|e| {
+                            CoreError::Internal(format!("remove changeset file: {e}"))
+                        })?;
+                        removed += 1;
+                    }
+                }
+            }
+
+            debug!(device_id = %device_id, removed, "file peer forgotten");
+            Ok(())
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+    }
 }
 
 #[cfg(test)]
