@@ -516,4 +516,51 @@ mod tests {
         assert_eq!(pulled_cs.segments, original.segments);
         pull_mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn forget_peer_sends_delete_with_auth_header() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("DELETE", "/sync/peers/device-123")
+            .match_header("Authorization", "Bearer test-token")
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let transport = test_transport(&server.url());
+        transport.forget_peer("device-123").await.unwrap();
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn forget_peer_treats_404_as_success() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("DELETE", "/sync/peers/unknown")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let transport = test_transport(&server.url());
+        assert!(transport.forget_peer("unknown").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn forget_peer_bubbles_server_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("DELETE", "/sync/peers/oops")
+            .with_status(500)
+            .with_body("internal")
+            .create_async()
+            .await;
+
+        let transport = test_transport(&server.url());
+        let err = transport.forget_peer("oops").await.unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("500") || msg.to_lowercase().contains("internal"),
+            "unexpected error: {msg}"
+        );
+    }
 }
