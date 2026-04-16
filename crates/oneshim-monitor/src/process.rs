@@ -20,10 +20,8 @@ pub struct ProcessTracker {
 
 impl ProcessTracker {
     pub fn new() -> Self {
-        let mut sys = System::new_all();
-        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
         Self {
-            sys: Mutex::new(sys),
+            sys: Mutex::new(System::new_all()),
             last_refresh: Mutex::new(Instant::now()),
         }
     }
@@ -35,6 +33,18 @@ impl ProcessTracker {
             sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
             *last = Instant::now();
         }
+    }
+
+    /// Test-only accessor for the cached `last_refresh` timestamp.
+    #[cfg(test)]
+    pub(crate) fn _last_refresh_instant(&self) -> Instant {
+        *self.last_refresh.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Test-only mutator to drive cooldown expiration without wall-clock sleep.
+    #[cfg(test)]
+    pub(crate) fn _set_last_refresh(&self, t: Instant) {
+        *self.last_refresh.lock().unwrap_or_else(|e| e.into_inner()) = t;
     }
 }
 
@@ -205,5 +215,31 @@ mod tests {
         let procs = tracker.get_top_processes(5).await.unwrap();
         assert!(procs.len() <= 5);
         assert!(!procs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn refresh_if_stale_skips_within_cooldown() {
+        let tracker = ProcessTracker::new();
+        let before = tracker._last_refresh_instant();
+        let _ = tracker.get_top_processes(5).await.unwrap();
+        let after = tracker._last_refresh_instant();
+        // Second call within the 2s cooldown — last_refresh should not advance.
+        assert_eq!(before, after, "refresh_if_stale advanced within cooldown");
+    }
+
+    #[tokio::test]
+    async fn refresh_if_stale_refreshes_after_cooldown() {
+        let tracker = ProcessTracker::new();
+        let pushed_back = Instant::now()
+            .checked_sub(Duration::from_secs(3))
+            .expect("test runner: Instant::now() must be >= 3s after process start");
+        tracker._set_last_refresh(pushed_back);
+        let before = tracker._last_refresh_instant();
+        let _ = tracker.get_top_processes(5).await.unwrap();
+        let after = tracker._last_refresh_instant();
+        assert!(
+            after > before,
+            "refresh_if_stale did not advance after cooldown"
+        );
     }
 }
