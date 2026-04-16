@@ -3,7 +3,7 @@
 //! Platform-dispatched module:
 //! - macOS: Native AXUIElement FFI (`macos.rs`)
 //! - Windows: UIAutomation COM API (`windows.rs`)
-//! - Linux: AT-SPI2 over D-Bus (`linux.rs`) — structural stub
+//! - Linux: AT-SPI2 over D-Bus (`linux.rs`, feature `linux-atspi`)
 //!
 //! The `create_extractor()` factory function returns the appropriate
 //! platform implementation behind `Arc<dyn AccessibilityExtractor>`.
@@ -70,8 +70,12 @@ fn create_platform_extractor() -> Option<Arc<dyn AccessibilityExtractor>> {
 #[cfg(target_os = "linux")]
 fn create_platform_extractor() -> Option<Arc<dyn AccessibilityExtractor>> {
     let extractor = LinuxAccessibility::new();
-    tracing::info!(
-        "Linux AT-SPI2 accessibility extractor enabled (stub — returns None until full impl)"
+    #[cfg(feature = "linux-atspi")]
+    tracing::info!("Linux AT-SPI2 accessibility extractor enabled");
+    #[cfg(not(feature = "linux-atspi"))]
+    tracing::warn!(
+        "Linux AT-SPI2 feature not enabled — extractor will return None. \
+         Rebuild with --features linux-atspi to enable full AT-SPI2 integration."
     );
     Some(Arc::new(extractor))
 }

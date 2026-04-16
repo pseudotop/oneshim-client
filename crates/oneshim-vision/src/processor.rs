@@ -161,9 +161,9 @@ impl FrameProcessor for EdgeFrameProcessor {
 
                 if has_prev {
                     if let Some(delta_region) = delta_result {
-                        let frame_clone = current_frame.clone();
+                        let frame_ref = Arc::clone(&current_frame);
                         let encoded = tokio::task::spawn_blocking(move || {
-                            encoder::encode_webp_base64(&frame_clone, WebPQuality::Medium)
+                            encoder::encode_webp_base64(&frame_ref, WebPQuality::Medium)
                         })
                         .await
                         .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
@@ -176,9 +176,9 @@ impl FrameProcessor for EdgeFrameProcessor {
                         None // no meaningful change
                     }
                 } else {
-                    let frame_clone = current_frame.clone();
+                    let frame_ref = Arc::clone(&current_frame);
                     let encoded = tokio::task::spawn_blocking(move || {
-                        encoder::encode_webp_base64(&frame_clone, WebPQuality::Medium)
+                        encoder::encode_webp_base64(&frame_ref, WebPQuality::Medium)
                     })
                     .await
                     .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
