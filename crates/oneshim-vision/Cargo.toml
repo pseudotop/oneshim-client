@@ -10,9 +10,12 @@ homepage.workspace = true
 authors.workspace = true
 
 [features]
-default = ["native-vision"]
+default = ["native-vision", "linux-atspi"]
 ocr = ["leptess"]
 ml-detect = ["dep:ort"]
+# linux-atspi enables the AT-SPI2 accessibility extractor on Linux. It is
+# target-scoped via [target.'cfg(target_os = "linux")'.dependencies], so the
+# feature is a no-op on macOS/Windows builds (no extra deps compiled in).
 linux-atspi = ["atspi", "atspi-common", "futures"]
 native-vision = []
 
