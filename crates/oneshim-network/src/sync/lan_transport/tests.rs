@@ -1139,3 +1139,36 @@ async fn conflict_resolution_device_id_tiebreaker() {
     hub.stop();
     consumer.stop();
 }
+
+#[tokio::test]
+async fn forget_peer_removes_verified_entry() {
+    let (a, _b) = start_pair("fp-a", "fp-b", "pw").await;
+    // start_pair pre-seeds fp-b into a.verified_peers.
+    assert!(a.verified_peers.read().contains_key("fp-b"));
+    a.forget_peer("fp-b").await.unwrap();
+    assert!(!a.verified_peers.read().contains_key("fp-b"));
+    a.stop();
+    _b.stop();
+}
+
+#[tokio::test]
+async fn forget_peer_invalidates_token_cache() {
+    let (a, _b) = start_pair("fp2-a", "fp2-b", "pw").await;
+    a.token_cache.put("fp2-b", "cached-token".to_string());
+    assert!(a.token_cache.get("fp2-b").is_some());
+    a.forget_peer("fp2-b").await.unwrap();
+    assert!(a.token_cache.get("fp2-b").is_none());
+    a.stop();
+    _b.stop();
+}
+
+#[tokio::test]
+async fn forget_peer_unknown_device_is_idempotent() {
+    let (a, _b) = start_pair("fp3-a", "fp3-b", "pw").await;
+    let before: Vec<String> = a.verified_peers.read().keys().cloned().collect();
+    a.forget_peer("never-seen").await.unwrap();
+    let after: Vec<String> = a.verified_peers.read().keys().cloned().collect();
+    assert_eq!(before, after, "verified_peers unchanged on unknown forget");
+    a.stop();
+    _b.stop();
+}

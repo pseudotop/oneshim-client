@@ -503,4 +503,77 @@ mod tests {
         assert_eq!(peers[0].device_id, "dev-a");
         assert_eq!(peers[0].watermark.wall_ms, 200);
     }
+
+    #[tokio::test]
+    async fn forget_peer_removes_matching_changeset_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let dev_a = "dev-a";
+        let dev_b = "dev-b";
+        for i in 0..3u64 {
+            std::fs::write(
+                dir.path().join(format!("changeset-{dev_a}-{i}-{i}.enc")),
+                b"ciphertext",
+            )
+            .unwrap();
+            std::fs::write(
+                dir.path().join(format!("changeset-{dev_b}-{i}-{i}.enc")),
+                b"ciphertext",
+            )
+            .unwrap();
+        }
+
+        let transport = FileSyncTransport::new(
+            dir.path().to_path_buf(),
+            "local-device".to_string(),
+            test_passphrase(),
+        )
+        .unwrap();
+
+        transport.forget_peer(dev_a).await.unwrap();
+
+        let remaining: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+            .collect();
+        assert!(
+            remaining.iter().all(|n| !n.contains(&format!("-{dev_a}-"))),
+            "dev-a files should be gone, remaining={remaining:?}"
+        );
+        assert_eq!(
+            remaining
+                .iter()
+                .filter(|n| n.contains(&format!("-{dev_b}-")))
+                .count(),
+            3,
+            "dev-b files must survive, remaining={remaining:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn forget_peer_leaves_unrelated_files_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("README.txt"), b"notes").unwrap();
+
+        let transport = FileSyncTransport::new(
+            dir.path().to_path_buf(),
+            "local".to_string(),
+            test_passphrase(),
+        )
+        .unwrap();
+
+        transport.forget_peer("unknown-dev").await.unwrap();
+        assert!(dir.path().join("README.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn forget_peer_ok_on_empty_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let transport = FileSyncTransport::new(
+            dir.path().to_path_buf(),
+            "local".to_string(),
+            test_passphrase(),
+        )
+        .unwrap();
+        transport.forget_peer("nobody").await.unwrap();
+    }
 }
