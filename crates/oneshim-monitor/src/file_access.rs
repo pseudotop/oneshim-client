@@ -118,18 +118,29 @@ const MAX_TRACKED_FILES: usize = 10_000;
 pub struct FileAccessWatcher {
     filter: FileAccessFilter,
     /// Last-seen modification times for files in monitored directories.
-    /// Bounded to `MAX_TRACKED_FILES` entries per poll cycle.
+    /// Bounded to `max_tracked_files` entries per poll cycle.
     file_mtimes: Mutex<HashMap<PathBuf, SystemTime>>,
     /// Cumulative count of file changes since last `take_modified_count()`.
     modified_count: AtomicU32,
+    /// Per-poll cap on the number of tracked files.
+    max_tracked_files: usize,
 }
 
 impl FileAccessWatcher {
     pub fn new(config: FileAccessConfig) -> Self {
+        Self::new_with_limit(config, MAX_TRACKED_FILES)
+    }
+
+    /// Construct a watcher with a custom tracked-file cap.
+    ///
+    /// Used by tests to exercise the truncation path without having to
+    /// create 10_000+ files.
+    pub(crate) fn new_with_limit(config: FileAccessConfig, max_tracked_files: usize) -> Self {
         Self {
             filter: FileAccessFilter::new(config),
             file_mtimes: Mutex::new(HashMap::new()),
             modified_count: AtomicU32::new(0),
+            max_tracked_files,
         }
     }
 
@@ -178,7 +189,12 @@ impl FileAccessWatcher {
                     continue;
                 }
 
-                if current_files.len() >= MAX_TRACKED_FILES {
+                if current_files.len() >= self.max_tracked_files {
+                    tracing::warn!(
+                        folder = %folder.display(),
+                        limit = self.max_tracked_files,
+                        "File access polling truncated: tracked-file cap reached"
+                    );
                     break;
                 }
 
@@ -429,5 +445,33 @@ mod tests {
         let events = watcher.poll_changes();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].extension, Some("rs".to_string()));
+    }
+
+    #[test]
+    fn poll_changes_respects_max_tracked_files_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let limit = 20usize;
+        let overflow = 30usize;
+
+        for i in 0..(limit + overflow) {
+            std::fs::write(tmp.path().join(format!("file_{i}.rs")), "x").unwrap();
+        }
+
+        let config = FileAccessConfig {
+            enabled: true,
+            monitored_folders: vec![tmp.path().to_path_buf()],
+            excluded_extensions: vec![],
+            max_events_per_minute: u32::MAX,
+        };
+        let watcher = FileAccessWatcher::new_with_limit(config, limit);
+
+        let events = watcher.poll_changes();
+        // Truncation: first poll sees all files as Created; the limit bounds
+        // the count even though 50 files exist on disk.
+        assert!(
+            events.len() <= limit,
+            "first poll emitted {} events, limit={limit}",
+            events.len()
+        );
     }
 }
