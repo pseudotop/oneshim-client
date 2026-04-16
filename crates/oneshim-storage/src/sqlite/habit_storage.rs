@@ -79,12 +79,13 @@ mod tests {
     #[test]
     fn upsert_and_query_habit_streak() {
         let storage = test_storage();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
         storage
-            .upsert_habit_streak("deep_work", "2026-04-06", 120, 120, true)
+            .upsert_habit_streak("deep_work", &today, 120, 120, true)
             .unwrap();
         storage
-            .upsert_habit_streak("communication", "2026-04-06", 30, 60, false)
+            .upsert_habit_streak("communication", &today, 30, 60, false)
             .unwrap();
 
         let rows = storage.query_habit_streaks(7).unwrap();
@@ -97,12 +98,13 @@ mod tests {
     #[test]
     fn upsert_overwrites_existing() {
         let storage = test_storage();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
         storage
-            .upsert_habit_streak("deep_work", "2026-04-06", 60, 120, false)
+            .upsert_habit_streak("deep_work", &today, 60, 120, false)
             .unwrap();
         storage
-            .upsert_habit_streak("deep_work", "2026-04-06", 130, 120, true)
+            .upsert_habit_streak("deep_work", &today, 130, 120, true)
             .unwrap();
 
         let rows = storage.query_habit_streaks(7).unwrap();

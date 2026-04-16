@@ -232,6 +232,11 @@ impl SyncEngine {
     ) -> Result<Vec<oneshim_core::models::sync::PeerInfo>, CoreError> {
         self.transport.discover_peers().await
     }
+
+    /// Remove a peer from the transport's known-peers list.
+    pub async fn forget_peer(&self, device_id: &str) -> Result<(), CoreError> {
+        self.transport.forget_peer(device_id).await
+    }
 }
 
 #[cfg(test)]

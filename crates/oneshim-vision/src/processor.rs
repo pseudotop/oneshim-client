@@ -5,7 +5,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::frame::{FrameMetadata, ImagePayload, ProcessedFrame};
 use oneshim_core::ports::vision::{CaptureRequest, FrameProcessor};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tracing::debug;
 
 use crate::capture::ScreenCapture;
@@ -16,7 +16,7 @@ use crate::thumbnail;
 
 pub struct EdgeFrameProcessor {
     capture: ScreenCapture,
-    prev_frame: Mutex<Option<DynamicImage>>,
+    prev_frame: Mutex<Option<Arc<DynamicImage>>>,
     thumbnail_width: u32,
     thumbnail_height: u32,
     #[cfg(feature = "ocr")]
@@ -100,9 +100,10 @@ impl FrameProcessor for EdgeFrameProcessor {
         let sanitized_title = privacy::sanitize_title(&capture_request.window_title);
         let importance = capture_request.importance;
 
-        let current_frame = self
-            .capture
-            .capture_for_window(capture_request.window_bounds.as_ref())?;
+        let current_frame = Arc::new(
+            self.capture
+                .capture_for_window(capture_request.window_bounds.as_ref())?,
+        );
         let (w, h) = (current_frame.width(), current_frame.height());
 
         let metadata = FrameMetadata {
@@ -121,9 +122,9 @@ impl FrameProcessor for EdgeFrameProcessor {
             if importance >= 0.8 {
                 debug!("frame (in progress {:.1})", importance);
                 // Offload heavy High-quality encoding to blocking thread
-                let frame_clone = current_frame.clone();
+                let frame_ref = Arc::clone(&current_frame);
                 let encoded = tokio::task::spawn_blocking(move || {
-                    encoder::encode_webp_base64(&frame_clone, WebPQuality::High)
+                    encoder::encode_webp_base64(&frame_ref, WebPQuality::High)
                 })
                 .await
                 .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
@@ -191,9 +192,9 @@ impl FrameProcessor for EdgeFrameProcessor {
                 debug!("(in progress {:.1})", importance);
                 let tw = self.thumbnail_width;
                 let th = self.thumbnail_height;
-                let frame_clone = current_frame.clone();
+                let frame_ref = Arc::clone(&current_frame);
                 let encoded = tokio::task::spawn_blocking(move || {
-                    let thumb = thumbnail::fast_resize(&frame_clone, tw, th)?;
+                    let thumb = thumbnail::fast_resize(&frame_ref, tw, th)?;
                     encoder::encode_webp_base64(&thumb, WebPQuality::Low)
                 })
                 .await

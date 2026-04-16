@@ -18,7 +18,7 @@ pub(crate) fn resolve_day_range(
     let from = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
         .map_err(|_| ApiError::BadRequest(format!("Invalid date format: {date}")))?
         .and_hms_opt(0, 0, 0)
-        .expect("midnight must be valid")
+        .ok_or_else(|| ApiError::Internal("failed to construct midnight time".into()))?
         .and_utc();
     Ok((date, from, from + Duration::days(1)))
 }

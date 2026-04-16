@@ -10,6 +10,7 @@ use oneshim_api_contracts::bug_report::BugReportBundleDto;
 use oneshim_api_contracts::integration::IntegrationOutboundRuntimeStatus;
 use oneshim_core::config::CredentialBackendKind;
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::ports::adaptive_search::AdaptiveSearchPort;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
 use oneshim_core::ports::coaching::CoachingPort;
@@ -91,6 +92,7 @@ pub struct AnalysisState {
     pub vector_store: Option<Arc<dyn VectorStore>>,
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     pub text_search: Option<Arc<dyn TextSearchProvider>>,
+    pub adaptive_search: Option<Arc<dyn AdaptiveSearchPort>>,
     pub override_store: Option<Arc<dyn OverrideStore>>,
     pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
     pub coaching_engine: Option<Arc<dyn CoachingPort>>,

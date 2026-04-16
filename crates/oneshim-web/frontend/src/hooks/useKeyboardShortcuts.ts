@@ -64,19 +64,19 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
       switch (event.key.toLowerCase()) {
         case 'd':
           event.preventDefault()
-          navigateRef.current('/')
+          navigateRef.current('/overview')
           break
         case 't':
           event.preventDefault()
-          navigateRef.current('/timeline')
+          navigateRef.current('/timeline/all')
           break
         case 's':
           event.preventDefault()
-          navigateRef.current('/settings')
+          navigateRef.current('/settings/general')
           break
         case 'p':
           event.preventDefault()
-          navigateRef.current('/privacy')
+          navigateRef.current('/privacy/data')
           break
         case '?':
           event.preventDefault()

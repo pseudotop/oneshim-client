@@ -1,4 +1,5 @@
 pub mod accessibility;
+pub mod adaptive_search;
 pub mod analysis_provider;
 pub mod ann_index;
 pub mod annotation_storage;

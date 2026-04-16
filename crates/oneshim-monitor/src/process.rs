@@ -5,17 +5,35 @@ use oneshim_core::models::event::ProcessDetail;
 use oneshim_core::ports::monitor::ProcessMonitor;
 use std::collections::HashSet;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use sysinfo::System;
 use tracing::debug;
 
+/// Minimum interval between full process-list refreshes.
+const REFRESH_COOLDOWN: Duration = Duration::from_secs(2);
+
 pub struct ProcessTracker {
     sys: Mutex<System>,
+    /// Timestamp of the last `refresh_processes` call.
+    last_refresh: Mutex<Instant>,
 }
 
 impl ProcessTracker {
     pub fn new() -> Self {
+        let mut sys = System::new_all();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
         Self {
-            sys: Mutex::new(System::new_all()),
+            sys: Mutex::new(sys),
+            last_refresh: Mutex::new(Instant::now()),
+        }
+    }
+
+    /// Refresh the process list only if the cooldown has elapsed.
+    fn refresh_if_stale(&self, sys: &mut System) {
+        let mut last = self.last_refresh.lock().unwrap_or_else(|e| e.into_inner());
+        if last.elapsed() >= REFRESH_COOLDOWN {
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+            *last = Instant::now();
         }
     }
 }
@@ -56,7 +74,7 @@ impl ProcessMonitor for ProcessTracker {
             .sys
             .lock()
             .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
-        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        self.refresh_if_stale(&mut sys);
 
         let mut processes: Vec<ProcessInfo> = sys
             .processes()
@@ -89,7 +107,7 @@ impl ProcessMonitor for ProcessTracker {
             .sys
             .lock()
             .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
-        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        self.refresh_if_stale(&mut sys);
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
