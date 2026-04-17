@@ -172,7 +172,7 @@ impl HybridSearchService {
 
         // Collect all unique segment_ids with their best SearchResult
         let mut best_results: HashMap<String, SearchResult> = HashMap::new();
-        for r in vector_results.into_iter().chain(fts_results.into_iter()) {
+        for r in vector_results.into_iter().chain(fts_results) {
             best_results
                 .entry(r.segment_id.clone())
                 .and_modify(|existing| {
