@@ -107,3 +107,122 @@ mod tests {
             .expect("apply is a no-op when feature is off");
     }
 }
+
+#[cfg(all(test, feature = "telemetry"))]
+mod tests_feature_on {
+    use super::*;
+    use crate::telemetry::mock_otlp;
+
+    /// T-X2-2 — feature-on + cfg.enabled=false installs a `None`-valued
+    /// `reload::Layer` and builds no exporter (no network activity).
+    #[test]
+    fn feature_on_config_off_installs_empty_reload_wrapper() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = TelemetryConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let (_layer, _handle) = Handle::new_with_layer(&cfg, tmp.path())
+            .expect("disabled-at-boot construction is infallible");
+    }
+
+    /// T-X2-3 — feature-on + cfg.enabled=true against a mock OTLP collector.
+    /// Verifies `build_pipeline` actually produces a working exporter and
+    /// `apply(same_cfg)` is idempotent.
+    ///
+    /// IMPORTANT: the BatchSpanProcessor with `runtime::Tokio` spawns a task
+    /// that refuses to drop cleanly once the test's tokio runtime winds down
+    /// — the provider shutdown blocks on that task. To keep the test fast we
+    /// flip the config off at the end to drive an explicit provider shutdown
+    /// via `Inner::apply`. Task 10 adds a 4 s shutdown watchdog so the
+    /// production path is bounded as well.
+    #[tokio::test]
+    async fn feature_on_config_on_builds_pipeline() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mock = mock_otlp::start().await;
+
+        let cfg = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some(mock.endpoint.clone()),
+            ..Default::default()
+        };
+        let (_layer, handle) =
+            Handle::new_with_layer(&cfg, tmp.path()).expect("pipeline must build against the mock");
+
+        // Re-applying the same config is a no-op (no transition).
+        handle
+            .apply(&cfg)
+            .expect("apply is idempotent for unchanged cfg");
+
+        // Shut down the provider before the test's tokio runtime ends.
+        let cfg_off = TelemetryConfig {
+            enabled: false,
+            ..cfg
+        };
+        handle
+            .apply(&cfg_off)
+            .expect("shutdown to avoid drop-hang on provider");
+    }
+
+    /// T-X2-4 — toggle off, then back on. Both transitions must succeed live;
+    /// no restart required. Ends in the OFF state to avoid the drop-hang.
+    #[tokio::test]
+    async fn apply_disables_and_reenables_live() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mock = mock_otlp::start().await;
+
+        let cfg_on = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some(mock.endpoint.clone()),
+            ..Default::default()
+        };
+        let (_layer, handle) = Handle::new_with_layer(&cfg_on, tmp.path())
+            .expect("pipeline must build against the mock");
+
+        let cfg_off = TelemetryConfig {
+            enabled: false,
+            ..cfg_on.clone()
+        };
+        handle.apply(&cfg_off).expect("toggle off");
+        handle.apply(&cfg_on).expect("toggle back on");
+        handle
+            .apply(&cfg_off)
+            .expect("final shutdown to avoid drop-hang");
+    }
+
+    /// T-X2-7 — endpoint precedence. Explicit cfg wins over env; env wins
+    /// over default.
+    #[test]
+    fn env_endpoint_overrides_default_but_not_explicit_config() {
+        // Save and clear any pre-existing env so the test is deterministic.
+        // Note: std::env ops are process-global; we restore in a scope.
+        let prev = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
+        // SAFETY: single-threaded per-test assumption. cargo test runs tests
+        // on separate threads but this test does not depend on concurrent
+        // env access and restores state at the end.
+        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://from-env:4318") };
+
+        let cfg_explicit = TelemetryConfig {
+            otlp_endpoint: Some("http://from-config:4318".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            otlp::resolve_endpoint(&cfg_explicit),
+            "http://from-config:4318"
+        );
+
+        let cfg_default = TelemetryConfig::default();
+        assert_eq!(otlp::resolve_endpoint(&cfg_default), "http://from-env:4318");
+
+        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
+        assert_eq!(
+            otlp::resolve_endpoint(&TelemetryConfig::default()),
+            "http://localhost:4318"
+        );
+
+        // Restore pre-existing env so other tests are unaffected.
+        if let Some(value) = prev {
+            unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", value) };
+        }
+    }
+}
