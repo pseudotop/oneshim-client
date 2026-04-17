@@ -90,7 +90,7 @@ pub(super) fn build_initial_handle(
 
 fn build_pipeline(
     cfg: &TelemetryConfig,
-    _data_dir: &std::path::Path,
+    data_dir: &std::path::Path,
 ) -> anyhow::Result<(TracerProvider, OtelLayer)> {
     let endpoint = resolve_endpoint(cfg);
     let exporter = opentelemetry_otlp::SpanExporter::builder()
@@ -98,13 +98,16 @@ fn build_pipeline(
         .with_endpoint(endpoint)
         .build()?;
 
-    // Task 9 attaches `service.instance.id` here by calling
-    // `instance_id::ensure_instance_id(data_dir)`. For Task 8 we only attach
-    // `service.name`; instance-id lands in the follow-up commit.
-    let resource = Resource::new(vec![KeyValue::new(
-        "service.name",
-        cfg.service_name.clone(),
-    )]);
+    // Ensure the per-install UUID exists and attach it as `service.instance.id`.
+    // Failure here is non-fatal for the overall pipeline — we still ship spans
+    // without the instance attribute rather than refusing to export at all.
+    let instance_id = super::instance_id::ensure_instance_id(data_dir)
+        .map_err(|e| anyhow::anyhow!("telemetry_instance_id: {e}"))?;
+
+    let resource = Resource::new(vec![
+        KeyValue::new("service.name", cfg.service_name.clone()),
+        KeyValue::new("service.instance.id", instance_id),
+    ]);
 
     let provider = TracerProvider::builder()
         .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
