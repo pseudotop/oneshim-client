@@ -18,6 +18,7 @@ pub mod conversation_session;
 pub mod credential_source;
 pub mod element_finder;
 pub mod embedding_provider;
+pub mod feedback_signal_sink;
 pub mod few_shot_storage;
 pub mod focus_probe;
 pub mod focus_storage;

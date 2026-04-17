@@ -1,0 +1,36 @@
+//! Feedback signal sink port.
+//!
+//! Cross-crate notification channel for user reactions to suggestions.
+//! Implementations wrap `CoachingEngine`, `RegimeClassifier`, or any other
+//! component that should adapt to accept/reject/defer signals.
+//!
+//! See `docs/architecture/ADR-017-feedback-signal-sink.md` for the full
+//! rationale (latency budget, Err semantics, fan-out pattern).
+
+use crate::error::CoreError;
+use crate::models::suggestion::SuggestionFeedback;
+use async_trait::async_trait;
+
+/// Routes user reactions into learning components.
+///
+/// # Failure semantics
+///
+/// Fire-and-forget from the caller's perspective. `FeedbackSender` MUST NOT
+/// block user-path accept/reject on a sink error.
+///
+/// The `Result` return is ONLY for programmer bugs (mutex poisoning,
+/// invariant violations). All expected failure classes — network, database,
+/// transient unavailability — are the implementation's responsibility to log
+/// and swallow internally; they MUST NOT escalate as `Err`.
+///
+/// # Latency budget
+///
+/// Implementations must return within ~10 ms. Any blocking work (database
+/// writes, network calls, heavy computation) must be offloaded to
+/// `tokio::spawn` INSIDE the impl so the inline path stays O(µs). The caller
+/// awaits this future synchronously on the user-path accept/reject; breaking
+/// this budget re-introduces the write-path wait we intentionally decoupled.
+#[async_trait]
+pub trait FeedbackSignalSink: Send + Sync {
+    async fn record_user_reaction(&self, feedback: &SuggestionFeedback) -> Result<(), CoreError>;
+}
