@@ -408,7 +408,7 @@ Rationale: delete-on-opt-out is tempting for "clean slate" but in practice cause
 | T-X2-6 | `opt_in_default_is_false` | default | Fresh `AppConfig::default_config().telemetry.enabled == false`. |
 | T-X2-7 | `env_endpoint_overrides_default_but_not_explicit_config` | `telemetry` | Precedence in §3.2 holds. |
 | T-X2-8 | `shutdown_completes_when_collector_unreachable` | `telemetry` | Boot with `enabled=true`, endpoint pointing at a closed TCP port; emit 5 spans; call `apply(enabled=false)` (which triggers `shutdown`) and assert it completes within 5 s without hanging or panicking. Guards against the OTel batch processor blocking on an unreachable exporter. |
-| T-X2-9 | `instance_id_file_lifecycle_matches_state_table` | `telemetry` | Drives the §3.7 state table: first opt-in creates the file with `0600` perms (Unix), opt-out leaves it, second opt-in reuses the same UUID, `reset_instance_id` deletes and regenerates. |
+| T-X2-9 | `instance_id_file_lifecycle_matches_state_table` | `telemetry` | Drives every row of the §3.7 state table: first opt-in creates the file with `0600` perms (Unix), opt-out leaves it untouched, a subsequent boot with `enabled=false` + file present asserts the file is neither read nor modified, second opt-in reuses the same UUID, `reset_instance_id` deletes and regenerates. |
 | T-X2-10 | `mock_collector_receives_span` | `telemetry` | End-to-end spine test: start mock Axum collector on `127.0.0.1:0`, configure endpoint, emit a single span, assert the collector sees an OTLP POST body containing the span name within 15 s. Replaces the prior manual-verification acceptance criterion. |
 
 T-X2-3 and T-X2-10 use a mock OTLP collector — a minimal Axum route on `127.0.0.1:<random>` that answers `200 OK` — so CI does not depend on external hosts. The mock lives under `src-tauri/tests/mock_otlp.rs` and is only compiled with `--features telemetry`.
@@ -454,9 +454,9 @@ This task lives for the process lifetime. Dropping the `ConfigManager` (never, i
 This ships on a single feature branch `feat/phase2-config-telemetry`:
 
 0. **Spike (pre-Commit-4)** — disposable, not committed. Run `cargo add opentelemetry opentelemetry_sdk opentelemetry-otlp tracing-opentelemetry --dry-run` and then a throwaway `cargo check --features telemetry` in a scratch branch to confirm reqwest-0.13 / tokio-1 compat and record the concrete resolved minor versions. Outcome is captured in the plan, not the spec. If HTTP transport cannot resolve, the plan switches to `grpc-tonic` before Commit 5.
-1. **Commit 1** — X1 core: `watch` channel + `subscribe()` + `snapshot()` + T-X1-1..10. All existing `ConfigManager` tests must still pass unchanged.
+1. **Commit 1** — X1 core: `watch` channel + `subscribe()` + `snapshot()` + T-X1-1..7, T-X1-9, T-X1-10. All existing `ConfigManager` tests must still pass unchanged. T-X1-8 is deferred to Commit 3 because its test payload references telemetry fields that do not exist until that commit.
 2. **Commit 2** — ADR-016.
-3. **Commit 3** — X2 config extension: `otlp_endpoint`, `sample_rate`, `service_name` with serde defaults; T-X1-8 already in Commit 1 exercises the backward-compat deserialisation. T-X2-6 here.
+3. **Commit 3** — X2 config extension: `otlp_endpoint`, `sample_rate`, `service_name` with serde defaults; T-X1-8 backward-compat deserialisation and T-X2-6 opt-in default both land here.
 4. **Commit 4** — `telemetry` feature + deps + empty module skeleton + no-op feature-off path (T-X2-1 lands here).
 5. **Commit 5** — X2 OTLP pipeline + reload-wrapped layer attach + `instance_id` lifecycle + T-X2-2..4, T-X2-7, T-X2-8, T-X2-9.
 6. **Commit 6** — Bus-driven telemetry toggle task in `main.rs` + T-X2-5 + T-X2-10 (mock-collector spine test).
@@ -473,7 +473,7 @@ Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `
 All machine-checkable:
 
 - `cargo check --workspace` on default features: green on macOS / Linux / Windows CI.
-- `cargo check --workspace --features telemetry` on `src-tauri`: green on the same matrix (path-gated per §6).
+- `cargo check --workspace --features telemetry` on `src-tauri`: green on the same matrix (path-gated per §6). **A PR passes if the telemetry cell is either green or skipped by the path gate;** the same cell runs unconditionally on the scheduled main build and on RC release, so every merged commit is eventually verified.
 - `cargo test --workspace` on default features: green.
 - `cargo test -p oneshim-app --features telemetry`: green, including T-X2-3, T-X2-4, T-X2-5, T-X2-8, T-X2-9, T-X2-10.
 - `cargo clippy --workspace --all-targets -- -D warnings` and the `--features telemetry` variant: both green (includes Rust 1.95 lints).
