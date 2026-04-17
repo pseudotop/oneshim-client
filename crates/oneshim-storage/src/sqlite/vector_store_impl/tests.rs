@@ -999,3 +999,170 @@ async fn store_quantized_skip_float32_bypasses_dimension_check() {
         "skip_float32=true should bypass dimension check"
     );
 }
+
+// ── C3a: regime_id filter via activity_segments subquery ────────────
+
+/// Seed a row into `regimes` so the FK on `activity_segments.regime_id` is
+/// satisfied when FKs are enforced. Idempotent via `INSERT OR IGNORE`.
+fn ensure_regime(conn: &Arc<Mutex<Connection>>, regime_id: &str) {
+    let guard = conn.lock().unwrap();
+    guard
+        .execute(
+            "INSERT OR IGNORE INTO regimes
+                (id, label, detected_at, last_seen_at, dominant_category)
+             VALUES (?1, ?1, datetime('now'), datetime('now'), 'work')",
+            rusqlite::params![regime_id],
+        )
+        .unwrap();
+}
+
+/// Inserts a row into `activity_segments` so the regime_id subquery
+/// (`segment_id IN (SELECT id FROM activity_segments WHERE regime_id = ?)`)
+/// can resolve.
+fn insert_segment_row(conn: &Arc<Mutex<Connection>>, seg_id: &str, regime_id: Option<&str>) {
+    if let Some(r) = regime_id {
+        ensure_regime(conn, r);
+    }
+    let guard = conn.lock().unwrap();
+    guard
+        .execute(
+            "INSERT INTO activity_segments
+                (id, start_time, end_time, duration_secs, regime_id,
+                 trigger_reason, dominant_category)
+             VALUES (?1, datetime('now'), datetime('now'), 0, ?2, 'test', 'work')",
+            rusqlite::params![seg_id, regime_id],
+        )
+        .unwrap();
+}
+
+async fn store_one(store: &SqliteVectorStore, seg_id: &str) {
+    store
+        .store(
+            vec![1.0, 0.0, 0.0],
+            EmbeddingMetadata {
+                segment_id: seg_id.to_string(),
+                content_type: EmbeddingContentType::ContentActivity,
+                content_label: Some(seg_id.to_string()),
+                timestamp: Utc::now(),
+                original_text: seg_id.to_string(),
+                model_id: "test-model".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+}
+
+/// T-C3a-1 — `search_filtered` with `regime_id = "r1"` excludes other regimes.
+#[tokio::test]
+async fn search_filtered_excludes_other_regimes() {
+    let conn = setup_db();
+    insert_segment_row(&conn, "seg_r1_a", Some("r1"));
+    insert_segment_row(&conn, "seg_r1_b", Some("r1"));
+    insert_segment_row(&conn, "seg_r2", Some("r2"));
+    let store = SqliteVectorStore::new(conn);
+    store_one(&store, "seg_r1_a").await;
+    store_one(&store, "seg_r1_b").await;
+    store_one(&store, "seg_r2").await;
+
+    let filters = SearchFilters {
+        regime_id: Some("r1".into()),
+        ..Default::default()
+    };
+    let results = store
+        .search_filtered(&[1.0, 0.0, 0.0], 10, 0.0, &filters)
+        .await
+        .unwrap();
+
+    assert_eq!(results.len(), 2);
+    for r in &results {
+        assert!(
+            r.segment_id.starts_with("seg_r1"),
+            "unexpected segment {} returned",
+            r.segment_id
+        );
+    }
+}
+
+/// T-C3a-2 — `search_quantized` with `regime_id = "r1"` excludes other regimes.
+#[tokio::test]
+async fn search_quantized_excludes_other_regimes() {
+    use oneshim_core::quantization::ScalarQuantizer;
+
+    let conn = setup_db();
+    insert_segment_row(&conn, "seg_r1", Some("r1"));
+    insert_segment_row(&conn, "seg_r2", Some("r2"));
+    let store = SqliteVectorStore::new(conn);
+    let v = vec![1.0, 0.0, 0.0];
+    let qv = ScalarQuantizer::quantize(&v).unwrap();
+
+    for seg_id in &["seg_r1", "seg_r2"] {
+        store
+            .store_quantized(
+                v.clone(),
+                &qv,
+                EmbeddingMetadata {
+                    segment_id: seg_id.to_string(),
+                    content_type: EmbeddingContentType::ContentActivity,
+                    content_label: Some(seg_id.to_string()),
+                    timestamp: Utc::now(),
+                    original_text: seg_id.to_string(),
+                    model_id: "test-model".to_string(),
+                },
+                false,
+            )
+            .await
+            .unwrap();
+    }
+
+    let filters = SearchFilters {
+        regime_id: Some("r1".into()),
+        ..Default::default()
+    };
+    let results = store
+        .search_quantized(&qv, 10, 0.0, &filters)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].segment_id, "seg_r1");
+}
+
+/// T-C3a-3 — `regime_id: None` preserves pre-C3a behaviour (returns all).
+#[tokio::test]
+async fn regime_id_none_preserves_existing_behaviour() {
+    let conn = setup_db();
+    insert_segment_row(&conn, "seg_r1", Some("r1"));
+    insert_segment_row(&conn, "seg_r2", Some("r2"));
+    let store = SqliteVectorStore::new(conn);
+    store_one(&store, "seg_r1").await;
+    store_one(&store, "seg_r2").await;
+
+    let filters = SearchFilters::default();
+    let results = store
+        .search_filtered(&[1.0, 0.0, 0.0], 10, 0.0, &filters)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 2);
+}
+
+/// T-C3a-4 — a segment whose `activity_segments.regime_id` is NULL is
+/// excluded when a regime filter is set.
+#[tokio::test]
+async fn segment_without_regime_not_returned_under_filter() {
+    let conn = setup_db();
+    insert_segment_row(&conn, "seg_r1", Some("r1"));
+    insert_segment_row(&conn, "seg_null", None);
+    let store = SqliteVectorStore::new(conn);
+    store_one(&store, "seg_r1").await;
+    store_one(&store, "seg_null").await;
+
+    let filters = SearchFilters {
+        regime_id: Some("r1".into()),
+        ..Default::default()
+    };
+    let results = store
+        .search_filtered(&[1.0, 0.0, 0.0], 10, 0.0, &filters)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].segment_id, "seg_r1");
+}
