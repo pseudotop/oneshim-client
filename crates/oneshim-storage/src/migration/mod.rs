@@ -12,6 +12,8 @@
 //! - `v28.rs` — feedback tracking columns on local_suggestions for few-shot prompt construction
 //! - `v29.rs` — automation_presets table for persistent custom preset storage
 //! - `v30.rs` — frame_annotations table for user-created highlights, memos, arrows
+//! - `v31_regime_manager_state.rs` — regime_manager_state singleton for
+//!   RegimeManager persistence across restart (Phase 3 C3c/X6)
 
 #[cfg(test)]
 mod tests;
@@ -26,11 +28,12 @@ mod v27;
 mod v28;
 mod v29;
 mod v30;
+mod v31_regime_manager_state;
 
 use rusqlite::Connection;
 use tracing::{error, info, warn};
 
-pub(crate) const CURRENT_VERSION: u32 = 30;
+pub(crate) const CURRENT_VERSION: u32 = 31;
 
 /// Back up the database file before running schema migrations.
 fn backup_if_needed(conn: &Connection, current_version: u32) -> Option<std::path::PathBuf> {
@@ -194,6 +197,9 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
     if current < 30 {
         run_migration_step(conn, 30, v30::migrate_v30)?;
+    }
+    if current < 31 {
+        run_migration_step(conn, 31, v31_regime_manager_state::migrate_v31)?;
     }
 
     Ok(())
