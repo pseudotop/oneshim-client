@@ -235,7 +235,7 @@ impl SessionContextAssembler {
 
         // Sort by count descending, take top 5
         let mut sorted_apps: Vec<(String, u32)> = app_counts.into_iter().collect();
-        sorted_apps.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted_apps.sort_by_key(|a| std::cmp::Reverse(a.1));
         let top_apps: Vec<String> = sorted_apps
             .into_iter()
             .take(5)
