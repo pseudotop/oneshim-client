@@ -803,6 +803,8 @@ impl AppRuntimeLaunchBuilder {
                     )),
                 },
                 analysis_health,
+                regime_storage: None,
+                regime_manager_snapshot: None,
             },
             config_runtime_state,
         )

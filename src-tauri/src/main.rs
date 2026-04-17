@@ -378,6 +378,58 @@ fn main() {
                 }
                 state.background_runtime.shutdown_blocking();
 
+                // Persist RegimeManager state (best-effort, 4s watchdog).
+                //
+                // Uses the Phase-2 pattern: offload the save to a dedicated
+                // std thread that owns its own tokio runtime + timeout, then
+                // join with a wall-clock deadline. Matches
+                // `src-tauri/src/telemetry/otlp.rs::shutdown` and avoids
+                // deadlocking by calling block_on on the background_runtime
+                // handle from the Tauri callback thread when that same
+                // runtime may be draining its tasks.
+                //
+                // Both fields are None until Task 13 (composition-root wiring)
+                // populates them, making this a runtime no-op in the interim.
+                if let (Some(regime_storage), Some(regime_manager)) = (
+                    state.regime_storage.clone(),
+                    state.regime_manager_snapshot.clone(),
+                ) {
+                    let regimes = {
+                        let guard = regime_manager.lock();
+                        guard.all_regimes().to_vec()
+                    };
+                    let regime_count = regimes.len();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .expect("regime-save shutdown runtime");
+                        let result = rt.block_on(async move {
+                            tokio::time::timeout(
+                                std::time::Duration::from_secs(4),
+                                regime_storage.save_all(&regimes),
+                            )
+                            .await
+                        });
+                        let _ = tx.send(result);
+                    });
+
+                    // 4s timeout + 500ms slack for thread scheduling.
+                    match rx.recv_timeout(std::time::Duration::from_millis(4500)) {
+                        Ok(Ok(Ok(()))) => info!(count = regime_count, "regime state persisted"),
+                        Ok(Ok(Err(e))) => {
+                            warn!(error = %e, "regime state save failed")
+                        }
+                        Ok(Err(_timeout)) => {
+                            warn!("regime state save exceeded 4s; proceeding with shutdown")
+                        }
+                        Err(_channel) => {
+                            warn!("regime state save thread did not respond within 4.5s; proceeding with shutdown")
+                        }
+                    }
+                }
+
                 // Checkpoint WAL after all writers have stopped, so the next
                 // startup opens a clean database without recovery work.
                 if let Err(e) = state.storage.wal_checkpoint_truncate() {

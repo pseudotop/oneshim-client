@@ -372,6 +372,16 @@ pub struct AppState {
     pub capture: CaptureContext,
     /// Analysis provider health (None when no LLM configured).
     pub analysis_health: Option<AnalysisHealthFlags>,
+    /// Regime state persistence port. `None` until Task 13 populates it from
+    /// the composition root. The save-guard in `main.rs::RunEvent::Exit`
+    /// short-circuits on `None` so this is a runtime no-op until then.
+    #[allow(dead_code)] // populated in Task 13 composition root
+    pub regime_storage: Option<Arc<dyn oneshim_core::ports::regime_storage::RegimeStoragePort>>,
+    /// Shared handle to the `RegimeManager` so the shutdown path can read
+    /// the current regime set and hand it to `regime_storage.save_all`.
+    /// `None` until Task 13 wires it up; RunEvent::Exit guard short-circuits.
+    #[allow(dead_code)] // populated in Task 13 composition root
+    pub regime_manager_snapshot: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -672,6 +682,8 @@ mod tests {
                     work_classifier: None,
                 },
                 analysis_health: None,
+                regime_storage: None,
+                regime_manager_snapshot: None,
             },
             ConfigRuntimeState::new(config_manager, web_port),
         )
