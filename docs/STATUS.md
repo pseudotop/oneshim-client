@@ -49,10 +49,16 @@ v0.4.21
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **2,995 passed, 0 failed, 20 ignored**
+- `cargo test --workspace`: pass — **2,995 passed, 0 failed, 20 ignored** (pre-Phase-2 baseline; Phase 2 adds 22 tests — 11 `config_manager` X1 + 11 telemetry, run separately via `--features telemetry -- --test-threads=1`).
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass
+
+### Phase 2 Telemetry Feature (added 2026-04-17)
+
+- `cargo test -p oneshim-app --features telemetry -- --test-threads=1`: pass — **10 passed** (T-X2-1 is default-build-only and runs in the workspace suite above).
+- `cargo clippy -p oneshim-app --features telemetry --all-targets -- -D warnings ...`: pass.
+- Binary size delta on `cargo build --release -p oneshim-app` (macOS arm64, stripped by default): **default 46.4 MB, `--features telemetry` 47.6 MB → +1.2 MB**. Well under the ≤5 MB target from the spec (§7).
 
 ### Known Flaky / Quarantined Tests
 
