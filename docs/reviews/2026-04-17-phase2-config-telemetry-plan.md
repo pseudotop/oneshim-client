@@ -1939,32 +1939,27 @@ Expected: 1 passed.
 
 Three integration points in `src-tauri/src/main.rs`:
 
-**(a) Build the telemetry layer + handle before the subscriber is initialised.** Do this right after the `file_layer` is constructed (around the existing line that builds `tracing_subscriber::registry().with(env_filter)...`):
+**Ordering constraint:** the existing `main.rs` builds the tracing subscriber around line 143 — BEFORE bootstrap runs and before `ConfigManager::new()` is called (that happens inside `bootstrap_runtime.rs` around line 110). We do not reorder boot; we build the subscriber with a disabled-telemetry seed and let the bus-driven task (c) reconcile to the user's real settings on its first iteration.
+
+**(a) Build the telemetry layer + handle with the boot-time default.** Insert after the `file_layer` is constructed, before the `tracing_subscriber::registry()` chain at line 143:
 
 ```rust
 use telemetry::Handle as TelemetryHandle;
+use oneshim_core::config::sections::storage::TelemetryConfig;
 
-let data_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+// data_dir is already resolved above for `log_dir`; reuse or recompute — same call.
+let telemetry_data_dir = oneshim_core::config_manager::ConfigManager::data_dir()
     .unwrap_or_else(|_| std::path::PathBuf::from("."));
-std::fs::create_dir_all(&data_dir).ok();
+std::fs::create_dir_all(&telemetry_data_dir).ok();
 
-// ConfigManager is already constructed earlier; we only need the initial TelemetryConfig.
-let initial_telemetry = config_manager.get().telemetry.clone();
-let (telemetry_layer, telemetry_handle) = match TelemetryHandle::new_with_layer(
-    &initial_telemetry,
-    &data_dir,
-) {
-    Ok(x) => x,
-    Err(e) => {
-        tracing::warn!(error = %e, "telemetry init failed; continuing without OTLP export");
-        // Fall back to a disabled pipeline so the subscriber still takes a placeholder layer.
-        TelemetryHandle::new_with_layer(
-            &oneshim_core::config::sections::storage::TelemetryConfig::default(),
-            &data_dir,
-        )
-        .expect("disabled-at-boot construction is infallible")
-    }
-};
+// IMPORTANT: seed with a disabled TelemetryConfig. We do NOT have a ConfigManager
+// yet at this point — it's constructed during bootstrap. The toggle task in (c)
+// will read the real config off the bus and apply it on its first iteration.
+let (telemetry_layer, telemetry_handle) = TelemetryHandle::new_with_layer(
+    &TelemetryConfig::default(),
+    &telemetry_data_dir,
+)
+.expect("disabled-at-boot construction is infallible");
 ```
 
 **(b) Attach the layer to the subscriber.** In the existing `tracing_subscriber::registry()` chain, append `.with(telemetry_layer)` before `.init()`:
@@ -1978,18 +1973,46 @@ tracing_subscriber::registry()
     .init();
 ```
 
-**(c) Wrap in `Arc` and spawn the bus-driven toggle task.** `TelemetryHandle` itself does not implement `Clone` (the inner `parking_lot::Mutex` is not cloneable), so we share it via `Arc`:
+**(c) Wrap in `Arc`, stash, and spawn the bus-driven toggle task.** `TelemetryHandle` itself does not implement `Clone` (the inner `parking_lot::Mutex` is not cloneable), so we share it via `Arc`.
+
+First, right after (b), wrap the handle:
 
 ```rust
 let telemetry_handle = std::sync::Arc::new(telemetry_handle);
-// Stash a clone in Tauri managed state so commands can reach it later.
-let telemetry_handle_for_state = telemetry_handle.clone();
-// Separate clone for the toggle task.
-let handle_for_task = telemetry_handle.clone();
+```
 
+This `Arc<TelemetryHandle>` needs to travel from `main.rs` through the bootstrap path into `bootstrap_runtime.rs` where the `ConfigManager` is created — same pattern as other cross-stage singletons in the existing code. Two options (pick the one closest to how the existing handles plumb through):
+
+1. **Pass as an argument** to `BootstrapPreflightCoordinator::run` (or the equivalent current entry), alongside `ConfigManager`.
+2. **Park in Tauri managed state at `main.rs` time** (`app.manage(telemetry_handle.clone())`) and pull it back out after `ConfigManager` is created via a Tauri state query (`app.state::<Arc<TelemetryHandle>>()`).
+
+Option (1) is simpler to reason about; option (2) matches the existing `ConfigManager` plumbing. Implementation time chooses.
+
+Because the subscriber was built in (a) with a seeded-disabled config, the first iteration of this task must RECONCILE any user-enabled state before entering the standard changed-await loop. Wherever you spawn the task (adjacent to the existing `spawn_background_runtime()` in `bootstrap_runtime.rs` is the natural home), the body is:
+
+```rust
+use oneshim_core::config::sections::storage::TelemetryConfig;
+
+let handle_for_task = telemetry_handle.clone();
 let mut rx = config_manager.subscribe();
+
 tokio::spawn(async move {
-    let mut prev = rx.borrow_and_update().telemetry.clone();
+    // Seed `prev` with the disabled-at-boot config so the first iteration's
+    // diff detection picks up any non-default user setting and applies it.
+    let mut prev = TelemetryConfig::default();
+
+    // One synchronous reconcile before the await loop — this is what converts
+    // a startup config with `telemetry.enabled = true` into an actually-active
+    // pipeline (the subscriber was built with defaults).
+    let initial = rx.borrow_and_update().telemetry.clone();
+    if initial != prev {
+        if let Err(e) = handle_for_task.apply(&initial) {
+            tracing::warn!(error = %e, "initial telemetry apply failed");
+        }
+        prev = initial;
+    }
+
+    // Subsequent updates via the bus.
     while rx.changed().await.is_ok() {
         let current = rx.borrow_and_update().telemetry.clone();
         if current != prev {
