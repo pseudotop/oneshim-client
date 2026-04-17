@@ -97,6 +97,31 @@ impl ConfigManager {
         AppConfig::clone(&self.inner.sender.borrow())
     }
 
+    /// Subscribe to whole-config change notifications.
+    ///
+    /// The receiver starts at the current config. `changed().await` resolves
+    /// after the next `update` / `update_with` / `reload`. Dropping a receiver
+    /// does not affect any other subscriber.
+    ///
+    /// `watch` has latest-wins semantics: rapid mutations may be coalesced and
+    /// a subscriber that wakes late will see only the final value, not every
+    /// intermediate transition. Consumers whose correctness depends on
+    /// observing every transition (audit-log callers, counters) must either
+    /// keep a tick-based poll structure OR run every `update` through their
+    /// own side-effect channel. See ADR-016 for the audit-coalescing hazard.
+    pub fn subscribe(&self) -> watch::Receiver<Arc<AppConfig>> {
+        self.inner.sender.subscribe()
+    }
+
+    /// Cheap read-only snapshot of the current config.
+    ///
+    /// Equivalent to `subscribe().borrow().clone()` without registering a
+    /// subscriber. Prefer this over `get()` when the caller is happy with an
+    /// `Arc<AppConfig>` (no deep clone).
+    pub fn snapshot(&self) -> Arc<AppConfig> {
+        self.inner.sender.borrow().clone()
+    }
+
     pub fn update(&self, new_config: AppConfig) -> Result<(), CoreError> {
         let _guard = self.inner.writer_lock.lock();
         Self::save_to_file(&self.inner.config_path, &new_config)?;
@@ -438,5 +463,67 @@ mod tests {
             crate::config::DEFAULT_WEB_PORT,
             "overwritten file should contain valid defaults"
         );
+    }
+
+    // ── X1 ConfigChangeBus tests ───────────────────────────────────────
+    // See docs/reviews/2026-04-17-phase2-config-telemetry-spec.md §2.8.
+
+    /// T-X1-1
+    #[test]
+    fn subscribe_sees_initial_value() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let rx = mgr.subscribe();
+        let via_rx = rx.borrow();
+        let via_get = mgr.get();
+        // Value equivalence is what matters. The Arc held by rx and the value
+        // returned by get() should agree on every field.
+        assert_eq!(via_rx.web.port, via_get.web.port);
+    }
+
+    /// T-X1-5
+    #[tokio::test]
+    async fn dropped_receiver_does_not_block_sender() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let rx_a = mgr.subscribe();
+        let mut rx_b = mgr.subscribe();
+        drop(rx_a);
+
+        // Flip a scalar field so update_with produces a visibly different snapshot.
+        mgr.update_with(|c| {
+            c.web.port = c.web.port.wrapping_add(1);
+            Ok(())
+        })
+        .expect("update_with must not fail after a receiver drops");
+
+        // The survivor observes the update without deadlocking.
+        let _ = rx_b.borrow_and_update();
+    }
+
+    /// T-X1-6
+    #[test]
+    fn snapshot_matches_latest_update() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let baseline_port = mgr.get().web.port;
+        mgr.update_with(|c| {
+            c.web.port = baseline_port.wrapping_add(1);
+            Ok(())
+        })
+        .unwrap();
+
+        let via_snapshot = mgr.snapshot();
+        let rx = mgr.subscribe();
+        let via_rx = rx.borrow();
+
+        assert_eq!(via_snapshot.web.port, via_rx.web.port);
+        assert_eq!(via_snapshot.web.port, baseline_port.wrapping_add(1));
     }
 }
