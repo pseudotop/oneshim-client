@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.38-rc.1] - 2026-04-17
+
+### Added
+
+- Enable linux-atspi in default features ([#425](https://github.com/pseudotop/oneshim-client/pull/425))
+  Linux builds now ship with the AT-SPI2 accessibility extractor on by
+  default, reaching parity with macOS (AXUIElement) and Windows (UIAutomation).
+  The feature is target-scoped via [target.'cfg(target_os = "linux")'.
+  dependencies], so macOS and Windows builds are unaffected — atspi,
+  atspi-common, and futures compile only on Linux.
+
+- Add MonitorInfo + list_monitors API (D4) ([#427](https://github.com/pseudotop/oneshim-client/pull/427))
+  Complete D4 by exposing a typed enumeration helper alongside existing
+  capture_monitor(idx) and monitor_count(). Adds doc comments for the
+  selection functions and a smoke test that validates index ordering.
+
+  - MonitorInfo { index, x, y, width, height, is_primary, name } (Serialize)
+  - ScreenCapture::list_monitors() -> Vec<MonitorInfo>
+  - Doc comments on capture_monitor + monitor_count
+  - Smoke test for index/count consistency (headless-safe)
+
+- Phase 2 — ConfigChangeBus (X1) + Telemetry exporter (X2) ([#428](https://github.com/pseudotop/oneshim-client/pull/428))
+  * docs(phase2): add spec for ConfigChangeBus + telemetry exporter wiring
+
+  First-pass design for X1 (ConfigChangeBus) and X2 (OTLP exporter) from
+  2026-04-16-feature-gaps-analysis.md.
+
+  - X1: add watch-channel-backed subscribe() + snapshot() to ConfigManager;
+    existing get()/update()/update_with()/reload() unchanged.
+  - X2: gate OTel behind `telemetry` feature on src-tauri; wrap OTel layer in
+    reload::Layer for runtime toggle; opt-in default preserved.
+  - Migration: only the telemetry bootstrapper and one demonstrator loop
+    convert to subscribe() in this phase; other loops deferred.
+
+  Spec captures both items because X2 depends on X1 for runtime toggle of
+  telemetry.enabled. Acceptance criteria, test plan, and rollout commit-by-
+  commit in §6-§7.
+
+
+### Changed
+
+- Archive pending analysis plans to docs/reviews/ ([#424](https://github.com/pseudotop/oneshim-client/pull/424))
+  feature-gaps-analysis (5 Critical + 13 Degraded + 6 Cross-domain disconnects,
+  12–14 week phased roadmap) and p2-tech-debt brief/spec/plan (nursery lints,
+  windows-sys, large-file triage) carry unprocessed planning context; moved
+  from local scratch to docs/reviews/ for durable reference.
+
+
+### Fixed
+
+- Phase A stability + Phase B/C features & perf + CI fixes ([#422](https://github.com/pseudotop/oneshim-client/pull/422))
+  Phase A: eliminate 13 production panic/unwrap/expect (7 files)
+  Phase B1: wire AdaptiveSearchPort into web semantic search
+  Phase B3: implement forget_peer across LAN/remote/file transports
+  Phase C1: share frames via Arc<DynamicImage> (eliminate multi-MB clones)
+  Phase C2: throttle process refresh with 2s cooldown
+  Phase C3: bound file_access mtimes to 10k entries
+  CI: add sandbox worker stub to Test job, fix clippy 1.94 linux-sandbox lints
+  Test: fix habit_storage time-decay test fragility
+  Web: navigate keyboard shortcuts directly to leaf routes (fix E2E flake)
+
+- Checkpoint WAL on graceful shutdown (X4) ([#426](https://github.com/pseudotop/oneshim-client/pull/426))
+  * fix(storage): checkpoint WAL on graceful shutdown (X4)
+
+  Add `wal_checkpoint_truncate()` to SqliteStorage and call it from the
+  Tauri `RunEvent::Exit` handler after `shutdown_blocking()` returns.
+  TRUNCATE fully drains and zeroes the WAL once all writers have stopped,
+  so the next startup opens a clean database without recovery work.
+
+  Addresses X4 in docs/reviews/2026-04-16-feature-gaps-analysis.md.
+
 ## [0.4.37] - 2026-04-12
 
 ### Fixed
