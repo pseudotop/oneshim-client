@@ -194,7 +194,7 @@ pub(crate) fn build_app_stats(
             0.0
         };
     }
-    app_stats.sort_by(|left, right| right.duration_secs.cmp(&left.duration_secs));
+    app_stats.sort_by_key(|a| std::cmp::Reverse(a.duration_secs));
     app_stats.truncate(10);
     app_stats
 }
