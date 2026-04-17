@@ -33,6 +33,13 @@ impl FeedbackSignalSink for CompositeFeedbackSink {
             c.record_user_reaction(feedback).await;
         }
         if let Some(ref cls) = self.regime_classifier {
+            // SAFETY: `RegimeClassifier::record_user_reaction` MUST stay
+            // synchronous and fast (~10 ms budget, ADR-017). The
+            // `parking_lot::Mutex` guard is held only for the stub call
+            // and dropped before the `Ok(())` below — no `.await` happens
+            // while the guard is alive (ADR-007). A future impl with real
+            // work (Bayesian updates, per-regime counters) MUST offload to
+            // `tokio::spawn` rather than growing this critical section.
             let mut guard = cls.lock();
             guard.record_user_reaction(feedback);
         }
