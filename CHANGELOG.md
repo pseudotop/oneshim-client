@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.38-rc.3] - 2026-04-17
+
+### Fixed
+
+- Port Windows DACL code to windows-sys 0.61 ([#432](https://github.com/pseudotop/oneshim-client/pull/432))
+  windows-sys 0.61 moved OpenProcessToken to Win32::System::Threading,
+  GENERIC_ALL to Win32::Foundation, and changed HANDLE from isize to
+  *mut c_void. Previous Release runs failed at the sandbox-worker
+  externalBin step before reaching encryption.rs — PR #430 fixed that,
+  exposing this latent bug.
+
 ## [0.4.38-rc.2] - 2026-04-17
 
 ### Added
