@@ -81,6 +81,15 @@ pub(crate) struct AgentRuntimeBundle {
     /// Pre-created health flag for the primary analysis provider, shared with AppState
     /// so the `get_analysis_health` IPC command reflects actual provider health.
     analysis_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Pre-constructed `RegimeManager` handle shared with AppState. When
+    /// present, `build_analysis_pipeline` uses this instead of constructing
+    /// a fresh one — lets the composition root both (a) hydrate from
+    /// persisted state and (b) hand the same Arc to AppState for the
+    /// shutdown save guard.
+    regime_manager: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>>,
+    /// Pre-constructed `RegimeClassifier` handle shared with the composition
+    /// root so `CompositeFeedbackSink` can fan accept/reject signals into it.
+    regime_classifier: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeClassifier>>>,
 }
 
 impl AgentRuntimeBundle {
@@ -246,6 +255,8 @@ impl AgentRuntimeBundle {
             self.override_store.clone(),
             self.recluster_requested.clone(),
             &mut embedding,
+            self.regime_manager.clone(),
+            self.regime_classifier.clone(),
         );
         if let Some(state) = analysis.adaptive_trigger_state {
             scheduler = scheduler.with_adaptive_trigger(state);
@@ -435,6 +446,10 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     shared_regime: Option<Arc<SharedRegimeState>>,
     /// Pre-created health flag for the primary analysis provider, shared with AppState.
     analysis_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Pre-constructed RegimeManager + RegimeClassifier handles — see
+    /// matching fields on `AgentRuntimeBundle` for the rationale.
+    regime_manager: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>>,
+    regime_classifier: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeClassifier>>>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -493,7 +508,22 @@ impl<'a> AgentRuntimeBuilder<'a> {
             shared_scorer: None,
             shared_regime: None,
             analysis_health_flag: None,
+            regime_manager: None,
+            regime_classifier: None,
         }
+    }
+
+    /// Inject pre-constructed RegimeManager + RegimeClassifier handles so the
+    /// analysis pipeline uses the same instances AppState keeps for hydrate /
+    /// shutdown save / feedback fan-out.
+    pub(crate) fn with_regime_handles(
+        mut self,
+        regime_manager: Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>,
+        regime_classifier: Arc<parking_lot::Mutex<oneshim_analysis::RegimeClassifier>>,
+    ) -> Self {
+        self.regime_manager = Some(regime_manager);
+        self.regime_classifier = Some(regime_classifier);
+        self
     }
 
     pub(crate) fn with_focus_mode(
@@ -735,6 +765,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             shared_scorer: self.shared_scorer,
             shared_regime: self.shared_regime,
             analysis_health_flag: self.analysis_health_flag,
+            regime_manager: self.regime_manager,
+            regime_classifier: self.regime_classifier,
         }
     }
 }

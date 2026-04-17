@@ -1,10 +1,5 @@
 //! CompositeFeedbackSink — fans user reactions out to CoachingEngine
 //! and RegimeClassifier. Binary-crate composition glue per ADR-017.
-//!
-//! `#[allow(dead_code)]` until Task 13 (composition-root wiring):
-//! the sink is instantiated only once wiring is added to AppState.
-
-#![allow(dead_code)]
 
 use async_trait::async_trait;
 use oneshim_analysis::CoachingEngine;

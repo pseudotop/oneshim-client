@@ -19,6 +19,10 @@ pub(super) struct AnalysisResult {
 ///
 /// Requires: embedding components (from `build_embedding_components`), consent for
 /// activity_pattern_learning, and calibration reader/writer stores.
+/// `injected_regime_manager` and `injected_regime_classifier` are the
+/// composition-root-supplied handles; when `None`, fresh ones are
+/// constructed here. See `agent_runtime::AgentRuntimeBuilder::with_regime_handles`.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_analysis_pipeline(
     config: &AppConfig,
     consent_manager: &Option<Arc<ConsentManager>>,
@@ -27,6 +31,8 @@ pub(super) fn build_analysis_pipeline(
     override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     recluster_requested: Arc<std::sync::atomic::AtomicBool>,
     embedding: &mut EmbeddingComponents,
+    injected_regime_manager: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>>,
+    injected_regime_classifier: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeClassifier>>>,
 ) -> AnalysisResult {
     // Config validation: embedding requires tiered_memory
     if config.analysis.embedding.enabled && !config.analysis.tiered_memory.enabled {
@@ -95,12 +101,16 @@ pub(super) fn build_analysis_pipeline(
                 segment_summarizer: oneshim_analysis::SegmentSummarizer::new(),
                 params,
                 calibration_writer,
-                regime_classifier: Arc::new(parking_lot::Mutex::new(
-                    oneshim_analysis::RegimeClassifier::new(1.5),
-                )),
-                regime_manager: Arc::new(parking_lot::Mutex::new(
-                    oneshim_analysis::RegimeManager::new(tm_config),
-                )),
+                regime_classifier: injected_regime_classifier.unwrap_or_else(|| {
+                    Arc::new(parking_lot::Mutex::new(
+                        oneshim_analysis::RegimeClassifier::new(1.5),
+                    ))
+                }),
+                regime_manager: injected_regime_manager.unwrap_or_else(|| {
+                    Arc::new(parking_lot::Mutex::new(
+                        oneshim_analysis::RegimeManager::new(tm_config),
+                    ))
+                }),
                 regime_detector: oneshim_analysis::RegimeDetector::new(),
                 param_resolver: oneshim_analysis::ParamResolver::new(preset),
                 calibration_reader,
