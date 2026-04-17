@@ -45,7 +45,7 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
                         error = %e,
                         "regime_manager_state payload failed to parse; quarantining to payload_backup and starting fresh. Recover via manual inspection of the backup column."
                     );
-                    let _ = conn.execute(
+                    if let Err(qe) = conn.execute(
                         "UPDATE regime_manager_state
                             SET payload_backup = payload,
                                 payload_backup_at = datetime('now'),
@@ -53,7 +53,17 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
                                 updated_at = datetime('now')
                           WHERE id = 0",
                         [],
-                    );
+                    ) {
+                        // Second log line — DO NOT swallow. If quarantine
+                        // itself fails (disk full, WAL corruption), the only
+                        // user-visible signal that their curated state is
+                        // unrecoverable is this line. ADR-018 explicitly
+                        // rejects silent data loss.
+                        tracing::error!(
+                            error = %qe,
+                            "regime_manager_state quarantine UPDATE failed — corrupt payload may be lost"
+                        );
+                    }
                     Ok(Vec::new())
                 }
             },

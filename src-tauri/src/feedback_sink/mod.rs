@@ -80,42 +80,72 @@ mod tests {
         }
     }
 
-    /// T-X3-5 — CompositeFeedbackSink invokes BOTH consumers.
+    /// T-X3-5 — `CompositeFeedbackSink` fans out to BOTH consumers.
     ///
-    /// The real stubs only trace-log, so we substitute a test harness that
-    /// captures observations via an `AtomicUsize` counter embedded in the
-    /// trait impl. This asserts actual fan-out, not merely non-panic.
+    /// Exercises the real production types (`CoachingEngine` +
+    /// `RegimeClassifier`). The Phase-3 stubs only `debug!` trace-log, so
+    /// observability goes through a temporary `tracing_subscriber` that
+    /// captures output into a shared buffer. The assertion is both log
+    /// messages appear — proves `CompositeFeedbackSink::record_user_reaction`
+    /// actually iterates both `coaching` and `regime_classifier` Option
+    /// fields, not just one.
+    ///
+    /// Runs on the tokio current-thread runtime (default for `#[tokio::test]`),
+    /// so `tracing::subscriber::set_default`'s thread-local scope applies
+    /// across the `.await` boundary inside `record_user_reaction`.
     #[tokio::test]
-    async fn composite_sink_fans_out_to_both() {
-        let coach_hits = Arc::new(AtomicUsize::new(0));
-        let regime_hits = Arc::new(AtomicUsize::new(0));
+    async fn composite_sink_fans_out_to_both_real_consumers() {
+        use std::io::Write;
+        use std::sync::Mutex as StdMutex;
+        use tracing_subscriber::fmt::MakeWriter;
 
-        struct ObservingSink {
-            coach: Arc<AtomicUsize>,
-            regime: Arc<AtomicUsize>,
-        }
-        #[async_trait]
-        impl FeedbackSignalSink for ObservingSink {
-            async fn record_user_reaction(
-                &self,
-                _feedback: &SuggestionFeedback,
-            ) -> Result<(), CoreError> {
-                self.coach.fetch_add(1, Ordering::SeqCst);
-                self.regime.fetch_add(1, Ordering::SeqCst);
+        #[derive(Clone)]
+        struct SharedBuf(Arc<StdMutex<Vec<u8>>>);
+        impl Write for SharedBuf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
                 Ok(())
             }
         }
+        impl<'a> MakeWriter<'a> for SharedBuf {
+            type Writer = Self;
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
 
-        let sink = ObservingSink {
-            coach: coach_hits.clone(),
-            regime: regime_hits.clone(),
-        };
+        let buf = Arc::new(StdMutex::new(Vec::<u8>::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_writer(SharedBuf(buf.clone()))
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let coaching = Arc::new(oneshim_analysis::CoachingEngine::new(
+            oneshim_core::config::CoachingConfig::default(),
+        ));
+        let regime = Arc::new(parking_lot::Mutex::new(
+            oneshim_analysis::RegimeClassifier::new(1.5),
+        ));
+        let sink = CompositeFeedbackSink::new(Some(coaching), Some(regime));
+
         sink.record_user_reaction(&sample_feedback(FeedbackType::Accepted))
             .await
             .unwrap();
 
-        assert_eq!(coach_hits.load(Ordering::SeqCst), 1);
-        assert_eq!(regime_hits.load(Ordering::SeqCst), 1);
+        let captured = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        assert!(
+            captured.contains("coaching_engine: user reaction recorded"),
+            "coaching stub not invoked — captured output: {captured}"
+        );
+        assert!(
+            captured.contains("regime_classifier: user reaction recorded"),
+            "regime classifier stub not invoked — captured output: {captured}"
+        );
     }
 
     /// T-X3-1 — accept / reject / defer each land exactly once.
@@ -134,13 +164,16 @@ mod tests {
         assert_eq!(sink.calls.load(Ordering::SeqCst), 3);
     }
 
-    /// T-X3-2 — sink error does NOT fail send_feedback.
-    /// We exercise this through FeedbackSender in crates/oneshim-suggestion;
-    /// the inline test below just asserts CompositeFeedbackSink itself
-    /// returns Ok when no consumers are configured (a feature-gated-off
-    /// coaching path stays fine).
+    /// T-X3-2 — `CompositeFeedbackSink` with no consumers is a happy-path no-op.
+    ///
+    /// The spec property "sink error does NOT fail send_feedback" lives on
+    /// `FeedbackSender::send_feedback` (asserted implicitly by the
+    /// `sink_fires_before_api_client` test in oneshim-suggestion — when the
+    /// sink returns Err, send_feedback still proceeds to the API call and
+    /// returns Ok). Here we just guard the `None, None` feature-gated-off
+    /// path from a silent regression.
     #[tokio::test]
-    async fn sink_error_does_not_fail_send_feedback() {
+    async fn composite_sink_ok_with_no_consumers() {
         let sink = CompositeFeedbackSink::new(None, None);
         let result = sink
             .record_user_reaction(&sample_feedback(FeedbackType::Accepted))
