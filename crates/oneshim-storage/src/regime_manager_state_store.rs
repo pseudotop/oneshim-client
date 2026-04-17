@@ -5,14 +5,18 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::tiered_memory::Regime;
 use oneshim_core::ports::regime_storage::RegimeStoragePort;
 use rusqlite::{Connection, OptionalExtension};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+/// Uses `std::sync::Mutex` (not `parking_lot::Mutex`) so the same
+/// `Arc<Mutex<Connection>>` returned by `SqliteStorage::connection_arc()`
+/// can be shared — the adapter family elsewhere in `oneshim-storage`
+/// (vector store, session storage, etc.) picked `std::sync::Mutex`.
 pub struct SqliteRegimeManagerStateStore {
-    conn: Arc<parking_lot::Mutex<Connection>>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl SqliteRegimeManagerStateStore {
-    pub fn new(conn: Arc<parking_lot::Mutex<Connection>>) -> Self {
+    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
         Self { conn }
     }
 }
@@ -20,7 +24,10 @@ impl SqliteRegimeManagerStateStore {
 #[async_trait]
 impl RegimeStoragePort for SqliteRegimeManagerStateStore {
     async fn load_all(&self) -> Result<Vec<Regime>, CoreError> {
-        let conn = self.conn.lock();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
         let payload: Option<String> = conn
             .query_row(
                 "SELECT payload FROM regime_manager_state WHERE id = 0",
@@ -57,7 +64,10 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
     async fn save_all(&self, regimes: &[Regime]) -> Result<(), CoreError> {
         let json =
             serde_json::to_string(regimes).map_err(|e| CoreError::Internal(e.to_string()))?;
-        let conn = self.conn.lock();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
         conn.execute(
             "INSERT OR REPLACE INTO regime_manager_state
                 (id, payload, payload_backup, payload_backup_at, updated_at)
@@ -83,11 +93,11 @@ mod tests {
     };
     use tempfile::TempDir;
 
-    fn open_db() -> (TempDir, Arc<parking_lot::Mutex<Connection>>) {
+    fn open_db() -> (TempDir, Arc<Mutex<Connection>>) {
         let dir = tempfile::tempdir().unwrap();
         let conn = Connection::open(dir.path().join("t.db")).unwrap();
         crate::migration::run_migrations(&conn).unwrap();
-        (dir, Arc::new(parking_lot::Mutex::new(conn)))
+        (dir, Arc::new(Mutex::new(conn)))
     }
 
     fn sample_regime(id: &str) -> Regime {
@@ -145,7 +155,7 @@ mod tests {
     async fn malformed_payload_quarantines_and_starts_fresh() {
         let (_d, conn) = open_db();
         {
-            let c = conn.lock();
+            let c = conn.lock().unwrap();
             c.execute(
                 "INSERT OR REPLACE INTO regime_manager_state (id, payload, updated_at) VALUES (0, '{not:valid json', datetime('now'))",
                 [],
@@ -157,7 +167,7 @@ mod tests {
         assert!(result.is_ok(), "quarantine must not return Err");
         assert_eq!(result.unwrap().len(), 0, "fresh start expected");
 
-        let c = conn.lock();
+        let c = conn.lock().unwrap();
         let (backup, backup_at): (Option<String>, Option<String>) = c
             .query_row(
                 "SELECT payload_backup, payload_backup_at FROM regime_manager_state WHERE id = 0",
@@ -181,7 +191,7 @@ mod tests {
         {
             let conn = Connection::open(&db_path).unwrap();
             crate::migration::run_migrations(&conn).unwrap();
-            let s = SqliteRegimeManagerStateStore::new(Arc::new(parking_lot::Mutex::new(conn)));
+            let s = SqliteRegimeManagerStateStore::new(Arc::new(Mutex::new(conn)));
             s.save_all(&[sample_regime("a"), sample_regime("b")])
                 .await
                 .unwrap();
@@ -194,7 +204,7 @@ mod tests {
         {
             let conn = Connection::open(&db_path).unwrap();
             crate::migration::run_migrations(&conn).unwrap();
-            let s = SqliteRegimeManagerStateStore::new(Arc::new(parking_lot::Mutex::new(conn)));
+            let s = SqliteRegimeManagerStateStore::new(Arc::new(Mutex::new(conn)));
             let loaded = s.load_all().await.unwrap();
             assert_eq!(loaded.len(), 2);
             assert_eq!(loaded[0].regime_id, "a");

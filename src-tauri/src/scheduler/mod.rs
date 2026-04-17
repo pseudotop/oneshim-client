@@ -71,8 +71,16 @@ pub(crate) struct AdaptiveTriggerState {
     pub calibration_writer: Arc<dyn CalibrationWriter>,
 
     // --- Regime-aware pipeline ---
-    pub regime_classifier: oneshim_analysis::RegimeClassifier,
-    pub regime_manager: oneshim_analysis::RegimeManager,
+    //
+    // Wrapped in `Arc<parking_lot::Mutex<_>>` so the composition root
+    // can share handles with `AppState` for (a) startup hydration from
+    // `RegimeStoragePort::load_all`, (b) shutdown save via the guard in
+    // `main.rs::RunEvent::Exit`, and (c) `CompositeFeedbackSink` fan-out
+    // (feedback_sink.rs). The scheduler still has exclusive access at
+    // runtime — `shutdown_tx → shutdown_blocking()` completes before the
+    // save guard fires, so there is no contention window.
+    pub regime_classifier: Arc<parking_lot::Mutex<oneshim_analysis::RegimeClassifier>>,
+    pub regime_manager: Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>,
     pub regime_detector: oneshim_analysis::RegimeDetector,
     pub param_resolver: oneshim_analysis::ParamResolver,
     pub calibration_reader: Arc<dyn CalibrationReader>,

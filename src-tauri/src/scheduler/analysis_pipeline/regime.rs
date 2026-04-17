@@ -105,20 +105,22 @@ pub(in crate::scheduler) async fn run_periodic_regime_detection(
                         count = detected.len(),
                         "regime detection completed (legacy)"
                     );
-                    ts.regime_manager.update_from_detection(detected);
+                    ts.regime_manager.lock().update_from_detection(detected);
                 }
             }
 
-            ts.regime_manager.run_maintenance(now);
+            ts.regime_manager.lock().run_maintenance(now);
 
-            // Update classifier with active regimes
+            // Update classifier with active regimes (clone out of the lock
+            // scope so the RegimeClassifier lock is acquired separately).
             let active: Vec<_> = ts
                 .regime_manager
+                .lock()
                 .active_regimes()
                 .into_iter()
                 .cloned()
                 .collect();
-            ts.regime_classifier.update_regimes(active);
+            ts.regime_classifier.lock().update_regimes(active);
 
             // Reset drift detector after successful re-clustering
             ts.drift_detector.reset();
@@ -199,6 +201,7 @@ async fn run_constrained_clustering(
 
         let regime_cluster_map: HashMap<String, i32> = ts
             .regime_manager
+            .lock()
             .active_regimes()
             .iter()
             .enumerate()
@@ -242,7 +245,7 @@ async fn run_constrained_clustering(
                 algorithm = algo_name,
                 "constrained regime detection completed"
             );
-            ts.regime_manager.update_from_detection(detected);
+            ts.regime_manager.lock().update_from_detection(detected);
         }
         Ok(_) => {
             debug!(
@@ -270,7 +273,7 @@ async fn run_constrained_clustering(
                     count = detected.len(),
                     "regime detection completed (fallback)"
                 );
-                ts.regime_manager.update_from_detection(detected);
+                ts.regime_manager.lock().update_from_detection(detected);
             }
         }
     }

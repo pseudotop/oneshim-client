@@ -215,34 +215,42 @@ pub(super) async fn run_analysis_tick(
     }
 
     // 5b. Regime classification → parameter cascade
+    //
+    // Clone the Regime out of the classifier lock scope so `current_regime`
+    // can be passed to `param_resolver.resolve` below without holding the
+    // classifier lock across `param_resolver` — smaller critical section,
+    // no lock-ordering concern.
     let app_category = AppCategory::from_app_name(app_name);
-    let current_regime =
-        ts.regime_classifier
-            .classify(&oneshim_core::models::tiered_memory::RegimeFeatures {
-                category_coding: if app_category == AppCategory::Development {
-                    1.0
-                } else {
-                    0.0
-                },
-                category_communication: if app_category == AppCategory::Communication {
-                    1.0
-                } else {
-                    0.0
-                },
-                category_browser: if app_category == AppCategory::Browser {
-                    1.0
-                } else {
-                    0.0
-                },
-                avg_event_rate: ts.trigger.current_density_signal(),
-                avg_importance: ts.trigger.current_importance_signal(),
-                context_activity_signal: ts.trigger.current_context_signal(),
-                communication_ratio: if app_category == AppCategory::Communication {
-                    1.0
-                } else {
-                    0.0
-                },
-            });
+    let current_regime_owned: Option<oneshim_core::models::tiered_memory::Regime> = {
+        let cls = ts.regime_classifier.lock();
+        cls.classify(&oneshim_core::models::tiered_memory::RegimeFeatures {
+            category_coding: if app_category == AppCategory::Development {
+                1.0
+            } else {
+                0.0
+            },
+            category_communication: if app_category == AppCategory::Communication {
+                1.0
+            } else {
+                0.0
+            },
+            category_browser: if app_category == AppCategory::Browser {
+                1.0
+            } else {
+                0.0
+            },
+            avg_event_rate: ts.trigger.current_density_signal(),
+            avg_importance: ts.trigger.current_importance_signal(),
+            context_activity_signal: ts.trigger.current_context_signal(),
+            communication_ratio: if app_category == AppCategory::Communication {
+                1.0
+            } else {
+                0.0
+            },
+        })
+        .cloned()
+    };
+    let current_regime = current_regime_owned.as_ref();
 
     // Detect regime transition
     let new_regime_id = current_regime.map(|r| r.regime_id.clone());
@@ -260,7 +268,7 @@ pub(super) async fn run_analysis_tick(
 
     // Mark regime as seen
     if let Some(ref regime_id) = new_regime_id {
-        ts.regime_manager.mark_seen(regime_id, now);
+        ts.regime_manager.lock().mark_seen(regime_id, now);
     }
 
     // Resolve params via CSS cascade

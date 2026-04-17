@@ -95,8 +95,12 @@ pub(super) fn build_analysis_pipeline(
                 segment_summarizer: oneshim_analysis::SegmentSummarizer::new(),
                 params,
                 calibration_writer,
-                regime_classifier: oneshim_analysis::RegimeClassifier::new(1.5),
-                regime_manager: oneshim_analysis::RegimeManager::new(tm_config),
+                regime_classifier: Arc::new(parking_lot::Mutex::new(
+                    oneshim_analysis::RegimeClassifier::new(1.5),
+                )),
+                regime_manager: Arc::new(parking_lot::Mutex::new(
+                    oneshim_analysis::RegimeManager::new(tm_config),
+                )),
                 regime_detector: oneshim_analysis::RegimeDetector::new(),
                 param_resolver: oneshim_analysis::ParamResolver::new(preset),
                 calibration_reader,
