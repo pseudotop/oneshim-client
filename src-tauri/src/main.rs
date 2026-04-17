@@ -32,6 +32,7 @@ mod desktop_permissions;
 mod desktop_startup;
 mod fallback_stt;
 mod feature_capabilities;
+mod feedback_sink;
 mod focus_analyzer;
 mod focus_auto;
 mod focus_mode;
