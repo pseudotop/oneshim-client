@@ -139,10 +139,11 @@ For loops that only need "read latest on next tick" behaviour, `config_manager.s
 
 ### 2.6 Migration policy (what consumers convert now)
 
-- **Only migrate where it actually reduces latency or fixes a bug.** Config polling is cheap; migrating 7 loops just to say they subscribe is busywork.
+- **Only migrate where it actually reduces latency or fixes a bug.** Config polling is cheap; mechanical migrations for their own sake are busywork.
 - **Required in this phase**: the telemetry bootstrapper (X2) must use `subscribe` because toggling `telemetry.enabled` at runtime is the feature.
-- **Optional in this phase**: one demonstrator loop converts to `subscribe` + diff to set the pattern for future work. We will convert `src-tauri/src/scheduler/loops/monitor.rs` where `prev_pii_level` already performs an ad-hoc diff — this exercise proves the idiom on real code.
-- **Out of scope**: converting the other five loops; those are their own line items in Phase 3.
+- **Not in this phase** — even as a demonstrator. The obvious candidate was `src-tauri/src/scheduler/loops/monitor.rs::prev_pii_level`, but review found it is co-updated atomically with `prev_full_text_consent` inside `helpers.rs::audit_consent_and_pii_changes` and emits an audit-log entry on every transition. `watch` coalesces rapid updates (latest-wins), so a subscribe-and-diff rewrite would silently drop intermediate audit transitions — a regression in a compliance-relevant path. The other scheduler loops identified so far have the same shape (on-tick diff + audit/side-effect per transition), so there is no zero-risk demonstrator in this phase.
+- **Out of scope**: converting scheduler loops at large. Each conversion is its own Phase 3 line item, and the audit-coalescing concern is explicit in the review checklist.
+- **Docs**: `ADR-016-config-change-bus.md` (see §5) records the audit-coalescing hazard and the "diff in consumer, do not assume every update fires" guidance.
 
 ### 2.7 Error & lifecycle semantics
 
@@ -163,9 +164,10 @@ Each test lives alongside `config_manager.rs` in a `#[cfg(test)]` module.
 | T-X1-4 | `reload_notifies_subscribers` | After the file is rewritten on disk and `reload()` is called, subscribers see the new value. |
 | T-X1-5 | `dropped_receiver_does_not_block_sender` | Drop one of two receivers mid-test; subsequent `update()` still notifies the survivor. |
 | T-X1-6 | `snapshot_matches_latest_update` | `snapshot()` returns the most recent `Arc` pointer-equal to what `subscribe().borrow()` returns. |
-| T-X1-7 | `no_spurious_wakeup_when_content_identical` | Two `update()` calls with semantically equal configs still each generate a notification (watch semantics — documented behaviour; consumers do the diff). |
-
-T-X1-7 documents expected behaviour rather than enforcing suppression: per-section diff is the consumer's job (§2.5).
+| T-X1-7 | `no_spurious_wakeup_when_content_identical` | Two `update()` calls with equal configs still each fire a notification. **Doc-only test** that pins `watch` semantics for future readers — consumers must diff themselves (audit-coalescing hazard — see §2.6). |
+| T-X1-8 | `deserialises_legacy_config_json_without_new_telemetry_fields` | A JSON payload missing `otlp_endpoint`/`sample_rate`/`service_name` parses, and `get()` returns defaults for those fields. Protects serde-defaults contract for existing users on first boot after upgrade. |
+| T-X1-9 | `update_with_does_not_reenter` | Calling `get()` or `snapshot()` from inside a running `update_with` closure returns a usable (pre-swap) snapshot without deadlock. Pins the "writer_lock is not held across `watch` reads" invariant from §2.4. |
+| T-X1-10 | `receiver_changed_returns_err_after_manager_dropped` | Drop the `ConfigManager` while a subscriber task is still `awaiting .changed()`; the await resolves to `Err`, and the subscriber task exits cleanly (no panic, no hang). Exercises the telemetry bootstrap task's exit path (§4). |
 
 ---
 
@@ -309,43 +311,77 @@ tracing_subscriber::registry()
     .init();
 ```
 
-Adds a fourth optional layer:
+Adds a fourth layer — a `reload::Layer` wrapping `Option<OtelLayer>`. The concrete construction is in §3.6 (it is the same snippet; we avoid duplicating it here).
+
+Managed state: `TelemetryHandle` is stored in Tauri managed state so the bus-driven toggle task (§4) and any future Tauri commands can access it.
+
+### 3.6 Runtime toggle strategy
+
+We wrap `Option<OtelLayer>` in `tracing_subscriber::reload::Layer` and attach it to the stack at init. The `Option` is the swap unit — not the entire composite subscriber. Concrete construction in `main.rs`:
+
 ```rust
-let (otel_layer, telemetry_handle) = telemetry::build_layer_and_handle(&initial_cfg);
+use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt};
+
+// `telemetry` feature OFF — no OTel dep compiles; bootstrap is a no-op.
+#[cfg(not(feature = "telemetry"))]
+let (telemetry_layer, telemetry_handle) = telemetry::noop_layer_and_handle();
+
+#[cfg(feature = "telemetry")]
+let (telemetry_layer, telemetry_handle) = {
+    let initial: Option<otlp::OtelLayer> = match initial_cfg.enabled {
+        true  => Some(otlp::build(&initial_cfg)?.1),
+        false => None,
+    };
+    // `reload::Layer::new(L)` returns `(Layer, Handle<L, _>)` where `_` is
+    // the subscriber type inferred at the `.with()` site. The `S` parameter
+    // is therefore the layered subscriber produced by all preceding `.with()`
+    // calls — NOT `Registry` alone. We let inference fill it in and store the
+    // handle as `reload::Handle<Option<otlp::OtelLayer>, _>`; we never name
+    // the `S` parameter explicitly.
+    let (layer, handle) = reload::Layer::new(initial);
+    (layer, telemetry::Handle::new(handle))
+};
+
 tracing_subscriber::registry()
     .with(env_filter)
     .with(console_layer)
     .with(file_layer)
-    .with(otel_layer)   // None when feature off or config.enabled = false at boot
+    .with(telemetry_layer)   // Option<OtelLayer> wrapped in reload::Layer
     .init();
 ```
 
-`otel_layer` is `Option<tracing_opentelemetry::OpenTelemetryLayer<…>>`. `tracing_subscriber::Registry` supports `Option<Layer>` natively (`None` is a no-op).
-
-Managed state: `TelemetryHandle` is stored in Tauri managed state so scheduler loops (and Tauri commands if ever needed) can access it.
-
-### 3.6 Runtime toggle strategy
-
-We wrap the OTel layer in `tracing_subscriber::reload::Layer<Option<OtelLayer>, Registry>`. The wrapped type is always attached; at boot it is `Some(layer)` or `None` depending on config. On runtime config change we swap via the `reload::Handle`.
-
 Boot:
-- Feature OFF at compile time: no `Option<OtelLayer>` type exists; we skip the reload wrapper entirely. The `reload` dep is also feature-gated.
-- Feature ON, config.enabled == false at boot: install `reload::Layer<Option<OtelLayer>>` with `None`. No exporter is built until the user opts in.
-- Feature ON, config.enabled == true at boot: build the pipeline, install with `Some(layer)`.
+- Feature OFF at compile time: `telemetry_layer` is a unit-typed no-op, `telemetry_handle` is a zero-sized struct.
+- Feature ON, `config.enabled == false` at boot: wrapper holds `None`. No exporter is built until the user opts in.
+- Feature ON, `config.enabled == true` at boot: wrapper holds `Some(layer)`; pipeline is live.
 
 Runtime (on ConfigChangeBus notification):
-- `true → false`: `handle.modify(|opt| { if let Some(l) = opt.take() { /* drop layer */ } })`. Then call the stored `SdkTracerProvider::shutdown()` to flush. After this point spans still route to console+file; the OTel layer is a no-op.
-- `false → true`: build a new pipeline, then `handle.modify(|opt| *opt = Some(new_layer))`.
+- `true → false`: `handle.modify(|opt| { *opt = None; })`. Then call `SdkTracerProvider::shutdown()` on the stored provider to flush. After this point spans still route to console+file; the OTel layer is a no-op.
+- `false → true`: build a new pipeline, then `handle.modify(|opt| { *opt = Some(new_layer); })`.
 
-Swapping is safe at any point after subscriber init; `reload::Handle` is `Send + Sync`. The cost is small: one extra `RwLock` indirection per span dispatch when the layer is attached, zero when the `Option` is `None`.
+Swapping is safe at any point after subscriber init; `reload::Handle` is `Send + Sync`. Cost: one `RwLock` read per span dispatch when attached; an `Option::None` short-circuit when detached — effectively free.
 
-Why not restart-required: we want the UX of "toggle telemetry in Preferences and it takes effect now," and `reload::Layer` is the documented tool for this pattern. The previous reject-this-and-defer stance reconsidered.
+Why not restart-required: we want the UX of "toggle telemetry in Preferences and it takes effect now," and `reload::Layer` is the documented tool for this pattern.
 
 ### 3.7 Privacy
 
 - `enabled: false` is the default in `TelemetryConfig::default()`. It stays false on upgrade because the existing field was already defaulted false.
 - No span attribute or log record added by this phase carries PII. The existing `oneshim-vision::privacy::PiiFilterLevel` already redacts OCR output before it reaches any tracing call. New instrumentation added by consumers in later phases is responsible for the same discipline; we document it in `docs/guides/telemetry.md` (new, see §5).
-- No user identifier shipped. `service.instance.id` is a per-install random UUID stored at first telemetry enable under `{data_dir}/telemetry_instance_id`. If the user opts out, the file is deleted so the next opt-in generates a fresh ID.
+- No user identifier shipped. `service.instance.id` is a per-install random UUID generated lazily at opt-in.
+
+`telemetry_instance_id` file lifecycle:
+
+| State transition | File action | Who does it |
+|------------------|-------------|-------------|
+| First opt-in (feature on, `enabled` flips `false → true`) | Create `{data_dir}/telemetry_instance_id` containing a fresh UUIDv4, `0600` perms (owner-only read/write on Unix; `CREATE_NEW` on Windows) | `TelemetryHandle::apply` when transitioning to `Some(layer)` |
+| Boot with feature on + `enabled=true` + file exists | Read UUID, attach as `service.instance.id` resource attribute | `TelemetryHandle::new_with_layer` |
+| Boot with feature on + `enabled=true` + file missing | Create as above; treat as first opt-in | same |
+| Boot with `enabled=false` + file exists | **Ignore the file.** Do not read, do not delete. Preserves the UUID across accidental toggles. | no-op |
+| Opt-out (`enabled` flips `true → false`) | Leave file in place. | no-op |
+| User-requested "forget my telemetry identity" (Tauri command `telemetry.reset_instance_id`) | Delete file. Next opt-in regenerates. | dedicated command — wired in Phase 3 UX work, not this phase |
+| Feature off at compile time | File never created nor read. If it exists from a previous feature-on install, it is inert. | no-op |
+
+Rationale: delete-on-opt-out is tempting for "clean slate" but in practice causes UUID churn when a user toggles briefly for debugging. Opt-out stops exports immediately; identity erasure is a separate explicit action.
 
 ### 3.8 Error handling
 
@@ -364,15 +400,18 @@ Why not restart-required: we want the UX of "toggle telemetry in Preferences and
 
 | # | Test | Feature | Asserts |
 |---|------|---------|---------|
-| T-X2-1 | `feature_off_init_is_noop` | default | `TelemetryHandle::init` with `enabled=true` still does not panic or allocate an exporter. |
-| T-X2-2 | `feature_on_config_off_does_not_install_layer` | `telemetry` | `init` with `enabled=false` returns `Ok`; no network activity. |
-| T-X2-3 | `feature_on_config_on_builds_pipeline` | `telemetry` | Pipeline builds with endpoint `http://127.0.0.1:4318`; `apply` is idempotent. |
-| T-X2-4 | `apply_disables_when_toggled_off` | `telemetry` | After `apply(enabled=false)`, provider is shut down; subsequent `apply(enabled=true)` logs the restart-required warning. |
-| T-X2-5 | `config_bus_delivers_telemetry_toggle` | `telemetry` | Integration: drive `ConfigManager::update_with` flipping `telemetry.enabled`, assert `TelemetryHandle::apply` is called with the new value. |
+| T-X2-1 | `feature_off_init_is_noop` | default | `TelemetryHandle` construction with `enabled=true` does not panic and allocates no exporter. |
+| T-X2-2 | `feature_on_config_off_installs_empty_reload_wrapper` | `telemetry` | With `enabled=false` at boot the wrapper holds `None`; no network activity. |
+| T-X2-3 | `feature_on_config_on_builds_pipeline` | `telemetry` | Pipeline builds against a local mock OTLP collector (see §3.10 note) and `apply` with the same config is idempotent. |
+| T-X2-4 | `apply_disables_and_reenables_live` | `telemetry` | `apply(enabled=false)` swaps the wrapper to `None` and shuts down the provider; subsequent `apply(enabled=true)` rebuilds the pipeline and swaps the wrapper back to `Some(_)` with no restart. |
+| T-X2-5 | `config_bus_delivers_telemetry_toggle` | `telemetry` | Integration: flip `telemetry.enabled` via `ConfigManager::update_with`; assert `TelemetryHandle::apply` is called with the new value within one async tick. |
 | T-X2-6 | `opt_in_default_is_false` | default | Fresh `AppConfig::default_config().telemetry.enabled == false`. |
 | T-X2-7 | `env_endpoint_overrides_default_but_not_explicit_config` | `telemetry` | Precedence in §3.2 holds. |
+| T-X2-8 | `shutdown_completes_when_collector_unreachable` | `telemetry` | Boot with `enabled=true`, endpoint pointing at a closed TCP port; emit 5 spans; call `apply(enabled=false)` (which triggers `shutdown`) and assert it completes within 5 s without hanging or panicking. Guards against the OTel batch processor blocking on an unreachable exporter. |
+| T-X2-9 | `instance_id_file_lifecycle_matches_state_table` | `telemetry` | Drives the §3.7 state table: first opt-in creates the file with `0600` perms (Unix), opt-out leaves it, second opt-in reuses the same UUID, `reset_instance_id` deletes and regenerates. |
+| T-X2-10 | `mock_collector_receives_span` | `telemetry` | End-to-end spine test: start mock Axum collector on `127.0.0.1:0`, configure endpoint, emit a single span, assert the collector sees an OTLP POST body containing the span name within 15 s. Replaces the prior manual-verification acceptance criterion. |
 
-T-X2-3 uses a mock OTLP collector (a minimal Axum route on 127.0.0.1 that returns 200) rather than a real server, so CI does not depend on external hosts.
+T-X2-3 and T-X2-10 use a mock OTLP collector — a minimal Axum route on `127.0.0.1:<random>` that answers `200 OK` — so CI does not depend on external hosts. The mock lives under `src-tauri/tests/mock_otlp.rs` and is only compiled with `--features telemetry`.
 
 ---
 
@@ -404,7 +443,7 @@ This task lives for the process lifetime. Dropping the `ConfigManager` (never, i
 ## 5. Documentation deliverables
 
 - `docs/guides/telemetry.md` — new. End-user view: what is collected, how to enable, how to point it at a custom collector. Korean companion (`.ko.md`) per `docs/DOCUMENTATION_POLICY.md`.
-- `docs/architecture/ADR-005-config-change-bus.md` — new. Records the watch-channel + subscribe API decision and the non-migration policy for existing loops. Numbered sequentially after ADR-004.
+- `docs/architecture/ADR-016-config-change-bus.md` — new. Records the watch-channel + subscribe API decision, the audit-coalescing hazard, and the non-migration policy for existing loops. ADR-005 through ADR-015 are already taken; next free slot is 16 (verified against `docs/architecture/ADR-*.md`).
 - `docs/STATUS.md` — bump test totals and feature-gate line when implementation lands (not a spec deliverable — implementation deliverable).
 - Per-crate `CLAUDE.md` additions where relevant (`oneshim-core` for the new API surface, `src-tauri` for the telemetry module location).
 
@@ -414,29 +453,37 @@ This task lives for the process lifetime. Dropping the `ConfigManager` (never, i
 
 This ships on a single feature branch `feat/phase2-config-telemetry`:
 
-1. **Commit 1** — X1 core: `watch` channel + `subscribe()` + `snapshot()` + T-X1-1..7.
-2. **Commit 2** — X1 demonstrator: `monitor.rs` converts `prev_pii_level` ad-hoc diff to subscribe-and-diff. No behaviour change.
-3. **Commit 3** — ADR-005.
-4. **Commit 4** — X2 config extension: `otlp_endpoint`, `sample_rate`, `service_name` with serde defaults; T-X2-6 lands here.
-5. **Commit 5** — `telemetry` feature + deps + empty module skeleton (no-op init).
-6. **Commit 6** — X2 OTLP pipeline + tracing layer attach + T-X2-1..4, T-X2-7.
-7. **Commit 7** — Bus-driven telemetry toggle task in `main.rs` + T-X2-5.
-8. **Commit 8** — User doc + Korean companion.
+0. **Spike (pre-Commit-4)** — disposable, not committed. Run `cargo add opentelemetry opentelemetry_sdk opentelemetry-otlp tracing-opentelemetry --dry-run` and then a throwaway `cargo check --features telemetry` in a scratch branch to confirm reqwest-0.13 / tokio-1 compat and record the concrete resolved minor versions. Outcome is captured in the plan, not the spec. If HTTP transport cannot resolve, the plan switches to `grpc-tonic` before Commit 5.
+1. **Commit 1** — X1 core: `watch` channel + `subscribe()` + `snapshot()` + T-X1-1..10. All existing `ConfigManager` tests must still pass unchanged.
+2. **Commit 2** — ADR-016.
+3. **Commit 3** — X2 config extension: `otlp_endpoint`, `sample_rate`, `service_name` with serde defaults; T-X1-8 already in Commit 1 exercises the backward-compat deserialisation. T-X2-6 here.
+4. **Commit 4** — `telemetry` feature + deps + empty module skeleton + no-op feature-off path (T-X2-1 lands here).
+5. **Commit 5** — X2 OTLP pipeline + reload-wrapped layer attach + `instance_id` lifecycle + T-X2-2..4, T-X2-7, T-X2-8, T-X2-9.
+6. **Commit 6** — Bus-driven telemetry toggle task in `main.rs` + T-X2-5 + T-X2-10 (mock-collector spine test).
+7. **Commit 7** — User doc (`docs/guides/telemetry.md` + `.ko.md`).
 
-Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `cargo clippy --workspace -- -D warnings` green. The `--features telemetry` variant also runs in CI (new matrix cell).
+No X1 consumer migration commits in this phase (see §2.6). The telemetry bootstrap task in Commit 6 is the only `subscribe()` consumer in this PR.
+
+Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `cargo clippy --workspace -- -D warnings` green. The `--features telemetry` variant runs as a **path-gated** CI matrix cell: it fires only when `src-tauri/**`, `crates/oneshim-core/src/config/sections/storage.rs`, or `docs/guides/telemetry.md` changed in the PR; the nightly/main schedule runs it unconditionally. This limits the compile-time doubling to PRs that could plausibly break telemetry (§8).
 
 ---
 
 ## 7. Acceptance criteria
 
-- `cargo check --workspace` + `--features telemetry` on `src-tauri` both green on macOS / Linux / Windows CI.
-- `cargo test --workspace` + the feature-flagged tests green.
-- `cargo clippy --workspace --all-targets -- -D warnings` + `--features telemetry` green (incl. Rust 1.95 new lints).
-- With `config.telemetry.enabled = true` and a local OTLP/HTTP collector at `127.0.0.1:4318`, spans from `oneshim-network::batch_uploader::upload_batch` arrive at the collector within 15 s (manual verification via `docker run otel/opentelemetry-collector-contrib` with a debug exporter).
-- Runtime toggle off (via a Tauri command that calls `config_manager.update_with`) stops new exports within 5 s; file+console logging unaffected.
-- Binary size delta vs `main` (measured on `cargo build --release -p oneshim-app`): default build ≤ +20 KB (pure code additions — subscribe API plus serde extensions; no OTel pulled in); `--features telemetry` build ≤ +2 MB. Actual numbers land in `docs/STATUS.md` after first measurement.
-- No new clippy warning with default features or with `telemetry`.
-- Fresh install: `TelemetryConfig.enabled == false` after boot.
+All machine-checkable:
+
+- `cargo check --workspace` on default features: green on macOS / Linux / Windows CI.
+- `cargo check --workspace --features telemetry` on `src-tauri`: green on the same matrix (path-gated per §6).
+- `cargo test --workspace` on default features: green.
+- `cargo test -p oneshim-app --features telemetry`: green, including T-X2-3, T-X2-4, T-X2-5, T-X2-8, T-X2-9, T-X2-10.
+- `cargo clippy --workspace --all-targets -- -D warnings` and the `--features telemetry` variant: both green (includes Rust 1.95 lints).
+- T-X2-10 (mock-collector spine test) passes: a span emitted with telemetry enabled reaches the mock collector's HTTP handler within 15 s. This replaces the previous manual `docker run` verification.
+- T-X2-4 passes: runtime toggle off→on→off cycles cleanly within one async tick each, file+console logging unaffected.
+- Binary size delta vs `main` (measured on `cargo build --release -p oneshim-app`, stripped):
+  - Default build: **≤ +20 KB** (subscribe API plus serde extensions).
+  - `--features telemetry` build: **≤ +5 MB target**. First measurement lands in `docs/STATUS.md` under a new "Telemetry feature size" row. If the first measurement exceeds 5 MB, the plan documents the actual delta and we decide reconcile-vs-accept in Loop 3 review rather than re-gating the spec.
+- Fresh install: `AppConfig::default_config().telemetry.enabled == false`.
+- `telemetry_instance_id` file permissions match the §3.7 state table (verified by T-X2-9).
 
 ---
 
@@ -444,21 +491,24 @@ Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `
 
 | Risk | Likelihood | Mitigation |
 |------|-----------|-----------|
-| OTel crate version churn breaks on CI | Medium | Pin minor versions; matrix job runs only on `telemetry` feature so default build is unaffected if we need to temporarily revert. |
-| OTLP/HTTP can't be reconciled with workspace reqwest 0.13 | Medium | Fallback to `opentelemetry-otlp` `grpc-tonic` feature; we already have tonic 0.14 in the tree. Pivot decision captured in the plan; not a spec deliverable. |
-| Config bus introduces subtle race (subscriber sees old snapshot after update completes) | Low | Write-lock held during swap; `send` called after; tests T-X1-2..4 exercise happy path. Documented that `snapshot()` and `subscribe()` are latest-wins. |
-| Telemetry restart-required on enable surprises users | Low | In-app warning toast + doc entry. Follow-up issue opens immediately to implement `reload::Layer` swap. |
-| Accidental PII in new span attributes | Medium | PR checklist item + `docs/guides/telemetry.md` guidance + `#[deny(clippy::missing_docs_in_private_items)]` on new span attribute adders (aspirational — not part of this phase). |
+| OTel crate version churn breaks on CI | Medium | Pin minor versions; matrix job runs only on `telemetry` feature and is path-gated so default build is unaffected if we need to temporarily revert. |
+| OTLP/HTTP can't be reconciled with workspace reqwest 0.13 | Medium | **Commit-0 spike** (§6) forces this verification before any OTel code lands. Fallback to `opentelemetry-otlp` `grpc-tonic` (tonic 0.14 already in the tree). Spike outcome captured in the plan, not the spec. |
+| Config bus introduces subtle race (subscriber sees old snapshot after update completes) | Low | `writer_lock` serialises writers; `send_replace` broadcasts atomically inside `watch`. Tests T-X1-2..4 exercise the happy path; T-X1-9 pins no-reentrancy. Documented that `snapshot()` and `subscribe()` are latest-wins. |
+| Consumer silently coalesces audit-critical transitions | **High if migrated** | Not migrating any consumer in this phase (§2.6). The audit-coalescing hazard is recorded in ADR-016 so Phase 3 migrations review it before touching code. |
+| Accidental PII in new span attributes | Medium | PR checklist item + `docs/guides/telemetry.md` guidance. (The `clippy::missing_docs_in_private_items` idea was aspirational and is dropped to avoid a bogus lint gate.) |
+| Path-gated CI cell lets telemetry regressions slip through unrelated PRs | Low | Scheduled main run + RC release-gate unconditionally compile `--features telemetry`. Regressions caught within 24 h at worst. |
+| `SdkTracerProvider::shutdown` hangs when collector unreachable | Low | Explicitly tested by T-X2-8 with a 5 s watchdog. Provider is dropped inside `tokio::task::spawn_blocking` if needed to isolate from the async runtime. |
 
 ---
 
 ## 9. Out of scope (and why, pointed at the right issue)
 
-- Converting all seven scheduler loops to `subscribe()` — pure mechanical migration, separate PR per loop post-phase. Captured as a follow-up line in Phase 3.
+- Converting scheduler loops to `subscribe()` — each loop needs individual review for the audit-coalescing hazard (§2.6). Captured as a Phase 3 follow-up line per loop.
 - Metrics (counters/gauges/histograms) — additive on top of OTel plumbing once spans are healthy. Separate phase.
 - Server-side OTel endpoint TLS setup on `otel.oneshim.thengd.com` — server-repo work; Caddy already terminates HTTP(S).
 - C1/C2/C3 from the feature-gap doc — Phase 3 (this design intentionally avoids them).
 - Sentry-style crash reports (`crash_reports` bool) — separate exporter (panic handler + mini-dump); not this phase.
+- Tauri command to trigger `reset_instance_id` — wiring exists in the state table (§3.7) but the UI surface is Phase 3 settings-page work.
 
 ---
 
