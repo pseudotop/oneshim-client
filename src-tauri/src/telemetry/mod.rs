@@ -190,6 +190,43 @@ mod tests_feature_on {
             .expect("final shutdown to avoid drop-hang");
     }
 
+    /// T-X2-8 — shutdown-with-unreachable-collector watchdog. Toggle on
+    /// against a dead port, emit a few spans, toggle off (drives `shutdown`).
+    /// Must complete within 5 s (watchdog is 4 s + 1 s overhead budget) and
+    /// never panic.
+    #[tokio::test]
+    async fn shutdown_completes_when_collector_unreachable() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Port 1 is reliably unreachable for TCP; the OTLP exporter queue
+        // will never flush but the watchdog must still let shutdown return.
+        let cfg_on = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some("http://127.0.0.1:1".into()),
+            ..Default::default()
+        };
+        let (_layer, handle) = Handle::new_with_layer(&cfg_on, tmp.path())
+            .expect("exporter builds even with an unreachable endpoint");
+
+        // Emit a handful of spans so the batch processor has pressure.
+        for i in 0..5 {
+            tracing::info_span!("t_x2_8_span", i).in_scope(|| {});
+        }
+
+        let cfg_off = TelemetryConfig {
+            enabled: false,
+            ..cfg_on
+        };
+        let start = std::time::Instant::now();
+        handle
+            .apply(&cfg_off)
+            .expect("apply off must not hang even against a dead collector");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "shutdown watchdog exceeded 5s (elapsed: {:?})",
+            start.elapsed()
+        );
+    }
+
     /// T-X2-7 — endpoint precedence. Explicit cfg wins over env; env wins
     /// over default.
     #[test]
