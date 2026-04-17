@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.38-rc.4] - 2026-04-17
+
+### Fixed
+
+- Create sandbox-worker stub for release smoke Linux job ([#434](https://github.com/pseudotop/oneshim-client/pull/434))
+  The v0.4.38-rc.3 Release workflow failed at "Release Reliability Smoke
+  (linux)" with:
+
+      resource path `oneshim-sandbox-worker-x86_64-unknown-linux-gnu` doesn't exist
+
+  The smoke script runs `cargo test -p oneshim-app release_reliability_`
+  which triggers Tauri's build.rs. The build.rs checks the externalBin
+  path at compile time. Previously 4 Build Release rows built the real
+  sandbox-worker (PR #430), but the Reliability Smoke job had no such
+  step — and Linux exercises the full cargo test path because its matrix
+  row has `run_updater_tests: true`.
+
 ## [0.4.38-rc.3] - 2026-04-17
 
 ### Fixed
