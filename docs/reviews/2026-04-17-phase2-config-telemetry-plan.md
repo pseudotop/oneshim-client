@@ -61,7 +61,7 @@ Running a feature-off test with the telemetry feature enabled is harmless — `#
 | `src-tauri/Cargo.toml` | Declare `telemetry` feature + optional OTel deps. |
 | `src-tauri/src/main.rs` | Build `TelemetryHandle` + layer, attach to subscriber, spawn bus-driven toggle task. |
 | `src-tauri/CLAUDE.md` | Note the new `telemetry/` module and `telemetry` feature. |
-| `.github/workflows/ci.yml` (or whichever workflow file owns CI) | Add path-gated `--features telemetry` matrix cell. |
+| `.github/workflows/ci.yml` | Append clippy + test steps for `--features telemetry` after the existing `--features grpc` steps. Uses `./scripts/cargo-cache.sh` and the repo's allow-lint list. See Task 12 Step 3 for the exact stanza. |
 | `docs/STATUS.md` | Final commit only: update test totals and add "Telemetry feature binary size" row. |
 
 ---
@@ -2070,7 +2070,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 **Files:**
 - Create: `docs/guides/telemetry.md`
 - Create: `docs/guides/telemetry.ko.md`
-- Modify: `.github/workflows/ci.yml` (add path-gated telemetry matrix cell)
+- Modify: `.github/workflows/ci.yml` (append clippy + test steps for `--features telemetry`)
 - Modify: `docs/STATUS.md`
 - Modify: `crates/oneshim-core/CLAUDE.md`
 - Modify: `src-tauri/CLAUDE.md`
