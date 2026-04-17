@@ -147,14 +147,18 @@ impl EncryptionKey {
 /// and applies it as a protected DACL (no inheritance from parent).
 #[cfg(windows)]
 fn set_owner_only_dacl(path: &std::path::Path) -> Result<(), StorageError> {
-    use windows_sys::Win32::Foundation::LocalFree;
+    // windows-sys 0.61: `OpenProcessToken` moved from `Win32::Security` to
+    // `Win32::System::Threading`, `GENERIC_ALL` moved to `Win32::Foundation`,
+    // and `HANDLE` is now `*mut c_void` instead of `isize` — token_handle
+    // must be initialised with `std::ptr::null_mut()`.
+    use windows_sys::Win32::Foundation::{LocalFree, GENERIC_ALL, HANDLE};
     use windows_sys::Win32::Security::Authorization::{SetNamedSecurityInfoW, SE_FILE_OBJECT};
     use windows_sys::Win32::Security::{
-        AddAccessAllowedAce, GetTokenInformation, InitializeAcl, OpenProcessToken, TokenUser,
-        ACL as WIN_ACL, ACL_REVISION, DACL_SECURITY_INFORMATION, GENERIC_ALL,
-        PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
+        AddAccessAllowedAce, GetTokenInformation, InitializeAcl, TokenUser, ACL as WIN_ACL,
+        ACL_REVISION, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY,
+        TOKEN_USER,
     };
-    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     let wide_path: Vec<u16> = path
         .to_string_lossy()
@@ -164,7 +168,7 @@ fn set_owner_only_dacl(path: &std::path::Path) -> Result<(), StorageError> {
 
     unsafe {
         // 1. Get the current user's SID
-        let mut token_handle = 0;
+        let mut token_handle: HANDLE = std::ptr::null_mut();
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle) == 0 {
             return Err(StorageError::Internal("OpenProcessToken failed".into()));
         }
