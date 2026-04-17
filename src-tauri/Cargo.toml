@@ -72,6 +72,12 @@ image = { workspace = true }
 lru = { workspace = true }
 raw-window-handle = "0.6"
 
+# 텔레메트리 (feature-gated, default OFF)
+opentelemetry = { version = "0.27", optional = true, default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.27", optional = true, default-features = false, features = ["rt-tokio", "trace"] }
+opentelemetry-otlp = { version = "0.27", optional = true, default-features = false, features = ["http-proto", "reqwest-client", "trace"] }
+tracing-opentelemetry = { version = "0.28", optional = true }
+
 [features]
 default = ["custom-protocol", "analysis", "native-vision", "linux-atspi"]
 custom-protocol = ["tauri/custom-protocol"]
@@ -91,6 +97,12 @@ webdriver = ["dep:tauri-plugin-webdriver"]
 ml-detect = ["oneshim-vision/ml-detect"]
 linux-sandbox = ["oneshim-automation/linux-sandbox"]
 windows-sandbox = ["oneshim-automation/windows-sandbox"]
+telemetry = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"

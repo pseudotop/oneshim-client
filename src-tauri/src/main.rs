@@ -78,6 +78,10 @@ mod storage_runtime;
 mod subprocess_provider;
 mod suggestion_manager;
 mod sync_engine;
+// Telemetry module is scaffolded here; wired into the subscriber + bus in Task 11.
+// Until then, all items inside are dead from main.rs's perspective.
+#[allow(dead_code)]
+mod telemetry;
 mod tray;
 mod tray_icon;
 mod update_coordinator;
