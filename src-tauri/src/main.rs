@@ -352,6 +352,12 @@ fn main() {
                     warn!("shutdown signal send failed (receivers already dropped)");
                 }
                 state.background_runtime.shutdown_blocking();
+
+                // Checkpoint WAL after all writers have stopped, so the next
+                // startup opens a clean database without recovery work.
+                if let Err(e) = state.storage.wal_checkpoint_truncate() {
+                    warn!("WAL checkpoint on shutdown failed: {e}");
+                }
             }
         }
         #[cfg(target_os = "macos")]
