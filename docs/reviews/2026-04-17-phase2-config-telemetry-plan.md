@@ -22,6 +22,20 @@
 
 ---
 
+## Test placement convention
+
+`src-tauri` has no `[lib]` target (only `[[bin]] name = "oneshim"`). Integration tests in `src-tauri/tests/*.rs` therefore compile as separate crates and cannot `use oneshim_app::telemetry::*`. All telemetry tests in this plan live **inline** as `#[cfg(test)] mod tests` blocks inside `src-tauri/src/telemetry/mod.rs` (and sibling modules when they fit better there). The mock OTLP collector is a `#[cfg(all(test, feature = "telemetry"))] mod mock_otlp;` inside `src/telemetry/`.
+
+Every test invocation in this plan uses the form:
+
+```bash
+cargo test -p oneshim-app --features telemetry -- telemetry::tests::<test_name>
+```
+
+(or `--features telemetry` omitted for feature-off tests). The `--test <integration_target>` form from the Task-7 draft does NOT apply.
+
+Running a feature-off test with the telemetry feature enabled is harmless — `#[cfg(not(feature = "telemetry"))]` attributes make them inert. Use `cargo test -p oneshim-app -- telemetry::tests` for the default path.
+
 ## File structure (new + modified)
 
 ### Created
@@ -35,7 +49,7 @@
 | `src-tauri/src/telemetry/mod.rs` | `TelemetryHandle`, `TelemetryLayer`, public API; feature-off no-op path. |
 | `src-tauri/src/telemetry/otlp.rs` | `OtelLayer` alias, `OtlpPipeline`, `build`, `shutdown`, `resolve_endpoint`. `#[cfg(feature = "telemetry")]`. |
 | `src-tauri/src/telemetry/instance_id.rs` | `telemetry_instance_id` file lifecycle (§3.7 state table). `#[cfg(feature = "telemetry")]`. |
-| `src-tauri/tests/mock_otlp.rs` | Tiny Axum route on `127.0.0.1:<random>` that records POST bodies for T-X2-3 / T-X2-10. `#[cfg(feature = "telemetry")]`. |
+| `src-tauri/src/telemetry/mock_otlp.rs` | Tiny Axum route on `127.0.0.1:<random>` that records POST bodies for T-X2-3 / T-X2-10. Gated `#[cfg(all(test, feature = "telemetry"))]` — lives inside `src/` because `src-tauri` has no `[lib]` target and integration tests in `tests/` cannot reach the `telemetry` module. |
 
 ### Modified
 
@@ -144,7 +158,18 @@ cargo test -p oneshim-core config_manager 2>&1 | tail -20
 
 Expected: all existing `config_manager` tests pass. Note the count.
 
+Also confirm the clone-site inventory is still accurate before starting:
+
+```bash
+grep -rn "config_manager\.clone()\|ConfigManager::clone" \
+  src-tauri/src crates/oneshim-web/src | wc -l
+```
+
+Expected: > 0 (the count is informational; the fix in Step 2 keeps `derive(Clone)` working at all of them).
+
 - [ ] **Step 2: Replace the struct fields and `new`/`with_path` constructors.**
+
+> **Why the outer Arc:** 20+ call sites across `src-tauri`, `oneshim-web`, and the scheduler loops already call `.clone()` on owned `ConfigManager` values (e.g., `crates/oneshim-web/src/web_contexts/mod.rs:72,93,120,145,202`, `src-tauri/src/app_runtime_launch.rs:383,532,733,745`, `src-tauri/src/scheduler/loops/{intelligence,monitor,system}.rs`). The pre-change struct was `#[derive(Clone)]` because `Arc<RwLock<AppConfig>>` clones cheaply. `watch::Sender` is not `Clone` and `parking_lot::Mutex<()>` is not `Clone`, so we move all state into a private `Arc<Inner>` and derive `Clone` on the outer shell. Every existing call site continues to work with zero edits.
 
 In `crates/oneshim-core/src/config_manager.rs`, replace the top of the file:
 
@@ -161,24 +186,20 @@ use tracing::{debug, info, warn};
 const CONFIG_FILE_NAME: &str = "config.json";
 const APP_DIR_NAME: &str = "oneshim";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConfigManager {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
     sender: watch::Sender<Arc<AppConfig>>,
     writer_lock: Mutex<()>,
     config_path: PathBuf,
 }
-
-impl Clone for ConfigManager {
-    // `watch::Sender` is not `Clone`. Clones share the same sender via Arc so every
-    // clone sees the same subscribers. ConfigManager itself is therefore wrapped
-    // in Arc by callers who need it cloneable (existing pattern).
-    fn clone(&self) -> Self {
-        panic!(
-            "ConfigManager::clone is not supported; wrap in Arc<ConfigManager> instead."
-        );
-    }
-}
 ```
+
+(`Inner` itself is neither `Clone` nor needs to be — the `Arc` around it is what every clone shares.)
 
 - [ ] **Step 3: Replace `with_path` body.**
 
@@ -225,25 +246,29 @@ pub fn with_path(config_path: PathBuf) -> Result<Self, CoreError> {
     // `subscribe()` lazily creates them.
 
     Ok(Self {
-        sender,
-        writer_lock: Mutex::new(()),
-        config_path,
+        inner: Arc::new(Inner {
+            sender,
+            writer_lock: Mutex::new(()),
+            config_path,
+        }),
     })
 }
 ```
 
 - [ ] **Step 4: Rewrite `get`, `update`, `update_with`, `reload`.**
 
+Each method now deref-walks through `self.inner`.
+
 ```rust
 pub fn get(&self) -> AppConfig {
-    (*self.sender.borrow()).clone()
+    (*self.inner.sender.borrow()).clone()
 }
 
 pub fn update(&self, new_config: AppConfig) -> Result<(), CoreError> {
-    let _guard = self.writer_lock.lock();
-    Self::save_to_file(&self.config_path, &new_config)?;
-    self.sender.send_replace(Arc::new(new_config));
-    debug!("settings save complete: {}", self.config_path.display());
+    let _guard = self.inner.writer_lock.lock();
+    Self::save_to_file(&self.inner.config_path, &new_config)?;
+    self.inner.sender.send_replace(Arc::new(new_config));
+    debug!("settings save complete: {}", self.inner.config_path.display());
     Ok(())
 }
 
@@ -251,24 +276,24 @@ pub fn update_with<F>(&self, updater: F) -> Result<AppConfig, CoreError>
 where
     F: FnOnce(&mut AppConfig) -> Result<(), String>,
 {
-    let _guard = self.writer_lock.lock();
-    let mut new_cfg = (**self.sender.borrow()).clone();
+    let _guard = self.inner.writer_lock.lock();
+    let mut new_cfg = (**self.inner.sender.borrow()).clone();
     updater(&mut new_cfg).map_err(CoreError::Config)?;
-    Self::save_to_file(&self.config_path, &new_cfg)?;
+    Self::save_to_file(&self.inner.config_path, &new_cfg)?;
     let snapshot = new_cfg.clone();
-    self.sender.send_replace(Arc::new(new_cfg));
-    debug!("settings save complete: {}", self.config_path.display());
+    self.inner.sender.send_replace(Arc::new(new_cfg));
+    debug!("settings save complete: {}", self.inner.config_path.display());
     Ok(snapshot)
 }
 
 pub fn config_path(&self) -> &PathBuf {
-    &self.config_path
+    &self.inner.config_path
 }
 
 pub fn reload(&self) -> Result<(), CoreError> {
-    let _guard = self.writer_lock.lock();
-    let reloaded = Self::load_from_file(&self.config_path)?;
-    self.sender.send_replace(Arc::new(reloaded));
+    let _guard = self.inner.writer_lock.lock();
+    let reloaded = Self::load_from_file(&self.inner.config_path)?;
+    self.inner.sender.send_replace(Arc::new(reloaded));
     info!("settings load complete");
     Ok(())
 }
@@ -316,7 +341,23 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ## Task 2: `subscribe()` + `snapshot()` public API (T-X1-1, T-X1-5, T-X1-6)
 
 **Files:**
+- Modify: `crates/oneshim-core/Cargo.toml` (add tokio to dev-dependencies for `#[tokio::test]`)
 - Modify: `crates/oneshim-core/src/config_manager.rs` (add methods + tests)
+
+- [ ] **Step 0: Add tokio + macros to `[dev-dependencies]`.**
+
+Edit `crates/oneshim-core/Cargo.toml`:
+
+```toml
+[dev-dependencies]
+tempfile = "3"
+criterion = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
+```
+
+(`workspace = true` picks up the root-Cargo pin of tokio 1 with `features = ["full"]`; the dev-deps line explicitly requests the subset we need for tests. Since the workspace line is `tokio = { version = "1", features = ["full"] }` with no `workspace.dependencies`, the simpler alternative is `tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }`. Pick whichever matches how other crates declare tokio in dev-deps.)
+
+Run `cargo check -p oneshim-core --tests 2>&1 | tail -5` — expect green.
 
 - [ ] **Step 1: Write failing test `subscribe_sees_initial_value` (T-X1-1).**
 
@@ -356,14 +397,14 @@ Insert after `get()`:
 /// the next `update` / `update_with` / `reload`. Dropping a receiver does not
 /// affect any other subscriber.
 pub fn subscribe(&self) -> watch::Receiver<Arc<AppConfig>> {
-    self.sender.subscribe()
+    self.inner.sender.subscribe()
 }
 
 /// Cheap read-only snapshot of the current config.
 ///
 /// Equivalent to `subscribe().borrow().clone()` without registering a subscriber.
 pub fn snapshot(&self) -> Arc<AppConfig> {
-    self.sender.borrow().clone()
+    self.inner.sender.borrow().clone()
 }
 ```
 
@@ -914,39 +955,36 @@ tracing-opentelemetry = { version = "0.28", optional = true }
 
 (If Task 0 forced the grpc-tonic path, swap `http-proto, reqwest-client` for `grpc-tonic`.)
 
-- [ ] **Step 2: Write failing T-X2-1 `feature_off_init_is_noop`.**
+- [ ] **Step 2: Write failing T-X2-1 `feature_off_init_is_noop` inline.**
 
-Create `src-tauri/tests/telemetry_feature_off.rs`:
+Append to `src-tauri/src/telemetry/mod.rs` (end of file):
 
 ```rust
-#![cfg(not(feature = "telemetry"))]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oneshim_core::config::sections::storage::TelemetryConfig;
 
-// Verifies the feature-off path compiles, produces a no-op handle, and does
-// not allocate an exporter even if config.enabled is true.
-#[test]
-fn feature_off_construction_is_noop() {
-    use oneshim_app::telemetry::{Handle, Layer};
-
-    let cfg = oneshim_core::config::sections::storage::TelemetryConfig {
-        enabled: true,
-        ..Default::default()
-    };
-
-    let (_layer, handle) = Handle::new_with_layer(&cfg);
-    // apply must be idempotent and harmless with the feature off.
-    handle.apply(&cfg).expect("apply is a no-op when feature is off");
+    #[test]
+    #[cfg(not(feature = "telemetry"))]
+    fn feature_off_construction_is_noop() {
+        let cfg = TelemetryConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let (_layer, handle) = Handle::new_with_layer(&cfg);
+        handle.apply(&cfg).expect("apply is a no-op when feature is off");
+    }
 }
 ```
 
-(If `oneshim-app` does not expose a `pub mod telemetry`, add it in Step 4.)
-
-- [ ] **Step 3: Run — expect compile error (`telemetry` module does not exist).**
+- [ ] **Step 3: Run — expect compile error (the `telemetry` module is not declared yet in `main.rs`).**
 
 ```bash
-cargo test -p oneshim-app --test telemetry_feature_off 2>&1 | tail -10
+cargo test -p oneshim-app -- telemetry::tests::feature_off_construction_is_noop 2>&1 | tail -10
 ```
 
-Expected: `error[E0432]: unresolved import 'oneshim_app::telemetry'`.
+Expected: `error[E0583]: file not found for module 'telemetry'` or similar, until Step 5 registers the module.
 
 - [ ] **Step 4: Create the skeleton module (feature-off branch only).**
 
@@ -1061,7 +1099,7 @@ pub mod telemetry;
 - [ ] **Step 6: Run T-X2-1 with default features.**
 
 ```bash
-cargo test -p oneshim-app --test telemetry_feature_off 2>&1 | tail -10
+cargo test -p oneshim-app -- telemetry::tests::feature_off_construction_is_noop 2>&1 | tail -10
 ```
 
 Expected: 1 passed.
@@ -1086,7 +1124,7 @@ Expected: both green.
 - [ ] **Step 9: Commit.**
 
 ```bash
-git add src-tauri/Cargo.toml src-tauri/src/telemetry/ src-tauri/src/main.rs src-tauri/tests/telemetry_feature_off.rs Cargo.lock
+git add src-tauri/Cargo.toml src-tauri/src/telemetry/ src-tauri/src/main.rs Cargo.lock
 git commit -m "feat(app): introduce telemetry feature + module skeleton
 
 Adds a Cargo feature 'telemetry' on the oneshim-app binary crate,
@@ -1108,32 +1146,25 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ## Task 8: OTLP pipeline + reload-layer wiring (T-X2-2, T-X2-3, T-X2-4, T-X2-7)
 
 **Files:**
-- Modify: `src-tauri/src/telemetry/otlp.rs`
-- Modify: `src-tauri/src/telemetry/mod.rs` (adjust `Inner` type, imports)
-- Create: `src-tauri/tests/mock_otlp.rs` (mock collector, feature-gated)
-- Create: `src-tauri/tests/telemetry_feature_on.rs`
+- Modify: `src-tauri/src/telemetry/otlp.rs` (replace the stub with real implementation)
+- Modify: `src-tauri/src/telemetry/mod.rs` (append feature-on tests to the existing `#[cfg(test)] mod tests`)
+- Create: `src-tauri/src/telemetry/mock_otlp.rs` (test-only + feature-gated — see Test placement convention)
 
-- [ ] **Step 1: Write failing T-X2-2 `feature_on_config_off_installs_empty_reload_wrapper`.**
+- [ ] **Step 1: Write failing T-X2-2 `feature_on_config_off_installs_empty_reload_wrapper` inline.**
 
-Create `src-tauri/tests/telemetry_feature_on.rs`:
+Append inside the existing `mod tests` in `src-tauri/src/telemetry/mod.rs`:
 
 ```rust
-#![cfg(feature = "telemetry")]
-
-use oneshim_app::telemetry::Handle;
-use oneshim_core::config::sections::storage::TelemetryConfig;
-
-#[test]
-fn feature_on_config_off_installs_empty_reload_wrapper() {
-    let cfg = TelemetryConfig {
-        enabled: false,
-        ..Default::default()
-    };
-    let (_layer, _handle) = Handle::new_with_layer(&cfg);
-    // No panic, no network activity. Nothing to assert beyond that — the
-    // reload wrapper is constructed with `None` inside and layered into
-    // a test-local registry in T-X2-4.
-}
+    #[test]
+    #[cfg(feature = "telemetry")]
+    fn feature_on_config_off_installs_empty_reload_wrapper() {
+        let cfg = TelemetryConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let (_layer, _handle) = Handle::new_with_layer(&cfg);
+        // No panic, no network activity. Inner `Option<OtelLayer>` is None.
+    }
 ```
 
 - [ ] **Step 2: Implement `otlp::build_initial_handle` and `Inner::apply` for real.**
@@ -1278,14 +1309,14 @@ fn shutdown(provider: sdktrace::SdkTracerProvider) {
 
 The existing declarations in `mod.rs` already use `otlp::Inner` and `otlp::OtelLayer`; nothing else to add.
 
-- [ ] **Step 4: Create the mock OTLP collector harness.**
+- [ ] **Step 4: Create the mock OTLP collector helper.**
 
-`src-tauri/tests/mock_otlp.rs`:
+Create `src-tauri/src/telemetry/mock_otlp.rs`:
 
 ```rust
-#![cfg(feature = "telemetry")]
+#![cfg(all(test, feature = "telemetry"))]
 
-use axum::{extract::State, http::StatusCode, routing::post, Router};
+use axum::{http::StatusCode, routing::post, Router};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -1324,15 +1355,21 @@ pub async fn start() -> MockCollector {
 }
 ```
 
-- [ ] **Step 5: Add T-X2-3 `feature_on_config_on_builds_pipeline` using the mock.**
-
-In `src-tauri/tests/telemetry_feature_on.rs` append:
+Register the helper at the top of `src-tauri/src/telemetry/mod.rs` (right after the existing `mod instance_id;` and `mod otlp;` declarations):
 
 ```rust
+#[cfg(test)]
 mod mock_otlp;
+```
 
-#[tokio::test]
-async fn feature_on_config_on_builds_pipeline() {
+- [ ] **Step 5: Add T-X2-3 `feature_on_config_on_builds_pipeline` using the mock.**
+
+Append inside `mod tests` in `src-tauri/src/telemetry/mod.rs`:
+
+```rust
+    #[tokio::test]
+    #[cfg(feature = "telemetry")]
+    async fn feature_on_config_on_builds_pipeline() {
     let mock = mock_otlp::start().await;
 
     let cfg = TelemetryConfig {
@@ -1412,7 +1449,7 @@ pub mod telemetry_test_helpers {
 - [ ] **Step 8: Run the four tests.**
 
 ```bash
-cargo test -p oneshim-app --features telemetry --test telemetry_feature_on 2>&1 | tail -15
+cargo test -p oneshim-app --features telemetry telemetry::tests 2>&1 | tail -15
 ```
 
 Expected: 4 passed.
@@ -1428,7 +1465,7 @@ Expected: green.
 - [ ] **Step 10: Commit.**
 
 ```bash
-git add src-tauri/src/telemetry/ src-tauri/tests/telemetry_feature_on.rs src-tauri/tests/mock_otlp.rs
+git add src-tauri/src/telemetry/ src-tauri/src/telemetry/mod.rs (inline tests) src-tauri/src/telemetry/mock_otlp.rs
 git commit -m "feat(app): wire OTLP pipeline behind tracing reload::Layer
 
 Adds the real otlp module: SpanExporter over HTTP/proto (or gRPC per
@@ -1454,11 +1491,11 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 **Files:**
 - Modify: `src-tauri/src/telemetry/instance_id.rs`
 - Modify: `src-tauri/src/telemetry/otlp.rs` (attach the UUID as a Resource attribute)
-- Modify: `src-tauri/tests/telemetry_feature_on.rs`
+- Modify: `src-tauri/src/telemetry/mod.rs (inline tests)`
 
 - [ ] **Step 1: Write failing T-X2-9 covering every state-table row (§3.7).**
 
-Append to `src-tauri/tests/telemetry_feature_on.rs`:
+Append inside the existing `mod tests` block in `src-tauri/src/telemetry/mod.rs`:
 
 ```rust
 use oneshim_app::telemetry::instance_id_test_helpers as iid;
@@ -1583,23 +1620,7 @@ Expose the test helpers in `mod.rs`:
 pub use instance_id::instance_id_test_helpers;
 ```
 
-Add `uuid` to `src-tauri/Cargo.toml` as optional behind `telemetry`:
-
-```toml
-uuid = { version = "1", optional = true, features = ["v4"] }
-```
-
-And extend the feature line:
-
-```toml
-telemetry = [
-    "dep:opentelemetry",
-    "dep:opentelemetry_sdk",
-    "dep:opentelemetry-otlp",
-    "dep:tracing-opentelemetry",
-    "dep:uuid",
-]
-```
+`uuid` is already a workspace dep and already listed unconditionally in `src-tauri/Cargo.toml` (`uuid = { workspace = true }` line ~52), so no dep change is needed. Do NOT add `dep:uuid` to the `telemetry` feature line — that would re-declare the same crate as optional and Cargo will reject the combination.
 
 - [ ] **Step 3: Wire the UUID into the Resource attributes in `otlp::build_pipeline`.**
 
@@ -1618,7 +1639,7 @@ Propagate `data_dir` through `build_initial_handle` and `Inner::apply` — use `
 - [ ] **Step 4: Run T-X2-9.**
 
 ```bash
-cargo test -p oneshim-app --features telemetry --test telemetry_feature_on -- \
+cargo test -p oneshim-app --features telemetry -- telemetry::tests::\
   instance_id_file_lifecycle_matches_state_table 2>&1 | tail -10
 ```
 
@@ -1636,7 +1657,7 @@ Expected: no regressions.
 
 ```bash
 cargo clippy -p oneshim-app --features telemetry --all-targets -- -D warnings
-git add src-tauri/Cargo.toml src-tauri/src/telemetry/ src-tauri/tests/telemetry_feature_on.rs Cargo.lock
+git add src-tauri/Cargo.toml src-tauri/src/telemetry/ src-tauri/src/telemetry/mod.rs (inline tests) Cargo.lock
 git commit -m "feat(app): telemetry_instance_id lifecycle
 
 Creates the UUIDv4 instance file with 0600 perms on first opt-in,
@@ -1658,12 +1679,12 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ## Task 10: Shutdown-with-unreachable-collector watchdog (T-X2-8)
 
 **Files:**
-- Modify: `src-tauri/tests/telemetry_feature_on.rs`
+- Modify: `src-tauri/src/telemetry/mod.rs (inline tests)`
 - Modify: `src-tauri/src/telemetry/otlp.rs` (already has thread-isolated shutdown — tighten deadline)
 
 - [ ] **Step 1: Add T-X2-8.**
 
-Append to `src-tauri/tests/telemetry_feature_on.rs`:
+Append inside the existing `mod tests` block in `src-tauri/src/telemetry/mod.rs`:
 
 ```rust
 #[tokio::test]
@@ -1714,7 +1735,7 @@ fn shutdown(provider: sdktrace::SdkTracerProvider) {
 - [ ] **Step 3: Run T-X2-8.**
 
 ```bash
-cargo test -p oneshim-app --features telemetry --test telemetry_feature_on -- \
+cargo test -p oneshim-app --features telemetry -- telemetry::tests::\
   shutdown_completes_when_collector_unreachable 2>&1 | tail -10
 ```
 
@@ -1724,7 +1745,7 @@ Expected: 1 passed, within 5 s.
 
 ```bash
 cargo clippy -p oneshim-app --features telemetry --all-targets -- -D warnings
-git add src-tauri/src/telemetry/otlp.rs src-tauri/tests/telemetry_feature_on.rs
+git add src-tauri/src/telemetry/otlp.rs src-tauri/src/telemetry/mod.rs (inline tests)
 git commit -m "fix(app): watchdogged OTel shutdown when collector unreachable
 
 Provider shutdown now runs on a dedicated thread with a 4s deadline.
@@ -1745,7 +1766,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 **Files:**
 - Modify: `src-tauri/src/main.rs`
-- Modify: `src-tauri/tests/telemetry_feature_on.rs`
+- Modify: `src-tauri/src/telemetry/mod.rs (inline tests)`
 
 - [ ] **Step 1: Write failing T-X2-10 (spine test).**
 
@@ -1789,19 +1810,40 @@ async fn mock_collector_receives_span() {
 - [ ] **Step 2: Run — expect fail because the subscriber does not actually flush.**
 
 ```bash
-cargo test -p oneshim-app --features telemetry --test telemetry_feature_on -- \
+cargo test -p oneshim-app --features telemetry -- telemetry::tests::\
   mock_collector_receives_span 2>&1 | tail -10
 ```
 
 If it already passes, the infrastructure is sufficient — skip Step 3.
 
-- [ ] **Step 3: Add an explicit flush on span emission in the test.**
+- [ ] **Step 3: Force-flush the exporter for deterministic tests.**
 
-(Test-only — production uses batch processor auto-flush.) After the `in_scope`:
+`SdkTracerProvider::force_flush()` exists on opentelemetry_sdk 0.27+. Use it instead of time-based sleep.
+
+This requires `Handle::new_with_layer` to expose the provider to the test. Extend `TelemetryHandle` with a test-only helper:
 
 ```rust
-// Give the BatchSpanProcessor a chance to flush.
-tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+#[cfg(all(test, feature = "telemetry"))]
+impl Handle {
+    pub(crate) fn force_flush_for_tests(&self) {
+        let inner = self.inner.lock();
+        if let Some(ref provider) = inner.active {
+            let _ = provider.force_flush();
+        }
+    }
+}
+```
+
+Then in the test, replace the `sleep(1s)` with:
+
+```rust
+handle.force_flush_for_tests();
+```
+
+`_handle` in the original snippet therefore becomes `handle` (keep the reference instead of `_`). Rename:
+
+```rust
+let (layer, handle) = Handle::new_with_layer(&cfg);
 ```
 
 - [ ] **Step 4: Add T-X2-5 `config_bus_delivers_telemetry_toggle` as an integration test against `ConfigManager`.**
@@ -1844,18 +1886,22 @@ async fn config_bus_delivers_telemetry_toggle() {
     })
     .unwrap();
 
-    // Allow one async tick for the task to pick up the change.
-    tokio::task::yield_now().await;
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-    assert!(observed.load(std::sync::atomic::Ordering::SeqCst));
+    // Deterministic wait: poll the atomic with a short timeout budget.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while std::time::Instant::now() < deadline {
+        if observed.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("toggle task did not observe the update within 1s");
 }
 ```
 
 - [ ] **Step 5: Run T-X2-5.**
 
 ```bash
-cargo test -p oneshim-app --features telemetry --test telemetry_feature_on -- \
+cargo test -p oneshim-app --features telemetry -- telemetry::tests::\
   config_bus_delivers_telemetry_toggle 2>&1 | tail -10
 ```
 
@@ -1909,7 +1955,7 @@ Expected: both green.
 - [ ] **Step 9: Commit.**
 
 ```bash
-git add src-tauri/src/main.rs src-tauri/tests/telemetry_feature_on.rs
+git add src-tauri/src/main.rs src-tauri/src/telemetry/mod.rs (inline tests)
 git commit -m "feat(app): bus-driven telemetry toggle + mock-collector spine test
 
 ConfigChangeBus subscriber in main.rs forwards TelemetryConfig changes
@@ -1951,26 +1997,29 @@ Same structure, in Korean.
 
 - [ ] **Step 3: Update the CI workflow.**
 
-Add a matrix entry:
+The repo gates Rust work via `changes.outputs.rust == 'true'` computed by `./scripts/gha-detect-changes.sh`. That script already emits `rust=true` whenever `src-tauri/**`, `crates/**`, `Cargo.toml`, or `Cargo.lock` change, so no extra `paths:` filter is needed — a PR that touches telemetry code already trips the Rust rebuild. The spec's "path-gated" wording means "the change detection already covers telemetry-relevant paths" — not a new matrix cell.
+
+In `.github/workflows/ci.yml` there are existing steps for `--features server` and `--features grpc`. Append telemetry variants after them.
+
+Clippy (append after the existing `Run clippy (grpc features)` step around line 228):
 
 ```yaml
-- name: cargo test --features telemetry (path-gated)
-  if: >
-    contains(join(github.event.pull_request.changed_files.*.filename, '\n'),
-             'src-tauri/') ||
-    contains(join(github.event.pull_request.changed_files.*.filename, '\n'),
-             'crates/oneshim-core/src/config/sections/storage.rs') ||
-    contains(join(github.event.pull_request.changed_files.*.filename, '\n'),
-             'docs/guides/telemetry.md') ||
-    github.event_name == 'schedule' ||
-    github.event_name == 'release'
-  run: |
-    cargo check -p oneshim-app --features telemetry
-    cargo test  -p oneshim-app --features telemetry
-    cargo clippy -p oneshim-app --features telemetry --all-targets -- -D warnings
+      - name: Run clippy (telemetry features)
+        run: ./scripts/cargo-cache.sh clippy -p oneshim-app --all-targets --features telemetry -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 ```
 
-(If the repo uses a different CI syntax — `dtolnay/rust-toolchain@stable` or a reusable workflow — adapt the gate clause. The `paths` / `paths-ignore` filter on the workflow trigger may be simpler; pick whichever matches existing practice.)
+Tests (append in the Tests job, alongside whatever other `--features` test runs exist; if the job has none, add as the first feature-flag test):
+
+```yaml
+      - name: Run tests (telemetry features)
+        run: ./scripts/cargo-cache.sh test -p oneshim-app --features telemetry
+```
+
+Notes:
+- Use `./scripts/cargo-cache.sh` (the repo's wrapper) — never raw `cargo` in ci.yml.
+- Keep the `-A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity` allow-list consistent with the other clippy invocations; do not drop it.
+- Do NOT add a new `if:` gate or a new matrix cell — the `needs: [changes]` gating already covers "only when Rust changed," and `workflow_dispatch` / main push runs it unconditionally via `emit_all_true` in `scripts/gha-detect-changes.sh`.
+- If the Tests job uses `./scripts/cargo-cache.sh test --workspace` with no feature flags, still add an explicit `-p oneshim-app --features telemetry` step (not `--workspace --features telemetry` — that would try to apply the feature to every crate that doesn't declare it and fail).
 
 - [ ] **Step 4: Bump `docs/STATUS.md`.**
 
