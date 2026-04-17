@@ -240,10 +240,18 @@ use crate::error::CoreError;
 #[async_trait]
 pub trait RegimeStoragePort: Send + Sync {
     /// Load all persisted regimes on startup. Empty Vec on first launch.
+    ///
+    /// Implementations MAY perform corrective side-effect writes — e.g.,
+    /// quarantining a payload that failed to deserialise so user-curated
+    /// state is preserved for later recovery (see `SqliteRegimeManagerStateStore`).
+    /// Despite the name, `load_all` is therefore NOT guaranteed read-only;
+    /// callers must treat it as a single-shot operation at startup. Concurrent
+    /// `load_all` calls are not required to be safe.
     async fn load_all(&self) -> Result<Vec<Regime>, CoreError>;
 
-    /// Persist the full regime set. Called on graceful shutdown and
-    /// periodically after lifecycle transitions (merge, delete, rename).
+    /// Persist the full regime set. Called on graceful shutdown and,
+    /// in a future phase, periodically after lifecycle transitions
+    /// (merge, delete, rename).
     async fn save_all(&self, regimes: &[Regime]) -> Result<(), CoreError>;
 }
 ```
@@ -457,14 +465,14 @@ ADR numbers: verified against `docs/architecture/ADR-*.md` — ADR-016 is the ne
 Single feature branch `feat/phase3-regime-feedback-learning`:
 
 1. **Commit 1** — X3 port + CoachingEngine/RegimeClassifier method stubs + FeedbackSender sink param + T-X3-1..5.
-2. **Commit 2** — ADR-017.
+2. **Commit 2** — ADR-017 (includes the ~10 ms latency-budget rationale that §2.1's trait doc references).
 3. **Commit 3** — C3a SQL filter + T-C3a-1..4.
-4. **Commit 4** — RegimeStoragePort + migration + SqliteRegimeManagerStateStore + T-C3c-1..5.
-5. **Commit 5** — Startup hydration wire + shutdown-save wire + watchdog + T-C3c-6..7.
+4. **Commit 4** — RegimeStoragePort + v31 migration (with comment noting the deliberately-nullable `payload_backup_at` divergence from the usual `NOT NULL DEFAULT (datetime('now'))`) + SqliteRegimeManagerStateStore + T-C3c-1..5.
+5. **Commit 5** — AppState field declarations (`regime_storage: Option<Arc<dyn RegimeStoragePort>>`, `regime_manager_snapshot: Option<Arc<RegimeManager>>`, initialised to `None`) + `RunEvent::Exit` save-guard block + `RegimeManager::hydrate_from`. **No new tests here** — the save path is dormant until Commit 7 populates the fields. Commit keeps `cargo check/test/clippy` green because the guard is a no-op when both fields are `None`.
 6. **Commit 6** — ADR-018.
-7. **Commit 7** — Composition-root wiring: `CompositeFeedbackSink` construction + `FeedbackSender::new_with_sink` call + `SqliteRegimeManagerStateStore` construction + injection at boot.
+7. **Commit 7** — Composition-root wiring: build `CompositeFeedbackSink`, pass via `FeedbackSender::new_with_sink`; construct `SqliteRegimeManagerStateStore`, call `load_all` during startup with `hydrate_from`, populate the Commit-5 AppState fields so `RunEvent::Exit`'s save guard is active. **T-C3c-6 and T-C3c-7 land here** because they exercise the end-to-end populated path.
 
-Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings` green.
+Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings` green. Commit 5's test coverage gap is deliberate: the dormant guard is trivially covered by compile-time + Commit 7's integration tests.
 
 ---
 
