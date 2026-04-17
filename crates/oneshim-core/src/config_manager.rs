@@ -682,4 +682,43 @@ mod tests {
             "changed() must resolve to Err after sender drop"
         );
     }
+
+    /// T-X1-8 — legacy config.json without new telemetry fields deserialises
+    /// cleanly. Protects the serde-defaults contract for users upgrading from a
+    /// pre-Phase-2 build.
+    #[test]
+    fn deserialises_legacy_config_json_without_new_telemetry_fields() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+
+        // A minimal JSON payload that mimics a pre-Phase-2 config.json: the
+        // `telemetry` section lacks `otlp_endpoint`, `sample_rate`, and
+        // `service_name`. Other top-level sections are absent entirely so
+        // their serde(default) kicks in.
+        let legacy = r#"{
+          "telemetry": {
+            "enabled": false,
+            "crash_reports": false,
+            "usage_analytics": false,
+            "performance_metrics": false
+          }
+        }"#;
+        std::fs::write(&cfg_path, legacy).unwrap();
+
+        let mgr = ConfigManager::with_path(cfg_path).expect("legacy JSON must deserialise");
+        let cfg = mgr.get();
+        assert_eq!(cfg.telemetry.otlp_endpoint, None);
+        assert!((cfg.telemetry.sample_rate - 1.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.telemetry.service_name, "oneshim-client");
+    }
+
+    /// T-X2-6 — fresh install has telemetry opted OUT.
+    #[test]
+    fn telemetry_enabled_defaults_to_false() {
+        let cfg = AppConfig::default_config();
+        assert!(
+            !cfg.telemetry.enabled,
+            "telemetry must default to opt-out (fresh install)"
+        );
+    }
 }

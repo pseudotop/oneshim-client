@@ -58,7 +58,7 @@ impl Default for IntegrityConfig {
 
 // ── TelemetryConfig ────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TelemetryConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -68,6 +68,40 @@ pub struct TelemetryConfig {
     pub usage_analytics: bool,
     #[serde(default)]
     pub performance_metrics: bool,
+    /// OTLP exporter endpoint. `None` falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT`
+    /// environment variable, and finally to `http://localhost:4318` (OTLP/HTTP default).
+    #[serde(default)]
+    pub otlp_endpoint: Option<String>,
+    /// Sampling rate for spans, 0.0–1.0. Defaults to 1.0 (no sampling on top of
+    /// tracing's own `EnvFilter`).
+    #[serde(default = "default_telemetry_sample_rate")]
+    pub sample_rate: f64,
+    /// `service.name` OTel resource attribute. Identifies the client binary in
+    /// the collector; not a user identifier.
+    #[serde(default = "default_telemetry_service_name")]
+    pub service_name: String,
+}
+
+fn default_telemetry_sample_rate() -> f64 {
+    1.0
+}
+
+fn default_telemetry_service_name() -> String {
+    "oneshim-client".to_string()
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            crash_reports: false,
+            usage_analytics: false,
+            performance_metrics: false,
+            otlp_endpoint: None,
+            sample_rate: default_telemetry_sample_rate(),
+            service_name: default_telemetry_service_name(),
+        }
+    }
 }
 
 // ── NotificationConfig ─────────────────────────────────────────────
