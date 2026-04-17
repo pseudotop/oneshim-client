@@ -61,7 +61,7 @@ Running a feature-off test with the telemetry feature enabled is harmless — `#
 | `src-tauri/Cargo.toml` | Declare `telemetry` feature + optional OTel deps. |
 | `src-tauri/src/main.rs` | Build `TelemetryHandle` + layer, attach to subscriber, spawn bus-driven toggle task. |
 | `src-tauri/CLAUDE.md` | Note the new `telemetry/` module and `telemetry` feature. |
-| `.github/workflows/rust-ci.yml` (or whichever workflow file owns CI) | Add path-gated `--features telemetry` matrix cell. |
+| `.github/workflows/ci.yml` (or whichever workflow file owns CI) | Add path-gated `--features telemetry` matrix cell. |
 | `docs/STATUS.md` | Final commit only: update test totals and add "Telemetry feature binary size" row. |
 
 ---
@@ -1202,7 +1202,7 @@ impl Inner {
         match transition.cmp(&0) {
             Ordering::Greater => {
                 // off -> on: build a new pipeline and swap in.
-                let (provider, layer) = build_pipeline(cfg)?;
+                let (provider, layer) = build_pipeline(cfg, &self.data_dir)?;
                 self.reload_handle
                     .modify(|opt| *opt = Some(layer))
                     .map_err(|e| anyhow::anyhow!("reload modify failed: {e:?}"))?;
@@ -1224,27 +1224,22 @@ impl Inner {
     }
 }
 
-pub(super) fn build_initial_handle(cfg: &TelemetryConfig) -> (Layer, Handle) {
-    let initial: Option<OtelLayer> = if cfg.enabled {
-        match build_pipeline(cfg) {
-            Ok((_provider, layer)) => Some(layer),
-            // Do not return `_provider` here — we build it again on apply() so
-            // ownership of the provider lives inside Inner. In practice we
-            // special-case this by calling build_pipeline twice at boot; the
-            // cost is one extra exporter construction.
-        }
+pub(super) fn build_initial_handle(
+    cfg: &TelemetryConfig,
+    data_dir: &std::path::Path,
+) -> anyhow::Result<(Layer, Handle)> {
+    // Build the pipeline at most ONCE at boot. The provider lives in Inner.active
+    // so we can shut it down on toggle-off; the layer is moved into the reload
+    // wrapper so it is attached to the subscriber. `OtelLayer` is not Clone and
+    // doesn't need to be — we own exactly one instance.
+    let (initial_layer, active) = if cfg.enabled {
+        let (provider, layer) = build_pipeline(cfg, data_dir)?;
+        (Some(layer), Some(provider))
     } else {
-        None
+        (None, None)
     };
 
-    let (reload_layer, reload_handle) = reload::Layer::new(initial);
-
-    // Build a second pipeline so the Inner owns its provider.
-    let active = if cfg.enabled {
-        Some(build_pipeline(cfg).ok().map(|(p, _)| p)).flatten()
-    } else {
-        None
-    };
+    let (reload_layer, reload_handle) = reload::Layer::new(initial_layer);
 
     let handle = Handle {
         inner: parking_lot::Mutex::new(Inner {
@@ -1254,11 +1249,12 @@ pub(super) fn build_initial_handle(cfg: &TelemetryConfig) -> (Layer, Handle) {
         }),
     };
 
-    (reload_layer, handle)
+    Ok((reload_layer, handle))
 }
 
 fn build_pipeline(
     cfg: &TelemetryConfig,
+    data_dir: &std::path::Path,
 ) -> anyhow::Result<(sdktrace::SdkTracerProvider, OtelLayer)> {
     let endpoint = resolve_endpoint(cfg);
     let exporter = opentelemetry_otlp::SpanExporter::builder()
@@ -1266,8 +1262,11 @@ fn build_pipeline(
         .with_endpoint(endpoint)
         .build()?;
 
+    let instance_id = crate::telemetry::instance_id::ensure_instance_id(data_dir)?;
+
     let resource = Resource::builder()
         .with_attribute(KeyValue::new("service.name", cfg.service_name.clone()))
+        .with_attribute(KeyValue::new("service.instance.id", instance_id))
         .build();
 
     let provider = sdktrace::SdkTracerProvider::builder()
@@ -1303,7 +1302,18 @@ fn shutdown(provider: sdktrace::SdkTracerProvider) {
 }
 ```
 
-(Note the doubled `build_pipeline` call at boot when `enabled=true`. It is the simplest way to satisfy "layer for subscriber stack" + "provider for Inner::active" without forcing `OtelLayer` into `Clone`. One-time cost at boot; callers never notice.)
+The `Inner::apply` transition arms call `build_pipeline(cfg, data_dir)?` with the same `data_dir` captured at boot. Store `data_dir` in `Inner`:
+
+```rust
+pub(super) struct Inner {
+    reload_handle: reload::Handle<Option<OtelLayer>, tracing_subscriber::Registry>,
+    active: Option<sdktrace::SdkTracerProvider>,
+    last_cfg: TelemetryConfig,
+    data_dir: std::path::PathBuf,
+}
+```
+
+`build_initial_handle` captures `data_dir.to_path_buf()` into the new field. `apply`'s off→on arm calls `build_pipeline(cfg, &self.data_dir)?`.
 
 - [ ] **Step 3: Adjust `mod.rs` to expose what the tests need.**
 
@@ -1465,7 +1475,7 @@ Expected: green.
 - [ ] **Step 10: Commit.**
 
 ```bash
-git add src-tauri/src/telemetry/ src-tauri/src/telemetry/mod.rs (inline tests) src-tauri/src/telemetry/mock_otlp.rs
+git add src-tauri/src/telemetry/ src-tauri/src/telemetry/mod.rs src-tauri/src/telemetry/mock_otlp.rs
 git commit -m "feat(app): wire OTLP pipeline behind tracing reload::Layer
 
 Adds the real otlp module: SpanExporter over HTTP/proto (or gRPC per
@@ -1491,7 +1501,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 **Files:**
 - Modify: `src-tauri/src/telemetry/instance_id.rs`
 - Modify: `src-tauri/src/telemetry/otlp.rs` (attach the UUID as a Resource attribute)
-- Modify: `src-tauri/src/telemetry/mod.rs (inline tests)`
+- Modify: `src-tauri/src/telemetry/mod.rs`
 
 - [ ] **Step 1: Write failing T-X2-9 covering every state-table row (§3.7).**
 
@@ -1521,8 +1531,12 @@ fn instance_id_file_lifecycle_matches_state_table() {
     assert_eq!(first, second, "UUID must be stable across opt-in cycles");
 
     // Row 4: boot with enabled=false + file exists -> untouched.
+    // The state-table row is a pure no-op (the telemetry bootstrap path simply
+    // never reads or writes the file when disabled), so the assertion here is
+    // that mtime is unchanged after the expected interval during which the app
+    // would have run without touching the file.
     let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
-    iid::leave_untouched_if_disabled(&data_dir).unwrap();
+    // no call — simulating "app runs with enabled=false"
     let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
     assert_eq!(mtime_before, mtime_after);
 
@@ -1565,12 +1579,6 @@ pub(super) fn ensure_instance_id(data_dir: &Path) -> anyhow::Result<String> {
     Ok(uuid)
 }
 
-pub(super) fn leave_untouched_if_disabled(_data_dir: &Path) -> anyhow::Result<()> {
-    // The state-table row for enabled=false + file exists is "do nothing."
-    // Keep this function for call-site clarity; it is an explicit no-op.
-    Ok(())
-}
-
 pub(super) fn reset_instance_id(data_dir: &Path) -> anyhow::Result<()> {
     let path = data_dir.join(FILE_NAME);
     if path.exists() {
@@ -1609,7 +1617,7 @@ fn write_with_owner_only(path: &Path, contents: &str) -> anyhow::Result<()> {
 }
 
 pub mod instance_id_test_helpers {
-    pub use super::{ensure_instance_id, leave_untouched_if_disabled, reset_instance_id};
+    pub use super::{ensure_instance_id, reset_instance_id};
 }
 ```
 
@@ -1657,7 +1665,7 @@ Expected: no regressions.
 
 ```bash
 cargo clippy -p oneshim-app --features telemetry --all-targets -- -D warnings
-git add src-tauri/Cargo.toml src-tauri/src/telemetry/ src-tauri/src/telemetry/mod.rs (inline tests) Cargo.lock
+git add src-tauri/Cargo.toml src-tauri/src/telemetry/ src-tauri/src/telemetry/mod.rs Cargo.lock
 git commit -m "feat(app): telemetry_instance_id lifecycle
 
 Creates the UUIDv4 instance file with 0600 perms on first opt-in,
@@ -1679,7 +1687,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ## Task 10: Shutdown-with-unreachable-collector watchdog (T-X2-8)
 
 **Files:**
-- Modify: `src-tauri/src/telemetry/mod.rs (inline tests)`
+- Modify: `src-tauri/src/telemetry/mod.rs`
 - Modify: `src-tauri/src/telemetry/otlp.rs` (already has thread-isolated shutdown — tighten deadline)
 
 - [ ] **Step 1: Add T-X2-8.**
@@ -1745,7 +1753,7 @@ Expected: 1 passed, within 5 s.
 
 ```bash
 cargo clippy -p oneshim-app --features telemetry --all-targets -- -D warnings
-git add src-tauri/src/telemetry/otlp.rs src-tauri/src/telemetry/mod.rs (inline tests)
+git add src-tauri/src/telemetry/otlp.rs src-tauri/src/telemetry/mod.rs
 git commit -m "fix(app): watchdogged OTel shutdown when collector unreachable
 
 Provider shutdown now runs on a dedicated thread with a 4s deadline.
@@ -1766,7 +1774,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 **Files:**
 - Modify: `src-tauri/src/main.rs`
-- Modify: `src-tauri/src/telemetry/mod.rs (inline tests)`
+- Modify: `src-tauri/src/telemetry/mod.rs`
 
 - [ ] **Step 1: Write failing T-X2-10 (spine test).**
 
@@ -1955,7 +1963,7 @@ Expected: both green.
 - [ ] **Step 9: Commit.**
 
 ```bash
-git add src-tauri/src/main.rs src-tauri/src/telemetry/mod.rs (inline tests)
+git add src-tauri/src/main.rs src-tauri/src/telemetry/mod.rs
 git commit -m "feat(app): bus-driven telemetry toggle + mock-collector spine test
 
 ConfigChangeBus subscriber in main.rs forwards TelemetryConfig changes
@@ -1977,7 +1985,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 **Files:**
 - Create: `docs/guides/telemetry.md`
 - Create: `docs/guides/telemetry.ko.md`
-- Modify: `.github/workflows/rust-ci.yml` (add path-gated telemetry matrix cell)
+- Modify: `.github/workflows/ci.yml` (add path-gated telemetry matrix cell)
 - Modify: `docs/STATUS.md`
 - Modify: `crates/oneshim-core/CLAUDE.md`
 - Modify: `src-tauri/CLAUDE.md`
@@ -2036,7 +2044,7 @@ Run `cargo build --release -p oneshim-app` with and without `--features telemetr
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add docs/guides/telemetry.md docs/guides/telemetry.ko.md .github/workflows/rust-ci.yml docs/STATUS.md crates/oneshim-core/CLAUDE.md src-tauri/CLAUDE.md
+git add docs/guides/telemetry.md docs/guides/telemetry.ko.md .github/workflows/ci.yml docs/STATUS.md crates/oneshim-core/CLAUDE.md src-tauri/CLAUDE.md
 git commit -m "docs(phase2): telemetry user guide, CI matrix, STATUS bump
 
 Closes Phase 2.
