@@ -176,7 +176,7 @@ impl GuiActivityAggregator {
             .into_iter()
             .map(|((text, etype), count)| (text, etype, count))
             .collect();
-        top_elements.sort_by(|a, b| b.2.cmp(&a.2));
+        top_elements.sort_by_key(|e| std::cmp::Reverse(e.2));
         top_elements.truncate(5);
 
         // Detect semantic actions

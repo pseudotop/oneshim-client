@@ -344,10 +344,10 @@ pub async fn request_chat_suggestions(
         while let Some(item) = stream.next().await {
             match item {
                 Ok(OutboundMessage::Text { content, .. }) => text.push_str(&content),
-                Ok(OutboundMessage::Result { content, .. }) => {
-                    if !content.is_empty() && text.is_empty() {
-                        text = content;
-                    }
+                Ok(OutboundMessage::Result { content, .. })
+                    if !content.is_empty() && text.is_empty() =>
+                {
+                    text = content;
                 }
                 Ok(OutboundMessage::Error { message, .. }) => {
                     return Err(format!("AI error: {message}"));

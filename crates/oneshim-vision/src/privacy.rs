@@ -458,10 +458,7 @@ fn mask_private_key_blocks(text: &str) -> String {
 
     let mut result = text.to_string();
     let mut search_from = 0;
-    loop {
-        let Some(rel_begin) = result[search_from..].find("-----BEGIN ") else {
-            break;
-        };
+    while let Some(rel_begin) = result[search_from..].find("-----BEGIN ") {
         let begin_pos = search_from + rel_begin;
         let header_after = &result[begin_pos + 11..];
         // Find the closing dashes of the header line

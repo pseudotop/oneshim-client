@@ -88,7 +88,7 @@ impl SuggestionHistory {
 
         // Sort type counts descending by count
         let mut by_type: Vec<(String, u32)> = type_counts.into_iter().collect();
-        by_type.sort_by(|a, b| b.1.cmp(&a.1));
+        by_type.sort_by_key(|e| std::cmp::Reverse(e.1));
 
         // Build source stats with acceptance rate
         let mut by_source: Vec<(String, u32, f64)> = source_totals
@@ -103,7 +103,7 @@ impl SuggestionHistory {
                 (source, total, (rate * 10.0).round() / 10.0)
             })
             .collect();
-        by_source.sort_by(|a, b| b.1.cmp(&a.1));
+        by_source.sort_by_key(|e| std::cmp::Reverse(e.1));
 
         HistoryStats {
             total: self.entries.len() as u32,

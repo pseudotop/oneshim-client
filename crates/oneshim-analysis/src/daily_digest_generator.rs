@@ -78,7 +78,7 @@ impl DailyDigestGenerator {
         activities: &[oneshim_core::models::tiered_memory::ContentActivity],
     ) -> Vec<ContentBrief> {
         let mut sorted: Vec<_> = activities.iter().collect();
-        sorted.sort_by(|a, b| b.duration_secs.cmp(&a.duration_secs));
+        sorted.sort_by_key(|a| std::cmp::Reverse(a.duration_secs));
 
         sorted
             .into_iter()

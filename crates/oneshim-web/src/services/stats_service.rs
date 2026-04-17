@@ -45,7 +45,7 @@ impl StatsQueryService {
         let mut app_stats = build_activity_counts(&events, &frames);
         let session_app_durations = app_durations_for_range(&self.ctx, from, to);
         let mut top_apps = build_app_usage_entries(&mut app_stats, &session_app_durations);
-        top_apps.sort_by(|left, right| right.duration_secs.cmp(&left.duration_secs));
+        top_apps.sort_by_key(|a| std::cmp::Reverse(a.duration_secs));
         top_apps.truncate(10);
 
         let total_active_secs = total_active_secs_for_range(&self.ctx, from, to, events_logged);
@@ -70,7 +70,7 @@ impl StatsQueryService {
         let mut app_stats = build_activity_counts(&events, &frames);
         let session_app_durations = app_durations_for_range(&self.ctx, from, to);
         let mut apps = build_app_usage_entries(&mut app_stats, &session_app_durations);
-        apps.sort_by(|left, right| right.duration_secs.cmp(&left.duration_secs));
+        apps.sort_by_key(|a| std::cmp::Reverse(a.duration_secs));
 
         Ok(assemble_app_usage_response(date, apps))
     }

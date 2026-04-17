@@ -149,7 +149,7 @@ impl WeeklyDigestGenerator {
             })
             .collect();
 
-        rankings.sort_by(|a, b| b.total_mins.cmp(&a.total_mins));
+        rankings.sort_by_key(|r| std::cmp::Reverse(r.total_mins));
 
         // Return top 10
         rankings.truncate(10);

@@ -740,6 +740,22 @@ impl SqliteStorage {
         Ok(())
     }
 
+    /// Execute a TRUNCATE WAL checkpoint. Blocks until all readers/writers
+    /// finish, then checkpoints and truncates the WAL file to zero bytes.
+    /// Intended for graceful shutdown after all background loops have stopped.
+    pub fn wal_checkpoint_truncate(&self) -> Result<(), StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+            .map_err(|e| StorageError::Internal(format!("WAL checkpoint TRUNCATE failed: {e}")))?;
+
+        debug!("WAL checkpoint TRUNCATE completed");
+        Ok(())
+    }
+
     /// Run VACUUM if freelist_count / page_count exceeds `threshold_percent`.
     /// Returns `true` when VACUUM was actually executed.
     pub fn maybe_vacuum(&self, threshold_percent: u64) -> Result<bool, StorageError> {
@@ -934,6 +950,15 @@ mod tests {
     fn wal_checkpoint_passive_on_fresh_db() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
         let result = storage.wal_checkpoint_passive();
+        assert!(result.is_ok());
+    }
+
+    // ── wal_checkpoint_truncate ─────────────────────────────────────
+
+    #[test]
+    fn wal_checkpoint_truncate_on_fresh_db() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.wal_checkpoint_truncate();
         assert!(result.is_ok());
     }
 
