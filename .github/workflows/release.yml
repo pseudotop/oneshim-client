@@ -404,6 +404,26 @@ jobs:
         with:
           key: release-build-${{ matrix.target }}
 
+      # Tauri externalBin (`oneshim-sandbox-worker`) expects a binary named
+      # `<name>-<target-triple>[.exe]` at the src-tauri/ root. Build the
+      # sandbox-worker crate for this target and copy it into place BEFORE
+      # the oneshim-app release build so the Tauri bundler finds it.
+      - name: Build sandbox worker for Tauri externalBin
+        shell: bash
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: |
+          ./scripts/cargo-cache.sh build --release --target "$TARGET_TRIPLE" -p oneshim-sandbox-worker
+          SRC="target/$TARGET_TRIPLE/release/oneshim-sandbox-worker"
+          DST="src-tauri/oneshim-sandbox-worker-$TARGET_TRIPLE"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cp "$SRC.exe" "$DST.exe"
+          else
+            cp "$SRC" "$DST"
+            chmod +x "$DST"
+          fi
+          ls -la "src-tauri/oneshim-sandbox-worker-$TARGET_TRIPLE"* || true
+
       - name: Build release
         shell: bash
         run: ./scripts/cargo-cache.sh build --release --target ${{ matrix.target }} -p oneshim-app --features grpc
