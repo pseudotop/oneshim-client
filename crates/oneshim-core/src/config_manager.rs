@@ -618,4 +618,68 @@ mod tests {
             .await
             .expect("second identical update still fires");
     }
+
+    /// T-X1-9 — writer_lock is non-reentrant but never crossed with watch reads.
+    ///
+    /// `get()` and `snapshot()` only touch `self.inner.sender`, not
+    /// `self.inner.writer_lock`. Calling them from inside an `update_with`
+    /// closure (where the writer_lock is held) must therefore NOT deadlock.
+    /// The reads return the *pre-swap* value because `send_replace` has not
+    /// been called yet.
+    #[test]
+    fn update_with_does_not_reenter() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let baseline_port = mgr.get().web.port;
+        let new_port = baseline_port.wrapping_add(1);
+        let saw_snapshot = AtomicBool::new(false);
+
+        mgr.update_with(|c| {
+            // These reads go through `watch::Sender::borrow()`, bypassing
+            // writer_lock. Pre-swap they return the OLD value.
+            let snap = mgr.snapshot();
+            assert_eq!(snap.web.port, baseline_port);
+            let get_value = mgr.get();
+            assert_eq!(get_value.web.port, baseline_port);
+            saw_snapshot.store(true, Ordering::SeqCst);
+            c.web.port = new_port;
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(saw_snapshot.load(Ordering::SeqCst));
+        assert_eq!(mgr.get().web.port, new_port);
+    }
+
+    /// T-X1-10 — subscriber task exits cleanly when the manager is dropped.
+    ///
+    /// The production bus-driven telemetry task relies on `rx.changed()`
+    /// returning `Err` to terminate. This test exercises that path end-to-end.
+    #[tokio::test]
+    async fn receiver_changed_returns_err_after_manager_dropped() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+
+        let task = tokio::spawn(async move {
+            // Resolves to Err once all senders have dropped.
+            rx.changed().await
+        });
+
+        drop(mgr);
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), task)
+            .await
+            .expect("task must not hang when sender drops")
+            .expect("task must not panic");
+
+        assert!(
+            result.is_err(),
+            "changed() must resolve to Err after sender drop"
+        );
+    }
 }
