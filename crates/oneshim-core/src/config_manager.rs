@@ -526,4 +526,96 @@ mod tests {
         assert_eq!(via_snapshot.web.port, via_rx.web.port);
         assert_eq!(via_snapshot.web.port, baseline_port.wrapping_add(1));
     }
+
+    /// T-X1-2
+    #[tokio::test]
+    async fn update_notifies_subscribers() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+        let before = rx.borrow_and_update().web.port;
+
+        let mut new_cfg = mgr.get();
+        new_cfg.web.port = before.wrapping_add(7);
+        mgr.update(new_cfg).unwrap();
+
+        rx.changed()
+            .await
+            .expect("changed() must resolve after update()");
+        assert_eq!(rx.borrow().web.port, before.wrapping_add(7));
+    }
+
+    /// T-X1-3
+    #[tokio::test]
+    async fn update_with_notifies_subscribers() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+        let before = rx.borrow_and_update().web.port;
+
+        mgr.update_with(|c| {
+            c.web.port = before.wrapping_add(11);
+            Ok(())
+        })
+        .unwrap();
+
+        rx.changed()
+            .await
+            .expect("changed() must resolve after update_with()");
+        assert_eq!(rx.borrow().web.port, before.wrapping_add(11));
+    }
+
+    /// T-X1-4
+    #[tokio::test]
+    async fn reload_notifies_subscribers() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path.clone()).unwrap();
+
+        let mut rx = mgr.subscribe();
+        let before = rx.borrow_and_update().web.port;
+
+        // Rewrite the file out-of-band so reload() observes a different value.
+        let mut forced = AppConfig::default_config();
+        forced.web.port = before.wrapping_add(13);
+        let json = serde_json::to_string_pretty(&forced).unwrap();
+        std::fs::write(&cfg_path, json).unwrap();
+
+        mgr.reload().unwrap();
+        rx.changed()
+            .await
+            .expect("changed() must resolve after reload()");
+        assert_eq!(rx.borrow().web.port, before.wrapping_add(13));
+    }
+
+    /// T-X1-7 — pins latest-wins: identical-content updates still fire.
+    ///
+    /// Documents the audit-coalescing hazard described in the subscribe() doc
+    /// comment. Consumers that need transition-per-update semantics must diff
+    /// or use their own channel.
+    #[tokio::test]
+    async fn each_update_fires_even_for_identical_content() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+        rx.borrow_and_update(); // consume the initial value
+
+        let cfg = mgr.get();
+        mgr.update(cfg.clone()).unwrap();
+        rx.changed()
+            .await
+            .expect("first identical update still fires");
+        rx.borrow_and_update();
+
+        mgr.update(cfg).unwrap();
+        rx.changed()
+            .await
+            .expect("second identical update still fires");
+    }
 }
