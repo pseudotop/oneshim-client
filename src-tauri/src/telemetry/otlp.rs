@@ -121,19 +121,31 @@ fn build_pipeline(
 }
 
 /// Endpoint resolution precedence (§3.2):
-/// 1. Explicit `config.telemetry.otlp_endpoint` (Some).
-/// 2. Env var `OTEL_EXPORTER_OTLP_ENDPOINT`.
-/// 3. `http://localhost:4318` (OTLP/HTTP default).
+/// 1. Explicit `config.telemetry.otlp_endpoint` (Some) — passed through
+///    verbatim so power users who terminate traces at a non-standard path can
+///    override.
+/// 2. Env var `OTEL_EXPORTER_OTLP_ENDPOINT` — treated as a base URL per the
+///    OpenTelemetry spec; `/v1/traces` is appended for the traces exporter.
+/// 3. `http://localhost:4318/v1/traces` (OTLP/HTTP default, full path).
+///
+/// The `opentelemetry-otlp` 0.27 HTTP builder does NOT append the signal path
+/// when passed to `.with_endpoint(...)`, so we compose the full URL here.
 pub(crate) fn resolve_endpoint(cfg: &TelemetryConfig) -> String {
     if let Some(ref explicit) = cfg.otlp_endpoint {
         return explicit.clone();
     }
     if let Ok(env) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         if !env.is_empty() {
-            return env;
+            return append_signal_path(&env);
         }
     }
-    "http://localhost:4318".to_string()
+    "http://localhost:4318/v1/traces".to_string()
+}
+
+/// Append `/v1/traces` to a base endpoint URL, handling trailing slashes.
+fn append_signal_path(base: &str) -> String {
+    let trimmed = base.trim_end_matches('/');
+    format!("{trimmed}/v1/traces")
 }
 
 /// Run `provider.shutdown()` on a dedicated thread with a 4 s watchdog so a

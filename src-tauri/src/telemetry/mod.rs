@@ -378,8 +378,9 @@ mod tests_feature_on {
         );
     }
 
-    /// T-X2-7 — endpoint precedence. Explicit cfg wins over env; env wins
-    /// over default.
+    /// T-X2-7 — endpoint precedence. Explicit cfg wins over env and is passed
+    /// through verbatim; env is treated as a base URL and `/v1/traces` is
+    /// appended; default is the full OTLP/HTTP URL with `/v1/traces`.
     #[test]
     fn env_endpoint_overrides_default_but_not_explicit_config() {
         // Save and clear any pre-existing env so the test is deterministic.
@@ -390,22 +391,36 @@ mod tests_feature_on {
         // env access and restores state at the end.
         unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://from-env:4318") };
 
+        // Explicit cfg wins and is not rewritten. A user pointing at a
+        // non-standard path relies on this.
         let cfg_explicit = TelemetryConfig {
-            otlp_endpoint: Some("http://from-config:4318".into()),
+            otlp_endpoint: Some("http://from-config:4318/custom/path".into()),
             ..Default::default()
         };
         assert_eq!(
             otlp::resolve_endpoint(&cfg_explicit),
-            "http://from-config:4318"
+            "http://from-config:4318/custom/path"
         );
 
+        // Env is treated as a base URL per the OpenTelemetry spec.
         let cfg_default = TelemetryConfig::default();
-        assert_eq!(otlp::resolve_endpoint(&cfg_default), "http://from-env:4318");
+        assert_eq!(
+            otlp::resolve_endpoint(&cfg_default),
+            "http://from-env:4318/v1/traces"
+        );
 
+        // Env with a trailing slash normalises cleanly.
+        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://from-env:4318/") };
+        assert_eq!(
+            otlp::resolve_endpoint(&TelemetryConfig::default()),
+            "http://from-env:4318/v1/traces"
+        );
+
+        // Default (no env, no cfg) is the full URL.
         unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
         assert_eq!(
             otlp::resolve_endpoint(&TelemetryConfig::default()),
-            "http://localhost:4318"
+            "http://localhost:4318/v1/traces"
         );
 
         // Restore pre-existing env so other tests are unaffected.
