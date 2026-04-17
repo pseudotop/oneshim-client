@@ -1,18 +1,38 @@
 use crate::config::AppConfig;
 use crate::error::CoreError;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
 const APP_DIR_NAME: &str = "oneshim";
 
+/// Configuration store with a `watch`-backed broadcast bus.
+///
+/// The source of truth is `inner.sender.borrow()`. Writers go through
+/// `update`, `update_with`, or `reload`, each of which serialises on
+/// `inner.writer_lock` and then calls `send_replace`. `subscribe()` /
+/// `snapshot()` are zero-cost reads.
+///
+/// `Clone` is cheap: clones share `Arc<Inner>`. The `writer_lock` is therefore
+/// process-wide (all clones contend on the same mutex), which matches the
+/// previous `Arc<RwLock<AppConfig>>` semantics.
 #[derive(Debug, Clone)]
 pub struct ConfigManager {
-    config: Arc<RwLock<AppConfig>>,
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    /// Broadcast + source of truth. `borrow()` is cheap.
+    sender: watch::Sender<Arc<AppConfig>>,
+    /// Linearises concurrent writers across the (non-atomic) compute-new →
+    /// persist → send_replace sequence. Held briefly, never across `.await`.
+    writer_lock: Mutex<()>,
     config_path: PathBuf,
 }
 
@@ -36,7 +56,7 @@ impl ConfigManager {
             }
         }
 
-        let config = if config_path.exists() {
+        let initial = if config_path.exists() {
             match Self::load_from_file(&config_path) {
                 Ok(c) => c,
                 Err(e) => {
@@ -60,52 +80,61 @@ impl ConfigManager {
             default_config
         };
 
+        let (sender, _rx) = watch::channel(Arc::new(initial));
+        // Dropping `_rx` is fine — `watch::Sender` does not require any receivers
+        // to exist. `subscribe()` lazily creates them.
+
         Ok(Self {
-            config: Arc::new(RwLock::new(config)),
-            config_path,
+            inner: Arc::new(Inner {
+                sender,
+                writer_lock: Mutex::new(()),
+                config_path,
+            }),
         })
     }
 
     pub fn get(&self) -> AppConfig {
-        self.config.read().clone()
+        AppConfig::clone(&self.inner.sender.borrow())
     }
 
     pub fn update(&self, new_config: AppConfig) -> Result<(), CoreError> {
-        {
-            let mut config = self.config.write();
-            *config = new_config.clone();
-        }
-
-        Self::save_to_file(&self.config_path, &new_config)?;
-        debug!("settings save complete: {}", self.config_path.display());
-
+        let _guard = self.inner.writer_lock.lock();
+        Self::save_to_file(&self.inner.config_path, &new_config)?;
+        self.inner.sender.send_replace(Arc::new(new_config));
+        debug!(
+            "settings save complete: {}",
+            self.inner.config_path.display()
+        );
         Ok(())
     }
 
-    /// Atomically read-modify-write the config while holding the write lock
+    /// Atomically read-modify-write the config while holding the writer lock
     /// throughout, preventing TOCTOU races between concurrent callers.
     pub fn update_with<F>(&self, updater: F) -> Result<AppConfig, CoreError>
     where
         F: FnOnce(&mut AppConfig) -> Result<(), String>,
     {
-        let mut config = self.config.write();
-        updater(&mut config).map_err(CoreError::Config)?;
-        let snapshot = config.clone();
-        // Persist while still holding the lock so no reader sees
-        // the new state before it is durable.
-        Self::save_to_file(&self.config_path, &snapshot)?;
-        debug!("settings save complete: {}", self.config_path.display());
+        let _guard = self.inner.writer_lock.lock();
+        let mut new_cfg = (**self.inner.sender.borrow()).clone();
+        updater(&mut new_cfg).map_err(CoreError::Config)?;
+        Self::save_to_file(&self.inner.config_path, &new_cfg)?;
+        let snapshot = new_cfg.clone();
+        self.inner.sender.send_replace(Arc::new(new_cfg));
+        debug!(
+            "settings save complete: {}",
+            self.inner.config_path.display()
+        );
         Ok(snapshot)
     }
 
     pub fn config_path(&self) -> &PathBuf {
-        &self.config_path
+        &self.inner.config_path
     }
 
     pub fn reload(&self) -> Result<(), CoreError> {
-        let config = Self::load_from_file(&self.config_path)?;
-        let mut current = self.config.write();
-        *current = config;
+        let _guard = self.inner.writer_lock.lock();
+        let reloaded = Self::load_from_file(&self.inner.config_path)?;
+        self.inner.sender.send_replace(Arc::new(reloaded));
         info!("settings load complete");
         Ok(())
     }
