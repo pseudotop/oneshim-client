@@ -352,19 +352,19 @@ pub(crate) fn enforce_scene_action_privacy(
         .unwrap_or_default();
 
     match (policy_context.policy, req.action_type) {
-        (ExternalDataPolicy::PiiFilterStrict, SceneActionType::TypeText) => {
-            if !allow_sensitive && !override_active {
-                return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStrict blocks type_text actions. Pass allow_sensitive_input=true or configure a valid override.{override_hint}"
-                )));
-            }
+        (ExternalDataPolicy::PiiFilterStrict, SceneActionType::TypeText)
+            if !allow_sensitive && !override_active =>
+        {
+            return Err(ApiError::BadRequest(format!(
+                "PiiFilterStrict blocks type_text actions. Pass allow_sensitive_input=true or configure a valid override.{override_hint}"
+            )));
         }
-        (ExternalDataPolicy::PiiFilterStandard, SceneActionType::TypeText) => {
-            if !allow_sensitive && !override_active {
-                return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStandard requires allow_sensitive_input=true or a valid override for type_text actions.{override_hint}"
-                )));
-            }
+        (ExternalDataPolicy::PiiFilterStandard, SceneActionType::TypeText)
+            if !allow_sensitive && !override_active =>
+        {
+            return Err(ApiError::BadRequest(format!(
+                "PiiFilterStandard requires allow_sensitive_input=true or a valid override for type_text actions.{override_hint}"
+            )));
         }
         _ => {}
     }
