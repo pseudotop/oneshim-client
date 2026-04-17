@@ -1,22 +1,30 @@
 use anyhow::Result;
-use tauri::App;
+use std::sync::Arc;
+use tauri::{App, Manager};
 use tracing::info;
 
 use crate::app_runtime_launch::{AppRuntimeLaunchBuilder, AppRuntimeLaunchResult};
-use crate::bootstrap_runtime::BootstrapRuntimeBuilder;
+use crate::bootstrap_runtime::{BootstrapRuntimeBuilder, BootstrapRuntimeBundle};
 use crate::desktop_startup::DesktopStartupCoordinator;
+use crate::telemetry;
 
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
 pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     info!("Tauri setup: initializing ONESHIM agent");
+    let bundle = BootstrapRuntimeBuilder::new().build()?;
+
+    // Bus-driven telemetry reconcile task. ConfigManager now exists (built
+    // inside bundle); the tracing subscriber was installed in main.rs with a
+    // seeded-disabled TelemetryConfig. Spawn a task that forwards every
+    // ConfigChangeBus update to `TelemetryHandle::apply`. The first iteration
+    // RECONCILES: it compares `TelemetryConfig::default()` against the real
+    // startup config and applies the user's opt-in if present.
+    spawn_telemetry_toggle_task(app, &bundle);
+
     let AppRuntimeLaunchResult {
         frontend_web_port,
         state_builder,
-    } = AppRuntimeLaunchBuilder::new(
-        BootstrapRuntimeBuilder::new().build()?,
-        app.handle().clone(),
-    )
-    .build_and_spawn()?;
+    } = AppRuntimeLaunchBuilder::new(bundle, app.handle().clone()).build_and_spawn()?;
 
     state_builder.build().register_on(app);
     crate::setup_shortcuts::register_all(app);
@@ -28,6 +36,49 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Tauri setup complete");
     Ok(())
+}
+
+/// Spawn the bus-driven telemetry reconcile task. Must be called AFTER
+/// `bundle.config_manager` is fully constructed — the task captures a
+/// subscriber via `config_manager.subscribe()` and keeps a clone of the
+/// `Arc<TelemetryHandle>` that `main.rs` stashed in Tauri managed state.
+///
+/// The first iteration is a synchronous reconcile: seed `prev` with
+/// `TelemetryConfig::default()` (matching what `main.rs` used for the
+/// subscriber), then compare against the real startup config and apply if it
+/// differs. This is how a startup config with `enabled=true` actually
+/// activates the exporter — without it, the user's opt-in would stay dormant
+/// until they next touched the settings.
+fn spawn_telemetry_toggle_task(app: &App, bundle: &BootstrapRuntimeBundle) {
+    let handle: Arc<telemetry::Handle> = app.state::<Arc<telemetry::Handle>>().inner().clone();
+    let mut rx = bundle.config_manager.subscribe();
+
+    tauri::async_runtime::spawn(async move {
+        use oneshim_core::config::TelemetryConfig;
+
+        // Seed with the boot-time default so the first iteration reconciles
+        // any user-saved opt-in.
+        let mut prev = TelemetryConfig::default();
+
+        // Synchronous reconcile before entering the await loop.
+        let initial = rx.borrow_and_update().telemetry.clone();
+        if initial != prev {
+            if let Err(e) = handle.apply(&initial) {
+                tracing::warn!(error = %e, "initial telemetry apply failed");
+            }
+            prev = initial;
+        }
+
+        while rx.changed().await.is_ok() {
+            let current = rx.borrow_and_update().telemetry.clone();
+            if current != prev {
+                if let Err(e) = handle.apply(&current) {
+                    tracing::warn!(error = %e, "telemetry apply failed");
+                }
+                prev = current;
+            }
+        }
+    });
 }
 
 #[cfg(test)]

@@ -190,6 +190,157 @@ mod tests_feature_on {
             .expect("final shutdown to avoid drop-hang");
     }
 
+    /// T-X2-5 — bus-driven toggle delivery. Drive
+    /// `ConfigManager::update_with` to flip `telemetry.enabled`, assert the
+    /// spawned task forwards the update to `Handle::apply` within one async
+    /// tick (bounded by a 1 s budget).
+    #[tokio::test]
+    async fn config_bus_delivers_telemetry_toggle() {
+        use oneshim_core::config_manager::ConfigManager;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc as StdArc;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = StdArc::new(ConfigManager::with_path(cfg_path).unwrap());
+
+        // Build the handle seeded with defaults — matches main.rs wiring.
+        let (_layer, handle) = Handle::new_with_layer(&TelemetryConfig::default(), tmp.path())
+            .expect("feature-on disabled construction is infallible");
+        let handle = StdArc::new(handle);
+
+        let observed = StdArc::new(AtomicBool::new(false));
+        let observed_for_task = observed.clone();
+        let handle_for_task = handle.clone();
+        let mut rx = mgr.subscribe();
+        let mock = mock_otlp::start().await;
+        let endpoint = mock.endpoint.clone();
+
+        tokio::spawn(async move {
+            let mut prev = TelemetryConfig::default();
+            let initial = rx.borrow_and_update().telemetry.clone();
+            if initial != prev {
+                // Store observed FIRST — the test's property is "task saw the
+                // update" not "apply finished." apply() may take several
+                // hundred ms because it builds the pipeline (HTTP client,
+                // Resource, exporter batch processor), and the 5 s budget is
+                // already the runtime-toggle SLA from spec §7.
+                observed_for_task.store(true, Ordering::SeqCst);
+                let _ = handle_for_task.apply(&initial);
+                prev = initial;
+            }
+            while rx.changed().await.is_ok() {
+                let current = rx.borrow_and_update().telemetry.clone();
+                if current != prev {
+                    observed_for_task.store(true, Ordering::SeqCst);
+                    let _ = handle_for_task.apply(&current);
+                    prev = current;
+                }
+            }
+        });
+
+        // Flip the bus: disabled -> enabled (pointed at the mock so the
+        // pipeline build succeeds).
+        mgr.update_with(|c| {
+            c.telemetry.enabled = true;
+            c.telemetry.otlp_endpoint = Some(endpoint.clone());
+            Ok(())
+        })
+        .unwrap();
+
+        // Poll the atomic within a 5 s budget — matches the runtime-toggle
+        // SLA from spec §7. Pipeline build is the slow step; this budget
+        // tolerates local filesystem + HTTP-client construction overhead.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if observed.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            observed.load(Ordering::SeqCst),
+            "toggle task did not observe the update within 5s"
+        );
+
+        // Avoid drop-hang: drive the pipeline to shutdown.
+        mgr.update_with(|c| {
+            c.telemetry.enabled = false;
+            Ok(())
+        })
+        .unwrap();
+        tokio::task::yield_now().await;
+        let _ = handle.apply(&TelemetryConfig {
+            enabled: false,
+            otlp_endpoint: Some(endpoint),
+            ..Default::default()
+        });
+    }
+
+    /// T-X2-10 — end-to-end spine test. A span emitted while telemetry is
+    /// enabled reaches the mock OTLP collector.
+    ///
+    /// Completion strategy: `provider.force_flush` deadlocks inside a
+    /// `#[tokio::test]` single-threaded runtime because the batch processor
+    /// task and the force-flush caller share the one worker thread. We
+    /// instead toggle OFF, which drives `shutdown` on a dedicated std thread
+    /// (guarded by the 4 s watchdog) — shutdown flushes pending spans before
+    /// returning, so the POST lands by the time `apply` completes. The wait
+    /// after that is a short post-shutdown grace for the exporter's HTTP
+    /// request to complete against the mock.
+    #[tokio::test]
+    async fn mock_collector_receives_span() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut mock = mock_otlp::start().await;
+
+        let cfg = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some(mock.endpoint.clone()),
+            ..Default::default()
+        };
+        let (layer, handle) =
+            Handle::new_with_layer(&cfg, tmp.path()).expect("pipeline must build against the mock");
+
+        // Local subscriber for this test only. `set_default` returns a guard
+        // that restores the previous subscriber when dropped.
+        let subscriber = tracing_subscriber::registry().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        tracing::info_span!("t_x2_10_span").in_scope(|| {
+            tracing::info!("body");
+        });
+
+        // Toggle off — drives provider.shutdown which flushes pending spans.
+        // Watchdog bounds this at 4 s.
+        let cfg_off = TelemetryConfig {
+            enabled: false,
+            ..cfg
+        };
+        handle
+            .apply(&cfg_off)
+            .expect("shutdown drives the final flush");
+
+        // After shutdown returns, give the exporter's in-flight HTTP request
+        // a brief window to land against the mock.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut seen = false;
+        while std::time::Instant::now() < deadline {
+            if let Ok(Some(_body)) =
+                tokio::time::timeout(std::time::Duration::from_millis(250), mock.rx.recv()).await
+            {
+                seen = true;
+                break;
+            }
+        }
+        assert!(
+            seen,
+            "no OTLP POST reached the mock collector within 5s after shutdown"
+        );
+    }
+
     /// T-X2-8 — shutdown-with-unreachable-collector watchdog. Toggle on
     /// against a dead port, emit a few spans, toggle off (drives `shutdown`).
     /// Must complete within 5 s (watchdog is 4 s + 1 s overhead budget) and

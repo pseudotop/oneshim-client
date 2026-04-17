@@ -12,6 +12,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub(super) struct MockCollector {
+    /// Full OTLP/HTTP traces endpoint (includes `/v1/traces` suffix).
+    /// `opentelemetry-otlp` 0.27 does NOT append the signal path when the
+    /// user passes an explicit `with_endpoint(...)` — only when resolving
+    /// from the `OTEL_EXPORTER_OTLP_ENDPOINT` env var — so tests that use
+    /// `cfg.otlp_endpoint = Some(mock.endpoint)` must get the full path.
     pub endpoint: String,
     pub rx: mpsc::UnboundedReceiver<Vec<u8>>,
 }
@@ -38,7 +43,7 @@ pub(super) async fn start() -> MockCollector {
     });
 
     MockCollector {
-        endpoint: format!("http://{addr}"),
+        endpoint: format!("http://{addr}/v1/traces"),
         rx,
     }
 }
