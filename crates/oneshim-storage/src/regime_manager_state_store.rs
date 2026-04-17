@@ -168,4 +168,66 @@ mod tests {
         assert_eq!(backup.unwrap(), "{not:valid json");
         assert!(backup_at.is_some(), "backup timestamp must be set");
     }
+
+    /// T-C3c-6 — survives-restart roundtrip via two sequential store
+    /// constructions on the same SQLite file. Simulates the full
+    /// "save on shutdown → re-open at startup → hydrate" flow.
+    #[tokio::test]
+    async fn survives_restart_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("roundtrip.db");
+
+        // Session 1: save.
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            crate::migration::run_migrations(&conn).unwrap();
+            let s = SqliteRegimeManagerStateStore::new(Arc::new(parking_lot::Mutex::new(conn)));
+            s.save_all(&[sample_regime("a"), sample_regime("b")])
+                .await
+                .unwrap();
+        }
+
+        // Session 2: reload. run_migrations is idempotent (checks
+        // schema_version and short-circuits), so this documents intent
+        // — and protects against a future PRAGMA-on-open helper that
+        // would otherwise silently skip.
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            crate::migration::run_migrations(&conn).unwrap();
+            let s = SqliteRegimeManagerStateStore::new(Arc::new(parking_lot::Mutex::new(conn)));
+            let loaded = s.load_all().await.unwrap();
+            assert_eq!(loaded.len(), 2);
+            assert_eq!(loaded[0].regime_id, "a");
+            assert_eq!(loaded[1].regime_id, "b");
+        }
+    }
+
+    /// T-C3c-7 — slow save under tokio::time::timeout unblocks within
+    /// the watchdog budget without panic. Documents the contract the
+    /// shutdown guard in main.rs depends on.
+    #[tokio::test]
+    async fn save_slower_than_deadline_times_out_gracefully() {
+        use std::time::Duration;
+
+        struct SlowStore;
+        #[async_trait]
+        impl RegimeStoragePort for SlowStore {
+            async fn load_all(&self) -> Result<Vec<Regime>, CoreError> {
+                Ok(vec![])
+            }
+            async fn save_all(&self, _: &[Regime]) -> Result<(), CoreError> {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                Ok(())
+            }
+        }
+
+        let start = std::time::Instant::now();
+        let outcome = tokio::time::timeout(Duration::from_secs(4), SlowStore.save_all(&[])).await;
+        let elapsed = start.elapsed();
+        assert!(outcome.is_err(), "must time out, not return");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "must unblock within budget + margin"
+        );
+    }
 }
