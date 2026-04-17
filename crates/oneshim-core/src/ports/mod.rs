@@ -38,6 +38,7 @@ pub mod override_store;
 pub mod pii_sanitizer;
 pub mod preset_storage;
 pub mod rectangle_detector;
+pub mod regime_storage;
 pub mod runtime_log_provider;
 pub mod sandbox;
 pub mod secret_projection;
