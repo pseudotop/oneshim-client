@@ -78,6 +78,7 @@ mod storage_runtime;
 mod subprocess_provider;
 mod suggestion_manager;
 mod sync_engine;
+mod telemetry;
 mod tray;
 mod tray_icon;
 mod update_coordinator;
@@ -140,7 +141,29 @@ fn main() {
         .with_ansi(false)
         .with_writer(non_blocking);
 
+    // Telemetry layer + handle. ConfigManager does not exist yet at this
+    // point (it is built during bootstrap below), so we seed with
+    // TelemetryConfig::default() which is disabled — no exporter is built.
+    // The bus-driven reconcile task spawned in bootstrap_runtime.rs picks up
+    // the user's real setting on its first iteration and applies it.
+    let telemetry_data_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    std::fs::create_dir_all(&telemetry_data_dir).ok();
+    let (telemetry_layer, telemetry_handle) = telemetry::Handle::new_with_layer(
+        &oneshim_core::config::TelemetryConfig::default(),
+        &telemetry_data_dir,
+    )
+    .expect("disabled-at-boot telemetry construction is infallible");
+    let telemetry_handle = std::sync::Arc::new(telemetry_handle);
+
+    // Layer order matters: the OTel layer's type is tied to `Registry` as its
+    // Subscriber param (see tracing_opentelemetry::OpenTelemetryLayer<S, T>),
+    // so the reload wrapper around it must attach directly on top of Registry.
+    // Higher layers (env_filter, console, file) stack above as plain
+    // Layer<Registry> impls and don't change the Subscriber type the OTel
+    // layer sees.
     tracing_subscriber::registry()
+        .with(telemetry_layer)
         .with(env_filter)
         .with(console_layer)
         .with(file_layer)
@@ -174,7 +197,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(LogWorkerGuard(worker_guard));
+        .manage(LogWorkerGuard(worker_guard))
+        .manage(telemetry_handle);
 
     // WebDriver 서버 플러그인 — E2E 테스트용 (production 빌드에 절대 포함 금지)
     #[cfg(feature = "webdriver")]

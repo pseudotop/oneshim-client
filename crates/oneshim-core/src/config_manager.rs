@@ -1,18 +1,38 @@
 use crate::config::AppConfig;
 use crate::error::CoreError;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
 const APP_DIR_NAME: &str = "oneshim";
 
+/// Configuration store with a `watch`-backed broadcast bus.
+///
+/// The source of truth is `inner.sender.borrow()`. Writers go through
+/// `update`, `update_with`, or `reload`, each of which serialises on
+/// `inner.writer_lock` and then calls `send_replace`. `subscribe()` /
+/// `snapshot()` are zero-cost reads.
+///
+/// `Clone` is cheap: clones share `Arc<Inner>`. The `writer_lock` is therefore
+/// process-wide (all clones contend on the same mutex), which matches the
+/// previous `Arc<RwLock<AppConfig>>` semantics.
 #[derive(Debug, Clone)]
 pub struct ConfigManager {
-    config: Arc<RwLock<AppConfig>>,
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    /// Broadcast + source of truth. `borrow()` is cheap.
+    sender: watch::Sender<Arc<AppConfig>>,
+    /// Linearises concurrent writers across the (non-atomic) compute-new →
+    /// persist → send_replace sequence. Held briefly, never across `.await`.
+    writer_lock: Mutex<()>,
     config_path: PathBuf,
 }
 
@@ -36,7 +56,7 @@ impl ConfigManager {
             }
         }
 
-        let config = if config_path.exists() {
+        let initial = if config_path.exists() {
             match Self::load_from_file(&config_path) {
                 Ok(c) => c,
                 Err(e) => {
@@ -60,52 +80,86 @@ impl ConfigManager {
             default_config
         };
 
+        let (sender, _rx) = watch::channel(Arc::new(initial));
+        // Dropping `_rx` is fine — `watch::Sender` does not require any receivers
+        // to exist. `subscribe()` lazily creates them.
+
         Ok(Self {
-            config: Arc::new(RwLock::new(config)),
-            config_path,
+            inner: Arc::new(Inner {
+                sender,
+                writer_lock: Mutex::new(()),
+                config_path,
+            }),
         })
     }
 
     pub fn get(&self) -> AppConfig {
-        self.config.read().clone()
+        AppConfig::clone(&self.inner.sender.borrow())
+    }
+
+    /// Subscribe to whole-config change notifications.
+    ///
+    /// The receiver starts at the current config. `changed().await` resolves
+    /// after the next `update` / `update_with` / `reload`. Dropping a receiver
+    /// does not affect any other subscriber.
+    ///
+    /// `watch` has latest-wins semantics: rapid mutations may be coalesced and
+    /// a subscriber that wakes late will see only the final value, not every
+    /// intermediate transition. Consumers whose correctness depends on
+    /// observing every transition (audit-log callers, counters) must either
+    /// keep a tick-based poll structure OR run every `update` through their
+    /// own side-effect channel. See ADR-016 for the audit-coalescing hazard.
+    pub fn subscribe(&self) -> watch::Receiver<Arc<AppConfig>> {
+        self.inner.sender.subscribe()
+    }
+
+    /// Cheap read-only snapshot of the current config.
+    ///
+    /// Equivalent to `subscribe().borrow().clone()` without registering a
+    /// subscriber. Prefer this over `get()` when the caller is happy with an
+    /// `Arc<AppConfig>` (no deep clone).
+    pub fn snapshot(&self) -> Arc<AppConfig> {
+        self.inner.sender.borrow().clone()
     }
 
     pub fn update(&self, new_config: AppConfig) -> Result<(), CoreError> {
-        {
-            let mut config = self.config.write();
-            *config = new_config.clone();
-        }
-
-        Self::save_to_file(&self.config_path, &new_config)?;
-        debug!("settings save complete: {}", self.config_path.display());
-
+        let _guard = self.inner.writer_lock.lock();
+        Self::save_to_file(&self.inner.config_path, &new_config)?;
+        self.inner.sender.send_replace(Arc::new(new_config));
+        debug!(
+            "settings save complete: {}",
+            self.inner.config_path.display()
+        );
         Ok(())
     }
 
-    /// Atomically read-modify-write the config while holding the write lock
+    /// Atomically read-modify-write the config while holding the writer lock
     /// throughout, preventing TOCTOU races between concurrent callers.
     pub fn update_with<F>(&self, updater: F) -> Result<AppConfig, CoreError>
     where
         F: FnOnce(&mut AppConfig) -> Result<(), String>,
     {
-        let mut config = self.config.write();
-        updater(&mut config).map_err(CoreError::Config)?;
-        let snapshot = config.clone();
-        // Persist while still holding the lock so no reader sees
-        // the new state before it is durable.
-        Self::save_to_file(&self.config_path, &snapshot)?;
-        debug!("settings save complete: {}", self.config_path.display());
+        let _guard = self.inner.writer_lock.lock();
+        let mut new_cfg = (**self.inner.sender.borrow()).clone();
+        updater(&mut new_cfg).map_err(CoreError::Config)?;
+        Self::save_to_file(&self.inner.config_path, &new_cfg)?;
+        let snapshot = new_cfg.clone();
+        self.inner.sender.send_replace(Arc::new(new_cfg));
+        debug!(
+            "settings save complete: {}",
+            self.inner.config_path.display()
+        );
         Ok(snapshot)
     }
 
     pub fn config_path(&self) -> &PathBuf {
-        &self.config_path
+        &self.inner.config_path
     }
 
     pub fn reload(&self) -> Result<(), CoreError> {
-        let config = Self::load_from_file(&self.config_path)?;
-        let mut current = self.config.write();
-        *current = config;
+        let _guard = self.inner.writer_lock.lock();
+        let reloaded = Self::load_from_file(&self.inner.config_path)?;
+        self.inner.sender.send_replace(Arc::new(reloaded));
         info!("settings load complete");
         Ok(())
     }
@@ -408,6 +462,263 @@ mod tests {
             reloaded.get().web.port,
             crate::config::DEFAULT_WEB_PORT,
             "overwritten file should contain valid defaults"
+        );
+    }
+
+    // ── X1 ConfigChangeBus tests ───────────────────────────────────────
+    // See docs/reviews/2026-04-17-phase2-config-telemetry-spec.md §2.8.
+
+    /// T-X1-1
+    #[test]
+    fn subscribe_sees_initial_value() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let rx = mgr.subscribe();
+        let via_rx = rx.borrow();
+        let via_get = mgr.get();
+        // Value equivalence is what matters. The Arc held by rx and the value
+        // returned by get() should agree on every field.
+        assert_eq!(via_rx.web.port, via_get.web.port);
+    }
+
+    /// T-X1-5
+    #[tokio::test]
+    async fn dropped_receiver_does_not_block_sender() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let rx_a = mgr.subscribe();
+        let mut rx_b = mgr.subscribe();
+        drop(rx_a);
+
+        // Flip a scalar field so update_with produces a visibly different snapshot.
+        mgr.update_with(|c| {
+            c.web.port = c.web.port.wrapping_add(1);
+            Ok(())
+        })
+        .expect("update_with must not fail after a receiver drops");
+
+        // The survivor observes the update without deadlocking.
+        let _ = rx_b.borrow_and_update();
+    }
+
+    /// T-X1-6
+    #[test]
+    fn snapshot_matches_latest_update() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let baseline_port = mgr.get().web.port;
+        mgr.update_with(|c| {
+            c.web.port = baseline_port.wrapping_add(1);
+            Ok(())
+        })
+        .unwrap();
+
+        let via_snapshot = mgr.snapshot();
+        let rx = mgr.subscribe();
+        let via_rx = rx.borrow();
+
+        assert_eq!(via_snapshot.web.port, via_rx.web.port);
+        assert_eq!(via_snapshot.web.port, baseline_port.wrapping_add(1));
+    }
+
+    /// T-X1-2
+    #[tokio::test]
+    async fn update_notifies_subscribers() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+        let before = rx.borrow_and_update().web.port;
+
+        let mut new_cfg = mgr.get();
+        new_cfg.web.port = before.wrapping_add(7);
+        mgr.update(new_cfg).unwrap();
+
+        rx.changed()
+            .await
+            .expect("changed() must resolve after update()");
+        assert_eq!(rx.borrow().web.port, before.wrapping_add(7));
+    }
+
+    /// T-X1-3
+    #[tokio::test]
+    async fn update_with_notifies_subscribers() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+        let before = rx.borrow_and_update().web.port;
+
+        mgr.update_with(|c| {
+            c.web.port = before.wrapping_add(11);
+            Ok(())
+        })
+        .unwrap();
+
+        rx.changed()
+            .await
+            .expect("changed() must resolve after update_with()");
+        assert_eq!(rx.borrow().web.port, before.wrapping_add(11));
+    }
+
+    /// T-X1-4
+    #[tokio::test]
+    async fn reload_notifies_subscribers() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path.clone()).unwrap();
+
+        let mut rx = mgr.subscribe();
+        let before = rx.borrow_and_update().web.port;
+
+        // Rewrite the file out-of-band so reload() observes a different value.
+        let mut forced = AppConfig::default_config();
+        forced.web.port = before.wrapping_add(13);
+        let json = serde_json::to_string_pretty(&forced).unwrap();
+        std::fs::write(&cfg_path, json).unwrap();
+
+        mgr.reload().unwrap();
+        rx.changed()
+            .await
+            .expect("changed() must resolve after reload()");
+        assert_eq!(rx.borrow().web.port, before.wrapping_add(13));
+    }
+
+    /// T-X1-7 — pins latest-wins: identical-content updates still fire.
+    ///
+    /// Documents the audit-coalescing hazard described in the subscribe() doc
+    /// comment. Consumers that need transition-per-update semantics must diff
+    /// or use their own channel.
+    #[tokio::test]
+    async fn each_update_fires_even_for_identical_content() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+        rx.borrow_and_update(); // consume the initial value
+
+        let cfg = mgr.get();
+        mgr.update(cfg.clone()).unwrap();
+        rx.changed()
+            .await
+            .expect("first identical update still fires");
+        rx.borrow_and_update();
+
+        mgr.update(cfg).unwrap();
+        rx.changed()
+            .await
+            .expect("second identical update still fires");
+    }
+
+    /// T-X1-9 — writer_lock is non-reentrant but never crossed with watch reads.
+    ///
+    /// `get()` and `snapshot()` only touch `self.inner.sender`, not
+    /// `self.inner.writer_lock`. Calling them from inside an `update_with`
+    /// closure (where the writer_lock is held) must therefore NOT deadlock.
+    /// The reads return the *pre-swap* value because `send_replace` has not
+    /// been called yet.
+    #[test]
+    fn update_with_does_not_reenter() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let baseline_port = mgr.get().web.port;
+        let new_port = baseline_port.wrapping_add(1);
+        let saw_snapshot = AtomicBool::new(false);
+
+        mgr.update_with(|c| {
+            // These reads go through `watch::Sender::borrow()`, bypassing
+            // writer_lock. Pre-swap they return the OLD value.
+            let snap = mgr.snapshot();
+            assert_eq!(snap.web.port, baseline_port);
+            let get_value = mgr.get();
+            assert_eq!(get_value.web.port, baseline_port);
+            saw_snapshot.store(true, Ordering::SeqCst);
+            c.web.port = new_port;
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(saw_snapshot.load(Ordering::SeqCst));
+        assert_eq!(mgr.get().web.port, new_port);
+    }
+
+    /// T-X1-10 — subscriber task exits cleanly when the manager is dropped.
+    ///
+    /// The production bus-driven telemetry task relies on `rx.changed()`
+    /// returning `Err` to terminate. This test exercises that path end-to-end.
+    #[tokio::test]
+    async fn receiver_changed_returns_err_after_manager_dropped() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+        let mgr = ConfigManager::with_path(cfg_path).unwrap();
+
+        let mut rx = mgr.subscribe();
+
+        let task = tokio::spawn(async move {
+            // Resolves to Err once all senders have dropped.
+            rx.changed().await
+        });
+
+        drop(mgr);
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), task)
+            .await
+            .expect("task must not hang when sender drops")
+            .expect("task must not panic");
+
+        assert!(
+            result.is_err(),
+            "changed() must resolve to Err after sender drop"
+        );
+    }
+
+    /// T-X1-8 — legacy config.json without new telemetry fields deserialises
+    /// cleanly. Protects the serde-defaults contract for users upgrading from a
+    /// pre-Phase-2 build.
+    #[test]
+    fn deserialises_legacy_config_json_without_new_telemetry_fields() {
+        let tmp = TempDir::new().unwrap();
+        let cfg_path = tmp.path().join("config.json");
+
+        // A minimal JSON payload that mimics a pre-Phase-2 config.json: the
+        // `telemetry` section lacks `otlp_endpoint`, `sample_rate`, and
+        // `service_name`. Other top-level sections are absent entirely so
+        // their serde(default) kicks in.
+        let legacy = r#"{
+          "telemetry": {
+            "enabled": false,
+            "crash_reports": false,
+            "usage_analytics": false,
+            "performance_metrics": false
+          }
+        }"#;
+        std::fs::write(&cfg_path, legacy).unwrap();
+
+        let mgr = ConfigManager::with_path(cfg_path).expect("legacy JSON must deserialise");
+        let cfg = mgr.get();
+        assert_eq!(cfg.telemetry.otlp_endpoint, None);
+        assert!((cfg.telemetry.sample_rate - 1.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.telemetry.service_name, "oneshim-client");
+    }
+
+    /// T-X2-6 — fresh install has telemetry opted OUT.
+    #[test]
+    fn telemetry_enabled_defaults_to_false() {
+        let cfg = AppConfig::default_config();
+        assert!(
+            !cfg.telemetry.enabled,
+            "telemetry must default to opt-out (fresh install)"
         );
     }
 }
