@@ -57,11 +57,25 @@ use crate::error::CoreError;
 /// Implementations wrap `CoachingEngine`, `RegimeClassifier`, or any other
 /// component that should adapt to accept/reject/defer signals.
 ///
-/// Failure semantics: fire-and-forget. The caller (`FeedbackSender`) MUST
-/// NOT block the user-path accept/reject on a sink error. Implementations
-/// log and return `Ok(())` on recoverable failures; only unrecoverable
-/// internal bugs should surface as `Err(CoreError)` and they are logged
-/// at `warn!` by the caller.
+/// # Failure semantics
+///
+/// Fire-and-forget from the caller's perspective. `FeedbackSender` MUST NOT
+/// block user-path accept/reject on a sink error.
+///
+/// The `Result` return is ONLY for programmer bugs (mutex poisoning, invariant
+/// violations). All expected failure classes — network, database, transient
+/// unavailability — are the implementation's responsibility to log and swallow
+/// internally; they MUST NOT escalate as `Err`.
+///
+/// # Latency budget
+///
+/// Implementations must return within ~10 ms. Any blocking work (database
+/// writes, network calls, heavy computation) must be offloaded to
+/// `tokio::spawn` INSIDE the impl so the inline path stays O(µs). The caller
+/// awaits this future synchronously on the user-path accept/reject; breaking
+/// this budget re-introduces the write-path wait we intentionally decoupled.
+///
+/// See ADR-017 for the rationale.
 #[async_trait]
 pub trait FeedbackSignalSink: Send + Sync {
     async fn record_user_reaction(
@@ -243,23 +257,32 @@ Two reasons:
 1. **The existing `regimes` table columns are partial and were designed for the sync path, not RegimeManager's actual state.** Adding the missing columns (centroid, RegimeStatus enum, name override) would require migration + write-path update in sync_merger to keep it in sync. Scope creep.
 2. **A JSON blob is robust across RegimeManager schema evolution** — new fields auto-serialise with serde defaults.
 
-Proposal: store the RegimeManager state as a single row in a **new** dedicated table `regime_manager_state`:
+Proposal: store the RegimeManager state as a single row in a **new** dedicated table `regime_manager_state`, plus a quarantine column for failed-to-parse payloads so user-curated state is NEVER silently wiped on a schema-mismatch:
 
 ```sql
 CREATE TABLE IF NOT EXISTS regime_manager_state (
     id INTEGER PRIMARY KEY CHECK (id = 0),
     payload TEXT NOT NULL,
+    payload_backup TEXT,                 -- set only when a corrupt payload is quarantined
+    payload_backup_at TEXT,              -- timestamp of quarantine
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
 
 Singleton row (id=0, enforced by CHECK). `payload` is `serde_json::to_string(&regimes)`. `updated_at` for diagnostics.
 
+**Parse-failure handling**: on `load_all`, if `serde_json::from_str(&payload)` fails, the implementation:
+1. Copies the unparseable payload to `payload_backup` with `payload_backup_at = datetime('now')`.
+2. Logs at `error!` (not `warn!`) with the parse error and a hint that user-curated state has been quarantined.
+3. Returns `Ok(Vec::new())` so the app starts with a fresh RegimeManager rather than crashing.
+
+The backup preserves the data for later recovery (manual migration script, support request, or a future auto-heal pass). Wiping silently — the original draft — would throw away months of user-curated regime names on any future schema break.
+
 Does **not** touch the existing `regimes` table — sync_merger's use of that table is preserved unchanged.
 
 ### 4.3 Migration
 
-New migration file `crates/oneshim-storage/src/migration/vN_regime_manager_state.rs` (N = current latest + 1; confirmed during implementation). Only creates the table; no data migration needed because RegimeManager has no pre-existing state to import.
+New migration file `crates/oneshim-storage/src/migration/v31_regime_manager_state.rs`. Current `CURRENT_VERSION` is 30 (verified in `crates/oneshim-storage/src/migration/mod.rs:33`); v31 is the next free slot. Only creates the table; no data migration needed because RegimeManager has no pre-existing state to import.
 
 ### 4.4 Implementation
 
@@ -283,8 +306,26 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
             .optional()
             .map_err(|e| CoreError::Storage(e.to_string()))?;
         match payload {
-            Some(json) => serde_json::from_str(&json)
-                .map_err(|e| CoreError::Storage(format!("regime state parse: {e}"))),
+            Some(json) => match serde_json::from_str::<Vec<Regime>>(&json) {
+                Ok(regimes) => Ok(regimes),
+                Err(e) => {
+                    // Quarantine — never silently wipe user-curated state.
+                    tracing::error!(
+                        error = %e,
+                        "regime_manager_state payload failed to parse; quarantining to payload_backup and starting fresh. Recovery via manual inspection of the backup column."
+                    );
+                    let _ = conn.execute(
+                        "UPDATE regime_manager_state
+                            SET payload_backup = payload,
+                                payload_backup_at = datetime('now'),
+                                payload = '[]',
+                                updated_at = datetime('now')
+                          WHERE id = 0",
+                        [],
+                    );
+                    Ok(Vec::new())
+                }
+            },
             None => Ok(Vec::new()),
         }
     }
@@ -341,18 +382,38 @@ Small, single-purpose — alternative would be `RegimeManager::with_regimes()` c
 
 ### 4.6 Shutdown persistence
 
-In `src-tauri/src/lifecycle.rs` (the existing shutdown coordinator), add a step that calls `regime_storage.save_all(&regime_manager.all_regimes())` with a **watchdog**:
+The actual shutdown orchestrator is the `RunEvent::Exit` handler in `src-tauri/src/main.rs` around line 335 (it already persists the suggestion queue, terminates AI sessions, and runs the WAL checkpoint). `src-tauri/src/lifecycle.rs` is just the watch-channel coordinator that carries the shutdown signal — it has no hook registry. We add the regime save directly into the `RunEvent::Exit` block alongside the existing persistence steps:
 
 ```rust
-let save_future = regime_storage.save_all(&mgr.all_regimes());
-match tokio::time::timeout(std::time::Duration::from_secs(3), save_future).await {
-    Ok(Ok(())) => info!("regime state persisted"),
-    Ok(Err(e)) => warn!(error = %e, "regime state save failed"),
-    Err(_) => warn!("regime state save exceeded 3s; proceeding with shutdown"),
+// Inside the existing `RunEvent::Exit => { ... }` block in main.rs, AFTER
+// the suggestion-queue persist and AI-session shutdown, BEFORE the WAL
+// checkpoint:
+if let Some(ref regime_storage) = state.regime_storage {
+    if let Some(ref regime_manager) = state.regime_manager_snapshot {
+        let regimes = regime_manager.all_regimes().to_vec();
+        let save_future = regime_storage.save_all(&regimes);
+        let runtime_handle = state.runtime_handle.clone();
+        let outcome = runtime_handle.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(4),
+                save_future,
+            )
+            .await
+        });
+        match outcome {
+            Ok(Ok(())) => info!(count = regimes.len(), "regime state persisted"),
+            Ok(Err(e)) => warn!(error = %e, "regime state save failed"),
+            Err(_) => warn!("regime state save exceeded 4s; proceeding with shutdown"),
+        }
+    }
 }
 ```
 
-The 3 s watchdog is asymmetric with telemetry's 4 s because a JSON blob write is fast in practice — 3 s covers worst-case SQLite contention. Past the deadline we log and continue; shutdown MUST NOT be blocked.
+Watchdog is **4 s**, matching the telemetry OTel shutdown deadline — not arbitrarily tighter. SQLite `INSERT OR REPLACE` on a singleton row under WAL contention can momentarily exceed 3 s if `run_maintenance` or the analysis pipeline is mid-transaction when the signal arrives. 4 s covers worst-case; past the deadline we log and continue. Shutdown MUST NOT be blocked.
+
+`state.regime_storage` and `state.regime_manager_snapshot` are new `Option<Arc<dyn RegimeStoragePort>>` / `Option<Arc<RegimeManager>>` fields on the existing Tauri `State` struct in `src-tauri/src/runtime_state.rs`. They are populated in Commit 7 from the composition root.
+
+Exit from `RunEvent::Exit` is NOT via `std::process::exit(0)` — the handler returns and Tauri finishes the normal exit path. The save is therefore synchronous relative to the handler (via `runtime_handle.block_on`). `lifecycle.rs`'s `FORCE_EXIT_GRACE_SECS=3` hard-kill timer is orthogonal — it only fires if the Tauri event loop itself hangs.
 
 ### 4.7 Mid-life persistence (optional)
 
@@ -365,7 +426,7 @@ Out of scope for this phase. A future enhancement could auto-save after every `r
 | T-C3c-1 | `empty_on_first_load` | Fresh SQLite DB → `load_all()` returns `Ok(vec![])`. |
 | T-C3c-2 | `save_then_load_roundtrip` | Save 3 regimes with distinct statuses → `load_all()` returns identical set. |
 | T-C3c-3 | `save_replaces_previous` | Save 3 → save 1 → `load_all()` returns 1 (upsert semantics). |
-| T-C3c-4 | `malformed_payload_returns_error_not_panic` | Hand-write bad JSON into the row → `load_all()` returns `Err(CoreError::Storage)`; does not panic. |
+| T-C3c-4 | `malformed_payload_quarantines_and_starts_fresh` | Hand-write bad JSON into the row → `load_all()` returns `Ok(vec![])` (NOT Err), and the bad payload is copied to `payload_backup` with `payload_backup_at` set. Never panics. Never silently wipes the original. |
 | T-C3c-5 | `hydrate_from_replaces_in_memory_state` | `RegimeManager` with existing regimes → `hydrate_from(new_set)` → `all_regimes()` equals `new_set`. |
 | T-C3c-6 | `shutdown_save_within_watchdog` | Integration: create RegimeManager with 5 regimes, trigger shutdown, verify save completes and load after restart matches. |
 | T-C3c-7 | `shutdown_save_timeout_does_not_panic` | Mock store that blocks for 5 s → shutdown proceeds within 3 s + small overhead; warn log emitted. |
@@ -414,7 +475,7 @@ Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `
 - `cargo clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity` green.
 - `cargo fmt --check` green.
 - `.github/workflows/ci.yml` passes on the PR.
-- Integration verification (manual, one-shot): start the app, create a regime via normal use, restart, confirm the regime survives (same id, name, last_seen). Skip for the PR; gate at RC validation.
+- Integration-level survives-restart guarantee is covered by **T-C3c-6** (two sequential `SqliteRegimeManagerStateStore` constructions against the same `TempDir` SQLite file, asserting the second load returns the first save's regime set). No separate manual RC verification required.
 
 ---
 
@@ -423,10 +484,10 @@ Each commit must keep `cargo check --workspace`, `cargo test --workspace`, and `
 | Risk | Likelihood | Mitigation |
 |------|-----------|-----------|
 | JSON blob grows unbounded as regimes accumulate | Low | `RegimeManager::run_maintenance` already archives / deletes per rule. If size becomes an issue, add a `max_persisted` cap in a follow-up — port is unchanged. |
-| Subquery in `search_filtered` regresses latency on large embedding tables | Medium | `idx_segments_regime` is already in place. T-C3a-1 includes a perf assertion placeholder (50 ms budget for 10k rows). If exceeded, denormalise `regime_id` onto `embedding_vectors` via migration — separate follow-up PR. |
+| Subquery in `search_filtered` regresses latency on large embedding tables | Medium | `idx_segments_regime` is already in place. Timing assertions in `cargo test` are flaky under CI scheduling, so the PR tests do NOT gate on latency. A dedicated `benches/regime_filter_bench.rs` (invoked manually during RC validation) records the baseline. If the bench shows the subquery is the hot path, denormalise `regime_id` onto `embedding_vectors` via migration — separate follow-up PR. |
 | `FeedbackSignalSink::record_user_reaction` calls the async methods which may take a lock — blocks the user-path accept/reject UI | Low | Sink call is awaited but the implementations grab a `parking_lot::Mutex` and return immediately. T-X3-4 asserts no unbounded wait. |
 | Shutdown save collides with another write (e.g., sync_merger) | Low | `sync_merger` writes to the separate `regimes` table; our new `regime_manager_state` table is disjoint. No lock interaction. |
-| Schema evolution of `Regime` breaks existing JSON payload | Medium | serde's default attribute handles additive fields. For removed or renamed fields, T-C3c-4 covers the parse-failure branch — we log, clear the row, start fresh (acceptable degradation for a local cache). |
+| Schema evolution of `Regime` breaks existing JSON payload | Medium | serde's `#[serde(default)]` handles additive fields. For removed or renamed fields, §4.4 quarantines the bad payload to `payload_backup` with a timestamp, logs `error!`, and starts fresh — T-C3c-4 asserts this. User-curated state is never silently wiped; recovery is possible via the backup column. |
 | Re-hydrated regimes conflict with fresh `update_from_detection` events | Low | `update_from_detection` matches by centroid distance + merge; imported regimes participate in the same loop. Identity is preserved across restart. |
 
 ---
