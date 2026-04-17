@@ -984,6 +984,23 @@ jobs:
         with:
           key: release-reliability-smoke-${{ matrix.name }}
 
+      # Tauri externalBin requires `oneshim-sandbox-worker-<triple>[.exe]` at
+      # the src-tauri/ root at build time. The smoke script runs
+      # `cargo test -p oneshim-app release_reliability_` which triggers the
+      # tauri-build build.rs. This is a TEST build — a stub touch (matching
+      # ci.yml) is sufficient; we do not need the real sandbox-worker binary
+      # because the smoke suite does not exercise sandbox command execution.
+      - name: Create sandbox worker stub for Tauri externalBin
+        shell: bash
+        run: |
+          TRIPLE=$(rustc -vV | awk '/^host:/ { print $2 }')
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            touch "src-tauri/oneshim-sandbox-worker-${TRIPLE}.exe"
+          else
+            touch "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+            chmod +x "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+          fi
+
       - name: Run smoke script (macOS/Linux)
         if: runner.os != 'Windows'
         run: |
