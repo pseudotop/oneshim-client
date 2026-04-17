@@ -968,11 +968,13 @@ mod tests {
     #[test]
     #[cfg(not(feature = "telemetry"))]
     fn feature_off_construction_is_noop() {
+        let tmp = tempfile::tempdir().unwrap();
         let cfg = TelemetryConfig {
             enabled: true,
             ..Default::default()
         };
-        let (_layer, handle) = Handle::new_with_layer(&cfg);
+        let (_layer, handle) = Handle::new_with_layer(&cfg, tmp.path())
+            .expect("feature-off construction is infallible in practice");
         handle.apply(&cfg).expect("apply is a no-op when feature is off");
     }
 }
@@ -1029,14 +1031,23 @@ pub struct NoopLayer;
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for NoopLayer {}
 
 impl Handle {
-    pub fn new_with_layer(_cfg: &TelemetryConfig) -> (Layer, Self) {
+    /// Feature-off: infallible, `data_dir` ignored.
+    /// Feature-on: fallible, uses `data_dir` to resolve/create `telemetry_instance_id`.
+    ///
+    /// Signature is the same across feature states — callers pass `data_dir` in both,
+    /// and the feature-off branch drops it. This keeps `main.rs` and tests identical
+    /// regardless of which build they compile under.
+    pub fn new_with_layer(
+        _cfg: &TelemetryConfig,
+        _data_dir: &std::path::Path,
+    ) -> anyhow::Result<(Layer, Self)> {
         #[cfg(not(feature = "telemetry"))]
         {
-            (NoopLayer, Handle {})
+            Ok((NoopLayer, Handle {}))
         }
         #[cfg(feature = "telemetry")]
         {
-            otlp::build_initial_handle(_cfg)
+            otlp::build_initial_handle(_cfg, _data_dir)
         }
     }
 
@@ -1076,7 +1087,10 @@ impl Inner {
     }
 }
 
-pub(super) fn build_initial_handle(_cfg: &TelemetryConfig) -> (Layer, Handle) {
+pub(super) fn build_initial_handle(
+    _cfg: &TelemetryConfig,
+    _data_dir: &std::path::Path,
+) -> anyhow::Result<(Layer, Handle)> {
     unimplemented!("Task 8 wires the real pipeline")
 }
 ```
@@ -1158,11 +1172,13 @@ Append inside the existing `mod tests` in `src-tauri/src/telemetry/mod.rs`:
     #[test]
     #[cfg(feature = "telemetry")]
     fn feature_on_config_off_installs_empty_reload_wrapper() {
+        let tmp = tempfile::tempdir().unwrap();
         let cfg = TelemetryConfig {
             enabled: false,
             ..Default::default()
         };
-        let (_layer, _handle) = Handle::new_with_layer(&cfg);
+        let (_layer, _handle) = Handle::new_with_layer(&cfg, tmp.path())
+            .expect("disabled-at-boot never fails");
         // No panic, no network activity. Inner `Option<OtelLayer>` is None.
     }
 ```
@@ -1380,40 +1396,45 @@ Append inside `mod tests` in `src-tauri/src/telemetry/mod.rs`:
     #[tokio::test]
     #[cfg(feature = "telemetry")]
     async fn feature_on_config_on_builds_pipeline() {
-    let mock = mock_otlp::start().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let mock = mock_otlp::start().await;
 
-    let cfg = TelemetryConfig {
-        enabled: true,
-        otlp_endpoint: Some(mock.endpoint.clone()),
-        ..Default::default()
-    };
-    let (_layer, handle) = Handle::new_with_layer(&cfg);
+        let cfg = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some(mock.endpoint.clone()),
+            ..Default::default()
+        };
+        let (_layer, handle) = Handle::new_with_layer(&cfg, tmp.path())
+            .expect("pipeline builds against the mock");
 
-    // apply() with an unchanged cfg is idempotent.
-    handle.apply(&cfg).expect("apply is idempotent for unchanged cfg");
-}
+        // apply() with an unchanged cfg is idempotent.
+        handle.apply(&cfg).expect("apply is idempotent for unchanged cfg");
+    }
 ```
 
 - [ ] **Step 6: Add T-X2-4 `apply_disables_and_reenables_live`.**
 
 ```rust
-#[tokio::test]
-async fn apply_disables_and_reenables_live() {
-    let mock = mock_otlp::start().await;
+    #[tokio::test]
+    #[cfg(feature = "telemetry")]
+    async fn apply_disables_and_reenables_live() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mock = mock_otlp::start().await;
 
-    let mut cfg_on = TelemetryConfig {
-        enabled: true,
-        otlp_endpoint: Some(mock.endpoint.clone()),
-        ..Default::default()
-    };
-    let (_layer, handle) = Handle::new_with_layer(&cfg_on);
+        let mut cfg_on = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some(mock.endpoint.clone()),
+            ..Default::default()
+        };
+        let (_layer, handle) = Handle::new_with_layer(&cfg_on, tmp.path())
+            .expect("pipeline builds against the mock");
 
-    let cfg_off = TelemetryConfig { enabled: false, ..cfg_on.clone() };
-    handle.apply(&cfg_off).expect("toggle off");
+        let cfg_off = TelemetryConfig { enabled: false, ..cfg_on.clone() };
+        handle.apply(&cfg_off).expect("toggle off");
 
-    cfg_on.sample_rate = 1.0;
-    handle.apply(&cfg_on).expect("toggle back on");
-}
+        cfg_on.sample_rate = 1.0;
+        handle.apply(&cfg_on).expect("toggle back on");
+    }
 ```
 
 - [ ] **Step 7: Add T-X2-7 `endpoint_precedence`.**
@@ -1530,18 +1551,14 @@ fn instance_id_file_lifecycle_matches_state_table() {
     let second = iid::ensure_instance_id(&data_dir).unwrap();
     assert_eq!(first, second, "UUID must be stable across opt-in cycles");
 
-    // Row 4: boot with enabled=false + file exists -> untouched.
-    // The state-table row is a pure no-op (the telemetry bootstrap path simply
-    // never reads or writes the file when disabled), so the assertion here is
-    // that mtime is unchanged after the expected interval during which the app
-    // would have run without touching the file.
-    let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
-    // no call — simulating "app runs with enabled=false"
-    let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
-    assert_eq!(mtime_before, mtime_after);
-
-    // Row 5: opt-out -> file still present.
+    // Rows 4 + 5 ("enabled=false + file exists -> untouched" and "opt-out -> file
+    // still present") collapse into a single meaningful assertion: after opt-out
+    // the file is still present and still holds the same UUID. The earlier
+    // reuse-same-UUID assertion (Row 2) already proved `ensure_instance_id`
+    // doesn't rewrite; here we assert nothing else erases it either.
     assert!(path.exists());
+    let contents = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(contents.trim(), first);
 
     // Row 6: explicit reset -> file deleted, next ensure regenerates different UUID.
     iid::reset_instance_id(&data_dir).unwrap();
@@ -1695,15 +1712,18 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 Append inside the existing `mod tests` block in `src-tauri/src/telemetry/mod.rs`:
 
 ```rust
-#[tokio::test]
-async fn shutdown_completes_when_collector_unreachable() {
-    // Pick a port that is guaranteed unreachable.
-    let cfg_on = TelemetryConfig {
-        enabled: true,
-        otlp_endpoint: Some("http://127.0.0.1:1".into()),
-        ..Default::default()
-    };
-    let (_layer, handle) = Handle::new_with_layer(&cfg_on);
+    #[tokio::test]
+    #[cfg(feature = "telemetry")]
+    async fn shutdown_completes_when_collector_unreachable() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Pick a port that is guaranteed unreachable.
+        let cfg_on = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some("http://127.0.0.1:1".into()),
+            ..Default::default()
+        };
+        let (_layer, handle) = Handle::new_with_layer(&cfg_on, tmp.path())
+            .expect("exporter builds even though the endpoint is unreachable");
 
     // Emit 5 spans so the exporter has queue pressure.
     for i in 0..5 {
@@ -1779,19 +1799,22 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 - [ ] **Step 1: Write failing T-X2-10 (spine test).**
 
 ```rust
-#[tokio::test]
-async fn mock_collector_receives_span() {
-    let mut mock = mock_otlp::start().await;
-    let cfg = TelemetryConfig {
-        enabled: true,
-        otlp_endpoint: Some(mock.endpoint.clone()),
-        ..Default::default()
-    };
+    #[tokio::test]
+    #[cfg(feature = "telemetry")]
+    async fn mock_collector_receives_span() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut mock = mock_otlp::start().await;
+        let cfg = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some(mock.endpoint.clone()),
+            ..Default::default()
+        };
 
-    // Build the subscriber the same way main.rs will.
-    let (layer, _handle) = Handle::new_with_layer(&cfg);
-    let subscriber = tracing_subscriber::registry().with(layer);
-    let _guard = tracing::subscriber::set_default(subscriber);
+        // Build the subscriber the same way main.rs will.
+        let (layer, handle) = Handle::new_with_layer(&cfg, tmp.path())
+            .expect("pipeline builds against the mock");
+        let subscriber = tracing_subscriber::registry().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
 
     tracing::info_span!("t_x2_10_span").in_scope(|| {
         tracing::info!("body");
@@ -1848,11 +1871,7 @@ Then in the test, replace the `sleep(1s)` with:
 handle.force_flush_for_tests();
 ```
 
-`_handle` in the original snippet therefore becomes `handle` (keep the reference instead of `_`). Rename:
-
-```rust
-let (layer, handle) = Handle::new_with_layer(&cfg);
-```
+`_handle` in the original T-X2-10 snippet therefore becomes `handle` (keep the reference instead of `_`) — already shown as `Handle::new_with_layer(&cfg, tmp.path())?` in Step 1 of this task.
 
 - [ ] **Step 4: Add T-X2-5 `config_bus_delivers_telemetry_toggle` as an integration test against `ConfigManager`.**
 
@@ -1867,7 +1886,8 @@ async fn config_bus_delivers_telemetry_toggle() {
 
     let handle = {
         let cfg = mgr.get();
-        let (_layer, h) = Handle::new_with_layer(&cfg.telemetry);
+        let (_layer, h) = Handle::new_with_layer(&cfg.telemetry, tmp.path())
+            .expect("feature-on construction must succeed for the test");
         std::sync::Arc::new(h)
     };
 
@@ -1915,32 +1935,74 @@ cargo test -p oneshim-app --features telemetry -- telemetry::tests::\
 
 Expected: 1 passed.
 
-- [ ] **Step 6: Wire the same task in production `main.rs`.**
+- [ ] **Step 6: Wire the subscriber + bus-driven toggle task in `main.rs`.**
 
-In `src-tauri/src/main.rs`, after the subscriber is initialised and `ConfigManager` is in Tauri managed state:
+Three integration points in `src-tauri/src/main.rs`:
+
+**(a) Build the telemetry layer + handle before the subscriber is initialised.** Do this right after the `file_layer` is constructed (around the existing line that builds `tracing_subscriber::registry().with(env_filter)...`):
 
 ```rust
-#[cfg(feature = "telemetry")]
-{
-    let config_manager = /* handle to the existing ConfigManager Arc */;
-    let telemetry_handle = /* the Handle stored in Tauri managed state */;
-    let mut rx = config_manager.subscribe();
-    tokio::spawn(async move {
-        let mut prev = rx.borrow_and_update().telemetry.clone();
-        while rx.changed().await.is_ok() {
-            let current = rx.borrow_and_update().telemetry.clone();
-            if current != prev {
-                if let Err(e) = telemetry_handle.apply(&current) {
-                    tracing::warn!(error = %e, "telemetry apply failed");
-                }
-                prev = current;
-            }
-        }
-    });
-}
+use telemetry::Handle as TelemetryHandle;
+
+let data_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+std::fs::create_dir_all(&data_dir).ok();
+
+// ConfigManager is already constructed earlier; we only need the initial TelemetryConfig.
+let initial_telemetry = config_manager.get().telemetry.clone();
+let (telemetry_layer, telemetry_handle) = match TelemetryHandle::new_with_layer(
+    &initial_telemetry,
+    &data_dir,
+) {
+    Ok(x) => x,
+    Err(e) => {
+        tracing::warn!(error = %e, "telemetry init failed; continuing without OTLP export");
+        // Fall back to a disabled pipeline so the subscriber still takes a placeholder layer.
+        TelemetryHandle::new_with_layer(
+            &oneshim_core::config::sections::storage::TelemetryConfig::default(),
+            &data_dir,
+        )
+        .expect("disabled-at-boot construction is infallible")
+    }
+};
 ```
 
-Wire the `.with(telemetry_layer)` call into the existing `tracing_subscriber::registry()` chain before `.init()`.
+**(b) Attach the layer to the subscriber.** In the existing `tracing_subscriber::registry()` chain, append `.with(telemetry_layer)` before `.init()`:
+
+```rust
+tracing_subscriber::registry()
+    .with(env_filter)
+    .with(console_layer)
+    .with(file_layer)
+    .with(telemetry_layer)
+    .init();
+```
+
+**(c) Wrap in `Arc` and spawn the bus-driven toggle task.** `TelemetryHandle` itself does not implement `Clone` (the inner `parking_lot::Mutex` is not cloneable), so we share it via `Arc`:
+
+```rust
+let telemetry_handle = std::sync::Arc::new(telemetry_handle);
+// Stash a clone in Tauri managed state so commands can reach it later.
+let telemetry_handle_for_state = telemetry_handle.clone();
+// Separate clone for the toggle task.
+let handle_for_task = telemetry_handle.clone();
+
+let mut rx = config_manager.subscribe();
+tokio::spawn(async move {
+    let mut prev = rx.borrow_and_update().telemetry.clone();
+    while rx.changed().await.is_ok() {
+        let current = rx.borrow_and_update().telemetry.clone();
+        if current != prev {
+            if let Err(e) = handle_for_task.apply(&current) {
+                tracing::warn!(error = %e, "telemetry apply failed");
+            }
+            prev = current;
+        }
+    }
+});
+```
+
+The `#[cfg(not(feature = "telemetry"))]` path still needs (a) and (c) above — the `Layer` is a `NoopLayer`, and the toggle task is dead code that compiles cleanly. No `#[cfg]` gate on the wiring itself; the feature gate inside `TelemetryHandle` handles the dispatch.
 
 - [ ] **Step 7: Run the whole test suite on both feature states.**
 
