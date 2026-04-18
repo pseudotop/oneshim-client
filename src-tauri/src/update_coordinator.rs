@@ -76,6 +76,7 @@ pub fn initial_status(config: &UpdateConfig, auto_install: bool) -> UpdateStatus
         message: None,
         pending: None,
         download_progress: None,
+        rollback: None,
         revision: 0,
         updated_at: Utc::now().to_rfc3339(),
     }
