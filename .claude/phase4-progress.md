@@ -156,6 +156,23 @@ Execution: Tasks 0-13 per plan. Per-task commit + push. Inter-task reviewer disp
 - `cargo test -p oneshim-app --bin oneshim updater::trusted_keys`: **2/2 passed** (baseline +2).
 - Workspace test count intermediate: 3,418 → 3,420 (+2 from trusted_keys; health_probe tests land in Task 5).
 
+#### Task 2 — D9 MULTI-KEY verify_signature COMPLETE
+
+- `install.rs::verify_signature` refactored: built-in `TRUSTED_PUBLIC_KEYS` array consulted first; configured-key fallback runs only when the configured key is non-empty AND different from every built-in key.
+- New inner helper `verify_signature_with_keys(trusted, configured, payload, sig)` enables test-time key injection without mutating production `const`.
+- Private `try_verify_with_key_b64` factored out to share base64 decode + 32-byte validation across all key attempts.
+- `storage.rs::validate_integrity_policy` relaxed: `signature_public_key` no longer required to be non-empty when updates are enabled. Format validation (base64 + 32 bytes) runs only when non-empty override provided.
+- **5 new tests** added (per plan spec §6.1 D9 row = 4 + 1 validate_integrity):
+  - `verify_signature_accepts_builtin_key`
+  - `verify_signature_accepts_second_trusted_key_when_first_inactive`
+  - `verify_signature_fallback_to_configured_key_when_not_in_array`
+  - `verify_signature_rejects_payload_when_no_key_matches`
+  - `validate_integrity_policy_allows_empty_public_key`
+- Existing tests (`verify_signature_accepts_valid_ed25519_signature`, `..._rejects_invalid_signature`) continue to pass via the fallback branch (their configured keys are distinct from the built-in).
+- Clippy clean (fixed `clippy::manual_contains` warning: `trusted.contains(&configured_key)`).
+- `cargo fmt --check`: clean.
+- Workspace test count: 3,418 → 3,425 (+5 from Task 2 + 2 from Task 1 = +7 total).
+
 ---
 
 ## Loop 2 — Plan Deep Review
