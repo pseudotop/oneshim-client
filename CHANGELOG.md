@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Phase 4 Updater Hardening (D9 + D10 + D11) — bundled single-PR initiative closing three paths for bad-release propagation. See [design doc](docs/reviews/2026-04-18-phase4-updater-hardening-design.md) + [plan](docs/reviews/2026-04-18-phase4-updater-hardening-plan.md).
+  - **D9** Multi-key Ed25519 trust array (`TRUSTED_PUBLIC_KEYS` in `src-tauri/src/updater/trusted_keys.rs`) — built-in key list is the authoritative trust source, walked before any user-configured override. Enables day-1 scheduled rotation (overlap window) and compromise response (immediate removal) via `docs/guides/updater-key-rotation.md`.
+  - **D10** Defensive rollout handling — `check_for_updates_from` now treats missing `installation_id` as rollout-EXCLUDED rather than always-eligible; `tracing::error!` + `debug_assert!` guard in `update_coordinator` surfaces the invariant violation in production. Release-author convention for `<!-- rollout:N -->` documented in `docs/guides/updater-rollout.md`.
+  - **D11** Post-install self-healthy probe with automatic rollback — new `HealthProbe` tracks `.install_pending_{VERSION}` / `.boot_count_{VERSION}` / `.self_healthy_{VERSION}` state files; 2 consecutive failed boots trigger automatic restoration of the previous binary via `execute_rollback`. 24h staleness rule prevents phantom rollback after same-version manual reinstalls. Windows rollback mechanism deferred per `docs/guides/updater-rollback-windows.md`.
+- **A-4** Release metadata enrichment: `cliff.toml` body adds "Release Date" + "Since v{prev}" lines; `.github/workflows/release.yml` prepends "## ONESHIM Client {TAG} — Released {Date}"; frontend `UpdatePanel` surfaces `published_at` for pending updates and renders the new `RolledBack` phase with from/to versions + dates + reason.
+- 15 new i18n keys (ko/en) for rollback UX + release-date display.
+- `UpdateControl::set_rolled_back(RollbackInfo)` async method broadcasts rollback events to all UI subscribers.
+
+### Changed
+
+- `validate_integrity_policy` no longer requires `signature_public_key` to be non-empty; built-in `TRUSTED_PUBLIC_KEYS` array is authoritative. Format validation still applies when a non-empty override is provided.
+
+### Infrastructure
+
+- Spec + plan: `docs/reviews/2026-04-18-phase4-updater-hardening-{design,plan}.md`.
+- New guides: `docs/guides/{updater-rollout,updater-key-rotation,updater-rollback-windows}.md`.
+- Test baseline: 3,418 → 3,442 (+24) across oneshim-app, oneshim-api-contracts, oneshim-web.
+
 ## [0.4.39-rc.1] - 2026-04-18
 
 ### Added
