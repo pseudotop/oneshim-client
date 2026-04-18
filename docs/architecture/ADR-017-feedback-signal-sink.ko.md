@@ -43,6 +43,7 @@ pub trait FeedbackSignalSink: Send + Sync {
 
 - **지연 예산 (Latency budget)**: 구현체는 ~10ms 이내에 반환해야 한다. 블로킹 작업(DB 쓰기, 네트워크 호출, 무거운 계산) 은 구현체 내부에서 `tokio::spawn` 으로 오프로드해야 한다. `FeedbackSender::send_feedback` 은 사용자 경로(user-path) accept/reject 에서 싱크를 동기적으로 `await` 하므로, 이 예산을 깨면 의도적으로 분리했던 쓰기 경로 대기(write-path wait) 가 다시 들어온다.
 - **Err 의미 (Err semantics)**: `Result<(), CoreError>` 의 `Err` 는 프로그래머 버그(mutex poisoning, invariant 위반) 전용이다. 예상 가능한 모든 실패(네트워크, DB, 일시적 unavailability) 는 구현체 내부에서 로그 후 삼켜야(log and swallow) 하며 `Err` 로 상위로 전파하면 안 된다. 호출부는 `Err` 를 `warn!` 로 기록하되, 사용자 경로 실패로는 간주하지 않는다.
+- **재시도 순서 (Retry ordering)**: `FeedbackSender::send_feedback` 은 *매 호출*마다 API 호출 전에 싱크를 발화한다. 네트워크 장애로 서버 호출이 실패하면 스케줄러가 `FeedbackRetryQueue` 를 배수하며 `accept`/`reject` 를 재호출한다(`scheduler/loops/suggestions.rs`). 즉, 사용자 1 액션에 대해 N 번의 재시도가 있으면 싱크도 N 번 발화된다. Phase 3 에서는 이 해저드를 감수한다 — 현재 스텁(`CoachingEngine::record_user_reaction`, `RegimeClassifier::record_user_reaction`) 은 `debug!` 로그만 찍어 idempotent 하기 때문이다. **후속 학습 구현은 `suggestion_id` 기준 idempotent 여야 한다 — 구현 레이어에서 중복 제거(seen-set / last-seen timestamp) 하거나, 후속 페이즈에서 싱크 호출을 `send_feedback` 밖(`commands/suggestions.rs::handle_suggestion_action`) 으로 옮겨 네트워크 재시도와 무관하게 사용자 액션 당 1 회만 발화되도록 해야 한다.** 학습 알고리즘을 도입하는 addendum ADR 은 두 옵션 중 하나를 명시적으로 선택해야 한다.
 
 ### 중립 (Neutral)
 

@@ -32,9 +32,14 @@
 
 ### 부정 / 제약 (Negative / Constraints)
 
-- JSON 블롭은 `Regime` 구조체의 진화에 따라 바뀐다. serde 의 `#[serde(default)]` 는 필드 추가(additive fields) 를 처리한다. 필드 제거/이름 변경은 격리 경로(quarantine path) 를 트리거한다. 스키마 불일치는 절대로 조용히 wipe 되지 않는다.
+- JSON 블롭은 `Regime` 구조체의 진화에 따라 바뀐다. 현재 구조체는 `#[serde(default)]` 를 **전혀** 갖지 않으므로, 필드 추가/제거/이름 변경 어느 쪽이든 모두 격리 경로(quarantine path) 를 트리거한다. 필드 단위로 `#[serde(default)]` 를 추가하는 것은 의도적인 결정이어야 한다 — 일괄 적용은 버전 간 묵시적 기본값 치환(silent default-substitution) 을 숨겨서 실제 마이그레이션 의도를 가린다. 스키마 불일치는 절대로 조용히 wipe 되지 않는다 — 격리가 기존 payload 를 보존한다.
 - `load_all` 은 격리 엣지 케이스에서 read-only 가 아니다. 문서가 호출자에게 경고하며, 모든 호출 지점은 시작 시 단발(single-shot) 이다.
-- 종료 시 저장은 4 초 워치독 하의 best-effort 이다 — 텔레메트리(telemetry) 종료와 일치한다. 데드라인 초과 시 `warn!` 로그 후 진행한다 — 종료는 절대로 블록되어서는 안 된다.
+- 종료 시 저장은 best-effort 이다. 워치독은 2 계층이며 각 계층에 한계가 있다:
+  1. `tokio::time::timeout(4s)` 가 save future 를 감싼다. 그러나 `SqliteRegimeManagerStateStore::save_all` 은 `std::sync::Mutex<Connection>` 락을 잡고 `rusqlite::Connection::execute` 를 호출한다 — 둘 다 블로킹 sync 이며, 내부에 `.await` 지점이 없다. tokio 의 timeout 은 `.await` 경계에서만 poll 되므로 in-flight SQL 을 선점(preempt) 할 수 없다. timeout 은 save 가 mutex 획득 전에 yield 하거나(예: 런타임 스레드 대기) 내부 채널 로직이 await 할 때만 발동한다.
+  2. 메인 스레드의 `std::sync::mpsc::recv_timeout(4.5s)`. 이 쪽은 실제로 4.5 초에 발동해 종료를 진행시킨다. 진짜로 멈춘 save 스레드는 이 대기를 넘겨 살아남으며, 프로세스 종료 시 OS 가 회수한다.
+  실제로 SQL 은 작은 JSON blob + `INSERT OR REPLACE` 로 정상 디스크에서는 <50 ms 에 완료된다. SQLite 의 journal 이 torn-write 리스크를 방지한다 — `execute` 는 커밋됐거나(WAL 에 내구성 있게 기록) 아예 커밋되지 않거나(다음 open 시 journal 이 롤백) 둘 중 하나다.
+- **시그널 기반 종료(SIGINT/SIGTERM) 는 저장 자체를 건너뛴다.** `lifecycle.rs::wait_second_signal` 은 `FORCE_EXIT_GRACE_SECS` 이후 `std::process::exit(0)` 를 직접 호출하며, Tauri 의 `RunEvent::Exit` 클로저보다 먼저 실행된다. `kill -TERM <pid>`, `launchctl unload`, 또는 tray-quit 이 아닌 모든 종료 경로는 regime save 와 suggestion-queue save 를 모두 건너뛴다. 이는 본 ADR 이 도입한 것이 아니라 기존 동작(suggestion-queue save 도 동일 제약) 이며, "graceful shutdown" 이라는 표현의 엄밀한 해석이 이를 가릴 수 있어 명시한다. 런타임 주기적 저장(아래 Neutral) 이 후속 해결 방안이다.
+- **종료 순서 주의.** `RunEvent::Exit` 는 WAL 체크포인트를 regime save **앞에** 실행한다. 순서를 뒤집으면, 멈춘 save 가 connection mutex 를 보유한 상태에서 같은 `Arc<Mutex<Connection>>` 에 접근하려는 체크포인트가 블록돼 WAL 이 truncate 되지 않는다. 체크포인트를 먼저 돌려 unblocked window 를 확보하고, 이어지는 save 는 새 WAL 에 쓰기만 한다 — 프로세스가 쓰기 도중 사망해도 다음 시작 시 WAL 이 idempotent 하게 replay 된다.
 
 ### 중립 (Neutral)
 

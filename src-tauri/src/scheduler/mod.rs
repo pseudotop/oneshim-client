@@ -76,9 +76,12 @@ pub(crate) struct AdaptiveTriggerState {
     // can share handles with `AppState` for (a) startup hydration from
     // `RegimeStoragePort::load_all`, (b) shutdown save via the guard in
     // `main.rs::RunEvent::Exit`, and (c) `CompositeFeedbackSink` fan-out
-    // (feedback_sink.rs). The scheduler still has exclusive access at
-    // runtime — `shutdown_tx → shutdown_blocking()` completes before the
-    // save guard fires, so there is no contention window.
+    // (feedback_sink.rs). At runtime the scheduler has de-facto
+    // exclusive access — the shutdown save guard fires only after
+    // `shutdown_tx → shutdown_blocking()` drains the scheduler loops —
+    // so scheduler-vs-save contention is absent. This says nothing
+    // about the separate connection-mutex story in main.rs (see the
+    // WAL-checkpoint-before-save note in `RunEvent::Exit`).
     pub regime_classifier: Arc<parking_lot::Mutex<oneshim_analysis::RegimeClassifier>>,
     pub regime_manager: Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>,
     pub regime_detector: oneshim_analysis::RegimeDetector,

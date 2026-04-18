@@ -32,9 +32,14 @@ On parse failure, `load_all` quarantines the corrupt payload to `payload_backup`
 
 ### Negative / Constraints
 
-- JSON blob evolves with `Regime` struct. serde's `#[serde(default)]` handles additive fields. Removed/renamed fields trigger the quarantine path. Schema mismatches are never silent wipes.
+- JSON blob evolves with `Regime` struct. The current struct carries NO `#[serde(default)]` attributes, so *any* schema evolution — additive, removed, or renamed — triggers the quarantine path. Adding `#[serde(default)]` to future additive fields is a deliberate per-field decision; do NOT add it blanket because silent default-substitution across versions hides real migration intent. Schema mismatches are never silent wipes — the quarantine preserves the old payload.
 - `load_all` is not read-only in the quarantine edge case. Doc warns callers; all call sites are single-shot at startup.
-- Shutdown save is best-effort under a 4 s watchdog — matches telemetry's shutdown. Past the deadline we log `warn!` and continue; shutdown MUST NOT be blocked.
+- Shutdown save is best-effort. The watchdog is two-layered and each layer has limits:
+  1. `tokio::time::timeout(4s)` wraps the save future. But `SqliteRegimeManagerStateStore::save_all` takes the `std::sync::Mutex<Connection>` and calls `rusqlite::Connection::execute` — both blocking sync, with no `.await` once inside. tokio's timeout polls at await boundaries; it cannot preempt the in-flight SQL. The timeout only fires if the save yields before the mutex lock (e.g., waiting for the runtime thread) or if the inner channel machinery awaits.
+  2. `std::sync::mpsc::recv_timeout(4.5s)` on the main thread. This *does* fire at 4.5s and lets shutdown proceed. A genuinely stalled save thread will outlive this wait; the OS reaps it when the process exits.
+  In practice the SQL is a small JSON blob + `INSERT OR REPLACE` and completes in <50 ms on a healthy disk. SQLite's journal guarantees there is no torn-write risk: `execute` either commits (data durable in WAL) or does not (journal rolls back on next open).
+- **Signal-driven shutdown bypasses the save entirely.** `lifecycle.rs::wait_second_signal` calls `std::process::exit(0)` after `FORCE_EXIT_GRACE_SECS`, running before Tauri's `RunEvent::Exit` closure. `kill -TERM <pid>`, `launchctl unload`, or any non-tray-quit termination therefore skips both the regime save and the suggestion-queue save. This is pre-existing behavior (same constraint on suggestion-queue save) not introduced by this ADR; it is called out here because a strict reading of "graceful shutdown" would obscure it. Mid-life periodic save (Neutral, below) is the follow-up remedy.
+- **Shutdown ordering note.** `RunEvent::Exit` runs the WAL checkpoint BEFORE the regime save. If the order were reversed, a stalled save holding the connection mutex would block the checkpoint on the same `Arc<Mutex<Connection>>`, leaving the WAL un-truncated. Running the checkpoint first gives it an unblocked window; the save that follows writes into a fresh WAL, idempotently replayed on next startup if the process dies mid-write.
 
 ### Neutral
 

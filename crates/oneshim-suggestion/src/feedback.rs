@@ -68,6 +68,15 @@ impl FeedbackSender {
 
         // Fire-and-forget into the local sink BEFORE the server call.
         // See ADR-017 for failure + latency rules.
+        //
+        // TODO(Phase 4/5 learning-impl, tracked in ADR-017 addendum):
+        // on server failure the scheduler enqueues into
+        // `FeedbackRetryQueue` and re-invokes `send_feedback` per retry
+        // tick. Current stubs are `debug!`-only and idempotent. Future
+        // learning impls (Bayesian trigger priors, per-regime
+        // acceptance counters) MUST either dedupe by `suggestion_id`
+        // or move the sink call up into the IPC command layer so the
+        // signal fires exactly once per user action.
         if let Some(ref sink) = self.sink {
             if let Err(e) = sink.record_user_reaction(&feedback).await {
                 tracing::warn!(
