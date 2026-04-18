@@ -6,8 +6,15 @@
 
 pub(crate) mod delta;
 mod github;
+pub(crate) mod health_probe;
 mod install;
 mod state;
+mod trusted_keys;
+
+// Re-exports from health_probe for consumers in app_runtime_launch + scheduler
+// (wired in Task 8 per plan — scaffolded here during Task 1).
+#[allow(unused_imports)]
+pub(crate) use health_probe::{HealthProbe, ProbeError, RollbackReason, StartupAction};
 
 #[allow(unused_imports)] // UpdateChannel used in #[cfg(test)] only
 use oneshim_core::config::{UpdateChannel, UpdateConfig};

@@ -387,7 +387,12 @@ impl HealthProbe {
     /// Spawn a tokio background task: wait `healthy_threshold`, then
     /// write `.self_healthy_{VERSION}` and clean state files.
     /// Uses `tokio::time::sleep` — in tests, caller injects shorter threshold.
-    pub fn spawn_healthy_writer(self) -> tokio::task::JoinHandle<()> { /* ... */ }
+    ///
+    /// **Amendment 1 (plan Loop 2 iter 1)**: signature is `&self` (was `self`).
+    /// The probe instance is shared via `Arc` between `app_runtime_launch.rs`
+    /// (check_startup_state) and `scheduler/mod.rs` (spawn_healthy_writer).
+    /// The spawned task captures owned data at spawn time.
+    pub fn spawn_healthy_writer(&self) -> tokio::task::JoinHandle<()> { /* ... */ }
 }
 ```
 

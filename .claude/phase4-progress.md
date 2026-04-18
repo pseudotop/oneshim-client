@@ -144,7 +144,17 @@ Execution: Tasks 0-13 per plan. Per-task commit + push. Inter-task reviewer disp
 - **Phase 2 telemetry surface decision**: **tracing::error! only** — no dedicated counter API exists; Phase 2 integration is span-based via `tracing-opentelemetry` (`src-tauri/src/telemetry/{mod,otlp}.rs`). The `telemetry::increment_counter(...)` line in spec §3.3.2 + Task 3 code block stays commented out; structured `tracing::error!` fields are captured as span events when `telemetry` feature is active.
 - **cliff.toml dry-run**: baseline saved to `/tmp/cliff-baseline.md` (23 lines). **Plan correction**: tag range `v0.4.38..v0.4.39-rc.1` was not usable because `v0.4.38` stable tag does not exist (only RC tags: `v0.4.38-rc.1`..`rc.4`). Corrected range: **`v0.4.38-rc.4..v0.4.39-rc.1`**. Plan document updated inline.
 - **git-cliff version**: `2.12.0` (well above plan's mentioned 1.4 floor for `contributors` var).
-- **Spec Amendment 1 pending**: `spawn_healthy_writer` signature change from `self` to `&self` — will be applied in Task 1.
+- **Spec Amendment 1 pending**: `spawn_healthy_writer` signature change from `self` to `&self` — applied in Task 1.
+
+#### Task 1 — SCAFFOLDING COMPLETE
+
+- `src-tauri/src/updater/trusted_keys.rs` created (~55 LOC including 2 unit tests).
+- `src-tauri/src/updater/health_probe.rs` created (~120 LOC scaffolding; `todo!()` stubs for Task 5 implementation).
+- `updater/mod.rs` registers both new modules + `#[allow(unused_imports)]` re-exports.
+- Spec §4.4 Amendment 1 applied: `spawn_healthy_writer(self)` → `spawn_healthy_writer(&self)`.
+- `cargo check -p oneshim-app`: clean compile.
+- `cargo test -p oneshim-app --bin oneshim updater::trusted_keys`: **2/2 passed** (baseline +2).
+- Workspace test count intermediate: 3,418 → 3,420 (+2 from trusted_keys; health_probe tests land in Task 5).
 
 ---
 
