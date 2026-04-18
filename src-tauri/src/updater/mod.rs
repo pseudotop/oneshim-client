@@ -193,14 +193,24 @@ impl Updater {
             let current_str = current.to_string();
 
             // Staged rollout gate: check if this installation is in the rollout bucket.
+            // D10 defensive None handling (Phase 4): treat a missing installation_id
+            // as rollout-EXCLUDED (was: always-eligible). This prevents a config
+            // regression from silently admitting the device to the first-receive
+            // cohort. The UUID is auto-generated on first launch at
+            // app_runtime_launch.rs:66-74, so None at this point is an invariant
+            // violation.
             let rollout_percent = parse_rollout_percent(&release.body);
-            if let Some(ref installation_id) = self.config.installation_id {
-                if !is_eligible_for_rollout(installation_id, &latest_str, rollout_percent) {
-                    tracing::debug!(
-                        "Update v{latest_str} available but device not in rollout bucket ({rollout_percent}%)"
-                    );
-                    return Ok(UpdateCheckResult::UpToDate { current });
-                }
+            let Some(ref installation_id) = self.config.installation_id else {
+                tracing::warn!(
+                    "installation_id missing — treating as rollout-excluded for v{latest_str}"
+                );
+                return Ok(UpdateCheckResult::UpToDate { current });
+            };
+            if !is_eligible_for_rollout(installation_id, &latest_str, rollout_percent) {
+                tracing::debug!(
+                    "Update v{latest_str} available but device not in rollout bucket ({rollout_percent}%)"
+                );
+                return Ok(UpdateCheckResult::UpToDate { current });
             }
 
             // Try delta patch first, fall back to full binary
@@ -359,7 +369,11 @@ mod tests {
             channel: UpdateChannel::default(),
             include_prerelease: false,
             auto_install: false,
-            installation_id: None,
+            // Task 3 (Phase 4 D10): installation_id must be Some(...) — the
+            // defensive None handling at mod.rs:197 now treats None as
+            // rollout-excluded. Tests that want to exercise the None branch
+            // explicitly override this field.
+            installation_id: Some("test-install-00000000-0000-0000-0000-000000000000".to_string()),
             require_signature_verification: false,
             signature_public_key: String::new(),
             min_allowed_version: None,
@@ -1539,5 +1553,93 @@ mod tests {
     fn parse_rollout_caps_at_100() {
         let body = Some("<!-- rollout:150 -->".to_string());
         assert_eq!(parse_rollout_percent(&body), 100);
+    }
+
+    // ── D10 defensive None handling + rollout-gate end-to-end ─────────
+
+    /// When a release body contains `<!-- rollout:0 -->`, every installation
+    /// is excluded from the rollout bucket. `check_for_updates` must return
+    /// `UpToDate` (no update offered) even though the semver comparison
+    /// reports an available newer version.
+    #[tokio::test]
+    async fn update_check_respects_rollout_exclusion() {
+        let mut server = mockito::Server::new_async().await;
+        let newer_version = "99.0.0";
+
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/releases/latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(
+                r#"{{
+                "tag_name": "v{}",
+                "name": "Rollout Excluded",
+                "body": "new features\n\n<!-- rollout:0 -->\n",
+                "prerelease": false,
+                "assets": [],
+                "html_url": "https://github.com/test/releases/v99.0.0",
+                "published_at": "2024-01-01T00:00:00Z"
+            }}"#,
+                newer_version
+            ))
+            .create_async()
+            .await;
+
+        let config = test_config(); // installation_id = Some("test-install-...")
+        let updater = Updater::new(config);
+
+        let result = updater.check_for_updates_with_base_url(&server.url()).await;
+        mock.assert_async().await;
+
+        match result {
+            Ok(UpdateCheckResult::UpToDate { .. }) => {
+                // Expected: rollout:0 excludes every device.
+            }
+            other => unreachable!("Expected UpToDate on rollout:0, got {:?}", other),
+        }
+    }
+
+    /// When `installation_id` is `None` at check time (regression against the
+    /// invariant that `app_runtime_launch.rs:66-74` writes a UUID before any
+    /// update check spawns), the updater must treat the device as
+    /// rollout-EXCLUDED rather than admitting it as always-eligible.
+    #[tokio::test]
+    async fn update_check_without_installation_id_is_excluded() {
+        let mut server = mockito::Server::new_async().await;
+        let newer_version = "99.0.0";
+
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/releases/latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(
+                r#"{{
+                "tag_name": "v{}",
+                "name": "Rollout 100%",
+                "body": "new features",
+                "prerelease": false,
+                "assets": [],
+                "html_url": "https://github.com/test/releases/v99.0.0",
+                "published_at": "2024-01-01T00:00:00Z"
+            }}"#,
+                newer_version
+            ))
+            .create_async()
+            .await;
+
+        let mut config = test_config();
+        config.installation_id = None; // regression scenario
+
+        let updater = Updater::new(config);
+
+        let result = updater.check_for_updates_with_base_url(&server.url()).await;
+        mock.assert_async().await;
+
+        match result {
+            Ok(UpdateCheckResult::UpToDate { .. }) => {
+                // Expected: None → defensive-exclude even at rollout:100.
+            }
+            other => unreachable!("Expected UpToDate on None installation_id, got {:?}", other),
+        }
     }
 }

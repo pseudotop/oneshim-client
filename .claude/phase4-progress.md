@@ -173,6 +173,18 @@ Execution: Tasks 0-13 per plan. Per-task commit + push. Inter-task reviewer disp
 - `cargo fmt --check`: clean.
 - Workspace test count: 3,418 → 3,425 (+5 from Task 2 + 2 from Task 1 = +7 total).
 
+#### Task 3 — D10 DEFENSIVE None + SPAWN-ORDER GUARD COMPLETE
+
+- `updater/mod.rs::check_for_updates_from` (~L195-208): let-else pattern replaces the old `if let Some(...)` gate. `None` now logs `tracing::warn!` and returns `UpToDate` (defensive-exclude).
+- `update_coordinator.rs::run_update_coordinator` (~L106-130): production-visible regression guard — `tracing::error!` + commented telemetry (Task 0 decision: tracing span-only) + `debug_assert!` when entering the coordinator with `installation_id: None`.
+- `test_config()` updated to set a UUID (since None now early-returns every mock flow). Tests that exercise the None branch explicitly override the field.
+- **2 new tests** added (per plan spec §6.1 D10 row):
+  - `update_check_respects_rollout_exclusion` — `<!-- rollout:0 -->` in mock release body → `UpdateCheckResult::UpToDate` even though latest > current (end-to-end body-parse + gate).
+  - `update_check_without_installation_id_is_excluded` — `installation_id = None` + rollout:100 → `UpdateCheckResult::UpToDate` (defensive handling proves out).
+- `cargo test --workspace`: **3,427 passed** / 0 failed / 21 ignored (+2 from Task 3).
+- `cargo clippy -D warnings`: clean.
+- `cargo fmt --check`: clean.
+
 ---
 
 ## Loop 2 — Plan Deep Review

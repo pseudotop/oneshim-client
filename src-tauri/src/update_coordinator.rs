@@ -103,6 +103,33 @@ pub async fn run_update_coordinator(
     }
 
     let check_interval_hours = config.check_interval_hours;
+
+    // D10 spawn-order guard (Phase 4): the update-check coordinator must not
+    // start until app_runtime_launch.rs:66-74 has persisted installation_id.
+    // This is guaranteed by current launch order (config + UUID are
+    // synchronously committed before any update task spawns), but a future
+    // regression would silently hide the device from rollout via D10's
+    // defensive None handling in updater/mod.rs:check_for_updates_from.
+    // Surface the invariant loudly in both debug and release builds.
+    if config.installation_id.is_none() {
+        tracing::error!(
+            "update-check coordinator started with installation_id = None; \
+             rollout gate will exclude this device until next launch"
+        );
+        // TODO(Task 0 audit resolved: Phase 2 telemetry surface is
+        // span-based via tracing-opentelemetry — no dedicated counter API
+        // is publicly exposed. The tracing::error! above is captured as
+        // a span event when the `telemetry` feature is active. If a future
+        // counter API lands, add the increment here (same namespace used
+        // symmetrically in Task 9's update_coordinator rollback handler).
+        // telemetry::increment_counter("updater.installation_id_missing_at_scheduler_start");
+        // debug-only panic; release builds get tracing::error! + span event only.
+        debug_assert!(
+            false,
+            "installation_id must be set before update-check coordinator starts"
+        );
+    }
+
     let updater = Updater::new(config);
 
     run_update_coordinator_with_executor(
