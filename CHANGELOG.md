@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Spec + plan: `docs/reviews/2026-04-18-phase4-updater-hardening-{design,plan}.md`.
 - New guides: `docs/guides/{updater-rollout,updater-key-rotation,updater-rollback-windows}.md`.
-- Test baseline: 3,418 → 3,442 (+24) across oneshim-app, oneshim-api-contracts, oneshim-web.
+- Test baseline: 3,418 → 3,445 (+27) across oneshim-app, oneshim-api-contracts, oneshim-web (includes Loop 3 iter 1 fix commits +3: 2 `rollback_tests` unit tests + 1 foreign-version-sweep test).
 
 ## [0.4.39-rc.1] - 2026-04-18
 

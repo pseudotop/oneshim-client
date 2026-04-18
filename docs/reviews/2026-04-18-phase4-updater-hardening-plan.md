@@ -8,11 +8,19 @@
 
 ---
 
-## Spec amendments approved during Loop 2 (non-substantive)
+## Spec amendments approved during Loop 2 + Loop 3 (non-substantive)
 
-The following amendments to the spec were approved during plan writing and do not alter design intent. They are recorded here + applied to the spec in the task where they become relevant:
+The following amendments to the spec were approved during plan writing / implementation and do not alter design intent. They are recorded here + applied to the spec in the task where they become relevant:
 
 - **Amendment 1 (applied in Task 1)**: `HealthProbe::spawn_healthy_writer` signature changes from `self` (by value) to `&self`. Rationale: `check_startup_state` already uses `&self`, and the scheduler needs to call `spawn_healthy_writer` after boot while the launch path may still reference the probe. This simplifies ownership — a single probe instance is created in launch, passed by `Arc` to the scheduler for spawning, and dropped at app shutdown. Spec §4.4 signature line updated accordingly in the Task 1 commit.
+
+- **Amendment 2 (applied in Task 7)**: `execute_rollback` signature + Unix termination semantics drift from the spec §4.6 sketch. Shipped shape differs from spec in three ways, all non-substantive:
+  1. **Associated function, not `&self` method**: `execute_rollback` and `execute_rollback_swap_only` are `pub fn` (no `self` receiver). They don't need any `Updater` state — they operate on paths + caller-supplied data only. Reduces coupling.
+  2. **Extra `current_exe_path` argument**: spec implied the function could find its own current_exe; shipping it as a parameter lets callers test with tempdir paths (the in-bin `rollback_tests` module demonstrates).
+  3. **Extra `rollback_event: F` generic callback**: caller supplies the event emitter via closure. Decouples install.rs from the broadcast/telemetry machinery in update_coordinator. The callback fires BEFORE the swap so subscribers observe the rollback even if the subsequent exit races shutdown.
+  4. **Unix termination via `Command::spawn + std::process::exit`, not `CommandExt::exec`**: spec named `exec()` (process-image replacement, same PID). Shipped uses `spawn() + exit()` (new PID starts, old PID terminates). Functionally equivalent outcome — user sees the restored binary running — with simpler semantics + no lifecycle-hook skipping that `exec()` would cause. Rollback event is still broadcast before termination.
+
+  Contract preservation: the success path **still does not return** (`Result<Infallible, UpdateError>` unchanged). Integration test `rollback_swaps_binary_and_emits_event` + in-bin `rollback_tests::execute_rollback_swap_only_*` cover the shared pre-termination logic; the terminate-via-spawn-exit step cannot be exercised from a test harness (any such test would exit the runner) and is accepted as manually-verified per §4.7.
 
 ---
 
