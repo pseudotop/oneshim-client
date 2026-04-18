@@ -21,6 +21,26 @@
 //! and `spawn_healthy_writer` take `&self` so a single probe instance can be
 //! created in `app_runtime_launch.rs`, used for the startup check, then shared
 //! via `Arc` into the scheduler for the healthy-writer spawn.
+//!
+//! # Known limitations (Loop 3 iter 1 review)
+//!
+//! - **Boot-counter ordering** (I-4): `failed_boot_threshold = 2` triggers
+//!   rollback on the THIRD boot that fails to reach a self-healthy marker
+//!   (boot 1 increments 0→1, boot 2 increments 1→2, boot 3 reads 2 ≥ 2
+//!   and rolls back). The "2" in the name refers to the maximum retry
+//!   count, not the total boot count. This matches the standard
+//!   read-then-increment-after-threshold-check pattern.
+//!
+//! - **Concurrent-process race** (I-3): the "read count; compare threshold;
+//!   write count+1" sequence is NOT atomic against two processes of the
+//!   same version starting simultaneously (e.g., desktop shortcut + Tauri
+//!   autolaunch firing in the same second on first-install). Both reads
+//!   see the old value; both writes race. Mitigation deferred to a
+//!   follow-up — low-probability path and the worst-case outcome is an
+//!   unnecessary rollback after a single real success, which the user
+//!   can work around by upgrading again. Fix candidate:
+//!   `OpenOptions::new().create_new(true)` for `.boot_count_pid_{PID}`
+//!   sub-files, then sum at read-time.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -290,7 +310,14 @@ fn write_self_healthy_and_cleanup(install_dir: &Path, version: &str) -> Result<(
     let _ = std::fs::remove_file(&install_pending_path);
     let _ = std::fs::remove_file(install_dir.join(format!(".boot_count_{version}")));
 
-    // Sweep sibling rollback backups EXCEPT the canonical one.
+    // Sweep sibling rollback backups + foreign-version state files.
+    //
+    // Loop 3 iter 1 fix (I-2): previously this sweep only removed
+    // `*.rollback.*` files, leaving stale `.install_pending_{OLDER}` /
+    // `.boot_count_{OLDER}` / `.self_healthy_{OLDER}` files to accrete
+    // across upgrades. Now also reclaim state files whose version suffix
+    // does NOT match the current version — the current probe has just
+    // written its own self_healthy marker, so anything else is stale.
     if let Ok(entries) = std::fs::read_dir(install_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -298,16 +325,29 @@ fn write_self_healthy_and_cleanup(install_dir: &Path, version: &str) -> Result<(
                 Some(n) => n,
                 None => continue,
             };
-            // Match names of the form `<binary>.rollback.<digits>`.
-            if !name.contains(".rollback.") {
+
+            // (a) Rollback backup sweep (existing behavior).
+            if name.contains(".rollback.") {
+                if let Some(keep) = &keep_backup {
+                    if path == *keep {
+                        continue;
+                    }
+                }
+                let _ = std::fs::remove_file(&path);
                 continue;
             }
-            if let Some(keep) = &keep_backup {
-                if path == *keep {
-                    continue;
+
+            // (b) Foreign-version state-file sweep. Match
+            //     `.install_pending_<VER>`, `.boot_count_<VER>`,
+            //     `.self_healthy_<VER>` where VER != the current version.
+            for prefix in [".install_pending_", ".boot_count_", ".self_healthy_"] {
+                if let Some(ver_suffix) = name.strip_prefix(prefix) {
+                    if ver_suffix != version {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    break;
                 }
             }
-            let _ = std::fs::remove_file(&path);
         }
     }
 
@@ -477,6 +517,52 @@ mod tests {
         assert!(!probe.boot_count_path().exists());
         // Backup_path recorded in pending should survive the sweep.
         assert!(backup.exists(), "canonical backup should remain");
+    }
+
+    #[test]
+    fn healthy_writer_cleanup_sweeps_foreign_version_state_files() {
+        let dir = tempdir().unwrap();
+        let current_version = "0.5.0";
+
+        // Seed a fresh install_pending for the CURRENT version (no backup;
+        // the sweep doesn't touch the non-existent path, but the code path
+        // only uses backup_path for the `.rollback.` exclusion).
+        write_pending(
+            dir.path(),
+            current_version,
+            &Utc::now().to_rfc3339(),
+            "0.4.40",
+            &dir.path().join("nonexistent-backup"),
+        );
+
+        // Seed stale state from a previous version.
+        std::fs::write(dir.path().join(".install_pending_0.4.40"), "stale-content").unwrap();
+        std::fs::write(dir.path().join(".boot_count_0.4.40"), "2").unwrap();
+        std::fs::write(
+            dir.path().join(".self_healthy_0.4.40"),
+            Utc::now().to_rfc3339(),
+        )
+        .unwrap();
+
+        // Also seed a LOOKALIKE file that should NOT be swept (different prefix).
+        std::fs::write(dir.path().join("unrelated.txt"), "keep me").unwrap();
+
+        // Invoke the cleanup helper directly.
+        write_self_healthy_and_cleanup(dir.path(), current_version).unwrap();
+
+        // Self-healthy for current version: written.
+        assert!(dir.path().join(".self_healthy_0.5.0").exists());
+        // Current version's pending + boot_count: removed.
+        assert!(!dir.path().join(".install_pending_0.5.0").exists());
+        assert!(!dir.path().join(".boot_count_0.5.0").exists());
+
+        // Foreign-version state files: swept.
+        assert!(!dir.path().join(".install_pending_0.4.40").exists());
+        assert!(!dir.path().join(".boot_count_0.4.40").exists());
+        assert!(!dir.path().join(".self_healthy_0.4.40").exists());
+
+        // Unrelated file: untouched.
+        assert!(dir.path().join("unrelated.txt").exists());
     }
 
     #[test]

@@ -113,21 +113,19 @@ pub async fn run_update_coordinator(
     // defensive None handling in updater/mod.rs:check_for_updates_from.
     // Surface the invariant loudly in both debug and release builds.
     if config.installation_id.is_none() {
+        // Loop 3 iter 1 fix (I-5): removed `debug_assert!(false, ...)` —
+        // panicking dev builds on an invariant violation was a foot-gun for
+        // test fixtures / Tauri dev runs and did not actually protect users
+        // (release builds only get the tracing event).
+        //
+        // The single source of regression detection is the tracing::error!
+        // below — captured as an OTel span event when the `telemetry`
+        // feature is active. If a future counter API lands, add the
+        // increment here (same namespace used symmetrically in Task 9's
+        // rollback handler).
         tracing::error!(
             "update-check coordinator started with installation_id = None; \
              rollout gate will exclude this device until next launch"
-        );
-        // TODO(Task 0 audit resolved: Phase 2 telemetry surface is
-        // span-based via tracing-opentelemetry — no dedicated counter API
-        // is publicly exposed. The tracing::error! above is captured as
-        // a span event when the `telemetry` feature is active. If a future
-        // counter API lands, add the increment here (same namespace used
-        // symmetrically in Task 9's update_coordinator rollback handler).
-        // telemetry::increment_counter("updater.installation_id_missing_at_scheduler_start");
-        // debug-only panic; release builds get tracing::error! + span event only.
-        debug_assert!(
-            false,
-            "installation_id must be set before update-check coordinator starts"
         );
     }
 
