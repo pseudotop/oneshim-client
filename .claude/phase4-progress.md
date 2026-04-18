@@ -77,12 +77,31 @@
 ### Iter 5 — 2026-04-18
 
 - **Starting commit:** `811b87e1`
-- **Revision plan (applied)**:
-  - I-1: §6.3 shows an actual diff against `cliff.toml` lines 9-13 with `\` line continuations preserved; added "whitespace-control contract" preamble; added dry-run instruction for implementer.
-  - M-1: §4.5 row rewritten to state "function does not return on success; caller's only post-call code is Err arm per §4.6".
-  - M-2: test renamed to `rollback_swaps_binary_and_emits_event`; terminology note clarifies that true e2e lives in smoke script.
-  - M-3: §3.3.2 code block `telemetry::increment_counter(...)` line now commented with `// TODO(plan Task 0):` directive to prevent plan-writer from inventing the API.
-- **Pending**: fresh reviewer to confirm EXIT.
+- **Ending commit:** `ff2b4cf6`
+- **Reviewer:** fresh code-reviewer (agentId `a90bb5791e463af5f`)
+- **Verdict:** **Ready to exit Loop 1 — YES.** — 0 Critical + 0 Important + 2 Minor (optional polish only)
+- **Findings:**
+  - m1 — `+` blank-line intent in cliff.toml diff (optional clarification note).
+  - m2 — `debug_assert!` release-vs-debug dual intent inline comment (optional).
+- **Post-verdict polish** (applied after EXIT to preserve zero-issue finish): both m1/m2 clarifications landed inline.
+
+**Loop 1 EXIT — 2026-04-18.** Final spec commit after polish: pending. Total iters: 5 (iter 1 initial + 4 revisions). Total findings addressed: 5 Critical + 17 Important + 24 Minor.
+
+---
+
+## Loop 2 — Plan Deep Review
+
+### Iter 1 — 2026-04-18 (in progress)
+
+Start commit: post-Loop-1-polish (pending).
+Plan location: `docs/reviews/2026-04-18-phase4-updater-hardening-plan.md`.
+
+Plan structure follows Phase 5-D8 precedent:
+- Task 0: audit baseline + verify telemetry API surface + cliff.toml dry-run.
+- Tasks 1-N: break spec sections into shippable units.
+- Each task: step-by-step + commit message + cargo verify commands + push cadence.
+- Bug-discovery policy: ≤20 LOC in-PR fixes allowed; >20 LOC → defer to follow-up.
+- Explicit SKIP markers for any steps that turn out redundant after Task 0 audit.
 
 ---
 

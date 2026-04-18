@@ -202,6 +202,7 @@ if config.update.installation_id.is_none() {
     // (e.g., existing OTel span-event emission) OR omit this line if no
     // public counter API is available yet. Do not introduce a new API.
     // telemetry::increment_counter("updater.installation_id_missing_at_scheduler_start");
+    // debug-only panic; release builds get tracing::error! only.
     debug_assert!(false, "installation_id must be set before update-check scheduler starts");
 }
 ```
@@ -591,7 +592,7 @@ The repo ships an existing `cliff.toml` (~30 lines, verified at commit `811b87e1
  {% endif %}\
 ```
 
-The two new `\`-terminated lines preserve the existing whitespace-control convention. The `{% if %}` guard for the "Since" line uses regular control tags (no `\`) on its own lines — this matches the convention already used at `cliff.toml:19-21` (`{%- if commit.body %}`). Implementation task: dry-run `git cliff --tag v0.4.40-rc.1` against a local branch, diff against a saved pre-amendment rendering of a prior release to confirm only the two new lines appear.
+The two new `\`-terminated lines preserve the existing whitespace-control convention. The `{% if %}` guard for the "Since" line uses regular control tags (no `\`) on its own lines — this matches the convention already used at `cliff.toml:19-21` (`{%- if commit.body %}`). The bare `+` blank line in the diff (between version header and `**Release Date:**`) is intentional — it produces one visible blank line between the `## [...]` header and the metadata block. Implementation task: dry-run `git cliff --tag v0.4.40-rc.1` against a local branch, diff against a saved pre-amendment rendering of a prior release to confirm only the two new substantive lines appear (plus the intentional blank line).
 
 **Git-cliff variable availability** (verify at implementation time via `git cliff --version` + a local dry run on a sample tag range):
 - `previous.version` — available when a prior tag exists; guarded with `{% if previous and previous.version %}` for initial release edge case.
