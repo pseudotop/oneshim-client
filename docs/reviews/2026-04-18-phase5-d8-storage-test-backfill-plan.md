@@ -42,56 +42,91 @@
 
 ---
 
-## PR1 — metrics.rs — 18 methods, ~27 tests, 7-day hard cap
+## PR1 — metrics.rs — 18 methods, ~11–13 tests (audit-gated), 7-day hard cap
 
-### Task 0: Audit MetricsStorage contract coverage (Day 1 AM, ~1 hour)
+**⚠ AUDIT-CONTINGENT SCOPE:** The task counts below are PRE-AUDIT MAXIMUMS. Task 0 produces a dual-file coverage audit; Tasks 3–10 execute ONLY for methods the audit marks as having a "Residual gap for PR1." Duplicates of `sqlite/tests.rs` coverage are SKIPPED, not rewritten.
 
-**Files:**
-- Read-only: `crates/oneshim-storage/src/sqlite/port_contract_tests.rs` lines 232–264
-- Artifact: paste audit table into PR1 body draft (`.claude/phase5-d8-progress.md` as scratchpad)
+**Bug-discovery policy (applies to every Task 3–10):** if a new test reveals a real bug in production code (mismatch between expected and actual behaviour), apply the spec Section 10.1 protocol:
+- Fix ≤ 20 LOC: land in this PR, add PR body callout.
+- Fix > 20 LOC: file a separate bugfix PR, mark the failing test `#[ignore = "blocked by bugfix PR #NNN"]`, link from this PR.
+
+**Git push cadence:** push after each Task completes (not just at Task 11). If your machine crashes mid-PR, you lose at most one task's work:
+```bash
+# After each task's commit, before moving to the next task:
+git push -u origin feat/phase5-d8-storage-tests
+```
+
+### Task 0: Dual-file coverage audit (Day 1 AM, ~2 hours)
+
+**Files (read-only):**
+- `crates/oneshim-storage/src/sqlite/port_contract_tests.rs` — 337 LOC, 22 tests; contract-level port coverage
+- `crates/oneshim-storage/src/sqlite/tests.rs` — 864 LOC; legacy **sibling** tests that already cover MANY of the target methods
+- Artifact: paste audit table into `.claude/phase5-d8-progress.md` as scratchpad; final version goes into the PR1 body
+
+**⚠ CRITICAL ASSUMPTION:** The original Phase 5-D8 gap was phrased as "files without inline `#[cfg(test)] mod tests`" — but many of those methods ARE tested via `sqlite/tests.rs`. The audit MUST check both files. Any test duplicating coverage in `sqlite/tests.rs` is dropped from PR1 scope and the decision recorded in the audit table.
 
 - [ ] **Step 1: Read port_contract_tests.rs MetricsStorage section**
 
 Run: `sed -n '232,264p' crates/oneshim-storage/src/sqlite/port_contract_tests.rs`
 
-- [ ] **Step 2: Build the coverage table**
+- [ ] **Step 2: Read all MetricsStorage-related tests in sqlite/tests.rs**
 
-Produce exactly this table in the PR1 body draft:
+Run: `grep -nE '^(#\[test\]|#\[tokio::test\]|^fn |^async fn )' crates/oneshim-storage/src/sqlite/tests.rs | head -60`
+
+Expected (confirmed 2026-04-18 at commit 041eeb4c): lines 139 (`concurrent_save_and_get`), 164 (`make_system_metrics`), 181 (`make_process_snapshot`), 201 (`save_and_get_metrics`), 214 (`cleanup_old_metrics`), 225 (`save_and_get_process_snapshot`), 241 (`idle_period_lifecycle`), 267 (`session_stats_lifecycle`), 304 (`session_not_found`), 311–424 (tags group, 7 tests), 505–577 (device_identity group, 5 tests).
+
+- [ ] **Step 3: Produce the dual-file coverage table**
+
+Produce exactly this table. Mark ✅ / ❌ / ⚠ based on the two source files:
 
 ```markdown
-## Task 0: MetricsStorage port-contract coverage audit
+## Task 0: MetricsStorage dual-file coverage audit
 
-| Method | Contract test | Status |
-|---|---|---|
-| `save_metrics` | `ms_save_and_get_metrics_roundtrip` | ✅ covered (happy path) |
-| `get_metrics` | `ms_save_and_get_metrics_roundtrip` + `ms_get_metrics_empty_range_returns_empty` | ✅ covered (happy path + empty range) |
-| `aggregate_hourly_metrics` | — | ❌ uncovered |
-| `cleanup_old_metrics` | `ms_cleanup_old_metrics_returns_count` | ✅ covered (empty-cutoff return value) |
-| `save_process_snapshot` | — | ❌ uncovered |
-| `get_process_snapshots` | — | ❌ uncovered |
-| `cleanup_old_process_snapshots` | — | ❌ uncovered |
-| `start_idle_period` | — | ❌ uncovered |
-| `end_idle_period` | — | ❌ uncovered |
-| `get_ongoing_idle_period` | — | ❌ uncovered |
-| `get_idle_periods` | — | ❌ uncovered |
-| `cleanup_old_idle_periods` | — | ❌ uncovered |
-| `upsert_session` | — | ❌ uncovered |
-| `get_session` | — | ❌ uncovered |
-| `end_session` | — | ❌ uncovered |
-| `increment_session_counters` | — | ❌ uncovered |
-| `list_session_stats` (sync helper) | — | ❌ uncovered |
-| `list_hourly_metrics_since` (sync helper) | — | ❌ uncovered |
+| Method | port_contract_tests.rs | sqlite/tests.rs | Residual gap for PR1 |
+|---|---|---|---|
+| `save_metrics` | ✅ `ms_save_and_get_metrics_roundtrip` | ✅ `save_and_get_metrics` L201 | Edge cases only: NULL `NetworkInfo`, bulk 100+. |
+| `get_metrics` | ✅ happy + empty range | ✅ `save_and_get_metrics` roundtrip | Edge cases only: same as above. |
+| `aggregate_hourly_metrics` | ❌ | ❌ | **FULL**: happy / empty-hour / UTC-midnight boundary. |
+| `cleanup_old_metrics` | ✅ empty-cutoff return value | ✅ `cleanup_old_metrics` L214 | Edge only: non-empty cutoff with boundary. |
+| `save_process_snapshot` | ❌ | ✅ `save_and_get_process_snapshot` L225 | **NONE** — covered. Drop Task 4 save/get happy tests. |
+| `get_process_snapshots` | ❌ | ✅ same | **NONE** — covered happy path; keep "invalid JSON silently defaults" as Task 9 (genuine Err-branch gap). |
+| `cleanup_old_process_snapshots` | ❌ | ❌ | **1 test** — cutoff behaviour. |
+| `start_idle_period` | ❌ | ✅ `idle_period_lifecycle` L241 | **NONE** — covered. |
+| `end_idle_period` | ❌ | ✅ same | **NONE** — covered. |
+| `get_ongoing_idle_period` | ❌ | ✅ same (covers Some case) | **1 test** — None case (fresh DB). |
+| `get_idle_periods` | ❌ | ✅ same | **NONE** — covered. |
+| `cleanup_old_idle_periods` | ❌ | ❌ | **1 test** — preserves active periods (`end_time IS NOT NULL` filter). |
+| `upsert_session` | ❌ | ✅ `session_stats_lifecycle` L267 | **NONE** — covered (incl. ON CONFLICT update implicit in lifecycle test). Verify with `grep` before dropping. |
+| `get_session` | ❌ | ✅ same + `session_not_found` L304 | **NONE** — covered. |
+| `end_session` | ❌ | ✅ lifecycle | **NONE** — covered. |
+| `increment_session_counters` | ❌ | ✅ lifecycle | Edge only: increment on nonexistent session is no-op (verify lifecycle covers this; if not, **1 test**). |
+| `list_session_stats` (sync) | ❌ | ❌ | **FULL**: DESC ordering, LIMIT, empty. |
+| `list_hourly_metrics_since` (sync) | ❌ | ❌ (only used transitively via aggregate tests in this plan) | **1 test**: `from_hour` filter across multiple aggregated hours. |
 
-**PR1 scope (after audit):** 15 uncovered async methods + 2 uncovered sync helpers + edge-case additions for 3 contract-covered methods (NULL network, bulk 100+, UTC midnight).
+**PR1 scope (after audit):**
+- **Task 3 retain** — aggregate_hourly_metrics: 3 tests (full gap).
+- **Task 4 shrink dramatically** — process_snapshots: drop save/get happy; keep cleanup_old_process_snapshots + invalid-JSON deser (moved to Task 9). **Task 4 = 1 test (cleanup only) or 0 tests if cleanup is deemed low-value.**
+- **Task 5 shrink dramatically** — idle_periods: drop lifecycle-duplicated tests; keep get_ongoing=None + cleanup preserves active. **Task 5 = 2 tests.**
+- **Task 6 shrink to edge-only** — sessions: drop lifecycle; keep increment-on-nonexistent IF lifecycle doesn't cover it. **Task 6 = 0 or 1 test.**
+- **Task 7 retain** — sync helpers: 3 tests (full gap).
+- **Task 8 retain with scope note** — concurrency: verify existing `concurrent_save_and_get` at `sqlite/tests.rs:139` and reframe new tests to cover `save_process_snapshot` OR different invariant than existing. **Task 8 = 1–2 tests (depending on existing overlap).**
+- **Task 9 retain** — Err branches: 1 active + 1 `#[ignore]` + 2 documented skips.
+- **Task 10 retain (scope-aligned)** — contract-covered edge cases: NULL network, bulk 100+, cleanup boundary. **Task 10 = 3 tests.**
+
+**Revised PR1 test count (expected): 11–13 active tests + 1 `#[ignore]` + 2 documented skips.** The original 28-test estimate is reduced ~60% because `sqlite/tests.rs` already covered most of the happy-path surface.
 ```
 
-- [ ] **Step 3: Commit audit artifact in phase5-d8-progress.md (not yet in the PR)**
+- [ ] **Step 4: Record audit in .claude/phase5-d8-progress.md**
 
 ```bash
 # Append the audit table + a "Task 0 complete 2026-04-XX" line to
 # .claude/phase5-d8-progress.md. Do NOT commit yet — the first actual
 # commit is the Task 1 refactor. Progress tracker updates are local-only.
 ```
+
+- [ ] **Step 5: Gate downstream tasks on the audit output**
+
+For every test in Tasks 3–10 below, cross-check against the audit table's "Residual gap for PR1" column. **If a proposed test's target is marked "NONE — covered" in the audit, SKIP that test and note in PR1 body.** This overrides the plan's pre-audit test counts — the audit is authoritative.
 
 ---
 
@@ -265,7 +300,7 @@ fn sample_process_snapshot(ts: DateTime<Utc>, count: usize) -> ProcessSnapshot {
                 pid: i as u32,
                 name: format!("proc-{i}"),
                 cpu_usage: 1.0 + (i as f32),
-                memory_mb: 100 + (i as u64),
+                memory_bytes: (100 + i as u64) * 1_048_576, // ~100+ MiB per entry
             })
             .collect(),
     }
@@ -307,9 +342,15 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ### Task 3: Tests for `aggregate_hourly_metrics` (Day 2 AM, ~2 hours, 3 tests, 1 commit)
 
+**Audit gate:** Task 0 marks this as **FULL gap** — execute all 3 tests.
+
+**Bug-discovery reminder:** Section 10.1 protocol applies if any test fails due to a production divergence.
+
 **Files:** `crates/oneshim-storage/src/sqlite/metrics/tests.rs`
 
 Tests write raw `system_metrics` rows, call `aggregate_hourly_metrics`, then verify the resulting `system_metrics_hourly` row. Because `open_db()` returns a raw Connection but `aggregate_hourly_metrics` is a `SqliteStorage` method, these tests use `open_storage()` and direct SQL via `storage.connection_arc()` for seeding.
+
+**Date choice:** tests use today-relative hour boundaries via `Utc::now()` + `with_minute(0).with_second(0).with_nanosecond(0)` to avoid hardcoded calendar dates (per `feedback_time_relative_test_dates.md`).
 
 - [ ] **Step 1: Write the happy-path aggregation test**
 
@@ -319,12 +360,23 @@ Append to `metrics/tests.rs` under a new `// ── aggregate_hourly_metrics ─
 
 // ── aggregate_hourly_metrics ──────────────────────────────────
 
+/// Helper: round `Utc::now()` to the start of its own hour (minute=0,
+/// second=0, nanos=0). Used so tests never rely on hardcoded dates.
+fn current_hour_start() -> DateTime<Utc> {
+    Utc::now()
+        .with_minute(0)
+        .and_then(|d| d.with_second(0))
+        .and_then(|d| d.with_nanosecond(0))
+        .expect("truncation to hour should always succeed")
+}
+
 #[tokio::test]
 async fn aggregate_hourly_metrics_rolls_up_samples_in_hour() {
     let storage = open_storage();
-    let hour_start = Utc.with_ymd_and_hms(2026, 4, 15, 10, 0, 0).unwrap();
+    let hour_start = current_hour_start();
+    let hour_key = hour_start.format("%Y-%m-%dT%H:00:00Z").to_string();
 
-    // Seed 3 samples in the 10:00 hour with known CPU values.
+    // Seed 3 samples in the current hour with known CPU values.
     for (offset_min, cpu) in [(5, 20.0_f32), (20, 60.0_f32), (50, 40.0_f32)] {
         let ts = hour_start + Duration::minutes(offset_min);
         storage.save_metrics(&sample_metrics(ts, cpu)).await.unwrap();
@@ -332,12 +384,10 @@ async fn aggregate_hourly_metrics_rolls_up_samples_in_hour() {
 
     storage.aggregate_hourly_metrics(hour_start).await.unwrap();
 
-    let rows = storage
-        .list_hourly_metrics_since("2026-04-15T10:00:00Z")
-        .unwrap();
+    let rows = storage.list_hourly_metrics_since(&hour_key).unwrap();
     assert_eq!(rows.len(), 1);
     let r = &rows[0];
-    assert_eq!(r.hour, "2026-04-15T10:00:00Z");
+    assert_eq!(r.hour, hour_key);
     assert!(
         (r.cpu_avg - 40.0_f64).abs() < 0.1,
         "cpu_avg should be ~40.0, got {}",
@@ -358,14 +408,14 @@ async fn aggregate_hourly_metrics_rolls_up_samples_in_hour() {
 #[tokio::test]
 async fn aggregate_hourly_metrics_empty_hour_writes_no_row() {
     let storage = open_storage();
-    let hour_start = Utc.with_ymd_and_hms(2026, 4, 15, 22, 0, 0).unwrap();
+    // Pick 6 hours in the future so no sample could possibly be there.
+    let hour_start = current_hour_start() + Duration::hours(6);
+    let hour_key = hour_start.format("%Y-%m-%dT%H:00:00Z").to_string();
 
     // No samples seeded for this hour.
     storage.aggregate_hourly_metrics(hour_start).await.unwrap();
 
-    let rows = storage
-        .list_hourly_metrics_since("2026-04-15T22:00:00Z")
-        .unwrap();
+    let rows = storage.list_hourly_metrics_since(&hour_key).unwrap();
     assert!(
         rows.is_empty(),
         "empty hour must not produce an aggregate row"
@@ -379,9 +429,17 @@ async fn aggregate_hourly_metrics_empty_hour_writes_no_row() {
 #[tokio::test]
 async fn aggregate_hourly_metrics_utc_midnight_boundary() {
     let storage = open_storage();
-    // 23:58 of day 1 and 00:02 of day 2 — straddles UTC midnight.
-    let day1_hour = Utc.with_ymd_and_hms(2026, 4, 15, 23, 0, 0).unwrap();
-    let day2_hour = Utc.with_ymd_and_hms(2026, 4, 16, 0, 0, 0).unwrap();
+    // Anchor to "today's UTC midnight" regardless of when the test runs.
+    let day_midnight: DateTime<Utc> = Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc();
+
+    // 23:00 bucket of yesterday and 00:00 bucket of today (straddles midnight).
+    let day1_hour = day_midnight - Duration::hours(1);
+    let day2_hour = day_midnight;
+    let day1_key = day1_hour.format("%Y-%m-%dT%H:00:00Z").to_string();
 
     storage
         .save_metrics(&sample_metrics(day1_hour + Duration::minutes(58), 10.0))
@@ -392,18 +450,15 @@ async fn aggregate_hourly_metrics_utc_midnight_boundary() {
         .await
         .unwrap();
 
-    // Aggregate each hour separately. Each should see exactly 1 sample.
     storage.aggregate_hourly_metrics(day1_hour).await.unwrap();
     storage.aggregate_hourly_metrics(day2_hour).await.unwrap();
 
-    let rows = storage
-        .list_hourly_metrics_since("2026-04-15T23:00:00Z")
-        .unwrap();
+    let rows = storage.list_hourly_metrics_since(&day1_key).unwrap();
     assert_eq!(rows.len(), 2, "two distinct hour buckets expected");
-    assert_eq!(rows[0].hour, "2026-04-15T23:00:00Z");
     assert_eq!(rows[0].sample_count, 1);
-    assert_eq!(rows[1].hour, "2026-04-16T00:00:00Z");
     assert_eq!(rows[1].sample_count, 1);
+    // Hour labels are midnight-crossing — verify structurally, not by hardcoded string.
+    assert!(rows[1].hour.ends_with("T00:00:00Z"));
 }
 ```
 
@@ -437,15 +492,31 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Tests for process_snapshots group (Day 2 PM, ~2 hours, 4 tests, 1 commit)
+### Task 4: Tests for process_snapshots group (Day 2 PM, ~0.5 hour after audit, 1 test max, 1 commit)
 
-Group: `save_process_snapshot`, `get_process_snapshots`, `cleanup_old_process_snapshots`.
+**⚠ AUDIT-GATED:** Per Task 0 dual-file audit — `save_process_snapshot` and `get_process_snapshots` are ALREADY covered by `sqlite/tests.rs:225` (`save_and_get_process_snapshot`). `cleanup_old_process_snapshots` is the only genuine gap.
+
+**Scope after audit:**
+- SKIP the "roundtrip + DESC order" test (duplicate of `sqlite/tests.rs:225`).
+- SKIP the "empty range" test (no direct duplicate but trivial; the coverage already exists).
+- SKIP the "limit respected" test (trivial, same reason).
+- **RETAIN** the cleanup-cutoff test ONLY (genuine gap — no `cleanup_old_process_snapshots` test exists anywhere).
+
+The test specs below marked "[DROP per audit]" are kept in the plan for traceability — the implementer skips them and documents the skip in the PR1 body.
+
+**Bug-discovery reminder:** Section 10.1 protocol applies.
 
 **Files:** `metrics/tests.rs`
 
-- [ ] **Step 1: Write roundtrip + multi-timestamp ordering test**
+- [ ] **Step 1: [DROP per audit] Write roundtrip + multi-timestamp ordering test**
 
-Append:
+SKIP — this duplicates `sqlite/tests.rs:225 save_and_get_process_snapshot`. Document in PR1 body:
+
+```markdown
+- PR1 Task 4 Step 1: SKIPPED. Duplicate of `sqlite/tests.rs:225`.
+```
+
+The original spec (for reference, not for execution):
 
 ```rust
 
@@ -591,9 +662,23 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 5: Tests for idle_periods group (Day 3 AM, ~3 hours, 6 tests, 1 commit)
+### Task 5: Tests for idle_periods group (Day 3 AM, ~1 hour after audit, 2 tests max, 1 commit)
 
-Group: `start_idle_period`, `end_idle_period`, `get_ongoing_idle_period`, `get_idle_periods`, `cleanup_old_idle_periods`.
+**⚠ AUDIT-GATED:** Per Task 0 dual-file audit — `idle_period_lifecycle` at `sqlite/tests.rs:241` ALREADY covers `start_idle_period`, `end_idle_period`, `get_ongoing_idle_period` (Some case), `get_idle_periods`. Genuine gaps:
+- `get_ongoing_idle_period` None case (lifecycle test covers Some path but not None path — confirm by reading L241 contents before implementing).
+- `cleanup_old_idle_periods` WHERE-end_time-IS-NOT-NULL filter — no dedicated cleanup test for idle_periods exists.
+
+**Scope after audit:**
+- SKIP Step 1 (start + get_ongoing roundtrip — duplicate of lifecycle).
+- SKIP Step 2 (end_idle_period roundtrip — duplicate of lifecycle).
+- **RETAIN** Step 3 (get_ongoing None case) — verify against L241 first; if lifecycle already has a pre-start None assertion, drop.
+- SKIP Step 4 (most-recent wins) — requires no dedicated test if lifecycle exercises the single-period case; new coverage here adds marginal value.
+- SKIP Step 5 (time-range filter — duplicate of lifecycle's range query).
+- **RETAIN** Step 6 (cleanup preserves active) — new coverage for an untested filter invariant.
+
+Final expected: **2 tests max** — get_ongoing None, cleanup preserves active.
+
+**Bug-discovery reminder:** Section 10.1 protocol applies.
 
 **Files:** `metrics/tests.rs`
 
@@ -767,9 +852,17 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Tests for sessions group (Day 3 PM, ~3 hours, 6 tests, 1 commit)
+### Task 6: Tests for sessions group (Day 3 PM, ~0.5–1 hour after audit, 0–1 test, 0–1 commit)
 
-Group: `upsert_session`, `get_session`, `end_session`, `increment_session_counters`.
+**⚠ AUDIT-GATED:** Per Task 0 dual-file audit — `session_stats_lifecycle` at `sqlite/tests.rs:267` + `session_not_found` at `sqlite/tests.rs:304` ALREADY cover `upsert_session`, `get_session`, `end_session`, `increment_session_counters`. Read both lifecycle tests before executing any steps here.
+
+**Scope after audit:**
+- SKIP Steps 1–5 — all duplicate of lifecycle.
+- **POSSIBLY RETAIN** Step 6 — increment on nonexistent session is no-op. IF lifecycle or session_not_found doesn't cover this path, retain; otherwise drop.
+
+Final expected: **0 or 1 test** depending on whether the increment-nonexistent case is already exercised in existing tests.
+
+**Bug-discovery reminder:** Section 10.1 protocol applies.
 
 **Files:** `metrics/tests.rs`
 
@@ -924,7 +1017,13 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ### Task 7: Tests for sync list helpers (Day 4 AM, ~1 hour, 3 tests, 1 commit)
 
+**⚠ AUDIT-GATED (retained — full gap):** Per Task 0 — neither file covers `list_session_stats` or the `from_hour` filter of `list_hourly_metrics_since`. Execute all 3 tests.
+
+**Bug-discovery reminder:** Section 10.1 protocol applies.
+
 Group: `list_session_stats` (sync), `list_hourly_metrics_since` (sync — already exercised by Task 3 but add one more).
+
+**Date choice:** use `Utc::now()` + offsets (today-relative) — no hardcoded calendar dates.
 
 **Files:** `metrics/tests.rs`
 
@@ -970,10 +1069,13 @@ async fn list_session_stats_empty_db_returns_empty_vec() {
 #[tokio::test]
 async fn list_hourly_metrics_since_filters_by_from_hour() {
     let storage = open_storage();
+    // Anchor to the hour AT LEAST 3 hours in the past (so all 3 seeded hours
+    // are in the past relative to Utc::now() and the filter is exercised).
+    let anchor = current_hour_start() - Duration::hours(3);
 
     // Seed 3 hours of raw samples, then aggregate each.
-    for h in [9, 10, 11] {
-        let hour_start = Utc.with_ymd_and_hms(2026, 4, 15, h, 0, 0).unwrap();
+    for h in 0..3 {
+        let hour_start = anchor + Duration::hours(h);
         storage
             .save_metrics(&sample_metrics(hour_start + Duration::minutes(30), 25.0))
             .await
@@ -981,13 +1083,13 @@ async fn list_hourly_metrics_since_filters_by_from_hour() {
         storage.aggregate_hourly_metrics(hour_start).await.unwrap();
     }
 
-    // Filter: from 10:00 onward — should see 2 rows (10 and 11).
-    let results = storage
-        .list_hourly_metrics_since("2026-04-15T10:00:00Z")
-        .unwrap();
+    // Filter: from hour+1 onward — should see 2 rows (h+1 and h+2).
+    let from_key = (anchor + Duration::hours(1))
+        .format("%Y-%m-%dT%H:00:00Z")
+        .to_string();
+    let results = storage.list_hourly_metrics_since(&from_key).unwrap();
     assert_eq!(results.len(), 2);
-    assert_eq!(results[0].hour, "2026-04-15T10:00:00Z");
-    assert_eq!(results[1].hour, "2026-04-15T11:00:00Z");
+    assert_eq!(results[0].hour, from_key);
 }
 ```
 
@@ -1013,9 +1115,18 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 8: Lock-contract concurrency tests (Day 4 PM, ~2 hours, 2 tests, 1 commit)
+### Task 8: Lock-contract concurrency tests (Day 4 PM, ~2 hours, 1–2 tests, 1 commit)
+
+**⚠ AUDIT-GATED:** `sqlite/tests.rs:139` already contains `concurrent_save_and_get`. Read it before writing the new tests. Audit decision:
+- If `concurrent_save_and_get` exercises the "N writers + 1 reader consistent snapshot" invariant → SKIP Task 8 Step 2 (duplicate).
+- If it only covers "N writers preserve total count" → SKIP Task 8 Step 1 (duplicate). Retain Step 2.
+- If it's a different invariant (e.g., single writer sequential) → retain BOTH Steps 1 and 2 but reference `concurrent_save_and_get` in the test-module-level comment.
+
+Final expected: **1–2 tests** depending on existing overlap. Document the decision in the PR1 body.
 
 Per spec Section 4 PR1 + Section 6 #3: these are NOT race tests. They assert the Mutex contract survives across threads.
+
+**Bug-discovery reminder:** Section 10.1 protocol applies.
 
 **Files:** `metrics/tests.rs`
 
@@ -1196,11 +1307,9 @@ async fn get_process_snapshots_invalid_json_in_column_silently_defaults_to_empty
 }
 ```
 
-- [ ] **Step 2: save_metrics on a closed DB returns Err(CoreError::Internal(_))**
+- [ ] **Step 2: Document closed-DB Err as unreachable**
 
-This is the closest we get to exercising the `map_err(|e| StorageError::Internal(...))` branch without mutex poisoning. The `with_conn` path errors out cleanly.
-
-Actually — this is hard to exercise because `SqliteStorage` holds the Connection for its lifetime. Per spec, document as unreachable.
+No test code. Add an inline TODO comment in `metrics/tests.rs` (just before Step 1's test) capturing the documented-unreachable decision per spec Section 7 escape hatch:
 
 ```rust
 // TODO: untested Err — save_metrics StorageError::Internal on SQLite
@@ -1244,55 +1353,9 @@ async fn save_metrics_mutex_poison_returns_err_variant_only() {
 }
 ```
 
-- [ ] **Step 4: Direct-insert invalid RFC3339 timestamp into system_metrics — parse fallback to Utc::now() in get_metrics**
+- [ ] **Step 4: Document RFC3339 fallback as unreachable**
 
-Another "not-actually-Err" path — `DateTime::parse_from_rfc3339(&ts_str).map(...).unwrap_or_else(|_| Utc::now())` in `get_metrics`. Document as non-Err swallow.
-
-```rust
-#[tokio::test]
-async fn get_metrics_invalid_rfc3339_timestamp_silently_substitutes_now() {
-    let storage = open_storage();
-    let arc = storage.connection_arc();
-
-    // Direct-insert a row with a malformed timestamp.
-    {
-        let conn = arc.lock().unwrap();
-        conn.execute(
-            "INSERT INTO system_metrics
-             (timestamp, cpu_usage, memory_used, memory_total,
-              disk_used, disk_total, network_upload, network_download)
-             VALUES ('not-a-date', 50.0, 1, 2, 3, 4, 0, 0)",
-            [],
-        )
-        .unwrap();
-    }
-
-    // get_metrics's DESC timestamp filter: query a wide range.
-    let results = storage
-        .get_metrics(
-            Utc::now() - Duration::days(1),
-            Utc::now() + Duration::days(1),
-            10,
-        )
-        .await
-        .unwrap();
-    // The bad timestamp was substituted for Utc::now() at read time, so the row
-    // may or may not be within the range depending on filter SQL (which uses the
-    // raw string, not the parsed timestamp). The assertion here is that we do
-    // NOT return Err even though the row is corrupt.
-    // Whether the row appears in results depends on whether 'not-a-date' >= from_str
-    // and <= to_str in string comparison terms. Documenting; no hard assertion.
-    let _ = results;
-}
-```
-
-Actually — this test is unreliable because the SQL filter uses string comparison. Let me drop it from the plan and rely on Step 1's process_snapshots JSON test + Step 3's poisoning attempt. **The plan-phase reviewer should flag this — if so, acknowledge and remove Step 4.**
-
-- [ ] **Step 4 (revised): Skip — document the decision**
-
-Do NOT implement the invalid-timestamp test. Add to PR body:
-
-> `get_metrics`'s `unwrap_or_else(|_| Utc::now())` fallback is unreachable from a test (the SQL filter operates on the raw timestamp column, so a malformed row with 'not-a-date' may or may not appear depending on string-ordering which is non-deterministic). Documented as:
+No test code. Add an inline TODO comment in `metrics/tests.rs` capturing the documented-unreachable decision per spec Section 7 escape hatch:
 
 ```rust
 // TODO: untested Err — get_metrics RFC3339 parse fallback.
@@ -1300,6 +1363,8 @@ Do NOT implement the invalid-timestamp test. Add to PR body:
 // in production if a row has a malformed timestamp column, but cannot
 // be deterministically exercised from a test because SQL string-ordering
 // on 'not-a-date' vs RFC3339 range bounds is undefined for our purposes.
+// Also it is a SILENT FALLBACK (returns a value, not Err), so even a
+// successful trigger would not exercise an Err branch.
 ```
 
 - [ ] **Step 5: Run + commit**
@@ -1455,10 +1520,20 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 **Files:** no new edits
 
+**Test count:** variable based on Task 0 audit outcome. Expected range **11–13 active tests + 1 `#[ignore]` + 2 documented-unreachable TODO comments**. The old "27 tests" estimate is pre-audit; the post-audit target composition:
+- Task 3: 3 active (retained — full gap)
+- Task 4: 1 active (cleanup_old_process_snapshots — only residual gap)
+- Task 5: 2 active (get_ongoing None + cleanup preserves active)
+- Task 6: 0–1 active (audit-dependent)
+- Task 7: 3 active (retained — full gap)
+- Task 8: 1–2 active (audit-dependent)
+- Task 9: 1 active + 1 `#[ignore]` + 2 TODO docs
+- Task 10: 3 active (retained — edge cases for contract-covered methods)
+
 - [ ] **Step 1: Full workspace test suite**
 
 Run: `cargo test --workspace`
-Expected: all green (including 27 new metrics::tests, 1 #[ignore], other crates unaffected).
+Expected: all green (new metrics::tests + pre-existing tests all green).
 
 - [ ] **Step 2: Full workspace clippy**
 
@@ -1470,21 +1545,16 @@ Expected: zero warnings.
 Run: `cargo fmt --check`
 Expected: no diff.
 
-- [ ] **Step 4: Verify per-function coverage against Task 0 audit**
+- [ ] **Step 4: Verify the audit-driven coverage matrix**
 
-Walk through the Task 0 table. For each method marked ❌ uncovered, find the test name. Missing any?
+Walk through the Task 0 dual-file audit table. For each row with "Residual gap for PR1" that is NOT "NONE — covered":
+- Find the corresponding test name in `metrics/tests.rs`.
+- Record the mapping in the PR1 body.
 
-Expected mapping:
-- aggregate_hourly_metrics → Task 3 (3 tests)
-- save/get/cleanup_process_snapshot → Task 4 (4 tests)
-- 5 idle_period methods → Task 5 (6 tests)
-- 4 session methods → Task 6 (6 tests)
-- 2 sync helpers → Task 7 (3 tests)
-- Concurrency → Task 8 (2 tests)
-- Err + unreachable → Task 9 (1 active + 1 #[ignore] + 2 documented skips)
-- Contract-covered edge → Task 10 (3 tests)
+For each row where the residual gap column IS "NONE — covered":
+- Record in the PR1 body that this was deliberately skipped because of `sqlite/tests.rs` / `port_contract_tests.rs` coverage.
 
-Total: 27 active tests + 1 #[ignore] = 28 test items.
+Expected count: **11–13 active tests + 1 `#[ignore]` + 2 documented-unreachable TODO comments**, matching the Task 11 front-matter.
 
 - [ ] **Step 5: Push branch**
 
@@ -1498,7 +1568,7 @@ git push -u origin feat/phase5-d8-storage-tests
 gh pr create \
   --base main \
   --head feat/phase5-d8-storage-tests \
-  --title "test(storage): Phase 5-D8 PR1 — metrics.rs coverage (27 tests)" \
+  --title "test(storage): Phase 5-D8 PR1 — metrics.rs audit-gated coverage" \
   --body "$(cat <<'EOF'
 ## Summary
 
@@ -1575,18 +1645,49 @@ Per spec Section 9 and the Ralph Loop mandate for Loop 3:
 
 ---
 
-## PR2 — tags.rs + device_identity.rs — ~23 tests, 5-day hard cap
+## PR2 — tags.rs + device_identity.rs — audit-dependent, 5-day hard cap
 
-### Task 12: Add tests block to tags.rs (Days 8–9, ~2 days, ~15 tests)
+**⚠ MAJOR SCOPE CAVEAT:** `sqlite/tests.rs` already contains:
+- **tags tests** at lines 311–424 (7 tests): `create_and_get_tags`, `delete_tag`, `get_tag_by_id`, `update_tag`, `frame_tag_operations`, `duplicate_tag_name_fails`, `add_tag_to_frame_idempotent`.
+- **device_identity tests** at lines 505–577 (5 tests): `ensure_device_identity_generates_uuid_on_first_call`, `ensure_device_identity_returns_same_id_on_second_call`, `ensure_device_identity_persists_across_reopens`, `reset_device_identity_generates_new_uuid`, `reset_device_identity_allows_re_ensure`.
 
-**Files:** `crates/oneshim-storage/src/sqlite/tags.rs` (append tests block).
+**PR2 may be nearly or entirely redundant.** Before writing tests, Task 12 MUST audit these existing tests and identify GENUINE gaps (edge cases, error paths, concurrency invariants, methods with no test). The original spec Section 4 PR2 assumed no such coverage; that assumption is false.
 
-- [ ] **Step 1: Read tags.rs to confirm public API surface**
+**If the audit finds no genuine gaps, PR2 becomes a no-op or converts into a documentation-only PR** that records "PR2 scope closed by existing `sqlite/tests.rs` coverage — 0 new tests."
+
+### Task 12: Audit + (conditional) tests block for tags.rs (Days 8–9, 0–15 tests)
+
+**Files:** read-only `crates/oneshim-storage/src/sqlite/tests.rs:311-424`; conditionally modify `crates/oneshim-storage/src/sqlite/tags.rs`.
+
+- [ ] **Step 0 (BLOCKING): Audit tags coverage in sqlite/tests.rs**
+
+Run: `sed -n '311,424p' crates/oneshim-storage/src/sqlite/tests.rs`
+
+Produce this audit table:
+
+```markdown
+| tags.rs method | sqlite/tests.rs test | Residual gap for PR2 |
+|---|---|---|
+| create_tag | create_and_get_tags + duplicate_tag_name_fails | ? — check whether empty-name or edge cases missing |
+| delete_tag | delete_tag | ? |
+| get_tag_by_id | get_tag_by_id | likely NONE |
+| update_tag | update_tag | ? — check whether only name or also color change |
+| add_tag_to_frame | frame_tag_operations + add_tag_to_frame_idempotent | likely NONE |
+| remove_tag_from_frame | frame_tag_operations | likely NONE |
+| get_tags_for_frame | frame_tag_operations | likely NONE |
+| get_frames_by_tag | frame_tag_operations | likely NONE |
+| (any other pub fn?) | ? | ? |
+```
+
+Fill the `?` cells by reading `tags.rs` and comparing against the existing tests. For any method with "likely NONE", verify by reading the actual test body.
+
+- [ ] **Step 1: Confirm tags.rs public API**
 
 Run: `grep -n "pub fn\|pub async fn" crates/oneshim-storage/src/sqlite/tags.rs`
-Expected: ~10 methods (create_tag, list_tags, update_tag, delete_tag, get_tag_by_name, assign_tag, unassign_tag, list_tags_for_frame, list_frames_for_tag, clear_frame_tags or similar — confirm).
 
-- [ ] **Step 2: Write the 15 tests using the same structure as PR1 metrics/tests.rs**
+Any method NOT listed in the audit table gets a gap-fill test. Concurrency (`UNIQUE(name)` race with 4 threads) is a GENUINE gap — the existing `duplicate_tag_name_fails` is sequential.
+
+- [ ] **Step 2: Write ONLY the gap-fill tests using the PR1 harness pattern**
 
 Same patterns:
 - local `open_db()` / `open_storage()` helpers
@@ -1610,16 +1711,37 @@ git commit -m "test(tags): CRUD + unique constraint + linkage coverage (batch 1)
 # ...repeat for remaining batches.
 ```
 
-### Task 13: Add tests block to device_identity.rs (Day 10, ~1 day, ~8 tests)
+### Task 13: Audit + (conditional) tests block for device_identity.rs (Day 10, 0–3 tests)
 
-**Files:** `crates/oneshim-storage/src/sqlite/device_identity.rs`.
+**⚠ AUDIT-HEAVY:** `sqlite/tests.rs:505-577` already has 5 tests. The original spec's 8 scenarios overlap heavily:
+- first-create / second-load / persist-across-reopen / reset-new / reset-allows-re-ensure ALL covered.
+- Genuine potential gaps: singleton CHECK violation on direct-insert (not tested), corruption recovery (not tested if the module has one).
 
-- [ ] **Step 1: Read device_identity.rs to identify methods + schema**
+**Files:** read-only `sqlite/tests.rs:505-577`; conditionally modify `crates/oneshim-storage/src/sqlite/device_identity.rs`.
 
-Run: `cat crates/oneshim-storage/src/sqlite/device_identity.rs`
-Expected: ~2 public methods + a singleton-row table schema.
+- [ ] **Step 0 (BLOCKING): Audit device_identity coverage**
 
-- [ ] **Step 2: Write 8 tests following the structure of metrics/tests.rs**
+Run: `sed -n '505,577p' crates/oneshim-storage/src/sqlite/tests.rs` + `cat crates/oneshim-storage/src/sqlite/device_identity.rs`
+
+Produce audit table:
+
+```markdown
+| device_identity.rs path | sqlite/tests.rs test | Residual gap for PR2 |
+|---|---|---|
+| first-create on empty DB | ensure_device_identity_generates_uuid_on_first_call | NONE |
+| second-load same id | ensure_device_identity_returns_same_id_on_second_call | NONE |
+| persist across open-close-open | ensure_device_identity_persists_across_reopens | NONE |
+| reset → new id differs | reset_device_identity_generates_new_uuid | NONE |
+| reset → re-ensure works | reset_device_identity_allows_re_ensure | NONE |
+| singleton CHECK(id=1) enforced | ? | verify if a direct-insert test exists |
+| corruption / malformed row | ? | verify if module has a defensive path |
+```
+
+- [ ] **Step 1: Identify public methods**
+
+Run: `grep -n "pub fn\|pub async fn" crates/oneshim-storage/src/sqlite/device_identity.rs`
+
+- [ ] **Step 2: Write ONLY the 0–3 gap-fill tests**
 
 Scenarios per spec Section 4 PR2:
 - First create (no row): writes row, returns identity (1 test)
@@ -1786,24 +1908,39 @@ The Ralph Loop runs each loop automatically per user mandate. Loop 3 runs N iter
 
 ## Self-review (internal)
 
-1. **Spec coverage check:**
-   - Spec Section 4 PR1 Task 0 audit → Plan Task 0 ✅
-   - Spec Section 4 PR1 refactor → Plan Task 1 ✅
-   - Spec Section 4 PR1 18–25 test-count estimate → Plan 27 active tests (above upper bound by 2; acceptable — per-function target was aspirational, actual count driven by method signature).
-   - Spec Section 4 PR1 concurrency (2 tests) → Plan Task 8 ✅
-   - Spec Section 4 PR1 Err branches → Plan Task 9 ✅
-   - Spec Section 4 PR2 tags+device → Plan Tasks 12–13 ✅
-   - Spec Section 4 PR3 audit + smoke + underlying-impl cap → Plan Tasks 15–17 ✅
-   - Spec Section 6 Done criteria (all 6) → implicitly enforced by Task 11 / 14 / 18 final verify.
-   - Spec Section 9 review discipline → Checkpoint after each PR ✅
-   - Spec Section 10.1 schedule risk → reflected in 7/5/4-day hard caps + bug-discovery policy in Task 3.
+### After Loop-2 iter-1 deep review (2026-04-18)
 
-2. **Placeholder scan:** no "TBD", "TODO" in tasks; inline code `// TODO` comments in tests are the documented-unreachable-Err pattern from the spec, not plan placeholders.
+Critical and Important fixes landed:
+
+- **C1 FIXED:** `ProcessSnapshotEntry.memory_bytes` (was `memory_mb`) — verified against `oneshim-core/src/models/activity.rs:96`.
+- **C2 FIXED:** Task 0 audit expanded to BOTH `port_contract_tests.rs` AND `sqlite/tests.rs`. Tasks 4–6 reframed as audit-gated with explicit skip conditions. PR2 Tasks 12–13 similarly gated. Expected PR1 test count reduced from 27 to 11–13.
+- **I1 FIXED:** Hardcoded 2026-04-15 dates in Tasks 3/7 replaced with today-relative helpers (`current_hour_start()`, `Utc::now() - Duration::hours(N)`).
+- **I2 FIXED:** Test count numbers updated in Task 11 Step 4 and the final verify to reflect audit-driven variability.
+- **I3 FIXED:** Bug-discovery policy reminder added as a PR1-front-matter note covering all Tasks 3–10; each task also has a per-task reminder.
+- **I4 FIXED:** Task 9 Step 2 (closed-DB) and Step 4 (RFC3339 fallback) both trimmed to documentation-only entries — no contradictory test code.
+
+### Residual consistency checks
+
+1. **Spec coverage:**
+   - Spec Section 4 PR1 Task 0 audit → Plan Task 0 ✅ (expanded)
+   - Spec Section 4 PR1 refactor → Plan Task 1 ✅
+   - Spec Section 6 Done criteria "real-logic modules" → downgraded expectations after audit confirmation
+   - Spec Section 4 PR1 concurrency (2 tests) → Plan Task 8 ⚠ audit-gated (1–2 depending on existing overlap)
+   - Spec Section 4 PR1 Err branches → Plan Task 9 ✅
+   - Spec Section 4 PR2 tags+device → Plan Tasks 12–13 ⚠ both audit-gated and likely reduced to near-zero
+   - Spec Section 4 PR3 audit + smoke + underlying-impl cap → Plan Tasks 15–17 ✅
+   - Spec Section 9 review discipline → Checkpoint after each PR ✅
+   - Spec Section 10.1 schedule risk → 7/5/4-day hard caps + bug-discovery policy in PR1 front-matter + per-task reminders.
+
+2. **Placeholder scan:** `// TODO: untested Err` comments in tests are part of the spec's escape-hatch mechanism (Section 6 #2), not plan placeholders. No "TBD" / unfilled sections remain.
 
 3. **Type consistency:**
    - `HourlyMetricsRecord`: used in `list_hourly_metrics_since` (confirmed at `sqlite/mod.rs` — imported via `super::HourlyMetricsRecord`).
-   - `SystemMetrics`, `ProcessSnapshot`, `ProcessSnapshotEntry`, `SessionStats`, `IdlePeriod`, `NetworkInfo`: all from `oneshim-core::models::*`; builder field names must match — verified during Task 2 Step 2.
+   - `SystemMetrics`, `ProcessSnapshot`, `ProcessSnapshotEntry` (with **`memory_bytes: u64`**), `SessionStats`, `IdlePeriod`, `NetworkInfo`: all from `oneshim-core::models::*`; field names verified against the actual struct definitions.
    - Method names (`save_metrics`, `get_metrics`, etc.) — verified against `metrics.rs` lines 117–670.
+   - `chrono::TimeZone::with_ymd_and_hms` and `DateTime::with_minute/with_second/with_nanosecond` — standard chrono 0.4 APIs, confirmed by existing use in `metrics.rs:214-218`.
+
+4. **Spec-driven scope sanity:** the original spec counted 6 target modules as "untested." The Loop-2 review revealed this was an inline-vs-sibling distinction, not a coverage gap — most methods ARE tested via `sqlite/tests.rs`. Rather than discarding D8, the plan is retained with audit-driven scope: add inline tests ONLY for methods that have genuine coverage gaps. If the audits show no gaps, the phase becomes documentation-only. The spec's scope retains PR1 as a directory-module refactor (value: ADR-003 alignment + enables future test-organization) even if PR1 adds very few or zero new tests.
 
 ---
 
