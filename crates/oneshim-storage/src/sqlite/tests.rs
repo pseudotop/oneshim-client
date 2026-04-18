@@ -862,3 +862,93 @@ fn sqlcipher_fallback_for_unencrypted_db() {
     // The fallback path reopens without encryption, so data is accessible
     assert_eq!(storage.get_meta("hello"), Some("world".to_string()));
 }
+
+// ── PR3 underlying-impl gap coverage ───────────────────────────────
+//
+// Phase 5-D8 PR3 audit identified 4 underlying SqliteStorage methods
+// lacking coverage in any sibling file. (2 more — save_rule_suggestion_sync
+// + mark_unified_suggestion_shown — deferred to follow-up; require heavy
+// Suggestion fixture.)
+
+#[test]
+fn update_coaching_event_personalized_updates_existing() {
+    use oneshim_core::models::coaching::CoachingEventRow;
+
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+    let event = CoachingEventRow {
+        event_id: "coach-upd-001".to_string(),
+        trigger_type: "t".into(),
+        profile_name: "default".into(),
+        regime_id: None,
+        message_template: "original".into(),
+        personalized_message: None,
+        shown_at: Utc::now().to_rfc3339(),
+        dismissed_at: None,
+        dismiss_action: None,
+        feedback_type: None,
+        feedback_score: None,
+    };
+    storage.insert_coaching_event(&event).unwrap();
+
+    storage
+        .update_coaching_event_personalized("coach-upd-001", "new-text")
+        .unwrap();
+}
+
+#[test]
+fn list_suggestions_empty_db_returns_empty_vec() {
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+    let results = storage.list_suggestions(100).unwrap();
+    assert!(results.is_empty());
+}
+
+#[test]
+fn add_deep_work_secs_accumulates_on_work_session() {
+    use oneshim_core::models::work_session::AppCategory;
+
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+    let session = storage
+        .start_work_session("VSCode", AppCategory::Development)
+        .unwrap();
+
+    storage.add_deep_work_secs(session.id, 30).unwrap();
+    storage.add_deep_work_secs(session.id, 45).unwrap();
+
+    // Verify via direct SQL that the deep_work_secs column reflects the sum.
+    let conn = storage.conn.lock().unwrap();
+    let total: i64 = conn
+        .query_row(
+            "SELECT deep_work_secs FROM work_sessions WHERE id = ?1",
+            rusqlite::params![session.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(total, 75);
+}
+
+#[test]
+fn increment_work_session_interruption_increments_counter() {
+    use oneshim_core::models::work_session::AppCategory;
+
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+    let session = storage
+        .start_work_session("VSCode", AppCategory::Development)
+        .unwrap();
+
+    storage
+        .increment_work_session_interruption(session.id)
+        .unwrap();
+    storage
+        .increment_work_session_interruption(session.id)
+        .unwrap();
+
+    let conn = storage.conn.lock().unwrap();
+    let count: i64 = conn
+        .query_row(
+            "SELECT interruption_count FROM work_sessions WHERE id = ?1",
+            rusqlite::params![session.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 2);
+}
