@@ -53,6 +53,13 @@ All 4 reviewers independently verified EXIT criteria.
 ### Deferred follow-ups (tracked)
 
 1. **Windows rollback implementation** — `docs/guides/updater-rollback-windows.md` recommends `cmd.exe` helper (Option A). Requires a dedicated Windows CI runner + signed-helper decision. Separate PR.
+
+### Spec amendments during implementation (non-substantive)
+
+- **Amendment 1**: `HealthProbe::spawn_healthy_writer(&self)` — spec said `self` by-value; changed to `&self` for Arc-sharing between launch path and scheduler.
+- **Amendment 2**: `execute_rollback` is an associated fn (not `&self` method), takes `current_exe_path` + `rollback_event: F` callback params, and uses `Command::spawn() + std::process::exit()` on Unix instead of the CommandExt image-replacement syscall. Functionally equivalent outcome (restored binary running) + simpler + no lifecycle-hook skipping.
+
+Both amendments are documented in the plan's front-matter section.
 2. **Concurrent-process race mitigation** — per-PID `.boot_count_pid_{PID}` sub-files, documented in `health_probe.rs` module header.
 3. **`pre-release-check.sh:241` Dependabot JSON guard** — 5-minute bug fix PR.
 4. **Notarization workflow `head_branch` condition** — separate infra PR.
