@@ -198,7 +198,10 @@ if config.update.installation_id.is_none() {
         "update-check scheduler started with installation_id = None; \
          rollout gate will exclude this device"
     );
-    telemetry::increment_counter("updater.installation_id_missing_at_scheduler_start");
+    // TODO(plan Task 0): replace with verified Phase 2 telemetry surface
+    // (e.g., existing OTel span-event emission) OR omit this line if no
+    // public counter API is available yet. Do not introduce a new API.
+    // telemetry::increment_counter("updater.installation_id_missing_at_scheduler_start");
     debug_assert!(false, "installation_id must be set before update-check scheduler starts");
 }
 ```
@@ -391,7 +394,7 @@ impl HealthProbe {
 
 | Location | Change |
 |---|---|
-| `src-tauri/src/app_runtime_launch.rs` | After existing config + installation_id setup, before scheduler spawn: instantiate `HealthProbe` with `current_exe().parent()?` as install_dir; call `check_startup_state()`; on `RollbackRequired`, invoke `install::execute_rollback(backup_path, from, to, reason)` and exit. |
+| `src-tauri/src/app_runtime_launch.rs` | After existing config + installation_id setup, before scheduler spawn: instantiate `HealthProbe` with `current_exe().parent()?` as install_dir; call `check_startup_state()`; on `RollbackRequired`, invoke `install::execute_rollback(backup_path, from, to, reason)`. **The function does not return on success (Infallible success type; process is terminated inside)**; the caller's only post-call code is the `Err` arm per §4.6, which logs and exits with code 1. |
 | `src-tauri/src/updater/install.rs` | New helper `write_install_pending(version, previous_version, backup_path)`. **Call site**: immediately after `replace_binary` succeeds in `install_and_restart_with_ops` (`install.rs:407-408`) and **before** `restart_app`. **On `write_install_pending` failure** (e.g., install dir read-only, disk full): attempt restoration using the same platform mechanism as `execute_rollback` (Unix rename, Windows spike-deliverable helper). If restoration itself also fails, emit `tracing::error!` and return `UpdateError::Install` — the user is left on the new binary without a pending marker; the next scheduled probe will not trigger rollback (no `.install_pending_` file), but subsequent health anomalies can still be caught by manual downgrade. Windows constraint applies symmetrically: the restoration path faces the same running-executable constraint addressed by the §4.8 spike. **On earlier step failure** (download, signature verify, replace_binary): explicitly `std::fs::remove_file(backup_path)` to clean the orphan `{binary_name}.rollback.{ts}` file before returning the original error. |
 | `src-tauri/src/scheduler/mod.rs` | After all loops spawn, invoke `probe.spawn_healthy_writer()`. The healthy timer starts only after the scheduler is fully up (design intent: "30s uptime" = 30s after useful app state is reachable, not 30s after process start). |
 | `src-tauri/src/update_coordinator.rs` | Translate a rollback completion into `UpdatePhase::RolledBack` broadcast + toast + telemetry. |
@@ -456,7 +459,8 @@ match install.execute_rollback(&backup_path, &from, &to, reason) {
 - `probe_io_error_is_non_fatal` — point `install_dir` at a read-only directory, confirm `check_startup_state()` returns `Normal` with warn-log.
 
 **Integration (1)**:
-- `rollback_e2e_restores_previous_binary` — in `src-tauri/tests/`: create temp install dir with fake current + backup binaries + install_pending JSON, invoke `check_startup_state` + a mock replacement of `execute_rollback` that performs only the binary-swap step (skipping process replacement since the test can't actually be replaced). Assert: (a) `current_exe_path` content now matches the pre-rollback backup bytes, (b) `.install_pending_{VERSION}` was read before swap, (c) `UpdatePhase::RolledBack` event was broadcast. No assertion on process exit code because the test harness cannot observe cross-process replacement.
+- `rollback_swaps_binary_and_emits_event` — in `src-tauri/tests/`: create temp install dir with fake current + backup binaries + install_pending JSON, invoke `check_startup_state` + a mock replacement of `execute_rollback` that performs only the binary-swap step (skipping process replacement since the test harness cannot be replaced mid-run). Assert: (a) `current_exe_path` content now matches the pre-rollback backup bytes, (b) `.install_pending_{VERSION}` was read before swap, (c) `UpdatePhase::RolledBack` event was broadcast. No assertion on process exit code because the test harness cannot observe cross-process replacement.
+  *Terminology note*: this is a file-ops + event-broadcast integration test; true end-to-end coverage of the install-and-rollback lifecycle lives in the `release-reliability-smoke.sh` step (§6.1), which exercises a real installer.
 
 **D11 total: 7 unit + 1 integration = 8 new tests.**
 
@@ -568,41 +572,26 @@ Format decision made at the toast composition site based on `RollbackInfo.from_p
 
 ### 6.3 `cliff.toml` modification (diff against existing)
 
-The repo ships an existing `cliff.toml` (~30 lines). This work **amends** the `[changelog]` `body` template. It does **not** overwrite the existing `[git]` section or postprocessors. Current body (simplified):
+The repo ships an existing `cliff.toml` (~30 lines, verified at commit `811b87e1`). This work **amends** the `[changelog]` `body` template. It does **not** overwrite the existing `header`, `[git]` section, or commit_parsers.
 
-```text
-{% if version %}
-## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
-{% else %}
-## [Unreleased]
-{% endif %}
-{% for group, commits in commits | group_by(attribute="group") %}
-### {{ group }}
-{% for commit in commits %}- {{ commit.message | upper_first }}{% if commit.breaking %} [**BREAKING**]{% endif %}
-  {%- if commit.body %}{{ commit.body | trim | indent(first=true, prefix="  ") }}{% endif %}
-{% endfor %}
-{% endfor %}
+**Whitespace-control contract**: the existing template uses trailing `\` line continuations on Tera control-flow lines (e.g., `{% if version %}\`) to suppress newlines inserted by Tera block tags. **Preserve this style in the amendment.** Omitting `\` from the new lines will produce unintended blank lines in the rendered CHANGELOG section, potentially breaking existing snapshot/diff checks.
+
+**Exact diff** (against `cliff.toml` L9-13, inside the `body = """..."""` block):
+
+```diff
+ {% if version %}\
+ ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}\
++
++**Release Date:** {{ timestamp | date(format="%B %d, %Y UTC") }}\
++{% if previous and previous.version and contributors %}
++**Since {{ previous.version }}:** {{ commits | length }} commits · {{ contributors | length }} contributors\
++{% endif %}\
+ {% else %}\
+ ## [Unreleased]\
+ {% endif %}\
 ```
 
-**Amended body** (adds two lines of metadata after the `## [...]` header when `version` is present):
-
-```text
-{% if version %}
-## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
-
-**Release Date:** {{ timestamp | date(format="%B %d, %Y UTC") }}
-{% if previous and previous.version %}**Since {{ previous.version }}:** {{ commits | length }} commits · {{ contributors | length }} contributors{% endif %}
-
-{% else %}
-## [Unreleased]
-{% endif %}
-{% for group, commits in commits | group_by(attribute="group") %}
-### {{ group }}
-{% for commit in commits %}- {{ commit.message | upper_first }}{% if commit.breaking %} [**BREAKING**]{% endif %}
-  {%- if commit.body %}{{ commit.body | trim | indent(first=true, prefix="  ") }}{% endif %}
-{% endfor %}
-{% endfor %}
-```
+The two new `\`-terminated lines preserve the existing whitespace-control convention. The `{% if %}` guard for the "Since" line uses regular control tags (no `\`) on its own lines — this matches the convention already used at `cliff.toml:19-21` (`{%- if commit.body %}`). Implementation task: dry-run `git cliff --tag v0.4.40-rc.1` against a local branch, diff against a saved pre-amendment rendering of a prior release to confirm only the two new lines appear.
 
 **Git-cliff variable availability** (verify at implementation time via `git cliff --version` + a local dry run on a sample tag range):
 - `previous.version` — available when a prior tag exists; guarded with `{% if previous and previous.version %}` for initial release edge case.

@@ -62,17 +62,27 @@
   - **I-5** — Integration test "exit code is rollback-specific" — no constant defined.
   - M1-M5 — git-cliff fallback, Windows CI-row caveat, toast i18n keys, release.yml separation, Linux manual-trust wording.
 
-### Iter 4 — 2026-04-18 (in progress)
+### Iter 4 — 2026-04-18
 
-**Revision plan**:
-- I-1: Add explicit "if telemetry API not yet public, stub with `tracing::error!` only; verify Phase 2 surface in Task 0 of plan" note.
-- I-2: Add Windows constraint note to `write_install_pending` restoration path.
-- I-3: Change signature to `Result<Infallible, UpdateError>`; explicit "success path terminates" contract; add `ROLLBACK_EXIT_CODE = 75`; caller pattern for `app_runtime_launch.rs`.
-- I-4: Insert staleness step 0 into `check_startup_state_inner` docstring; update ASCII state machine to step-number ordering; reorder steps 3-5 so increment happens AFTER threshold check.
-- I-5: Rewrite integration test assertions: binary bytes match pre-rollback backup, pending file read before swap, event broadcast; no exit-code assertion (harness can't observe cross-process replacement).
-- Minors: git-cliff version fallback, Windows CI-row caveat for MoveFileEx path, 2 new toast i18n keys, Linux "manually trust" wording.
+- **Starting commit:** `0570e023`
+- **Ending commit:** `811b87e1`
+- **Reviewer:** fresh code-reviewer (agentId `a4ca0dce8c6d2e432`)
+- **Verdict:** **Ready to exit? No.** — 0 Critical + 1 Important + 3 Minor
+- **Findings:**
+  - **I-1** — cliff.toml template whitespace-control fidelity: existing template uses trailing `\` on Tera control-flow lines; my amendment in §6.3 dropped them and would produce blank-line drift in rendered output.
+  - **M-1** — §4.5 `app_runtime_launch.rs` "and exit" wording could mislead implementer (Infallible success type means function doesn't return; caller only has Err arm).
+  - **M-2** — §4.7 test name `rollback_e2e_restores_previous_binary` overstates coverage (body says it skips process replacement); true e2e is in smoke script.
+  - **M-3** — §3.3.2 code block shows `telemetry::increment_counter(...)` without comment; prose says stub-and-defer but code reads as real API.
 
-**Commit plan**: targeted Edits + commit + iter 4 reviewer.
+### Iter 5 — 2026-04-18
+
+- **Starting commit:** `811b87e1`
+- **Revision plan (applied)**:
+  - I-1: §6.3 shows an actual diff against `cliff.toml` lines 9-13 with `\` line continuations preserved; added "whitespace-control contract" preamble; added dry-run instruction for implementer.
+  - M-1: §4.5 row rewritten to state "function does not return on success; caller's only post-call code is Err arm per §4.6".
+  - M-2: test renamed to `rollback_swaps_binary_and_emits_event`; terminology note clarifies that true e2e lives in smoke script.
+  - M-3: §3.3.2 code block `telemetry::increment_counter(...)` line now commented with `// TODO(plan Task 0):` directive to prevent plan-writer from inventing the API.
+- **Pending**: fresh reviewer to confirm EXIT.
 
 ---
 
