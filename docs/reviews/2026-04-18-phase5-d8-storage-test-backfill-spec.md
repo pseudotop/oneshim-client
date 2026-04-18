@@ -102,10 +102,10 @@ Three PRs, sequential but branchable from `main` once PR1 lands:
 
 ### PR3 — Delegator trio + `port_contract_tests.rs` audit (estimate: 3 working days + 1 day slack)
 
-**Definition — "thin delegator":** a module whose every `pub fn` / `pub async fn` is a 1-line forward to an underlying `SqliteStorage::<method>_sync` (or similar) implementation. The underlying implementations are covered by their own sibling tests OR by `port_contract_tests.rs`. Under this definition:
+**Definition — "thin delegator":** a module whose every `pub fn` / `pub async fn` has a body consisting of a single delegation expression (optionally wrapped in `.map_err(Into::into)` or similar one-step conversion) to an underlying `SqliteStorage::<method>_sync` (or similar) implementation. Multi-line function signatures with many parameters still qualify if the body is structurally one delegation call — the "single delegation" criterion is semantic (what the function does), not syntactic (how many lines it occupies). The underlying implementations are covered by their own sibling tests OR by `port_contract_tests.rs`. Under this definition:
 - `coaching_storage_port_impl.rs` (20 LOC, 2 forwards) — thin delegator ✓
 - `session_context_store_impl.rs` (11 LOC, 1 forward) — thin delegator ✓
-- `focus_storage_impl.rs` (82 LOC, 12 forwards) — thin delegator ✓ (LOC-to-method ratio ~7 confirms 1-line forwards; verify during plan)
+- `focus_storage_impl.rs` (82 LOC, 12 forwards — 9 truly 1-line, 3 multi-line due to parameter count but single-delegation bodies) — thin delegator ✓ (verify structurally during plan)
 
 **Done criteria variant (thin delegators only):** Section 6 Done #1 is satisfied by ONE combined smoke test per delegator that invokes every `pub fn`/`pub async fn` of the port in sequence and asserts each returns `Ok(_)` + at least one side effect is observable via a direct SQL read. Per-method happy-path tests are NOT required for thin delegators. The underlying `_sync` implementations' coverage is assessed by the audit (below).
 
@@ -142,7 +142,9 @@ fn open_db() -> (TempDir, Arc<Mutex<Connection>>) {
 }
 ```
 
-**If a test needs `SqliteStorage` (the full struct, not a raw Connection)**, use `SqliteStorage::open_in_memory(30)` as `port_contract_tests.rs` does. If neither raw Connection nor `open_in_memory` is sufficient (e.g., a test needs a specific on-disk path), derive the helper inline in the test module.
+**If a test needs `SqliteStorage` (the full struct, not a raw Connection)**, use `SqliteStorage::open_in_memory(30)` as `port_contract_tests.rs` does. **If a test needs both `SqliteStorage` (for port method calls) AND `Arc<Mutex<Connection>>` (for concurrent-thread cloning in lock-contract tests)**, call `SqliteStorage::open_in_memory(30)` first, then obtain the `Arc<Mutex<Connection>>` via `storage.connection_arc()` — this is the bridge used by `port_contract_tests.rs:~271`. If neither raw Connection nor `open_in_memory` is sufficient (e.g., a test needs a specific on-disk path), derive the helper inline in the test module.
+
+**Schema migration cost per test:** each `open_db()` / `open_in_memory(30)` call runs the full v1→v31 migration chain. This is idempotent and fast (existing 22 contract tests do the same with no measurable suite-runtime impact). 40+ additional tests are not expected to materially change suite runtime; if `cargo test -p oneshim-storage` suite time doubles after PR1, consider a `once_cell`-backed shared-DB harness as a follow-up (captured in Section 11).
 
 **Promoting `open_db` and `sample_X` builders into `test_utils.rs` is OUT OF SCOPE for Phase 5-D8.** It is captured as a follow-up in Section 11. Doing it mid-phase adds refactor scope to every PR and breaks the "test-only" contract of this phase.
 
@@ -190,9 +192,14 @@ For each target module, "done" means **all six** hold:
   // The lock is now poisoned. Calling the port method should propagate
   // the poison as CoreError::Internal(_).
   let result = storage.some_port_method(...).await;
-  assert!(matches!(result, Err(CoreError::Internal(msg)) if msg.contains("poisoned")));
+  // ASSERTION NOTE: different call sites emit different poison-error
+  // strings. `with_conn` (sqlite/mod.rs ~line 143) emits "SQLite lock
+  // poisoned: {e}"; direct `conn.lock()` paths in metrics.rs emit
+  // "Failed to acquire lock: {e}". Match on the variant only, not a
+  // substring, to keep the test robust across call sites:
+  assert!(matches!(result, Err(CoreError::Internal(_))));
   ```
-  **No prior test in `oneshim-storage` uses this technique.** Expect the first attempt to take 1–2 hours. If the port method does not translate poison into `CoreError::Internal` (or if the test hangs), downgrade to "unreachable" per the escape hatch below.
+  **No prior test in `oneshim-storage` uses this technique.** Expect the first attempt to take 1–2 hours. Prefer picking a `with_conn`-backed method (e.g., `save_metrics`) over direct-lock paths for the first attempt — behaviour is more uniformly documented. If the port method does not translate poison into `CoreError::Internal` (or if the test hangs), downgrade to "unreachable" per the escape hatch below.
 - **Unreachable paths (escape hatch, permitted):** closed-connection branches, paths requiring `drop(Arc<Mutex<Connection>>)` without unsafe, and similar are NOT attempted. Document them as:
   ```rust
   // TODO: untested Err — closed-connection path unreachable under Arc<Mutex>.
@@ -256,6 +263,10 @@ Total: 13 working days nominal, 16 working days hard cap (~3 calendar weeks wors
 - **PR3 underlying-impl overflow cap**: if the FocusStorage audit reveals > 10 uncovered `_sync` methods, overflow is deferred to a follow-up issue. Hard cap of 10 new tests in `sqlite/tests.rs` under PR3.
 - **Mutex-poisoning tractability (Section 7)**: first attempt budgeted at 1–2 hours; failure → downgrade to unreachable, no budget impact.
 - **Review turnaround**: 3-loop + 4th-pass deep review per PR adds 0.5–1 calendar day per PR beyond implementation. Calendar-week estimate (~3 weeks hard-cap) assumes review is not self-blocking.
+- **Bug-discovery policy during test authoring.** If a new test uncovers a latent bug in the module under test (e.g., off-by-one in bucket boundary, incorrect NULL handling):
+  - **Fix ≤ 20 LOC in-PR.** Test lands green alongside the 1-commit fix. PR title/body explicitly calls out the bugfix.
+  - **Fix > 20 LOC → separate bugfix PR.** The failing test lands in D8 marked `#[ignore = "blocked by bugfix PR #NNN"]` with a link; the bugfix PR removes the `#[ignore]` when it lands. D8 PR does NOT wait for the bugfix PR to merge first.
+  - This prevents D8 scope from bleeding into production refactors but also prevents D8 from rubber-stamping known bugs.
 
 **Phase 5-D8 is complete when:**
 - All 3 PRs merged to `main`.
