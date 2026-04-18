@@ -27,16 +27,16 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## Current Snapshot (2026-04-05)
+## Current Snapshot (2026-04-19)
 
 ### Version
 
-v0.4.21
+v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 
 ### Workspace
 
 - **Crates**: 14 (including oneshim-audio)
-- **SQLite schema**: V25
+- **SQLite schema**: V31 (V31 added by Phase 3 for `regime_manager_state`)
 
 ### Workflow Status
 
@@ -49,7 +49,7 @@ v0.4.21
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **2,995 passed, 0 failed, 20 ignored** (pre-Phase-2 baseline; Phase 2 adds 22 tests — 11 `config_manager` X1 + 11 telemetry, run separately via `--features telemetry -- --test-threads=1`).
+- `cargo test --workspace`: pass — **3,455 passed, 0 failed, 21 ignored** (post-Phase-5-D8 baseline. Cumulative growth from prior 2,995: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime work, Phase 4 Updater Hardening +27, Phase 5-D8 PR1 +17, PR2 +3, PR3 +7. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`).
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass
@@ -67,13 +67,13 @@ v0.4.21
 
 ### Ignored Tests
 
-20 tests are marked `#[ignore]` because they require external dependencies or long runtime:
+21 tests are marked `#[ignore]` because they require external dependencies or long runtime:
 
 | Crate | Count | Reason |
 |-------|-------|--------|
-| oneshim-vision | 6 | macOS accessibility API (requires live OS permission) |
+| oneshim-vision | 7 | macOS accessibility API (requires live OS permission) — +1 added by Phase 4 Updater Hardening |
 | oneshim-embedding | 3 | Model download from Hugging Face |
-| oneshim-storage | 3 | Keychain integration (requires macOS keychain access) |
+| oneshim-storage | 3 | Keychain integration (requires macOS keychain access); mutex poison path covered by Phase 5-D8 PR1 dedicated test |
 | oneshim-network | 2 | Doc-test examples requiring runtime context |
 | src-tauri | 5 | GitHub API e2e (2) + long-running memory profile (3) |
 | oneshim-storage (doc) | 1 | Doc-test example requiring runtime context |
