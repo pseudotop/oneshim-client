@@ -3,8 +3,16 @@
 **Spec**: `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` (Loop 1 EXIT at `1065cb56`)
 **Target version**: v0.4.40-rc.1
 **Bundling**: single PR
-**Branch base**: branch from `main` AFTER v0.4.39 stable is promoted. Work continues on the current `feat/phase4-updater-hardening-spec` branch until ready to rebase.
-**Total effort**: ~1,030 LOC across 13 tasks, ~3-4 days + 1 Windows spike day.
+**Branch base**: branch from `main` AFTER v0.4.39 stable is promoted. Work continues on `feat/phase4-updater-hardening-spec` (which is a misnomer — keep this branch name for now; rename opportunity is end of Task 13 before PR creation).
+**Total effort**: ~1,030 LOC across 14 tasks, ~3-4 days + 1 Windows spike day.
+
+---
+
+## Spec amendments approved during Loop 2 (non-substantive)
+
+The following amendments to the spec were approved during plan writing and do not alter design intent. They are recorded here + applied to the spec in the task where they become relevant:
+
+- **Amendment 1 (applied in Task 1)**: `HealthProbe::spawn_healthy_writer` signature changes from `self` (by value) to `&self`. Rationale: `check_startup_state` already uses `&self`, and the scheduler needs to call `spawn_healthy_writer` after boot while the launch path may still reference the probe. This simplifies ownership — a single probe instance is created in launch, passed by `Arc` to the scheduler for spawning, and dropped at app shutdown. Spec §4.4 signature line updated accordingly in the Task 1 commit.
 
 ---
 
@@ -12,7 +20,7 @@
 
 ### Commit + push cadence
 
-Commit + push per task. Motivation: mid-PR machine crash or review preemption should not lose progress. Each task ends with `git push origin feat/phase4-updater-hardening` (or whichever branch name is final).
+Commit + push per task. Motivation: mid-PR machine crash or review preemption should not lose progress. Each task ends with `git push origin feat/phase4-updater-hardening-spec` (current branch name — to be renamed before PR creation if desired).
 
 ### Bug-discovery policy (Phase 5-D8 precedent)
 
@@ -66,9 +74,11 @@ Full workspace test runs only at Task-group boundaries (after D9, D10, D11 compl
    - If only span events: emit a span event; note in plan Task 3 that counter line stays commented out.
    - If neither: keep the `tracing::error!` only; counter line remains `// TODO` per spec §3.3.2.
 
-4. **cliff.toml dry-run**: generate a CHANGELOG for a recent tag range (e.g., `v0.4.38..v0.4.39-rc.1`) using the current `cliff.toml`. Save output to `/tmp/cliff-baseline.md`. This is the diff anchor for Task 11.
+4. **cliff.toml dry-run**: generate a CHANGELOG for a **fixed tag range** `v0.4.38..v0.4.39-rc.1` using the current `cliff.toml`. Save output to `/tmp/cliff-baseline.md`. Command: `git cliff v0.4.38..v0.4.39-rc.1 > /tmp/cliff-baseline.md`. **Do NOT use `--unreleased`** here — that would track the moving working tree and make the Task 11 diff unfocused. The fixed range is the diff anchor for Task 11.
 
-5. **Commit**: `docs(phase4): Task 0 — audit baseline` with progress update in `.claude/phase4-progress.md`.
+5. **tempfile dependency verification**: `grep tempfile src-tauri/Cargo.toml` — confirm presence. Note: `tempfile` is currently in `[dependencies]` (not `[dev-dependencies]`); this means the crate is shipped in release builds. Not a Phase 4 blocker but worth noting. If a follow-up wants to move it to `[dev-dependencies]`, file a housekeeping ticket (out of this PR's scope).
+
+6. **Commit**: `docs(phase4): Task 0 — audit baseline` with progress update in `.claude/phase4-progress.md`.
 
 ### Deliverables
 
@@ -93,9 +103,9 @@ All spec-referenced code locations verified:
 
 ---
 
-## Task 1 — `updater/` module layout + stub files
+## Task 1 — `updater/` module layout + stub files + spec amendment
 
-**Goal**: add `trusted_keys.rs` + `health_probe.rs` as stub modules wired into `updater/mod.rs`. No behavior yet; tests are red but don't fail CI (skipped via `#[ignore]` until Task 2/5).
+**Goal**: add `trusted_keys.rs` + `health_probe.rs` as stub modules wired into `updater/mod.rs`; apply the Loop-2-approved spec Amendment 1 (signature change `self` → `&self` on `spawn_healthy_writer`).
 
 ### Steps
 
@@ -116,18 +126,21 @@ All spec-referenced code locations verified:
    ];
    ```
 
-3. Add `src-tauri/src/updater/health_probe.rs` with module skeleton only (public types + `new` / `with_threshold` / public method signatures; `check_startup_state_inner` body `unimplemented!()`):
+3. Add `src-tauri/src/updater/health_probe.rs` with module skeleton only (public types + `new` / `with_threshold` / public method signatures; body `todo!()` (clippy-allowed in stub phase, replaced in Task 5)):
    - `pub struct HealthProbe { ... }`
    - `pub enum StartupAction { Normal, RollbackRequired { ... } }`
    - `pub enum RollbackReason { RepeatedStartupFailure }`
    - `pub enum ProbeError { ... }` (thiserror)
-   - `pub fn new`, `pub fn with_threshold`, `pub fn check_startup_state`, `pub fn spawn_healthy_writer`
+   - `pub fn new`, `pub fn with_threshold`, `pub fn check_startup_state(&self) -> StartupAction`, **`pub fn spawn_healthy_writer(&self) -> tokio::task::JoinHandle<()>`** (signature amendment — receives `&self`, not `self`; Task 1 applies Amendment 1 per front-matter note).
+   - Add `#[allow(clippy::todo)]` on the stub fn bodies; remove in Task 5.
 
-4. Add `mod trusted_keys;` + `mod health_probe;` declarations in `updater/mod.rs`.
+4. **Apply spec Amendment 1** to `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` §4.4: change `pub fn spawn_healthy_writer(self) -> ...` to `pub fn spawn_healthy_writer(&self) -> ...`. Add a one-line annotation in §4.4 referencing "Amendment 1 applied in Task 1 plan commit".
 
-5. Re-export `health_probe::{HealthProbe, StartupAction, RollbackReason, ProbeError}` from `updater/mod.rs`.
+5. Add `mod trusted_keys;` + `mod health_probe;` declarations in `updater/mod.rs`.
 
-6. Run `cargo check -p oneshim-app` — compile must succeed. No new tests yet.
+6. Re-export `health_probe::{HealthProbe, StartupAction, RollbackReason, ProbeError}` from `updater/mod.rs`.
+
+7. Run `cargo check -p oneshim-app` + `cargo clippy -p oneshim-app --all-targets -- -D warnings -A clippy::todo` (temporary clippy allow for stubs). Compile must succeed. No new tests yet.
 
 ### Commit message
 
@@ -297,7 +310,7 @@ Covers:
 
 ### Bug-discovery expectation
 
-Likely surfaces: `tempfile` may need `dev-dependencies` addition if not present. ≤20 LOC Cargo.toml edit allowed per plan discipline.
+`tempfile` is already in `src-tauri/Cargo.toml [dependencies]` per Task 0 audit step 5 — no addition needed. If Task 0 surfaced the "tempfile in [dependencies] vs [dev-dependencies]" concern and filed a housekeeping ticket, proceed without moving it (out of Phase 4 scope).
 
 ### Commit message
 
@@ -362,15 +375,22 @@ now explicitly std::fs::remove_file(backup_path) to prevent orphan
 
 ---
 
-## Task 7 — D11 `execute_rollback` + ROLLBACK_EXIT_CODE + integration test
+## Task 7 — D11 api-contracts types preamble + `execute_rollback` + ROLLBACK_EXIT_CODE + integration test
 
-**Goal**: spec §4.6 implementation + the file-ops integration test from spec §4.7.
+**Goal**: spec §4.6 implementation + the file-ops integration test from spec §4.7. Because `execute_rollback` references `UpdatePhase::RolledBack` (not yet in the contract) and `RollbackInfo`, this task **first** lands the api-contracts types needed for compilation; **Task 9 later** lands the `update_coordinator` handler that actually routes rollback events to `UpdateControl`.
 
 ### Steps
 
-1. Add `pub const ROLLBACK_EXIT_CODE: i32 = 75;` at the top of `updater/install.rs`.
+1. **api-contracts types preamble** (extracted from old Task 9 step 1; resolves Loop 2 iter 1 finding I-1 — ordering). In `crates/oneshim-api-contracts/src/update.rs`:
+   - Add `RolledBack` variant to `UpdatePhase`.
+   - Add `pub struct RollbackInfo { from_version: String, from_published_at: Option<String>, to_version: String, to_published_at: Option<String>, reason: RollbackReason, rolled_back_at: String }` with `#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]`. Doc-comment each `..._at` field as RFC3339 UTC.
+   - Add `pub enum RollbackReason { RepeatedStartupFailure }` with `#[serde(rename_all = "snake_case")]`.
+   - Add `pub rollback: Option<RollbackInfo>` field to `UpdateStatus` (with `#[serde(skip_serializing_if = "Option::is_none")]`).
+   - `cargo test -p oneshim-api-contracts --lib` + fmt + clippy on the contracts crate.
 
-2. Implement `pub fn execute_rollback(...) -> Result<Infallible, UpdateError>`:
+2. Add `pub const ROLLBACK_EXIT_CODE: i32 = 75;` at the top of `updater/install.rs`.
+
+3. Implement `pub fn execute_rollback(...) -> Result<Infallible, UpdateError>`:
    - Verify `backup_path` exists + executable.
    - Broadcast `UpdatePhase::RolledBack` event (Task 9 wires `update_coordinator` to receive this).
    - Flush any async logs (tracing flush if needed).
@@ -378,12 +398,33 @@ now explicitly std::fs::remove_file(backup_path) to prevent orphan
    - Windows: delegate to Task 12 spike-deliverable helper. Until spike lands, `#[cfg(windows)] return Err(UpdateError::Install("§4.8 spike pending".into()))`.
    - Success path never returns (process terminated).
 
-3. Integration test in `src-tauri/tests/rollback_swaps_binary_and_emits_event.rs`:
-   - Create temp install dir, fake current + backup binaries (simple content markers), install_pending JSON pointing to backup.
-   - Invoke a test-mode variant `execute_rollback_swap_only` that performs the swap but does NOT replace the process image (skip the final image-replacement syscall under `#[cfg(test)]`).
-   - Assert: swapped binary bytes match pre-rollback backup; install_pending was read before swap; RolledBack event broadcast via a captured sender.
+4. **Test-mode helper signature** (resolves Loop 2 iter 1 finding M-3). In `install.rs` alongside `execute_rollback`, add:
+   ```rust
+   /// Internal test helper: perform rollback file-ops without replacing the process image.
+   /// Split from execute_rollback so tests can observe the swap + event emission without
+   /// the image-replacement syscall terminating the test harness.
+   #[cfg(test)]
+   pub(crate) fn execute_rollback_swap_only(
+       &self,
+       backup_path: &Path,
+       current_exe_path: &Path,
+       sender: &broadcast::Sender<UpdateStatus>,
+       from_version: &str,
+       to_version: &str,
+       reason: RollbackReason,
+   ) -> Result<(), UpdateError> {
+       // Steps 1-3 of execute_rollback (verify + broadcast + rename).
+       // No image-replacement syscall.
+   }
+   ```
+   `execute_rollback` internally calls the same underlying steps then performs the image-replacement syscall. Production and test paths share steps 1-3.
 
-4. Tests, fmt, clippy.
+5. Integration test in `src-tauri/tests/rollback_swaps_binary_and_emits_event.rs`:
+   - Create temp install dir, fake current + backup binaries (simple content markers), install_pending JSON pointing to backup.
+   - Invoke `execute_rollback_swap_only` (the `#[cfg(test)]` helper from step 4).
+   - Assert: swapped binary bytes match pre-rollback backup; install_pending was read before swap; RolledBack event broadcast via the captured sender.
+
+6. Tests, fmt, clippy.
 
 ### Commit message
 
@@ -444,47 +485,35 @@ release-reliability-smoke.sh step (Task 13 adds it).
 
 ---
 
-## Task 9 — api-contracts + update_coordinator `UpdatePhase::RolledBack` + `RollbackInfo`
+## Task 9 — update_coordinator rollback handler wiring
 
-**Goal**: spec §5.1 types landed; update_coordinator broadcasts the new phase + info.
+**Goal**: the api-contracts types were landed in Task 7; Task 9 wires `update_coordinator` to receive rollback events broadcast by `execute_rollback` and translate them into `UpdateControl::set_status` calls. This task closes the loop from rollback execution to UI observation.
 
 ### Steps
 
-1. In `crates/oneshim-api-contracts/src/update.rs`:
-   - Add `RolledBack` to `UpdatePhase`.
-   - Add `pub struct RollbackInfo { from_version, from_published_at, to_version, to_published_at, reason, rolled_back_at }`.
-   - Add `pub enum RollbackReason { RepeatedStartupFailure }` with `#[serde(rename_all = "snake_case")]`.
-   - Add `pub rollback: Option<RollbackInfo>` field to `UpdateStatus`.
+1. In `src-tauri/src/update_coordinator.rs`:
+   - Add a handler that receives rollback events (from Task 7's `execute_rollback` broadcast) and calls `UpdateControl::set_status` with phase = `RolledBack` + `rollback: Some(RollbackInfo { ... })`.
+   - Populate `from_published_at` / `to_published_at` from the GitHub Release metadata if cached in the coordinator's release-info cache; `None` otherwise (spec §5 fallback).
+   - Emit telemetry event per Task 0 decision. **Record the Task 0 telemetry-API decision explicitly in this commit message** (resolves Loop 2 iter 1 M-5) — e.g., "Telemetry path: `<counter API | span event | tracing only>` per Task 0 audit".
 
-2. In `src-tauri/src/update_coordinator.rs`:
-   - Add a handler that receives rollback events (from Task 7's broadcast) and calls `UpdateControl::set_status` with phase = `RolledBack` + `rollback: Some(RollbackInfo { ... })`.
-   - Propagate `from_published_at` / `to_published_at` from the GitHub Release metadata if cached; `None` otherwise (spec §5 fallback).
-   - Emit telemetry event if Phase 2 surface available per Task 0 decision.
+2. `cargo test -p oneshim-api-contracts --lib` + `cargo check -p oneshim-app`.
 
-3. Frontend will consume this in Task 10.
-
-4. `cargo test -p oneshim-api-contracts --lib`, `cargo check -p oneshim-app`.
+3. Frontend consumption is Task 10.
 
 ### Commit message
 
 ```
-feat(update-contract): add RolledBack phase + RollbackInfo + reason enum
+feat(updater): update_coordinator rollback handler + UpdateControl wiring
 
-api-contracts:
-- UpdatePhase::RolledBack variant added
-- RollbackInfo struct with from/to versions + published_at + reason +
-  rolled_back_at (all RFC3339 strings)
-- RollbackReason::RepeatedStartupFailure (snake_case serde, additive
-  for future variants)
-- UpdateStatus.rollback: Option<RollbackInfo> (populated when
-  phase == RolledBack)
-
-update_coordinator:
+update_coordinator.rs:
 - Receives rollback events from install::execute_rollback broadcast
-- Translates to UpdatePhase::RolledBack + RollbackInfo + telemetry
-  event (per Task 0 telemetry decision)
-- Populates from_published_at / to_published_at from cached release
-  metadata when available; None otherwise (graceful UI fallback).
+  (Task 7 landed the broadcast channel + api-contracts types).
+- Translates to UpdatePhase::RolledBack + RollbackInfo via
+  UpdateControl::set_status. Populates from_published_at /
+  to_published_at from the coordinator's release-info cache when
+  available; None otherwise (graceful UI fallback per spec §5).
+- Telemetry path: <counter API | span event | tracing only>
+  (chosen per Task 0 audit decision).
 
 Frontend consumption in Task 10.
 ```
@@ -546,9 +575,9 @@ pnpm lint + build green.
 
 1. Apply the exact diff from spec §6.3 to `cliff.toml` body template. Preserve trailing `\` continuations.
 
-2. Dry-run against a recent tag range: `git cliff --tag v0.4.40-rc.1 --unreleased 2>&1 > /tmp/cliff-amended.md`.
+2. Dry-run against the **same fixed tag range** used in Task 0 (`v0.4.38..v0.4.39-rc.1`, NOT `--unreleased`). Command: `git cliff v0.4.38..v0.4.39-rc.1 > /tmp/cliff-amended.md`.
 
-3. Diff `/tmp/cliff-baseline.md` (from Task 0) vs `/tmp/cliff-amended.md`. Expect: only the `**Release Date:** ...` + `**Since v... :** ...` lines appear in the amended output (plus the intentional blank line). Any other diff lines are regressions.
+3. Diff `/tmp/cliff-baseline.md` (from Task 0) vs `/tmp/cliff-amended.md`. Expect: only the `**Release Date:** ...` + `**Since v... :** ...` lines appear in the amended output (plus the intentional blank line). Any other diff lines are regressions in template whitespace handling.
 
 4. Add the prepend step in `.github/workflows/release.yml` per spec §6.3:
    ```yaml
@@ -696,7 +725,7 @@ Full verification suite passes:
 Before submitting:
 
 - [ ] All 13 tasks committed + pushed.
-- [ ] Task 0 baseline matches post-Task-13 +14 tests (or explain the difference in PR description).
+- [ ] Task 0 baseline matches post-Task-13 **approximately +14 tests** (exact count depends on Task 0 zero-gap escape hatches; Task 13 CHANGELOG records the actual delta).
 - [ ] Spec `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` committed in the PR branch.
 - [ ] All 5 new files present: `trusted_keys.rs`, `health_probe.rs`, `updater-rollout.md`, `updater-key-rotation.md`, `updater-rollback-windows.md`.
 - [ ] `cliff.toml` amended, dry-run diff confirms only the two new substantive lines.

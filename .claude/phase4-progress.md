@@ -91,17 +91,33 @@
 
 ## Loop 2 — Plan Deep Review
 
-### Iter 1 — 2026-04-18 (in progress)
+### Iter 1 — 2026-04-18
 
-Start commit: post-Loop-1-polish (pending).
-Plan location: `docs/reviews/2026-04-18-phase4-updater-hardening-plan.md`.
+- **Starting commit:** `1065cb56` (Loop 1 EXIT)
+- **Ending commit:** `007b57b5` (plan landed)
+- **Reviewer:** fresh code-reviewer (agentId `a59c54387dc123743`)
+- **Verdict:** **Ready to exit? No.** — 0 Critical + 4 Important + 5 Minor
+- **Findings:**
+  - **I-1** — Task 7 references `UpdatePhase::RolledBack` which Task 9 adds; compile break. Fix by moving api-contracts type additions into Task 7 as preamble step.
+  - **I-2** — `tempfile` already in src-tauri/Cargo.toml [dependencies] per audit; Task 5 "may need addition" note was misleading.
+  - **I-3** — Task 8 probe ownership: spec §4.4 `spawn_healthy_writer(self)` conflicts with `Arc<HealthProbe>` usage; need signature change to `&self`.
+  - **I-4** — Task 11 cliff dry-run used `--unreleased` (moving tree), Task 0 used fixed range; diff would be noisy.
+  - M1-M5 — branch name inconsistency, clippy::todo lint, test helper signature undefined, fixed test count arithmetic, telemetry decision not inline in commit.
 
-Plan structure follows Phase 5-D8 precedent:
-- Task 0: audit baseline + verify telemetry API surface + cliff.toml dry-run.
-- Tasks 1-N: break spec sections into shippable units.
-- Each task: step-by-step + commit message + cargo verify commands + push cadence.
-- Bug-discovery policy: ≤20 LOC in-PR fixes allowed; >20 LOC → defer to follow-up.
-- Explicit SKIP markers for any steps that turn out redundant after Task 0 audit.
+### Iter 2 — 2026-04-18 (in progress)
+
+**Revision plan (applied)**:
+- I-1: Task 7 renamed to "D11 api-contracts types preamble + execute_rollback..."; types added as step 1 before the main body. Task 9 renamed to "update_coordinator rollback handler wiring" (the types step deleted from it).
+- I-2: Task 0 step 5 added explicit tempfile verification; Task 5 bug-discovery note rewritten.
+- I-3: Spec Amendment 1 approved + recorded in plan front-matter; Task 1 applies the amendment to spec §4.4 (`self` → `&self`).
+- I-4: Task 0 step 4 + Task 11 step 2 both use fixed range `v0.4.38..v0.4.39-rc.1` (no `--unreleased`); diff becomes focused.
+- M-1: "Commit + push cadence" branch name corrected to current `feat/phase4-updater-hardening-spec`.
+- M-2: Task 1 step 3 uses `todo!()` with `#[allow(clippy::todo)]` on stub fn bodies; allow removed in Task 5.
+- M-3: Task 7 step 4 defines `execute_rollback_swap_only` signature explicitly.
+- M-4: Final checklist softened from "+14 tests" to "approximately +14 tests (exact in Task 13)".
+- M-5: Task 9 commit message now required to state telemetry decision inline.
+
+**Commit plan**: amend in place; re-dispatch reviewer after commit.
 
 ---
 
