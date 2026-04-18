@@ -48,7 +48,7 @@ This spec defines the plan for closing that gap in ~2 calendar weeks across 3 PR
 1. **100% line coverage.** We target function+branch coverage measured by "every `pub fn` / `pub async fn` has ≥ 1 happy-path test and every `Err` return path has ≥ 1 test." Not a `%` number.
 2. **Property tests / fuzz.** Out of scope. If a specific invariant is naturally expressed as a property (e.g., "read-after-write roundtrip for any valid Tag"), a normal unit test with a small enumerated set is sufficient.
 3. **Integration tests across crates.** Storage-only. No testing of `src-tauri` wiring, `oneshim-analysis` consumers, etc.
-4. **Revalidation of already-tested ports.** `MetricsStorage` might be touched by `port_contract_tests.rs` — if so, we add the metrics-specific internal tests (time-window math, aggregation edge cases) but do NOT re-test the port surface.
+4. **Revalidation of already-tested port contracts.** `port_contract_tests.rs` already covers 3 `MetricsStorage` methods (`ms_save_and_get_metrics_roundtrip`, `ms_get_metrics_empty_range_returns_empty`, `ms_cleanup_old_metrics_returns_count` at `port_contract_tests.rs:232-264`) and 3 `FocusStorage` methods (`start_work_session`/`end_work_session`, `get_or_create_focus_metrics`, `increment_focus_metrics` at `port_contract_tests.rs:299-337`). PR1 and PR3 audits explicitly enumerate the delta — we add module-internal coverage for methods NOT already contract-tested, plus aggregation / edge-case scenarios. We do NOT re-test a method whose behaviour is already asserted at the port surface.
 5. **Schema migration.** v31 stays as the current head. No test here adds a column or changes existing schema.
 
 ---
@@ -57,54 +57,83 @@ This spec defines the plan for closing that gap in ~2 calendar weeks across 3 PR
 
 Three PRs, sequential but branchable from `main` once PR1 lands:
 
-### PR1 — `metrics.rs` (estimate: 6 working days)
+### PR1 — `metrics.rs` (estimate: 6 working days + 1 day slack)
 
+- **Task 0 (blocking) — Audit `port_contract_tests.rs` MetricsStorage coverage.** Produce a table mapping every `MetricsStorage` method (there are ~18 methods across the trait impl + helpers) to "contract-covered / uncovered / partial." The 3 known contract-covered methods (`save_metrics`, `get_metrics` / `get_metrics` empty-range variant, `cleanup_old_metrics`) get NO additional roundtrip test in PR1. The audit output is pasted into the PR body.
 - **Refactor commit (1)**: `refactor(storage): promote metrics.rs to directory module`
   - `git mv crates/oneshim-storage/src/sqlite/metrics.rs crates/oneshim-storage/src/sqlite/metrics/mod.rs`
-  - Create empty `crates/oneshim-storage/src/sqlite/metrics/tests.rs`
+  - Create `crates/oneshim-storage/src/sqlite/metrics/tests.rs` (initially just `//! Inline unit tests — populated in subsequent commits.`)
   - Wire `mod tests;` at the bottom of `metrics/mod.rs` (gated on `#[cfg(test)]`)
-  - `cargo check` verifies zero behavior delta.
-- **Test commits (multiple)**: add 25–35 tests covering the below.
-- **Per-function target**: every `pub fn` / `pub async fn` in `MetricsStorage` impl + every `fn` private helper with a non-trivial branch.
-- **Scenario seeds** (subject to confirmation against the actual `metrics.rs` API during the plan phase):
-  - metric write/read roundtrip;
-  - time-window aggregation (5 min / 1 h / 1 day bucket boundaries) — only if the production code bucketizes; skip if metrics are stored raw;
-  - empty window (query returns zero rows, does not error);
-  - UTC-midnight boundary if timestamps are bucketized by calendar day (verify `chrono` usage during plan);
-  - bulk write + bulk read over 100+ samples (no pagination API assumed — just assert all N rows round-trip);
-  - NULL CPU / Memory handling if columns are nullable;
-  - retention cutoff / TTL behavior if the module implements it (verify during plan).
-- **Concurrency**: 2 tests — parallel writes preserving count; writer + reader yielding consistent snapshot.
-- **Err branches**: every `CoreError::Internal(...)` return exercised (e.g., poisoned mutex via forced panic on another thread, schema violation via direct INSERT of invalid data).
+  - `cargo check` + `cargo test -p oneshim-storage` verify zero behavior delta.
+- **Test commits (bundled)**: add the module-internal test delta. Estimated 18–25 tests after subtracting the 3 contract-covered methods. Commits SHOULD be bundled in groups of 3+ to amortize lefthook clippy cost (~16 min cold per commit) — see Section 10 Schedule Risk.
+- **Per-function target**: every `pub fn` / `pub async fn` in `MetricsStorage` impl + every `fn` private helper with a non-trivial branch, MINUS methods already asserted at the port surface per Task 0 audit.
+- **Scenario seeds (confirmed from reading `metrics.rs` as of commit 041eeb4c):**
+  - Bucketized aggregation via `aggregate_hourly_metrics` (confirmed at `metrics.rs:~213`) — hour-boundary aggregation, empty hour, multiple hours rolled.
+  - TTL cutoff via `cleanup_old_metrics` (confirmed at `metrics.rs:~265`) — contract-covered for return count; module-internal test: assert that rows older than cutoff are actually deleted (not just counted).
+  - NULL `NetworkInfo` handling (`NetworkInfo` is `Option<…>` in the type — confirmed in signature) — write + read a sample with `network = None`, assert no panic and column comes back NULL.
+  - `system_metrics_hourly` table roundtrip (confirmed table exists) — scenario: raw write into `system_metrics`, run `aggregate_hourly_metrics`, assert hourly row.
+  - UTC-midnight boundary for hourly aggregation if the bucket key is `DATE_TRUNC('hour')` or equivalent — verify in impl and write a single test at the boundary.
+  - Bulk write + bulk read over 100+ samples — no pagination API expected; test is "all N rows round-trip in time-range query order."
+  - Contract-covered scenarios (save/get/cleanup roundtrip + empty-range) are SKIPPED per Task 0.
+- **Concurrency (2 lock-contract regression tests, not race tests)**: since `with_conn` serializes via `Arc<Mutex<Connection>>`, these tests assert the Mutex contract survives across threads — equivalent to "module works under `tokio::spawn`" not "module detects data races." Tests:
+  1. Spawn 4 `tokio::task`s writing metrics concurrently (different sample inputs); after `join_all`, assert total row count = sum of inputs.
+  2. Spawn 1 writer task + 1 reader task; after both complete, assert reader observed a consistent snapshot (either empty or full, never partial).
+  Use `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]` for these two tests. Helper `open_db()` returns the same `Arc<Mutex<Connection>>` that is cloned into each task.
+- **Err branches (reachability-aware, per Section 6 #2 + Section 7):**
+  - Schema violation via direct `INSERT` of invalid data (CHECK-constraint path) — 1 test per distinct CHECK constraint in the module's tables.
+  - Mutex poisoning — OPTIONAL: attempt one test using `tokio::task::spawn_blocking` + `panic!` inside a lock acquisition; if the test hangs or requires unsafe-feeling infrastructure, document as `// TODO: untested Err — mutex poisoning reachability` comment + PR body note, and move on. This is NOT a Done-criteria blocker.
+  - Unreachable Err paths (closed connection, etc.) get a `// TODO: untested Err — <reason>` comment and PR body acknowledgment. This IS an accepted Done state.
 
-### PR2 — `tags.rs` + `device_identity.rs` (estimate: 4 working days)
+### PR2 — `tags.rs` + `device_identity.rs` (estimate: 4 working days + 1 day slack)
+
+**Grouping rationale:** each is too small to justify its own PR yet large enough to merit isolated review. `tags.rs` (280 LOC, 10 pub methods, schema-enforced `UNIQUE(name)` at `migration/v01_v08.rs:189`) and `device_identity.rs` (75 LOC, 2 pub methods, singleton-row semantics) share no testing pattern — they are bundled purely for PR-count economy.
 
 - **`tags.rs`**: ~12–18 tests.
-  - CRUD: create / list / rename / delete happy paths.
-  - Constraints: duplicate name rejection (unique), case policy if present, empty name rejection.
-  - Linkage: tag-resource association breaks correctly when tag deleted (if the schema has FK or explicit cleanup).
-  - Concurrency: 4 threads racing to create same name — exactly 1 succeeds, 3 get Err.
+  - CRUD: create / list / `update_tag(name, color)` / delete happy paths (note: the public API is `update_tag`, not "rename" — matches `tags.rs` line inventory).
+  - Constraints: duplicate name rejection (UNIQUE), case policy — verify actual behaviour during plan phase (likely case-sensitive per SQLite default), empty name rejection.
+  - Linkage: tag-resource association (e.g., `frame_tags` join table) breaks correctly when tag deleted — verify schema + ON DELETE CASCADE during plan.
+  - Concurrency (lock-contract regression, NOT race): 4 `std::thread::spawn` threads sharing the `Arc<SqliteStorage>` / `Arc<Mutex<Connection>>`, each calling `create_tag("same-name", ...)` without a barrier. After `join()` all: assert exactly 1 `Ok(..)` and 3 `Err(..)` with UNIQUE-constraint error. Uses sync threads (not `tokio::spawn`) because `create_tag` is sync. Test name: `concurrent_create_same_name_enforces_uniqueness`.
 - **`device_identity.rs`**: ~6–10 tests.
-  - First-create path (no existing row) writes + reads identical.
-  - Second-load path returns the same identity (persistence).
-  - Corruption handling (if any defensive path) — simulate invalid row.
-  - Determinism: identity generation is idempotent given same DB state.
+  - First-create path (no existing row) writes + reads identical — covers the singleton-init branch.
+  - Second-load path returns the same identity (persistence) — open DB, call `ensure_device_identity` twice, assert identity unchanged.
+  - `reset_device_identity` produces a new identity that differs from the old one — exercises the reset branch.
+  - Corruption handling: if the module has a defensive "row exists but is invalid" path, simulate via direct INSERT of malformed row. If no such path exists, document in PR body.
+  - Determinism: identity generation is idempotent given same DB state (N calls to `ensure_device_identity` after init return the identical identity).
 
-### PR3 — Delegator trio + `port_contract_tests.rs` audit (estimate: 3 working days)
+### PR3 — Delegator trio + `port_contract_tests.rs` audit (estimate: 3 working days + 1 day slack)
 
-- **Blocking sub-task**: read `sqlite/port_contract_tests.rs` (337 LOC, 22 tests) and produce an audit table mapping each of `CoachingStoragePort`, `SessionContextStorePort`, `FocusStorage` to "covered / partial / uncovered."
-- **If covered**: add no test for that delegator. Record the audit finding as a comment at the top of the delegator file and in the PR body.
-- **If uncovered or partial**: add one smoke test per delegator. "Smoke test" here means a **single happy-path test** that (a) calls each `pub async fn` of the port once with a representative input, (b) asserts `Ok(_)`, (c) asserts the observable side effect via a separate read path (direct SQL query through the `open_db()` Connection, OR a sibling port method that has existing test coverage). No exhaustive contract duplication, no edge-case coverage — that belongs in `port_contract_tests.rs` as a separate initiative.
-- Expected test count: 1–4 tests total for PR3 depending on audit outcome.
-- **PR3 body must include the audit table** so future reviewers see why the delegators got minimal coverage.
+**Definition — "thin delegator":** a module whose every `pub fn` / `pub async fn` is a 1-line forward to an underlying `SqliteStorage::<method>_sync` (or similar) implementation. The underlying implementations are covered by their own sibling tests OR by `port_contract_tests.rs`. Under this definition:
+- `coaching_storage_port_impl.rs` (20 LOC, 2 forwards) — thin delegator ✓
+- `session_context_store_impl.rs` (11 LOC, 1 forward) — thin delegator ✓
+- `focus_storage_impl.rs` (82 LOC, 12 forwards) — thin delegator ✓ (LOC-to-method ratio ~7 confirms 1-line forwards; verify during plan)
+
+**Done criteria variant (thin delegators only):** Section 6 Done #1 is satisfied by ONE combined smoke test per delegator that invokes every `pub fn`/`pub async fn` of the port in sequence and asserts each returns `Ok(_)` + at least one side effect is observable via a direct SQL read. Per-method happy-path tests are NOT required for thin delegators. The underlying `_sync` implementations' coverage is assessed by the audit (below).
+
+- **Task 0 (blocking) — Port coverage audit.** Read `sqlite/port_contract_tests.rs` (337 LOC, 22 tests) and produce an audit table:
+  - `CoachingStoragePort` — which of the 2 methods covered? Partial coverage means "some methods have port-level tests; module-internal gap for others."
+  - `SessionContextStorePort` — which of the 1 method covered?
+  - `FocusStorage` — known partial: 3 of 12 methods covered per reviewer finding (`start_work_session`/`end_work_session`, `get_or_create_focus_metrics`, `increment_focus_metrics`). The remaining 9 methods lack port-surface coverage.
+- **Mapping audit output to work:**
+  - **Delegator-level (always):** 1 combined smoke test per delegator per the Done-criteria variant above — 3 smoke tests total, one per port, regardless of audit result.
+  - **Underlying-impl gaps (FocusStorage the current suspect):** if the audit shows an underlying `SqliteStorage::_sync` method has neither port-contract tests nor sibling tests.rs coverage, ADD tests for it in PR3 under `sqlite/tests.rs` (or a new dedicated file if the count justifies it). Scope-control: cap underlying-impl additions at 10 tests total for PR3. If the audit reveals > 10 method gaps, list the overflow as follow-up in Section 11 — do NOT expand PR3 beyond the 3-day + 1-day-slack budget.
+- Expected test count: **3 delegator smoke tests + 0–10 underlying-impl gap tests = 3–13 tests.**
+- **PR3 body MUST include the audit table** so future reviewers see the coverage rationale + any deferred gaps.
 
 ---
 
 ## 5. Test harness conventions
 
-Reuse the pattern established in `regime_manager_state_store::tests` and `vector_store_impl/tests.rs`:
+**Actual state of harness code as of commit `041eeb4c` (verify by reading):**
+- `crates/oneshim-storage/src/sqlite/test_utils.rs` is 13 lines — exposes only `pub(crate) fn make_user_event() -> Event`. **It does NOT contain a DB factory, `open_db`, or a `SqliteStorage` constructor.** The spec's earlier draft incorrectly implied it did.
+- The actual precedent harness functions live test-mod-local in their respective files:
+  - `crates/oneshim-storage/src/regime_manager_state_store.rs:~106 fn open_db() -> (TempDir, Arc<Mutex<Connection>>)`
+  - `crates/oneshim-storage/src/sqlite/vector_store_impl/tests.rs:~11 fn setup_db() -> …`
+  - `crates/oneshim-storage/src/sqlite/port_contract_tests.rs:~20 fn storage() -> …` (uses `SqliteStorage::open_in_memory(30)`)
+
+**Convention for Phase 5-D8: copy-local, do NOT centralize.** Each new test module adds its own `open_db()` (or `setup_db()`, `storage()`) helper local to the `#[cfg(test)] mod tests { }` block, following the regime-manager-state-store precedent. This keeps PR diffs self-contained and avoids any "promote to `test_utils.rs`" refactor creeping into the middle of a test-backfill PR.
 
 ```rust
+// Local to each test module — copy verbatim.
 fn open_db() -> (TempDir, Arc<Mutex<Connection>>) {
     let dir = tempfile::tempdir().unwrap();
     let conn = Connection::open(dir.path().join("t.db")).unwrap();
@@ -113,32 +142,64 @@ fn open_db() -> (TempDir, Arc<Mutex<Connection>>) {
 }
 ```
 
+**If a test needs `SqliteStorage` (the full struct, not a raw Connection)**, use `SqliteStorage::open_in_memory(30)` as `port_contract_tests.rs` does. If neither raw Connection nor `open_in_memory` is sufficient (e.g., a test needs a specific on-disk path), derive the helper inline in the test module.
+
+**Promoting `open_db` and `sample_X` builders into `test_utils.rs` is OUT OF SCOPE for Phase 5-D8.** It is captured as a follow-up in Section 11. Doing it mid-phase adds refactor scope to every PR and breaks the "test-only" contract of this phase.
+
 - `TempDir` cleanup on drop; no explicit teardown.
-- If a test needs `SqliteStorage` (the full struct) rather than a raw Connection, use the existing constructor from `test_utils.rs`. If `test_utils.rs` does not yet expose what a test needs, add the helper **in that test's PR** rather than leaving the test awkward.
-- No global fixtures. Module-local `fn sample_foo(id: &str) -> Foo { ... }` builders as in `regime_manager_state_store::tests::sample_regime`.
+- No global fixtures (async or otherwise). Module-local `fn sample_foo(id: &str) -> Foo { ... }` builders per the `regime_manager_state_store::tests::sample_regime` precedent.
 - `#[tokio::test]` for async port methods; `#[test]` for sync helpers.
+- **`#[tokio::test(flavor = "multi_thread", worker_threads = N)]`** for concurrency lock-contract regression tests (PR1 metrics, PR2 tags). Default single-thread flavor is fine for all other tests.
 
 ---
 
-## 6. Done criteria (D — per-function + concurrency)
+## 6. Done criteria (D — per-function + concurrency, with explicit carve-outs)
 
-For each target module, "done" means **all five** hold:
+For each target module, "done" means **all six** hold:
 
-1. Every `pub fn` / `pub async fn` in the module has at least one happy-path test.
-2. Every `Err` return path in the impl has at least one test asserting the variant (e.g., `matches!(result, Err(CoreError::Internal(_)))`) AND, where message content is stable, asserting a substring.
-3. `metrics.rs`, `tags.rs`: at least one concurrency-contract test per the patterns in section 3 of the brainstorm (barrier-free naive race, assert final-state invariant).
-4. `cargo test -p oneshim-storage` passes green. `cargo clippy --workspace --all-targets` produces zero warnings. `cargo fmt --check` clean.
-5. Test module order follows existing convention: helpers first, then happy-path tests (`#[tokio::test]` group), then edge/error-path tests, then concurrency tests.
+1. **Happy-path coverage — two variants by module type:**
+   - **Real-logic modules (`metrics.rs`, `tags.rs`, `device_identity.rs`):** every `pub fn` / `pub async fn` in the module has at least one happy-path test, MINUS any method whose behaviour is already asserted at the port surface in `port_contract_tests.rs` (documented via the Task 0 audit in PR1/PR3). The reduced set is "uncovered at the port surface."
+   - **Thin delegators (`coaching_storage_port_impl.rs`, `session_context_store_impl.rs`, `focus_storage_impl.rs` — each a 1-line forward to an underlying `_sync` impl):** one combined smoke test per delegator module that invokes every `pub fn` / `pub async fn` of the port and asserts `Ok(_)` + at least one observable side effect. Per-method individual tests are NOT required for thin delegators.
+2. **Reachable Err paths covered.** Every `Err` return path reachable via the techniques in Section 7 (CHECK violation via raw INSERT, invalid payload injection, mutex poisoning where tractable) has at least one test asserting the variant (e.g., `matches!(result, Err(CoreError::Internal(_)))`) AND, where the error message is stable, asserting a substring. **Unreachable Err paths** (typically closed-connection branches under `std::sync::Mutex`, or patterns requiring unsafe-feeling test infra) are documented as `// TODO: untested Err — <reason>` inline comments + a bullet in the PR body. Unreachability does NOT block Done.
+3. **Lock-contract regression tests** for `metrics.rs` and `tags.rs` per the specific test designs in Section 4 PR1 / PR2. These are NOT race-detection tests — they assert the module behaves correctly when invoked from multiple threads sharing the `Arc<Mutex<Connection>>`.
+4. **Workspace green.** `cargo test -p oneshim-storage` passes. `cargo clippy --workspace --all-targets` produces zero warnings. `cargo fmt --check` clean.
+5. **Test module organization:** following `port_contract_tests.rs` layout precedent.
+   - Helpers / sample builders first.
+   - Optional `// ── group name ──` separators grouping tests by area (e.g., `// ── happy path ──`, `// ── Err branches ──`, `// ── lock-contract ──`).
+   - Within each group: `#[tokio::test]` async tests, then `#[test]` sync tests, then `#[tokio::test(flavor = "multi_thread", ...)]` concurrency tests.
+   - Test name convention: `<subject>_<expected_behaviour>` (e.g., `save_metrics_roundtrip`, `save_metrics_rejects_negative_cpu`).
+6. **Flaky-test policy.** The lock-contract regression tests at #3 must be deterministic — use explicit `join_all` / thread `join()` barriers, NOT `thread::sleep` or wall-clock timing. If a lock-contract test flakes during PR review, it is rejected — no `#[ignore]` escape hatch. Statistical assertions (N runs) are not permitted.
 
 ---
 
 ## 7. Err-branch & concurrency patterns
 
-**Err triggers** (pick the minimal set that actually exercises each `Err` branch in the module; don't force every pattern):
-- **Invalid JSON / payload in a TEXT column**: direct `INSERT` via raw Connection to seed the bad row, then call the port method that reads it. (Used by `regime_manager_state_store::tests::malformed_payload_quarantines_and_starts_fresh` precedent.)
-- **CHECK constraint violation**: force-insert values that violate existing table constraints (e.g., negative count where `CHECK count >= 0`) to exercise the `rusqlite` error path.
-- **Mutex poisoning**: `std::thread::spawn` + `panic!` while holding the Connection lock, then call the port method and assert `Err(CoreError::Internal(msg))` where `msg` contains `"poisoned"`.
-- **Not attempted**: dropping or closing the Connection mid-op. `rusqlite` holds the Connection inside the `std::sync::Mutex`; we don't have a clean way to simulate a closed handle without unsafe code. If a module has a closed-connection `Err` branch that isn't reachable via mutex poisoning, document the gap in the PR body and move on.
+**Err triggers, in order of preference — use only what actually reaches an `Err` branch in the target module:**
+
+- **CHECK / UNIQUE constraint violation** — PREFERRED when applicable. Force-insert values that violate existing table constraints (e.g., negative count where `CHECK count >= 0`, duplicate key where `UNIQUE(name)` applies) using `conn.execute(..)` directly. Then call the port method and assert the variant. This is the simplest, most deterministic Err-trigger and should be the default.
+- **Invalid JSON / payload in a TEXT column** — WHEN the module deserialises a persisted JSON blob. Direct `INSERT` via raw Connection to seed the bad row, then call the port method that reads it. Precedent: `regime_manager_state_store::tests::malformed_payload_quarantines_and_starts_fresh` at `regime_manager_state_store.rs:~165`.
+- **Mutex poisoning** — OPTIONAL, attempt ONCE per module then escape if hard. Worked example:
+  ```rust
+  // Inside a test, after `open_db()` yields conn: Arc<Mutex<Connection>>.
+  // Poison by panicking while holding the lock in a separate thread.
+  let c = conn.clone();
+  let _ = std::thread::spawn(move || {
+      let _guard = c.lock().unwrap();
+      panic!("intentional panic to poison");
+  }).join(); // join() returns Err from the panicked thread; that's expected.
+  // The lock is now poisoned. Calling the port method should propagate
+  // the poison as CoreError::Internal(_).
+  let result = storage.some_port_method(...).await;
+  assert!(matches!(result, Err(CoreError::Internal(msg)) if msg.contains("poisoned")));
+  ```
+  **No prior test in `oneshim-storage` uses this technique.** Expect the first attempt to take 1–2 hours. If the port method does not translate poison into `CoreError::Internal` (or if the test hangs), downgrade to "unreachable" per the escape hatch below.
+- **Unreachable paths (escape hatch, permitted):** closed-connection branches, paths requiring `drop(Arc<Mutex<Connection>>)` without unsafe, and similar are NOT attempted. Document them as:
+  ```rust
+  // TODO: untested Err — closed-connection path unreachable under Arc<Mutex>.
+  // SqliteStorage holds one Arc reference for its lifetime; we cannot force
+  // connection closure from a test without unsafe code.
+  ```
+  Plus one bullet in the PR body listing which Err branch was skipped and why. This satisfies Section 6 Done #2.
 
 **Concurrency assertions** (for `metrics.rs`, `tags.rs`):
 - Do not race for race-detection — `Arc<Mutex>` already serializes. Race tests assert **final state invariants**: total count, uniqueness, no torn writes.
@@ -180,19 +241,30 @@ Lefthook cost (`feedback_lefthook_clippy_cost.md`): ~16 min cold clippy hook. Bu
 
 ## 10. Timeline & acceptance
 
-| PR | Target start | Target end | Duration |
+| PR | Target duration | Slack | Hard cap |
 |---|---|---|---|
-| PR1 `metrics.rs` | Day 1 | Day 6 | ~6d |
-| PR2 `tags.rs` + `device_identity.rs` | Day 7 | Day 10 | ~4d |
-| PR3 delegator trio + audit | Day 11 | Day 13 | ~3d |
+| PR1 `metrics.rs` | 6 working days | +1 day | 7 days |
+| PR2 `tags.rs` + `device_identity.rs` | 4 working days | +1 day | 5 days |
+| PR3 delegator trio + audit | 3 working days | +1 day | 4 days |
 
-Total: ~13 working days (~2 calendar weeks w/ review turnaround).
+Total: 13 working days nominal, 16 working days hard cap (~3 calendar weeks worst case).
+
+### 10.1 Schedule risk
+
+- **Lefthook clippy cost** (`feedback_lefthook_clippy_cost.md`): pre-commit hook runs `cargo clippy --workspace` in ~16 min cold / ~1s warm. PR1's test-driven workflow naturally produces 5–10 distinct commits (refactor, Task 0 audit notes, multiple test batches, Err-branch additions, concurrency tests). Mitigation: **bundle test commits in groups of 3+ before pushing** to amortize the hook cost. A worst-case 3 cold runs × 16 min ≈ 48 min/day overhead was factored into the 1-day slack per PR.
+- **Task 0 audit in PR1** may reveal more than 3 `MetricsStorage` methods already contract-covered — good (reduces test count) but also may reveal port-contract gaps in methods we assumed were uncovered. If the audit reveals scope drift > 20% of the 18–25 test estimate, PR1 absorbs it into the slack day; beyond that it becomes a plan revision.
+- **PR3 underlying-impl overflow cap**: if the FocusStorage audit reveals > 10 uncovered `_sync` methods, overflow is deferred to a follow-up issue. Hard cap of 10 new tests in `sqlite/tests.rs` under PR3.
+- **Mutex-poisoning tractability (Section 7)**: first attempt budgeted at 1–2 hours; failure → downgrade to unreachable, no budget impact.
+- **Review turnaround**: 3-loop + 4th-pass deep review per PR adds 0.5–1 calendar day per PR beyond implementation. Calendar-week estimate (~3 weeks hard-cap) assumes review is not self-blocking.
 
 **Phase 5-D8 is complete when:**
 - All 3 PRs merged to `main`.
 - `cargo test -p oneshim-storage` green on `main`.
 - The `project_feature_gaps_next_session.md` D8 row is marked ✅ with linked PRs.
-- `docs/STATUS.md` test counts are updated (Rust test delta should be ~40–60 additional tests).
+- `docs/STATUS.md` test counts are updated. Expected Rust test delta range:
+  - **Low bound ~39 tests** (PR1: 18 after contract-coverage subtraction + PR2: 18 tags-min + device-min + PR3: 3 delegator smoke + 0 underlying-impl gaps).
+  - **High bound ~66 tests** (PR1: 25 + PR2: 28 tags-max + device-max + PR3: 3 + 10 capped underlying-impl gaps).
+  - If PR1's Task 0 audit reveals substantially more MetricsStorage overlap than currently known (> 6 methods), PR1's lower bound drops below 18 — but overall phase low bound stays above 30 tests via PR2 + PR3.
 
 ---
 
@@ -201,7 +273,9 @@ Total: ~13 working days (~2 calendar weeks w/ review turnaround).
 - **Line-coverage instrumentation** (tarpaulin / llvm-cov) + CI gate. Requires infra work; not worth the friction for a 2-week effort.
 - **Functional concern split of `metrics.rs`** (`metrics/write.rs`, `metrics/query.rs`, `metrics/aggregation.rs`) — only if the module grows further or SOLID issues emerge. Current split is `mod.rs` + `tests.rs` only.
 - **Extending `port_contract_tests.rs`** to exhaustively cover every port — a separate initiative; D8 only audits, doesn't extend.
-- **Unifying `test_utils.rs` harness** across the crate — if any PR adds a one-off helper, consider promoting to `test_utils.rs` in the final polish PR of Phase 5.
+- **Promoting the shared `open_db()` / `sample_X` harness builders into `test_utils.rs`** as `pub(crate)` items — explicitly deferred per Section 5. Do this as a follow-up PR after all 3 D8 PRs merge; scope: ~4 helper functions, 1 commit, no behaviour change.
+- **Fixing stale `CLAUDE.md` schema version text** — the worktree CLAUDE.md currently lists schema `V1-V22` under `oneshim-storage`; real head is v31. Out-of-scope for D8 but worth a 1-line follow-up alongside the next phase's CLAUDE.md update.
+- **PR3 underlying-impl overflow**: any FocusStorage (or other port) `_sync` methods that remain uncovered after PR3's 10-test cap is spent are deferred to a follow-up issue, tracked in `project_feature_gaps_next_session.md`.
 
 ---
 
