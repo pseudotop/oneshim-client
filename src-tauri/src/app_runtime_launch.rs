@@ -167,40 +167,75 @@ impl AppRuntimeLaunchBuilder {
         let update_control = core_resources.update_runtime.update_control.clone();
         let update_action_tx = core_resources.update_runtime.update_action_tx.clone();
 
-        // Phase 4 D11 / Task 9: consume the rollback-notification file (if
-        // present). The previous binary wrote it just before the rollback
-        // swap; the restored binary surfaces the RolledBack state in UI on
-        // next boot. Fire-and-forget tokio task to avoid blocking launch.
+        // Phase 4 D11 / Task 9: consume `.rolled_back_notification_{to_version}`
+        // markers written by the previous (failing) binary just before the
+        // rollback swap. The restored binary surfaces the RolledBack state in
+        // UI on next boot. Fire-and-forget tokio task to avoid blocking launch.
+        //
+        // Holistic-review I-2: scan for any `.rolled_back_notification_*` file
+        // and match its `to_version` against our running version. Files whose
+        // `to_version` matches the current binary are OUR rollback — consume
+        // and delete. Files whose `to_version` does not match are stale from a
+        // prior rollback cycle whose consumer never completed — delete without
+        // surfacing UI, so unrelated launches don't re-render a stale banner.
         if let Ok(current_exe) = std::env::current_exe() {
             if let Some(install_dir) = current_exe.parent().map(|p| p.to_path_buf()) {
-                let notif_path = install_dir.join(".rolled_back_notification");
-                if notif_path.exists() {
-                    let update_control_clone = update_control.clone();
-                    handle.spawn(async move {
-                        match std::fs::read(&notif_path) {
+                let update_control_clone = update_control.clone();
+                handle.spawn(async move {
+                    let entries = match std::fs::read_dir(&install_dir) {
+                        Ok(it) => it,
+                        Err(e) => {
+                            tracing::warn!(
+                                "rolled_back_notification scan failed ({:?}): {e}",
+                                install_dir
+                            );
+                            return;
+                        }
+                    };
+                    let current_version = env!("CARGO_PKG_VERSION");
+                    for entry in entries.flatten() {
+                        let name = entry.file_name();
+                        let name_str = name.to_string_lossy();
+                        if !name_str.starts_with(".rolled_back_notification_") {
+                            continue;
+                        }
+                        let path = entry.path();
+                        match std::fs::read(&path) {
                             Ok(bytes) => {
                                 match serde_json::from_slice::<
                                     oneshim_api_contracts::update::RollbackInfo,
                                 >(&bytes)
                                 {
                                     Ok(info) => {
-                                        tracing::warn!(
-                                            "consuming rolled_back_notification: {} -> {}",
-                                            info.from_version,
-                                            info.to_version
-                                        );
-                                        let _ = update_control_clone.set_rolled_back(info).await;
+                                        if info.to_version == current_version {
+                                            tracing::warn!(
+                                                "consuming rolled_back_notification: {} -> {}",
+                                                info.from_version,
+                                                info.to_version
+                                            );
+                                            let _ = update_control_clone
+                                                .set_rolled_back(info)
+                                                .await;
+                                        } else {
+                                            tracing::debug!(
+                                                "sweeping stale rolled_back_notification (to_version={}, current={})",
+                                                info.to_version,
+                                                current_version
+                                            );
+                                        }
                                     }
                                     Err(e) => {
                                         tracing::warn!("rolled_back_notification parse failed: {e}")
                                     }
                                 }
                             }
-                            Err(e) => tracing::warn!("rolled_back_notification read failed: {e}"),
+                            Err(e) => {
+                                tracing::warn!("rolled_back_notification read failed: {e}")
+                            }
                         }
-                        let _ = std::fs::remove_file(&notif_path);
-                    });
-                }
+                        let _ = std::fs::remove_file(&path);
+                    }
+                });
             }
         }
         let sqlite_storage = core_resources.storage_runtime.sqlite_storage.clone();

@@ -28,9 +28,9 @@ Plus **A-4** release metadata enrichment (Release Date + commit-count headers in
 |---|---|---|
 | L1 Spec | 5 | 0 Critical + 0 Important |
 | L2 Plan | 2 | 0 Critical + 0 Important |
-| L3 Impl | 3 (1 fixes + 2 review) | 0 Critical + 0 Important (4 independent reviewers total) |
+| L3 Impl | 3 (1 fixes + 2 review) | 0 Critical + 0 Important |
 
-All 4 reviewers independently verified EXIT criteria.
+All reviewer EXIT gates across the three loops independently verified 0 Critical + 0 Important before progression.
 
 ### Files
 
@@ -53,6 +53,9 @@ All 4 reviewers independently verified EXIT criteria.
 ### Deferred follow-ups (tracked)
 
 1. **Windows rollback implementation** — `docs/guides/updater-rollback-windows.md` recommends `cmd.exe` helper (Option A). Requires a dedicated Windows CI runner + signed-helper decision. Separate PR.
+2. **Concurrent-process race mitigation** — per-PID `.boot_count_pid_{PID}` sub-files, documented in `health_probe.rs` module header.
+3. **`pre-release-check.sh:241` Dependabot JSON guard** — 5-minute bug fix PR.
+4. **Notarization workflow `head_branch` condition** — separate infra PR.
 
 ### Spec amendments during implementation (non-substantive)
 
@@ -60,16 +63,13 @@ All 4 reviewers independently verified EXIT criteria.
 - **Amendment 2**: `execute_rollback` is an associated fn (not `&self` method), takes `current_exe_path` + `rollback_event: F` callback params, and uses `Command::spawn() + std::process::exit()` on Unix instead of the CommandExt image-replacement syscall. Functionally equivalent outcome (restored binary running) + simpler + no lifecycle-hook skipping.
 
 Both amendments are documented in the plan's front-matter section.
-2. **Concurrent-process race mitigation** — per-PID `.boot_count_pid_{PID}` sub-files, documented in `health_probe.rs` module header.
-3. **`pre-release-check.sh:241` Dependabot JSON guard** — 5-minute bug fix PR.
-4. **Notarization workflow `head_branch` condition** — separate infra PR.
 
 ### Design docs
 
 - **Spec**: [docs/reviews/2026-04-18-phase4-updater-hardening-design.md](docs/reviews/2026-04-18-phase4-updater-hardening-design.md)
 - **Plan**: [docs/reviews/2026-04-18-phase4-updater-hardening-plan.md](docs/reviews/2026-04-18-phase4-updater-hardening-plan.md)
 
-### Commit map (18 commits)
+### Commit map (31 commits total; key milestones below)
 
 - T0 audit: `1df426c5`
 - T1 scaffolding: `2fbb22f7`

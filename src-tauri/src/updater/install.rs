@@ -647,9 +647,17 @@ impl Updater {
 
         // Windows: image replacement + spawn semantics are delegated to the
         // Task 12 spike output (docs/guides/updater-rollback-windows.md).
+        // The detection path (health probe) still fires on Windows — this
+        // branch makes the swap a documented no-op that support can surface
+        // in logs (holistic-review Q8).
         #[cfg(windows)]
         {
             let _ = current_exe_path;
+            tracing::warn!(
+                "rollback swap not implemented on Windows (Task 12 pending); \
+                 user remains on failing binary until manual reinstall — \
+                 see docs/guides/updater-rollback-windows.md"
+            );
             return Err(UpdateError::Install(
                 "Windows rollback helper pending (§4.8 spike — Task 12)".to_string(),
             ));
@@ -716,8 +724,13 @@ impl Updater {
         // current (failing) process terminates immediately after the image
         // replacement; without a persisted marker the user would see the
         // version number decrement silently.
+        //
+        // Filename is version-scoped (`.rolled_back_notification_{to_version}`)
+        // so the consumer on next boot can match its own running version and
+        // sweep stale markers from earlier rollback cycles whose consumer did
+        // not complete (holistic-review I-2).
         if let Some(install_dir) = current_exe_path.parent() {
-            let notif_path = install_dir.join(".rolled_back_notification");
+            let notif_path = install_dir.join(format!(".rolled_back_notification_{to_version}"));
             match serde_json::to_vec(&info) {
                 Ok(bytes) => {
                     if let Err(e) = std::fs::write(&notif_path, bytes) {
@@ -945,7 +958,7 @@ impl Updater {
 // Previously the only test exercising the swap + event + notification
 // write was the src-tauri/tests/ integration test, which re-implemented
 // the behavior locally. That left the production helper — including the
-// new .rolled_back_notification write at lines 719-731 — with zero
+// new .rolled_back_notification_{to_version} write — with zero
 // coverage against actual code. Regressions in the write position (e.g.,
 // on the Unix path, moving it after the rename) would ship silently.
 
@@ -997,8 +1010,18 @@ mod rollback_tests {
 
         // (d) Persistent notification file was written with valid JSON — the
         //     new binary's boot consumes this to surface RolledBack in UI.
-        let notif = dir.path().join(".rolled_back_notification");
-        assert!(notif.exists(), "notification file should be written");
+        //     Filename is version-scoped per holistic-review I-2: the
+        //     restored binary only consumes markers matching its own
+        //     to_version, and sweeps stragglers from prior rollback cycles.
+        let notif = dir.path().join(".rolled_back_notification_0.4.40");
+        assert!(
+            notif.exists(),
+            "version-scoped notification file should be written"
+        );
+        assert!(
+            !dir.path().join(".rolled_back_notification").exists(),
+            "legacy unversioned filename must not be used"
+        );
         let bytes = std::fs::read(&notif).unwrap();
         let persisted: RollbackInfo = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(persisted.from_version, "0.5.0");
