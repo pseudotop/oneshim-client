@@ -74,6 +74,85 @@ impl AppRuntimeLaunchBuilder {
             config.update.installation_id = Some(new_id);
         }
 
+        // Phase 4 D11: post-install self-healthy probe.
+        //
+        // Runs BEFORE any scheduler loop spawns. If the probe escalates to
+        // RollbackRequired (two consecutive failed boots on this version
+        // without a self-healthy marker), execute_rollback spawns the
+        // restored binary and this process terminates via
+        // ROLLBACK_EXIT_CODE. On Err, we log and continue — the current
+        // (failing) binary is still running; the next boot retries.
+        //
+        // The probe instance is kept alive through build_and_spawn so the
+        // scheduler-ready point near the function's end can invoke
+        // `spawn_healthy_writer` (30s uptime marker, spec §4.5).
+        let health_probe: Option<crate::updater::HealthProbe> = match std::env::current_exe() {
+            Ok(current_exe) => match current_exe.parent().map(|p| p.to_path_buf()) {
+                Some(install_dir) => {
+                    let probe = crate::updater::HealthProbe::new(
+                        install_dir,
+                        crate::updater::CURRENT_VERSION.to_string(),
+                    );
+                    match probe.check_startup_state() {
+                        crate::updater::StartupAction::Normal => {
+                            tracing::debug!("health probe: Normal — proceeding with startup");
+                            Some(probe)
+                        }
+                        crate::updater::StartupAction::RollbackRequired {
+                            from_version,
+                            to_version,
+                            backup_path,
+                            reason,
+                        } => {
+                            tracing::error!(
+                                "health probe escalated to rollback: {from_version} -> {to_version} ({:?})",
+                                reason
+                            );
+                            let contract_reason = match reason {
+                                crate::updater::RollbackReason::RepeatedStartupFailure => {
+                                    oneshim_api_contracts::update::RollbackReason::RepeatedStartupFailure
+                                }
+                            };
+                            match crate::updater::Updater::execute_rollback(
+                                &backup_path,
+                                &current_exe,
+                                &from_version,
+                                &to_version,
+                                contract_reason,
+                                |info| {
+                                    tracing::warn!(
+                                        "rollback event: {} -> {} ({:?})",
+                                        info.from_version,
+                                        info.to_version,
+                                        info.reason
+                                    );
+                                    // Task 9 wires this into UpdateControl for
+                                    // UI broadcast. For now the event is
+                                    // logged only.
+                                },
+                            ) {
+                                Ok(_never) => unreachable!("Infallible success path"),
+                                Err(e) => {
+                                    tracing::error!("rollback failed: {e}");
+                                    // Leave user on the failing binary; next
+                                    // boot retries.
+                                    None
+                                }
+                            }
+                        }
+                    }
+                }
+                None => {
+                    tracing::warn!("health probe skipped: current_exe has no parent");
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!("health probe skipped: std::env::current_exe() failed: {e}");
+                None
+            }
+        };
+
         #[cfg(feature = "server")]
         let server_context = ServerLaunchContext::from_bootstrap(server);
 
@@ -877,6 +956,18 @@ impl AppRuntimeLaunchBuilder {
         .with_detection_runtime(detection_runtime_state);
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);
+
+        // Phase 4 D11: scheduler is now fully up — spawn the self-healthy
+        // writer. After `healthy_threshold` (default 30s) of continuous
+        // wall-clock uptime without a crash, the writer records
+        // `.self_healthy_{VERSION}`, deletes `.install_pending_{VERSION}` +
+        // `.boot_count_{VERSION}`, and cleans sibling rollback backups.
+        if let Some(probe) = health_probe.as_ref() {
+            // JoinHandle is fire-and-forget; the writer is a background task
+            // that survives past this function's return.
+            let _join_handle = probe.spawn_healthy_writer();
+            tracing::debug!("health probe: spawn_healthy_writer dispatched");
+        }
 
         Ok(AppRuntimeLaunchResult {
             frontend_web_port,
