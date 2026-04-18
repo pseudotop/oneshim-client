@@ -74,7 +74,7 @@ Full workspace test runs only at Task-group boundaries (after D9, D10, D11 compl
    - If only span events: emit a span event; note in plan Task 3 that counter line stays commented out.
    - If neither: keep the `tracing::error!` only; counter line remains `// TODO` per spec §3.3.2.
 
-4. **cliff.toml dry-run**: generate a CHANGELOG for a **fixed tag range** `v0.4.38..v0.4.39-rc.1` using the current `cliff.toml`. Save output to `/tmp/cliff-baseline.md`. Command: `git cliff v0.4.38..v0.4.39-rc.1 > /tmp/cliff-baseline.md`. **Do NOT use `--unreleased`** here — that would track the moving working tree and make the Task 11 diff unfocused. The fixed range is the diff anchor for Task 11.
+4. **cliff.toml dry-run**: generate a CHANGELOG for a **fixed tag range** `v0.4.38-rc.4..v0.4.39-rc.1` using the current `cliff.toml`. Save output to `/tmp/cliff-baseline.md`. Command: `git cliff v0.4.38-rc.4..v0.4.39-rc.1 > /tmp/cliff-baseline.md`. **Do NOT use `--unreleased`** here — that would track the moving working tree and make the Task 11 diff unfocused. The fixed range is the diff anchor for Task 11.
 
 5. **tempfile dependency verification**: `grep tempfile src-tauri/Cargo.toml` — confirm presence. Note: `tempfile` is currently in `[dependencies]` (not `[dev-dependencies]`); this means the crate is shipped in release builds. Not a Phase 4 blocker but worth noting. If a follow-up wants to move it to `[dev-dependencies]`, file a housekeeping ticket (out of this PR's scope).
 
@@ -576,7 +576,7 @@ pnpm lint + build green.
 
 1. Apply the exact diff from spec §6.3 to `cliff.toml` body template. Preserve trailing `\` continuations. **Note**: existing line 10 (`## [...]\`) ends with `\` (no newline). The diff must explicitly add a `\n` boundary between the header and the new `**Release Date:**` line, or output will collide on a single line. The dry-run diff (step 3) will surface this if missed.
 
-2. Dry-run against the **same fixed tag range** used in Task 0 (`v0.4.38..v0.4.39-rc.1`, NOT `--unreleased`). Command: `git cliff v0.4.38..v0.4.39-rc.1 > /tmp/cliff-amended.md`.
+2. Dry-run against the **same fixed tag range** used in Task 0 (`v0.4.38-rc.4..v0.4.39-rc.1`, NOT `--unreleased`). Command: `git cliff v0.4.38-rc.4..v0.4.39-rc.1 > /tmp/cliff-amended.md`.
 
 3. Diff `/tmp/cliff-baseline.md` (from Task 0) vs `/tmp/cliff-amended.md`. Expect: only the `**Release Date:** ...` + `**Since v... :** ...` lines appear in the amended output (plus the intentional blank line). Any other diff lines are regressions in template whitespace handling.
 

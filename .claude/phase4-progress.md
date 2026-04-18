@@ -124,10 +124,27 @@
 
 ### Iter 1 — 2026-04-18 (in progress)
 
-Start commit: post-Loop-2-polish (pending).
+Start commit: `63f6d3fb` (Loop 2 EXIT).
 Plan location: `docs/reviews/2026-04-18-phase4-updater-hardening-plan.md`.
 
 Execution: Tasks 0-13 per plan. Per-task commit + push. Inter-task reviewer dispatches at Task-group boundaries (after D9, D10, D11 complete); final full-spec reviewer at Task 13. Any mid-task issues folded into same-task commits.
+
+#### Task 0 — AUDIT COMPLETE
+
+- **Test baseline**: workspace **3,418 passed / 0 failed / 21 ignored**. Pre-Phase-4 baseline recorded.
+- **Code locations verified** (all consistent with spec):
+  - `src-tauri/src/updater/install.rs:378-392` `backup_path_for` returns `{file_name}.rollback.{nano_ts}` ✓
+  - `src-tauri/src/updater/install.rs:407-408` backup_path creation + copy ✓ (actual `replace_binary` invocation is further down in `install_and_restart_with_ops`)
+  - `src-tauri/src/updater/install.rs:217+` `verify_signature` single-key path (to be replaced in Task 2) ✓
+  - `crates/oneshim-core/src/config/sections/storage.rs:349-355` defaults `true` + hardcoded key `GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=` ✓
+  - `crates/oneshim-api-contracts/src/update.rs:5` `UpdatePhase` enum (9 variants, no RolledBack yet) ✓
+  - `crates/oneshim-api-contracts/src/update.rs:25` `published_at: Option<String>` present ✓
+  - `src-tauri/src/update_coordinator.rs:446` `published_at` propagation to `PendingUpdateInfo` ✓
+  - `src-tauri/Cargo.toml:59` `tempfile = { workspace = true }` in `[dependencies]` (not `[dev-dependencies]`; Phase 4 does NOT migrate — documented housekeeping ticket candidate only)
+- **Phase 2 telemetry surface decision**: **tracing::error! only** — no dedicated counter API exists; Phase 2 integration is span-based via `tracing-opentelemetry` (`src-tauri/src/telemetry/{mod,otlp}.rs`). The `telemetry::increment_counter(...)` line in spec §3.3.2 + Task 3 code block stays commented out; structured `tracing::error!` fields are captured as span events when `telemetry` feature is active.
+- **cliff.toml dry-run**: baseline saved to `/tmp/cliff-baseline.md` (23 lines). **Plan correction**: tag range `v0.4.38..v0.4.39-rc.1` was not usable because `v0.4.38` stable tag does not exist (only RC tags: `v0.4.38-rc.1`..`rc.4`). Corrected range: **`v0.4.38-rc.4..v0.4.39-rc.1`**. Plan document updated inline.
+- **git-cliff version**: `2.12.0` (well above plan's mentioned 1.4 floor for `contributors` var).
+- **Spec Amendment 1 pending**: `spawn_healthy_writer` signature change from `self` to `&self` — will be applied in Task 1.
 
 ---
 
