@@ -293,6 +293,23 @@ export type UpdatePhase =
   | 'Updated'
   | 'Deferred'
   | 'Error'
+  /** Phase 4 D11: automatic rollback completed after repeated startup failures. */
+  | 'RolledBack'
+
+/** Phase 4 D11: rollback escalation reason (snake_case to match Rust serde). */
+export type RollbackReason = 'repeated_startup_failure'
+
+export interface RollbackInfo {
+  from_version: string
+  /** RFC3339 UTC timestamp of the rolled-from release (if known). */
+  from_published_at?: string | null
+  to_version: string
+  /** RFC3339 UTC timestamp of the rolled-to release (if known). */
+  to_published_at?: string | null
+  reason: RollbackReason
+  /** RFC3339 UTC timestamp at which the rollback completed. */
+  rolled_back_at: string
+}
 
 export interface DownloadProgress {
   bytes_downloaded: number
@@ -318,6 +335,8 @@ export interface UpdateStatus {
   message: string | null
   pending: PendingUpdateInfo | null
   download_progress: DownloadProgress | null
+  /** Phase 4 D11: populated when phase === 'RolledBack'. */
+  rollback?: RollbackInfo | null
   revision: number
   updated_at: string
 }

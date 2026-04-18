@@ -138,7 +138,21 @@
     "channelSaved": "업데이트 채널이 저장되었습니다",
     "channelSaveFailed": "업데이트 채널 저장에 실패했습니다",
     "releaseNotes": "릴리즈 노트",
-    "downloadSize": "다운로드 크기: {{size}}"
+    "downloadSize": "다운로드 크기: {{size}}",
+    "rolledBack": "롤백됨",
+    "rolledBackTitle": "이전 버전으로 자동 복구되었습니다",
+    "rolledBackReasonRepeatedStartupFailure": "새 버전이 연속 2회 정상 기동에 실패하여, 이전에 정상 동작하던 버전으로 자동 복구되었습니다.",
+    "rolledBackFromTo": "롤백: v{{fromVersion}} → v{{toVersion}}",
+    "rolledBackFromToWithDates": "롤백: v{{fromVersion}} ({{fromDate}}) → v{{toVersion}} ({{toDate}})",
+    "rolledBackAt": "{{timestamp}}에 복구",
+    "releaseDate": "{{date}} 배포",
+    "releaseDateUnknown": "배포일 정보 없음",
+    "releasedAgoMinutes": "{{count}}분 전 배포",
+    "releasedAgoMinutes_plural": "{{count}}분 전 배포",
+    "releasedAgoHours": "{{count}}시간 전 배포",
+    "releasedAgoHours_plural": "{{count}}시간 전 배포",
+    "releasedAgoDays": "{{count}}일 전 배포",
+    "releasedAgoDays_plural": "{{count}}일 전 배포"
   },
   "timeline": {
     "title": "타임라인",
