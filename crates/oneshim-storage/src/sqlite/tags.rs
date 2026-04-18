@@ -278,3 +278,106 @@ impl SqliteStorage {
         Ok(updated > 0)
     }
 }
+
+#[cfg(test)]
+#[allow(dead_code)]
+mod tests {
+    //! Inline unit tests for `sqlite::tags`.
+    //!
+    //! Audit-gated per Phase 5-D8 spec: 7 of 10 pub fn already covered
+    //! by sqlite/tests.rs:311-424. This module adds only the 3 genuine
+    //! residual gaps:
+    //! - update_tag on nonexistent tag_id (returns Ok(false))
+    //! - get_tag_ids_for_frames batch lookup (entirely uncovered)
+    //! - concurrent UNIQUE(name) race (existing test is sequential)
+
+    use std::sync::Arc;
+
+    use super::SqliteStorage;
+
+    fn open_storage() -> SqliteStorage {
+        SqliteStorage::open_in_memory(30).expect("in-memory storage")
+    }
+
+    // ── update_tag edge cases ──────────────────────────────────────
+
+    /// Per tags.rs:278 `Ok(updated > 0)` — UPDATE on missing row is
+    /// not a SQL error; the port method returns Ok(false).
+    #[test]
+    fn update_tag_on_nonexistent_returns_ok_false() {
+        let storage = open_storage();
+        let result = storage.update_tag(99_999, "does-not-matter", "#000000");
+        assert!(matches!(result, Ok(false)));
+    }
+
+    // ── get_tag_ids_for_frames batch lookup ────────────────────────
+
+    /// Covers the batch method at tags.rs:8-52 which is fully
+    /// uncovered by sibling tests.
+    #[test]
+    fn get_tag_ids_for_frames_happy_path_batch() {
+        let storage = open_storage();
+
+        // Seed 2 frames via direct SQL (test has no frame API handy).
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO frames (timestamp, trigger_type, app_name, window_title, importance, resolution_w, resolution_h, has_image) \
+                 VALUES ('2026-04-18T00:00:00Z', 'manual', 'a', 'a', 0.5, 1920, 1080, 0)",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO frames (timestamp, trigger_type, app_name, window_title, importance, resolution_w, resolution_h, has_image) \
+                 VALUES ('2026-04-18T00:00:01Z', 'manual', 'b', 'b', 0.5, 1920, 1080, 0)",
+                [],
+            ).unwrap();
+        }
+
+        let tag_a = storage.create_tag("a", "#ff0000").unwrap();
+        let tag_b = storage.create_tag("b", "#00ff00").unwrap();
+
+        storage.add_tag_to_frame(1, tag_a.id).unwrap();
+        storage.add_tag_to_frame(1, tag_b.id).unwrap();
+        storage.add_tag_to_frame(2, tag_b.id).unwrap();
+
+        // Batch lookup for both frames.
+        let map = storage.get_tag_ids_for_frames(&[1, 2]).unwrap();
+        assert_eq!(map.len(), 2, "both frames present in result");
+        assert_eq!(map.get(&1).map(|v| v.len()), Some(2), "frame 1 has 2 tags");
+        assert_eq!(map.get(&2).map(|v| v.len()), Some(1), "frame 2 has 1 tag");
+
+        // Empty input short-circuits to empty map.
+        let empty = storage.get_tag_ids_for_frames(&[]).unwrap();
+        assert!(empty.is_empty());
+    }
+
+    // ── lock-contract regression: concurrent UNIQUE race ───────────
+
+    /// UNIQUE(name) constraint at migration/v01_v08.rs:189.
+    /// Existing duplicate_tag_name_fails at sqlite/tests.rs:394 is
+    /// sequential; this tests multi-thread racing.
+    #[test]
+    fn concurrent_create_same_name_enforces_uniqueness() {
+        let storage = Arc::new(open_storage());
+        let mut handles = Vec::new();
+
+        for _ in 0..4 {
+            let s = storage.clone();
+            handles.push(std::thread::spawn(move || {
+                s.create_tag("race-name", "#000000")
+            }));
+        }
+
+        let mut ok_count = 0;
+        let mut err_count = 0;
+        for h in handles {
+            match h.join().unwrap() {
+                Ok(_) => ok_count += 1,
+                Err(_) => err_count += 1,
+            }
+        }
+
+        assert_eq!(ok_count, 1, "exactly one thread wins the UNIQUE race");
+        assert_eq!(err_count, 3, "other three get Err from constraint");
+    }
+}
