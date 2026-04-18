@@ -668,3 +668,6 @@ impl MetricsStorage for SqliteStorage {
         .map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+mod tests;
