@@ -223,7 +223,11 @@ impl MetricsStorage for SqliteStorage {
         let to_str = hour_end.to_rfc3339();
 
         self.with_conn(move |conn| {
-            let result: Result<(f64, f64, i64, i64, i64), rusqlite::Error> = conn.query_row(
+            // AVG() in SQLite always returns REAL, so both memory columns here must
+            // be read as Option<f64> — reading as Option<i64> raises
+            // InvalidColumnType and was silently swallowed by the `_` arm below
+            // (found via Phase 5-D8 PR1 Task 3 test authoring).
+            let result: Result<(f64, f64, f64, i64, i64), rusqlite::Error> = conn.query_row(
                 "SELECT AVG(cpu_usage), MAX(cpu_usage), AVG(memory_used), MAX(memory_used), COUNT(*)
                  FROM system_metrics
                  WHERE timestamp >= ?1 AND timestamp < ?2",
@@ -232,7 +236,7 @@ impl MetricsStorage for SqliteStorage {
                     Ok((
                         row.get::<_, Option<f64>>(0)?.unwrap_or(0.0),
                         row.get::<_, Option<f64>>(1)?.unwrap_or(0.0),
-                        row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                        row.get::<_, Option<f64>>(2)?.unwrap_or(0.0),
                         row.get::<_, Option<i64>>(3)?.unwrap_or(0),
                         row.get(4)?,
                     ))
@@ -241,18 +245,29 @@ impl MetricsStorage for SqliteStorage {
 
             match result {
                 Ok((cpu_avg, cpu_max, memory_avg, memory_max, count)) if count > 0 => {
+                    // memory_avg is REAL (from AVG()); the target column is INTEGER,
+                    // so truncate for storage.
+                    let memory_avg_i64 = memory_avg as i64;
                     conn.execute(
                         "INSERT OR REPLACE INTO system_metrics_hourly (hour, cpu_avg, cpu_max, memory_avg, memory_max, sample_count)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                        rusqlite::params![hour_str, cpu_avg, cpu_max, memory_avg, memory_max, count],
+                        rusqlite::params![hour_str, cpu_avg, cpu_max, memory_avg_i64, memory_max, count],
                     )
                     .map_err(|e| {
                         StorageError::Internal(format!("Failed to save hourly aggregate: {e}"))
                     })?;
                     debug!("hour: {} ({count}items )", hour_str);
                 }
-                _ => {
+                Ok(_) => {
                     debug!("hour: {} (data none)", hour_str);
+                }
+                Err(e) => {
+                    // Propagate genuine query errors rather than silently
+                    // swallowing — the previous `_` arm masked the
+                    // InvalidColumnType bug fixed in this commit.
+                    return Err(StorageError::Internal(format!(
+                        "Failed to aggregate hourly metrics for {hour_str}: {e}"
+                    )));
                 }
             }
 
