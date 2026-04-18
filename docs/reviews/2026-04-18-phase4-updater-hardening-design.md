@@ -16,31 +16,33 @@ Close three paths through which a bad release can reach users unintentionally or
 
 1. **Trapped key trust** — the updater currently trusts exactly one hardcoded Ed25519 public key. A compromised or lost signing key cannot be rotated without stranding clients. **D9** introduces a multi-key trust array.
 2. **Silent rollout loophole** — the staged rollout gate (`<!-- rollout:N -->`) is fully implemented but treats missing `installation_id` as always-eligible, which means a config regression admits users into the first-receive cohort. **D10** inverts this to defensive-exclude + documents the authoring convention.
-3. **Irrecoverable crash loop** — once a bad release is installed, nothing brings the user back to a working version automatically. **D11** adds a self-healthy marker + 2-failed-boot auto-rollback using the existing `.rollback.{ts}` backup.
+3. **Irrecoverable crash loop** — once a bad release is installed, nothing brings the user back to a working version automatically. **D11** adds a self-healthy marker + 2-failed-boot auto-rollback using the existing `{binary_name}.rollback.{ts}` backup.
 
 **Release metadata enrichment (A-4)** across UI and release notes (non-breaking, cosmetic):
 - `CHANGELOG.md` — already includes ISO date `## [VERSION] - YYYY-MM-DD` (retained).
-- Release body — new: `**Release Date:** Month Day, Year UTC` + `**Since v{prev}:** N commits · M PRs · K files changed` via cliff.toml template.
+- Release body — new: `**Release Date:** Month Day, Year UTC` + `**Since v{prev}:** N commits · M contributors` via cliff.toml template amendment (not PR or file counts — those aren't available in git-cliff without a shell wrapper; see §6.3 for scope detail).
 - GitHub Release name — new: `ONESHIM Client v{VERSION} — Released Month Day, Year`.
-- Client UI — new: **render existing `published_at` field** (already populated in `update_coordinator.rs:446`, never displayed) as "v0.4.40-rc.1 (2026-04-18 배포)".
+- Client UI — new: **render existing `published_at` field** (already populated in `update_coordinator.rs:446`, never displayed) as "v0.4.40-rc.1 (2026-04-18 배포)". **Fallback**: when `published_at == None`, render version alone without date suffix.
 
 ### 1.2 Scope boundary & non-goals
 
-**In scope:**
-- `src-tauri/src/updater/{mod,install,github}.rs` — key array, probe integration, rollback execution.
-- `src-tauri/src/app_runtime_launch.rs` — startup probe call order guarantee.
+**Files modified (in scope):**
+- `src-tauri/src/updater/{mod,install,github}.rs` — key array wiring, probe integration, rollback execution, `write_install_pending` helper.
+- `src-tauri/src/app_runtime_launch.rs` — startup probe call-order guarantee.
+- `src-tauri/src/scheduler/mod.rs` — production-visible error log + telemetry when `installation_id` missing at update-check spawn.
 - `src-tauri/src/update_coordinator.rs` — `RolledBack` phase broadcast + telemetry event.
 - `crates/oneshim-api-contracts/src/update.rs` — `UpdatePhase::RolledBack` variant, `RollbackInfo`, `RollbackReason`.
-- `crates/oneshim-core/src/config/sections/storage.rs` — reuse existing `signature_public_key` field (single-key shape preserved for serde compat); **add** `TRUSTED_PUBLIC_KEYS` constant in a new Rust source file that the verify path consults.
-- `crates/oneshim-web/frontend/src/...` — render rollback state + `published_at` date.
+- `crates/oneshim-core/src/config/sections/storage.rs` — relax `validate_integrity_policy` to no longer require `signature_public_key` non-empty (verify path now consults the built-in array first; see §2.3).
+- `crates/oneshim-web/frontend/src/...` — render rollback state + `published_at` date (with fallback for `None`).
 - `.github/workflows/release.yml` — release_notes.md header expansion.
+- **`cliff.toml` (existing, ~30 lines)** — amend body template to inject `**Release Date:** …` + `**Since {{ previous.version }}:** …` lines. See §6.3 for the diff.
 
 **Files created:**
 - `src-tauri/src/updater/health_probe.rs`
 - `src-tauri/src/updater/trusted_keys.rs`
-- `cliff.toml`
 - `docs/guides/updater-rollout.md`
 - `docs/guides/updater-key-rotation.md`
+- `docs/guides/updater-rollback-windows.md` (deliverable of §4.8 spike)
 
 **Non-goals:**
 - **Not a breaking change / not v0.5.0** — D9 default `require_signature_verification: true` is already in effect (verified at `storage.rs:349-351` + enforcement at `storage.rs:240-244`). No config flag flip; no config migration.
@@ -90,45 +92,61 @@ pub(crate) const TRUSTED_PUBLIC_KEYS: &[&str] = &[
 ];
 ```
 
-`install.rs::verify_signature` (re-implement, preserving signature):
+`install.rs::verify_signature` (re-implement with **array-first precedence** so rotation takes effect):
+
 ```rust
 pub(super) fn verify_signature(
     &self,
     payload: &[u8],
     signature_bytes: &[u8],
 ) -> Result<(), UpdateError> {
-    // 1. If config.signature_public_key is non-empty (legacy path),
-    //    try that first to preserve current user-config override behavior.
-    let configured_key = self.config.signature_public_key
-        .split_whitespace().next().filter(|k| !k.trim().is_empty());
-    if let Some(k) = configured_key {
-        if try_verify_with_key_b64(k, payload, signature_bytes).is_ok() {
-            return Ok(());
-        }
-    }
-    // 2. Walk built-in TRUSTED_PUBLIC_KEYS array.
+    // 1. Walk built-in TRUSTED_PUBLIC_KEYS array (primary trust source).
+    //    Rotation: add new key at [0], old key stays at [1] during transition.
     for (idx, key_b64) in trusted_keys::TRUSTED_PUBLIC_KEYS.iter().enumerate() {
         if try_verify_with_key_b64(key_b64, payload, signature_bytes).is_ok() {
             if idx > 0 {
-                tracing::info!("signature validated by trusted key #{idx} (rotation in progress)");
+                tracing::info!(
+                    "signature validated by trusted key #{idx} (rotation in progress)"
+                );
             }
             return Ok(());
+        }
+    }
+    // 2. Fallback: if user has overridden signature_public_key in their
+    //    config to a non-default value (e.g., self-signing in dev), try it.
+    let configured_key = self.config.signature_public_key
+        .split_whitespace().next().filter(|k| !k.trim().is_empty());
+    if let Some(k) = configured_key {
+        if !trusted_keys::TRUSTED_PUBLIC_KEYS.iter().any(|&t| t == k) {
+            if try_verify_with_key_b64(k, payload, signature_bytes).is_ok() {
+                tracing::warn!("signature validated via user-configured key (override)");
+                return Ok(());
+            }
         }
     }
     Err(UpdateError::Integrity("no trusted key validated the signature".into()))
 }
 ```
 
-Rationale for preserving the config-supplied key path: existing users who have set a custom public key via their config file keep that override working; the array is an additive trust anchor.
+Rationale:
+- Array is consulted **first** so rotation is effective. The legacy behavior (configured key always wins) would silently shadow the array whenever `storage.rs:354` default is in effect (i.e., for every user who hasn't manually edited their config), defeating the purpose of D9.
+- Configured key is consulted as a fallback only when it's **different** from any built-in key (genuine user override path, e.g., dev self-signing). If it matches a built-in key, the array already validated.
+
+### 2.3.1 Related change: `validate_integrity_policy` relaxation
+
+`crates/oneshim-core/src/config/sections/storage.rs:247-256` currently requires `signature_public_key` to be non-empty when updates are enabled. Since the built-in array is now the primary trust source, this requirement is obsolete and prevents future ergonomic improvements (e.g., empty default that forces array-only trust).
+
+Change: remove the "empty key" error path from `validate_integrity_policy`. Retain the base64 + 32-byte validation but only when the field is non-empty (opt-in override).
 
 ### 2.4 Tests
 
-**New unit tests (3)**:
+**New unit tests (4)**:
 - `verify_signature_accepts_builtin_key` — payload signed with the seed corresponding to `TRUSTED_PUBLIC_KEYS[0]` validates.
 - `verify_signature_accepts_second_trusted_key_when_first_inactive` — array with two keys; payload signed with second key validates and emits rotation log.
+- `verify_signature_fallback_to_configured_key_when_not_in_array` — configured `signature_public_key` that is NOT a built-in key is used as fallback and validates with warn log.
 - `verify_signature_rejects_payload_when_no_key_matches` — payload signed with unknown key → `Integrity` error.
 
-Existing tests at `mod.rs:831-858` stay; rename if they collide with the new ones.
+Existing tests live in `src-tauri/src/updater/mod.rs:831-858` (both `verify_signature_accepts_valid_ed25519_signature` and its negative counterpart). They stay; rename if collision with the new array-first variants.
 
 ---
 
@@ -167,15 +185,25 @@ if !is_eligible_for_rollout(installation_id, &latest_str, rollout_percent) {
 
 Document and verify that `app_runtime_launch.rs` **writes `installation_id` to disk before spawning the update-check scheduler loop**. This prevents a first-launch race where the update loop fires before the UUID is persisted.
 
-Concretely at `app_runtime_launch.rs:66-74`, the current flow writes the ID synchronously via `ConfigManager::update`. The update-check scheduler is spawned later in the launch sequence (`scheduler/mod.rs`). Add a panic-on-unset assertion in the update-check loop initialization:
+Concretely at `app_runtime_launch.rs:66-74`, the current flow writes the ID synchronously via `ConfigManager::update`. The update-check scheduler is spawned later in the launch sequence (`scheduler/mod.rs`). Add **production-visible** observability at the update-check loop initialization:
 
 ```rust
 // scheduler/mod.rs, at update-check spawn site
-debug_assert!(
-    config.update.installation_id.is_some(),
-    "installation_id must be set before update-check scheduler starts"
-);
+if config.update.installation_id.is_none() {
+    // Regression guard: this should be unreachable because
+    // app_runtime_launch.rs:66-74 writes the UUID synchronously
+    // before any scheduler loop spawns. Surface loudly if the
+    // invariant breaks so the regression is observable in production.
+    tracing::error!(
+        "update-check scheduler started with installation_id = None; \
+         rollout gate will exclude this device"
+    );
+    telemetry::increment_counter("updater.installation_id_missing_at_scheduler_start");
+    debug_assert!(false, "installation_id must be set before update-check scheduler starts");
+}
 ```
+
+Release builds get `tracing::error!` + telemetry counter (observable). Debug builds additionally panic via `debug_assert!` (immediate dev feedback). This makes a first-launch race regression visible in both environments.
 
 #### 3.3.3 Authoring convention document
 
@@ -209,7 +237,7 @@ Largest new implementation (~500 LOC).
 | Failed boot tolerance | 2 consecutive failures without an intervening success marker (B); success marker resets counter to 0 |
 | Probe I/O error behavior | Non-fatal: increment boot counter and proceed normally; do not block startup on probe filesystem errors |
 | Rollback binary selection | Read `backup_path` field recorded in `.install_pending_{VERSION}` at install time (deterministic, not `mtime`-based) |
-| Backup cleanup | After a successful `.self_healthy_{VERSION}` write, delete all `.rollback.{ts}` files older than the most recent one kept as emergency fallback |
+| Backup cleanup | After a successful `.self_healthy_{VERSION}` write, delete all `{binary_name}.rollback.{ts}` files older than the most recent one kept as emergency fallback |
 | Platform rollback mechanism | Unix (macOS/Linux): in-process rename + restart. Windows: deferred — see §4.8 spike |
 | Notification | `UpdatePhase::RolledBack` (UI) + toast + telemetry event |
 
@@ -258,7 +286,11 @@ Stored in the **install directory** (same directory as the running executable). 
 
 **Prefix consistency**: all three files use dot-prefix and `{VERSION}` suffix (e.g., `.self_healthy_0.4.40-rc.1`). No `v` prefix in filenames to avoid ambiguity with git tags.
 
-**macOS .app bundle note**: state files live beside the current executable (`current_exe().parent()` resolves to `.../ONESHIM.app/Contents/MacOS/` on macOS). Because a macOS update replaces the entire `.app` bundle, prior-version state files inside the old bundle are discarded by the bundle replacement. This is correct behavior — the new version's install.rs writes fresh `.install_pending_{NEW_VERSION}` after its install, and rollback files from the old bundle are irrelevant.
+**Backup filename format**: the existing `install.rs:378-392::backup_path_for()` returns `{parent}/{binary_name}.rollback.{nano_ts}` (e.g., `oneshim-app.rollback.1736123456789000000`). `backup_path` stored in `.install_pending_{VERSION}` is the **full absolute path** from this formatter. Cleanup glob derives `{binary_name}` from `current_exe().file_name()`; never hardcode `.rollback.*` as a pattern.
+
+**Self-reinstall idempotency**: the `.install_pending_{VERSION}` file includes an `installed_at` ISO-8601 timestamp. Probe rule: if `installed_at` is older than 24 hours **and** `.self_healthy_{VERSION}` is absent, treat as stale (e.g., a user manually reinstalled the same version with a broken config that swallows the healthy writer's filesystem access). Delete stale `.install_pending_{VERSION}` + `.boot_count_{VERSION}` and return `Normal` without triggering rollback. This prevents a phantom rollback after manual same-version reinstallation.
+
+**macOS .app bundle note**: state files live beside the current executable (`current_exe().parent()` resolves to `.../ONESHIM.app/Contents/MacOS/` on macOS). For cross-version updates that replace the bundle, the install.rs of the new version writes a fresh `.install_pending_{NEW_VERSION}` post-install — state is version-scoped, not carried across. For same-version manual reinstalls on macOS (drag-drop install of the same version), the 24h staleness rule above covers the phantom-rollback scenario.
 
 ### 4.4 New module `src-tauri/src/updater/health_probe.rs`
 
@@ -339,7 +371,7 @@ impl HealthProbe {
 | Location | Change |
 |---|---|
 | `src-tauri/src/app_runtime_launch.rs` | After existing config + installation_id setup, before scheduler spawn: instantiate `HealthProbe` with `current_exe().parent()?` as install_dir; call `check_startup_state()`; on `RollbackRequired`, invoke `install::execute_rollback(backup_path, from, to, reason)` and exit. |
-| `src-tauri/src/updater/install.rs` | On successful install completion (new helper `write_install_pending`): write `.install_pending_{VERSION}` JSON with `backup_path` = the `.rollback.{ts}` path that was created at `install.rs:391`. |
+| `src-tauri/src/updater/install.rs` | New helper `write_install_pending(version, previous_version, backup_path)`. **Call site**: immediately after `replace_binary` succeeds in `install_and_restart_with_ops` (`install.rs:407-408`) and **before** `restart_app`. If `write_install_pending` itself errors, abort the install and restore from backup. If any earlier step fails (download, signature verify, replace_binary), explicitly `std::fs::remove_file(backup_path)` to clean the orphan `{binary_name}.rollback.{ts}` file before returning the error. |
 | `src-tauri/src/scheduler/mod.rs` | After all loops spawn, invoke `probe.spawn_healthy_writer()`. The healthy timer starts only after the scheduler is fully up (design intent: "30s uptime" = 30s after useful app state is reachable, not 30s after process start). |
 | `src-tauri/src/update_coordinator.rs` | Translate a rollback completion into `UpdatePhase::RolledBack` broadcast + toast + telemetry. |
 
@@ -365,11 +397,12 @@ pub fn execute_rollback(
 
 ### 4.7 Tests
 
-**Unit (5)**:
+**Unit (6)**:
 - `check_startup_no_pending_install_is_normal`
 - `check_startup_with_healthy_marker_is_normal`
 - `check_startup_below_failed_boot_threshold_is_normal` (clarifies threshold dimension)
 - `check_startup_at_failed_boot_threshold_triggers_rollback` (clarifies threshold dimension)
+- `stale_install_pending_older_than_24h_returns_normal_without_rollback` (self-reinstall idempotency per §4.3)
 - `spawn_healthy_writer_sets_marker_after_injected_short_delay` — uses `HealthProbe::with_threshold(Duration::from_millis(50))` on real filesystem (no tokio paused time — `std::fs` is outside tokio time control)
 
 **Non-fatal contract test (1)**:
@@ -378,7 +411,9 @@ pub fn execute_rollback(
 **Integration (1)**:
 - `rollback_e2e_restores_previous_binary` — in `src-tauri/tests/`: create temp install dir with fake current + backup binaries + install_pending JSON, invoke `check_startup_state` + `execute_rollback`, assert binary swap occurred and exit code is rollback-specific.
 
-**Total D11 tests: 7 new**. Reconciliation with §6.1: 3 (D9) + 2 (D10) + 7 (D11) = **12 new tests**.
+**D11 total: 7 unit + 1 integration = 8 new tests.**
+
+**Phase 4 total reconciliation**: D9 (4 unit) + D10 (2 unit) + D11 (7 unit) + D11 integration (1) = **13 unit + 1 integration = 14 new tests**. (Matches §6.1.)
 
 ### 4.8 Windows rollback spike (pre-implementation)
 
@@ -391,7 +426,7 @@ Windows cannot replace a running executable. The spike day (allocated before imp
    - `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)` (UX poor; user must reboot before rollback activates).
 3. **Antivirus interaction** — test with Windows Defender active; confirm no quarantine on `.exe` rename.
 
-Spike output: decision memo in `docs/guides/updater-key-rotation.md` (windows sub-section) + updated §4.6 Windows row with exact implementation.
+Spike output: decision memo in new file `docs/guides/updater-rollback-windows.md` + updated §4.6 Windows row with exact implementation.
 
 **If spike reveals blockers**: fall back to `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)` and notify user on next launch.
 
@@ -440,17 +475,20 @@ pub enum RollbackReason {
 
 | Touchpoint | Change |
 |---|---|
-| `UpdateStatusPanel.tsx` | Add `RolledBack` case; render from/to versions + `from_published_at` / `to_published_at` dates + reason string |
-| Existing shared date formatter (or new one if absent) | Relative time for <24h ("3시간 전 배포"), absolute ISO YYYY-MM-DD for older |
-| `PendingUpdateInfo` render | **Surface existing `published_at`** — currently data is in the contract but frontend doesn't display it |
-| i18n keys (ko/en) | ~10 new: `update.rolledBack.title`, `update.rolledBack.reason.repeatedStartupFailure`, `update.releaseDate`, `update.releasedAgo` (interpolated with unit) |
+| `UpdateStatusPanel.tsx` | Add `RolledBack` case; render from/to versions + `from_published_at` / `to_published_at` dates + reason string. **Fallback when a date is `None`**: render version alone without the " (YYYY-MM-DD 배포)" suffix and show `update.releaseDateUnknown` as tooltip on hover. |
+| Existing shared date formatter (or new one if absent) | Relative time for <24h ("3시간 전 배포"), absolute ISO YYYY-MM-DD for older. Return `null` when input is `None`. |
+| `PendingUpdateInfo` render | **Surface existing `published_at`** — currently data is in the contract but frontend doesn't display it. Render conditionally: present → "v0.4.40-rc.1 (2026-04-18 배포)", absent → "v0.4.40-rc.1". |
+| i18n keys (ko/en) | ~11 new: `update.rolledBack.title`, `update.rolledBack.reason.repeatedStartupFailure`, `update.releaseDate`, `update.releaseDateUnknown`, `update.releasedAgo` (interpolated with unit). |
 
 ### 5.3 Desktop notification
 
 Reuse existing `DesktopNotifierImpl` (oneshim-vision). One toast per rollback event, deduplicated by `RollbackInfo.rolled_back_at`.
 
 Toast copy (ko):
-> "ONESHIM 업데이트 안내 — v{from} ({from_date} 배포) 설치 문제로 v{to} ({to_date} 배포)로 복구되었습니다."
+- **When both dates present**: "ONESHIM 업데이트 안내 — v{from} ({from_date} 배포) 설치 문제로 v{to} ({to_date} 배포)로 복구되었습니다."
+- **When either date absent (`None`)**: "ONESHIM 업데이트 안내 — v{from} 설치 문제로 v{to}로 복구되었습니다." (drop the date parenthetical for the missing side, or both if both missing)
+
+Format decision made at the toast composition site based on `RollbackInfo.from_published_at.is_some() && .to_published_at.is_some()`.
 
 ---
 
@@ -460,11 +498,14 @@ Toast copy (ko):
 
 | Level | Scope | Count (new) |
 |---|---|---|
-| Unit | D9 (3) + D10 (2) + D11 probe (5) + probe-io-nonfatal (1) | **11** |
-| Integration (`src-tauri/tests/`) | D11 rollback E2E (1) | 1 |
-| Platform CI matrix | macOS/Linux inline swap job + Windows helper job (gated on §4.8 spike result) | 2 rows |
-| E2E smoke (`release-reliability-smoke.sh`) | Post-install probe trigger validation (1 step) | 1 step |
-| **Total** | | **12 tests + 2 CI rows + 1 smoke step** |
+| Unit — D9 | `verify_signature_accepts_builtin_key` / `..._second_trusted_key_when_first_inactive` / `..._fallback_to_configured_key_when_not_in_array` / `..._rejects_payload_when_no_key_matches` | 4 |
+| Unit — D10 | `update_check_respects_rollout_exclusion` / `update_check_without_installation_id_is_excluded` | 2 |
+| Unit — D11 probe | 6 tests enumerated in §4.7 Unit block | 6 |
+| Unit — D11 non-fatal | `probe_io_error_is_non_fatal` | 1 |
+| Integration — D11 (`src-tauri/tests/`) | `rollback_e2e_restores_previous_binary` | 1 |
+| Platform CI matrix | macOS/Linux inline swap + Windows helper (gated on §4.8 spike result) | 2 rows |
+| E2E smoke (`release-reliability-smoke.sh`) | Post-install probe trigger validation | 1 step |
+| **Total** | | **13 unit + 1 integration = 14 tests + 2 CI rows + 1 smoke step** |
 
 ### 6.2 External dependencies
 
@@ -478,28 +519,52 @@ Toast copy (ko):
 | Cargo deps | No new | — |
 | `CHANGELOG.md` | Manual 0.4.40-rc.1 entry (git-cliff generates body, user adds context) | Author responsibility at release time |
 
-### 6.3 `cliff.toml` template concrete stub
+### 6.3 `cliff.toml` modification (diff against existing)
 
-```toml
-[changelog]
-header = "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\n"
-body = """
+The repo ships an existing `cliff.toml` (~30 lines). This work **amends** the `[changelog]` `body` template. It does **not** overwrite the existing `[git]` section or postprocessors. Current body (simplified):
+
+```text
 {% if version %}
-## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%Y-%m-%d") }}
-
-**Release Date:** {{ timestamp | date(format="%B %d, %Y UTC") }}
-**Since {{ previous.version }}:** {{ commits | length }} commits · {{ contributors | length }} contributors
-
-{% else %}## [Unreleased]
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}
+## [Unreleased]
 {% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
-### {{ group | upper_first }}
-{% for commit in commits %}- {{ commit.message | upper_first }}{% endfor %}
+### {{ group }}
+{% for commit in commits %}- {{ commit.message | upper_first }}{% if commit.breaking %} [**BREAKING**]{% endif %}
+  {%- if commit.body %}{{ commit.body | trim | indent(first=true, prefix="  ") }}{% endif %}
 {% endfor %}
-"""
+{% endfor %}
 ```
 
-`release.yml` `release_notes.md` generation adds exactly one new line before `## What's Changed`:
+**Amended body** (adds two lines of metadata after the `## [...]` header when `version` is present):
+
+```text
+{% if version %}
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+
+**Release Date:** {{ timestamp | date(format="%B %d, %Y UTC") }}
+{% if previous and previous.version %}**Since {{ previous.version }}:** {{ commits | length }} commits · {{ contributors | length }} contributors{% endif %}
+
+{% else %}
+## [Unreleased]
+{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}- {{ commit.message | upper_first }}{% if commit.breaking %} [**BREAKING**]{% endif %}
+  {%- if commit.body %}{{ commit.body | trim | indent(first=true, prefix="  ") }}{% endif %}
+{% endfor %}
+{% endfor %}
+```
+
+**Git-cliff variable availability** (verify at implementation time via `git cliff --version` + a local dry run on a sample tag range):
+- `previous.version` — available when a prior tag exists; guarded with `{% if previous and previous.version %}` for initial release edge case.
+- `contributors` — available in git-cliff ≥ 1.4 as a list of unique commit authors.
+- **Not available natively in git-cliff**: "PRs" count, "files changed" count. The original proposal phrased "N commits · M PRs · K files changed" is not directly expressible in git-cliff templates. Scope reduced to **commits · contributors**.
+
+**§1.1 acceptance amendment**: "Since v{prev}: N commits · M contributors" (not "M PRs · K files changed").
+
+`release.yml` `release_notes.md` header is prepended with one additional line before `## What's Changed`:
 ```yaml
 - name: Prepend date header to release notes
   run: |
@@ -560,7 +625,11 @@ Private key has been exposed. Old-key-signed updates are now untrustworthy, even
 2. In a hotfix branch, **remove the compromised key** (do NOT retain it) and insert only the new key in `TRUSTED_PUBLIC_KEYS`.
 3. Switch `UPDATE_SIGNING_PRIVATE_KEY_B64` secret to the new private key.
 4. Ship `v0.4.N-hotfix` signed with the new key.
-5. **Users on v0.4.N-1 or earlier**: their client has only the old (now-removed) key and will reject the hotfix. They must re-install manually from a signed installer download (Apple codesign + GitHub Attestation provide the out-of-band trust anchor for the initial installer). Notify via release notes + external channels.
+5. **Users on v0.4.N-1 or earlier**: their client has only the old (now-removed) key and will reject the hotfix. They must re-install manually from a signed installer download. Out-of-band trust anchors per platform:
+   - **macOS**: Apple codesign + (when fixed) notarization — Gatekeeper validates the DMG/PKG signature.
+   - **Windows**: GitHub Release SHA-256 published on the release page; users verify via PowerShell `Get-FileHash`. No Authenticode codesign currently.
+   - **Linux**: GitHub Release SHA-256; the signed `.sig` file is produced by the *new* private key so it won't validate against the now-removed old key — users must trust the SHA-256 + provenance attestation (`actions/attest-build-provenance`) from `release.yml:1152-1155`.
+   Notify via release notes + external channels (GitHub Discussions, Discord if present, email if on file).
 6. Revoke the compromised signing key at the CI secret level (rotate GitHub token access).
 
 Runbook detail: `docs/guides/updater-key-rotation.md`.
@@ -575,8 +644,8 @@ GitHub Release body editing updates the `<!-- rollout:N -->` comment. Clients pi
 
 ### 8.1 Files touched
 
-- **Modified (9)**: `src-tauri/src/updater/{mod.rs,install.rs}`, `app_runtime_launch.rs`, `scheduler/mod.rs`, `update_coordinator.rs`, `oneshim-api-contracts/src/update.rs`, frontend `UpdateStatusPanel.tsx` + related, `.github/workflows/release.yml`, `CHANGELOG.md` (manual release-note entry at publish time).
-- **Created (5)**: `src-tauri/src/updater/health_probe.rs`, `src-tauri/src/updater/trusted_keys.rs`, `cliff.toml`, `docs/guides/updater-rollout.md`, `docs/guides/updater-key-rotation.md`.
+- **Modified (10)**: `src-tauri/src/updater/{mod.rs,install.rs}`, `app_runtime_launch.rs`, `scheduler/mod.rs`, `update_coordinator.rs`, `oneshim-api-contracts/src/update.rs`, `oneshim-core/src/config/sections/storage.rs` (validate_integrity_policy relaxation), frontend `UpdateStatusPanel.tsx` + related, `.github/workflows/release.yml`, `cliff.toml` (body template amendment per §6.3), `CHANGELOG.md` (manual release-note entry at publish time).
+- **Created (5)**: `src-tauri/src/updater/health_probe.rs`, `src-tauri/src/updater/trusted_keys.rs`, `docs/guides/updater-rollout.md`, `docs/guides/updater-key-rotation.md`, `docs/guides/updater-rollback-windows.md` (deliverable of §4.8 spike).
 
 ### 8.2 LOC estimate
 
@@ -596,12 +665,12 @@ GitHub Release body editing updates the `<!-- rollout:N -->` comment. Clients pi
 
 ### 8.4 Acceptance criteria
 
-- All tests pass: new **12 tests** listed in §6.1 + existing suite unchanged.
+- All tests pass: new **14 tests** listed in §6.1 + existing suite unchanged.
 - `cargo clippy --workspace --all-targets -- -D warnings` zero warnings.
 - `cargo fmt --check` clean.
 - Manual smoke: install v0.4.40-rc.1 locally; kill the process twice within 30 seconds of startup; third launch triggers rollback; UI shows `RolledBack` state; toast notification appears; `execute_rollback` restores the backup binary recorded in `.install_pending_{VERSION}.backup_path`.
 - Release body at `https://github.com/pseudotop/oneshim-client/releases/tag/v0.4.40-rc.1` includes the `**Release Date:** …` + `**Since v0.4.39:** …` headers from cliff.toml template.
-- `PendingUpdateInfo.published_at` is rendered in the frontend's update panel in the format "v{VERSION} (YYYY-MM-DD 배포)".
+- `PendingUpdateInfo.published_at`, **when present**, is rendered in the frontend's update panel in the format "v{VERSION} (YYYY-MM-DD 배포)". When `None`, renders "v{VERSION}" alone with the `update.releaseDateUnknown` tooltip key.
 - Windows platform CI row (`release-reliability-smoke.ps1` or equivalent) exercises the rollback path successfully using the mechanism chosen in §4.8 spike.
 - Scheduled rotation runbook executes end-to-end in a dry-run (use `rehearse-key-rotation.sh`).
 

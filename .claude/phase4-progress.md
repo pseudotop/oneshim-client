@@ -32,22 +32,39 @@
 - **Verified critical findings against code**: C-1 + C-2 confirmed with grep/read.
 - **Status:** revision in progress
 
-### Iter 2 — 2026-04-18 (in progress)
+### Iter 2 — 2026-04-18
+
+- **Starting commit:** `a242924c`
+- **Ending commit:** `f44b7099` (spec rewrite addressing iter 1 Critical + Important + Minor)
+- **Reviewer:** fresh code-reviewer (agentId `a03d360742aaf83ae`)
+- **Verdict:** **Ready to exit? No.** — 2 new Critical + 5 Important + 7 Minor
+- **Key findings:**
+  - **C1** — `cliff.toml` already exists (~30 lines); my spec claimed "Created" which would have overwritten committed template.
+  - **C2** — Backup filename format is `{binary_name}.rollback.{ts}` per `install.rs:378-392::backup_path_for`, not `.rollback.{ts}`. Cleanup glob would match nothing.
+  - **I1** — Self-reinstall idempotency (manual same-version reinstall → phantom rollback).
+  - **I2** — `debug_assert!` is compiled out in release; production regression invisible.
+  - **I3** — Configured-key-first precedence always shadows built-in rotation array.
+  - **I4** — `install_pending` writer call-site timing + orphan-backup cleanup undefined.
+  - **I5** — `published_at: Option<String>` render contract + i18n fallback undefined.
+  - **Minors** — test count math, trust-anchor platform specifics, spike output target, test file refs, toast fallback, cliff variable availability.
+
+### Iter 3 — 2026-04-18 (in progress)
 
 **Revision plan**:
-- Drop v0.5.0 breaking-change framing → target v0.4.40-rc.1 (feature addition)
-- Drop config migration section (no-op against current `true` default)
-- Reframe D9 as "multi-key array enhancement" only
-- Drop new `released_at` field → reuse `published_at`, fix UI to surface it
-- Add `backup_path` to `.install_pending_{VERSION}` state schema
-- Add `.rollback.{ts}` cleanup logic after successful self_healthy write
-- Add probe-I/O-error-non-fatal contract
-- Add Windows rollback spike day + AppData-only install location assumption
-- Make `healthy_threshold` injectable; fix test strategy
-- Add installation_id spawn-order guarantee + test
-- Add cliff.toml template stub + release.yml header commands
-- Split §7.3 key-rotation into scheduled vs compromise branches
-- Fix 7 minors
+- Reclassify `cliff.toml` as Modified; spec the diff not an overwrite (§6.3).
+- Use `{binary_name}.rollback.{ts}` format consistently; reference `install.rs:378-392::backup_path_for` as canonical formatter.
+- Invert verify_signature precedence: built-in TRUSTED_PUBLIC_KEYS array first, configured key as fallback only when not in array.
+- Add `validate_integrity_policy` relaxation (no longer require `signature_public_key` non-empty).
+- Replace `debug_assert!` with production-visible `tracing::error!` + telemetry counter + dev-only `debug_assert!`.
+- Add 24h staleness rule for `.install_pending_{VERSION}` (self-reinstall idempotency).
+- Specify `write_install_pending` call-site timing (post-replace, pre-restart) + orphan-backup cleanup on earlier failures.
+- Add `published_at: None` fallback render contract + `update.releaseDateUnknown` i18n key + toast-copy branches.
+- Split §7.3.2 trust-anchor wording by platform (macOS codesign vs Windows SHA-256 vs Linux attest).
+- Scope cliff.toml vars to `commits | length · contributors | length` (drop PRs and files; not available in git-cliff).
+- Move Windows spike output target to new `docs/guides/updater-rollback-windows.md`.
+- Test counts: 13 unit + 1 integration = 14 total; D11 now 7 unit + 1 integration.
+
+**Commit plan**: amend in place with targeted Edits; new commit after all edits applied.
 
 ---
 
