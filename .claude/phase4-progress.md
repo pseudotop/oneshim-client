@@ -48,23 +48,31 @@
   - **I5** — `published_at: Option<String>` render contract + i18n fallback undefined.
   - **Minors** — test count math, trust-anchor platform specifics, spike output target, test file refs, toast fallback, cliff variable availability.
 
-### Iter 3 — 2026-04-18 (in progress)
+### Iter 3 — 2026-04-18
+
+- **Starting commit:** `f44b7099`
+- **Ending commit:** `0570e023`
+- **Reviewer:** fresh code-reviewer (agentId `a172b2dc20614f08c`)
+- **Verdict:** **Ready to exit? No.** — 0 Critical + 5 Important + 5 Minor (progress from 2C/5I/7m)
+- **Findings:**
+  - **I-1** — Telemetry API `telemetry::increment_counter` cited without verification; stub-and-defer contract not stated.
+  - **I-2** — `write_install_pending` failure recovery on Windows symmetrically constrained (running executable).
+  - **I-3** — `execute_rollback -> Result<(), UpdateError>` contradicts "self-restart" semantics; needs `Infallible` success type.
+  - **I-4** — Staleness step missing from §4.4 `check_startup_state_inner` step list.
+  - **I-5** — Integration test "exit code is rollback-specific" — no constant defined.
+  - M1-M5 — git-cliff fallback, Windows CI-row caveat, toast i18n keys, release.yml separation, Linux manual-trust wording.
+
+### Iter 4 — 2026-04-18 (in progress)
 
 **Revision plan**:
-- Reclassify `cliff.toml` as Modified; spec the diff not an overwrite (§6.3).
-- Use `{binary_name}.rollback.{ts}` format consistently; reference `install.rs:378-392::backup_path_for` as canonical formatter.
-- Invert verify_signature precedence: built-in TRUSTED_PUBLIC_KEYS array first, configured key as fallback only when not in array.
-- Add `validate_integrity_policy` relaxation (no longer require `signature_public_key` non-empty).
-- Replace `debug_assert!` with production-visible `tracing::error!` + telemetry counter + dev-only `debug_assert!`.
-- Add 24h staleness rule for `.install_pending_{VERSION}` (self-reinstall idempotency).
-- Specify `write_install_pending` call-site timing (post-replace, pre-restart) + orphan-backup cleanup on earlier failures.
-- Add `published_at: None` fallback render contract + `update.releaseDateUnknown` i18n key + toast-copy branches.
-- Split §7.3.2 trust-anchor wording by platform (macOS codesign vs Windows SHA-256 vs Linux attest).
-- Scope cliff.toml vars to `commits | length · contributors | length` (drop PRs and files; not available in git-cliff).
-- Move Windows spike output target to new `docs/guides/updater-rollback-windows.md`.
-- Test counts: 13 unit + 1 integration = 14 total; D11 now 7 unit + 1 integration.
+- I-1: Add explicit "if telemetry API not yet public, stub with `tracing::error!` only; verify Phase 2 surface in Task 0 of plan" note.
+- I-2: Add Windows constraint note to `write_install_pending` restoration path.
+- I-3: Change signature to `Result<Infallible, UpdateError>`; explicit "success path terminates" contract; add `ROLLBACK_EXIT_CODE = 75`; caller pattern for `app_runtime_launch.rs`.
+- I-4: Insert staleness step 0 into `check_startup_state_inner` docstring; update ASCII state machine to step-number ordering; reorder steps 3-5 so increment happens AFTER threshold check.
+- I-5: Rewrite integration test assertions: binary bytes match pre-rollback backup, pending file read before swap, event broadcast; no exit-code assertion (harness can't observe cross-process replacement).
+- Minors: git-cliff version fallback, Windows CI-row caveat for MoveFileEx path, 2 new toast i18n keys, Linux "manually trust" wording.
 
-**Commit plan**: amend in place with targeted Edits; new commit after all edits applied.
+**Commit plan**: targeted Edits + commit + iter 4 reviewer.
 
 ---
 

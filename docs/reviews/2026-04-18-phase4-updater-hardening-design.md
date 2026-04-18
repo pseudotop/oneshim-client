@@ -205,6 +205,8 @@ if config.update.installation_id.is_none() {
 
 Release builds get `tracing::error!` + telemetry counter (observable). Debug builds additionally panic via `debug_assert!` (immediate dev feedback). This makes a first-launch race regression visible in both environments.
 
+**Telemetry API surface (to verify at implementation time)**: the Phase 2 telemetry foundation (X2) exposes counter emission via the `tracing` ecosystem (OTel span events) rather than a direct `telemetry::increment_counter` function. If the exact API is not yet public at the caller site, the plan-writer should **stub with `tracing::error!` only** and defer the counter wiring to a follow-up. Do not invent a new API; use whatever Phase 2 already landed (verify path during Task 0 audit of the plan).
+
 #### 3.3.3 Authoring convention document
 
 New file `docs/guides/updater-rollout.md` (~100 lines):
@@ -249,29 +251,37 @@ Largest new implementation (~500 LOC).
     │   { installed_at, previous_version, backup_path }
     ↓
 [app boot N=1]
-    ├── HealthProbe::check_startup_state(): no marker yet
-    │     → increment .boot_count_{VERSION} (atomic write)
-    │     → return Normal (proceed with startup)
+    ├── HealthProbe::check_startup_state():
+    │     step 0: staleness check (installed_at > 24h ago + no marker?)
+    │             → skip on first boot (installed_at is recent)
+    │     step 1-2: no marker, pending exists → continue
+    │     step 3: read .boot_count_{VERSION} (absent or 0)
+    │     step 4: current count (0) < threshold(2) → not rollback
+    │     step 5: atomically increment to 1, return Normal
     ↓ scheduler completes boot
     ↓ spawn_healthy_writer: wait 30s wall-clock, no crash
     ├── on success → write .self_healthy_{VERSION}
     │     → delete .install_pending_{VERSION} + .boot_count_{VERSION}
-    │     → cleanup .rollback.{ts} files except the one in backup_path
-    └── on crash/exit before 30s → counter not reset; next boot sees boot_count=1
+    │     → cleanup {binary_name}.rollback.{ts} files except the one in backup_path
+    └── on crash/exit before 30s → counter stays at 1; next boot sees boot_count=1
 
 [app boot N=2]  (only if boot N=1 failed to write marker)
-    ├── check_startup_state: boot_count=1, below threshold(2)
-    │     → increment to 2
-    │     → return Normal (give one retry)
+    ├── check_startup_state: step 3 reads count=1; step 4 count < threshold(2)
+    │     → step 5: increment to 2, return Normal (retry window)
     ↓ if success here → normal marker write
-    ↓ if crash again → next boot sees boot_count=2
+    ↓ if crash again → counter stays at 2; next boot sees boot_count=2
 
 [app boot N=3] pre-flight
-    ├── check_startup_state: boot_count=2, no marker, threshold reached
+    ├── check_startup_state: step 3 reads count=2; step 4 count ≥ threshold(2)
     │     → read .install_pending_{VERSION}.backup_path
     │     → return RollbackRequired { from_version, to_version=previous_version, backup_path, reason }
     ↓
-[rollback executes] replace running binary with backup_path → restart
+[rollback executes] replace running binary with backup_path → terminate + restart
+
+[Staleness branch — same-version manual reinstall or long abandoned pending]
+    ├── check_startup_state step 0: installed_at > 24h ago AND no .self_healthy_ marker
+    │     → delete .install_pending_{VERSION} + .boot_count_{VERSION}
+    │     → return Normal (abandoned pending; DO NOT roll back)
 ```
 
 ### 4.3 State files
@@ -352,11 +362,22 @@ impl HealthProbe {
     }
 
     fn check_startup_state_inner(&self) -> Result<StartupAction, ProbeError> {
+        // 0. Staleness check (self-reinstall idempotency, §4.3):
+        //    If .install_pending_{VERSION} exists AND .self_healthy_{VERSION}
+        //    absent AND install_pending.installed_at > 24h ago →
+        //      delete .install_pending_{VERSION} + .boot_count_{VERSION}
+        //      return Normal (abandoned pending; DO NOT increment boot_count
+        //      and DO NOT trigger rollback)
         // 1. .self_healthy_{VERSION} present? → Normal (nothing to do)
-        // 2. .install_pending_{VERSION} absent? → Normal (fresh install, first boot writes pending via install.rs path)
-        // 3. Read boot_count; increment and write atomically.
-        // 4. If new_count >= failed_boot_threshold → RollbackRequired from install_pending metadata.
-        // 5. Otherwise → Normal (retry window).
+        // 2. .install_pending_{VERSION} absent? → Normal (fresh install,
+        //    first boot writes pending via install.rs path)
+        // 3. Read current .boot_count_{VERSION} (absent/unreadable → 0).
+        // 4. If current_count >= failed_boot_threshold (i.e., >= 2):
+        //      → read .install_pending_{VERSION}.backup_path
+        //      → return RollbackRequired { ... } (DO NOT increment further)
+        // 5. Otherwise (current_count < threshold):
+        //      → atomically write current_count + 1 to .boot_count_{VERSION}
+        //      → return Normal
     }
 
     /// Spawn a tokio background task: wait `healthy_threshold`, then
@@ -371,7 +392,7 @@ impl HealthProbe {
 | Location | Change |
 |---|---|
 | `src-tauri/src/app_runtime_launch.rs` | After existing config + installation_id setup, before scheduler spawn: instantiate `HealthProbe` with `current_exe().parent()?` as install_dir; call `check_startup_state()`; on `RollbackRequired`, invoke `install::execute_rollback(backup_path, from, to, reason)` and exit. |
-| `src-tauri/src/updater/install.rs` | New helper `write_install_pending(version, previous_version, backup_path)`. **Call site**: immediately after `replace_binary` succeeds in `install_and_restart_with_ops` (`install.rs:407-408`) and **before** `restart_app`. If `write_install_pending` itself errors, abort the install and restore from backup. If any earlier step fails (download, signature verify, replace_binary), explicitly `std::fs::remove_file(backup_path)` to clean the orphan `{binary_name}.rollback.{ts}` file before returning the error. |
+| `src-tauri/src/updater/install.rs` | New helper `write_install_pending(version, previous_version, backup_path)`. **Call site**: immediately after `replace_binary` succeeds in `install_and_restart_with_ops` (`install.rs:407-408`) and **before** `restart_app`. **On `write_install_pending` failure** (e.g., install dir read-only, disk full): attempt restoration using the same platform mechanism as `execute_rollback` (Unix rename, Windows spike-deliverable helper). If restoration itself also fails, emit `tracing::error!` and return `UpdateError::Install` — the user is left on the new binary without a pending marker; the next scheduled probe will not trigger rollback (no `.install_pending_` file), but subsequent health anomalies can still be caught by manual downgrade. Windows constraint applies symmetrically: the restoration path faces the same running-executable constraint addressed by the §4.8 spike. **On earlier step failure** (download, signature verify, replace_binary): explicitly `std::fs::remove_file(backup_path)` to clean the orphan `{binary_name}.rollback.{ts}` file before returning the original error. |
 | `src-tauri/src/scheduler/mod.rs` | After all loops spawn, invoke `probe.spawn_healthy_writer()`. The healthy timer starts only after the scheduler is fully up (design intent: "30s uptime" = 30s after useful app state is reachable, not 30s after process start). |
 | `src-tauri/src/update_coordinator.rs` | Translate a rollback completion into `UpdatePhase::RolledBack` broadcast + toast + telemetry. |
 
@@ -379,19 +400,45 @@ impl HealthProbe {
 
 Extends existing `install_and_restart_with_ops` flow:
 
-```rust
+```text
+// Function signature:
 pub fn execute_rollback(
     &self,
     backup_path: &Path,
     from_version: &str,
     to_version: &str,
     reason: RollbackReason,
-) -> Result<(), UpdateError> {
-    // 1. Verify backup_path exists + has executable permissions.
-    // 2. Unix (macOS/Linux): atomic rename of backup_path → current_exe_path.
-    // 3. Windows: see §4.8 spike deliverable.
-    // 4. Broadcast UpdatePhase::RolledBack event before process exit.
-    // 5. Self-restart via the platform mechanism already used elsewhere.
+) -> Result<std::convert::Infallible, UpdateError>;
+
+// Contract: on success, this function DOES NOT RETURN — current process is
+// replaced (Unix process-image replacement) or terminated after spawning a
+// helper (Windows). On error, returns UpdateError so caller can log/exit.
+
+// Implementation sketch:
+// 1. Verify backup_path exists + has executable permissions.
+// 2. Broadcast UpdatePhase::RolledBack on the async runtime + flush.
+// 3. Unix: std::fs::rename(backup_path, current_exe_path), then replace
+//    the current process image using std::os::unix::process::CommandExt
+//    (the trait method that replaces the running image with a new binary).
+// 4. Windows: §4.8 spike deliverable chooses between shell-helper spawn
+//    (current process exits via std::process::exit; helper does swap +
+//    restart) or MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT) (current process
+//    exits; swap happens at next boot).
+// 5. Happy path: Infallible never materializes; process is terminated.
+
+// Constant:
+pub const ROLLBACK_EXIT_CODE: i32 = 75;  // EX_TEMPFAIL — rolled back
+```
+
+**Caller in `app_runtime_launch.rs`** (§4.5) on `StartupAction::RollbackRequired`:
+```text
+match install.execute_rollback(&backup_path, &from, &to, reason) {
+    Ok(_infallible) => unreachable!(), // Infallible — success path terminates
+    Err(e) => {
+        tracing::error!("rollback failed: {e}");
+        // Leave user on the current (failing) binary; next boot retries.
+        std::process::exit(1);
+    }
 }
 ```
 
@@ -409,7 +456,7 @@ pub fn execute_rollback(
 - `probe_io_error_is_non_fatal` — point `install_dir` at a read-only directory, confirm `check_startup_state()` returns `Normal` with warn-log.
 
 **Integration (1)**:
-- `rollback_e2e_restores_previous_binary` — in `src-tauri/tests/`: create temp install dir with fake current + backup binaries + install_pending JSON, invoke `check_startup_state` + `execute_rollback`, assert binary swap occurred and exit code is rollback-specific.
+- `rollback_e2e_restores_previous_binary` — in `src-tauri/tests/`: create temp install dir with fake current + backup binaries + install_pending JSON, invoke `check_startup_state` + a mock replacement of `execute_rollback` that performs only the binary-swap step (skipping process replacement since the test can't actually be replaced). Assert: (a) `current_exe_path` content now matches the pre-rollback backup bytes, (b) `.install_pending_{VERSION}` was read before swap, (c) `UpdatePhase::RolledBack` event was broadcast. No assertion on process exit code because the test harness cannot observe cross-process replacement.
 
 **D11 total: 7 unit + 1 integration = 8 new tests.**
 
@@ -478,7 +525,7 @@ pub enum RollbackReason {
 | `UpdateStatusPanel.tsx` | Add `RolledBack` case; render from/to versions + `from_published_at` / `to_published_at` dates + reason string. **Fallback when a date is `None`**: render version alone without the " (YYYY-MM-DD 배포)" suffix and show `update.releaseDateUnknown` as tooltip on hover. |
 | Existing shared date formatter (or new one if absent) | Relative time for <24h ("3시간 전 배포"), absolute ISO YYYY-MM-DD for older. Return `null` when input is `None`. |
 | `PendingUpdateInfo` render | **Surface existing `published_at`** — currently data is in the contract but frontend doesn't display it. Render conditionally: present → "v0.4.40-rc.1 (2026-04-18 배포)", absent → "v0.4.40-rc.1". |
-| i18n keys (ko/en) | ~11 new: `update.rolledBack.title`, `update.rolledBack.reason.repeatedStartupFailure`, `update.releaseDate`, `update.releaseDateUnknown`, `update.releasedAgo` (interpolated with unit). |
+| i18n keys (ko/en) | ~13 new: `update.rolledBack.title`, `update.rolledBack.reason.repeatedStartupFailure`, `update.rolledBack.toast.bothDates` (interpolated with from/to versions + dates), `update.rolledBack.toast.partialDates` (when at least one date is None), `update.releaseDate`, `update.releaseDateUnknown`, `update.releasedAgo` (interpolated with unit). |
 
 ### 5.3 Desktop notification
 
@@ -559,7 +606,7 @@ The repo ships an existing `cliff.toml` (~30 lines). This work **amends** the `[
 
 **Git-cliff variable availability** (verify at implementation time via `git cliff --version` + a local dry run on a sample tag range):
 - `previous.version` — available when a prior tag exists; guarded with `{% if previous and previous.version %}` for initial release edge case.
-- `contributors` — available in git-cliff ≥ 1.4 as a list of unique commit authors.
+- `contributors` — available in git-cliff ≥ 1.4 as a list of unique commit authors. **Fallback**: if the CI's git-cliff version is older, omit the "Since v…" line entirely (guard via `{% if previous and previous.version and contributors %}` or check at release.yml step before invoking git-cliff).
 - **Not available natively in git-cliff**: "PRs" count, "files changed" count. The original proposal phrased "N commits · M PRs · K files changed" is not directly expressible in git-cliff templates. Scope reduced to **commits · contributors**.
 
 **§1.1 acceptance amendment**: "Since v{prev}: N commits · M contributors" (not "M PRs · K files changed").
@@ -628,7 +675,7 @@ Private key has been exposed. Old-key-signed updates are now untrustworthy, even
 5. **Users on v0.4.N-1 or earlier**: their client has only the old (now-removed) key and will reject the hotfix. They must re-install manually from a signed installer download. Out-of-band trust anchors per platform:
    - **macOS**: Apple codesign + (when fixed) notarization — Gatekeeper validates the DMG/PKG signature.
    - **Windows**: GitHub Release SHA-256 published on the release page; users verify via PowerShell `Get-FileHash`. No Authenticode codesign currently.
-   - **Linux**: GitHub Release SHA-256; the signed `.sig` file is produced by the *new* private key so it won't validate against the now-removed old key — users must trust the SHA-256 + provenance attestation (`actions/attest-build-provenance`) from `release.yml:1152-1155`.
+   - **Linux**: GitHub Release SHA-256; the signed `.sig` file is produced by the *new* private key so it won't validate against the now-removed old key — users must **manually** trust the SHA-256 + provenance attestation (`actions/attest-build-provenance`) from `release.yml:1152-1155`.
    Notify via release notes + external channels (GitHub Discussions, Discord if present, email if on file).
 6. Revoke the compromised signing key at the CI secret level (rotate GitHub token access).
 
@@ -671,7 +718,7 @@ GitHub Release body editing updates the `<!-- rollout:N -->` comment. Clients pi
 - Manual smoke: install v0.4.40-rc.1 locally; kill the process twice within 30 seconds of startup; third launch triggers rollback; UI shows `RolledBack` state; toast notification appears; `execute_rollback` restores the backup binary recorded in `.install_pending_{VERSION}.backup_path`.
 - Release body at `https://github.com/pseudotop/oneshim-client/releases/tag/v0.4.40-rc.1` includes the `**Release Date:** …` + `**Since v0.4.39:** …` headers from cliff.toml template.
 - `PendingUpdateInfo.published_at`, **when present**, is rendered in the frontend's update panel in the format "v{VERSION} (YYYY-MM-DD 배포)". When `None`, renders "v{VERSION}" alone with the `update.releaseDateUnknown` tooltip key.
-- Windows platform CI row (`release-reliability-smoke.ps1` or equivalent) exercises the rollback path successfully using the mechanism chosen in §4.8 spike.
+- Windows platform CI row (`release-reliability-smoke.ps1` or equivalent) exercises the rollback path per §4.8 spike result. **Caveat**: if the spike falls back to `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)`, the Windows CI row asserts only that the deferred rename was scheduled (e.g., registry key `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations` contains the expected entry), not that rollback visibly completes — it can't, because that requires a real OS reboot outside the CI runner's scope.
 - Scheduled rotation runbook executes end-to-end in a dry-run (use `rehearse-key-rotation.sh`).
 
 ### 8.5 Deferred follow-ups
