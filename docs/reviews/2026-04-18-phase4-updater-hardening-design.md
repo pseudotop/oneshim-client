@@ -407,10 +407,18 @@ impl HealthProbe {
 
 ### 4.6 Rollback execution (`install::execute_rollback`)
 
+> ⚠️ **Superseded by Amendment 2** (recorded in `docs/reviews/2026-04-18-phase4-updater-hardening-plan.md` front-matter "Spec amendments approved during Loop 2 + Loop 3"). The shipped implementation differs from the sketch below in 4 non-substantive ways:
+> 1. Associated function (no `&self` receiver) — doesn't need Updater state.
+> 2. Extra `current_exe_path: &Path` parameter — lets tests pass tempdir paths.
+> 3. Extra `rollback_event: F` generic callback — decouples install.rs from broadcast machinery.
+> 4. Unix termination via `Command::spawn() + std::process::exit(ROLLBACK_EXIT_CODE)` (new PID starts, old PID exits), not `CommandExt::exec()` image replacement (same PID). Functionally equivalent user outcome; simpler; avoids lifecycle-hook skipping that `exec()` causes.
+>
+> The `Result<Infallible, UpdateError>` return type + "success path never returns" contract + "broadcast event BEFORE termination" ordering are all preserved. See actual code at `src-tauri/src/updater/install.rs::execute_rollback` + the `execute_rollback_swap_only` shared core. The sketch below is retained as the original design narrative for traceability.
+
 Extends existing `install_and_restart_with_ops` flow:
 
 ```text
-// Function signature:
+// Original design sketch (see Amendment 2 above for shipped deltas):
 pub fn execute_rollback(
     &self,
     backup_path: &Path,
