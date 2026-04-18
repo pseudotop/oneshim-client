@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.39-rc.1] - 2026-04-18
+
+### Added
+
+- FeedbackSignalSink + regime_id vector filter + RegimeManager persistence
+  Closes three gaps from docs/reviews/2026-04-16-feature-gaps-analysis.md:
+
+  - **X3 FeedbackSignalSink** (ADR-017) — new port, CompositeFeedbackSink fans accept/reject into CoachingEngine + RegimeClassifier via Arc<Mutex<_>>, fires BEFORE the server call so local learning adapts even when offline.
+  - **C3a regime_id vector filter** — search_filtered/search_quantized honour SearchFilters.regime_id via correlated subquery over activity_segments.regime_id (existing idx_segments_regime, no migration).
+  - **C3c/X6 RegimeManager persistence** (ADR-018) — new RegimeStoragePort + SqliteRegimeManagerStateStore + v31 migration with quarantine-on-parse-failure. Startup hydrate via load_all → hydrate_from; shutdown save via 4s watchdog in RunEvent::Exit (WAL checkpoint runs FIRST per deep-review I1).
+
+  Post-ship deep review (4th pass, fresh eyes) landed additional fixes:
+  - WAL checkpoint relocated before regime save — save_all is sync-inside-async so tokio::time::timeout cannot cancel in-flight SQL; only the outer mpsc recv_timeout bounds shutdown. Running checkpoint first avoids connection-mutex contention.
+  - ADR-017/018 (EN+KO) clarified: serde_default claim corrected, signal-path bypass documented, two-layer watchdog limits spelled out, retry-idempotency addendum for future learning impls.
+
 ## [0.4.38-rc.4] - 2026-04-17
 
 ### Fixed
