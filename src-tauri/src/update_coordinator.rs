@@ -76,6 +76,7 @@ pub fn initial_status(config: &UpdateConfig, auto_install: bool) -> UpdateStatus
         message: None,
         pending: None,
         download_progress: None,
+        rollback: None,
         revision: 0,
         updated_at: Utc::now().to_rfc3339(),
     }
@@ -103,6 +104,31 @@ pub async fn run_update_coordinator(
     }
 
     let check_interval_hours = config.check_interval_hours;
+
+    // D10 spawn-order guard (Phase 4): the update-check coordinator must not
+    // start until app_runtime_launch.rs:66-74 has persisted installation_id.
+    // This is guaranteed by current launch order (config + UUID are
+    // synchronously committed before any update task spawns), but a future
+    // regression would silently hide the device from rollout via D10's
+    // defensive None handling in updater/mod.rs:check_for_updates_from.
+    // Surface the invariant loudly in both debug and release builds.
+    if config.installation_id.is_none() {
+        // Loop 3 iter 1 fix (I-5): removed `debug_assert!(false, ...)` —
+        // panicking dev builds on an invariant violation was a foot-gun for
+        // test fixtures / Tauri dev runs and did not actually protect users
+        // (release builds only get the tracing event).
+        //
+        // The single source of regression detection is the tracing::error!
+        // below — captured as an OTel span event when the `telemetry`
+        // feature is active. If a future counter API lands, add the
+        // increment here (same namespace used symmetrically in Task 9's
+        // rollback handler).
+        tracing::error!(
+            "update-check coordinator started with installation_id = None; \
+             rollout gate will exclude this device until next launch"
+        );
+    }
+
     let updater = Updater::new(config);
 
     run_update_coordinator_with_executor(

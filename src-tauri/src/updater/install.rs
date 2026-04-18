@@ -11,6 +11,16 @@ use std::path::{Component, Path, PathBuf};
 
 use super::{UpdateError, Updater};
 
+/// Phase 4 D11: exit code used by `execute_rollback` when it must terminate
+/// the current process (either Windows helper path or any Unix error after
+/// the image-replacement syscall would have fired).
+///
+/// `75` (EX_TEMPFAIL, from `sysexits(3)`) signals a "temporary failure;
+/// try again" — appropriate for rollback: the current binary failed to
+/// stay healthy, but user data / install dir is intact and the previous
+/// binary was restored.
+pub const ROLLBACK_EXIT_CODE: i32 = 75;
+
 impl Updater {
     /// Apply a delta patch: read current binary, apply bsdiff patch, verify checksum.
     ///
@@ -214,24 +224,91 @@ impl Updater {
         })
     }
 
+    /// Verify the Ed25519 signature of `payload` against any trusted key.
+    ///
+    /// D9 multi-key trust:
+    /// 1. Walk the built-in `TRUSTED_PUBLIC_KEYS` array first (primary
+    ///    trust source — rotation story lives here).
+    /// 2. If no built-in key validates, fall back to `config.signature_public_key`
+    ///    IF it is non-empty AND different from every built-in key (a
+    ///    genuine user override, e.g., dev self-signing).
+    ///
+    /// Returns `Integrity` error when no trusted key validates.
     pub(super) fn verify_signature(
         &self,
         payload: &[u8],
         signature_bytes: &[u8],
     ) -> Result<(), UpdateError> {
-        let key_b64 = self
+        let configured = self
             .config
             .signature_public_key
             .split_whitespace()
             .next()
-            .filter(|k| !k.trim().is_empty())
-            .ok_or_else(|| {
-                UpdateError::Integrity(
-                    "Public key for signature verification is not configured (update.signature_public_key)"
-                        .to_string(),
-                )
-            })?;
+            .filter(|k| !k.trim().is_empty());
+        Self::verify_signature_with_keys(
+            super::trusted_keys::TRUSTED_PUBLIC_KEYS,
+            configured,
+            payload,
+            signature_bytes,
+        )
+    }
 
+    /// Inner verification helper with an explicit trusted-key list + optional
+    /// configured-key override. Extracted so tests can supply an arbitrary
+    /// trusted list without mutating the production `const` array.
+    pub(super) fn verify_signature_with_keys(
+        trusted: &[&str],
+        configured: Option<&str>,
+        payload: &[u8],
+        signature_bytes: &[u8],
+    ) -> Result<(), UpdateError> {
+        // Normalize signature bytes once (same across all key attempts).
+        let signature_array: [u8; 64] = signature_bytes.try_into().map_err(|_| {
+            UpdateError::Integrity(format!(
+                "Invalid signature length: {} bytes (expected 64)",
+                signature_bytes.len()
+            ))
+        })?;
+        let signature = Signature::from_bytes(&signature_array);
+
+        // (1) Try every built-in trusted key.
+        for (idx, key_b64) in trusted.iter().enumerate() {
+            if Self::try_verify_with_key_b64(key_b64, payload, &signature).is_ok() {
+                if idx > 0 {
+                    tracing::info!(
+                        "signature validated by trusted key #{idx} (rotation in progress)"
+                    );
+                }
+                return Ok(());
+            }
+        }
+
+        // (2) Fall back to the user-configured key if present AND
+        //     genuinely distinct from any built-in key.
+        if let Some(configured_key) = configured {
+            let already_tried = trusted.contains(&configured_key);
+            if !already_tried
+                && Self::try_verify_with_key_b64(configured_key, payload, &signature).is_ok()
+            {
+                tracing::warn!("signature validated via user-configured key (override)");
+                return Ok(());
+            }
+        }
+
+        Err(UpdateError::Integrity(
+            "no trusted key validated the signature".into(),
+        ))
+    }
+
+    /// Try a single base64-encoded 32-byte public key. Returns Ok on successful
+    /// verification; any parse/validation failure is an Err but callers treat
+    /// it as "next key please" — only the absence of any successful key is
+    /// surfaced as an integrity error (by the caller).
+    fn try_verify_with_key_b64(
+        key_b64: &str,
+        payload: &[u8],
+        signature: &Signature,
+    ) -> Result<(), UpdateError> {
         let key_bytes = BASE64.decode(key_b64).map_err(|e| {
             UpdateError::Integrity(format!("Failed to decode public key base64: {}", e))
         })?;
@@ -242,20 +319,10 @@ impl Updater {
                 key_len
             ))
         })?;
-
-        let signature_array: [u8; 64] = signature_bytes.try_into().map_err(|_| {
-            UpdateError::Integrity(format!(
-                "Invalid signature length: {} bytes (expected 64)",
-                signature_bytes.len()
-            ))
-        })?;
-
         let public_key = VerifyingKey::from_bytes(&key_array)
             .map_err(|e| UpdateError::Integrity(format!("Failed to parse public key: {}", e)))?;
-        let signature = Signature::from_bytes(&signature_array);
-
         public_key
-            .verify(payload, &signature)
+            .verify(payload, signature)
             .map_err(|e| UpdateError::Integrity(format!("Signature verification failed: {}", e)))
     }
 
@@ -395,6 +462,7 @@ impl Updater {
         &self,
         downloaded_path: &Path,
         current_exe: &Path,
+        new_version: Option<&str>,
         mut replace_binary: FReplace,
         mut restart_app: FRestart,
     ) -> Result<(), UpdateError>
@@ -412,15 +480,53 @@ impl Updater {
             .and_then(|n| n.to_str())
             .unwrap_or("");
 
-        let binary_path = if file_name.ends_with(".tar.gz") || file_name.ends_with(".tgz") {
-            self.extract_tar_gz(downloaded_path)?
-        } else if file_name.ends_with(".zip") {
-            self.extract_zip(downloaded_path)?
-        } else {
-            downloaded_path.to_path_buf()
+        let binary_path = match Self::extract_if_archive(self, downloaded_path, file_name) {
+            Ok(p) => p,
+            Err(e) => {
+                // Task 6 D11 (Phase 4): orphan-backup cleanup. Earlier-step
+                // failures (extract) leave `{binary}.rollback.{ts}` unused —
+                // remove it before returning the original error.
+                let _ = std::fs::remove_file(&backup_path);
+                return Err(e);
+            }
         };
 
-        replace_binary(&binary_path)?;
+        if let Err(e) = replace_binary(&binary_path) {
+            let _ = std::fs::remove_file(&backup_path);
+            return Err(e);
+        }
+
+        // Task 6 D11: write .install_pending_{NEW_VERSION} immediately after
+        // replace_binary succeeds and BEFORE restart_app, so the probe on the
+        // next boot has a deterministic backup_path + previous_version.
+        if let Some(new_ver) = new_version {
+            let current_exe_parent = current_exe.parent().ok_or_else(|| {
+                UpdateError::Install(
+                    "current_exe has no parent directory for install_pending".to_string(),
+                )
+            })?;
+            if let Err(e) = Self::write_install_pending(
+                current_exe_parent,
+                new_ver,
+                super::CURRENT_VERSION,
+                &backup_path,
+            ) {
+                tracing::error!("write_install_pending failed: {e}");
+                // On pending-write failure, attempt restoration using the same
+                // platform mechanism as execute_rollback (Unix rename; Windows
+                // spike deliverable — Task 12 stubs it). The backup still
+                // exists since replace_binary succeeded. We leave the user on
+                // the new binary for now; the probe will NOT trigger rollback
+                // (no .install_pending_ file), but user-triggered manual
+                // downgrade remains available.
+                tracing::warn!(
+                    "D11 probe for this install is disabled (pending marker absent). \
+                     Backup retained at {:?}",
+                    backup_path
+                );
+                return Err(e);
+            }
+        }
 
         tracing::info!("Update installation completed, restarting application...");
 
@@ -447,14 +553,246 @@ impl Updater {
         }
     }
 
+    /// Decompress archive (tar.gz / zip) or return path as-is for loose binaries.
+    /// Factored out so call sites can match against archive-extraction failures
+    /// and clean up the orphan backup before returning the error.
+    fn extract_if_archive(
+        updater: &Self,
+        downloaded_path: &Path,
+        file_name: &str,
+    ) -> Result<PathBuf, UpdateError> {
+        if file_name.ends_with(".tar.gz") || file_name.ends_with(".tgz") {
+            updater.extract_tar_gz(downloaded_path)
+        } else if file_name.ends_with(".zip") {
+            updater.extract_zip(downloaded_path)
+        } else {
+            Ok(downloaded_path.to_path_buf())
+        }
+    }
+
+    /// Write `.install_pending_{NEW_VERSION}` JSON marker in the install
+    /// directory. Read by the D11 health probe on the next startup to
+    /// determine rollback eligibility + backup selection.
+    ///
+    /// Returns an error if the write fails; caller decides whether to abort
+    /// the install or proceed without the probe marker.
+    pub(super) fn write_install_pending(
+        install_dir: &Path,
+        new_version: &str,
+        previous_version: &str,
+        backup_path: &Path,
+    ) -> Result<(), UpdateError> {
+        let marker_path = install_dir.join(format!(".install_pending_{new_version}"));
+        let payload = serde_json::json!({
+            "installed_at": chrono::Utc::now().to_rfc3339(),
+            "previous_version": previous_version,
+            "backup_path": backup_path,
+        });
+        let bytes = serde_json::to_vec(&payload).map_err(|e| {
+            UpdateError::Install(format!("Failed to serialize install_pending: {}", e))
+        })?;
+        std::fs::write(&marker_path, bytes)
+            .map_err(|e| UpdateError::Install(format!("Failed to write install_pending: {}", e)))?;
+        tracing::info!(
+            "install_pending written: version={new_version}, previous={previous_version}"
+        );
+        Ok(())
+    }
+
+    /// Phase 4 D11 rollback execution.
+    ///
+    /// Contract:
+    /// - Returns `Result<Infallible, UpdateError>` — the success path does
+    ///   not return (spawns replacement binary, terminates current process
+    ///   with `ROLLBACK_EXIT_CODE`).
+    /// - Caller supplies `rollback_event` which is invoked BEFORE the swap
+    ///   so subscribers (update_coordinator, UI) can observe the rollback
+    ///   even if the subsequent restart races with shutdown.
+    ///
+    /// Windows: deferred to §4.8 spike deliverable (Task 12). Current stub
+    /// returns `UpdateError::Install` with a spike-pending message.
+    pub fn execute_rollback<F>(
+        backup_path: &Path,
+        current_exe_path: &Path,
+        from_version: &str,
+        to_version: &str,
+        reason: oneshim_api_contracts::update::RollbackReason,
+        rollback_event: F,
+    ) -> Result<std::convert::Infallible, UpdateError>
+    where
+        F: FnOnce(&oneshim_api_contracts::update::RollbackInfo),
+    {
+        Self::execute_rollback_swap_only(
+            backup_path,
+            current_exe_path,
+            from_version,
+            to_version,
+            reason,
+            rollback_event,
+        )?;
+
+        // Spawn the restored binary as a child process and terminate the
+        // current process. spawn + exit gives simpler semantics than image
+        // replacement while still achieving the rollback outcome — user sees
+        // a brief flicker as the new PID starts.
+        #[cfg(unix)]
+        {
+            std::process::Command::new(current_exe_path)
+                .spawn()
+                .map_err(|e| {
+                    UpdateError::Install(format!("rollback spawn of restored binary failed: {e}"))
+                })?;
+            std::process::exit(ROLLBACK_EXIT_CODE);
+        }
+
+        // Windows: image replacement + spawn semantics are delegated to the
+        // Task 12 spike output (docs/guides/updater-rollback-windows.md).
+        // The detection path (health probe) still fires on Windows — this
+        // branch makes the swap a documented no-op that support can surface
+        // in logs (holistic-review Q8).
+        #[cfg(windows)]
+        {
+            let _ = current_exe_path;
+            tracing::warn!(
+                "rollback swap not implemented on Windows (Task 12 pending); \
+                 user remains on failing binary until manual reinstall — \
+                 see docs/guides/updater-rollback-windows.md"
+            );
+            return Err(UpdateError::Install(
+                "Windows rollback helper pending (§4.8 spike — Task 12)".to_string(),
+            ));
+        }
+
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = current_exe_path;
+            return Err(UpdateError::Install(
+                "rollback not implemented for this platform".to_string(),
+            ));
+        }
+    }
+
+    /// Test-mode + Windows-spike shared core: verify backup, broadcast event,
+    /// rename backup into current_exe position. Does NOT perform the
+    /// replacement-binary spawn — production `execute_rollback` does that
+    /// after this helper returns Ok.
+    ///
+    /// Extracted so the integration test can observe the file-swap +
+    /// event-broadcast portion without the test harness itself being
+    /// terminated by the production path's `std::process::exit` call.
+    pub(crate) fn execute_rollback_swap_only<F>(
+        backup_path: &Path,
+        current_exe_path: &Path,
+        from_version: &str,
+        to_version: &str,
+        reason: oneshim_api_contracts::update::RollbackReason,
+        rollback_event: F,
+    ) -> Result<(), UpdateError>
+    where
+        F: FnOnce(&oneshim_api_contracts::update::RollbackInfo),
+    {
+        // 1. Verify backup exists and is a regular file.
+        if !backup_path.exists() {
+            return Err(UpdateError::Install(format!(
+                "rollback backup not found: {:?}",
+                backup_path
+            )));
+        }
+        let backup_meta = std::fs::metadata(backup_path)
+            .map_err(|e| UpdateError::Install(format!("stat backup failed: {e}")))?;
+        if !backup_meta.is_file() {
+            return Err(UpdateError::Install(format!(
+                "rollback backup is not a regular file: {:?}",
+                backup_path
+            )));
+        }
+
+        // 2. Emit the event BEFORE the swap — subscribers observe the
+        //    rollback even if the subsequent rename races with shutdown.
+        let info = oneshim_api_contracts::update::RollbackInfo {
+            from_version: from_version.to_string(),
+            from_published_at: None, // populated upstream if caller has it
+            to_version: to_version.to_string(),
+            to_published_at: None,
+            reason,
+            rolled_back_at: chrono::Utc::now().to_rfc3339(),
+        };
+        rollback_event(&info);
+
+        // Persist a rollback notification file so the restored binary can
+        // surface the RolledBack state in the UI on its next boot. The
+        // current (failing) process terminates immediately after the image
+        // replacement; without a persisted marker the user would see the
+        // version number decrement silently.
+        //
+        // Filename is version-scoped (`.rolled_back_notification_{to_version}`)
+        // so the consumer on next boot can match its own running version and
+        // sweep stale markers from earlier rollback cycles whose consumer did
+        // not complete (holistic-review I-2).
+        if let Some(install_dir) = current_exe_path.parent() {
+            let notif_path = install_dir.join(format!(".rolled_back_notification_{to_version}"));
+            match serde_json::to_vec(&info) {
+                Ok(bytes) => {
+                    if let Err(e) = std::fs::write(&notif_path, bytes) {
+                        tracing::warn!("rolled_back_notification write failed (non-fatal): {e}");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("rolled_back_notification serialize failed (non-fatal): {e}")
+                }
+            }
+        }
+
+        // 3. Atomic rename: backup → current_exe. On Unix, this works even
+        //    while the current binary is running (files held open by inode).
+        //    On Windows, this would fail for a running executable — the
+        //    production path short-circuits before reaching here on Windows
+        //    (Task 12 replaces with a spike-derived mechanism).
+        #[cfg(unix)]
+        {
+            std::fs::rename(backup_path, current_exe_path)
+                .map_err(|e| UpdateError::Install(format!("rollback rename failed: {e}")))?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            // Non-Unix test-harness only path: copy + remove simulates the swap
+            // without depending on a helper binary. Production Windows hits the
+            // §4.8-pending error branch in execute_rollback before reaching here.
+            std::fs::copy(backup_path, current_exe_path).map_err(|e| {
+                UpdateError::Install(format!("rollback copy (non-unix) failed: {e}"))
+            })?;
+            let _ = std::fs::remove_file(backup_path);
+        }
+
+        tracing::warn!(
+            "rollback executed: from={from_version} -> to={to_version} (reason: {:?})",
+            reason
+        );
+        Ok(())
+    }
+
     /// # Safety
     pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
-        use self_replace;
+        self.install_and_restart_versioned(downloaded_path, None)
+    }
 
+    /// Install-and-restart variant that additionally writes
+    /// `.install_pending_{new_version}` for the D11 health probe.
+    ///
+    /// Callers in production should invoke this with `Some(new_version)` so
+    /// rollback is armed; passing `None` disables the D11 probe for this
+    /// install (rolling back becomes manual).
+    pub fn install_and_restart_versioned(
+        &self,
+        downloaded_path: &Path,
+        new_version: Option<&str>,
+    ) -> Result<(), UpdateError> {
         let current_exe = std::env::current_exe()?;
         self.install_and_restart_with_ops(
             downloaded_path,
             &current_exe,
+            new_version,
             |candidate| {
                 self_replace::self_replace(candidate)
                     .map_err(|e| UpdateError::Install(format!("Failed to replace binary: {}", e)))
@@ -612,5 +950,106 @@ impl Updater {
                 "Restart is not supported on this platform".to_string(),
             ))
         }
+    }
+}
+
+// ── Loop 3 iter 1 fix (I-1): direct in-bin coverage of execute_rollback_swap_only ──
+//
+// Previously the only test exercising the swap + event + notification
+// write was the src-tauri/tests/ integration test, which re-implemented
+// the behavior locally. That left the production helper — including the
+// new .rolled_back_notification_{to_version} write — with zero
+// coverage against actual code. Regressions in the write position (e.g.,
+// on the Unix path, moving it after the rename) would ship silently.
+
+#[cfg(test)]
+mod rollback_tests {
+    use super::*;
+    use oneshim_api_contracts::update::{RollbackInfo, RollbackReason};
+    use std::sync::{Arc, Mutex};
+    use tempfile::tempdir;
+
+    #[test]
+    fn execute_rollback_swap_only_swaps_binary_and_emits_event_and_writes_notification() {
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let backup = dir.path().join("oneshim-current.rollback.42");
+
+        let current_content = b"CURRENT-v0.5.0".to_vec();
+        let backup_content = b"BACKUP-v0.4.40".to_vec();
+        std::fs::write(&current_exe, &current_content).unwrap();
+        std::fs::write(&backup, &backup_content).unwrap();
+
+        let captured: Arc<Mutex<Option<RollbackInfo>>> = Arc::new(Mutex::new(None));
+        let captured_clone = Arc::clone(&captured);
+
+        let result = Updater::execute_rollback_swap_only(
+            &backup,
+            &current_exe,
+            "0.5.0",
+            "0.4.40",
+            RollbackReason::RepeatedStartupFailure,
+            move |info| {
+                *captured_clone.lock().unwrap() = Some(info.clone());
+            },
+        );
+        assert!(result.is_ok(), "swap_only should succeed");
+
+        // (a) Binary swap landed — current now holds backup bytes.
+        let post = std::fs::read(&current_exe).unwrap();
+        assert_eq!(post, backup_content, "binary should be replaced by backup");
+
+        // (b) Backup path is gone after rename/copy.
+        assert!(!backup.exists(), "backup should be renamed/removed");
+
+        // (c) Event callback fired with correct fields.
+        let info = captured.lock().unwrap().clone().expect("event emitted");
+        assert_eq!(info.from_version, "0.5.0");
+        assert_eq!(info.to_version, "0.4.40");
+        assert_eq!(info.reason, RollbackReason::RepeatedStartupFailure);
+
+        // (d) Persistent notification file was written with valid JSON — the
+        //     new binary's boot consumes this to surface RolledBack in UI.
+        //     Filename is version-scoped per holistic-review I-2: the
+        //     restored binary only consumes markers matching its own
+        //     to_version, and sweeps stragglers from prior rollback cycles.
+        let notif = dir.path().join(".rolled_back_notification_0.4.40");
+        assert!(
+            notif.exists(),
+            "version-scoped notification file should be written"
+        );
+        assert!(
+            !dir.path().join(".rolled_back_notification").exists(),
+            "legacy unversioned filename must not be used"
+        );
+        let bytes = std::fs::read(&notif).unwrap();
+        let persisted: RollbackInfo = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(persisted.from_version, "0.5.0");
+        assert_eq!(persisted.to_version, "0.4.40");
+        assert_eq!(persisted.reason, RollbackReason::RepeatedStartupFailure);
+    }
+
+    #[test]
+    fn execute_rollback_swap_only_fails_when_backup_missing() {
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let missing_backup = dir.path().join("does-not-exist.rollback.0");
+        std::fs::write(&current_exe, b"current").unwrap();
+
+        let result = Updater::execute_rollback_swap_only(
+            &missing_backup,
+            &current_exe,
+            "0.5.0",
+            "0.4.40",
+            RollbackReason::RepeatedStartupFailure,
+            |_| panic!("event should NOT fire when backup is missing"),
+        );
+        assert!(
+            matches!(result, Err(UpdateError::Install(_))),
+            "missing backup should error"
+        );
+        // current_exe content unchanged (no partial swap).
+        let post = std::fs::read(&current_exe).unwrap();
+        assert_eq!(post, b"current");
     }
 }

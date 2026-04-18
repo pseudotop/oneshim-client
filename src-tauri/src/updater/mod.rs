@@ -6,8 +6,15 @@
 
 pub(crate) mod delta;
 mod github;
+pub(crate) mod health_probe;
 mod install;
 mod state;
+mod trusted_keys;
+
+// Re-exports from health_probe for consumers in app_runtime_launch + scheduler
+// (wired in Task 8 per plan — scaffolded here during Task 1).
+#[allow(unused_imports)]
+pub(crate) use health_probe::{HealthProbe, ProbeError, RollbackReason, StartupAction};
 
 #[allow(unused_imports)] // UpdateChannel used in #[cfg(test)] only
 use oneshim_core::config::{UpdateChannel, UpdateConfig};
@@ -186,14 +193,24 @@ impl Updater {
             let current_str = current.to_string();
 
             // Staged rollout gate: check if this installation is in the rollout bucket.
+            // D10 defensive None handling (Phase 4): treat a missing installation_id
+            // as rollout-EXCLUDED (was: always-eligible). This prevents a config
+            // regression from silently admitting the device to the first-receive
+            // cohort. The UUID is auto-generated on first launch at
+            // app_runtime_launch.rs:66-74, so None at this point is an invariant
+            // violation.
             let rollout_percent = parse_rollout_percent(&release.body);
-            if let Some(ref installation_id) = self.config.installation_id {
-                if !is_eligible_for_rollout(installation_id, &latest_str, rollout_percent) {
-                    tracing::debug!(
-                        "Update v{latest_str} available but device not in rollout bucket ({rollout_percent}%)"
-                    );
-                    return Ok(UpdateCheckResult::UpToDate { current });
-                }
+            let Some(ref installation_id) = self.config.installation_id else {
+                tracing::warn!(
+                    "installation_id missing — treating as rollout-excluded for v{latest_str}"
+                );
+                return Ok(UpdateCheckResult::UpToDate { current });
+            };
+            if !is_eligible_for_rollout(installation_id, &latest_str, rollout_percent) {
+                tracing::debug!(
+                    "Update v{latest_str} available but device not in rollout bucket ({rollout_percent}%)"
+                );
+                return Ok(UpdateCheckResult::UpToDate { current });
             }
 
             // Try delta patch first, fall back to full binary
@@ -352,7 +369,11 @@ mod tests {
             channel: UpdateChannel::default(),
             include_prerelease: false,
             auto_install: false,
-            installation_id: None,
+            // Task 3 (Phase 4 D10): installation_id must be Some(...) — the
+            // defensive None handling at mod.rs:197 now treats None as
+            // rollout-excluded. Tests that want to exercise the None branch
+            // explicitly override this field.
+            installation_id: Some("test-install-00000000-0000-0000-0000-000000000000".to_string()),
             require_signature_verification: false,
             signature_public_key: String::new(),
             min_allowed_version: None,
@@ -865,6 +886,138 @@ mod tests {
         assert!(matches!(result, Err(UpdateError::Integrity(_))));
     }
 
+    // ── D9 multi-key trust tests ──────────────────────────────────────
+
+    #[test]
+    fn verify_signature_accepts_builtin_key() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let signing_key = SigningKey::from_bytes(&[11u8; 32]);
+        let builtin_key = BASE64.encode(signing_key.verifying_key().as_bytes());
+
+        let payload = b"builtin-release-artifact";
+        let signature = signing_key.sign(payload);
+
+        // Inject a single-entry trusted array; no configured key override.
+        let trusted = [builtin_key.as_str()];
+        let result = Updater::verify_signature_with_keys(
+            &trusted,
+            None,
+            payload,
+            signature.to_bytes().as_slice(),
+        );
+        assert!(result.is_ok(), "Builtin key should validate");
+    }
+
+    #[test]
+    fn verify_signature_accepts_second_trusted_key_when_first_inactive() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        // First key in array is one we do NOT sign with.
+        let first_key_unused = SigningKey::from_bytes(&[0u8; 32]).verifying_key();
+        // Second key is the one that signs the payload.
+        let second_key = SigningKey::from_bytes(&[12u8; 32]);
+
+        let trusted_first = BASE64.encode(first_key_unused.as_bytes());
+        let trusted_second = BASE64.encode(second_key.verifying_key().as_bytes());
+
+        let payload = b"mid-rotation-artifact";
+        let signature = second_key.sign(payload);
+
+        let trusted = [trusted_first.as_str(), trusted_second.as_str()];
+        let result = Updater::verify_signature_with_keys(
+            &trusted,
+            None,
+            payload,
+            signature.to_bytes().as_slice(),
+        );
+        assert!(
+            result.is_ok(),
+            "Second trusted key should validate during rotation"
+        );
+    }
+
+    #[test]
+    fn verify_signature_fallback_to_configured_key_when_not_in_array() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let builtin = SigningKey::from_bytes(&[13u8; 32]).verifying_key();
+        let configured = SigningKey::from_bytes(&[14u8; 32]);
+
+        let trusted_only = BASE64.encode(builtin.as_bytes());
+        let configured_b64 = BASE64.encode(configured.verifying_key().as_bytes());
+
+        let payload = b"user-override-artifact";
+        let signature = configured.sign(payload);
+
+        // configured key is NOT in the trusted list → fallback should hit.
+        let trusted = [trusted_only.as_str()];
+        let result = Updater::verify_signature_with_keys(
+            &trusted,
+            Some(configured_b64.as_str()),
+            payload,
+            signature.to_bytes().as_slice(),
+        );
+        assert!(
+            result.is_ok(),
+            "Configured override should validate via fallback"
+        );
+    }
+
+    #[test]
+    fn verify_signature_rejects_payload_when_no_key_matches() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let unknown = SigningKey::from_bytes(&[15u8; 32]);
+        let payload = b"untrusted-artifact";
+        let signature = unknown.sign(payload);
+
+        // Provide a trusted list that does NOT include the unknown key, and
+        // no configured override.
+        let other = SigningKey::from_bytes(&[16u8; 32]).verifying_key();
+        let trusted_entry = BASE64.encode(other.as_bytes());
+        let trusted = [trusted_entry.as_str()];
+
+        let result = Updater::verify_signature_with_keys(
+            &trusted,
+            None,
+            payload,
+            signature.to_bytes().as_slice(),
+        );
+        assert!(matches!(result, Err(UpdateError::Integrity(_))));
+    }
+
+    #[test]
+    fn validate_integrity_policy_allows_empty_public_key() {
+        use oneshim_core::config::UpdateConfig;
+
+        let mut config = UpdateConfig {
+            enabled: true,
+            repo_owner: "pseudotop".to_string(),
+            repo_name: "oneshim-client".to_string(),
+            check_interval_hours: 24,
+            channel: UpdateChannel::default(),
+            include_prerelease: false,
+            auto_install: false,
+            installation_id: Some("test-install-id".to_string()),
+            require_signature_verification: true,
+            signature_public_key: String::new(), // empty override — should NOT error
+            min_allowed_version: None,
+        };
+
+        assert!(
+            config.validate_integrity_policy().is_ok(),
+            "Empty signature_public_key with updates enabled must be OK (D9 array is authoritative)"
+        );
+
+        // Also confirm a malformed non-empty override still errors.
+        config.signature_public_key = "not-valid-base64!!!".to_string();
+        assert!(
+            config.validate_integrity_policy().is_err(),
+            "Malformed signature_public_key should still error"
+        );
+    }
+
     #[test]
     fn release_reliability_validate_download_url_allows_localhost_in_tests() {
         let updater = Updater::new(test_config());
@@ -953,6 +1106,7 @@ mod tests {
         let result = updater.install_and_restart_with_ops(
             &downloaded,
             &current_exe,
+            None,
             |candidate| {
                 replaced.push(candidate.to_path_buf());
                 Ok(())
@@ -990,6 +1144,7 @@ mod tests {
         let result = updater.install_and_restart_with_ops(
             &downloaded,
             &current_exe,
+            None,
             |_candidate| {
                 replace_calls += 1;
                 if replace_calls == 1 {
@@ -1016,6 +1171,81 @@ mod tests {
             other => panic!("unexpected result: {:?}", other),
         }
         assert_eq!(replace_calls, 2);
+    }
+
+    // -------------------------------------------------------------------
+    // Task 6 D11: install_pending writer + orphan-backup cleanup
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn install_pending_written_after_successful_replace() {
+        let updater = Updater::new(test_config());
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let downloaded = dir.path().join("oneshim-new");
+        std::fs::write(&current_exe, b"current-binary").unwrap();
+        std::fs::write(&downloaded, b"new-binary").unwrap();
+
+        // Pass a synthetic new_version; replace_binary succeeds; restart_app
+        // returns Ok (so the happy path completes before we inspect state).
+        let result = updater.install_and_restart_with_ops(
+            &downloaded,
+            &current_exe,
+            Some("0.4.40-rc.1"),
+            |_candidate| Ok(()),
+            || Ok(()),
+        );
+        assert!(result.is_ok(), "install-and-restart should succeed");
+
+        // Probe should find the pending marker.
+        let pending_path = dir.path().join(".install_pending_0.4.40-rc.1");
+        assert!(
+            pending_path.exists(),
+            ".install_pending_{{new_version}} should be written in install_dir"
+        );
+
+        let bytes = std::fs::read(&pending_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(parsed.get("installed_at").is_some());
+        assert!(parsed.get("previous_version").is_some());
+        assert!(parsed.get("backup_path").is_some());
+    }
+
+    #[test]
+    fn orphan_backup_removed_on_replace_binary_failure() {
+        let updater = Updater::new(test_config());
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let downloaded = dir.path().join("oneshim-new");
+        std::fs::write(&current_exe, b"current-binary").unwrap();
+        std::fs::write(&downloaded, b"new-binary").unwrap();
+
+        // replace_binary fails on the first call (before pending is written).
+        let result = updater.install_and_restart_with_ops(
+            &downloaded,
+            &current_exe,
+            Some("0.4.40-rc.1"),
+            |_candidate| Err(UpdateError::Install("replace failed".to_string())),
+            || Ok(()),
+        );
+        assert!(matches!(result, Err(UpdateError::Install(_))));
+
+        // The orphan `{binary}.rollback.{ts}` backup must be cleaned up.
+        let rollback_files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|n| n.contains(".rollback."))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert!(
+            rollback_files.is_empty(),
+            "orphan backup should have been removed on replace failure; found: {:?}",
+            rollback_files
+        );
     }
 
     // -------------------------------------------------------------------
@@ -1400,5 +1630,93 @@ mod tests {
     fn parse_rollout_caps_at_100() {
         let body = Some("<!-- rollout:150 -->".to_string());
         assert_eq!(parse_rollout_percent(&body), 100);
+    }
+
+    // ── D10 defensive None handling + rollout-gate end-to-end ─────────
+
+    /// When a release body contains `<!-- rollout:0 -->`, every installation
+    /// is excluded from the rollout bucket. `check_for_updates` must return
+    /// `UpToDate` (no update offered) even though the semver comparison
+    /// reports an available newer version.
+    #[tokio::test]
+    async fn update_check_respects_rollout_exclusion() {
+        let mut server = mockito::Server::new_async().await;
+        let newer_version = "99.0.0";
+
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/releases/latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(
+                r#"{{
+                "tag_name": "v{}",
+                "name": "Rollout Excluded",
+                "body": "new features\n\n<!-- rollout:0 -->\n",
+                "prerelease": false,
+                "assets": [],
+                "html_url": "https://github.com/test/releases/v99.0.0",
+                "published_at": "2024-01-01T00:00:00Z"
+            }}"#,
+                newer_version
+            ))
+            .create_async()
+            .await;
+
+        let config = test_config(); // installation_id = Some("test-install-...")
+        let updater = Updater::new(config);
+
+        let result = updater.check_for_updates_with_base_url(&server.url()).await;
+        mock.assert_async().await;
+
+        match result {
+            Ok(UpdateCheckResult::UpToDate { .. }) => {
+                // Expected: rollout:0 excludes every device.
+            }
+            other => unreachable!("Expected UpToDate on rollout:0, got {:?}", other),
+        }
+    }
+
+    /// When `installation_id` is `None` at check time (regression against the
+    /// invariant that `app_runtime_launch.rs:66-74` writes a UUID before any
+    /// update check spawns), the updater must treat the device as
+    /// rollout-EXCLUDED rather than admitting it as always-eligible.
+    #[tokio::test]
+    async fn update_check_without_installation_id_is_excluded() {
+        let mut server = mockito::Server::new_async().await;
+        let newer_version = "99.0.0";
+
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/releases/latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(
+                r#"{{
+                "tag_name": "v{}",
+                "name": "Rollout 100%",
+                "body": "new features",
+                "prerelease": false,
+                "assets": [],
+                "html_url": "https://github.com/test/releases/v99.0.0",
+                "published_at": "2024-01-01T00:00:00Z"
+            }}"#,
+                newer_version
+            ))
+            .create_async()
+            .await;
+
+        let mut config = test_config();
+        config.installation_id = None; // regression scenario
+
+        let updater = Updater::new(config);
+
+        let result = updater.check_for_updates_with_base_url(&server.url()).await;
+        mock.assert_async().await;
+
+        match result {
+            Ok(UpdateCheckResult::UpToDate { .. }) => {
+                // Expected: None → defensive-exclude even at rollout:100.
+            }
+            other => unreachable!("Expected UpToDate on None installation_id, got {:?}", other),
+        }
     }
 }

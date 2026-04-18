@@ -244,29 +244,31 @@ impl UpdateConfig {
             ));
         }
 
-        let key_b64 = self
+        // D9 (Phase 4): The built-in TRUSTED_PUBLIC_KEYS array (lives in
+        // src-tauri/src/updater/trusted_keys.rs) is the authoritative trust
+        // source. `signature_public_key` here is now an optional user override
+        // (e.g., dev self-signing). Empty is allowed; when non-empty, we only
+        // validate the base64 + 32-byte shape so a malformed override doesn't
+        // silently succeed at runtime.
+        if let Some(key_b64) = self
             .signature_public_key
             .split_whitespace()
             .next()
             .filter(|k| !k.trim().is_empty())
-            .ok_or_else(|| {
-                CoreError::Config(
-                    "update.signature_public_key is missing while updates are enabled".to_string(),
-                )
+        {
+            let key_bytes = BASE64.decode(key_b64).map_err(|e| {
+                CoreError::Config(format!(
+                    "update.signature_public_key must be valid base64: {}",
+                    e
+                ))
             })?;
 
-        let key_bytes = BASE64.decode(key_b64).map_err(|e| {
-            CoreError::Config(format!(
-                "update.signature_public_key must be valid base64: {}",
-                e
-            ))
-        })?;
-
-        if key_bytes.len() != 32 {
-            return Err(CoreError::Config(format!(
-                "update.signature_public_key must decode to 32 bytes, got {}",
-                key_bytes.len()
-            )));
+            if key_bytes.len() != 32 {
+                return Err(CoreError::Config(format!(
+                    "update.signature_public_key must decode to 32 bytes, got {}",
+                    key_bytes.len()
+                )));
+            }
         }
 
         if let Some(version_floor) = self

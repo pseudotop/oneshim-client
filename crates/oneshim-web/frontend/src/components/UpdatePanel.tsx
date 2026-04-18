@@ -17,6 +17,45 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * Phase 4 D11: format a release `published_at` ISO-8601 timestamp as a
+ * short human-readable string. Returns `null` when input is null or
+ * unparseable so callers can render a fallback.
+ *
+ * - Less than 24h old: relative ("3 hours ago" / "5 minutes ago" / "12 days ago")
+ * - Older: absolute ISO YYYY-MM-DD
+ */
+function formatReleaseDate(
+  iso: string | null | undefined,
+  nowMs: number,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string | null {
+  if (iso == null || iso === '') return null
+  const ts = Date.parse(iso)
+  if (!Number.isFinite(ts)) return null
+
+  const diffMs = nowMs - ts
+  if (diffMs < 0) {
+    // Future timestamp (clock skew); fall back to ISO date.
+    return iso.slice(0, 10)
+  }
+
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) {
+    return t('updates.releasedAgoMinutes', { count: Math.max(minutes, 1) })
+  }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) {
+    return t('updates.releasedAgoHours', { count: hours })
+  }
+  const days = Math.floor(hours / 24)
+  if (days < 7) {
+    return t('updates.releasedAgoDays', { count: days })
+  }
+  // >= 7 days: absolute ISO date (YYYY-MM-DD) is cleaner than "N weeks ago".
+  return iso.slice(0, 10)
+}
+
 export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -77,6 +116,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
     if (phase === 'Deferred') return t('updates.deferred')
     if (phase === 'Error') return t('updates.error')
     if (phase === 'Checking') return t('updates.checking')
+    if (phase === 'RolledBack') return t('updates.rolledBack')
     return t('updates.idle')
   }, [status?.phase, t])
 
@@ -104,7 +144,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
           </Badge>
           <Badge
             color={
-              status?.phase === 'Error'
+              status?.phase === 'Error' || status?.phase === 'RolledBack'
                 ? 'error'
                 : status?.phase === 'PendingApproval'
                   ? 'warning'
@@ -139,6 +179,38 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
         </div>
       )}
 
+      {status?.phase === 'RolledBack' && status.rollback && (
+        <div
+          className={cn(
+            'mt-3 space-y-2 rounded-lg border border-semantic-error bg-surface-secondary p-3 text-content-strong',
+            typography.body,
+          )}
+        >
+          <div className={cn(typography.h3)}>{t('updates.rolledBackTitle')}</div>
+          <div className={cn(typography.caption, 'text-content-secondary')}>
+            {status.rollback.from_published_at && status.rollback.to_published_at
+              ? t('updates.rolledBackFromToWithDates', {
+                  fromVersion: status.rollback.from_version,
+                  fromDate:
+                    formatReleaseDate(status.rollback.from_published_at, nowMs, t) ??
+                    status.rollback.from_published_at.slice(0, 10),
+                  toVersion: status.rollback.to_version,
+                  toDate:
+                    formatReleaseDate(status.rollback.to_published_at, nowMs, t) ??
+                    status.rollback.to_published_at.slice(0, 10),
+                })
+              : t('updates.rolledBackFromTo', {
+                  fromVersion: status.rollback.from_version,
+                  toVersion: status.rollback.to_version,
+                })}
+          </div>
+          <div className={cn(typography.caption)}>{t('updates.rolledBackReasonRepeatedStartupFailure')}</div>
+          <div className={cn(typography.caption, 'text-content-tertiary')}>
+            {t('updates.rolledBackAt', { timestamp: status.rollback.rolled_back_at })}
+          </div>
+        </div>
+      )}
+
       {status?.pending && (
         <div
           className={cn('mt-3 space-y-1 rounded-lg border border-muted p-3 text-content-secondary', typography.caption)}
@@ -147,7 +219,12 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
             {t('updates.currentVersion')}: {status.pending.current_version}
           </div>
           <div>
-            {t('updates.latestVersion')}: {status.pending.latest_version}
+            {(() => {
+              const relDate = formatReleaseDate(status.pending.published_at, nowMs, t)
+              return relDate
+                ? `${t('updates.latestVersion')}: ${status.pending.latest_version} (${relDate})`
+                : `${t('updates.latestVersion')}: ${status.pending.latest_version}`
+            })()}
           </div>
           <a href={status.pending.release_url} target="_blank" rel="noreferrer" className="text-brand-text underline">
             {t('updates.openRelease')}

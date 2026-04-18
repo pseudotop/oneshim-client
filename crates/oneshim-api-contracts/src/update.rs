@@ -12,6 +12,40 @@ pub enum UpdatePhase {
     Updated,
     Deferred,
     Error,
+    /// Phase 4 D11: the automatic health probe detected two consecutive
+    /// failed boots without a self-healthy marker and restored the previous
+    /// binary. UI renders `UpdateStatus.rollback` (a `RollbackInfo`) when
+    /// this variant is active.
+    RolledBack,
+}
+
+/// Reason the updater escalated a post-install failure to an automatic
+/// rollback. Additive enum — new reasons can be appended without breaking
+/// existing consumers (snake_case serde).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RollbackReason {
+    /// D11 health probe counted two consecutive failed boots without a
+    /// self-healthy marker and escalated to rollback.
+    RepeatedStartupFailure,
+}
+
+/// Metadata describing a completed post-install rollback. Populated on
+/// `UpdateStatus` when the phase transitions to `UpdatePhase::RolledBack`.
+/// All timestamp fields are RFC3339 UTC strings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RollbackInfo {
+    pub from_version: String,
+    /// RFC3339 UTC `published_at` of the rolled-from release (if known).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_published_at: Option<String>,
+    pub to_version: String,
+    /// RFC3339 UTC `published_at` of the rolled-to release (if known).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_published_at: Option<String>,
+    pub reason: RollbackReason,
+    /// RFC3339 UTC timestamp at which the rollback completed.
+    pub rolled_back_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -48,6 +82,9 @@ pub struct UpdateStatus {
     pub pending: Option<PendingUpdateInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download_progress: Option<DownloadProgress>,
+    /// Phase 4 D11: populated when `phase == UpdatePhase::RolledBack`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rollback: Option<RollbackInfo>,
     pub revision: u64,
     pub updated_at: String,
 }
@@ -61,6 +98,7 @@ impl Default for UpdateStatus {
             message: None,
             pending: None,
             download_progress: None,
+            rollback: None,
             revision: 0,
             updated_at: Utc::now().to_rfc3339(),
         }
@@ -108,11 +146,50 @@ mod tests {
             UpdatePhase::Updated,
             UpdatePhase::Deferred,
             UpdatePhase::Error,
+            UpdatePhase::RolledBack,
         ] {
             let json = serde_json::to_string(&phase).unwrap();
             let decoded: UpdatePhase = serde_json::from_str(&json).unwrap();
             assert_eq!(phase, decoded);
         }
+    }
+
+    #[test]
+    fn rollback_reason_uses_snake_case_serde() {
+        let json = serde_json::to_string(&RollbackReason::RepeatedStartupFailure).unwrap();
+        assert_eq!(json, r#""repeated_startup_failure""#);
+        let decoded: RollbackReason = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, RollbackReason::RepeatedStartupFailure);
+    }
+
+    #[test]
+    fn round_trip_rollback_info() {
+        let original = RollbackInfo {
+            from_version: "0.5.0-rc.1".to_string(),
+            from_published_at: Some("2026-05-01T00:00:00Z".to_string()),
+            to_version: "0.4.40".to_string(),
+            to_published_at: Some("2026-04-20T00:00:00Z".to_string()),
+            reason: RollbackReason::RepeatedStartupFailure,
+            rolled_back_at: "2026-05-02T12:34:56Z".to_string(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: RollbackInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn rollback_info_dates_skipped_when_none() {
+        let original = RollbackInfo {
+            from_version: "0.5.0-rc.1".to_string(),
+            from_published_at: None,
+            to_version: "0.4.40".to_string(),
+            to_published_at: None,
+            reason: RollbackReason::RepeatedStartupFailure,
+            rolled_back_at: "2026-05-02T12:34:56Z".to_string(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(!json.contains("from_published_at"));
+        assert!(!json.contains("to_published_at"));
     }
 
     #[test]

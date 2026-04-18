@@ -138,7 +138,21 @@
     "channelSaved": "Update channel saved",
     "channelSaveFailed": "Failed to save update channel",
     "releaseNotes": "Release Notes",
-    "downloadSize": "Download size: {{size}}"
+    "downloadSize": "Download size: {{size}}",
+    "rolledBack": "Rolled back",
+    "rolledBackTitle": "Previous version restored automatically",
+    "rolledBackReasonRepeatedStartupFailure": "The new version failed to start successfully twice in a row. Your previous working version has been restored.",
+    "rolledBackFromTo": "Rolled back: v{{fromVersion}} → v{{toVersion}}",
+    "rolledBackFromToWithDates": "Rolled back: v{{fromVersion}} ({{fromDate}}) → v{{toVersion}} ({{toDate}})",
+    "rolledBackAt": "Restored at {{timestamp}}",
+    "releaseDate": "Released {{date}}",
+    "releaseDateUnknown": "Release date unavailable",
+    "releasedAgoMinutes": "released {{count}} minute ago",
+    "releasedAgoMinutes_plural": "released {{count}} minutes ago",
+    "releasedAgoHours": "released {{count}} hour ago",
+    "releasedAgoHours_plural": "released {{count}} hours ago",
+    "releasedAgoDays": "released {{count}} day ago",
+    "releasedAgoDays_plural": "released {{count}} days ago"
   },
   "timeline": {
     "title": "Timeline",
