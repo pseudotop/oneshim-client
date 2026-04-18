@@ -394,6 +394,7 @@ async fn concurrent_writer_plus_reader_yield_consistent_snapshot() {
     let reader = {
         let s = storage.clone();
         tokio::spawn(async move {
+            let mut max_observed = 0usize;
             for _ in 0..10 {
                 let results = s
                     .get_metrics(
@@ -403,9 +404,21 @@ async fn concurrent_writer_plus_reader_yield_consistent_snapshot() {
                     )
                     .await
                     .unwrap();
-                // Invariant: count monotonic via Arc<Mutex> serialization.
+                // Invariant: count monotonic via Arc<Mutex> serialization;
+                // never observe more than the writer has committed.
                 assert!(results.len() <= 50);
+                max_observed = max_observed.max(results.len());
+                // Yield so writer gets a chance to make progress.
+                tokio::task::yield_now().await;
             }
+            // Without this the test trivially passes if the reader completes
+            // before the writer runs (observing 0 each iteration). Requiring
+            // a non-zero observation somewhere forces the reader to witness
+            // the writer's effect.
+            assert!(
+                max_observed > 0,
+                "reader never observed writer's effect — test may be racing trivially"
+            );
         })
     };
 
@@ -475,7 +488,6 @@ async fn get_process_snapshots_invalid_json_in_column_silently_defaults_to_empty
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "mutex poisoning via spawn_blocking + panic is spec-OPTIONAL; un-ignore if the technique is proven to work against with_conn"]
 async fn save_metrics_mutex_poison_returns_err_variant_only() {
     let storage = open_storage();
     let conn_arc = storage.connection_arc();
