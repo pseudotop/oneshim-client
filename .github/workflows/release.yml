@@ -1233,6 +1233,19 @@ jobs:
           **Full changelog:** [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
           NOTES_EOF
 
+      - name: Prepend release date header (Phase 4 A-4)
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.verify-version.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          DATE=$(date -u +"%B %d, %Y")
+          # Use env-sourced RELEASE_TAG (workflow output, not user input) to
+          # compose the header; DATE is generated here so no external input.
+          printf "## ONESHIM Client %s — Released %s\n\n" "$RELEASE_TAG" "$DATE" | \
+            cat - release_notes.md > release_notes.md.new
+          mv release_notes.md.new release_notes.md
+
       - name: Create or update Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
