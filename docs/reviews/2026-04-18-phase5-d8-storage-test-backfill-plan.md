@@ -113,7 +113,7 @@ Produce exactly this table. Mark ✅ / ❌ / ⚠ based on the two source files:
 - **Task 9 retain** — Err branches: 1 active + 1 `#[ignore]` + 2 documented skips.
 - **Task 10 retain (scope-aligned)** — contract-covered edge cases: NULL network, bulk 100+, cleanup boundary. **Task 10 = 3 tests.**
 
-**Revised PR1 test count (expected): 15–16 active tests + 1 `#[ignore]` + 2 documented skips.** The original 28-test estimate is reduced because `sqlite/tests.rs` already covers most of the happy-path surface; the remaining gaps total 15–16 tests per the per-task breakdown in the Task 11 front-matter.
+**Revised PR1 test count (expected): 15–16 active tests + 1 `#[ignore]` + 2 documented skips.** The original 27-test estimate is reduced because `sqlite/tests.rs` already covers most of the happy-path surface; the remaining gaps total 15–16 tests per the per-task breakdown in the Task 11 front-matter.
 ```
 
 - [ ] **Step 4: Record audit in .claude/phase5-d8-progress.md**
@@ -1301,7 +1301,7 @@ git push -u origin feat/phase5-d8-storage-tests
 
 ---
 
-### Task 9: Err-branch tests (Day 5, ~4 hours, 3 tests, 1 commit)
+### Task 9: Err-branch tests (Day 5, ~4 hours, 1 active + 1 `#[ignore]` + 2 TODO docs, 1 commit)
 
 Per spec Section 7: try CHECK/UNIQUE violations first; mutex-poisoning is OPTIONAL; unreachable paths get `// TODO` comments.
 
