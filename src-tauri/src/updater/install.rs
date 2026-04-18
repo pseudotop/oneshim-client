@@ -947,7 +947,7 @@ impl Updater {
 // the behavior locally. That left the production helper — including the
 // new .rolled_back_notification write at lines 719-731 — with zero
 // coverage against actual code. Regressions in the write position (e.g.,
-// moving it after the rename) would ship silently.
+// on the Unix path, moving it after the rename) would ship silently.
 
 #[cfg(test)]
 mod rollback_tests {

@@ -339,10 +339,13 @@ fn write_self_healthy_and_cleanup(install_dir: &Path, version: &str) -> Result<(
 
             // (b) Foreign-version state-file sweep. Match
             //     `.install_pending_<VER>`, `.boot_count_<VER>`,
-            //     `.self_healthy_<VER>` where VER != the current version.
+            //     `.self_healthy_<VER>` where VER is non-empty and != the
+            //     current version. The `is_empty()` guard is defensive:
+            //     no production code path produces an empty-suffix file,
+            //     but if one existed it would NOT be swept (safer default).
             for prefix in [".install_pending_", ".boot_count_", ".self_healthy_"] {
                 if let Some(ver_suffix) = name.strip_prefix(prefix) {
-                    if ver_suffix != version {
+                    if !ver_suffix.is_empty() && ver_suffix != version {
                         let _ = std::fs::remove_file(&path);
                     }
                     break;
