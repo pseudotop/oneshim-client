@@ -146,6 +146,36 @@ Execution: Tasks 0-13 per plan. Per-task commit + push. Inter-task reviewer disp
 - **git-cliff version**: `2.12.0` (well above plan's mentioned 1.4 floor for `contributors` var).
 - **Spec Amendment 1 pending**: `spawn_healthy_writer` signature change from `self` to `&self` — applied in Task 1.
 
+### Loop 3 EXIT — 2026-04-18
+
+- **Starting commit**: `63f6d3fb` (Loop 2 EXIT polish)
+- **Ending commit**: `45578368` (Loop 3 iter 1 fixes)
+- **Iter 1 reviewer** (agentId `ade1f20f0a7039f01`): 0 Critical + 5 Important + 5 Minor
+  - I-1 (execute_rollback_swap_only coverage) ✓ fixed (rollback_tests module, 2 new tests)
+  - I-2 (foreign-version state accretion) ✓ fixed (sweep + test)
+  - I-5 (debug_assert panic) ✓ fixed (removed)
+  - I-3, I-4 ✓ documented as known limitations in module header
+  - M-1 to M-5 intentionally deferred (wording polish)
+- **Iter 2 reviewer** (agentId `a9e497f919040fc68`): **Ready to exit Loop 3 — YES.** 0 Critical + 0 Important + 5 optional Minor.
+
+**Phase 4 Updater Hardening — COMPLETE.**
+
+Final tally across all 3 loops:
+- Loop 1 (spec): 5 iters → EXIT at `1065cb56`
+- Loop 2 (plan): 2 iters → EXIT at `63f6d3fb`
+- Loop 3 (impl): 14 tasks + 2 review iters → EXIT at `45578368`
+- Workspace tests: 3,418 → **3,445** (+27 new tests)
+- Clippy clean, fmt clean.
+- Commits: `1df426c5..45578368` (17 commits total including 3 review-fix commits)
+
+Remaining follow-up PRs (out of Phase 4 scope, documented):
+- Windows rollback implementation (docs/guides/updater-rollback-windows.md recommends Option A cmd.exe helper)
+- I-3 concurrent-process race mitigation (create_new per-PID sub-files)
+- pre-release-check.sh:241 Dependabot-disabled JSON bug (5-min fix)
+- Notarization workflow head_branch condition (separate infra PR)
+
+---
+
 #### Task 1 — SCAFFOLDING COMPLETE
 
 - `src-tauri/src/updater/trusted_keys.rs` created (~55 LOC including 2 unit tests).
