@@ -61,8 +61,8 @@ Full workspace test runs only at Task-group boundaries (after D9, D10, D11 compl
    - `install.rs:378-392` — `backup_path_for` formatter exists and produces `{binary_name}.rollback.{ts}`.
    - `install.rs:217-260` — `verify_signature` current shape.
    - `install.rs:407-408` — `replace_binary` call site in `install_and_restart_with_ops`.
-   - `storage.rs:349-355` — `default_update_require_signature` returns `true`; default public key is `"GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E="`.
-   - `storage.rs:235-280` — `validate_integrity_policy` current requirements.
+   - `crates/oneshim-core/src/config/sections/storage.rs:349-355` — `default_update_require_signature` returns `true`; default public key is `"GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E="`. (Same file for all subsequent `storage.rs:...` references below.)
+   - `crates/oneshim-core/src/config/sections/storage.rs:235-280` — `validate_integrity_policy` current requirements.
    - `update.rs:25` — `published_at: Option<String>` field present.
    - `update_coordinator.rs:446` — `published_at` propagation.
    - `app_runtime_launch.rs:66-74` — installation_id auto-generation.
@@ -240,7 +240,8 @@ the first-receive cohort.
 scheduler/mod.rs update-check spawn site emits tracing::error! +
 debug_assert!(false) when installation_id is None — the invariant is
 guaranteed by app_runtime_launch.rs:66-74, but production regressions
-are now observable.
+are now observable. Telemetry path: <per Task 0 decision> (symmetric
+with Task 9's update_coordinator handler choice).
 
 2 new unit tests. cargo test --lib green.
 ```
@@ -573,7 +574,7 @@ pnpm lint + build green.
 
 ### Steps
 
-1. Apply the exact diff from spec §6.3 to `cliff.toml` body template. Preserve trailing `\` continuations.
+1. Apply the exact diff from spec §6.3 to `cliff.toml` body template. Preserve trailing `\` continuations. **Note**: existing line 10 (`## [...]\`) ends with `\` (no newline). The diff must explicitly add a `\n` boundary between the header and the new `**Release Date:**` line, or output will collide on a single line. The dry-run diff (step 3) will surface this if missed.
 
 2. Dry-run against the **same fixed tag range** used in Task 0 (`v0.4.38..v0.4.39-rc.1`, NOT `--unreleased`). Command: `git cliff v0.4.38..v0.4.39-rc.1 > /tmp/cliff-amended.md`.
 

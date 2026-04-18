@@ -104,20 +104,30 @@
   - **I-4** — Task 11 cliff dry-run used `--unreleased` (moving tree), Task 0 used fixed range; diff would be noisy.
   - M1-M5 — branch name inconsistency, clippy::todo lint, test helper signature undefined, fixed test count arithmetic, telemetry decision not inline in commit.
 
-### Iter 2 — 2026-04-18 (in progress)
+### Iter 2 — 2026-04-18
 
-**Revision plan (applied)**:
-- I-1: Task 7 renamed to "D11 api-contracts types preamble + execute_rollback..."; types added as step 1 before the main body. Task 9 renamed to "update_coordinator rollback handler wiring" (the types step deleted from it).
-- I-2: Task 0 step 5 added explicit tempfile verification; Task 5 bug-discovery note rewritten.
-- I-3: Spec Amendment 1 approved + recorded in plan front-matter; Task 1 applies the amendment to spec §4.4 (`self` → `&self`).
-- I-4: Task 0 step 4 + Task 11 step 2 both use fixed range `v0.4.38..v0.4.39-rc.1` (no `--unreleased`); diff becomes focused.
-- M-1: "Commit + push cadence" branch name corrected to current `feat/phase4-updater-hardening-spec`.
-- M-2: Task 1 step 3 uses `todo!()` with `#[allow(clippy::todo)]` on stub fn bodies; allow removed in Task 5.
-- M-3: Task 7 step 4 defines `execute_rollback_swap_only` signature explicitly.
-- M-4: Final checklist softened from "+14 tests" to "approximately +14 tests (exact in Task 13)".
-- M-5: Task 9 commit message now required to state telemetry decision inline.
+- **Starting commit:** `007b57b5`
+- **Ending commit:** `6331b2bf`
+- **Reviewer:** fresh code-reviewer (agentId `a90e024dc846aa207`)
+- **Verdict:** **Ready to exit Loop 2 — YES.** — 0 Critical + 0 Important + 3 Minor (optional polish)
+- **Findings:**
+  - m1 — `storage.rs` path ambiguity (prefixed with `crates/oneshim-core/src/config/sections/` in Task 0).
+  - m2 — cliff.toml line-10 `\n` boundary note (added to Task 11 step 1).
+  - m3 — Telemetry decision cross-reference between Task 3 + Task 9 commit messages.
+- **Post-verdict polish applied** (preserves zero-issue finish).
 
-**Commit plan**: amend in place; re-dispatch reviewer after commit.
+**Loop 2 EXIT — 2026-04-18.** Total iters: 2 (iter 1 initial + iter 2 fixes + polish). Findings addressed: 4 Important + 8 Minor across the 2 iterations.
+
+---
+
+## Loop 3 — Impl Deep Review
+
+### Iter 1 — 2026-04-18 (in progress)
+
+Start commit: post-Loop-2-polish (pending).
+Plan location: `docs/reviews/2026-04-18-phase4-updater-hardening-plan.md`.
+
+Execution: Tasks 0-13 per plan. Per-task commit + push. Inter-task reviewer dispatches at Task-group boundaries (after D9, D10, D11 complete); final full-spec reviewer at Task 13. Any mid-task issues folded into same-task commits.
 
 ---
 
