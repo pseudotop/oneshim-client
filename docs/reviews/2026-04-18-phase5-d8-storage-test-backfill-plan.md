@@ -42,7 +42,7 @@
 
 ---
 
-## PR1 — metrics.rs — 18 methods, ~14–16 active tests (audit-gated), 7-day hard cap
+## PR1 — metrics.rs — 18 methods, ~15–16 active tests (audit-gated), 7-day hard cap
 
 **⚠ AUDIT-CONTINGENT SCOPE:** The task counts below are PRE-AUDIT MAXIMUMS. Task 0 produces a dual-file coverage audit; Tasks 3–10 execute ONLY for methods the audit marks as having a "Residual gap for PR1." Duplicates of `sqlite/tests.rs` coverage are SKIPPED, not rewritten.
 
@@ -50,9 +50,9 @@
 - Fix ≤ 20 LOC: land in this PR, add PR body callout.
 - Fix > 20 LOC: file a separate bugfix PR, mark the failing test `#[ignore = "blocked by bugfix PR #NNN"]`, link from this PR.
 
-**Git push cadence:** push after each Task completes (not just at Task 11). If your machine crashes mid-PR, you lose at most one task's work:
+**Git push cadence:** push after each Task that produces a commit (Tasks 3–10 each include an explicit `git push -u origin feat/phase5-d8-storage-tests` after their final commit — see each task's last Step). Tasks 0/1/2 are low-commit-churn (audit scratchpad, pure refactor, harness) and can defer push to the end of Task 3. If your machine crashes mid-PR, you lose at most one task's work:
 ```bash
-# After each task's commit, before moving to the next task:
+# Standard post-commit push (shown inline in each task's Final Step):
 git push -u origin feat/phase5-d8-storage-tests
 ```
 
@@ -113,7 +113,7 @@ Produce exactly this table. Mark ✅ / ❌ / ⚠ based on the two source files:
 - **Task 9 retain** — Err branches: 1 active + 1 `#[ignore]` + 2 documented skips.
 - **Task 10 retain (scope-aligned)** — contract-covered edge cases: NULL network, bulk 100+, cleanup boundary. **Task 10 = 3 tests.**
 
-**Revised PR1 test count (expected): 11–13 active tests + 1 `#[ignore]` + 2 documented skips.** The original 28-test estimate is reduced ~60% because `sqlite/tests.rs` already covered most of the happy-path surface.
+**Revised PR1 test count (expected): 15–16 active tests + 1 `#[ignore]` + 2 documented skips.** The original 28-test estimate is reduced because `sqlite/tests.rs` already covers most of the happy-path surface; the remaining gaps total 15–16 tests per the per-task breakdown in the Task 11 front-matter.
 ```
 
 - [ ] **Step 4: Record audit in .claude/phase5-d8-progress.md**
@@ -498,6 +498,8 @@ git commit -m "test(metrics): aggregate_hourly_metrics — happy + empty + midni
 Closes: Task 3 from Phase 5-D8 PR1 plan.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+
+git push -u origin feat/phase5-d8-storage-tests
 ```
 
 ---
@@ -518,7 +520,7 @@ The test specs below marked "[DROP per audit]" are kept in the plan for traceabi
 
 **Files:** `metrics/tests.rs`
 
-- [ ] **Step 1: [DROP per audit] Write roundtrip + multi-timestamp ordering test**
+- [ ] **Step 1: [DROP per audit — reference only, DO NOT EXECUTE]** Roundtrip + multi-timestamp ordering test
 
 SKIP — this duplicates `sqlite/tests.rs:225 save_and_get_process_snapshot`. Document in PR1 body:
 
@@ -877,15 +879,15 @@ git push -u origin feat/phase5-d8-storage-tests
 
 ---
 
-### Task 6: Tests for sessions group (Day 3 PM, ~0.5–1 hour after audit, 0–1 test, 0–1 commit)
+### Task 6: Tests for sessions group (Day 3 PM, ~0.5–1 hour after audit, 1 test, 1 commit)
 
-**⚠ AUDIT-GATED:** Per Task 0 dual-file audit — `session_stats_lifecycle` at `sqlite/tests.rs:267` + `session_not_found` at `sqlite/tests.rs:304` ALREADY cover `upsert_session`, `get_session`, `end_session`, `increment_session_counters`. Read both lifecycle tests before executing any steps here.
+**⚠ AUDIT-GATED:** Per Task 0 dual-file audit — `session_stats_lifecycle` at `sqlite/tests.rs:267` + `session_not_found` at `sqlite/tests.rs:304` ALREADY cover `upsert_session`, `get_session`, `end_session`, and `increment_session_counters` on an EXISTING session (verified at line 289). The increment-on-nonexistent path is NOT covered.
 
 **Scope after audit:**
 - SKIP Steps 1–5 — all duplicate of lifecycle.
-- **POSSIBLY RETAIN** Step 6 — increment on nonexistent session is no-op. IF lifecycle or session_not_found doesn't cover this path, retain; otherwise drop.
+- **RETAIN** Step 6 — increment on nonexistent session is no-op. This is a confirmed gap per the audit; decision is upfront, not deferred to impl time.
 
-Final expected: **0 or 1 test** depending on whether the increment-nonexistent case is already exercised in existing tests.
+Final expected: **1 test**.
 
 **Bug-discovery reminder:** Section 10.1 protocol applies.
 
@@ -1283,8 +1285,8 @@ git commit -m "test(metrics): lock-contract regression tests (1-2, audit-gated)
 
 NOT race tests — Arc<Mutex<Connection>> already serializes. These
 tests assert the Mutex contract survives across multiple async tasks
-on a multi-thread tokio runtime (2 of 24 tests use
-flavor = multi_thread).
+on a multi-thread tokio runtime (these 2 tests are the only ones
+that use flavor = multi_thread in the metrics module).
 
 - concurrent_save_metrics_preserves_count: 4 tasks × 5 samples = 20
 - concurrent_writer_plus_reader_yield_consistent_snapshot: reader
@@ -1293,6 +1295,8 @@ flavor = multi_thread).
 Closes: Task 8 from Phase 5-D8 PR1 plan.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+
+git push -u origin feat/phase5-d8-storage-tests
 ```
 
 ---
@@ -1551,6 +1555,8 @@ Edge cases for the 3 MetricsStorage methods already contract-covered
 Closes: Task 10 from Phase 5-D8 PR1 plan.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+
+git push -u origin feat/phase5-d8-storage-tests
 ```
 
 ---
@@ -1559,7 +1565,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 **Files:** no new edits
 
-**Test count:** variable based on Task 0 audit outcome. Expected range **14–16 active tests + 1 `#[ignore]` + 2 documented-unreachable TODO comments**. The old "27 tests" estimate is pre-audit; the post-audit target composition:
+**Test count:** variable based on Task 0 audit outcome. Expected range **15–16 active tests + 1 `#[ignore]` + 2 documented-unreachable TODO comments**. The old "27 tests" estimate is pre-audit; the post-audit target composition:
 - Task 3: 3 active (retained — full gap)
 - Task 4: 1 active (cleanup_old_process_snapshots — only residual gap)
 - Task 5: 2 active (get_ongoing None + cleanup preserves active)
@@ -1569,7 +1575,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Task 9: 1 active + 1 `#[ignore]` + 2 TODO docs
 - Task 10: 3 active (retained — edge cases for contract-covered methods)
 
-Total: 14–16 active tests + 1 `#[ignore]` = 15–17 test items.
+Total: 15–16 active tests + 1 `#[ignore]` = 16–17 test items.
 
 - [ ] **Step 1: Full workspace test suite**
 
@@ -1595,7 +1601,7 @@ Walk through the Task 0 dual-file audit table. For each row with "Residual gap f
 For each row where the residual gap column IS "NONE — covered":
 - Record in the PR1 body that this was deliberately skipped because of `sqlite/tests.rs` / `port_contract_tests.rs` coverage.
 
-Expected count: **14–16 active tests + 1 `#[ignore]` + 2 documented-unreachable TODO comments**, matching the Task 11 front-matter.
+Expected count: **15–16 active tests + 1 `#[ignore]` + 2 documented-unreachable TODO comments**, matching the Task 11 front-matter.
 
 - [ ] **Step 5: Push branch**
 
@@ -1617,12 +1623,12 @@ Phase 5-D8 PR1 — closes the genuine MetricsStorage test-coverage gaps per
 [the D8 analysis](docs/reviews/2026-04-16-feature-gaps-analysis.md)
 and [the Phase 5-D8 spec](docs/reviews/2026-04-18-phase5-d8-storage-test-backfill-spec.md).
 
-**Important scoping note:** Task 0 audit revealed `sqlite/tests.rs` already covers most MetricsStorage method surfaces. This PR adds tests ONLY for genuine gaps (~14–16 tests), not the pre-audit 27-test estimate. The directory-module refactor (`metrics.rs` → `metrics/{mod.rs, tests.rs}`) provides structural value alongside the tests.
+**Important scoping note:** Task 0 audit revealed `sqlite/tests.rs` already covers most MetricsStorage method surfaces. This PR adds tests ONLY for genuine gaps (~15–16 tests), not the pre-audit 27-test estimate. The directory-module refactor (`metrics.rs` → `metrics/{mod.rs, tests.rs}`) provides structural value alongside the tests.
 
 ## Changes
 
 - **Refactor:** `sqlite/metrics.rs` promoted to directory module (`sqlite/metrics/{mod.rs, tests.rs}`) per ADR-003. Pure file relocation — zero behaviour delta.
-- **Tests:** 14–16 active tests + 1 `#[ignore]` (optional mutex-poison) + 2 documented-unreachable TODO comments. Exact count depends on audit outcome. Per-task breakdown:
+- **Tests:** 15–16 active tests + 1 `#[ignore]` (optional mutex-poison) + 2 documented-unreachable TODO comments. Exact count depends on audit outcome. Per-task breakdown:
   - Task 3 — `aggregate_hourly_metrics`: 3 tests (happy / empty / midnight)
   - Task 4 — `cleanup_old_process_snapshots`: 1 test (cutoff behaviour)
   - Task 5 — `idle_periods` edge cases: 2 tests (get_ongoing None, cleanup preserves active)
@@ -1660,7 +1666,7 @@ and [the Phase 5-D8 spec](docs/reviews/2026-04-18-phase5-d8-storage-test-backfil
 
 ## Verification
 
-- `cargo test --workspace`: green (+27 tests).
+- `cargo test --workspace`: green (+15–16 active tests + 1 `#[ignore]`).
 - `cargo clippy --workspace --all-targets`: zero warnings.
 - `cargo fmt --check`: clean.
 
@@ -1956,7 +1962,7 @@ The Ralph Loop runs each loop automatically per user mandate. Loop 3 runs N iter
 Critical and Important fixes landed:
 
 - **C1 FIXED:** `ProcessSnapshotEntry.memory_bytes` (was `memory_mb`) — verified against `oneshim-core/src/models/activity.rs:96`.
-- **C2 FIXED:** Task 0 audit expanded to BOTH `port_contract_tests.rs` AND `sqlite/tests.rs`. Tasks 4–6 reframed as audit-gated with explicit skip conditions. PR2 Tasks 12–13 similarly gated. Expected PR1 test count reduced from 27 to 11–13.
+- **C2 FIXED:** Task 0 audit expanded to BOTH `port_contract_tests.rs` AND `sqlite/tests.rs`. Tasks 4–6 reframed as audit-gated with explicit skip conditions. PR2 Tasks 12–13 similarly gated. Expected PR1 test count reduced from 27 to 15–16.
 - **I1 FIXED:** Hardcoded 2026-04-15 dates in Tasks 3/7 replaced with today-relative helpers (`current_hour_start()`, `Utc::now() - Duration::hours(N)`).
 - **I2 FIXED:** Test count numbers updated in Task 11 Step 4 and the final verify to reflect audit-driven variability.
 - **I3 FIXED:** Bug-discovery policy reminder added as a PR1-front-matter note covering all Tasks 3–10; each task also has a per-task reminder.
