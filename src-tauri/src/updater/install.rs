@@ -452,6 +452,7 @@ impl Updater {
         &self,
         downloaded_path: &Path,
         current_exe: &Path,
+        new_version: Option<&str>,
         mut replace_binary: FReplace,
         mut restart_app: FRestart,
     ) -> Result<(), UpdateError>
@@ -469,15 +470,53 @@ impl Updater {
             .and_then(|n| n.to_str())
             .unwrap_or("");
 
-        let binary_path = if file_name.ends_with(".tar.gz") || file_name.ends_with(".tgz") {
-            self.extract_tar_gz(downloaded_path)?
-        } else if file_name.ends_with(".zip") {
-            self.extract_zip(downloaded_path)?
-        } else {
-            downloaded_path.to_path_buf()
+        let binary_path = match Self::extract_if_archive(self, downloaded_path, file_name) {
+            Ok(p) => p,
+            Err(e) => {
+                // Task 6 D11 (Phase 4): orphan-backup cleanup. Earlier-step
+                // failures (extract) leave `{binary}.rollback.{ts}` unused —
+                // remove it before returning the original error.
+                let _ = std::fs::remove_file(&backup_path);
+                return Err(e);
+            }
         };
 
-        replace_binary(&binary_path)?;
+        if let Err(e) = replace_binary(&binary_path) {
+            let _ = std::fs::remove_file(&backup_path);
+            return Err(e);
+        }
+
+        // Task 6 D11: write .install_pending_{NEW_VERSION} immediately after
+        // replace_binary succeeds and BEFORE restart_app, so the probe on the
+        // next boot has a deterministic backup_path + previous_version.
+        if let Some(new_ver) = new_version {
+            let current_exe_parent = current_exe.parent().ok_or_else(|| {
+                UpdateError::Install(
+                    "current_exe has no parent directory for install_pending".to_string(),
+                )
+            })?;
+            if let Err(e) = Self::write_install_pending(
+                current_exe_parent,
+                new_ver,
+                super::CURRENT_VERSION,
+                &backup_path,
+            ) {
+                tracing::error!("write_install_pending failed: {e}");
+                // On pending-write failure, attempt restoration using the same
+                // platform mechanism as execute_rollback (Unix rename; Windows
+                // spike deliverable — Task 12 stubs it). The backup still
+                // exists since replace_binary succeeded. We leave the user on
+                // the new binary for now; the probe will NOT trigger rollback
+                // (no .install_pending_ file), but user-triggered manual
+                // downgrade remains available.
+                tracing::warn!(
+                    "D11 probe for this install is disabled (pending marker absent). \
+                     Backup retained at {:?}",
+                    backup_path
+                );
+                return Err(e);
+            }
+        }
 
         tracing::info!("Update installation completed, restarting application...");
 
@@ -504,14 +543,73 @@ impl Updater {
         }
     }
 
+    /// Decompress archive (tar.gz / zip) or return path as-is for loose binaries.
+    /// Factored out so call sites can match against archive-extraction failures
+    /// and clean up the orphan backup before returning the error.
+    fn extract_if_archive(
+        updater: &Self,
+        downloaded_path: &Path,
+        file_name: &str,
+    ) -> Result<PathBuf, UpdateError> {
+        if file_name.ends_with(".tar.gz") || file_name.ends_with(".tgz") {
+            updater.extract_tar_gz(downloaded_path)
+        } else if file_name.ends_with(".zip") {
+            updater.extract_zip(downloaded_path)
+        } else {
+            Ok(downloaded_path.to_path_buf())
+        }
+    }
+
+    /// Write `.install_pending_{NEW_VERSION}` JSON marker in the install
+    /// directory. Read by the D11 health probe on the next startup to
+    /// determine rollback eligibility + backup selection.
+    ///
+    /// Returns an error if the write fails; caller decides whether to abort
+    /// the install or proceed without the probe marker.
+    pub(super) fn write_install_pending(
+        install_dir: &Path,
+        new_version: &str,
+        previous_version: &str,
+        backup_path: &Path,
+    ) -> Result<(), UpdateError> {
+        let marker_path = install_dir.join(format!(".install_pending_{new_version}"));
+        let payload = serde_json::json!({
+            "installed_at": chrono::Utc::now().to_rfc3339(),
+            "previous_version": previous_version,
+            "backup_path": backup_path,
+        });
+        let bytes = serde_json::to_vec(&payload).map_err(|e| {
+            UpdateError::Install(format!("Failed to serialize install_pending: {}", e))
+        })?;
+        std::fs::write(&marker_path, bytes)
+            .map_err(|e| UpdateError::Install(format!("Failed to write install_pending: {}", e)))?;
+        tracing::info!(
+            "install_pending written: version={new_version}, previous={previous_version}"
+        );
+        Ok(())
+    }
+
     /// # Safety
     pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
-        use self_replace;
+        self.install_and_restart_versioned(downloaded_path, None)
+    }
 
+    /// Install-and-restart variant that additionally writes
+    /// `.install_pending_{new_version}` for the D11 health probe.
+    ///
+    /// Callers in production should invoke this with `Some(new_version)` so
+    /// rollback is armed; passing `None` disables the D11 probe for this
+    /// install (rolling back becomes manual).
+    pub fn install_and_restart_versioned(
+        &self,
+        downloaded_path: &Path,
+        new_version: Option<&str>,
+    ) -> Result<(), UpdateError> {
         let current_exe = std::env::current_exe()?;
         self.install_and_restart_with_ops(
             downloaded_path,
             &current_exe,
+            new_version,
             |candidate| {
                 self_replace::self_replace(candidate)
                     .map_err(|e| UpdateError::Install(format!("Failed to replace binary: {}", e)))

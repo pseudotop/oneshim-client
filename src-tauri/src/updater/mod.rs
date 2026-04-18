@@ -1106,6 +1106,7 @@ mod tests {
         let result = updater.install_and_restart_with_ops(
             &downloaded,
             &current_exe,
+            None,
             |candidate| {
                 replaced.push(candidate.to_path_buf());
                 Ok(())
@@ -1143,6 +1144,7 @@ mod tests {
         let result = updater.install_and_restart_with_ops(
             &downloaded,
             &current_exe,
+            None,
             |_candidate| {
                 replace_calls += 1;
                 if replace_calls == 1 {
@@ -1169,6 +1171,81 @@ mod tests {
             other => panic!("unexpected result: {:?}", other),
         }
         assert_eq!(replace_calls, 2);
+    }
+
+    // -------------------------------------------------------------------
+    // Task 6 D11: install_pending writer + orphan-backup cleanup
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn install_pending_written_after_successful_replace() {
+        let updater = Updater::new(test_config());
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let downloaded = dir.path().join("oneshim-new");
+        std::fs::write(&current_exe, b"current-binary").unwrap();
+        std::fs::write(&downloaded, b"new-binary").unwrap();
+
+        // Pass a synthetic new_version; replace_binary succeeds; restart_app
+        // returns Ok (so the happy path completes before we inspect state).
+        let result = updater.install_and_restart_with_ops(
+            &downloaded,
+            &current_exe,
+            Some("0.4.40-rc.1"),
+            |_candidate| Ok(()),
+            || Ok(()),
+        );
+        assert!(result.is_ok(), "install-and-restart should succeed");
+
+        // Probe should find the pending marker.
+        let pending_path = dir.path().join(".install_pending_0.4.40-rc.1");
+        assert!(
+            pending_path.exists(),
+            ".install_pending_{{new_version}} should be written in install_dir"
+        );
+
+        let bytes = std::fs::read(&pending_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(parsed.get("installed_at").is_some());
+        assert!(parsed.get("previous_version").is_some());
+        assert!(parsed.get("backup_path").is_some());
+    }
+
+    #[test]
+    fn orphan_backup_removed_on_replace_binary_failure() {
+        let updater = Updater::new(test_config());
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let downloaded = dir.path().join("oneshim-new");
+        std::fs::write(&current_exe, b"current-binary").unwrap();
+        std::fs::write(&downloaded, b"new-binary").unwrap();
+
+        // replace_binary fails on the first call (before pending is written).
+        let result = updater.install_and_restart_with_ops(
+            &downloaded,
+            &current_exe,
+            Some("0.4.40-rc.1"),
+            |_candidate| Err(UpdateError::Install("replace failed".to_string())),
+            || Ok(()),
+        );
+        assert!(matches!(result, Err(UpdateError::Install(_))));
+
+        // The orphan `{binary}.rollback.{ts}` backup must be cleaned up.
+        let rollback_files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|n| n.contains(".rollback."))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert!(
+            rollback_files.is_empty(),
+            "orphan backup should have been removed on replace failure; found: {:?}",
+            rollback_files
+        );
     }
 
     // -------------------------------------------------------------------
