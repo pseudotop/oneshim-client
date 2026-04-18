@@ -101,8 +101,12 @@ fn make_trigger_state() -> AdaptiveTriggerState {
         segment_summarizer: oneshim_analysis::SegmentSummarizer::new(),
         params: ResolvedParams::default(),
         calibration_writer: Arc::new(NoopCalibrationWriter),
-        regime_classifier: oneshim_analysis::RegimeClassifier::new(1.5),
-        regime_manager: oneshim_analysis::RegimeManager::new(&config),
+        regime_classifier: Arc::new(parking_lot::Mutex::new(
+            oneshim_analysis::RegimeClassifier::new(1.5),
+        )),
+        regime_manager: Arc::new(parking_lot::Mutex::new(
+            oneshim_analysis::RegimeManager::new(&config),
+        )),
         regime_detector: oneshim_analysis::RegimeDetector::new(),
         param_resolver: oneshim_analysis::ParamResolver::new(PresetProfile::Developer),
         calibration_reader: Arc::new(NoopCalibrationReader),

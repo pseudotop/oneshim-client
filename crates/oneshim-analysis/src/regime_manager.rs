@@ -62,6 +62,15 @@ impl RegimeManager {
         }
     }
 
+    /// Replace the in-memory regime list with a persisted snapshot.
+    /// Called exactly once at startup from the composition root after
+    /// `RegimeStoragePort::load_all`. Does not validate against
+    /// `max_active` / `archive_days`; the persisted set is trusted to
+    /// be consistent with the config at the time it was saved.
+    pub fn hydrate_from(&mut self, regimes: Vec<Regime>) {
+        self.regimes = regimes;
+    }
+
     /// Update regimes from `RegimeDetector` output. Applies lifecycle rules:
     /// 1. Merge detected regimes into existing set (match by closest centroid)
     /// 2. Apply merge rule (similar centroids AND both below min_samples_for_merge)
@@ -611,5 +620,23 @@ mod tests {
         mgr.run_maintenance(Utc::now());
 
         assert_eq!(mgr.all_regimes()[0].status, RegimeStatus::Active);
+    }
+
+    /// T-C3c-5 — `hydrate_from` replaces the in-memory regime list with a
+    /// persisted snapshot (composition-root startup path).
+    #[test]
+    fn hydrate_from_replaces_in_memory_state() {
+        let cfg = TieredMemoryConfig::default();
+        let mut mgr = RegimeManager::new(&cfg);
+        assert_eq!(mgr.all_regimes().len(), 0, "sanity: empty to start");
+
+        let imported = vec![
+            make_regime("r1", coding_centroid(), 10, RegimeStatus::Active),
+            make_regime("r2", comm_centroid(), 5, RegimeStatus::Active),
+        ];
+        mgr.hydrate_from(imported);
+        assert_eq!(mgr.all_regimes().len(), 2);
+        assert_eq!(mgr.all_regimes()[0].regime_id, "r1");
+        assert_eq!(mgr.all_regimes()[1].regime_id, "r2");
     }
 }

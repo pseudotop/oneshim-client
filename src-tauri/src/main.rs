@@ -32,6 +32,8 @@ mod desktop_permissions;
 mod desktop_startup;
 mod fallback_stt;
 mod feature_capabilities;
+#[cfg(feature = "server")]
+mod feedback_sink;
 mod focus_analyzer;
 mod focus_auto;
 mod focus_mode;
@@ -377,10 +379,80 @@ fn main() {
                 }
                 state.background_runtime.shutdown_blocking();
 
-                // Checkpoint WAL after all writers have stopped, so the next
-                // startup opens a clean database without recovery work.
+                // Checkpoint WAL BEFORE the regime save so a stalled save
+                // cannot hold the shared `Arc<Mutex<Connection>>` and block
+                // the checkpoint indefinitely. Note that `save_all` in
+                // `SqliteRegimeManagerStateStore` is sync-inside-async
+                // (`std::sync::Mutex::lock()` + `conn.execute()` with no
+                // `.await`), so the `tokio::time::timeout` wrapping it is
+                // advisory — it cannot cancel the in-flight SQL. Running
+                // the checkpoint first gives it a guaranteed-unblocked
+                // window on the mutex; the save that follows simply writes
+                // into the fresh WAL, which is idempotently replayed on
+                // next startup if the process is killed mid-write.
                 if let Err(e) = state.storage.wal_checkpoint_truncate() {
                     warn!("WAL checkpoint on shutdown failed: {e}");
+                }
+
+                // Persist RegimeManager state (best-effort, 4s watchdog).
+                //
+                // Uses the Phase-2 pattern: offload the save to a dedicated
+                // std thread that owns its own tokio runtime + timeout, then
+                // join with a wall-clock deadline. Matches
+                // `src-tauri/src/telemetry/otlp.rs::shutdown` and avoids
+                // deadlocking by calling block_on on the background_runtime
+                // handle from the Tauri callback thread when that same
+                // runtime may be draining its tasks.
+                //
+                // The 4s tokio timeout cannot actually preempt the sync
+                // SQL `execute` (no `.await` point), so this watchdog
+                // bounds the main thread's *wait* rather than the save
+                // itself. A genuinely stalled save will outlive the
+                // wait — the OS reaps it when the process exits. Data
+                // is either fully committed (execute returned) or not
+                // at all (SQLite journal rolls back), so there is no
+                // torn-write risk. See ADR-018 "Consequences".
+                //
+                // Both fields are None until Task 13 (composition-root wiring)
+                // populates them, making this a runtime no-op in the interim.
+                if let (Some(regime_storage), Some(regime_manager)) = (
+                    state.regime_storage.clone(),
+                    state.regime_manager_snapshot.clone(),
+                ) {
+                    let regimes = {
+                        let guard = regime_manager.lock();
+                        guard.all_regimes().to_vec()
+                    };
+                    let regime_count = regimes.len();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .expect("regime-save shutdown runtime");
+                        let result = rt.block_on(async move {
+                            tokio::time::timeout(
+                                std::time::Duration::from_secs(4),
+                                regime_storage.save_all(&regimes),
+                            )
+                            .await
+                        });
+                        let _ = tx.send(result);
+                    });
+
+                    // 4s timeout + 500ms slack for thread scheduling.
+                    match rx.recv_timeout(std::time::Duration::from_millis(4500)) {
+                        Ok(Ok(Ok(()))) => info!(count = regime_count, "regime state persisted"),
+                        Ok(Ok(Err(e))) => {
+                            warn!(error = %e, "regime state save failed")
+                        }
+                        Ok(Err(_timeout)) => {
+                            warn!("regime state save exceeded 4s; proceeding with shutdown")
+                        }
+                        Err(_channel) => {
+                            warn!("regime state save thread did not respond within 4.5s; proceeding with shutdown")
+                        }
+                    }
                 }
             }
         }

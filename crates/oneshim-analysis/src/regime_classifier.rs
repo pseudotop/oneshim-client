@@ -50,6 +50,20 @@ impl RegimeClassifier {
             })
             .filter(|r| euclidean_distance(&r.centroid, features) < self.max_distance_threshold)
     }
+
+    /// Record a user reaction to a suggestion. Phase 3 stub — records
+    /// no per-regime state beyond a trace log. Called via
+    /// `FeedbackSignalSink` from the composition root.
+    pub fn record_user_reaction(
+        &mut self,
+        feedback: &oneshim_core::models::suggestion::SuggestionFeedback,
+    ) {
+        tracing::debug!(
+            suggestion_id = %feedback.suggestion_id,
+            feedback_type = ?feedback.feedback_type,
+            "regime_classifier: user reaction recorded (no-op learning)"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

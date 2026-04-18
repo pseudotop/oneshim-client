@@ -126,10 +126,15 @@ impl VectorStore for SqliteVectorStore {
                     }
                 }
             }
-            // regime_id filter: segment_id based lookup would require a join;
-            // for simplicity we skip regime_id in the SQL and could filter post-query.
-            if filters.regime_id.is_some() {
-                tracing::warn!("regime_id filter not yet implemented, ignoring");
+            // regime_id filter: subquery over the existing
+            // `activity_segments.regime_id` + `idx_segments_regime` index.
+            // See spec §3.2 / C3a.
+            if let Some(ref regime_id) = filters.regime_id {
+                let idx = param_values.len() + 1;
+                conditions.push(format!(
+                    "segment_id IN (SELECT id FROM activity_segments WHERE regime_id = ?{idx})"
+                ));
+                param_values.push(Box::new(regime_id.clone()));
             }
 
             // Negative feedback: exclude dismissed segment IDs
@@ -385,9 +390,15 @@ impl VectorStore for SqliteVectorStore {
                     }
                 }
             }
-            // regime_id filter: not yet implemented for quantized search
-            if filters.regime_id.is_some() {
-                tracing::warn!("regime_id filter not yet implemented in search_quantized, ignoring");
+            // regime_id filter: subquery over the existing
+            // `activity_segments.regime_id` + `idx_segments_regime` index.
+            // See spec §3.2 / C3a.
+            if let Some(ref regime_id) = filters.regime_id {
+                let idx = param_values.len() + 1;
+                conditions.push(format!(
+                    "segment_id IN (SELECT id FROM activity_segments WHERE regime_id = ?{idx})"
+                ));
+                param_values.push(Box::new(regime_id.clone()));
             }
 
             // Negative feedback: exclude dismissed segment IDs

@@ -436,6 +436,25 @@ impl CoachingEngine {
         let mut tracker = self.goal_tracker.write().await;
         tracker.update_goals(goals);
     }
+
+    /// Record a user reaction to a coaching message.
+    ///
+    /// Phase 3 stub — records no state beyond a trace log. The concrete
+    /// learning algorithm (bayesian update of trigger priors, per-profile
+    /// acceptance rate) lands in a follow-up phase. Called via
+    /// `FeedbackSignalSink` from the composition root.
+    ///
+    /// Must return within ~10 ms; see ADR-017 for the latency budget.
+    pub async fn record_user_reaction(
+        &self,
+        feedback: &oneshim_core::models::suggestion::SuggestionFeedback,
+    ) {
+        tracing::debug!(
+            suggestion_id = %feedback.suggestion_id,
+            feedback_type = ?feedback.feedback_type,
+            "coaching_engine: user reaction recorded (no-op learning)"
+        );
+    }
 }
 
 #[async_trait::async_trait]

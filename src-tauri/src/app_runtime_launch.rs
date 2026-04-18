@@ -131,6 +131,65 @@ impl AppRuntimeLaunchBuilder {
             .map(|services| services.consent_manager.clone())
             .unwrap_or_else(|| Arc::new(ConsentManager::new(data_dir_path.join("consent.json"))));
 
+        // --- Phase 3 composition root ---
+        //
+        // Construct the three Arc handles that are shared across AppState,
+        // the agent runtime scheduler, and the feedback pipeline:
+        //   - regime_manager_arc: used by analysis pipeline (via
+        //     with_regime_handles) AND by AppState.regime_manager_snapshot
+        //     (for the shutdown save guard).
+        //   - regime_classifier_arc: analysis pipeline + CompositeFeedbackSink.
+        //   - coaching_engine: shared with scheduler, web server, IPC, and
+        //     the feedback sink. Moved earlier to satisfy the sink's needs.
+        //
+        // Hydrate the RegimeManager from persisted storage BEFORE handing
+        // it to the scheduler, so the scheduler sees the restored set on
+        // first classify() / active_regimes() call.
+        let coaching_engine = Arc::new(oneshim_analysis::CoachingEngine::new(
+            config.coaching.clone(),
+        ));
+        let regime_manager_arc = Arc::new(parking_lot::Mutex::new(
+            oneshim_analysis::RegimeManager::new(&config.analysis.tiered_memory),
+        ));
+        let regime_classifier_arc = Arc::new(parking_lot::Mutex::new(
+            oneshim_analysis::RegimeClassifier::new(1.5),
+        ));
+        let regime_storage: Arc<dyn oneshim_core::ports::regime_storage::RegimeStoragePort> =
+            Arc::new(
+                oneshim_storage::regime_manager_state_store::SqliteRegimeManagerStateStore::new(
+                    sqlite_storage.connection_arc(),
+                ),
+            );
+        {
+            match handle.block_on(regime_storage.load_all()) {
+                Ok(regimes) if !regimes.is_empty() => {
+                    let count = regimes.len();
+                    regime_manager_arc.lock().hydrate_from(regimes);
+                    tracing::info!(count, "regime manager hydrated from storage");
+                }
+                Ok(_) => tracing::info!("regime manager: no persisted state, starting fresh"),
+                Err(e) => tracing::warn!(
+                    error = %e,
+                    "regime manager hydrate failed; starting fresh"
+                ),
+            }
+        }
+
+        // Build the CompositeFeedbackSink once, thread it into the
+        // FeedbackSender below (Some(sink)) so accept/reject signals fan
+        // out to both CoachingEngine and the regime classifier on the
+        // user-path inline (~10 ms budget, ADR-017).
+        //
+        // Gated on `server` because FeedbackSender is only constructed
+        // under that feature — the sink has no consumer otherwise.
+        #[cfg(feature = "server")]
+        let feedback_sink: Arc<
+            dyn oneshim_core::ports::feedback_signal_sink::FeedbackSignalSink,
+        > = Arc::new(crate::feedback_sink::CompositeFeedbackSink::new(
+            Some(coaching_engine.clone()),
+            Some(regime_classifier_arc.clone()),
+        ));
+
         // SuggestionManager for overlay panel (A3).
         // The queue Arc is created here and passed to BOTH the SuggestionManager
         // and the agent runtime (which builds SuggestionReceiver). This ensures
@@ -230,7 +289,11 @@ impl AppRuntimeLaunchBuilder {
                     let history = Arc::new(tokio::sync::Mutex::new(
                         oneshim_suggestion::history::SuggestionHistory::new(100),
                     ));
-                    let feedback = Arc::new(oneshim_suggestion::feedback::FeedbackSender::new(api));
+                    let feedback =
+                        Arc::new(oneshim_suggestion::feedback::FeedbackSender::new_with_sink(
+                            api,
+                            Some(feedback_sink.clone()),
+                        ));
                     let deferred = Arc::new(tokio::sync::Mutex::new(
                         oneshim_suggestion::deferred::DeferredManager::new(50),
                     ));
@@ -355,10 +418,9 @@ impl AppRuntimeLaunchBuilder {
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
 
-        // Create shared CoachingEngine for scheduler, web server, and Tauri IPC
-        let coaching_engine = Arc::new(oneshim_analysis::CoachingEngine::new(
-            config.coaching.clone(),
-        ));
+        // CoachingEngine was already constructed above (Phase 3 composition
+        // root) so the FeedbackSender sink could be wired at the FeedbackSender
+        // construction site.
         let coaching_storage: Arc<dyn CoachingStoragePort> = sqlite_storage.clone();
 
         // Create MagicOverlay handle (window created at startup in setup.rs)
@@ -405,6 +467,7 @@ impl AppRuntimeLaunchBuilder {
                 .with_consent_manager(capture_consent_manager.clone())
                 .with_coaching_engine(coaching_engine.clone())
                 .with_coaching_storage(coaching_storage.clone())
+                .with_regime_handles(regime_manager_arc.clone(), regime_classifier_arc.clone())
                 .with_magic_overlay(magic_overlay.clone())
                 .with_overlay_driver(Arc::new(
                     crate::magic_overlay_driver::MagicOverlayDriver::new(self.app_handle.clone()),
@@ -803,6 +866,8 @@ impl AppRuntimeLaunchBuilder {
                     )),
                 },
                 analysis_health,
+                regime_storage: Some(regime_storage.clone()),
+                regime_manager_snapshot: Some(regime_manager_arc.clone()),
             },
             config_runtime_state,
         )

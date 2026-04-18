@@ -20,6 +20,7 @@ pub mod integration_state_store;
 pub mod keychain;
 pub mod migration;
 pub mod process_env_projection;
+pub mod regime_manager_state_store;
 pub mod sqlite;
 pub mod sync_extractor;
 pub mod sync_merger;

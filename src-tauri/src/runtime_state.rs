@@ -372,6 +372,15 @@ pub struct AppState {
     pub capture: CaptureContext,
     /// Analysis provider health (None when no LLM configured).
     pub analysis_health: Option<AnalysisHealthFlags>,
+    /// Regime state persistence port. Populated by the composition root
+    /// (`app_runtime_launch.rs`). The save-guard in
+    /// `main.rs::RunEvent::Exit` short-circuits on `None` — which only
+    /// happens in test builders that skip wiring.
+    pub regime_storage: Option<Arc<dyn oneshim_core::ports::regime_storage::RegimeStoragePort>>,
+    /// Shared handle to the `RegimeManager` so the shutdown path can read
+    /// the current regime set and hand it to `regime_storage.save_all`.
+    /// Populated by the composition root; `None` only in test builders.
+    pub regime_manager_snapshot: Option<Arc<parking_lot::Mutex<oneshim_analysis::RegimeManager>>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -672,6 +681,8 @@ mod tests {
                     work_classifier: None,
                 },
                 analysis_health: None,
+                regime_storage: None,
+                regime_manager_snapshot: None,
             },
             ConfigRuntimeState::new(config_manager, web_port),
         )
