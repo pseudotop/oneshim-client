@@ -166,6 +166,43 @@ impl AppRuntimeLaunchBuilder {
         .build()?;
         let update_control = core_resources.update_runtime.update_control.clone();
         let update_action_tx = core_resources.update_runtime.update_action_tx.clone();
+
+        // Phase 4 D11 / Task 9: consume the rollback-notification file (if
+        // present). The previous binary wrote it just before the rollback
+        // swap; the restored binary surfaces the RolledBack state in UI on
+        // next boot. Fire-and-forget tokio task to avoid blocking launch.
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(install_dir) = current_exe.parent().map(|p| p.to_path_buf()) {
+                let notif_path = install_dir.join(".rolled_back_notification");
+                if notif_path.exists() {
+                    let update_control_clone = update_control.clone();
+                    handle.spawn(async move {
+                        match std::fs::read(&notif_path) {
+                            Ok(bytes) => {
+                                match serde_json::from_slice::<
+                                    oneshim_api_contracts::update::RollbackInfo,
+                                >(&bytes)
+                                {
+                                    Ok(info) => {
+                                        tracing::warn!(
+                                            "consuming rolled_back_notification: {} -> {}",
+                                            info.from_version,
+                                            info.to_version
+                                        );
+                                        let _ = update_control_clone.set_rolled_back(info).await;
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("rolled_back_notification parse failed: {e}")
+                                    }
+                                }
+                            }
+                            Err(e) => tracing::warn!("rolled_back_notification read failed: {e}"),
+                        }
+                        let _ = std::fs::remove_file(&notif_path);
+                    });
+                }
+            }
+        }
         let sqlite_storage = core_resources.storage_runtime.sqlite_storage.clone();
         let encryption_key = core_resources.storage_runtime.encryption_key.clone();
         let event_tx = core_resources.background_runtime.event_tx();

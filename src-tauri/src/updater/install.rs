@@ -711,6 +711,25 @@ impl Updater {
         };
         rollback_event(&info);
 
+        // Persist a rollback notification file so the restored binary can
+        // surface the RolledBack state in the UI on its next boot. The
+        // current (failing) process terminates immediately after the image
+        // replacement; without a persisted marker the user would see the
+        // version number decrement silently.
+        if let Some(install_dir) = current_exe_path.parent() {
+            let notif_path = install_dir.join(".rolled_back_notification");
+            match serde_json::to_vec(&info) {
+                Ok(bytes) => {
+                    if let Err(e) = std::fs::write(&notif_path, bytes) {
+                        tracing::warn!("rolled_back_notification write failed (non-fatal): {e}");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("rolled_back_notification serialize failed (non-fatal): {e}")
+                }
+            }
+        }
+
         // 3. Atomic rename: backup → current_exe. On Unix, this works even
         //    while the current binary is running (files held open by inode).
         //    On Windows, this would fail for a running executable — the
