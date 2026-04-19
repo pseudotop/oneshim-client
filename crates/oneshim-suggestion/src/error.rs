@@ -1,4 +1,5 @@
 use oneshim_core::error::CoreError;
+use oneshim_core::error_codes::InternalCode;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,7 +14,10 @@ impl From<SuggestionError> for CoreError {
     fn from(err: SuggestionError) -> Self {
         match err {
             SuggestionError::Core(e) => e,
-            SuggestionError::Internal(msg) => CoreError::Internal(msg),
+            SuggestionError::Internal(msg) => CoreError::InternalV2 {
+                code: InternalCode::Generic,
+                message: msg,
+            },
         }
     }
 }

@@ -32,43 +32,43 @@ impl Default for SysInfoMonitor {
 impl SystemMonitor for SysInfoMonitor {
     async fn collect_metrics(&self) -> Result<SystemMetrics, CoreError> {
         {
-            let mut sys = self
-                .sys
-                .lock()
-                .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
+            let mut sys = self.sys.lock().map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to acquire system lock: {e}"),
+            })?;
             sys.refresh_cpu_usage();
             sys.refresh_memory();
         }
 
         {
-            let mut disks = self
-                .disks
-                .lock()
-                .map_err(|e| CoreError::Internal(format!("Failed to acquire disk lock: {e}")))?;
+            let mut disks = self.disks.lock().map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to acquire disk lock: {e}"),
+            })?;
             disks.refresh(true);
         }
 
         {
-            let mut networks = self
-                .networks
-                .lock()
-                .map_err(|e| CoreError::Internal(format!("Failed to acquire network lock: {e}")))?;
+            let mut networks = self.networks.lock().map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to acquire network lock: {e}"),
+            })?;
             networks.refresh(true);
         }
 
-        let sys = self
-            .sys
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
+        let sys = self.sys.lock().map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to acquire system lock: {e}"),
+        })?;
 
         let cpu_usage = sys.global_cpu_usage();
         let memory_used = sys.used_memory();
         let memory_total = sys.total_memory();
 
-        let disks = self
-            .disks
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire disk lock: {e}")))?;
+        let disks = self.disks.lock().map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to acquire disk lock: {e}"),
+        })?;
         let (disk_used, disk_total) = disks.list().iter().fold((0u64, 0u64), |(used, total), d| {
             (
                 used + d.total_space() - d.available_space(),
@@ -76,10 +76,10 @@ impl SystemMonitor for SysInfoMonitor {
             )
         });
 
-        let networks = self
-            .networks
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire network lock: {e}")))?;
+        let networks = self.networks.lock().map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to acquire network lock: {e}"),
+        })?;
         let (upload_speed, download_speed) = networks
             .list()
             .iter()
