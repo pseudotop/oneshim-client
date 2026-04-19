@@ -45,14 +45,20 @@ impl From<StorageError> for CoreError {
                 code: oneshim_core::error_codes::SecretCode::Failed,
                 message: msg,
             },
-            StorageError::NotFound { resource_type, id } => {
-                CoreError::NotFound { resource_type, id }
-            }
+            StorageError::NotFound { resource_type, id } => CoreError::NotFoundV2 {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type,
+                id,
+            },
             StorageError::Encryption(msg) => CoreError::InternalV2 {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             },
-            StorageError::Validation { field, message } => CoreError::Validation { field, message },
+            StorageError::Validation { field, message } => CoreError::ValidationV2 {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
+                field,
+                message,
+            },
             StorageError::Config(msg) => CoreError::ConfigV2 {
                 code: oneshim_core::error_codes::ConfigCode::Invalid,
                 message: msg,
