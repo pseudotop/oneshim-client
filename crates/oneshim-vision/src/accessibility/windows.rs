@@ -745,7 +745,10 @@ mod inner {
             // Run synchronous COM calls on a blocking thread
             let result = tokio::task::spawn_blocking(com::extract_via_uia)
                 .await
-                .map_err(|e| CoreError::Internal(format!("UIA blocking task failed: {e}")))?;
+                .map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("UIA blocking task failed: {e}"),
+                })?;
 
             match result {
                 Some(raw) => {
@@ -785,7 +788,10 @@ mod inner {
                 com::extract_tree_via_uia(max_depth, max_elements)
             })
             .await
-            .map_err(|e| CoreError::Internal(format!("UIA tree traversal task failed: {e}")))?;
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("UIA tree traversal task failed: {e}"),
+            })?;
 
             if result.is_empty() {
                 Self::record_failure();

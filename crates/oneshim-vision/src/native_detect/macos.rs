@@ -61,8 +61,11 @@ fn detect_rectangles_blocking(
     let ns_data = NSData::with_bytes(data);
 
     // --- Create VNImageRequestHandler initWithData:options: ---
-    let handler_cls = AnyClass::get(c"VNImageRequestHandler")
-        .ok_or_else(|| CoreError::Internal("VNImageRequestHandler class not found".into()))?;
+    let handler_cls =
+        AnyClass::get(c"VNImageRequestHandler").ok_or_else(|| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "VNImageRequestHandler class not found".into(),
+        })?;
 
     let empty_dict: Retained<NSDictionary<AnyObject, AnyObject>> = NSDictionary::new();
 
@@ -72,8 +75,11 @@ fn detect_rectangles_blocking(
     };
 
     // --- Create VNDetectRectanglesRequest ---
-    let request_cls = AnyClass::get(c"VNDetectRectanglesRequest")
-        .ok_or_else(|| CoreError::Internal("VNDetectRectanglesRequest class not found".into()))?;
+    let request_cls =
+        AnyClass::get(c"VNDetectRectanglesRequest").ok_or_else(|| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "VNDetectRectanglesRequest class not found".into(),
+        })?;
 
     let request: Retained<AnyObject> = unsafe {
         let alloc: Allocated<AnyObject> = msg_send![request_cls, alloc];
@@ -96,8 +102,10 @@ fn detect_rectangles_blocking(
     let _: () = unsafe { msg_send![&request, setMaximumAspectRatio: max_aspect] };
 
     // --- Create NSArray with single request ---
-    let nsarray_cls = AnyClass::get(c"NSArray")
-        .ok_or_else(|| CoreError::Internal("NSArray class not found".into()))?;
+    let nsarray_cls = AnyClass::get(c"NSArray").ok_or_else(|| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: "NSArray class not found".into(),
+    })?;
 
     let request_array: Retained<AnyObject> =
         unsafe { msg_send![nsarray_cls, arrayWithObject: &*request] };
@@ -114,9 +122,10 @@ fn detect_rectangles_blocking(
         } else {
             "unknown Vision error".to_string()
         };
-        return Err(CoreError::Internal(format!(
-            "Vision performRequests failed: {err_msg}"
-        )));
+        return Err(CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Vision performRequests failed: {err_msg}"),
+        });
     }
 
     // --- Extract results ---

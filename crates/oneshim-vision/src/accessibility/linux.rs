@@ -710,9 +710,7 @@ mod inner {
             let conn: AccessibilityConnection =
                 AccessibilityConnection::new().await.map_err(|e| {
                     Self::record_failure();
-                    CoreError::PermissionDenied(format!(
-                        "AT-SPI2 D-Bus connection failed. Ensure at-spi2-core is installed: {e}"
-                    ))
+                    CoreError::PermissionDeniedV2 { code: oneshim_core::error_codes::PermissionCode::PermissionDenied, message: format!("AT-SPI2 D-Bus connection failed. Ensure at-spi2-core is installed: {e}") }
                 })?;
 
             // Find the active window by walking registry → apps → frames
@@ -814,7 +812,10 @@ mod tests {
             Ok(elements) => {
                 eprintln!("AT-SPI2 returned {} elements", elements.len());
             }
-            Err(oneshim_core::error::CoreError::PermissionDenied(msg)) => {
+            Err(oneshim_core::error::CoreError::PermissionDeniedV2 {
+                code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
+                message: msg,
+            }) => {
                 eprintln!("AT-SPI2 not available: {msg}");
             }
             Err(e) => {

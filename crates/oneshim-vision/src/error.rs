@@ -19,10 +19,22 @@ impl From<VisionError> for CoreError {
     fn from(err: VisionError) -> Self {
         match err {
             VisionError::Core(e) => e,
-            VisionError::PermissionDenied(msg) => CoreError::PermissionDenied(msg),
-            VisionError::Ocr(msg) => CoreError::OcrError(msg),
-            VisionError::ElementNotFound(msg) => CoreError::ElementNotFound(msg),
-            VisionError::Internal(msg) => CoreError::Internal(msg),
+            VisionError::PermissionDenied(msg) => CoreError::PermissionDeniedV2 {
+                code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
+                message: msg,
+            },
+            VisionError::Ocr(msg) => CoreError::OcrErrorV2 {
+                code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                message: msg,
+            },
+            VisionError::ElementNotFound(msg) => CoreError::ElementNotFoundV2 {
+                code: oneshim_core::error_codes::UiCode::ElementMissing,
+                name: msg,
+            },
+            VisionError::Internal(msg) => CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: msg,
+            },
         }
     }
 }

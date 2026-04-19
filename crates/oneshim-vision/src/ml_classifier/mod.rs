@@ -66,9 +66,15 @@ impl OnnxGuiClassifier {
         }
 
         let session = ort::session::Session::builder()
-            .map_err(|e| CoreError::Internal(format!("ort session builder: {e}")))?
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("ort session builder: {e}"),
+            })?
             .commit_from_file(model_path)
-            .map_err(|e| CoreError::Internal(format!("ort model load: {e}")))?;
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("ort model load: {e}"),
+            })?;
 
         info!(?model_path, "GUI classifier model loaded");
         debug!(
@@ -93,21 +99,31 @@ impl OnnxGuiClassifier {
         use ort::value::TensorRef;
 
         let input_tensor = TensorRef::from_array_view(([1usize, 3, 64, 64], input.as_slice()))
-            .map_err(|e| CoreError::Internal(format!("ort tensor: {e}")))?;
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("ort tensor: {e}"),
+            })?;
 
-        let mut session = self
-            .session
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("session lock poisoned: {e}")))?;
+        let mut session = self.session.lock().map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("session lock poisoned: {e}"),
+        })?;
 
         let outputs = session
             .run([input_tensor.into()])
-            .map_err(|e| CoreError::Internal(format!("ort inference: {e}")))?;
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("ort inference: {e}"),
+            })?;
 
         let output = &outputs[0usize];
-        let (_shape, data) = output
-            .try_extract_tensor::<f32>()
-            .map_err(|e| CoreError::Internal(format!("ort output extract: {e}")))?;
+        let (_shape, data) =
+            output
+                .try_extract_tensor::<f32>()
+                .map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("ort output extract: {e}"),
+                })?;
 
         Ok(data.to_vec())
     }
@@ -168,11 +184,14 @@ impl GuiElementClassifier for OnnxGuiClassifier {
         let probabilities = tokio::task::block_in_place(|| self.run_inference(input))?;
 
         if probabilities.len() != LABELS.len() {
-            return Err(CoreError::Internal(format!(
-                "model output size mismatch: expected {}, got {}",
-                LABELS.len(),
-                probabilities.len()
-            )));
+            return Err(CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!(
+                    "model output size mismatch: expected {}, got {}",
+                    LABELS.len(),
+                    probabilities.len()
+                ),
+            });
         }
 
         // Find argmax

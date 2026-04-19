@@ -17,11 +17,14 @@ const TARGET_SIZE: u32 = 64;
 /// 4. Normalize pixel values to [0.0, 1.0]
 pub fn prepare_input(rgba: &[u8], width: u32, height: u32) -> Result<Vec<f32>, CoreError> {
     let img = image::RgbaImage::from_raw(width, height, rgba.to_vec()).ok_or_else(|| {
-        CoreError::Internal(format!(
-            "invalid RGBA image: expected {} bytes, got {}",
-            width * height * 4,
-            rgba.len()
-        ))
+        CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!(
+                "invalid RGBA image: expected {} bytes, got {}",
+                width * height * 4,
+                rgba.len()
+            ),
+        }
     })?;
 
     let resized = image::imageops::resize(
