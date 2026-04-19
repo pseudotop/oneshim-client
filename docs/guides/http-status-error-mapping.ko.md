@@ -93,7 +93,7 @@ if !status.is_success() {
 | `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | — (infra debt: TLS 서버 fixture 필요) |
 | `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
 | `oneshim-audio::model_downloader` | ✓ | ✓ specific + fallback (`new_with_base_url` 주입 refactor 필요했음) |
-| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | — (infra debt: `AiModelCatalogWebContext` 필요) |
+| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | ✓ specific + fallback |
 
 ## 의도적 제외
 

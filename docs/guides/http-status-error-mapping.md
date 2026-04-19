@@ -93,7 +93,7 @@ This preserves domain context for the "didn't match any known status" bucket.
 | `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | — (infra debt: needs TLS server fixture) |
 | `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
 | `oneshim-audio::model_downloader` | ✓ | ✓ specific + fallback (needed `new_with_base_url` injection) |
-| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | — (infra debt: needs `AiModelCatalogWebContext`) |
+| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | ✓ specific + fallback |
 
 ## Intentionally excluded
 
