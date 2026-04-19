@@ -362,19 +362,11 @@ impl oneshim_core::ports::adaptive_search::AdaptiveSearchPort for AdaptiveSearch
     ) -> Result<Vec<SearchResult>, oneshim_core::error::CoreError> {
         self.search(query_f32, limit, time_decay_hours, filters)
             .await
-            .map_err(|e| oneshim_core::error::CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: e.to_string(),
-            })
+            .map_err(Into::into)
     }
 
     async fn refresh_count(&self) -> Result<(), oneshim_core::error::CoreError> {
-        self.refresh_count()
-            .await
-            .map_err(|e| oneshim_core::error::CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: e.to_string(),
-            })
+        self.refresh_count().await.map_err(Into::into)
     }
 }
 
