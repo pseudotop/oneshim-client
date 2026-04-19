@@ -240,12 +240,23 @@ impl AnalysisProvider for AnalysisClient {
 
         if !status.is_success() {
             warn!(status = %status, "Analysis API error response");
-            return Err(NetworkError::Analysis(format!(
+            let message = format!(
                 "Analysis API error ({}): {}",
                 status,
                 response_text.chars().take(200).collect::<String>()
-            ))
-            .into());
+            );
+            // Semantic HTTP status mapping per iter-54..59 pattern via
+            // NetworkError's existing typed variants.
+            let net_err = match status.as_u16() {
+                401 | 403 => NetworkError::Auth(message),
+                408 | 504 => NetworkError::Timeout { timeout_ms: 0 },
+                429 => NetworkError::RateLimited {
+                    retry_after_secs: 60,
+                },
+                502 | 503 => NetworkError::ServiceUnavailable(message),
+                _ => NetworkError::Analysis(message),
+            };
+            return Err(net_err.into());
         }
 
         let response_json: serde_json::Value = serde_json::from_str(&response_text)
@@ -313,12 +324,22 @@ impl AnalysisProvider for AnalysisClient {
 
         if !status.is_success() {
             warn!(status = %status, "Summarize API error response");
-            return Err(NetworkError::Analysis(format!(
+            let message = format!(
                 "Summarize API error ({}): {}",
                 status,
                 response_text.chars().take(200).collect::<String>()
-            ))
-            .into());
+            );
+            // Semantic HTTP status mapping per iter-54..59.
+            let net_err = match status.as_u16() {
+                401 | 403 => NetworkError::Auth(message),
+                408 | 504 => NetworkError::Timeout { timeout_ms: 0 },
+                429 => NetworkError::RateLimited {
+                    retry_after_secs: 60,
+                },
+                502 | 503 => NetworkError::ServiceUnavailable(message),
+                _ => NetworkError::Analysis(message),
+            };
+            return Err(net_err.into());
         }
 
         let response_json: serde_json::Value = serde_json::from_str(&response_text)
