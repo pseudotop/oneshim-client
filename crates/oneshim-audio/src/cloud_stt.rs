@@ -200,4 +200,77 @@ mod tests {
         .unwrap();
         assert_eq!(provider.provider_name(), "openai-whisper-cloud");
     }
+
+    // iter-72 regression guards for iter-58 semantic HTTP status mapping
+    // in cloud_stt::transcribe. Shared helper pattern matches iter-67..71.
+    async fn run_cloud_stt_status_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+        let provider =
+            CloudSttProvider::new("sk-test".into(), server.url(), SttLanguage::Auto, 10).unwrap();
+        // Non-empty buffer so transcribe doesn't early-return; 1 sec silence
+        // at 16kHz = 16_000 samples.
+        let audio = oneshim_core::models::audio::AudioBuffer::new(vec![0.0f32; 16_000]);
+        provider.transcribe(audio).await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn stt_403_maps_to_auth() {
+        let err = run_cloud_stt_status_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stt_408_maps_to_timeout() {
+        let err = run_cloud_stt_status_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stt_429_maps_to_rate_limit() {
+        let err = run_cloud_stt_status_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stt_502_maps_to_service_unavailable() {
+        let err = run_cloud_stt_status_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stt_504_maps_to_timeout() {
+        let err = run_cloud_stt_status_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    /// Domain fallback: generic server error remains as SpeechToText / SttFailed.
+    #[tokio::test]
+    async fn stt_500_falls_back_to_stt_failed() {
+        let err = run_cloud_stt_status_test(500).await;
+        assert!(
+            matches!(err, CoreError::SpeechToText { .. }),
+            "500 → SpeechToText (domain fallback), got: {err:?}"
+        );
+    }
 }
