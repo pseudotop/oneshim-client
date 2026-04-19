@@ -123,6 +123,22 @@ mod tests {
         );
     }
 
+    /// Regression guard: CoreError::ConsentExpired must map to HTTP 401
+    /// Unauthorized (not 500 Internal). Parallel to sibling ConsentRequired
+    /// already mapped to 401 — both represent consent-state issues the
+    /// client should re-prompt for, not server-side bugs. Caught by iter-41.
+    #[test]
+    fn consent_expired_maps_to_unauthorized() {
+        let core = oneshim_core::error::CoreError::ConsentExpired {
+            code: oneshim_core::error_codes::ConsentCode::Expired,
+        };
+        let api: ApiError = core.into();
+        assert!(
+            matches!(api, ApiError::Unauthorized(_)),
+            "ConsentExpired must map to 401 Unauthorized, got: {api:?}"
+        );
+    }
+
     /// Regression guard: transient-unavailability variants (RateLimit,
     /// RequestTimeout) must map to HTTP 503 ServiceUnavailable (not 500
     /// Internal). These represent upstream-service issues the client
