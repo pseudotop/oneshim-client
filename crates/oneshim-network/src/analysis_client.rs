@@ -663,4 +663,45 @@ mod tests {
             "504 → RequestTimeout, got: {err:?}"
         );
     }
+
+    // iter-74: regression guards for summarize_text sibling of analyze.
+    // iter-59b applied the same semantic HTTP status mapping to both.
+    async fn run_summarize_status_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
+        };
+        let client = AnalysisClient::new(&config);
+        client.summarize_text("{}", "sys").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn summarize_403_maps_to_auth() {
+        let err = run_summarize_status_test(403).await;
+        assert!(matches!(err, CoreError::Auth { .. }));
+    }
+
+    #[tokio::test]
+    async fn summarize_429_maps_to_rate_limit() {
+        let err = run_summarize_status_test(429).await;
+        assert!(matches!(err, CoreError::RateLimit { .. }));
+    }
+
+    #[tokio::test]
+    async fn summarize_503_maps_to_service_unavailable() {
+        let err = run_summarize_status_test(503).await;
+        assert!(matches!(err, CoreError::ServiceUnavailable { .. }));
+    }
 }
