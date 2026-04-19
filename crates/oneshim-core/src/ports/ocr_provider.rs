@@ -18,13 +18,24 @@ pub struct OcrResult {
     pub confidence: f64,
 }
 
-/// OCR adapters emit `CoreError::OcrError` (wire: `provider.ocr_failed`) for
-/// provider-side failures (malformed OCR response, empty output). HTTP-layer
-/// failures follow the canonical semantic status mapping (`auth.failed` /
-/// `network.timeout` / `network.rate_limit` / `service.unavailable`). See
-/// `docs/guides/http-status-error-mapping.md`. Local OCR (Tesseract) emits
-/// `CoreError::OcrError` for library failures and `CoreError::PermissionDenied`
-/// if screen-capture permission is missing upstream.
+/// OCR provider port — extracts text elements and bounding boxes from
+/// screen capture images.
+///
+/// # Errors
+/// - `CoreError::OcrError` (wire: `provider.ocr_failed`) for provider-side
+///   failures: malformed OCR response, empty output, library panic
+///   (leptonica/tesseract). This covers both remote OCR endpoints and
+///   local Tesseract invocation.
+/// - HTTP-layer failures (remote OCR) follow the canonical semantic
+///   status mapping: `CoreError::Auth` (401/403), `CoreError::RequestTimeout`
+///   (408/504), `CoreError::RateLimit` (429), `CoreError::ServiceUnavailable`
+///   (502/503). See `docs/guides/http-status-error-mapping.md`.
+/// - `CoreError::PermissionDenied` (wire: `platform.permission_denied`) —
+///   emitted upstream if screen-capture permission is missing; not
+///   raised inside this port itself, but surfaces through callers that
+///   feed it images captured without permission.
+/// - `CoreError::Network` (wire: `network.connection_failed`) for
+///   pre-response transport failures against remote OCR providers.
 #[async_trait]
 pub trait OcrProvider: Send + Sync {
     async fn extract_elements(

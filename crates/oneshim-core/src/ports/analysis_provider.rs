@@ -7,11 +7,18 @@ use crate::models::suggestion::Suggestion;
 
 /// LLM-backed analysis port.
 ///
-/// All methods use `CoreError::Analysis` (wire: `provider.analysis_failed`)
-/// for provider-side failures (LLM returned bad JSON, empty body,
-/// non-parseable intent). HTTP-layer failures follow the canonical semantic
-/// status mapping (`auth.failed` / `network.timeout` / `network.rate_limit` /
-/// `service.unavailable`). See `docs/guides/http-status-error-mapping.md`.
+/// # Errors
+/// - `CoreError::Analysis` (wire: `provider.analysis_failed`) for
+///   provider-side failures: LLM returned bad JSON, empty body,
+///   non-parseable intent, schema-violating suggestion fields. This
+///   is also the default return from `summarize_text` when the
+///   adapter does not override it.
+/// - HTTP-layer failures follow the canonical semantic status mapping:
+///   `CoreError::Auth` (401/403), `CoreError::RequestTimeout` (408/504),
+///   `CoreError::RateLimit` (429), `CoreError::ServiceUnavailable` (502/503).
+///   See `docs/guides/http-status-error-mapping.md` for the full table.
+/// - `CoreError::Network` (wire: `network.connection_failed`) for
+///   pre-response transport failures (DNS, connection refused).
 #[async_trait]
 pub trait AnalysisProvider: Send + Sync {
     /// Analyze assembled context and return productivity suggestions.
