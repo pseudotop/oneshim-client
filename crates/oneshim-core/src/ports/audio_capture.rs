@@ -7,6 +7,14 @@ use crate::models::audio::{AudioBuffer, VadConfig};
 
 /// Port trait for microphone capture (Push-to-Talk + Voice Activity Detection).
 /// Implementations: `oneshim_audio::AudioCapture` (cpal).
+///
+/// # Errors
+/// - `CoreError::AudioCapture` (wire: `audio.capture_failed`) for all
+///   capture-side failures: device not available, cpal stream errors,
+///   PTT state conflicts, VAD not supported by this adapter.
+/// - Feature-gated adapters (e.g., `whisper` / `cloud-stt`) without the
+///   feature flag: `CoreError::ServiceUnavailable` (wire:
+///   `service.unavailable`) per iter-109 feature-gate pattern.
 pub trait AudioCapturePort: Send + Sync {
     /// Start capturing audio from the default input device (PTT mode).
     fn start(&self) -> Result<(), CoreError>;
