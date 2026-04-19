@@ -25,7 +25,8 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
+       (startsWith(github.event.workflow_run.head_branch, 'v') ||
+        github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: macos-latest
     timeout-minutes: 180
     env:
@@ -43,12 +44,24 @@ jobs:
           DISPATCH_TAG: ${{ inputs.tag }}
           DISPATCH_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_PARENT_EVENT: ${{ github.event.workflow_run.event }}
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            RELEASE_TAG="$WORKFLOW_HEAD_BRANCH"
+            if [[ "$WORKFLOW_PARENT_EVENT" == "workflow_dispatch" ]]; then
+              # Parent release.yml was manually dispatched; head_branch is
+              # the dispatching branch (typically main), not the tag.
+              # release.yml exposes the tag via `run-name: Release <TAG>`,
+              # which GitHub surfaces as `display_title`. Extract via regex.
+              RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$WORKFLOW_RUN_ID" \
+                --jq '.display_title // empty' \
+                | grep -oE 'v[0-9][^[:space:]]*' \
+                | head -n1)"
+            else
+              RELEASE_TAG="$WORKFLOW_HEAD_BRANCH"
+            fi
             SOURCE_RUN_ID="$WORKFLOW_RUN_ID"
           else
             RELEASE_TAG="${DISPATCH_TAG:-}"

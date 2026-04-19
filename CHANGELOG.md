@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `validate_integrity_policy` no longer requires `signature_public_key` to be non-empty; built-in `TRUSTED_PUBLIC_KEYS` array is authoritative. Format validation still applies when a non-empty override is provided.
 
+### Fixed
+
+- Release notarization now auto-triggers for manually-dispatched release runs. The `notarize-macos-release-assets` workflow's gate was widened to accept `workflow_run.event == 'workflow_dispatch'` (dispatched parents have `head_branch == main`, not a v-tag). `release.yml` gained a top-level `run-name: Release <tag>` so the tag surfaces in the parent run's `display_title`; the notarize bash extracts it via regex for the dispatched-parent branch. Tag-push release notarization behavior is unaffected; the parent Release workflow's run-name also changes to `Release <tag>` on all origins for consistency (a cosmetic Actions-UI improvement).
+
 ### Infrastructure
 
 - Spec + plan: `docs/reviews/2026-04-18-phase4-updater-hardening-{design,plan}.md`.
