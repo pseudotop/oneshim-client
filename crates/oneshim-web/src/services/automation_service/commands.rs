@@ -239,10 +239,21 @@ impl AutomationCommandService {
                 | CoreError::InvalidArguments { message: msg, .. },
             ) => Err(ApiError::BadRequest(msg)),
             Err(CoreError::ElementNotFound { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: msg,
-            }) if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") => {
+            // Iter-104 cascading fix from iter-100: IntentPlanner/IntentExecutor
+            // "not configured" errors switched from Internal.Generic to
+            // Config.Missing. Match both variants so the BadRequest routing
+            // still fires — a previously silent regression where these
+            // config-miss errors would have returned 500 instead of 400.
+            Err(
+                CoreError::Internal {
+                    code: _,
+                    message: msg,
+                }
+                | CoreError::Config {
+                    code: _,
+                    message: msg,
+                },
+            ) if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") => {
                 Err(ApiError::BadRequest(msg))
             }
             Err(e) => Err(ApiError::Internal(format!(
@@ -340,10 +351,21 @@ impl AutomationCommandService {
                 Err(CoreError::ElementNotFound { name: msg, .. }) => {
                     return Err(ApiError::BadRequest(msg));
                 }
-                Err(CoreError::Internal {
-                    code: _,
-                    message: msg,
-                }) if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") => {
+                // Iter-104 cascading fix from iter-100 (same as line 245-256
+                // above). Post-iter-100, "IntentExecutor/IntentPlanner not
+                // configured" emits Config.Missing, not Internal.Generic.
+                // Accept both variants on the substring guard to keep the
+                // BadRequest routing intact.
+                Err(
+                    CoreError::Internal {
+                        code: _,
+                        message: msg,
+                    }
+                    | CoreError::Config {
+                        code: _,
+                        message: msg,
+                    },
+                ) if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") => {
                     return Err(ApiError::BadRequest(msg));
                 }
                 Err(e) => {
