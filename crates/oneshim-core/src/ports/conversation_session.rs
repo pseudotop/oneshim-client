@@ -20,8 +20,16 @@ pub trait ConversationSession: Send + Sync {
     /// Send a message with optional attachments, receive streaming response.
     ///
     /// # Errors
-    /// Returns `CoreError::Internal` if the provider subprocess or connection
-    /// fails, `CoreError::Network` on HTTP/streaming errors.
+    /// Routed through ADR-019 wire codes:
+    /// - Subprocess CLI returning an empty body → `CoreError::Analysis`
+    ///   (wire: `provider.analysis_failed`; iter-106 re-route from
+    ///   Internal).
+    /// - HTTP streaming errors → canonical semantic HTTP status mapping
+    ///   (wire: `auth.failed` / `network.timeout` / `network.rate_limit` /
+    ///   `service.unavailable` / `provider.analysis_failed`). See
+    ///   `docs/guides/http-status-error-mapping.md`.
+    /// - True intra-process failures (tokio JoinError, lock poisoning,
+    ///   pipe setup) remain `CoreError::Internal` (wire: `internal.generic`).
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError>;
 
     /// Current session info (synchronous — returns locally held state).
