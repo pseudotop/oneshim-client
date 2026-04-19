@@ -213,9 +213,10 @@ impl SessionManagerImpl {
                 self.emit_state_change(session_id, managed.state, SessionState::Terminated, reason);
                 Ok(())
             }
-            None => Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: format!("session not found: {session_id}"),
+            None => Err(CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: "session".to_string(),
+                id: session_id.to_string(),
             }),
         }
     }
@@ -277,9 +278,10 @@ impl SessionManager for SessionManagerImpl {
         sessions
             .get(session_id)
             .map(|m| m.session.clone())
-            .ok_or_else(|| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: format!("session not found: {session_id}"),
+            .ok_or_else(|| CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: "session".to_string(),
+                id: session_id.to_string(),
             })
     }
 

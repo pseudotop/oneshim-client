@@ -74,9 +74,10 @@ impl SessionManagerImpl {
         let mut sessions = self.sessions.write().await;
         let managed = sessions
             .get_mut(session_id)
-            .ok_or_else(|| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: format!("session not found: {session_id}"),
+            .ok_or_else(|| CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: "session".to_string(),
+                id: session_id.to_string(),
             })?;
 
         if managed.retry_count >= self.config.max_retries {
