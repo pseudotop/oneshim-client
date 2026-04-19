@@ -189,14 +189,24 @@ impl HealthProbe {
     /// that path (conservative undercount by 1 in the extreme case, vs.
     /// the unbounded race the single-file approach permitted).
     fn record_boot_attempt(&self) -> std::io::Result<()> {
-        let path = self.boot_count_pid_path(std::process::id());
+        let pid = std::process::id();
+        let path = self.boot_count_pid_path(pid);
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&path)
         {
             Ok(_) => Ok(()),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                // PID reuse within the staleness window (< 24h). Rare but
+                // observable on long-lived VMs / fork-heavy systems. Log a
+                // diagnostic so the conservative-undercount behavior is
+                // field-observable rather than silent.
+                tracing::warn!(
+                    "health probe: PID {pid} boot-marker already exists — possible PID reuse within staleness window"
+                );
+                Ok(())
+            }
             Err(err) => Err(err),
         }
     }
@@ -739,8 +749,14 @@ mod tests {
     fn legacy_single_file_removed_by_startup_migration() {
         // A pre-per-PID build left `.boot_count_0.5.0` behind with the
         // single-file format. The current probe sees the pending-install
-        // marker, migrates by deleting the legacy file, and records a fresh
-        // per-PID boot attempt.
+        // marker, migrates by deleting the legacy file (DROPPING the
+        // legacy count — not reading it), and records a fresh per-PID
+        // boot attempt.
+        //
+        // Seed count=99 (well above threshold=2) so this test would FAIL
+        // with RollbackRequired if migration mistakenly read the legacy
+        // count. Startup returning Normal proves the legacy value was
+        // discarded, not parsed.
         let dir = tempdir().unwrap();
         let backup = dir.path().join("oneshim.rollback.1");
         std::fs::write(&backup, b"backup-bytes").unwrap();
@@ -751,18 +767,22 @@ mod tests {
             "0.4.39",
             &backup,
         );
-        // Legacy single-file with count=1 (below threshold).
-        write_boot_count(dir.path(), "0.5.0", 1);
+        // Legacy single-file with count=99 (would trigger rollback if read).
+        write_boot_count(dir.path(), "0.5.0", 99);
 
         let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into());
-        assert_eq!(probe.check_startup_state(), StartupAction::Normal);
+        assert_eq!(
+            probe.check_startup_state(),
+            StartupAction::Normal,
+            "migration must discard the legacy count, not parse it"
+        );
 
-        // Legacy file removed; migration drops the legacy count.
+        // Legacy file removed; migration dropped the legacy count.
         assert!(
             !probe.legacy_boot_count_path().exists(),
             "legacy single-file must be removed during migration"
         );
-        // New per-PID marker for THIS process is in place.
+        // New per-PID marker for THIS process is in place (fresh count=1).
         assert_eq!(
             probe.boot_count().unwrap(),
             1,
