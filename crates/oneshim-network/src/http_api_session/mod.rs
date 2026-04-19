@@ -129,7 +129,10 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })?;
 
         match shape {
             ProviderRequestShape::AnthropicMessages
@@ -170,9 +173,10 @@ impl HttpApiSession {
                 options.response_format,
                 options.tools,
             )),
-            _ => Err(CoreError::Internal(format!(
-                "unsupported request shape for HTTP API session: {shape:?}"
-            ))),
+            _ => Err(CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("unsupported request shape for HTTP API session: {shape:?}"),
+            }),
         }
     }
 
@@ -186,7 +190,10 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })?;
 
         let builder = match auth_scheme {
             ProviderAuthScheme::None => builder,
@@ -205,10 +212,12 @@ impl HttpApiSession {
                 builder.header("Authorization", format!("Bearer {}", token))
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                return Err(CoreError::Internal(
-                    "AWS Signature V4 authentication is not yet supported for API sessions"
-                        .to_string(),
-                ));
+                return Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message:
+                        "AWS Signature V4 authentication is not yet supported for API sessions"
+                            .to_string(),
+                });
             }
         };
 
@@ -301,7 +310,10 @@ impl ConversationSession for HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })?;
 
         let user_msg = prepare_chat_message(message, &shape);
 
@@ -339,7 +351,10 @@ impl ConversationSession for HttpApiSession {
 
         let response = builder.send().await.map_err(|e| {
             *self.state.lock() = SessionState::Failed;
-            CoreError::Network(format!("HTTP API session request failed: {e}"))
+            CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("HTTP API session request failed: {e}"),
+            }
         })?;
 
         let status = response.status();
@@ -349,10 +364,13 @@ impl ConversationSession for HttpApiSession {
                 .await
                 .unwrap_or_else(|_| "failed to read error body".to_string());
             *self.state.lock() = SessionState::Failed;
-            return Err(CoreError::Network(format!(
-                "HTTP API error ({status}): {}",
-                body.chars().take(300).collect::<String>()
-            )));
+            return Err(CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!(
+                    "HTTP API error ({status}): {}",
+                    body.chars().take(300).collect::<String>()
+                ),
+            });
         }
 
         let history = self.history.clone();
@@ -437,7 +455,7 @@ impl ConversationSession for HttpApiSession {
                         if !accumulated.is_empty() {
                             save_assistant_response(&history, &accumulated, max_turns).await;
                         }
-                        Err(CoreError::Network(format!("SSE stream error: {e}")))?;
+                        Err(CoreError::NetworkV2 { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("SSE stream error: {e}") })?;
                     }
                 }
             }

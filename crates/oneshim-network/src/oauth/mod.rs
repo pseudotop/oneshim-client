@@ -71,7 +71,8 @@ impl OAuthClient {
     fn get_provider(&self, provider_id: &str) -> Result<&OAuthProviderConfig, CoreError> {
         self.providers
             .get(provider_id)
-            .ok_or_else(|| CoreError::OAuthError {
+            .ok_or_else(|| CoreError::OAuthErrorV2 {
+                code: oneshim_core::error_codes::OAuthCode::Failed,
                 provider: provider_id.into(),
                 message: "unknown OAuth provider".into(),
             })
@@ -153,7 +154,8 @@ impl OAuthPort for OAuthClient {
 
         // Check port availability first
         if !callback_server::check_port_available(config.callback_port).await {
-            return Err(CoreError::OAuthError {
+            return Err(CoreError::OAuthErrorV2 {
+                code: oneshim_core::error_codes::OAuthCode::Failed,
                 provider: provider_id.into(),
                 message: format!(
                     "port {} is already in use (is Codex CLI running?). \
@@ -169,7 +171,8 @@ impl OAuthPort for OAuthClient {
 
         let auth_url = config
             .authorization_url(&state, &pkce.challenge)
-            .map_err(|e| CoreError::OAuthError {
+            .map_err(|e| CoreError::OAuthErrorV2 {
+                code: oneshim_core::error_codes::OAuthCode::Failed,
                 provider: provider_id.into(),
                 message: format!("invalid authorization endpoint URL: {e}"),
             })?;
@@ -262,7 +265,8 @@ impl OAuthPort for OAuthClient {
         let status = flows
             .get(flow_id)
             .map(|f| f.status.clone())
-            .ok_or_else(|| CoreError::OAuthError {
+            .ok_or_else(|| CoreError::OAuthErrorV2 {
+                code: oneshim_core::error_codes::OAuthCode::Failed,
                 provider: "unknown".into(),
                 message: format!("flow {flow_id} not found"),
             })?;
@@ -466,7 +470,12 @@ impl OAuthPort for OAuthClient {
                     expires_at: new_expires,
                 })
             }
-            Err(CoreError::OAuthRefreshError { kind, message, .. }) => {
+            Err(CoreError::OAuthRefreshErrorV2 {
+                code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
+                kind,
+                message,
+                ..
+            }) => {
                 if kind.is_terminal() {
                     warn!("token refresh terminal failure for {provider_id}: [{kind:?}] {message}");
                     Ok(RefreshResult::ReauthRequired {

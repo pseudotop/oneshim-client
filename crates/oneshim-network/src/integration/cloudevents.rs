@@ -94,7 +94,8 @@ pub fn prompt_from_cloudevent(
     event: IntegrationCloudEvent<ProactivePrompt>,
 ) -> Result<ProactivePrompt, CoreError> {
     if event.event_type != PROMPT_EVENT_TYPE {
-        return Err(CoreError::Validation {
+        return Err(CoreError::ValidationV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidField,
             field: "integration.prompt.event_type".to_string(),
             message: format!("unsupported prompt event type: {}", event.event_type),
         });

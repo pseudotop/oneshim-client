@@ -177,24 +177,34 @@ impl LanPeerServer {
             // Bind a TcpListener first to discover the actual port (important
             // when the requested port is 0), then hand the std listener to
             // axum-server for TLS wrapping.
-            let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-                CoreError::Internal(format!("failed to bind LAN server on {addr}: {e}"))
+            let listener =
+                tokio::net::TcpListener::bind(addr)
+                    .await
+                    .map_err(|e| CoreError::InternalV2 {
+                        code: oneshim_core::error_codes::InternalCode::Generic,
+                        message: format!("failed to bind LAN server on {addr}: {e}"),
+                    })?;
+            let actual_addr = listener.local_addr().map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("failed to get local addr: {e}"),
             })?;
-            let actual_addr = listener
-                .local_addr()
-                .map_err(|e| CoreError::Internal(format!("failed to get local addr: {e}")))?;
             let bound_port = actual_addr.port();
 
             // Convert to std listener for axum-server
-            let std_listener = listener
-                .into_std()
-                .map_err(|e| CoreError::Internal(format!("failed to convert listener: {e}")))?;
+            let std_listener = listener.into_std().map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("failed to convert listener: {e}"),
+            })?;
 
             let axum_handle = axum_server::Handle::new();
             let shutdown_handle = axum_handle.clone();
 
-            let tls_server = axum_server::from_tcp_rustls(std_listener, config)
-                .map_err(|e| CoreError::Internal(format!("TLS server init: {e}")))?;
+            let tls_server = axum_server::from_tcp_rustls(std_listener, config).map_err(|e| {
+                CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("TLS server init: {e}"),
+                }
+            })?;
 
             let handle = tokio::task::spawn(async move {
                 // Shutdown listener: wait for the oneshot then trigger graceful shutdown
@@ -219,13 +229,20 @@ impl LanPeerServer {
             bound_port
         } else {
             // Plain HTTP fallback
-            let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-                CoreError::Internal(format!("failed to bind LAN server on {addr}: {e}"))
-            })?;
+            let listener =
+                tokio::net::TcpListener::bind(addr)
+                    .await
+                    .map_err(|e| CoreError::InternalV2 {
+                        code: oneshim_core::error_codes::InternalCode::Generic,
+                        message: format!("failed to bind LAN server on {addr}: {e}"),
+                    })?;
 
             let actual_port = listener
                 .local_addr()
-                .map_err(|e| CoreError::Internal(format!("failed to get local addr: {e}")))?
+                .map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("failed to get local addr: {e}"),
+                })?
                 .port();
 
             let handle = tokio::task::spawn(async move {

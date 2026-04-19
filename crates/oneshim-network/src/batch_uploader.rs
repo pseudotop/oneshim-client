@@ -403,7 +403,10 @@ mod tests {
         }
         async fn upload_batch(&self, _batch: &EventBatch) -> Result<(), CoreError> {
             if self.should_fail {
-                Err(CoreError::Internal("mock failure".to_string()))
+                Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "mock failure".to_string(),
+                })
             } else {
                 Ok(())
             }
@@ -525,7 +528,10 @@ mod tests {
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                 + 1;
             if count <= self.fail_until {
-                Err(CoreError::Internal("Temporary failure".to_string()))
+                Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "Temporary failure".to_string(),
+                })
             } else {
                 Ok(())
             }

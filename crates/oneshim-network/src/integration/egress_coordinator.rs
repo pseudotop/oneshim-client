@@ -52,9 +52,10 @@ impl IntegrationEgressCoordinator {
         });
 
         if let Some(scope) = missing_scope {
-            return Err(CoreError::Auth(format!(
-                "integration session is missing required scope: {scope:?}"
-            )));
+            return Err(CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!("integration session is missing required scope: {scope:?}"),
+            });
         }
 
         Ok(())
@@ -73,9 +74,12 @@ impl IntegrationEgressCoordinator {
             .iter()
             .find(|queue_id| !sent_ids.contains(queue_id.as_str()))
         {
-            return Err(CoreError::Internal(format!(
-                "integration egress transport acknowledged unknown queue id: {unknown_id}"
-            )));
+            return Err(CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!(
+                    "integration egress transport acknowledged unknown queue id: {unknown_id}"
+                ),
+            });
         }
 
         Ok(response.acknowledged_queue_ids.clone())
@@ -106,7 +110,10 @@ impl IntegrationEgressPort for IntegrationEgressCoordinator {
 
     async fn flush(&self) -> Result<usize, CoreError> {
         let session = self.session_port.current_session().await?.ok_or_else(|| {
-            CoreError::ServiceUnavailable("integration session is not connected".to_string())
+            CoreError::ServiceUnavailableV2 {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: "integration session is not connected".to_string(),
+            }
         })?;
 
         if !matches!(
@@ -114,9 +121,10 @@ impl IntegrationEgressPort for IntegrationEgressCoordinator {
             IntegrationSessionStatus::Connected | IntegrationSessionStatus::Degraded
         ) || session.session_id.is_empty()
         {
-            return Err(CoreError::ServiceUnavailable(
-                "integration session is not ready for outbound egress".to_string(),
-            ));
+            return Err(CoreError::ServiceUnavailableV2 {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: "integration session is not ready for outbound egress".to_string(),
+            });
         }
 
         let items = self.outbox.list_pending(self.max_batch_size).await?;
@@ -182,7 +190,10 @@ mod tests {
                 .lock()
                 .await
                 .clone()
-                .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))
+                .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "no session".to_string(),
+                })
         }
 
         async fn current_session(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
@@ -194,7 +205,10 @@ mod tests {
                 .lock()
                 .await
                 .clone()
-                .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))
+                .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "no session".to_string(),
+                })
         }
 
         async fn store_ack_cursor(
@@ -205,9 +219,13 @@ mod tests {
             let mut guard = self.state.lock().await;
             let state = guard
                 .as_mut()
-                .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))?;
+                .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "no session".to_string(),
+                })?;
             if state.session_id != session_id {
-                return Err(CoreError::NotFound {
+                return Err(CoreError::NotFoundV2 {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 });
@@ -448,7 +466,7 @@ mod tests {
         );
 
         let err = coordinator.flush().await.expect_err("flush should fail");
-        assert!(matches!(err, CoreError::ServiceUnavailable(_)));
+        assert!(matches!(err, CoreError::ServiceUnavailableV2 { .. }));
     }
 
     #[tokio::test]
@@ -511,7 +529,7 @@ mod tests {
         );
 
         let err = coordinator.flush().await.expect_err("flush should fail");
-        assert!(matches!(err, CoreError::Auth(_)));
+        assert!(matches!(err, CoreError::AuthV2 { .. }));
         assert_eq!(outbox.list_pending(10).await.unwrap().len(), 1);
     }
 }

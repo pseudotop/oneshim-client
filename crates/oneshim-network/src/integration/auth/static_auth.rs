@@ -50,9 +50,10 @@ impl IntegrationAuthPort for StaticIntegrationAuthPort {
         _requested_scopes: &[IntegrationCapabilityScope],
         _resource_indicator: Option<&str>,
     ) -> Result<IntegrationDeviceAuthorizationFlow, CoreError> {
-        Err(CoreError::InvalidArguments(
-            "static integration auth does not support device authorization".to_string(),
-        ))
+        Err(CoreError::InvalidArgumentsV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "static integration auth does not support device authorization".to_string(),
+        })
     }
 
     async fn poll_device_authorization(
@@ -63,15 +64,17 @@ impl IntegrationAuthPort for StaticIntegrationAuthPort {
     }
 
     async fn cancel_device_authorization(&self, _flow_id: &str) -> Result<(), CoreError> {
-        Err(CoreError::InvalidArguments(
-            "static integration auth does not support device authorization".to_string(),
-        ))
+        Err(CoreError::InvalidArgumentsV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "static integration auth does not support device authorization".to_string(),
+        })
     }
 
     async fn reset_auth_state(&self) -> Result<(), CoreError> {
-        Err(CoreError::InvalidArguments(
-            "static integration auth does not support auth reset".to_string(),
-        ))
+        Err(CoreError::InvalidArgumentsV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "static integration auth does not support auth reset".to_string(),
+        })
     }
 }
 
@@ -112,11 +115,12 @@ impl IntegrationAuthPort for EnvIntegrationAuthPort {
         _requested_scopes: &[IntegrationCapabilityScope],
         resource_indicator: Option<&str>,
     ) -> Result<IntegrationAuthContext, CoreError> {
-        let access_token = self.read_token().ok_or_else(|| {
-            CoreError::Auth(format!(
+        let access_token = self.read_token().ok_or_else(|| CoreError::AuthV2 {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: format!(
                 "integration access token env var `{}` is not configured.",
                 self.token_env_var
-            ))
+            ),
         })?;
 
         Ok(IntegrationAuthContext {
@@ -160,9 +164,10 @@ impl IntegrationAuthPort for EnvIntegrationAuthPort {
         _requested_scopes: &[IntegrationCapabilityScope],
         _resource_indicator: Option<&str>,
     ) -> Result<IntegrationDeviceAuthorizationFlow, CoreError> {
-        Err(CoreError::InvalidArguments(
-            "env-token integration auth does not support device authorization".to_string(),
-        ))
+        Err(CoreError::InvalidArgumentsV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "env-token integration auth does not support device authorization".to_string(),
+        })
     }
 
     async fn poll_device_authorization(
@@ -173,14 +178,16 @@ impl IntegrationAuthPort for EnvIntegrationAuthPort {
     }
 
     async fn cancel_device_authorization(&self, _flow_id: &str) -> Result<(), CoreError> {
-        Err(CoreError::InvalidArguments(
-            "env-token integration auth does not support device authorization".to_string(),
-        ))
+        Err(CoreError::InvalidArgumentsV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "env-token integration auth does not support device authorization".to_string(),
+        })
     }
 
     async fn reset_auth_state(&self) -> Result<(), CoreError> {
-        Err(CoreError::InvalidArguments(
-            "env-token integration auth does not support auth reset".to_string(),
-        ))
+        Err(CoreError::InvalidArgumentsV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "env-token integration auth does not support auth reset".to_string(),
+        })
     }
 }

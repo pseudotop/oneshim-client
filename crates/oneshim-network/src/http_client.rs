@@ -634,7 +634,13 @@ mod tests {
         let result = client.upload_context(&upload).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, CoreError::RateLimit { .. }));
+        assert!(matches!(
+            err,
+            CoreError::RateLimitV2 {
+                code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                ..
+            }
+        ));
         mock.assert_async().await;
     }
 
@@ -655,7 +661,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            matches!(err, CoreError::ServiceUnavailable(_)),
+            matches!(err, CoreError::ServiceUnavailableV2 { .. }),
             "err: {err:?}"
         );
         mock.assert_async().await;

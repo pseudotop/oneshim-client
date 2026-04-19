@@ -73,7 +73,10 @@ impl RemoteEmbeddingProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| CoreError::Network(format!("Embedding API request failed: {e}")))?;
+            .map_err(|e| CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("Embedding API request failed: {e}"),
+            })?;
 
         let status = response.status();
         if !status.is_success() {
@@ -81,15 +84,17 @@ impl RemoteEmbeddingProvider {
                 .text()
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
-            return Err(CoreError::Network(format!(
-                "Embedding API returned {status}: {error_body}"
-            )));
+            return Err(CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("Embedding API returned {status}: {error_body}"),
+            });
         }
 
-        let parsed: EmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| CoreError::Network(format!("Failed to parse embedding response: {e}")))?;
+        let parsed: EmbeddingResponse =
+            response.json().await.map_err(|e| CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("Failed to parse embedding response: {e}"),
+            })?;
 
         Ok(parsed.data.into_iter().map(|d| d.embedding).collect())
     }
@@ -100,9 +105,10 @@ impl EmbeddingProvider for RemoteEmbeddingProvider {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, CoreError> {
         let texts = vec![text.to_string()];
         let mut results = self.request_embeddings(&texts).await?;
-        results
-            .pop()
-            .ok_or_else(|| CoreError::Network("Embedding API returned empty data".to_string()))
+        results.pop().ok_or_else(|| CoreError::NetworkV2 {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: "Embedding API returned empty data".to_string(),
+        })
     }
 
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {

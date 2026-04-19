@@ -42,11 +42,18 @@ impl Compressor for AdaptiveCompressor {
                 let mut compressed = Vec::new();
                 encoder
                     .read_to_end(&mut compressed)
-                    .map_err(|e| CoreError::Internal(format!("Gzip compression failed: {e}")))?;
+                    .map_err(|e| CoreError::InternalV2 {
+                        code: oneshim_core::error_codes::InternalCode::Generic,
+                        message: format!("Gzip compression failed: {e}"),
+                    })?;
                 Ok(compressed)
             }
-            CompressionAlgorithm::Zstd => zstd::encode_all(data, 3)
-                .map_err(|e| CoreError::Internal(format!("Zstd compression failed: {e}"))),
+            CompressionAlgorithm::Zstd => {
+                zstd::encode_all(data, 3).map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("Zstd compression failed: {e}"),
+                })
+            }
             CompressionAlgorithm::Lz4 => Ok(lz4_flex::compress_prepend_size(data)),
         }
     }
@@ -62,13 +69,24 @@ impl Compressor for AdaptiveCompressor {
                 let mut decompressed = Vec::new();
                 decoder
                     .read_to_end(&mut decompressed)
-                    .map_err(|e| CoreError::Internal(format!("Gzip decompression failed: {e}")))?;
+                    .map_err(|e| CoreError::InternalV2 {
+                        code: oneshim_core::error_codes::InternalCode::Generic,
+                        message: format!("Gzip decompression failed: {e}"),
+                    })?;
                 Ok(decompressed)
             }
-            CompressionAlgorithm::Zstd => zstd::decode_all(data)
-                .map_err(|e| CoreError::Internal(format!("Zstd decompression failed: {e}"))),
-            CompressionAlgorithm::Lz4 => lz4_flex::decompress_size_prepended(data)
-                .map_err(|e| CoreError::Internal(format!("Lz4 decompression failed: {e}"))),
+            CompressionAlgorithm::Zstd => {
+                zstd::decode_all(data).map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("Zstd decompression failed: {e}"),
+                })
+            }
+            CompressionAlgorithm::Lz4 => {
+                lz4_flex::decompress_size_prepended(data).map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("Lz4 decompression failed: {e}"),
+                })
+            }
         }
     }
 }

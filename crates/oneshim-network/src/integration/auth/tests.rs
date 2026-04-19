@@ -475,7 +475,13 @@ async fn cancel_device_authorization_requires_existing_flow() {
         .cancel_device_authorization("missing-flow")
         .await
         .unwrap_err();
-    assert!(matches!(error, CoreError::NotFound { .. }));
+    assert!(matches!(
+        error,
+        CoreError::NotFoundV2 {
+            code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+            ..
+        }
+    ));
 }
 
 #[tokio::test]

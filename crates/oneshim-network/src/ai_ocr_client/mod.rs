@@ -65,7 +65,10 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })
     }
     fn ocr_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
         provider_specs::resolved_auth_scheme(
@@ -73,7 +76,10 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })
     }
     fn ensure_ocr_parameters_supported(&self, parameters: &[&str]) -> Result<(), CoreError> {
         provider_specs::validate_supported_parameters(
@@ -82,7 +88,10 @@ impl RemoteOcrProvider {
             provider_specs::SurfaceCapabilityKind::Ocr,
             parameters,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })
     }
     async fn ensure_runtime_ocr_model_ready(&self, model: &str) -> Result<(), CoreError> {
         if model.trim().is_empty()
@@ -92,7 +101,7 @@ impl RemoteOcrProvider {
         {
             return Ok(());
         }
-        match ollama::probe_ollama_model_supports_ocr(&self.http_client, &self.endpoint, model).await { Ok(Some(true)) | Ok(None) => Ok(()), Ok(Some(false)) => Err(CoreError::Config(format!("Selected Ollama model '{model}' does not advertise image support. Choose a multimodal model such as 'qwen3-vl:8b' or 'gemma3:4b'."))), Err(error) => { warn!(endpoint = %self.endpoint, model = %model, error = %error, "Failed to verify Ollama OCR model capability; proceeding with request."); Ok(()) } }
+        match ollama::probe_ollama_model_supports_ocr(&self.http_client, &self.endpoint, model).await { Ok(Some(true)) | Ok(None) => Ok(()), Ok(Some(false)) => Err(CoreError::ConfigV2 { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!("Selected Ollama model '{model}' does not advertise image support. Choose a multimodal model such as 'qwen3-vl:8b' or 'gemma3:4b'.") }), Err(error) => { warn!(endpoint = %self.endpoint, model = %model, error = %error, "Failed to verify Ollama OCR model capability; proceeding with request."); Ok(()) } }
     }
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, crate::error::NetworkError> {
         use crate::error::NetworkError;
@@ -371,10 +380,12 @@ impl OcrProvider for RemoteOcrProvider {
                 ])?;
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::Internal(
-                    "Bedrock Converse request shape is not yet supported for OCR extraction"
-                        .to_string(),
-                ));
+                return Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message:
+                        "Bedrock Converse request shape is not yet supported for OCR extraction"
+                            .to_string(),
+                });
             }
         }
         let strategy = OcrProviderStrategy::try_from(request_shape)?;
@@ -395,22 +406,25 @@ impl OcrProvider for RemoteOcrProvider {
         if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("OCR API request failed: {}", e)))?;
+        let response = builder.send().await.map_err(|e| CoreError::NetworkV2 {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("OCR API request failed: {}", e),
+        })?;
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("OCR API response read failure: {}", e)))?;
+        let body = response.text().await.map_err(|e| CoreError::NetworkV2 {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("OCR API response read failure: {}", e),
+        })?;
         if !status.is_success() {
             warn!(status = %status, "OCR API error response");
-            return Err(CoreError::OcrError(format!(
-                "OCR API error ({}): {}",
-                status,
-                body.chars().take(200).collect::<String>()
-            )));
+            return Err(CoreError::OcrErrorV2 {
+                code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                message: format!(
+                    "OCR API error ({}): {}",
+                    status,
+                    body.chars().take(200).collect::<String>()
+                ),
+            });
         }
         let results = strategy.parse_response(&body)?;
         debug!(count = results.len(), "OCR received");

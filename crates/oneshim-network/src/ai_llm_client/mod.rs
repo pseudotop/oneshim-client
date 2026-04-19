@@ -288,7 +288,10 @@ impl RemoteLlmProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })
     }
     fn uses_responses_api(&self) -> bool {
         matches!(
@@ -302,7 +305,10 @@ impl RemoteLlmProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })
     }
     fn ensure_llm_parameters_supported(&self, parameters: &[&str]) -> Result<(), CoreError> {
         provider_specs::validate_supported_parameters(
@@ -311,7 +317,10 @@ impl RemoteLlmProvider {
             provider_specs::SurfaceCapabilityKind::Llm,
             parameters,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        })
     }
 }
 #[async_trait]

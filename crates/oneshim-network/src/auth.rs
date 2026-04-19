@@ -121,18 +121,24 @@ impl TokenManager {
             .json(&body)
             .send()
             .await
-            .map_err(|e| CoreError::Auth(format!("login request failure: {e}")))?;
+            .map_err(|e| CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!("login request failure: {e}"),
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(CoreError::Auth(format!("login failure ({status}): {text}")));
+            return Err(CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!("login failure ({status}): {text}"),
+            });
         }
 
-        let token_resp: TokenResponse = resp
-            .json()
-            .await
-            .map_err(|e| CoreError::Auth(format!("Token parsing failed: {e}")))?;
+        let token_resp: TokenResponse = resp.json().await.map_err(|e| CoreError::AuthV2 {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: format!("Token parsing failed: {e}"),
+        })?;
 
         let expires_at = Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
 
@@ -157,14 +163,21 @@ impl TokenManager {
             state.clone()
         };
 
-        let current = current.ok_or_else(|| CoreError::Auth("Not authenticated".to_string()))?;
-        let refresh_token = current
-            .refresh_token
-            .ok_or_else(|| CoreError::Auth("Refresh token is missing".to_string()))?;
+        let current = current.ok_or_else(|| CoreError::AuthV2 {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: "Not authenticated".to_string(),
+        })?;
+        let refresh_token = current.refresh_token.ok_or_else(|| CoreError::AuthV2 {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: "Refresh token is missing".to_string(),
+        })?;
 
         let url = format!("{}/api/v1/auth/tokens/refresh", self.base_url);
 
-        let mut last_err = CoreError::Auth("token refresh failed".to_string());
+        let mut last_err = CoreError::AuthV2 {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: "token refresh failed".to_string(),
+        };
 
         for attempt in 0..=MAX_RETRIES {
             let body = serde_json::json!({
@@ -178,9 +191,11 @@ impl TokenManager {
                     let status = resp.status();
 
                     if status.is_success() {
-                        let token_resp: TokenResponse = resp.json().await.map_err(|e| {
-                            CoreError::Auth(format!("refresh Token parsing failed: {e}"))
-                        })?;
+                        let token_resp: TokenResponse =
+                            resp.json().await.map_err(|e| CoreError::AuthV2 {
+                                code: oneshim_core::error_codes::AuthCode::Failed,
+                                message: format!("refresh Token parsing failed: {e}"),
+                            })?;
 
                         let expires_at =
                             Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
@@ -213,7 +228,10 @@ impl TokenManager {
                     let is_retryable = status.is_server_error() || status.as_u16() == 429;
 
                     let text = resp.text().await.unwrap_or_default();
-                    last_err = CoreError::Auth(format!("token refresh failure ({status}): {text}"));
+                    last_err = CoreError::AuthV2 {
+                        code: oneshim_core::error_codes::AuthCode::Failed,
+                        message: format!("token refresh failure ({status}): {text}"),
+                    };
 
                     if !is_retryable {
                         return Err(last_err);
@@ -221,7 +239,10 @@ impl TokenManager {
                 }
                 Err(e) => {
                     // Network errors are retryable
-                    last_err = CoreError::Auth(format!("token refresh request failure: {e}"));
+                    last_err = CoreError::AuthV2 {
+                        code: oneshim_core::error_codes::AuthCode::Failed,
+                        message: format!("token refresh request failure: {e}"),
+                    };
                 }
             }
 
@@ -245,14 +266,22 @@ impl TokenManager {
             let state = self.state.read().await;
             match &*state {
                 Some(s) => Utc::now() + Duration::minutes(5) >= s.expires_at,
-                None => return Err(CoreError::Auth("Not authenticated".to_string())),
+                None => {
+                    return Err(CoreError::AuthV2 {
+                        code: oneshim_core::error_codes::AuthCode::Failed,
+                        message: "Not authenticated".to_string(),
+                    })
+                }
             }
         };
 
         if needs_refresh {
             self.refresh().await.map_err(|e| {
                 warn!("token refresh failure: {e}");
-                CoreError::Auth(format!("Automatic token refresh failed: {e}"))
+                CoreError::AuthV2 {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message: format!("Automatic token refresh failed: {e}"),
+                }
             })?;
         }
 
@@ -260,7 +289,10 @@ impl TokenManager {
         state
             .as_ref()
             .map(|s| s.access_token.clone())
-            .ok_or_else(|| CoreError::Auth("Not authenticated".to_string()))
+            .ok_or_else(|| CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: "Not authenticated".to_string(),
+            })
     }
 
     pub async fn verify(&self) -> Result<bool, CoreError> {
@@ -273,7 +305,10 @@ impl TokenManager {
             .bearer_auth(&token)
             .send()
             .await
-            .map_err(|e| CoreError::Auth(format!("token validation request failure: {e}")))?;
+            .map_err(|e| CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!("token validation request failure: {e}"),
+            })?;
 
         Ok(resp.status().is_success())
     }

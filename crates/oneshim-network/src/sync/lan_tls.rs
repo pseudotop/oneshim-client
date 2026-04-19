@@ -17,8 +17,12 @@ use oneshim_core::error::CoreError;
 /// Returns (cert_pem, key_pem) as byte vectors.
 pub fn generate_self_signed_cert(device_id: &str) -> Result<(Vec<u8>, Vec<u8>), CoreError> {
     let subject_alt_name = format!("oneshim-sync-{device_id}");
-    let mut params = rcgen::CertificateParams::new(vec![subject_alt_name])
-        .map_err(|e| CoreError::Internal(format!("cert params: {e}")))?;
+    let mut params = rcgen::CertificateParams::new(vec![subject_alt_name]).map_err(|e| {
+        CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("cert params: {e}"),
+        }
+    })?;
     params.distinguished_name = rcgen::DistinguishedName::new();
     params.distinguished_name.push(
         rcgen::DnType::CommonName,
@@ -29,11 +33,16 @@ pub fn generate_self_signed_cert(device_id: &str) -> Result<(Vec<u8>, Vec<u8>), 
     let expiry_year = now.year() + 10;
     params.not_after = rcgen::date_time_ymd(expiry_year, now.month() as u8, now.day() as u8);
 
-    let key_pair = rcgen::KeyPair::generate()
-        .map_err(|e| CoreError::Internal(format!("key generation: {e}")))?;
+    let key_pair = rcgen::KeyPair::generate().map_err(|e| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("key generation: {e}"),
+    })?;
     let cert = params
         .self_signed(&key_pair)
-        .map_err(|e| CoreError::Internal(format!("self-sign: {e}")))?;
+        .map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("self-sign: {e}"),
+        })?;
 
     let cert_pem = cert.pem().into_bytes();
     let key_pem = key_pair.serialize_pem().into_bytes();
@@ -47,8 +56,10 @@ pub fn generate_self_signed_cert(device_id: &str) -> Result<(Vec<u8>, Vec<u8>), 
 /// Returns the hex-encoded fingerprint.
 pub fn compute_cert_fingerprint(cert_pem: &[u8]) -> Result<String, CoreError> {
     // Parse PEM to get DER bytes
-    let pem_str = std::str::from_utf8(cert_pem)
-        .map_err(|e| CoreError::Internal(format!("invalid PEM encoding: {e}")))?;
+    let pem_str = std::str::from_utf8(cert_pem).map_err(|e| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("invalid PEM encoding: {e}"),
+    })?;
 
     // Extract DER from PEM manually
     let der_bytes = extract_der_from_pem(pem_str)?;
@@ -76,14 +87,18 @@ fn extract_der_from_pem(pem_str: &str) -> Result<Vec<u8>, CoreError> {
     }
 
     if base64_content.is_empty() {
-        return Err(CoreError::Internal(
-            "no certificate data found in PEM".to_string(),
-        ));
+        return Err(CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "no certificate data found in PEM".to_string(),
+        });
     }
 
     base64::engine::general_purpose::STANDARD
         .decode(&base64_content)
-        .map_err(|e| CoreError::Internal(format!("base64 decode: {e}")))
+        .map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("base64 decode: {e}"),
+        })
 }
 
 /// Load an existing cert/key from disk, or generate + save a new pair.
@@ -97,10 +112,14 @@ pub fn load_or_generate_cert(
     let key_path = config_dir.join("sync_key.pem");
 
     if cert_path.exists() && key_path.exists() {
-        let cert_pem = std::fs::read(&cert_path)
-            .map_err(|e| CoreError::Internal(format!("read cert: {e}")))?;
-        let key_pem =
-            std::fs::read(&key_path).map_err(|e| CoreError::Internal(format!("read key: {e}")))?;
+        let cert_pem = std::fs::read(&cert_path).map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("read cert: {e}"),
+        })?;
+        let key_pem = std::fs::read(&key_path).map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("read key: {e}"),
+        })?;
         let fingerprint = compute_cert_fingerprint(&cert_pem)?;
         info!("loaded existing TLS cert (fingerprint: {fingerprint})");
         return Ok((cert_pem, key_pem, fingerprint));
@@ -109,20 +128,28 @@ pub fn load_or_generate_cert(
     let (cert_pem, key_pem) = generate_self_signed_cert(device_id)?;
     let fingerprint = compute_cert_fingerprint(&cert_pem)?;
 
-    std::fs::create_dir_all(config_dir)
-        .map_err(|e| CoreError::Internal(format!("create config dir: {e}")))?;
-    std::fs::write(&cert_path, &cert_pem)
-        .map_err(|e| CoreError::Internal(format!("write cert: {e}")))?;
-    std::fs::write(&key_path, &key_pem)
-        .map_err(|e| CoreError::Internal(format!("write key: {e}")))?;
+    std::fs::create_dir_all(config_dir).map_err(|e| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("create config dir: {e}"),
+    })?;
+    std::fs::write(&cert_path, &cert_pem).map_err(|e| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("write cert: {e}"),
+    })?;
+    std::fs::write(&key_path, &key_pem).map_err(|e| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("write key: {e}"),
+    })?;
 
     // Restrict private key file permissions to owner-only on Unix
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
-        std::fs::set_permissions(&key_path, perms)
-            .map_err(|e| CoreError::Internal(format!("set key permissions: {e}")))?;
+        std::fs::set_permissions(&key_path, perms).map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("set key permissions: {e}"),
+        })?;
     }
 
     info!("generated new TLS cert (fingerprint: {fingerprint})");

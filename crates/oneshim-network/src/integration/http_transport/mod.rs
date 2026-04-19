@@ -99,10 +99,9 @@ impl HttpsIntegrationTransportClient {
         let client = reqwest::Client::builder()
             .timeout(request_timeout)
             .build()
-            .map_err(|error| {
-                CoreError::Network(format!(
-                    "Failed to build integration transport HTTP client: {error}"
-                ))
+            .map_err(|error| CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("Failed to build integration transport HTTP client: {error}"),
             })?;
 
         Ok(Self {
@@ -148,7 +147,8 @@ impl HttpsIntegrationHttpShared {
         };
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&auth_value).map_err(|error| CoreError::Validation {
+            HeaderValue::from_str(&auth_value).map_err(|error| CoreError::ValidationV2 {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field: "integration.authorization".to_string(),
                 message: format!("invalid authorization header value: {error}"),
             })?,
@@ -156,19 +156,21 @@ impl HttpsIntegrationHttpShared {
 
         let maybe_proof = self.proof_factory.build_proof(auth, method, url).await?;
         if auth.scheme == IntegrationAuthScheme::DpopBearer {
-            let proof = maybe_proof.ok_or_else(|| {
-                CoreError::Auth(
-                    "DPoP auth scheme requires a request proof, but none was provided.".to_string(),
-                )
+            let proof = maybe_proof.ok_or_else(|| CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: "DPoP auth scheme requires a request proof, but none was provided."
+                    .to_string(),
             })?;
             let name = HeaderName::from_bytes(proof.header_name.as_bytes()).map_err(|error| {
-                CoreError::Validation {
+                CoreError::ValidationV2 {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.request_proof.header_name".to_string(),
                     message: format!("invalid proof header name: {error}"),
                 }
             })?;
             let value = HeaderValue::from_str(&proof.header_value).map_err(|error| {
-                CoreError::Validation {
+                CoreError::ValidationV2 {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.request_proof.header_value".to_string(),
                     message: format!("invalid proof header value: {error}"),
                 }
@@ -176,13 +178,15 @@ impl HttpsIntegrationHttpShared {
             headers.insert(name, value);
         } else if let Some(proof) = maybe_proof {
             let name = HeaderName::from_bytes(proof.header_name.as_bytes()).map_err(|error| {
-                CoreError::Validation {
+                CoreError::ValidationV2 {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.request_proof.header_name".to_string(),
                     message: format!("invalid proof header name: {error}"),
                 }
             })?;
             let value = HeaderValue::from_str(&proof.header_value).map_err(|error| {
-                CoreError::Validation {
+                CoreError::ValidationV2 {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.request_proof.header_value".to_string(),
                     message: format!("invalid proof header value: {error}"),
                 }
@@ -207,11 +211,15 @@ impl HttpsIntegrationHttpShared {
         }
         request.send().await.map_err(|error| {
             if error.is_timeout() {
-                CoreError::RequestTimeout {
+                CoreError::RequestTimeoutV2 {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
                     timeout_ms: self.request_timeout.as_millis() as u64,
                 }
             } else {
-                CoreError::Network(format!("integration transport request failed: {error}"))
+                CoreError::NetworkV2 {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("integration transport request failed: {error}"),
+                }
             }
         })
     }
@@ -233,14 +241,22 @@ impl HttpsIntegrationHttpShared {
             .unwrap_or_else(|_| String::from("<unreadable response body>"));
 
         match status.as_u16() {
-            401 | 403 => Err(CoreError::Auth(format!("{context}: {body}"))),
-            429 => Err(CoreError::RateLimit {
+            401 | 403 => Err(CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!("{context}: {body}"),
+            }),
+            429 => Err(CoreError::RateLimitV2 {
+                code: oneshim_core::error_codes::NetworkCode::RateLimit,
                 retry_after_secs: retry_after,
             }),
-            503 => Err(CoreError::ServiceUnavailable(body)),
-            _ => Err(CoreError::Network(format!(
-                "{context}: HTTP {status} {body}"
-            ))),
+            503 => Err(CoreError::ServiceUnavailableV2 {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: body,
+            }),
+            _ => Err(CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("{context}: HTTP {status} {body}"),
+            }),
         }
     }
 
@@ -256,7 +272,8 @@ impl HttpsIntegrationHttpShared {
             return Ok(());
         }
 
-        Err(CoreError::Validation {
+        Err(CoreError::ValidationV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidField,
             field: "integration.bootstrap.selected_transport".to_string(),
             message: format!(
                 "server selected unsupported transport: {:?}",
@@ -277,7 +294,8 @@ impl HttpsIntegrationHttpShared {
             return Ok(());
         }
 
-        Err(CoreError::Validation {
+        Err(CoreError::ValidationV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidField,
             field: "integration.bootstrap.selected_auth_scheme".to_string(),
             message: format!("server selected unsupported auth scheme: {:?}", auth_scheme),
         })
@@ -290,13 +308,15 @@ impl HttpsIntegrationHttpShared {
         let mut granted = Vec::with_capacity(response.granted_scopes.len());
         for raw_scope in &response.granted_scopes {
             let scope = IntegrationCapabilityScope::parse(raw_scope).ok_or_else(|| {
-                CoreError::Validation {
+                CoreError::ValidationV2 {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.bootstrap.granted_scopes".to_string(),
                     message: format!("unknown granted scope: {raw_scope}"),
                 }
             })?;
             if !request.requested_scopes.contains(&scope) {
-                return Err(CoreError::Validation {
+                return Err(CoreError::ValidationV2 {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.bootstrap.granted_scopes".to_string(),
                     message: format!("server granted an unexpected scope: {raw_scope}"),
                 });

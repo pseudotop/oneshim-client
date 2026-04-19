@@ -62,9 +62,10 @@ impl IntegrationAuthPort for StaticAuthPort {
         _resource_indicator: Option<&str>,
     ) -> Result<oneshim_core::models::integration::IntegrationDeviceAuthorizationFlow, CoreError>
     {
-        Err(CoreError::InvalidArguments(
-            "static auth port does not support device authorization".to_string(),
-        ))
+        Err(CoreError::InvalidArgumentsV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "static auth port does not support device authorization".to_string(),
+        })
     }
 
     async fn poll_device_authorization(
@@ -421,7 +422,11 @@ async fn connect_rejects_unexpected_granted_scope() {
     bootstrap.assert_async().await;
 
     match err {
-        CoreError::Validation { field, .. } => {
+        CoreError::ValidationV2 {
+            code: oneshim_core::error_codes::ValidationCode::InvalidField,
+            field,
+            ..
+        } => {
             assert_eq!(field, "integration.bootstrap.granted_scopes");
         }
         other => panic!("unexpected error: {other}"),

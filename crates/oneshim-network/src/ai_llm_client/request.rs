@@ -103,14 +103,18 @@ impl RemoteLlmProvider {
                 serde_json::json!({ "model": self.model, "max_tokens": 512, "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}] })
             }
             ProviderRequestShape::GoogleVisionAnnotate => {
-                return Err(CoreError::Internal(
-                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
-                ));
+                return Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "LLM transport shape resolved to OCR-only Google Vision Annotate"
+                        .to_string(),
+                });
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::Internal(
-                    "Bedrock Converse request shape is not yet supported for LLM chat".to_string(),
-                ));
+                return Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "Bedrock Converse request shape is not yet supported for LLM chat"
+                        .to_string(),
+                });
             }
         };
         Ok(body)
@@ -144,33 +148,41 @@ impl RemoteLlmProvider {
                 }
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                return Err(CoreError::Internal(
-                    "AWS Signature V4 authentication is not yet supported for LLM requests"
-                        .to_string(),
-                ));
+                return Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message:
+                        "AWS Signature V4 authentication is not yet supported for LLM requests"
+                            .to_string(),
+                });
             }
         }
         let response = builder.send().await.map_err(|e| {
             if let Some(ref flag) = self.last_request_ok {
                 flag.store(false, Ordering::Relaxed);
             }
-            CoreError::Network(format!("LLM API request failed: {}", e))
+            CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("LLM API request failed: {}", e),
+            }
         })?;
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
+        let body = response.text().await.map_err(|e| CoreError::NetworkV2 {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("LLM API response read failure: {}", e),
+        })?;
         if !status.is_success() {
             if let Some(ref flag) = self.last_request_ok {
                 flag.store(false, Ordering::Relaxed);
             }
             warn!(status = %status, "LLM API error response");
-            return Err(CoreError::Network(format!(
-                "LLM API error ({}): {}",
-                status,
-                body.chars().take(200).collect::<String>()
-            )));
+            return Err(CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!(
+                    "LLM API error ({}): {}",
+                    status,
+                    body.chars().take(200).collect::<String>()
+                ),
+            });
         }
         let action = match self.llm_request_shape()? {
             ProviderRequestShape::AnthropicMessages
@@ -182,15 +194,15 @@ impl RemoteLlmProvider {
             | ProviderRequestShape::OpenAiVisionChatCompletions
             | ProviderRequestShape::OpenAiResponses => parsers::parse_openai_response(&body)?,
             ProviderRequestShape::GoogleVisionAnnotate => {
-                return Err(CoreError::Internal(
-                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
-                ));
+                return Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "LLM transport shape resolved to OCR-only Google Vision Annotate"
+                        .to_string(),
+                });
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::Internal(
-                    "Bedrock Converse request shape is not yet supported for LLM response parsing"
-                        .to_string(),
-                ));
+                return Err(CoreError::InternalV2 { code: oneshim_core::error_codes::InternalCode::Generic, message: "Bedrock Converse request shape is not yet supported for LLM response parsing"
+                        .to_string() });
             }
         };
         if let Some(ref flag) = self.last_request_ok {

@@ -459,16 +459,20 @@ impl ConversationSession for LocalLlmSession {
             .await
             .map_err(|e| {
                 *self.state.lock() = SessionState::Failed;
-                CoreError::Network(format!("Ollama request failed: {e}"))
+                CoreError::NetworkV2 {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("Ollama request failed: {e}"),
+                }
             })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
             *self.state.lock() = SessionState::Failed;
-            return Err(CoreError::Network(format!(
-                "Ollama API error {status}: {body_text}"
-            )));
+            return Err(CoreError::NetworkV2 {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: format!("Ollama API error {status}: {body_text}"),
+            });
         }
 
         // Stream NDJSON lines from the response body.
@@ -490,7 +494,7 @@ impl ConversationSession for LocalLlmSession {
 
             while let Some(chunk_result) = byte_stream.next().await {
                 let bytes = chunk_result
-                    .map_err(|e| CoreError::Network(format!("stream read error: {e}")))?;
+                    .map_err(|e| CoreError::NetworkV2 { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("stream read error: {e}") })?;
                 let text = String::from_utf8_lossy(&bytes);
                 line_buffer.push_str(&text);
 

@@ -187,18 +187,21 @@ impl LanSyncTransport {
         peer_id: &str,
         resp: reqwest::Response,
     ) -> Result<Option<ChangeSet>, CoreError> {
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| CoreError::Network(format!("read pull body: {e}")))?;
+        let bytes = resp.bytes().await.map_err(|e| CoreError::NetworkV2 {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("read pull body: {e}"),
+        })?;
 
         if bytes.is_empty() {
             return Ok(None);
         }
 
         let plaintext = sync_crypto::decrypt(&self.passphrase, &bytes)?;
-        let changesets: Vec<ChangeSet> = serde_json::from_slice(&plaintext)
-            .map_err(|e| CoreError::Internal(format!("deserialize pull response: {e}")))?;
+        let changesets: Vec<ChangeSet> =
+            serde_json::from_slice(&plaintext).map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("deserialize pull response: {e}"),
+            })?;
 
         if changesets.is_empty() {
             return Ok(None);

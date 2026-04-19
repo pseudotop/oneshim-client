@@ -8,8 +8,11 @@ use super::RemoteOcrProvider;
 
 impl RemoteOcrProvider {
     pub(super) fn parse_claude_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| CoreError::OcrError(format!("Failed to parse response JSON: {}", e)))?;
+        let response: serde_json::Value =
+            serde_json::from_str(body).map_err(|e| CoreError::OcrErrorV2 {
+                code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                message: format!("Failed to parse response JSON: {}", e),
+            })?;
 
         let mut results = Vec::new();
 
@@ -41,11 +44,14 @@ impl RemoteOcrProvider {
             return Ok(results);
         }
 
-        let response: Value = serde_json::from_str(body)
-            .map_err(|e| CoreError::OcrError(format!("Failed to parse OpenAI response: {e}")))?;
+        let response: Value = serde_json::from_str(body).map_err(|e| CoreError::OcrErrorV2 {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message: format!("Failed to parse OpenAI response: {e}"),
+        })?;
 
-        let text = Self::extract_openai_text(&response).ok_or_else(|| {
-            CoreError::OcrError("No text content found in OpenAI OCR response".to_string())
+        let text = Self::extract_openai_text(&response).ok_or_else(|| CoreError::OcrErrorV2 {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message: "No text content found in OpenAI OCR response".to_string(),
         })?;
 
         if let Some(json_fragment) = extract_json_fragment(&text) {
@@ -63,11 +69,15 @@ impl RemoteOcrProvider {
             results: Option<Vec<OcrResult>>,
         }
 
-        let response: GenericResponse = serde_json::from_str(body)
-            .map_err(|e| CoreError::OcrError(format!("Failed to parse generic response: {}", e)))?;
+        let response: GenericResponse =
+            serde_json::from_str(body).map_err(|e| CoreError::OcrErrorV2 {
+                code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                message: format!("Failed to parse generic response: {}", e),
+            })?;
 
-        response.results.ok_or_else(|| {
-            CoreError::OcrError("Generic OCR response missing `results` field".to_string())
+        response.results.ok_or_else(|| CoreError::OcrErrorV2 {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message: "Generic OCR response missing `results` field".to_string(),
         })
     }
 
@@ -108,9 +118,11 @@ impl RemoteOcrProvider {
     }
 
     pub(super) fn parse_google_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
-            CoreError::OcrError(format!("Failed to parse Google Vision response: {}", e))
-        })?;
+        let response: serde_json::Value =
+            serde_json::from_str(body).map_err(|e| CoreError::OcrErrorV2 {
+                code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                message: format!("Failed to parse Google Vision response: {}", e),
+            })?;
 
         let mut results = Vec::new();
         let annotations = response
