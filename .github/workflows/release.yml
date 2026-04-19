@@ -1242,9 +1242,22 @@ jobs:
           DATE=$(date -u +"%B %d, %Y")
           # Use env-sourced RELEASE_TAG (workflow output, not user input) to
           # compose the header; DATE is generated here so no external input.
-          printf "## ONESHIM Client %s — Released %s\n\n" "$RELEASE_TAG" "$DATE" | \
-            cat - release_notes.md > release_notes.md.new
-          mv release_notes.md.new release_notes.md
+          HEADER="## ONESHIM Client $RELEASE_TAG — Released $DATE"
+          # Idempotency guard (Q5 follow-up): skip prepend if a header for
+          # this tag is already present on the first line — regardless of
+          # its date suffix. Protects against workflow re-runs (same day or
+          # cross-day) that would otherwise double-prepend the header.
+          PREFIX="## ONESHIM Client $RELEASE_TAG — Released "
+          FIRST_LINE=$(head -n1 release_notes.md)
+          case "$FIRST_LINE" in
+            "$PREFIX"*)
+              echo "Release date header already present for $RELEASE_TAG — skipping prepend"
+              ;;
+            *)
+              printf "%s\n\n" "$HEADER" | cat - release_notes.md > release_notes.md.new
+              mv release_notes.md.new release_notes.md
+              ;;
+          esac
 
       - name: Create or update Release
         env:
