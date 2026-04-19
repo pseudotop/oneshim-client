@@ -9,6 +9,12 @@ use crate::models::tiered_memory::CalibrationEntry;
 ///
 /// Called with batched entries from CalibrationBuffer. Implementations
 /// typically write to SQLite in a single transaction.
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for SQLite operations
+/// (iter-47 mass fix pattern). The batch write is transactional — a
+/// single CHECK constraint violation aborts the whole batch; callers
+/// receive a single Err without per-entry partitioning.
 pub trait CalibrationWriter: Send + Sync {
     /// Persist a batch of calibration entries atomically.
     fn log_batch(&self, entries: &[CalibrationEntry]) -> Result<(), CoreError>;
