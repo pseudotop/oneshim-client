@@ -5,6 +5,13 @@ use async_trait::async_trait;
 use crate::error::CoreError;
 use crate::models::suggestion::Suggestion;
 
+/// LLM-backed analysis port.
+///
+/// All methods use `CoreError::Analysis` (wire: `provider.analysis_failed`)
+/// for provider-side failures (LLM returned bad JSON, empty body,
+/// non-parseable intent). HTTP-layer failures follow the canonical semantic
+/// status mapping (`auth.failed` / `network.timeout` / `network.rate_limit` /
+/// `service.unavailable`). See `docs/guides/http-status-error-mapping.md`.
 #[async_trait]
 pub trait AnalysisProvider: Send + Sync {
     /// Analyze assembled context and return productivity suggestions.
@@ -16,9 +23,12 @@ pub trait AnalysisProvider: Send + Sync {
     ) -> Result<Vec<Suggestion>, CoreError>;
 
     /// Generate a plain text summary from context.
-    /// Default returns an error — adapters must override with a proper implementation.
-    /// The previous default called `analyze()` which parses JSON suggestions,
-    /// incompatible with the plain text expected by `summarize_text()`.
+    ///
+    /// Default impl returns `CoreError::Analysis { AnalysisFailed }` with a
+    /// "not implemented" message — adapters that don't support summarize
+    /// can leave the default. Adapters that DO support it must override.
+    /// Previously the default called `analyze()` which parses JSON
+    /// suggestions and is incompatible with the plain-text contract here.
     async fn summarize_text(
         &self,
         _context_json: &str,

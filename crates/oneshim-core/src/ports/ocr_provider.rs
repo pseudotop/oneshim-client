@@ -18,6 +18,13 @@ pub struct OcrResult {
     pub confidence: f64,
 }
 
+/// OCR adapters emit `CoreError::OcrError` (wire: `provider.ocr_failed`) for
+/// provider-side failures (malformed OCR response, empty output). HTTP-layer
+/// failures follow the canonical semantic status mapping (`auth.failed` /
+/// `network.timeout` / `network.rate_limit` / `service.unavailable`). See
+/// `docs/guides/http-status-error-mapping.md`. Local OCR (Tesseract) emits
+/// `CoreError::OcrError` for library failures and `CoreError::PermissionDenied`
+/// if screen-capture permission is missing upstream.
 #[async_trait]
 pub trait OcrProvider: Send + Sync {
     async fn extract_elements(
