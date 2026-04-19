@@ -162,7 +162,7 @@ fn managed_oauth_surface(
                 .surface_id
                 .as_deref()
                 .ok_or_else(|| CoreError::Config {
-                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                    code: oneshim_core::error_codes::ConfigCode::Missing,
                     message: "Managed OAuth endpoint is missing provider surface metadata."
                         .to_string(),
                 })?,

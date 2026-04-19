@@ -278,7 +278,7 @@ fn validate_non_http_surface_endpoint(
     capability_check: fn(&str) -> bool,
 ) -> Result<(), CoreError> {
     let endpoint = endpoint.ok_or_else(|| CoreError::Config {
-        code: crate::error_codes::ConfigCode::Invalid,
+        code: crate::error_codes::ConfigCode::Missing,
         message: format!("`{field_name}` is required when a managed provider surface is selected."),
     })?;
 
@@ -288,7 +288,7 @@ fn validate_non_http_surface_endpoint(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| CoreError::Config {
-            code: crate::error_codes::ConfigCode::Invalid,
+            code: crate::error_codes::ConfigCode::Missing,
             message: format!(
                 "`{field_name}.surface_id` is required for managed provider surfaces."
             ),
@@ -335,7 +335,7 @@ fn validate_subprocess_or_remote_endpoint(
 ) -> Result<(), CoreError> {
     let Some(endpoint) = endpoint else {
         return Err(CoreError::Config {
-            code: crate::error_codes::ConfigCode::Invalid,
+            code: crate::error_codes::ConfigCode::Missing,
             message: format!("`{field_name}` is required when a remote provider is selected."),
         });
     };
@@ -369,7 +369,7 @@ fn validate_managed_or_remote_endpoint(
 ) -> Result<(), CoreError> {
     let Some(endpoint) = endpoint else {
         return Err(CoreError::Config {
-            code: crate::error_codes::ConfigCode::Invalid,
+            code: crate::error_codes::ConfigCode::Missing,
             message: format!("`{field_name}` is required when a remote provider is selected."),
         });
     };

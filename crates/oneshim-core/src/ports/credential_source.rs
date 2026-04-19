@@ -86,7 +86,7 @@ impl CredentialSource {
 
                 if binding.backend_kind == CredentialBackendKind::Env {
                     let profile_id = profile_id.ok_or_else(|| CoreError::Config {
-                        code: crate::error_codes::ConfigCode::Invalid,
+                        code: crate::error_codes::ConfigCode::Missing,
                         message:
                             "profile_id is required to resolve env-backed provider credentials"
                                 .to_string(),

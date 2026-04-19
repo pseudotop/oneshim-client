@@ -178,7 +178,7 @@ impl ConfigManager {
         {
             // macOS: ~/Library/Application Support/oneshim/
             let home = std::env::var("HOME").map_err(|_| CoreError::Config {
-                code: crate::error_codes::ConfigCode::Invalid,
+                code: crate::error_codes::ConfigCode::Missing,
                 message: "HOME environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(home)
@@ -191,7 +191,7 @@ impl ConfigManager {
         {
             // Windows: %APPDATA%\oneshim\
             let appdata = std::env::var("APPDATA").map_err(|_| CoreError::Config {
-                code: crate::error_codes::ConfigCode::Invalid,
+                code: crate::error_codes::ConfigCode::Missing,
                 message: "APPDATA environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(appdata).join(APP_DIR_NAME))
@@ -201,7 +201,7 @@ impl ConfigManager {
         {
             // Linux: ~/.config/oneshim/
             let home = std::env::var("HOME").map_err(|_| CoreError::Config {
-                code: crate::error_codes::ConfigCode::Invalid,
+                code: crate::error_codes::ConfigCode::Missing,
                 message: "HOME environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(home).join(".config").join(APP_DIR_NAME))
@@ -225,7 +225,7 @@ impl ConfigManager {
         {
             // Windows: %LOCALAPPDATA%\oneshim\data\
             let local_appdata = std::env::var("LOCALAPPDATA").map_err(|_| CoreError::Config {
-                code: crate::error_codes::ConfigCode::Invalid,
+                code: crate::error_codes::ConfigCode::Missing,
                 message: "LOCALAPPDATA environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(local_appdata).join(APP_DIR_NAME).join("data"))
@@ -235,7 +235,7 @@ impl ConfigManager {
         {
             // Linux: ~/.local/share/oneshim/
             let home = std::env::var("HOME").map_err(|_| CoreError::Config {
-                code: crate::error_codes::ConfigCode::Invalid,
+                code: crate::error_codes::ConfigCode::Missing,
                 message: "HOME environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(home)

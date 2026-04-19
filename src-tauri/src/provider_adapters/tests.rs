@@ -238,8 +238,12 @@ fn returns_error_when_remote_config_missing_and_fallback_disabled() {
 
     match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None) {
         Ok(_) => panic!("Expected an error"),
+        // `ocr_api` being None is a required-field-missing condition; maps to
+        // ConfigCode::Missing (config.missing wire code). Previously this was
+        // ConfigCode::Invalid but that was semantic drift — "must be configured"
+        // is Missing, not Invalid. Fixed in iter-89 ConfigCode audit.
         Err(CoreError::Config {
-            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            code: oneshim_core::error_codes::ConfigCode::Missing,
             message: msg,
         }) => assert!(msg.contains("ocr_api")),
         Err(other) => panic!("Unexpected error type: {other}"),

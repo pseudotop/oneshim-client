@@ -53,13 +53,13 @@ pub(super) fn require_endpoint_config<'a>(
     field_name: &str,
 ) -> Result<&'a ExternalApiEndpoint, CoreError> {
     let endpoint = endpoint.ok_or_else(|| CoreError::Config {
-        code: oneshim_core::error_codes::ConfigCode::Invalid,
+        code: oneshim_core::error_codes::ConfigCode::Missing,
         message: format!("Remote AI provider usage requires `{field_name}` to be configured."),
     })?;
 
     if endpoint.endpoint.trim().is_empty() {
         return Err(CoreError::Config {
-            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            code: oneshim_core::error_codes::ConfigCode::Missing,
             message: format!("`{field_name}.endpoint` must not be empty."),
         });
     }
@@ -71,7 +71,7 @@ pub(super) fn require_endpoint_config<'a>(
     }
     if endpoint.timeout_secs == 0 {
         return Err(CoreError::Config {
-            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            code: oneshim_core::error_codes::ConfigCode::OutOfRange,
             message: format!("`{field_name}.timeout_secs` must be greater than 0."),
         });
     }
