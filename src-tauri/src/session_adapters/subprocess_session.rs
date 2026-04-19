@@ -444,7 +444,11 @@ impl ConversationSession for GenericSubprocessSession {
 
         let stream: ResponseStream = Box::pin(try_stream! {
             if output.is_empty() {
-                Err(CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!(
+                // Iter-106: subprocess CLI returning empty output is a
+                // provider (Analysis) failure, consistent with iter-93's
+                // subprocess parser fix (parse_interpreted_action_output
+                // empty case). Wire code `provider.analysis_failed`.
+                Err(CoreError::Analysis { code: oneshim_core::error_codes::ProviderCode::AnalysisFailed, message: format!(
                     "{} CLI returned an empty session response",
                     provider_name
                 ) })?;

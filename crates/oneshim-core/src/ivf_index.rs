@@ -102,21 +102,25 @@ impl IvfIndex {
         vectors: &[(i64, QuantizedVector)],
         config: &IvfBuildConfig,
     ) -> Result<IvfIndex, CoreError> {
+        // Iter-106: input-validation errors emit `validation.invalid_arguments`
+        // consistent with iter-95/105 (quantization, binary_quantizer,
+        // ml_classifier::preprocess). Caller-supplied bad input should not
+        // be conflated with internal runtime failures in telemetry.
         if vectors.is_empty() {
-            return Err(CoreError::Internal {
-                code: crate::error_codes::InternalCode::Generic,
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
                 message: "cannot build IVF index from empty vector set".to_string(),
             });
         }
         if config.n_clusters < 1 {
-            return Err(CoreError::Internal {
-                code: crate::error_codes::InternalCode::Generic,
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
                 message: "n_clusters must be >= 1".to_string(),
             });
         }
         if vectors.len() < config.n_clusters {
-            return Err(CoreError::Internal {
-                code: crate::error_codes::InternalCode::Generic,
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
                 message: format!(
                     "cannot create {} clusters from {} vectors",
                     config.n_clusters,
