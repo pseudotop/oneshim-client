@@ -51,21 +51,14 @@ jobs:
 
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             if [[ "$WORKFLOW_PARENT_EVENT" == "workflow_dispatch" ]]; then
-              # Parent release.yml was manually dispatched; head_branch is the
-              # dispatching branch (typically main), not the tag. Extract the
-              # tag from the parent workflow run's display title.
-              RELEASE_TAG="$(gh run view "$WORKFLOW_RUN_ID" \
-                --repo "$GITHUB_REPOSITORY" \
-                --json displayTitle \
-                --jq '.displayTitle // empty')"
-              # Fallback: if displayTitle doesn't parse as a version tag,
-              # scan for a v* pattern in the display title string.
-              if [[ "$RELEASE_TAG" != v* ]]; then
-                RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$WORKFLOW_RUN_ID" \
-                  --jq '.display_title // empty' \
-                  | grep -oE 'v[0-9][^[:space:]]*' \
-                  | head -n1)"
-              fi
+              # Parent release.yml was manually dispatched; head_branch is
+              # the dispatching branch (typically main), not the tag.
+              # release.yml exposes the tag via `run-name: Release <TAG>`,
+              # which GitHub surfaces as `display_title`. Extract via regex.
+              RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$WORKFLOW_RUN_ID" \
+                --jq '.display_title // empty' \
+                | grep -oE 'v[0-9][^[:space:]]*' \
+                | head -n1)"
             else
               RELEASE_TAG="$WORKFLOW_HEAD_BRANCH"
             fi

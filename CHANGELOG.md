@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `notarize-macos-release-assets` workflow now auto-triggers for `workflow_dispatch`-originated parent release runs. Previous `startsWith(head_branch, 'v')` gate filtered dispatched parents (where `head_branch == main`) out of the notarize path; tag resolution now uses the parent run's `displayTitle` via `gh run view` with a regex fallback against the full display-title payload.
+- Release notarization now auto-triggers for manually-dispatched release runs. The `notarize-macos-release-assets` workflow's gate was widened to accept `workflow_run.event == 'workflow_dispatch'` (dispatched parents have `head_branch == main`, not a v-tag). `release.yml` gained a top-level `run-name: Release <tag>` so the tag surfaces in the parent run's `display_title`; the notarize bash extracts it via regex for the dispatched-parent branch. Tag-push release notarization behavior is unaffected; the parent Release workflow's run-name also changes to `Release <tag>` on all origins for consistency (a cosmetic Actions-UI improvement).
 
 ### Infrastructure
 
