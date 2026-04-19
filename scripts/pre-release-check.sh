@@ -236,12 +236,26 @@ fi
 # --- Dependency Security Gate ---
 echo "[Dependency Security]"
 if command -v gh >/dev/null 2>&1; then
-  # Check for open security advisories via dependabot alerts
-  ALERT_COUNT=$(gh api repos/{owner}/{repo}/dependabot/alerts --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
-  if [ "$ALERT_COUNT" -gt 0 ] && [ "$ALERT_COUNT" != "0" ]; then
-    fail "Open dependabot security alerts: $ALERT_COUNT — resolve before releasing"
+  # Check for open security advisories via dependabot alerts.
+  # Distinguish genuine "0 open alerts" from "Dependabot disabled / query failed" —
+  # the original `|| echo "0"` fallback silently passed in the disabled case.
+  ALERT_RESPONSE=$(gh api repos/{owner}/{repo}/dependabot/alerts 2>&1)
+  ALERT_EXIT=$?
+  if [ $ALERT_EXIT -ne 0 ]; then
+    if echo "$ALERT_RESPONSE" | grep -qiE "dependabot.*(disabled|not enabled)|feature.*disabled|is not enabled"; then
+      warn "Dependabot alerts not enabled for this repo — security gate cannot run (enable in repo Settings > Code security)"
+    else
+      warn "Dependabot alerts query failed (exit $ALERT_EXIT): $(echo "$ALERT_RESPONSE" | head -c 200)"
+    fi
   else
-    pass "No open dependabot security alerts"
+    ALERT_COUNT=$(echo "$ALERT_RESPONSE" | jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "parse-error")
+    if [ "$ALERT_COUNT" = "parse-error" ]; then
+      warn "Dependabot alerts response parse failed — unexpected schema"
+    elif [ "$ALERT_COUNT" -gt 0 ]; then
+      fail "Open dependabot security alerts: $ALERT_COUNT — resolve before releasing"
+    else
+      pass "No open dependabot security alerts"
+    fi
   fi
 
   # Check for open dependency PRs
