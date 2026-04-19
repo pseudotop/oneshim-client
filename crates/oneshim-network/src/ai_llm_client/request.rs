@@ -172,13 +172,36 @@ impl RemoteLlmProvider {
                 flag.store(false, Ordering::Relaxed);
             }
             warn!(status = %status, "LLM API error response");
-            return Err(CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!(
-                    "LLM API error ({}): {}",
-                    status,
-                    body.chars().take(200).collect::<String>()
-                ),
+            let message = format!(
+                "LLM API error ({}): {}",
+                status,
+                body.chars().take(200).collect::<String>()
+            );
+            // Semantic status mapping per iter-55 / iter-56 pattern — give
+            // upstream LLM failures specific wire codes so telemetry can
+            // distinguish timeouts (transient, retryable) from auth (permanent)
+            // from rate-limiting (backoff-based).
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message,
+                },
             });
         }
         let action = match self.llm_request_shape()? {
