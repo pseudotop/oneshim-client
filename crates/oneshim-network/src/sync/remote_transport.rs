@@ -618,4 +618,75 @@ mod tests {
             "unexpected error: {msg}"
         );
     }
+
+    /// iter-66 regression guards for iter-55a semantic HTTP status mapping
+    /// on sync/remote_transport::check_response_status. Each test asserts
+    /// the typed CoreError variant for a specific status code.
+    #[tokio::test]
+    async fn forget_peer_403_maps_to_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("DELETE", "/sync/peers/x")
+            .with_status(403)
+            .with_body("forbidden")
+            .create_async()
+            .await;
+        let transport = test_transport(&server.url());
+        let err = transport.forget_peer("x").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 must map to CoreError::Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn forget_peer_408_maps_to_timeout() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("DELETE", "/sync/peers/x")
+            .with_status(408)
+            .with_body("request timeout")
+            .create_async()
+            .await;
+        let transport = test_transport(&server.url());
+        let err = transport.forget_peer("x").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 must map to CoreError::RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn forget_peer_502_maps_to_service_unavailable() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("DELETE", "/sync/peers/x")
+            .with_status(502)
+            .with_body("bad gateway")
+            .create_async()
+            .await;
+        let transport = test_transport(&server.url());
+        let err = transport.forget_peer("x").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 must map to CoreError::ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn forget_peer_504_maps_to_timeout() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("DELETE", "/sync/peers/x")
+            .with_status(504)
+            .with_body("gateway timeout")
+            .create_async()
+            .await;
+        let transport = test_transport(&server.url());
+        let err = transport.forget_peer("x").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 must map to CoreError::RequestTimeout, got: {err:?}"
+        );
+    }
 }
