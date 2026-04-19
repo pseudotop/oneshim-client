@@ -10,6 +10,18 @@ use crate::quantization::QuantizedVector;
 
 /// Port for storing and searching embedding vectors.
 /// Primary adapter: brute-force cosine similarity implementation in oneshim-storage.
+///
+/// # Errors
+/// - `CoreError::Storage` (wire: `storage.failed`) for SQLite-backed
+///   operations in the oneshim-storage adapter (iter-47 mass fix pattern).
+/// - `CoreError::InvalidArguments` (wire: `validation.invalid_arguments`)
+///   for caller-side input violations — empty/NaN vectors, dimension
+///   mismatch (iter-95/106 pattern).
+/// - `CoreError::Internal` (wire: `internal.generic`) for default impls
+///   of optional methods (`store_quantized`, `search_quantized`,
+///   `backfill_quantized`) that an adapter chooses not to override.
+///   Production adapters that do override these emit domain-appropriate
+///   variants instead.
 #[async_trait]
 pub trait VectorStore: Send + Sync {
     // --- Core CRUD ---

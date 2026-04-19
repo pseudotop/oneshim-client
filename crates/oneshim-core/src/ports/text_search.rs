@@ -17,6 +17,13 @@ pub struct TextSearchResult {
 /// Port for full-text search over activity segment content.
 ///
 /// Implementations typically back this with SQLite FTS5 or similar.
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for SQLite-backed
+/// FTS5 query/index operations (iter-47 mass fix pattern).
+/// Malformed FTS query syntax is returned as Storage as well — FTS5
+/// parser errors are surfaced as opaque SQL errors, not validation
+/// failures; the caller sanitizes query input before invoking.
 #[async_trait]
 pub trait TextSearchProvider: Send + Sync {
     /// Execute a full-text search query and return ranked results.
