@@ -27,7 +27,10 @@ Two-step mapping — gRPC Status → `NetworkError` → `CoreError`:
 | `Unavailable` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | Service availability outage |
 | `DeadlineExceeded` | `Timeout { timeout_ms: 0 }` | `CoreError::RequestTimeout { code: NetworkCode::Timeout, .. }` → `network.timeout` | Client-side deadline elapsed (sentinel timeout_ms=0; request-site logs the real timeout) |
 | `Unimplemented` | `NotFound { resource_type: "grpc_method:OP", id }` | `CoreError::NotFound { code: NotFoundCode::ResourceMissing, .. }` → `not_found.resource_missing` | Server doesn't implement the RPC — typically a client/server version skew. Non-retryable |
-| other codes | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | Generic network/transport domain fallback (covers Cancelled, Unknown, AlreadyExists, Aborted, Internal, DataLoss) |
+| `Internal`, `DataLoss` | `Internal` | `CoreError::Internal { code: InternalCode::Generic, .. }` → `internal.generic` | Server-reported internal failure (Iter-92). DataLoss is catastrophic — alert on frequency |
+| `AlreadyExists` | `Validation { field: "grpc_request", message }` | `CoreError::Validation { code: ValidationCode::InvalidField, .. }` → `validation.invalid_field` | Client-side conflict (Iter-92). Non-retryable; caller must use a different key |
+| `Aborted` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | Transient concurrency conflict (Iter-92). Retryable with backoff |
+| `Cancelled`, `Unknown` | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | Remaining wildcard: truly unclassified or client-side cancellation |
 
 ## Consuming the wire code
 

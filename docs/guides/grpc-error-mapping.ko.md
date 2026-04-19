@@ -27,7 +27,10 @@
 | `Unavailable` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | 서비스 가용성 장애 |
 | `DeadlineExceeded` | `Timeout { timeout_ms: 0 }` | `CoreError::RequestTimeout { code: NetworkCode::Timeout, .. }` → `network.timeout` | 클라이언트측 데드라인 초과 (sentinel timeout_ms=0; 실제 timeout은 request-site 로그 참조) |
 | `Unimplemented` | `NotFound { resource_type: "grpc_method:OP", id }` | `CoreError::NotFound { code: NotFoundCode::ResourceMissing, .. }` → `not_found.resource_missing` | 서버가 해당 RPC 미구현 — 일반적으로 client/server 버전 불일치. 재시도 불가 |
-| 기타 코드 | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | 일반 네트워크/전송 도메인 fallback (Cancelled, Unknown, AlreadyExists, Aborted, Internal, DataLoss 포함) |
+| `Internal`, `DataLoss` | `Internal` | `CoreError::Internal { code: InternalCode::Generic, .. }` → `internal.generic` | 서버측 내부 실패 (Iter-92). DataLoss는 catastrophic — 빈도에 따라 알람 |
+| `AlreadyExists` | `Validation { field: "grpc_request", message }` | `CoreError::Validation { code: ValidationCode::InvalidField, .. }` → `validation.invalid_field` | 클라이언트측 충돌 (Iter-92). 재시도 불가; 다른 키 사용 필요 |
+| `Aborted` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | 일시적 동시성 충돌 (Iter-92). backoff 재시도 가능 |
+| `Cancelled`, `Unknown` | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | 잔여 wildcard: 진짜 미분류 또는 클라이언트측 취소 |
 
 ## Wire 코드 소비
 
