@@ -126,8 +126,8 @@ impl SqliteStorage {
             "DELETE FROM search_fts WHERE segment_id = ?1",
             rusqlite::params![segment_id],
         )
-        .map_err(|e| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("FTS5 delete failed: {e}"),
         })?;
 
@@ -135,7 +135,7 @@ impl SqliteStorage {
             "INSERT INTO search_fts (segment_id, content_type, searchable_text) VALUES (?1, ?2, ?3)",
             rusqlite::params![segment_id, content_type, searchable_text],
         )
-        .map_err(|e| CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("FTS5 insert failed: {e}") })?;
+        .map_err(|e| CoreError::Storage { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("FTS5 insert failed: {e}") })?;
 
         Ok(())
     }

@@ -21,8 +21,8 @@ impl CalibrationWriter for SqliteStorage {
             return Ok(());
         }
 
-        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
 
@@ -118,8 +118,8 @@ impl CalibrationWriter for SqliteStorage {
     }
 
     fn flag_noise_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<u64, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
 
