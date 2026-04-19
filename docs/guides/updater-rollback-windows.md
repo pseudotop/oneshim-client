@@ -123,7 +123,7 @@ Windows API call that schedules a rename to happen at the next OS reboot. Flow:
 ## CI acceptance
 
 The release-reliability-smoke.ps1 row asserts the **precondition** for rollback, not rollback completion:
-- `.install_pending_{VERSION}` + `.boot_count_{VERSION}` read correctly.
+- `.install_pending_{VERSION}` + `.boot_count_pid_{VERSION}_*` per-PID markers read correctly.
 - `execute_rollback` returns `Err("...§4.8 spike pending")` (current state) OR returns the Infallible-success path (when the follow-up PR lands).
 - Registry `PendingFileRenameOperations` is written on the MoveFileEx fallback path.
 

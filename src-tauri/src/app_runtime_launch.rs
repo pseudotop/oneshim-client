@@ -1033,7 +1033,9 @@ impl AppRuntimeLaunchBuilder {
         // writer. After `healthy_threshold` (default 30s) of continuous
         // wall-clock uptime without a crash, the writer records
         // `.self_healthy_{VERSION}`, deletes `.install_pending_{VERSION}` +
-        // `.boot_count_{VERSION}`, and cleans sibling rollback backups.
+        // all `.boot_count_pid_{VERSION}_*` per-PID markers (+ any legacy
+        // `.boot_count_{VERSION}` single-file residual), and cleans sibling
+        // rollback backups.
         if let Some(probe) = health_probe.as_ref() {
             // JoinHandle is fire-and-forget; the writer is a background task
             // that survives past this function's return.

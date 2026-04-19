@@ -5,10 +5,11 @@
 //!
 //! State-machine summary:
 //! - On every startup, `check_startup_state` inspects `.install_pending_{VERSION}`,
-//!   `.boot_count_{VERSION}`, `.self_healthy_{VERSION}` in the install directory.
-//! - If boot_count reaches `failed_boot_threshold` (default 2) without a
-//!   self-healthy marker, returns `RollbackRequired` with the backup path
-//!   recorded at install.
+//!   `.boot_count_pid_{VERSION}_{PID}` (per-PID markers; aggregate count is the
+//!   number of such files), and `.self_healthy_{VERSION}` in the install directory.
+//! - If the aggregate boot count reaches `failed_boot_threshold` (default 2)
+//!   without a self-healthy marker, returns `RollbackRequired` with the backup
+//!   path recorded at install.
 //! - Otherwise returns `Normal`; the scheduler later calls `spawn_healthy_writer`
 //!   which writes the self-healthy marker after `healthy_threshold` (default 30s)
 //!   of continuous wall-clock uptime.
@@ -22,25 +23,23 @@
 //! created in `app_runtime_launch.rs`, used for the startup check, then shared
 //! via `Arc` into the scheduler for the healthy-writer spawn.
 //!
-//! # Known limitations (Loop 3 iter 1 review)
+//! # Counter semantics
 //!
-//! - **Boot-counter ordering** (I-4): `failed_boot_threshold = 2` triggers
+//! - **Boot-counter ordering**: `failed_boot_threshold = 2` triggers
 //!   rollback on the THIRD boot that fails to reach a self-healthy marker
-//!   (boot 1 increments 0→1, boot 2 increments 1→2, boot 3 reads 2 ≥ 2
-//!   and rolls back). The "2" in the name refers to the maximum retry
-//!   count, not the total boot count. This matches the standard
-//!   read-then-increment-after-threshold-check pattern.
+//!   (boot 1 creates marker, count becomes 1; boot 2 creates marker,
+//!   count becomes 2; boot 3 reads count=2 ≥ 2 and rolls back). The "2"
+//!   refers to the maximum retry count, not the total boot count.
 //!
-//! - **Concurrent-process race** (I-3): the "read count; compare threshold;
-//!   write count+1" sequence is NOT atomic against two processes of the
-//!   same version starting simultaneously (e.g., desktop shortcut + Tauri
-//!   autolaunch firing in the same second on first-install). Both reads
-//!   see the old value; both writes race. Mitigation deferred to a
-//!   follow-up — low-probability path and the worst-case outcome is an
-//!   unnecessary rollback after a single real success, which the user
-//!   can work around by upgrading again. Fix candidate:
-//!   `OpenOptions::new().create_new(true)` for `.boot_count_pid_{PID}`
-//!   sub-files, then sum at read-time.
+//! - **Concurrent-process safety**: each boot creates one
+//!   `.boot_count_pid_{VERSION}_{PID}` marker file via `create_new`
+//!   (atomic). The count is derived by listing the directory at
+//!   read-time. No read-modify-write sequence exists — concurrent boots
+//!   of the same version each record independently. PID reuse across
+//!   the lifetime of the install_pending window (< 24h per staleness
+//!   rule) is possible but rare; the second `create_new` returns
+//!   AlreadyExists and we treat that as "already recorded" (conservative
+//!   undercount by 1 in the extreme case).
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -145,9 +144,90 @@ impl HealthProbe {
             .join(format!(".install_pending_{}", self.current_version))
     }
 
-    fn boot_count_path(&self) -> PathBuf {
+    /// Legacy single-file path — retained only for migration cleanup.
+    fn legacy_boot_count_path(&self) -> PathBuf {
         self.install_dir
             .join(format!(".boot_count_{}", self.current_version))
+    }
+
+    /// Prefix used by per-PID boot-count marker files for this version.
+    fn boot_count_pid_prefix(&self) -> String {
+        format!(".boot_count_pid_{}_", self.current_version)
+    }
+
+    /// Path for a specific PID's boot-count marker (current version).
+    fn boot_count_pid_path(&self, pid: u32) -> PathBuf {
+        self.install_dir
+            .join(format!("{}{}", self.boot_count_pid_prefix(), pid))
+    }
+
+    /// Count the boot attempts recorded for the current version by summing
+    /// `.boot_count_pid_{VERSION}_*` marker files. Returns 0 if the install
+    /// directory cannot be read (first boot, missing dir, etc.).
+    pub(crate) fn boot_count(&self) -> std::io::Result<u32> {
+        let prefix = self.boot_count_pid_prefix();
+        let entries = match std::fs::read_dir(&self.install_dir) {
+            Ok(e) => e,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(err) => return Err(err),
+        };
+        let mut count: u32 = 0;
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with(&prefix) {
+                    count = count.saturating_add(1);
+                }
+            }
+        }
+        Ok(count)
+    }
+
+    /// Record a boot attempt for this process by creating an empty per-PID
+    /// marker file. `create_new` makes the write atomic against concurrent
+    /// boots — if two processes happen to share a PID (PID reuse), the
+    /// second `create_new` returns AlreadyExists and we silently accept
+    /// that path (conservative undercount by 1 in the extreme case, vs.
+    /// the unbounded race the single-file approach permitted).
+    fn record_boot_attempt(&self) -> std::io::Result<()> {
+        let pid = std::process::id();
+        let path = self.boot_count_pid_path(pid);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(_) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                // PID reuse within the staleness window (< 24h). Rare but
+                // observable on long-lived VMs / fork-heavy systems. Log a
+                // diagnostic so the conservative-undercount behavior is
+                // field-observable rather than silent.
+                tracing::warn!(
+                    "health probe: PID {pid} boot-marker already exists — possible PID reuse within staleness window"
+                );
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Remove all boot-count marker files for the current version (both
+    /// the new per-PID format and any legacy single-file). Used by the
+    /// healthy-writer path.
+    fn cleanup_boot_count_markers(&self) -> std::io::Result<()> {
+        let prefix = self.boot_count_pid_prefix();
+        if let Ok(entries) = std::fs::read_dir(&self.install_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(&prefix) {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+        // Legacy single-file cleanup (idempotent — may not exist).
+        let _ = std::fs::remove_file(self.legacy_boot_count_path());
+        Ok(())
     }
 
     fn self_healthy_path(&self) -> PathBuf {
@@ -172,7 +252,6 @@ impl HealthProbe {
     fn check_startup_state_inner(&self) -> Result<StartupAction, ProbeError> {
         let self_healthy = self.self_healthy_path();
         let install_pending = self.install_pending_path();
-        let boot_count_path = self.boot_count_path();
 
         // Step 1 (short-circuit): self-healthy already written → nothing to do.
         if self_healthy.exists() {
@@ -197,12 +276,18 @@ impl HealthProbe {
                 STALENESS_CUTOFF.as_secs() / 3600
             );
             let _ = std::fs::remove_file(&install_pending);
-            let _ = std::fs::remove_file(&boot_count_path);
+            let _ = self.cleanup_boot_count_markers();
             return Ok(StartupAction::Normal);
         }
 
-        // Steps 3-5: read boot count, check threshold, increment atomically.
-        let current_count = read_boot_count(&boot_count_path).unwrap_or(0);
+        // One-time legacy migration: if a pre-per-PID single-file
+        // `.boot_count_{VERSION}` exists from an earlier client build, delete
+        // it. The new per-PID format is authoritative; the count is rebuilt
+        // from whatever per-PID markers already exist (or starts at 0).
+        let _ = std::fs::remove_file(self.legacy_boot_count_path());
+
+        // Steps 3-5: count boot attempts, check threshold, record this boot.
+        let current_count = self.boot_count().unwrap_or(0);
 
         if current_count >= u32::from(self.failed_boot_threshold) {
             tracing::warn!(
@@ -217,10 +302,10 @@ impl HealthProbe {
             });
         }
 
-        // Increment the counter AFTER the threshold check so a single bad
-        // boot is represented as count=1 next time, not count=2. Use a
-        // temp-file + rename for atomicity against abrupt termination.
-        write_boot_count_atomic(&boot_count_path, current_count + 1)?;
+        // Record this boot AFTER the threshold check so a single bad boot
+        // is represented as count=1 next time, not count=2. `create_new`
+        // is atomic and idempotent against concurrent boots.
+        self.record_boot_attempt()?;
         Ok(StartupAction::Normal)
     }
 
@@ -250,26 +335,6 @@ fn read_install_pending(path: &Path) -> Result<InstallPending, ProbeError> {
     let bytes = std::fs::read(path)?;
     serde_json::from_slice::<InstallPending>(&bytes)
         .map_err(|e| ProbeError::InstallPendingParse(e.to_string()))
-}
-
-fn read_boot_count(path: &Path) -> Option<u32> {
-    let bytes = std::fs::read(path).ok()?;
-    let text = std::str::from_utf8(&bytes).ok()?;
-    text.trim().parse::<u32>().ok()
-}
-
-/// Atomic write via tempfile + rename (same directory as target).
-fn write_boot_count_atomic(path: &Path, value: u32) -> Result<(), ProbeError> {
-    let parent = path.parent().ok_or_else(|| {
-        ProbeError::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "boot_count path has no parent",
-        ))
-    })?;
-    let tmp_path = parent.join(format!(".boot_count.tmp.{}", std::process::id()));
-    std::fs::write(&tmp_path, value.to_string().as_bytes())?;
-    std::fs::rename(&tmp_path, path)?;
-    Ok(())
 }
 
 /// Returns true when `iso_ts_utc` parses successfully AND is older than `cutoff`.
@@ -305,9 +370,22 @@ fn write_self_healthy_and_cleanup(install_dir: &Path, version: &str) -> Result<(
     let marker_path = install_dir.join(format!(".self_healthy_{version}"));
     std::fs::write(&marker_path, Utc::now().to_rfc3339())?;
 
-    // Remove now-stale pending + boot_count files (ignore failures — cleanup
-    // is best-effort).
+    // Remove now-stale pending file (ignore failures — cleanup is best-effort).
     let _ = std::fs::remove_file(&install_pending_path);
+
+    // Remove all per-PID boot-count markers for the CURRENT version + the
+    // legacy single-file if still present. Foreign-version files are
+    // handled by the sweep below.
+    let current_prefix = format!(".boot_count_pid_{version}_");
+    if let Ok(entries) = std::fs::read_dir(install_dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with(&current_prefix) {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
     let _ = std::fs::remove_file(install_dir.join(format!(".boot_count_{version}")));
 
     // Sweep sibling rollback backups + foreign-version state files.
@@ -337,13 +415,31 @@ fn write_self_healthy_and_cleanup(install_dir: &Path, version: &str) -> Result<(
                 continue;
             }
 
-            // (b) Foreign-version state-file sweep. Match
-            //     `.install_pending_<VER>`, `.boot_count_<VER>`,
-            //     `.self_healthy_<VER>` where VER is non-empty and != the
-            //     current version. The `is_empty()` guard is defensive:
-            //     no production code path produces an empty-suffix file,
-            //     but if one existed it would NOT be swept (safer default).
-            for prefix in [".install_pending_", ".boot_count_", ".self_healthy_"] {
+            // (b) Foreign-version per-PID boot-count sweep. Format is
+            //     `.boot_count_pid_<VER>_<PID>`. Extract VER (the segment
+            //     before the final `_` separating version from PID).
+            if let Some(suffix) = name.strip_prefix(".boot_count_pid_") {
+                if let Some((ver, _pid)) = suffix.rsplit_once('_') {
+                    if !ver.is_empty() && ver != version {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                }
+                continue;
+            }
+
+            // (c) Foreign-version legacy single-file boot-count sweep.
+            //     Always deleted when encountered — the per-PID format is
+            //     authoritative now, so any `.boot_count_<VER>` residual
+            //     (regardless of VER) is stale.
+            if let Some(ver_suffix) = name.strip_prefix(".boot_count_") {
+                if !ver_suffix.is_empty() {
+                    let _ = std::fs::remove_file(&path);
+                }
+                continue;
+            }
+
+            // (d) Foreign-version install-pending / self-healthy sweep.
+            for prefix in [".install_pending_", ".self_healthy_"] {
                 if let Some(ver_suffix) = name.strip_prefix(prefix) {
                     if !ver_suffix.is_empty() && ver_suffix != version {
                         let _ = std::fs::remove_file(&path);
@@ -376,11 +472,27 @@ mod tests {
     }
 
     fn write_boot_count(dir: &Path, version: &str, count: u32) {
+        // Legacy single-file format — used only by tests that exercise
+        // migration cleanup. New increment path uses per-PID markers.
         std::fs::write(
             dir.join(format!(".boot_count_{version}")),
             count.to_string(),
         )
         .unwrap();
+    }
+
+    fn write_boot_count_pid_marker(dir: &Path, version: &str, pid: u32) {
+        // Create a single per-PID boot-count marker (simulates a boot).
+        std::fs::write(dir.join(format!(".boot_count_pid_{version}_{pid}")), b"").unwrap();
+    }
+
+    fn write_boot_count_pids(dir: &Path, version: &str, count: u32) {
+        // Convenience helper for tests that need N simulated boots with
+        // distinct PIDs. Uses predictable PIDs starting at 10000 to avoid
+        // collision with any actual test-runner PID.
+        for i in 0..count {
+            write_boot_count_pid_marker(dir, version, 10000 + i);
+        }
     }
 
     fn write_self_healthy(dir: &Path, version: &str) {
@@ -434,9 +546,9 @@ mod tests {
         let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into());
         assert_eq!(probe.check_startup_state(), StartupAction::Normal);
 
-        // Confirm counter was bumped.
-        let new_count = read_boot_count(&probe.boot_count_path()).unwrap();
-        assert_eq!(new_count, 1);
+        // Confirm counter was bumped — exactly one per-PID marker exists
+        // for the current version.
+        assert_eq!(probe.boot_count().unwrap(), 1);
     }
 
     #[test]
@@ -451,7 +563,7 @@ mod tests {
             "0.4.39",
             &backup,
         );
-        write_boot_count(dir.path(), "0.5.0", 2); // at threshold
+        write_boot_count_pids(dir.path(), "0.5.0", 2); // at threshold via per-PID markers
 
         let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into());
         match probe.check_startup_state() {
@@ -469,10 +581,9 @@ mod tests {
             other => panic!("Expected RollbackRequired, got {:?}", other),
         }
 
-        // At-threshold does NOT bump the counter further; the next boot's
-        // probe will still see count=2 if rollback somehow fails to execute.
-        let count_after = read_boot_count(&probe.boot_count_path()).unwrap();
-        assert_eq!(count_after, 2);
+        // At-threshold does NOT record a new boot; the next probe still
+        // sees count=2 if rollback somehow fails to execute.
+        assert_eq!(probe.boot_count().unwrap(), 2);
     }
 
     #[test]
@@ -488,9 +599,15 @@ mod tests {
         let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into());
         assert_eq!(probe.check_startup_state(), StartupAction::Normal);
 
-        // Staleness rule deletes the pending + boot_count files.
+        // Staleness rule deletes the pending + all boot_count files (legacy
+        // single-file + per-PID markers). `cleanup_boot_count_markers`
+        // handles both.
         assert!(!probe.install_pending_path().exists());
-        assert!(!probe.boot_count_path().exists());
+        assert_eq!(probe.boot_count().unwrap(), 0);
+        assert!(
+            !probe.legacy_boot_count_path().exists(),
+            "legacy single-file must be deleted during staleness cleanup"
+        );
     }
 
     #[tokio::test]
@@ -505,7 +622,8 @@ mod tests {
             "0.4.39",
             &backup,
         );
-        write_boot_count(dir.path(), "0.5.0", 0);
+        // Seed 2 per-PID boot markers to confirm cleanup removes all of them.
+        write_boot_count_pids(dir.path(), "0.5.0", 2);
 
         let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into())
             .with_threshold(Duration::from_millis(50));
@@ -515,9 +633,9 @@ mod tests {
 
         let marker = dir.path().join(".self_healthy_0.5.0");
         assert!(marker.exists(), "healthy marker should have been written");
-        // Cleanup should have removed install_pending + boot_count.
+        // Cleanup should have removed install_pending + all per-PID markers.
         assert!(!probe.install_pending_path().exists());
-        assert!(!probe.boot_count_path().exists());
+        assert_eq!(probe.boot_count().unwrap(), 0);
         // Backup_path recorded in pending should survive the sweep.
         assert!(backup.exists(), "canonical backup should remain");
     }
@@ -538,9 +656,12 @@ mod tests {
             &dir.path().join("nonexistent-backup"),
         );
 
-        // Seed stale state from a previous version.
+        // Seed stale state from a previous version (legacy single-file boot_count
+        // + foreign-version per-PID markers).
         std::fs::write(dir.path().join(".install_pending_0.4.40"), "stale-content").unwrap();
         std::fs::write(dir.path().join(".boot_count_0.4.40"), "2").unwrap();
+        write_boot_count_pid_marker(dir.path(), "0.4.40", 100);
+        write_boot_count_pid_marker(dir.path(), "0.4.40", 200);
         std::fs::write(
             dir.path().join(".self_healthy_0.4.40"),
             Utc::now().to_rfc3339(),
@@ -559,9 +680,12 @@ mod tests {
         assert!(!dir.path().join(".install_pending_0.5.0").exists());
         assert!(!dir.path().join(".boot_count_0.5.0").exists());
 
-        // Foreign-version state files: swept.
+        // Foreign-version state files: swept (including per-PID markers and
+        // legacy single-file).
         assert!(!dir.path().join(".install_pending_0.4.40").exists());
         assert!(!dir.path().join(".boot_count_0.4.40").exists());
+        assert!(!dir.path().join(".boot_count_pid_0.4.40_100").exists());
+        assert!(!dir.path().join(".boot_count_pid_0.4.40_200").exists());
         assert!(!dir.path().join(".self_healthy_0.4.40").exists());
 
         // Unrelated file: untouched.
@@ -580,5 +704,89 @@ mod tests {
         let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into());
         // Public wrapper catches InstallPendingParse → returns Normal.
         assert_eq!(probe.check_startup_state(), StartupAction::Normal);
+    }
+
+    #[test]
+    fn concurrent_boot_count_no_undercount() {
+        // Two instances of the same version boot in rapid succession. With
+        // the single-file read-modify-write pattern, each read sees the old
+        // count and each writes count+1 — losing one increment. With
+        // per-PID marker files, each instance records independently and the
+        // aggregate count reflects both boots.
+        let dir = tempdir().unwrap();
+        let version = "0.5.0";
+
+        // Simulate PID 100 and PID 200 each writing their per-PID marker.
+        write_boot_count_pid_marker(dir.path(), version, 100);
+        write_boot_count_pid_marker(dir.path(), version, 200);
+
+        let probe = HealthProbe::new(dir.path().to_path_buf(), version.into());
+        assert_eq!(probe.boot_count().unwrap(), 2);
+    }
+
+    #[test]
+    fn cleanup_boot_count_markers_removes_per_pid_and_legacy_files() {
+        let dir = tempdir().unwrap();
+        let version = "0.5.0";
+
+        // Seed: 3 per-PID markers + 1 legacy single-file.
+        write_boot_count_pids(dir.path(), version, 3);
+        write_boot_count(dir.path(), version, 7);
+
+        let probe = HealthProbe::new(dir.path().to_path_buf(), version.into());
+        assert_eq!(probe.boot_count().unwrap(), 3);
+
+        probe.cleanup_boot_count_markers().unwrap();
+
+        assert_eq!(probe.boot_count().unwrap(), 0);
+        assert!(
+            !probe.legacy_boot_count_path().exists(),
+            "legacy single-file must be removed"
+        );
+    }
+
+    #[test]
+    fn legacy_single_file_removed_by_startup_migration() {
+        // A pre-per-PID build left `.boot_count_0.5.0` behind with the
+        // single-file format. The current probe sees the pending-install
+        // marker, migrates by deleting the legacy file (DROPPING the
+        // legacy count — not reading it), and records a fresh per-PID
+        // boot attempt.
+        //
+        // Seed count=99 (well above threshold=2) so this test would FAIL
+        // with RollbackRequired if migration mistakenly read the legacy
+        // count. Startup returning Normal proves the legacy value was
+        // discarded, not parsed.
+        let dir = tempdir().unwrap();
+        let backup = dir.path().join("oneshim.rollback.1");
+        std::fs::write(&backup, b"backup-bytes").unwrap();
+        write_pending(
+            dir.path(),
+            "0.5.0",
+            &Utc::now().to_rfc3339(),
+            "0.4.39",
+            &backup,
+        );
+        // Legacy single-file with count=99 (would trigger rollback if read).
+        write_boot_count(dir.path(), "0.5.0", 99);
+
+        let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into());
+        assert_eq!(
+            probe.check_startup_state(),
+            StartupAction::Normal,
+            "migration must discard the legacy count, not parse it"
+        );
+
+        // Legacy file removed; migration dropped the legacy count.
+        assert!(
+            !probe.legacy_boot_count_path().exists(),
+            "legacy single-file must be removed during migration"
+        );
+        // New per-PID marker for THIS process is in place (fresh count=1).
+        assert_eq!(
+            probe.boot_count().unwrap(),
+            1,
+            "this boot is recorded via the new per-PID format"
+        );
     }
 }

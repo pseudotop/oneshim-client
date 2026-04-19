@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Release notarization now auto-triggers for manually-dispatched release runs. The `notarize-macos-release-assets` workflow's gate was widened to accept `workflow_run.event == 'workflow_dispatch'` (dispatched parents have `head_branch == main`, not a v-tag). `release.yml` gained a top-level `run-name: Release <tag>` so the tag surfaces in the parent run's `display_title`; the notarize bash extracts it via regex for the dispatched-parent branch. Tag-push release notarization behavior is unaffected; the parent Release workflow's run-name also changes to `Release <tag>` on all origins for consistency (a cosmetic Actions-UI improvement).
+- Updater `health_probe` boot-count tracking now uses per-PID marker files (`.boot_count_pid_{VERSION}_{PID}`) instead of a single `.boot_count_{VERSION}` file, eliminating the read-modify-write race when multiple instances of the same version start concurrently. Aggregate count is computed by enumerating markers at read-time via `create_new` atomic writes. Threshold and rollback semantics unchanged; legacy single-file from pre-migration installs is deleted on first boot.
 
 ### Infrastructure
 
