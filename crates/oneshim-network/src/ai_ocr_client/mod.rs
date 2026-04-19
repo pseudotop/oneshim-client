@@ -151,10 +151,12 @@ impl RemoteOcrProvider {
             .is_none()
             && supports_model
         {
-            return Err(NetworkError::Config(
-                "The selected OCR provider surface requires an explicit model selection."
+            // Iter-99 follow-up: required model selection = Missing.
+            return Err(NetworkError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "The selected OCR provider surface requires an explicit model selection."
                     .to_string(),
-            ));
+            }));
         }
         if let Some(model) = resolved_model
             .as_deref()
@@ -265,10 +267,12 @@ impl RemoteOcrProvider {
             .is_none()
             && supports_model
         {
-            return Err(NetworkError::Config(
-                "The selected OCR provider surface requires an explicit model selection."
+            // Iter-99 follow-up: required model selection = Missing.
+            return Err(NetworkError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "The selected OCR provider surface requires an explicit model selection."
                     .to_string(),
-            ));
+            }));
         }
         if let Some(model) = resolved_model
             .as_deref()
