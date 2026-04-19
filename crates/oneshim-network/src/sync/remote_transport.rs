@@ -112,8 +112,8 @@ impl RemoteSyncTransport {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: body.to_string(),
             }),
-            _ => Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            _ => Err(CoreError::Network {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("Sync API error ({status}): {body}"),
             }),
         }
