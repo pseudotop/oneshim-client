@@ -16,6 +16,18 @@ pub struct DetectedRectangle {
 }
 
 /// Synchronous rectangle detection from image data.
+///
+/// # Errors
+/// - `CoreError::Internal` (wire: `internal.generic`) — Vision framework
+///   call failure (macOS), Core ML prediction error, image dimension
+///   mismatch, zero-length image buffer.
+/// - `CoreError::Io` (wire: `internal.io`) — image decode failure for
+///   adapters that accept encoded bytes instead of raw pixels.
+/// - `CoreError::ServiceUnavailable` (wire: `service.unavailable`) —
+///   unsupported platform (no Vision framework on non-macOS builds) or
+///   ML backend not linked at compile time.
+/// - Empty result (no rectangles detected above confidence/size
+///   thresholds) is `Ok(Vec::new())`, not Err.
 pub trait RectangleDetector: Send + Sync {
     fn detect_rectangles(
         &self,
