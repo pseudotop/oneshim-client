@@ -212,9 +212,7 @@ pub(crate) fn read_capability_token(headers: &HeaderMap) -> Result<String, ApiEr
 }
 
 pub(crate) fn map_gui_error(error: GuiInteractionError) -> ApiError {
-    #[allow(deprecated)]
     match error {
-        // V2 variants (will remain after Phase 4 rename)
         GuiInteractionError::Unauthorized { .. } => {
             ApiError::Unauthorized("Invalid GUI session token".to_string())
         }

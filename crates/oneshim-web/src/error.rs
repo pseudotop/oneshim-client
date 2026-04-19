@@ -56,32 +56,16 @@ impl IntoResponse for ApiError {
 impl From<oneshim_core::error::CoreError> for ApiError {
     fn from(err: oneshim_core::error::CoreError) -> Self {
         use oneshim_core::error::CoreError;
-        #[allow(deprecated)]
         match err {
-            // --- V2 struct variants (final shape post Phase 4) ---
-            CoreError::Validation {
-                code: oneshim_core::error_codes::ValidationCode::InvalidField,
-                field,
-                message,
-                ..
-            } => ApiError::BadRequest(format!("{field}: {message}")),
+            CoreError::Validation { field, message, .. } => {
+                ApiError::BadRequest(format!("{field}: {message}"))
+            }
             CoreError::Auth { message, .. }
             | CoreError::ConsentRequired { message, .. }
-            | CoreError::OAuthError {
-                code: oneshim_core::error_codes::OAuthCode::Failed,
-                message,
-                ..
-            }
-            | CoreError::OAuthRefreshError {
-                code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
-                message,
-                ..
-            } => ApiError::Unauthorized(message),
+            | CoreError::OAuthError { message, .. }
+            | CoreError::OAuthRefreshError { message, .. } => ApiError::Unauthorized(message),
             CoreError::NotFound {
-                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
-                resource_type,
-                id,
-                ..
+                resource_type, id, ..
             } => ApiError::NotFound(format!("{resource_type}: {id}")),
             CoreError::ServiceUnavailable { message, .. }
             | CoreError::SandboxUnsupported { message, .. } => {

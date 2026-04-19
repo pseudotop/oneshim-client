@@ -234,21 +234,6 @@ impl AutomationCommandService {
                 planned_intent: planned.planned_intent,
                 result: planned.result,
             }),
-            #[allow(deprecated)]
-            Err(
-                CoreError::PolicyDenied {
-                    code: oneshim_core::error_codes::PolicyCode::Denied,
-                    message: msg,
-                }
-                | CoreError::InvalidArguments {
-                    code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
-                    message: msg,
-                }
-                | CoreError::ElementNotFound {
-                    code: oneshim_core::error_codes::UiCode::ElementMissing,
-                    name: msg,
-                },
-            ) => Err(ApiError::BadRequest(msg)),
             Err(
                 CoreError::PolicyDenied { message: msg, .. }
                 | CoreError::InvalidArguments { message: msg, .. },
@@ -348,21 +333,6 @@ impl AutomationCommandService {
                         break;
                     }
                 }
-                #[allow(deprecated)]
-                Err(
-                    CoreError::PolicyDenied {
-                        code: oneshim_core::error_codes::PolicyCode::Denied,
-                        message: msg,
-                    }
-                    | CoreError::InvalidArguments {
-                        code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
-                        message: msg,
-                    }
-                    | CoreError::ElementNotFound {
-                        code: oneshim_core::error_codes::UiCode::ElementMissing,
-                        name: msg,
-                    },
-                ) => return Err(ApiError::BadRequest(msg)),
                 Err(
                     CoreError::PolicyDenied { message: msg, .. }
                     | CoreError::InvalidArguments { message: msg, .. },
