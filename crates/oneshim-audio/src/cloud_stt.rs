@@ -120,9 +120,31 @@ impl SttProvider for CloudSttProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(CoreError::SpeechToText {
-                code: oneshim_core::error_codes::AudioCode::SttFailed,
-                message: format!("cloud STT error: HTTP {status} — {body}"),
+            let message = format!("cloud STT error: HTTP {status} — {body}");
+            // Semantic HTTP status mapping per iter-54/55/56 pattern — even STT
+            // domain errors benefit from differentiating auth/timeout/rate-limit
+            // from generic STT failures.
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: u64::from(self.timeout_secs) * 1000,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::SpeechToText {
+                    code: oneshim_core::error_codes::AudioCode::SttFailed,
+                    message,
+                },
             });
         }
 
