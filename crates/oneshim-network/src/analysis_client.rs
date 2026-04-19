@@ -704,4 +704,17 @@ mod tests {
         let err = run_summarize_status_test(503).await;
         assert!(matches!(err, CoreError::ServiceUnavailable { .. }));
     }
+
+    /// iter-77: domain fallback regression guard. analyze() falls back to
+    /// CoreError::Analysis (via NetworkError::Analysis) for unmapped
+    /// status codes, not to Network::Generic. Mirrors cloud_stt / OCR
+    /// fallback tests (iter-72, iter-77).
+    #[tokio::test]
+    async fn analyze_500_falls_back_to_analysis_error() {
+        let err = run_analyze_status_test(500).await;
+        assert!(
+            matches!(err, CoreError::Analysis { .. }),
+            "500 should fall back to CoreError::Analysis (domain-specific), got: {err:?}"
+        );
+    }
 }

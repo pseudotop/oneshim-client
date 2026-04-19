@@ -492,4 +492,16 @@ mod http_status_mapping {
             "504 → RequestTimeout, got: {err:?}"
         );
     }
+
+    /// iter-77: domain fallback regression guard. OCR-specific errors
+    /// (500, 418, etc.) should fall back to CoreError::OcrError, not to
+    /// Network::Generic. Complements iter-72's cloud_stt fallback test.
+    #[tokio::test]
+    async fn status_500_falls_back_to_ocr_error() {
+        let err = run_status_mapping_test(500).await;
+        assert!(
+            matches!(err, CoreError::OcrError { .. }),
+            "500 should fall back to CoreError::OcrError (domain-specific), got: {err:?}"
+        );
+    }
 }
