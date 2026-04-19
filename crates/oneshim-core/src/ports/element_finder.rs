@@ -22,10 +22,13 @@ pub trait ElementFinder: Send + Sync {
         _app_name: Option<&str>,
         _screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
-        Err(CoreError::Internal(format!(
-            "ElementFinder '{}' does not support scene analysis",
-            self.name()
-        )))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: format!(
+                "ElementFinder '{}' does not support scene analysis",
+                self.name()
+            ),
+        })
     }
 
     async fn analyze_scene_from_image(
@@ -35,10 +38,13 @@ pub trait ElementFinder: Send + Sync {
         _app_name: Option<&str>,
         _screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
-        Err(CoreError::Internal(format!(
-            "ElementFinder '{}' does not support direct image scene analysis",
-            self.name()
-        )))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: format!(
+                "ElementFinder '{}' does not support direct image scene analysis",
+                self.name()
+            ),
+        })
     }
 
     fn name(&self) -> &str;

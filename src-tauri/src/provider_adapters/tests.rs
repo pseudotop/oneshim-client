@@ -238,7 +238,7 @@ fn returns_error_when_remote_config_missing_and_fallback_disabled() {
 
     match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None) {
         Ok(_) => panic!("Expected an error"),
-        Err(CoreError::ConfigV2 {
+        Err(CoreError::Config {
             code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: msg,
         }) => assert!(msg.contains("ocr_api")),
@@ -464,7 +464,7 @@ fn cli_subscription_mode_reports_auth_required_when_matching_cli_is_logged_out()
             auth_detail: Some("cli_auth_required".to_string()),
         }],
     ) {
-        Err(CoreError::ConfigV2 {
+        Err(CoreError::Config {
             code: oneshim_core::error_codes::ConfigCode::Invalid,
             message,
         }) => {

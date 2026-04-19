@@ -70,7 +70,7 @@ impl ModelDownloader for WhisperModelDownloader {
         let part_path = dest_dir.join(format!("{filename}.part"));
 
         // Ensure dest dir exists
-        std::fs::create_dir_all(dest_dir).map_err(|e| CoreError::AudioCaptureV2 {
+        std::fs::create_dir_all(dest_dir).map_err(|e| CoreError::AudioCapture {
             code: oneshim_core::error_codes::AudioCode::CaptureFailed,
             message: format!("create model dir: {e}"),
         })?;
@@ -82,13 +82,13 @@ impl ModelDownloader for WhisperModelDownloader {
             .get(&url)
             .send()
             .await
-            .map_err(|e| CoreError::NetworkV2 {
+            .map_err(|e| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("model download request: {e}"),
             })?;
 
         if !response.status().is_success() {
-            return Err(CoreError::NetworkV2 {
+            return Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("model download failed: HTTP {}", response.status()),
             });
@@ -96,11 +96,10 @@ impl ModelDownloader for WhisperModelDownloader {
 
         let total_bytes = response.content_length();
         let mut stream = response.bytes_stream();
-        let mut file =
-            std::fs::File::create(&part_path).map_err(|e| CoreError::AudioCaptureV2 {
-                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
-                message: format!("create part file: {e}"),
-            })?;
+        let mut file = std::fs::File::create(&part_path).map_err(|e| CoreError::AudioCapture {
+            code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+            message: format!("create part file: {e}"),
+        })?;
         let mut hasher = Sha256::new();
         let mut downloaded: u64 = 0;
 
@@ -112,19 +111,19 @@ impl ModelDownloader for WhisperModelDownloader {
                 if let Err(e) = std::fs::remove_file(&part_path) {
                     debug!("remove_file failed: {e}");
                 }
-                return Err(CoreError::AudioCaptureV2 {
+                return Err(CoreError::AudioCapture {
                     code: oneshim_core::error_codes::AudioCode::CaptureFailed,
                     message: "download cancelled".into(),
                 });
             }
 
-            let chunk = chunk_result.map_err(|e| CoreError::NetworkV2 {
+            let chunk = chunk_result.map_err(|e| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("download stream: {e}"),
             })?;
 
             file.write_all(&chunk)
-                .map_err(|e| CoreError::AudioCaptureV2 {
+                .map_err(|e| CoreError::AudioCapture {
                     code: oneshim_core::error_codes::AudioCode::CaptureFailed,
                     message: format!("write chunk: {e}"),
                 })?;
@@ -159,7 +158,7 @@ impl ModelDownloader for WhisperModelDownloader {
         }
 
         // Atomic rename
-        std::fs::rename(&part_path, &final_path).map_err(|e| CoreError::AudioCaptureV2 {
+        std::fs::rename(&part_path, &final_path).map_err(|e| CoreError::AudioCapture {
             code: oneshim_core::error_codes::AudioCode::CaptureFailed,
             message: format!("rename part file: {e}"),
         })?;
@@ -203,7 +202,7 @@ impl ModelDownloader for WhisperModelDownloader {
     fn delete_model(&self, model: WhisperModelSize, dest_dir: &Path) -> Result<(), CoreError> {
         let path = dest_dir.join(model_filename(model));
         if path.exists() {
-            std::fs::remove_file(&path).map_err(|e| CoreError::AudioCaptureV2 {
+            std::fs::remove_file(&path).map_err(|e| CoreError::AudioCapture {
                 code: oneshim_core::error_codes::AudioCode::CaptureFailed,
                 message: format!("delete model: {e}"),
             })?;

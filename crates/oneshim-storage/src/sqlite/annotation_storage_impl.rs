@@ -7,7 +7,7 @@ use super::SqliteStorage;
 impl AnnotationStorage for SqliteStorage {
     /// List all annotations attached to a given frame, ordered by creation time.
     fn list_annotations(&self, frame_id: i64) -> Result<Vec<FrameAnnotation>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -19,7 +19,7 @@ impl AnnotationStorage for SqliteStorage {
                  WHERE frame_id = ?1
                  ORDER BY created_at",
             )
-            .map_err(|e| CoreError::StorageV2 { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("prepare: {e}") })?;
+            .map_err(|e| CoreError::Storage { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("prepare: {e}") })?;
 
         let rows = stmt
             .query_map([frame_id], |row| {
@@ -36,14 +36,14 @@ impl AnnotationStorage for SqliteStorage {
                     created_at: row.get(9)?,
                 })
             })
-            .map_err(|e| CoreError::StorageV2 {
+            .map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("query: {e}"),
             })?;
 
         let mut result = Vec::new();
         for row in rows {
-            let row = row.map_err(|e| CoreError::StorageV2 {
+            let row = row.map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("row: {e}"),
             })?;
@@ -54,7 +54,7 @@ impl AnnotationStorage for SqliteStorage {
 
     /// Persist a new annotation to the `frame_annotations` table.
     fn save_annotation(&self, annotation: &FrameAnnotation) -> Result<(), CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -78,14 +78,14 @@ impl AnnotationStorage for SqliteStorage {
                 created_at_str,
             ],
         )
-        .map_err(|e| CoreError::StorageV2 { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("insert: {e}") })?;
+        .map_err(|e| CoreError::Storage { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("insert: {e}") })?;
 
         Ok(())
     }
 
     /// Delete an annotation by ID. No error if the ID does not exist.
     fn delete_annotation(&self, annotation_id: &str) -> Result<(), CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -94,7 +94,7 @@ impl AnnotationStorage for SqliteStorage {
             "DELETE FROM frame_annotations WHERE annotation_id = ?1",
             [annotation_id],
         )
-        .map_err(|e| CoreError::StorageV2 {
+        .map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("delete: {e}"),
         })?;
@@ -121,7 +121,7 @@ impl AnnotationRow {
     fn into_annotation(self) -> Result<FrameAnnotation, CoreError> {
         let created_at = chrono::DateTime::parse_from_rfc3339(&self.created_at)
             .map(|dt| dt.with_timezone(&chrono::Utc))
-            .map_err(|e| CoreError::StorageV2 {
+            .map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("parse created_at: {e}"),
             })?;

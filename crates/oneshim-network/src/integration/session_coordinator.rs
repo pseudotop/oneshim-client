@@ -252,14 +252,14 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
         };
 
         let mut guard = self.state.write().await;
-        let state = guard.as_mut().ok_or_else(|| CoreError::NotFoundV2 {
+        let state = guard.as_mut().ok_or_else(|| CoreError::NotFound {
             code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
             resource_type: "integration_session".to_string(),
             id: session_id.to_string(),
         })?;
 
         if state.session_id != session_id {
-            return Err(CoreError::NotFoundV2 {
+            return Err(CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "integration_session".to_string(),
                 id: session_id.to_string(),
@@ -280,14 +280,14 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
         cursor: IntegrationAckCursor,
     ) -> Result<IntegrationSessionState, CoreError> {
         let mut guard = self.state.write().await;
-        let state = guard.as_mut().ok_or_else(|| CoreError::NotFoundV2 {
+        let state = guard.as_mut().ok_or_else(|| CoreError::NotFound {
             code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
             resource_type: "integration_session".to_string(),
             id: session_id.to_string(),
         })?;
 
         if state.session_id != session_id {
-            return Err(CoreError::NotFoundV2 {
+            return Err(CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "integration_session".to_string(),
                 id: session_id.to_string(),
@@ -380,7 +380,7 @@ mod tests {
                 .await
                 .push(format!("connect:{}", request.device_id));
             if self.fail_connect {
-                return Err(CoreError::ServiceUnavailableV2 {
+                return Err(CoreError::ServiceUnavailable {
                     code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "transport unavailable".to_string(),
                 });
@@ -408,7 +408,7 @@ mod tests {
                 .await
                 .push(format!("heartbeat:{session_id}"));
             if self.fail_heartbeat {
-                return Err(CoreError::ServiceUnavailableV2 {
+                return Err(CoreError::ServiceUnavailable {
                     code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "heartbeat unavailable".to_string(),
                 });
@@ -497,7 +497,7 @@ mod tests {
             .connect(vec![IntegrationCapabilityScope::SessionManage])
             .await
             .expect_err("connect should fail");
-        assert!(matches!(err, CoreError::ServiceUnavailableV2 { .. }));
+        assert!(matches!(err, CoreError::ServiceUnavailable { .. }));
 
         let state = coordinator.current_session().await.unwrap().unwrap();
         assert_eq!(state.status, IntegrationSessionStatus::Failed);

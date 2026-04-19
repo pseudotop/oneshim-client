@@ -28,25 +28,23 @@ impl WhisperSttProvider {
     /// Load Whisper model from a GGML file.
     pub fn new(model_path: &Path, language: SttLanguage) -> Result<Self, CoreError> {
         if !model_path.exists() {
-            return Err(CoreError::SpeechToTextV2 {
+            return Err(CoreError::SpeechToText {
                 code: oneshim_core::error_codes::AudioCode::SttFailed,
                 message: format!("model file not found: {}", model_path.display()),
             });
         }
 
-        let model_str = model_path
-            .to_str()
-            .ok_or_else(|| CoreError::SpeechToTextV2 {
-                code: oneshim_core::error_codes::AudioCode::SttFailed,
-                message: format!(
-                    "model path contains invalid UTF-8: {}",
-                    model_path.display()
-                ),
-            })?;
+        let model_str = model_path.to_str().ok_or_else(|| CoreError::SpeechToText {
+            code: oneshim_core::error_codes::AudioCode::SttFailed,
+            message: format!(
+                "model path contains invalid UTF-8: {}",
+                model_path.display()
+            ),
+        })?;
 
         info!(model = %model_path.display(), "loading Whisper model");
         let ctx = WhisperContext::new_with_params(model_str, WhisperContextParameters::default())
-            .map_err(|e| CoreError::SpeechToTextV2 {
+            .map_err(|e| CoreError::SpeechToText {
             code: oneshim_core::error_codes::AudioCode::SttFailed,
             message: format!("failed to load model: {e}"),
         })?;
@@ -71,7 +69,7 @@ impl Drop for TranscriptionGuard<'_> {
 impl SttProvider for WhisperSttProvider {
     async fn transcribe(&self, audio: AudioBuffer) -> Result<TranscriptionResult, CoreError> {
         if self.transcribing.swap(true, Ordering::SeqCst) {
-            return Err(CoreError::SpeechToTextV2 {
+            return Err(CoreError::SpeechToText {
                 code: oneshim_core::error_codes::AudioCode::SttFailed,
                 message: "transcription already in progress".into(),
             });
@@ -99,7 +97,7 @@ impl SttProvider for WhisperSttProvider {
             let ctx_guard = ctx.lock();
             let mut state = ctx_guard
                 .create_state()
-                .map_err(|e| CoreError::SpeechToTextV2 {
+                .map_err(|e| CoreError::SpeechToText {
                     code: oneshim_core::error_codes::AudioCode::SttFailed,
                     message: format!("create state: {e}"),
                 })?;
@@ -119,14 +117,14 @@ impl SttProvider for WhisperSttProvider {
 
             state
                 .full(params, &samples)
-                .map_err(|e| CoreError::SpeechToTextV2 {
+                .map_err(|e| CoreError::SpeechToText {
                     code: oneshim_core::error_codes::AudioCode::SttFailed,
                     message: format!("transcription failed: {e}"),
                 })?;
 
             let n_segments = state
                 .full_n_segments()
-                .map_err(|e| CoreError::SpeechToTextV2 {
+                .map_err(|e| CoreError::SpeechToText {
                     code: oneshim_core::error_codes::AudioCode::SttFailed,
                     message: format!("get segments: {e}"),
                 })?;
@@ -161,7 +159,7 @@ impl SttProvider for WhisperSttProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::SpeechToTextV2 {
+        .map_err(|e| CoreError::SpeechToText {
             code: oneshim_core::error_codes::AudioCode::SttFailed,
             message: format!("spawn_blocking join: {e}"),
         })?

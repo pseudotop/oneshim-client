@@ -41,7 +41,7 @@ impl ElementFinder for M5PermissionDeniedFinder {
         _role: Option<&str>,
         _region: Option<&ElementBounds>,
     ) -> Result<Vec<oneshim_core::models::intent::UiElement>, CoreError> {
-        Err(CoreError::PolicyDeniedV2 {
+        Err(CoreError::PolicyDenied {
             code: oneshim_core::error_codes::PolicyCode::Denied,
             message: "Accessibility permission denied".to_string(),
         })
@@ -52,7 +52,7 @@ impl ElementFinder for M5PermissionDeniedFinder {
         _app_name: Option<&str>,
         _screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
-        Err(CoreError::PolicyDeniedV2 {
+        Err(CoreError::PolicyDenied {
             code: oneshim_core::error_codes::PolicyCode::Denied,
             message: "Accessibility permission denied".to_string(),
         })

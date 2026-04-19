@@ -36,14 +36,18 @@ impl GuiInteractionService {
         let (session_focus, candidate, scene_id) = {
             let mut sessions = self.sessions.write().await;
             let Some(stored) = sessions.get_mut(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
 
             if is_expired(&stored.session.expires_at) {
                 stored.session.state = GuiSessionState::Expired;
-                return Err(GuiInteractionError::TicketInvalid(
-                    "Session already expired".to_string(),
-                ));
+                return Err(GuiInteractionError::TicketInvalid {
+                    code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                    message: "Session already expired".to_string(),
+                });
             }
 
             let Some(candidate) = stored
@@ -53,16 +57,17 @@ impl GuiInteractionService {
                 .find(|candidate| candidate.element.element_id == req.candidate_id)
                 .cloned()
             else {
-                return Err(GuiInteractionError::BadRequest(format!(
-                    "Unknown candidate_id '{}'",
-                    req.candidate_id
-                )));
+                return Err(GuiInteractionError::BadRequest {
+                    code: oneshim_core::error_codes::GuiCode::BadRequest,
+                    message: format!("Unknown candidate_id '{}'", req.candidate_id),
+                });
             };
 
             if !candidate.eligible {
-                return Err(GuiInteractionError::BadRequest(
-                    "Selected candidate is not eligible".to_string(),
-                ));
+                return Err(GuiInteractionError::BadRequest {
+                    code: oneshim_core::error_codes::GuiCode::BadRequest,
+                    message: "Selected candidate is not eligible".to_string(),
+                });
             }
 
             (
@@ -83,11 +88,12 @@ impl GuiInteractionService {
             .await
             .map_err(map_core_error)?;
         if !focus_validation.valid {
-            return Err(GuiInteractionError::FocusDrift(
-                focus_validation
+            return Err(GuiInteractionError::FocusDrift {
+                code: oneshim_core::error_codes::GuiCode::FocusDrift,
+                message: focus_validation
                     .reason
                     .unwrap_or_else(|| "Focused window changed".to_string()),
-            ));
+            });
         }
 
         let actions = build_actions_for_candidate(&candidate, &req.action)?;
@@ -118,7 +124,10 @@ impl GuiInteractionService {
         {
             let mut sessions = self.sessions.write().await;
             let Some(stored) = sessions.get_mut(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
             stored.confirmed_action = Some(ConfirmedAction {
                 candidate_id: req.candidate_id.clone(),
@@ -155,13 +164,17 @@ impl GuiInteractionService {
         let (session_focus, confirmed_action, session_state, expires_at) = {
             let sessions = self.sessions.read().await;
             let Some(stored) = sessions.get(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
 
             let Some(confirmed_action) = stored.confirmed_action.clone() else {
-                return Err(GuiInteractionError::TicketInvalid(
-                    "Session has no confirmed action".to_string(),
-                ));
+                return Err(GuiInteractionError::TicketInvalid {
+                    code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                    message: "Session has no confirmed action".to_string(),
+                });
             };
 
             (
@@ -173,39 +186,47 @@ impl GuiInteractionService {
         };
 
         if is_expired(&expires_at) {
-            return Err(GuiInteractionError::TicketInvalid(
-                "Session already expired".to_string(),
-            ));
+            return Err(GuiInteractionError::TicketInvalid {
+                code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                message: "Session already expired".to_string(),
+            });
         }
 
         if session_state != GuiSessionState::Confirmed {
-            return Err(GuiInteractionError::TicketInvalid(format!(
-                "Session state must be confirmed, current={:?}",
-                session_state
-            )));
+            return Err(GuiInteractionError::TicketInvalid {
+                code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                message: format!(
+                    "Session state must be confirmed, current={:?}",
+                    session_state
+                ),
+            });
         }
 
         verify_ticket(secret, &req.ticket)?;
 
         if req.ticket.session_id != session_id {
-            return Err(GuiInteractionError::TicketInvalid(
-                "ticket.session_id mismatch".to_string(),
-            ));
+            return Err(GuiInteractionError::TicketInvalid {
+                code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                message: "ticket.session_id mismatch".to_string(),
+            });
         }
         if req.ticket.ticket_id != confirmed_action.ticket.ticket_id {
-            return Err(GuiInteractionError::TicketInvalid(
-                "ticket_id mismatch".to_string(),
-            ));
+            return Err(GuiInteractionError::TicketInvalid {
+                code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                message: "ticket_id mismatch".to_string(),
+            });
         }
         if req.ticket.element_id != confirmed_action.candidate_id {
-            return Err(GuiInteractionError::TicketInvalid(
-                "element_id mismatch".to_string(),
-            ));
+            return Err(GuiInteractionError::TicketInvalid {
+                code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                message: "element_id mismatch".to_string(),
+            });
         }
         if req.ticket.action_hash != confirmed_action.action_hash {
-            return Err(GuiInteractionError::TicketInvalid(
-                "action_hash mismatch".to_string(),
-            ));
+            return Err(GuiInteractionError::TicketInvalid {
+                code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                message: "action_hash mismatch".to_string(),
+            });
         }
         if is_expired_past_grace(&req.ticket.expires_at, TICKET_EXPIRY_GRACE_SECS) {
             tracing::warn!(
@@ -213,9 +234,10 @@ impl GuiInteractionService {
                 ticket_id = %req.ticket.ticket_id,
                 "GUI ticket expired past grace period"
             );
-            return Err(GuiInteractionError::TicketInvalid(
-                "ticket expired".to_string(),
-            ));
+            return Err(GuiInteractionError::TicketInvalid {
+                code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                message: "ticket expired".to_string(),
+            });
         }
         if is_expired(&req.ticket.expires_at) {
             tracing::debug!(
@@ -266,18 +288,25 @@ impl GuiInteractionService {
                 reason = %last_drift_reason,
                 "Focus drift — all retries exhausted"
             );
-            return Err(GuiInteractionError::FocusDrift(last_drift_reason));
+            return Err(GuiInteractionError::FocusDrift {
+                code: oneshim_core::error_codes::GuiCode::FocusDrift,
+                message: last_drift_reason,
+            });
         }
 
         {
             let mut sessions = self.sessions.write().await;
             let Some(stored) = sessions.get_mut(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
             if stored.used_ticket_nonces.contains(&req.ticket.nonce) {
-                return Err(GuiInteractionError::TicketInvalid(
-                    "ticket nonce replay detected".to_string(),
-                ));
+                return Err(GuiInteractionError::TicketInvalid {
+                    code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                    message: "ticket nonce replay detected".to_string(),
+                });
             }
             stored.used_ticket_nonces.insert(req.ticket.nonce.clone());
             stored.session.state = GuiSessionState::Executing;
@@ -319,7 +348,10 @@ impl GuiInteractionService {
         let (updated_session, overlay_handle_id) = {
             let mut sessions = self.sessions.write().await;
             let Some(stored) = sessions.get_mut(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
 
             if succeeded {

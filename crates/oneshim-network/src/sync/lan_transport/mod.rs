@@ -96,7 +96,7 @@ impl LanSyncTransport {
             .timeout(PEER_REQUEST_TIMEOUT)
             .danger_accept_invalid_certs(true) // Self-signed certs in LAN mode
             .build()
-            .map_err(|e| CoreError::NetworkV2 {
+            .map_err(|e| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("failed to build LAN HTTP client: {e}"),
             })?;
@@ -200,7 +200,7 @@ impl SyncTransport for LanSyncTransport {
             return Ok(());
         }
 
-        let json = serde_json::to_vec(changes).map_err(|e| CoreError::InternalV2 {
+        let json = serde_json::to_vec(changes).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("serialize changeset: {e}"),
         })?;

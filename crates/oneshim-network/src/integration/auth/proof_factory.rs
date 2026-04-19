@@ -83,17 +83,15 @@ impl Ed25519DpopProofFactory {
             {
                 let bytes = URL_SAFE_NO_PAD
                     .decode(serialized.as_bytes())
-                    .map_err(|error| CoreError::SecretStoreErrorV2 {
+                    .map_err(|error| CoreError::SecretStoreError {
                         code: oneshim_core::error_codes::SecretCode::Failed,
                         message: format!("failed to decode integration DPoP signing key: {error}"),
                     })?;
                 let secret_bytes: [u8; 32] =
-                    bytes
-                        .try_into()
-                        .map_err(|_| CoreError::SecretStoreErrorV2 {
-                            code: oneshim_core::error_codes::SecretCode::Failed,
-                            message: "integration DPoP signing key must be 32 bytes".to_string(),
-                        })?;
+                    bytes.try_into().map_err(|_| CoreError::SecretStoreError {
+                        code: oneshim_core::error_codes::SecretCode::Failed,
+                        message: "integration DPoP signing key must be 32 bytes".to_string(),
+                    })?;
                 SigningKey::from_bytes(&secret_bytes)
             } else {
                 let secret_bytes: [u8; 32] = rand::random();

@@ -362,7 +362,7 @@ impl oneshim_core::ports::adaptive_search::AdaptiveSearchPort for AdaptiveSearch
     ) -> Result<Vec<SearchResult>, oneshim_core::error::CoreError> {
         self.search(query_f32, limit, time_decay_hours, filters)
             .await
-            .map_err(|e| oneshim_core::error::CoreError::InternalV2 {
+            .map_err(|e| oneshim_core::error::CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: e.to_string(),
             })
@@ -371,7 +371,7 @@ impl oneshim_core::ports::adaptive_search::AdaptiveSearchPort for AdaptiveSearch
     async fn refresh_count(&self) -> Result<(), oneshim_core::error::CoreError> {
         self.refresh_count()
             .await
-            .map_err(|e| oneshim_core::error::CoreError::InternalV2 {
+            .map_err(|e| oneshim_core::error::CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: e.to_string(),
             })
@@ -895,7 +895,7 @@ mod tests {
                 _k: usize,
             ) -> Result<Vec<(u64, f32)>, CoreError> {
                 if self.search_fail.load(Ordering::Relaxed) {
-                    return Err(CoreError::InternalV2 {
+                    return Err(CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: "mock HNSW search failure".into(),
                     });
@@ -916,7 +916,7 @@ mod tests {
             }
             async fn load(&self) -> Result<(), CoreError> {
                 if self.load_fail.load(Ordering::Relaxed) {
-                    return Err(CoreError::InternalV2 {
+                    return Err(CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: "mock HNSW load failure".into(),
                     });

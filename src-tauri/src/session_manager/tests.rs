@@ -459,7 +459,7 @@ async fn report_failure_transient_auto_recovers() {
     let session = mgr.create_session(config).await.expect("create session");
     let id = session.session_id().to_string();
 
-    let err = CoreError::NetworkV2 {
+    let err = CoreError::Network {
         code: oneshim_core::error_codes::NetworkCode::Generic,
         message: "connection reset".into(),
     };
@@ -485,7 +485,7 @@ async fn report_failure_permanent_sets_failed() {
     let session = mgr.create_session(config).await.expect("create session");
     let id = session.session_id().to_string();
 
-    let err = CoreError::AuthV2 {
+    let err = CoreError::Auth {
         code: oneshim_core::error_codes::AuthCode::Failed,
         message: "invalid API key".into(),
     };
@@ -521,7 +521,7 @@ async fn report_failure_exhausts_retries() {
     let session = mgr.create_session(session_config).await.expect("create");
     let id = session.session_id().to_string();
 
-    let err = CoreError::NetworkV2 {
+    let err = CoreError::Network {
         code: oneshim_core::error_codes::NetworkCode::Generic,
         message: "timeout".into(),
     };
@@ -538,7 +538,7 @@ async fn report_failure_exhausts_retries() {
 #[tokio::test]
 async fn report_failure_nonexistent_session() {
     let mgr = test_manager();
-    let err = CoreError::NetworkV2 {
+    let err = CoreError::Network {
         code: oneshim_core::error_codes::NetworkCode::Generic,
         message: "test".into(),
     };

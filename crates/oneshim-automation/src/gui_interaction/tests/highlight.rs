@@ -63,5 +63,5 @@ async fn highlight_rejects_invalid_token() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::Unauthorized));
+    assert!(matches!(err, GuiInteractionError::Unauthorized { .. }));
 }

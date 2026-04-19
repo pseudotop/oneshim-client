@@ -273,7 +273,7 @@ impl ChangeExtractor for SqliteSyncExtractor {
             })
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking join error: {e}"),
         })?
@@ -291,7 +291,7 @@ impl ChangeExtractor for SqliteSyncExtractor {
             Self::compute_max_hlc(&guard, &device_id)
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking join error: {e}"),
         })?

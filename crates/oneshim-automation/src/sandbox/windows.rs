@@ -140,9 +140,10 @@ impl Sandbox for WindowsSandbox {
         config: &SandboxConfig,
     ) -> Result<(), CoreError> {
         if !self.is_available {
-            return Err(CoreError::SandboxUnsupported(
-                "Windows sandbox not available on this platform".to_string(),
-            ));
+            return Err(CoreError::SandboxUnsupported {
+                code: oneshim_core::error_codes::SandboxCode::UnsupportedPlatform,
+                message: "Windows sandbox not available on this platform".to_string(),
+            });
         }
 
         if is_permissive_noop(config) {
@@ -155,7 +156,7 @@ impl Sandbox for WindowsSandbox {
             action: action.clone(),
         };
         let request_json =
-            serde_json::to_string(&request).map_err(|e| CoreError::SandboxExecutionV2 {
+            serde_json::to_string(&request).map_err(|e| CoreError::SandboxExecution {
                 code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                 message: format!("serialize: {e}"),
             })?;
@@ -187,7 +188,7 @@ impl Sandbox for WindowsSandbox {
             Ok::<_, AutomationError>((job, token))
         })
         .await
-        .map_err(|e| CoreError::SandboxExecutionV2 {
+        .map_err(|e| CoreError::SandboxExecution {
             code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
             message: format!("thread join failed: {e}"),
         })?
@@ -207,7 +208,7 @@ impl Sandbox for WindowsSandbox {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| CoreError::SandboxExecutionV2 {
+        let mut child = cmd.spawn().map_err(|e| CoreError::SandboxExecution {
             code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
             message: format!("spawn failed: {e}"),
         })?;
@@ -223,7 +224,7 @@ impl Sandbox for WindowsSandbox {
             let raw_child_handle =
                 child
                     .raw_handle()
-                    .ok_or_else(|| CoreError::SandboxExecutionV2 {
+                    .ok_or_else(|| CoreError::SandboxExecution {
                         code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                         message: "child process handle unavailable".into(),
                     })?;
@@ -236,14 +237,14 @@ impl Sandbox for WindowsSandbox {
             stdin
                 .write_all(request_json.as_bytes())
                 .await
-                .map_err(|e| CoreError::SandboxExecutionV2 {
+                .map_err(|e| CoreError::SandboxExecution {
                     code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                     message: format!("stdin write: {e}"),
                 })?;
             stdin
                 .write_all(b"\n")
                 .await
-                .map_err(|e| CoreError::SandboxExecutionV2 {
+                .map_err(|e| CoreError::SandboxExecution {
                     code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                     message: format!("stdin newline: {e}"),
                 })?;
@@ -256,26 +257,32 @@ impl Sandbox for WindowsSandbox {
         )
         .await
         .map_err(|_| CoreError::ExecutionTimeout { timeout_ms })?
-        .map_err(|e| CoreError::SandboxExecutionV2 {
+        .map_err(|e| CoreError::SandboxExecution {
             code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
             message: format!("wait failed: {e}"),
         })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(CoreError::SandboxExecution(format!(
-                "child exited {} -- stderr: {}",
-                output.status,
-                stderr.trim()
-            )));
+            return Err(CoreError::SandboxExecution {
+                code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                message: format!(
+                    "child exited {} -- stderr: {}",
+                    output.status,
+                    stderr.trim()
+                ),
+            });
         }
 
         let response = ipc::parse_worker_response(&output.stdout)?;
         if !response.success {
-            return Err(CoreError::SandboxExecution(format!(
-                "worker reported failure: {}",
-                response.error.unwrap_or_default()
-            )));
+            return Err(CoreError::SandboxExecution {
+                code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                message: format!(
+                    "worker reported failure: {}",
+                    response.error.unwrap_or_default()
+                ),
+            });
         }
 
         tracing::info!(action = ?action, "Windows sandbox execution completed via worker");
@@ -485,9 +492,10 @@ fn assign_process_to_job(job: &OwnedHandle, child_handle: isize) -> Result<(), C
     let ret = unsafe { AssignProcessToJobObject(job.0, child_handle) };
     if ret == 0 {
         let err = unsafe { GetLastError() };
-        return Err(CoreError::SandboxExecution(format!(
-            "AssignProcessToJobObject failed: error {err}"
-        )));
+        return Err(CoreError::SandboxExecution {
+            code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+            message: format!("AssignProcessToJobObject failed: error {err}"),
+        });
     }
     tracing::debug!("Child process assigned to Job Object");
     Ok(())

@@ -36,34 +36,34 @@ impl From<StorageError> for CoreError {
     fn from(err: StorageError) -> Self {
         match err {
             StorageError::Core(e) => e,
-            StorageError::Sqlite(e) => CoreError::StorageV2 {
+            StorageError::Sqlite(e) => CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: e.to_string(),
             },
             StorageError::Io(e) => CoreError::Io(e),
-            StorageError::SecretStore(msg) => CoreError::SecretStoreErrorV2 {
+            StorageError::SecretStore(msg) => CoreError::SecretStoreError {
                 code: oneshim_core::error_codes::SecretCode::Failed,
                 message: msg,
             },
-            StorageError::NotFound { resource_type, id } => CoreError::NotFoundV2 {
+            StorageError::NotFound { resource_type, id } => CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type,
                 id,
             },
-            StorageError::Encryption(msg) => CoreError::InternalV2 {
+            StorageError::Encryption(msg) => CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             },
-            StorageError::Validation { field, message } => CoreError::ValidationV2 {
+            StorageError::Validation { field, message } => CoreError::Validation {
                 code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field,
                 message,
             },
-            StorageError::Config(msg) => CoreError::ConfigV2 {
+            StorageError::Config(msg) => CoreError::Config {
                 code: oneshim_core::error_codes::ConfigCode::Invalid,
                 message: msg,
             },
-            StorageError::Internal(msg) => CoreError::InternalV2 {
+            StorageError::Internal(msg) => CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             },

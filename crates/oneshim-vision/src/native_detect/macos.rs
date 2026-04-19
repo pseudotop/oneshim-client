@@ -62,7 +62,7 @@ fn detect_rectangles_blocking(
 
     // --- Create VNImageRequestHandler initWithData:options: ---
     let handler_cls =
-        AnyClass::get(c"VNImageRequestHandler").ok_or_else(|| CoreError::InternalV2 {
+        AnyClass::get(c"VNImageRequestHandler").ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "VNImageRequestHandler class not found".into(),
         })?;
@@ -76,7 +76,7 @@ fn detect_rectangles_blocking(
 
     // --- Create VNDetectRectanglesRequest ---
     let request_cls =
-        AnyClass::get(c"VNDetectRectanglesRequest").ok_or_else(|| CoreError::InternalV2 {
+        AnyClass::get(c"VNDetectRectanglesRequest").ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "VNDetectRectanglesRequest class not found".into(),
         })?;
@@ -102,7 +102,7 @@ fn detect_rectangles_blocking(
     let _: () = unsafe { msg_send![&request, setMaximumAspectRatio: max_aspect] };
 
     // --- Create NSArray with single request ---
-    let nsarray_cls = AnyClass::get(c"NSArray").ok_or_else(|| CoreError::InternalV2 {
+    let nsarray_cls = AnyClass::get(c"NSArray").ok_or_else(|| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: "NSArray class not found".into(),
     })?;
@@ -122,7 +122,7 @@ fn detect_rectangles_blocking(
         } else {
             "unknown Vision error".to_string()
         };
-        return Err(CoreError::InternalV2 {
+        return Err(CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Vision performRequests failed: {err_msg}"),
         });

@@ -459,7 +459,7 @@ impl ConversationSession for LocalLlmSession {
             .await
             .map_err(|e| {
                 *self.state.lock() = SessionState::Failed;
-                CoreError::NetworkV2 {
+                CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: format!("Ollama request failed: {e}"),
                 }
@@ -469,7 +469,7 @@ impl ConversationSession for LocalLlmSession {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
             *self.state.lock() = SessionState::Failed;
-            return Err(CoreError::NetworkV2 {
+            return Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("Ollama API error {status}: {body_text}"),
             });
@@ -494,7 +494,7 @@ impl ConversationSession for LocalLlmSession {
 
             while let Some(chunk_result) = byte_stream.next().await {
                 let bytes = chunk_result
-                    .map_err(|e| CoreError::NetworkV2 { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("stream read error: {e}") })?;
+                    .map_err(|e| CoreError::Network { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("stream read error: {e}") })?;
                 let text = String::from_utf8_lossy(&bytes);
                 line_buffer.push_str(&text);
 

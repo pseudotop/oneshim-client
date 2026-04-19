@@ -87,16 +87,19 @@ impl OcrValidationConfig {
         }
 
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
-            return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.min_confidence` must be within 0.0..=1.0.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: "`ai_provider.ocr_validation.min_confidence` must be within 0.0..=1.0."
+                    .to_string(),
+            });
         }
 
         if !self.max_invalid_ratio.is_finite() || !(0.0..=1.0).contains(&self.max_invalid_ratio) {
-            return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.max_invalid_ratio` must be within 0.0..=1.0."
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: "`ai_provider.ocr_validation.max_invalid_ratio` must be within 0.0..=1.0."
                     .to_string(),
-            ));
+            });
         }
 
         Ok(())
@@ -143,9 +146,10 @@ impl SceneActionOverrideConfig {
 
         let reason = self.reason.as_deref().map(str::trim).unwrap_or_default();
         if reason.is_empty() {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.reason` is required.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: "`ai_provider.scene_action_override.reason` is required.".to_string(),
+            });
         }
 
         let approved_by = self
@@ -154,21 +158,23 @@ impl SceneActionOverrideConfig {
             .map(str::trim)
             .unwrap_or_default();
         if approved_by.is_empty() {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.approved_by` is required.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: "`ai_provider.scene_action_override.approved_by` is required.".to_string(),
+            });
         }
 
-        let expires_at = self.expires_at.ok_or_else(|| {
-            CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` is required.".to_string(),
-            )
+        let expires_at = self.expires_at.ok_or_else(|| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: "`ai_provider.scene_action_override.expires_at` is required.".to_string(),
         })?;
 
         if expires_at <= Utc::now() {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` must be in the future.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: "`ai_provider.scene_action_override.expires_at` must be in the future."
+                    .to_string(),
+            });
         }
 
         Ok(())
@@ -215,30 +221,29 @@ impl Default for SceneIntelligenceConfig {
 impl SceneIntelligenceConfig {
     pub fn validate(&self) -> Result<(), CoreError> {
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.min_confidence` must be within 0.0..=1.0."
-                    .to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message:
+                    "`ai_provider.scene_intelligence.min_confidence` must be within 0.0..=1.0."
+                        .to_string(),
+            });
         }
         if self.max_elements == 0 || self.max_elements > 1000 {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.max_elements` must be within 1..=1000."
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: "`ai_provider.scene_intelligence.max_elements` must be within 1..=1000."
                     .to_string(),
-            ));
+            });
         }
         if self.calibration_min_elements == 0 || self.calibration_min_elements > 1000 {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_elements` must be within 1..=1000."
-                    .to_string(),
-            ));
+            return Err(CoreError::Config { code: crate::error_codes::ConfigCode::Invalid, message: "`ai_provider.scene_intelligence.calibration_min_elements` must be within 1..=1000."
+                    .to_string() });
         }
         if !self.calibration_min_avg_confidence.is_finite()
             || !(0.0..=1.0).contains(&self.calibration_min_avg_confidence)
         {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_avg_confidence` must be within 0.0..=1.0."
-                    .to_string(),
-            ));
+            return Err(CoreError::Config { code: crate::error_codes::ConfigCode::Invalid, message: "`ai_provider.scene_intelligence.calibration_min_avg_confidence` must be within 0.0..=1.0."
+                    .to_string() });
         }
         Ok(())
     }

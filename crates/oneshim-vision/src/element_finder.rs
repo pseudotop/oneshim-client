@@ -235,7 +235,7 @@ impl ElementFinder for OcrElementFinder {
     ) -> Result<Vec<UiElement>, CoreError> {
         let image_guard = self.last_image.read().await;
         let (image_data, image_format) =
-            image_guard.as_ref().ok_or_else(|| CoreError::InternalV2 {
+            image_guard.as_ref().ok_or_else(|| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "OCR finder: captured image is missing".to_string(),
             })?;
@@ -329,7 +329,7 @@ impl ElementFinder for ChainedElementFinder {
                 }
             }
         }
-        Err(CoreError::ElementNotFoundV2 {
+        Err(CoreError::ElementNotFound {
             code: oneshim_core::error_codes::UiCode::ElementMissing,
             name: format!(
                 "No element found in all finders (text={:?}, role={:?})",
@@ -360,7 +360,7 @@ impl ElementFinder for ChainedElementFinder {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFoundV2 {
+        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFound {
             code: oneshim_core::error_codes::UiCode::ElementMissing,
             name: "No finder supports scene analysis".to_string(),
         }))
@@ -398,7 +398,7 @@ impl ElementFinder for ChainedElementFinder {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFoundV2 {
+        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFound {
             code: oneshim_core::error_codes::UiCode::ElementMissing,
             name: "No finder supports image scene analysis".to_string(),
         }))
@@ -672,7 +672,7 @@ mod tests {
             _role: Option<&str>,
             _region: Option<&ElementBounds>,
         ) -> Result<Vec<UiElement>, CoreError> {
-            Err(CoreError::InternalV2 {
+            Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "Search failed".to_string(),
             })

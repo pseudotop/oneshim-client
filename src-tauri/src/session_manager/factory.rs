@@ -77,7 +77,7 @@ impl SessionManagerImpl {
                 })
                 .map(|surface| surface.detected.clone())
                 .ok_or_else(|| {
-                    CoreError::InternalV2 { code: oneshim_core::error_codes::InternalCode::Generic, message: format!(
+                    CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!(
                         "requested subprocess CLI surface '{requested_surface_id}' is not detected on this system"
                     ) }
                 })?
@@ -93,7 +93,7 @@ impl SessionManagerImpl {
                         .first()
                         .map(|surface| surface.detected.clone())
                 })
-                .ok_or_else(|| CoreError::InternalV2 {
+                .ok_or_else(|| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: "no supported subprocess CLI surface detected on this system"
                         .to_string(),
@@ -148,14 +148,14 @@ impl SessionManagerImpl {
             config
                 .surface_id
                 .as_deref()
-                .ok_or_else(|| CoreError::InvalidArgumentsV2 {
+                .ok_or_else(|| CoreError::InvalidArguments {
                     code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
                     message: "surface_id is required for HttpApi sessions".to_string(),
                 })?;
 
         // Resolve surface spec from the provider catalog.
         let surface_spec = provider_specs::provider_surface_spec(surface_id).map_err(|msg| {
-            CoreError::InternalV2 {
+            CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             }
@@ -163,7 +163,7 @@ impl SessionManagerImpl {
         let provider_type = oneshim_core::provider_surface::provider_type_from_vendor_id(
             &surface_spec.provider_type,
         )
-        .ok_or_else(|| CoreError::InternalV2 {
+        .ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!(
                 "unknown provider_type for vendor '{}'",
@@ -177,7 +177,7 @@ impl SessionManagerImpl {
             Some(surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })?;
@@ -195,7 +195,7 @@ impl SessionManagerImpl {
                 .ok()
                 .flatten()
             })
-            .ok_or_else(|| CoreError::InvalidArgumentsV2 {
+            .ok_or_else(|| CoreError::InvalidArguments {
                 code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
                 message: format!(
                     "no model specified and surface '{surface_id}' has no default LLM model"
@@ -220,7 +220,7 @@ impl SessionManagerImpl {
             if oneshim_core::provider_surface::provider_surface_uses_no_auth(surface_id) {
                 Ok(CredentialSource::NoAuth)
             } else {
-                Err(CoreError::AuthV2 {
+                Err(CoreError::Auth {
                     code: oneshim_core::error_codes::AuthCode::Failed,
                     message: format!("no credential available for surface '{surface_id}'"),
                 })

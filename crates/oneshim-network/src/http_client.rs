@@ -636,7 +636,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(matches!(
             err,
-            CoreError::RateLimitV2 {
+            CoreError::RateLimit {
                 code: oneshim_core::error_codes::NetworkCode::RateLimit,
                 ..
             }
@@ -661,7 +661,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            matches!(err, CoreError::ServiceUnavailableV2 { .. }),
+            matches!(err, CoreError::ServiceUnavailable { .. }),
             "err: {err:?}"
         );
         mock.assert_async().await;

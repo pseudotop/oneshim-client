@@ -26,7 +26,7 @@ impl FocusProbe for ProcessMonitorFocusProbe {
             .process_monitor
             .get_active_window()
             .await?
-            .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+            .ok_or_else(|| CoreError::ServiceUnavailable {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: "No active window available".to_string(),
             })?;
@@ -267,7 +267,7 @@ mod tests {
     async fn current_focus_errors_when_no_active_window() {
         let probe = ProcessMonitorFocusProbe::new(Arc::new(MockProcessMonitor::no_window()));
         let err = probe.current_focus().await.unwrap_err();
-        assert!(matches!(err, CoreError::ServiceUnavailableV2 { .. }));
+        assert!(matches!(err, CoreError::ServiceUnavailable { .. }));
     }
 
     // ── validate_execution_binding tests ────────────────────────────────

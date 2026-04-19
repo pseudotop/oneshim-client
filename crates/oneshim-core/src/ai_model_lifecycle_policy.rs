@@ -198,7 +198,10 @@ pub fn enforce_model_lifecycle_now(
 ) -> Result<(), CoreError> {
     match evaluate_model_lifecycle_now(provider_type, model)? {
         ModelLifecycleDecision::Allowed | ModelLifecycleDecision::Warn { .. } => Ok(()),
-        ModelLifecycleDecision::Block { message, .. } => Err(CoreError::PolicyDenied(message)),
+        ModelLifecycleDecision::Block { message, .. } => Err(CoreError::PolicyDenied {
+            code: crate::error_codes::PolicyCode::Denied,
+            message,
+        }),
     }
 }
 
@@ -330,7 +333,10 @@ fn validate_policy_catalog(catalog: &ModelLifecyclePolicyCatalog) -> Result<(), 
 fn policy_catalog() -> Result<&'static ModelLifecyclePolicyCatalog, CoreError> {
     match POLICY_CATALOG.get_or_init(load_policy_catalog) {
         Ok(catalog) => Ok(catalog),
-        Err(message) => Err(CoreError::Internal(message.clone())),
+        Err(message) => Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: message.clone(),
+        }),
     }
 }
 
@@ -353,10 +359,9 @@ fn parse_utc_opt(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, CoreError> 
         return Ok(None);
     }
 
-    let parsed = DateTime::parse_from_rfc3339(trimmed).map_err(|e| {
-        CoreError::Internal(format!(
-            "Invalid RFC3339 datetime in model lifecycle policy: `{trimmed}` ({e})"
-        ))
+    let parsed = DateTime::parse_from_rfc3339(trimmed).map_err(|e| CoreError::Internal {
+        code: crate::error_codes::InternalCode::Generic,
+        message: format!("Invalid RFC3339 datetime in model lifecycle policy: `{trimmed}` ({e})"),
     })?;
 
     Ok(Some(parsed.with_timezone(&Utc)))

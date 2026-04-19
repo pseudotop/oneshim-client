@@ -115,7 +115,7 @@ impl UnifiedClient {
     {
         self.ensure_grpc_context().await?;
         let mut guard = self.grpc_context.lock().await;
-        let client = guard.as_mut().ok_or_else(|| CoreError::NetworkV2 {
+        let client = guard.as_mut().ok_or_else(|| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: format!("gRPC context client initialize failure ({op})"),
         })?;
@@ -147,7 +147,7 @@ impl UnifiedClient {
         self.ensure_grpc_auth().await?;
 
         let mut guard = self.grpc_auth.lock().await;
-        let client = guard.as_mut().ok_or_else(|| CoreError::NetworkV2 {
+        let client = guard.as_mut().ok_or_else(|| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: "Failed to initialize gRPC auth client".to_string(),
         })?;
@@ -230,7 +230,7 @@ impl UnifiedClient {
         self.ensure_grpc_session().await?;
 
         let mut guard = self.grpc_session.lock().await;
-        let client = guard.as_mut().ok_or_else(|| CoreError::NetworkV2 {
+        let client = guard.as_mut().ok_or_else(|| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: "gRPC session client initialize failure".to_string(),
         })?;
@@ -257,7 +257,7 @@ impl UnifiedClient {
         self.ensure_grpc_session().await?;
 
         let mut guard = self.grpc_session.lock().await;
-        let client = guard.as_mut().ok_or_else(|| CoreError::NetworkV2 {
+        let client = guard.as_mut().ok_or_else(|| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: "gRPC session client initialize failure".to_string(),
         })?;
@@ -281,7 +281,7 @@ impl UnifiedClient {
         session_id: &str,
     ) -> Result<Streaming<SuggestionEvent>, CoreError> {
         if !self.config.should_use_grpc_for_context() {
-            return Err(CoreError::NetworkV2 { code: oneshim_core::error_codes::NetworkCode::Generic, message: "Suggestion streaming is available only in gRPC mode. Set use_grpc_context=true."
+            return Err(CoreError::Network { code: oneshim_core::error_codes::NetworkCode::Generic, message: "Suggestion streaming is available only in gRPC mode. Set use_grpc_context=true."
                     .to_string() });
         }
 
@@ -292,7 +292,7 @@ impl UnifiedClient {
         self.ensure_grpc_context().await?;
 
         let mut guard = self.grpc_context.lock().await;
-        let client = guard.as_mut().ok_or_else(|| CoreError::NetworkV2 {
+        let client = guard.as_mut().ok_or_else(|| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: "gRPC context client initialize failure".to_string(),
         })?;

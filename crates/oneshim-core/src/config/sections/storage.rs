@@ -238,10 +238,12 @@ impl UpdateConfig {
         }
 
         if !self.require_signature_verification {
-            return Err(CoreError::Config(
-                "update.require_signature_verification must be true when updates are enabled"
-                    .to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message:
+                    "update.require_signature_verification must be true when updates are enabled"
+                        .to_string(),
+            });
         }
 
         // D9 (Phase 4): The built-in TRUSTED_PUBLIC_KEYS array (lives in
@@ -256,18 +258,19 @@ impl UpdateConfig {
             .next()
             .filter(|k| !k.trim().is_empty())
         {
-            let key_bytes = BASE64.decode(key_b64).map_err(|e| {
-                CoreError::Config(format!(
-                    "update.signature_public_key must be valid base64: {}",
-                    e
-                ))
+            let key_bytes = BASE64.decode(key_b64).map_err(|e| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: format!("update.signature_public_key must be valid base64: {}", e),
             })?;
 
             if key_bytes.len() != 32 {
-                return Err(CoreError::Config(format!(
-                    "update.signature_public_key must decode to 32 bytes, got {}",
-                    key_bytes.len()
-                )));
+                return Err(CoreError::Config {
+                    code: crate::error_codes::ConfigCode::Invalid,
+                    message: format!(
+                        "update.signature_public_key must decode to 32 bytes, got {}",
+                        key_bytes.len()
+                    ),
+                });
             }
         }
 
@@ -276,11 +279,9 @@ impl UpdateConfig {
             .as_deref()
             .filter(|value| !value.trim().is_empty())
         {
-            semver::Version::parse(version_floor).map_err(|e| {
-                CoreError::Config(format!(
-                    "update.min_allowed_version must be valid semver: {}",
-                    e
-                ))
+            semver::Version::parse(version_floor).map_err(|e| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: format!("update.min_allowed_version must be valid semver: {}", e),
             })?;
         }
 

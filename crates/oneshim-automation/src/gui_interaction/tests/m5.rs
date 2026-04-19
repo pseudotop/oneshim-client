@@ -15,7 +15,7 @@ async fn m3_subscribe_session_rejects_invalid_token() {
         .subscribe_session(&sid, "wrong-token")
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::Unauthorized));
+    assert!(matches!(err, GuiInteractionError::Unauthorized { .. }));
 }
 
 /// `subscribe_session` rejects an unknown session_id.
@@ -32,7 +32,7 @@ async fn m3_subscribe_session_rejects_unknown_session() {
         .unwrap_err();
     assert!(matches!(
         err,
-        GuiInteractionError::Unauthorized | GuiInteractionError::NotFound(_)
+        GuiInteractionError::Unauthorized { .. } | GuiInteractionError::NotFound { .. }
     ));
 }
 
@@ -375,7 +375,7 @@ async fn m5_permission_denied_returns_forbidden() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::ForbiddenV2 { .. }),
+        matches!(err, GuiInteractionError::Forbidden { .. }),
         "Expected ForbiddenV2, got: {err:?}"
     );
 }
@@ -406,7 +406,7 @@ async fn m5_focus_drift_on_confirm_returns_focus_drift() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::FocusDrift(_)),
+        matches!(err, GuiInteractionError::FocusDrift { .. }),
         "Expected FocusDrift, got: {err:?}"
     );
 }
@@ -426,7 +426,7 @@ async fn m5_focus_drift_on_execute_returns_focus_drift() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::FocusDrift(_)),
+        matches!(err, GuiInteractionError::FocusDrift { .. }),
         "Expected FocusDrift, got: {err:?}"
     );
 }
@@ -446,7 +446,7 @@ async fn m5_expired_ticket_returns_ticket_invalid() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::TicketInvalid(_)),
+        matches!(err, GuiInteractionError::TicketInvalid { .. }),
         "Expected TicketInvalid for expired ticket, got: {err:?}"
     );
 }
@@ -482,11 +482,15 @@ async fn m5_nonce_replay_blocked_deterministically() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::TicketInvalid(_)),
+        matches!(err, GuiInteractionError::TicketInvalid { .. }),
         "Expected TicketInvalid for nonce replay, got: {err:?}"
     );
     // Verify the error message is specific
-    if let GuiInteractionError::TicketInvalid(msg) = &err {
+    if let GuiInteractionError::TicketInvalid {
+        code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+        message: msg,
+    } = &err
+    {
         assert!(
             msg.contains("nonce") || msg.contains("replay"),
             "Error message should mention nonce replay, got: {msg}"
@@ -528,7 +532,7 @@ async fn m5_session_ttl_boundary_marks_expired() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::TicketInvalid(_)));
+    assert!(matches!(err, GuiInteractionError::TicketInvalid { .. }));
 }
 
 #[tokio::test]
@@ -552,7 +556,7 @@ async fn m5_expire_sessions_removes_and_emits_event() {
 
     // Session should be gone
     let err = service.get_session(&sid, &token).await.unwrap_err();
-    assert!(matches!(err, GuiInteractionError::NotFound(_)));
+    assert!(matches!(err, GuiInteractionError::NotFound { .. }));
 
     // Expired event should have been emitted
     let mut events = Vec::new();

@@ -20,7 +20,7 @@ impl WindowsNativeOcr {
         // 1. Create OcrEngine from user profile languages
         let engine =
             windows::Media::Ocr::OcrEngine::TryCreateFromUserProfileLanguages().map_err(|e| {
-                CoreError::InternalV2 {
+                CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("OcrEngine creation failed: {e}"),
                 }
@@ -29,7 +29,7 @@ impl WindowsNativeOcr {
         // 2. Decode image bytes to SoftwareBitmap
         //    Write bytes into InMemoryRandomAccessStream, then decode via BitmapDecoder
         let stream = windows::Storage::Streams::InMemoryRandomAccessStream::new().map_err(|e| {
-            CoreError::InternalV2 {
+            CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Stream creation failed: {e}"),
             }
@@ -37,70 +37,70 @@ impl WindowsNativeOcr {
         {
             let writer =
                 windows::Storage::Streams::DataWriter::CreateDataWriter(&stream).map_err(|e| {
-                    CoreError::InternalV2 {
+                    CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: format!("DataWriter failed: {e}"),
                     }
                 })?;
             writer
                 .WriteBytes(image_data)
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("WriteBytes failed: {e}"),
                 })?;
             writer
                 .StoreAsync()
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("StoreAsync failed: {e}"),
                 })?
                 .GetResults()
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("StoreAsync get failed: {e}"),
                 })?;
             writer
                 .FlushAsync()
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("FlushAsync failed: {e}"),
                 })?
                 .GetResults()
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("FlushAsync get failed: {e}"),
                 })?;
-            writer.DetachStream().map_err(|e| CoreError::InternalV2 {
+            writer.DetachStream().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("DetachStream failed: {e}"),
             })?;
         }
 
         // Reset stream position to start
-        stream.Seek(0).map_err(|e| CoreError::InternalV2 {
+        stream.Seek(0).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Seek failed: {e}"),
         })?;
 
         let decoder = windows::Graphics::Imaging::BitmapDecoder::CreateAsync(&stream)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("BitmapDecoder failed: {e}"),
             })?
             .GetResults()
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("BitmapDecoder get failed: {e}"),
             })?;
 
         let bitmap = decoder
             .GetSoftwareBitmapAsync()
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("GetSoftwareBitmap failed: {e}"),
             })?
             .GetResults()
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("GetSoftwareBitmap get failed: {e}"),
             })?;
@@ -108,36 +108,36 @@ impl WindowsNativeOcr {
         // 3. Run OCR
         let ocr_result = engine
             .RecognizeAsync(&bitmap)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("RecognizeAsync failed: {e}"),
             })?
             .GetResults()
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("RecognizeAsync get failed: {e}"),
             })?;
 
         // 4. Extract results — iterate lines → words with bounding rectangles
         let mut results = Vec::new();
-        let lines = ocr_result.Lines().map_err(|e| CoreError::InternalV2 {
+        let lines = ocr_result.Lines().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Lines failed: {e}"),
         })?;
         for line in &lines {
-            let words = line.Words().map_err(|e| CoreError::InternalV2 {
+            let words = line.Words().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Words failed: {e}"),
             })?;
             for word in &words {
                 let text = word
                     .Text()
-                    .map_err(|e| CoreError::InternalV2 {
+                    .map_err(|e| CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: format!("Text failed: {e}"),
                     })?
                     .to_string_lossy();
-                let rect = word.BoundingRect().map_err(|e| CoreError::InternalV2 {
+                let rect = word.BoundingRect().map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("BoundingRect failed: {e}"),
                 })?;
@@ -166,7 +166,7 @@ impl OcrProvider for WindowsNativeOcr {
         let data = image.to_vec();
         tokio::task::spawn_blocking(move || Self::recognize_text_blocking(&data))
             .await
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: e.to_string(),
             })?

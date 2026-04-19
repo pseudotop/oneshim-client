@@ -29,7 +29,7 @@ impl TryFrom<ProviderRequestShape> for OcrProviderStrategy {
             | ProviderRequestShape::OpenAiResponses => Ok(Self::OpenAi),
             ProviderRequestShape::GoogleGenerateContent
             | ProviderRequestShape::GoogleVisionAnnotate => Ok(Self::Google),
-            ProviderRequestShape::BedrockConverse => Err(CoreError::ConfigV2 {
+            ProviderRequestShape::BedrockConverse => Err(CoreError::Config {
                 code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
                 message: "AWS Bedrock is intentionally unsupported in this build".into(),
             }),

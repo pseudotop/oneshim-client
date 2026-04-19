@@ -39,7 +39,7 @@ pub(super) fn invocation_runtime_for_surface(
 }
 
 fn invocation_mode_for_surface(surface_id: &str) -> Result<SubprocessInvocationMode, CoreError> {
-    subprocess_invocation_mode(surface_id).map_err(|msg| CoreError::InternalV2 {
+    subprocess_invocation_mode(surface_id).map_err(|msg| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: msg,
     })

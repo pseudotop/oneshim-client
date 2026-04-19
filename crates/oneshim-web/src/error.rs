@@ -59,57 +59,46 @@ impl From<oneshim_core::error::CoreError> for ApiError {
         #[allow(deprecated)]
         match err {
             // --- V2 struct variants (final shape post Phase 4) ---
-            CoreError::ValidationV2 { field, message, .. } => {
-                ApiError::BadRequest(format!("{field}: {message}"))
+            CoreError::Validation {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
+                field,
+                message,
+                ..
+            } => ApiError::BadRequest(format!("{field}: {message}")),
+            CoreError::Auth { message, .. }
+            | CoreError::ConsentRequired { message, .. }
+            | CoreError::OAuthError {
+                code: oneshim_core::error_codes::OAuthCode::Failed,
+                message,
+                ..
             }
-            CoreError::AuthV2 { message, .. }
-            | CoreError::ConsentRequiredV2 { message, .. }
-            | CoreError::OAuthErrorV2 { message, .. }
-            | CoreError::OAuthRefreshErrorV2 { message, .. } => ApiError::Unauthorized(message),
-            CoreError::NotFoundV2 {
-                resource_type, id, ..
+            | CoreError::OAuthRefreshError {
+                code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
+                message,
+                ..
+            } => ApiError::Unauthorized(message),
+            CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type,
+                id,
+                ..
             } => ApiError::NotFound(format!("{resource_type}: {id}")),
-            CoreError::ServiceUnavailableV2 { message, .. }
-            | CoreError::SandboxUnsupportedV2 { message, .. } => {
+            CoreError::ServiceUnavailable { message, .. }
+            | CoreError::SandboxUnsupported { message, .. } => {
                 ApiError::ServiceUnavailable(message)
             }
-            CoreError::PolicyDeniedV2 { message, .. }
-            | CoreError::PrivacyDeniedV2 { message, .. }
-            | CoreError::ProcessNotAllowedV2 { message, .. } => ApiError::Forbidden(message),
-            CoreError::InvalidArgumentsV2 { message, .. }
-            | CoreError::ConfigV2 { message, .. }
-            | CoreError::NetworkV2 { message, .. }
-            | CoreError::OcrErrorV2 { message, .. }
-            | CoreError::SecretStoreErrorV2 { message, .. }
-            | CoreError::SandboxInitV2 { message, .. }
-            | CoreError::SandboxExecutionV2 { message, .. } => ApiError::BadRequest(message),
-            CoreError::ElementNotFoundV2 { name, .. } => ApiError::BadRequest(name),
+            CoreError::PolicyDenied { message, .. }
+            | CoreError::PrivacyDenied { message, .. }
+            | CoreError::ProcessNotAllowed { message, .. } => ApiError::Forbidden(message),
+            CoreError::InvalidArguments { message, .. }
+            | CoreError::Config { message, .. }
+            | CoreError::Network { message, .. }
+            | CoreError::OcrError { message, .. }
+            | CoreError::SecretStoreError { message, .. }
+            | CoreError::SandboxInit { message, .. }
+            | CoreError::SandboxExecution { message, .. } => ApiError::BadRequest(message),
+            CoreError::ElementNotFound { name, .. } => ApiError::BadRequest(name),
 
-            // --- V1 deprecated variants (removed in Phase 4) ---
-            CoreError::Validation { field, message } => {
-                ApiError::BadRequest(format!("{field}: {message}"))
-            }
-            CoreError::Auth(message)
-            | CoreError::ConsentRequired(message)
-            | CoreError::OAuthError { message, .. }
-            | CoreError::OAuthRefreshError { message, .. } => ApiError::Unauthorized(message),
-            CoreError::NotFound { resource_type, id } => {
-                ApiError::NotFound(format!("{resource_type}: {id}"))
-            }
-            CoreError::ServiceUnavailable(message) | CoreError::SandboxUnsupported(message) => {
-                ApiError::ServiceUnavailable(message)
-            }
-            CoreError::PolicyDenied(message)
-            | CoreError::PrivacyDenied(message)
-            | CoreError::ProcessNotAllowed(message) => ApiError::Forbidden(message),
-            CoreError::InvalidArguments(message)
-            | CoreError::Config(message)
-            | CoreError::Network(message)
-            | CoreError::OcrError(message)
-            | CoreError::SecretStoreError(message)
-            | CoreError::ElementNotFound(message)
-            | CoreError::SandboxInit(message)
-            | CoreError::SandboxExecution(message) => ApiError::BadRequest(message),
             other => ApiError::Internal(other.to_string()),
         }
     }

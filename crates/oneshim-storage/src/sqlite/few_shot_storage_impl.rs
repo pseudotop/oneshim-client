@@ -13,7 +13,7 @@ impl FewShotStorage for SqliteStorage {
         &self,
         limit: usize,
     ) -> Result<Vec<SuggestionHistoryEntry>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -27,7 +27,7 @@ impl FewShotStorage for SqliteStorage {
                  ORDER BY created_at DESC
                  LIMIT ?1",
             )
-            .map_err(|e| CoreError::StorageV2 {
+            .map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("prepare: {e}"),
             })?;
@@ -50,14 +50,14 @@ impl FewShotStorage for SqliteStorage {
                         .unwrap_or_else(chrono::Utc::now),
                 })
             })
-            .map_err(|e| CoreError::StorageV2 {
+            .map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("query: {e}"),
             })?;
 
         let mut result = Vec::new();
         for row in rows {
-            result.push(row.map_err(|e| CoreError::StorageV2 {
+            result.push(row.map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("row: {e}"),
             })?);
@@ -77,7 +77,7 @@ impl FewShotStorage for SqliteStorage {
         context_window: &str,
         regime_label: Option<&str>,
     ) -> Result<(), CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -99,7 +99,7 @@ impl FewShotStorage for SqliteStorage {
                 suggestion_id,
             ],
         )
-        .map_err(|e| CoreError::StorageV2 {
+        .map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("update: {e}"),
         })?;

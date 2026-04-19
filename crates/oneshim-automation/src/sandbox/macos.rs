@@ -122,7 +122,7 @@ impl MacOsSandbox {
         let exec_path = self
             .sandbox_exec_path
             .as_deref()
-            .ok_or_else(|| CoreError::SandboxUnsupportedV2 {
+            .ok_or_else(|| CoreError::SandboxUnsupported {
                 code: oneshim_core::error_codes::SandboxCode::UnsupportedPlatform,
                 message: "sandbox-exec not found".to_string(),
             })?
@@ -165,9 +165,10 @@ impl Sandbox for MacOsSandbox {
         config: &SandboxConfig,
     ) -> Result<(), CoreError> {
         if !self.is_available() {
-            return Err(CoreError::SandboxUnsupported(
-                "sandbox-exec not found on this system".to_string(),
-            ));
+            return Err(CoreError::SandboxUnsupported {
+                code: oneshim_core::error_codes::SandboxCode::UnsupportedPlatform,
+                message: "sandbox-exec not found on this system".to_string(),
+            });
         }
 
         if is_permissive_noop(config) {
@@ -197,7 +198,7 @@ impl Sandbox for MacOsSandbox {
             action: action.clone(),
         };
         let request_json =
-            serde_json::to_string(&request).map_err(|e| CoreError::SandboxExecutionV2 {
+            serde_json::to_string(&request).map_err(|e| CoreError::SandboxExecution {
                 code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                 message: format!("failed to serialize action: {}", e),
             })?;
@@ -214,7 +215,7 @@ impl Sandbox for MacOsSandbox {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| CoreError::SandboxExecutionV2 {
+            .map_err(|e| CoreError::SandboxExecution {
                 code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                 message: format!("failed to spawn sandbox-exec: {}", e),
             })?;
@@ -225,14 +226,14 @@ impl Sandbox for MacOsSandbox {
             stdin
                 .write_all(request_json.as_bytes())
                 .await
-                .map_err(|e| CoreError::SandboxExecutionV2 {
+                .map_err(|e| CoreError::SandboxExecution {
                     code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                     message: format!("stdin write: {}", e),
                 })?;
             stdin
                 .write_all(b"\n")
                 .await
-                .map_err(|e| CoreError::SandboxExecutionV2 {
+                .map_err(|e| CoreError::SandboxExecution {
                     code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                     message: format!("stdin newline: {}", e),
                 })?;
@@ -244,8 +245,11 @@ impl Sandbox for MacOsSandbox {
             child.wait_with_output(),
         )
         .await
-        .map_err(|_| CoreError::ExecutionTimeout { timeout_ms })?
-        .map_err(|e| CoreError::SandboxExecutionV2 {
+        .map_err(|_| CoreError::ExecutionTimeout {
+            code: oneshim_core::error_codes::SandboxCode::Timeout,
+            timeout_ms,
+        })?
+        .map_err(|e| CoreError::SandboxExecution {
             code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
             message: format!("wait failed: {}", e),
         })?;
@@ -258,19 +262,25 @@ impl Sandbox for MacOsSandbox {
                 stderr = %stderr,
                 "sandbox-exec exited with non-zero status"
             );
-            return Err(CoreError::SandboxExecution(format!(
-                "sandbox-exec failed (exit {}): {}",
-                exit_code,
-                stderr.trim()
-            )));
+            return Err(CoreError::SandboxExecution {
+                code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                message: format!(
+                    "sandbox-exec failed (exit {}): {}",
+                    exit_code,
+                    stderr.trim()
+                ),
+            });
         }
 
         let response = ipc::parse_worker_response(&output.stdout)?;
         if !response.success {
-            return Err(CoreError::SandboxExecution(format!(
-                "worker reported failure: {}",
-                response.error.unwrap_or_default()
-            )));
+            return Err(CoreError::SandboxExecution {
+                code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                message: format!(
+                    "worker reported failure: {}",
+                    response.error.unwrap_or_default()
+                ),
+            });
         }
 
         tracing::info!(

@@ -94,7 +94,7 @@ impl ExternalOcrPrivacyGuard {
                     &format!("provider={provider_name} reason=no_active_window"),
                 )
                 .await;
-                return Err(CoreError::PolicyDeniedV2 {
+                return Err(CoreError::PolicyDenied {
                     code: oneshim_core::error_codes::PolicyCode::Denied,
                     message,
                 });
@@ -140,7 +140,7 @@ impl ExternalOcrPrivacyGuard {
                     ),
                 )
                 .await;
-                Err(CoreError::PolicyDeniedV2 {
+                Err(CoreError::PolicyDenied {
                     code: oneshim_core::error_codes::PolicyCode::Denied,
                     message: format!("External OCR blocked: {err}"),
                 })

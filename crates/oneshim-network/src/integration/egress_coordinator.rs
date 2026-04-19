@@ -52,7 +52,7 @@ impl IntegrationEgressCoordinator {
         });
 
         if let Some(scope) = missing_scope {
-            return Err(CoreError::AuthV2 {
+            return Err(CoreError::Auth {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: format!("integration session is missing required scope: {scope:?}"),
             });
@@ -74,7 +74,7 @@ impl IntegrationEgressCoordinator {
             .iter()
             .find(|queue_id| !sent_ids.contains(queue_id.as_str()))
         {
-            return Err(CoreError::InternalV2 {
+            return Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!(
                     "integration egress transport acknowledged unknown queue id: {unknown_id}"
@@ -110,7 +110,7 @@ impl IntegrationEgressPort for IntegrationEgressCoordinator {
 
     async fn flush(&self) -> Result<usize, CoreError> {
         let session = self.session_port.current_session().await?.ok_or_else(|| {
-            CoreError::ServiceUnavailableV2 {
+            CoreError::ServiceUnavailable {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: "integration session is not connected".to_string(),
             }
@@ -121,7 +121,7 @@ impl IntegrationEgressPort for IntegrationEgressCoordinator {
             IntegrationSessionStatus::Connected | IntegrationSessionStatus::Degraded
         ) || session.session_id.is_empty()
         {
-            return Err(CoreError::ServiceUnavailableV2 {
+            return Err(CoreError::ServiceUnavailable {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: "integration session is not ready for outbound egress".to_string(),
             });
@@ -190,7 +190,7 @@ mod tests {
                 .lock()
                 .await
                 .clone()
-                .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+                .ok_or_else(|| CoreError::ServiceUnavailable {
                     code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "no session".to_string(),
                 })
@@ -205,7 +205,7 @@ mod tests {
                 .lock()
                 .await
                 .clone()
-                .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+                .ok_or_else(|| CoreError::ServiceUnavailable {
                     code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "no session".to_string(),
                 })
@@ -219,12 +219,12 @@ mod tests {
             let mut guard = self.state.lock().await;
             let state = guard
                 .as_mut()
-                .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+                .ok_or_else(|| CoreError::ServiceUnavailable {
                     code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "no session".to_string(),
                 })?;
             if state.session_id != session_id {
-                return Err(CoreError::NotFoundV2 {
+                return Err(CoreError::NotFound {
                     code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
@@ -466,7 +466,7 @@ mod tests {
         );
 
         let err = coordinator.flush().await.expect_err("flush should fail");
-        assert!(matches!(err, CoreError::ServiceUnavailableV2 { .. }));
+        assert!(matches!(err, CoreError::ServiceUnavailable { .. }));
     }
 
     #[tokio::test]
@@ -529,7 +529,7 @@ mod tests {
         );
 
         let err = coordinator.flush().await.expect_err("flush should fail");
-        assert!(matches!(err, CoreError::AuthV2 { .. }));
+        assert!(matches!(err, CoreError::Auth { .. }));
         assert_eq!(outbox.list_pending(10).await.unwrap().len(), 1);
     }
 }

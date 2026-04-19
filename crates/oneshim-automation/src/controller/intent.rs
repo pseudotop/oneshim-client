@@ -272,7 +272,10 @@ impl AutomationController {
         req: GuiCreateSessionRequest,
     ) -> Result<GuiCreateSessionResponse, GuiInteractionError> {
         self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+            .map_err(|e| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: e.to_string(),
+            })?;
         let service = self.require_gui_service()?;
         service.create_session(req).await
     }
@@ -283,7 +286,10 @@ impl AutomationController {
         capability_token: &str,
     ) -> Result<GuiInteractionSession, GuiInteractionError> {
         self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+            .map_err(|e| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: e.to_string(),
+            })?;
         let service = self.require_gui_service()?;
         service.get_session(session_id, capability_token).await
     }
@@ -295,7 +301,10 @@ impl AutomationController {
         req: GuiHighlightRequest,
     ) -> Result<GuiInteractionSession, GuiInteractionError> {
         self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+            .map_err(|e| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: e.to_string(),
+            })?;
         let service = self.require_gui_service()?;
         service
             .highlight_session(session_id, capability_token, req)
@@ -309,7 +318,10 @@ impl AutomationController {
         req: GuiConfirmRequest,
     ) -> Result<GuiExecutionTicket, GuiInteractionError> {
         self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+            .map_err(|e| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: e.to_string(),
+            })?;
         let service = self.require_gui_service()?;
         service
             .confirm_candidate(session_id, capability_token, req)
@@ -323,7 +335,10 @@ impl AutomationController {
         req: GuiExecutionRequest,
     ) -> Result<GuiExecutionResult, GuiInteractionError> {
         self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+            .map_err(|e| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: e.to_string(),
+            })?;
         let service = self.require_gui_service()?;
         let plan = service
             .prepare_execution(session_id, capability_token, req)
@@ -423,7 +438,10 @@ impl AutomationController {
                 let _ = service
                     .complete_execution(session_id, false, Some(detail.clone()), 0, total_steps)
                     .await;
-                return Err(GuiInteractionError::Internal(detail));
+                return Err(GuiInteractionError::Internal {
+                    code: oneshim_core::error_codes::GuiCode::InternalError,
+                    message: detail,
+                });
             }
         };
 
@@ -464,7 +482,10 @@ impl AutomationController {
         );
 
         if let Some(err) = execution_error {
-            return Err(GuiInteractionError::Internal(err));
+            return Err(GuiInteractionError::Internal {
+                code: oneshim_core::error_codes::GuiCode::InternalError,
+                message: err,
+            });
         }
 
         Ok(GuiExecutionResult {
@@ -481,7 +502,10 @@ impl AutomationController {
         capability_token: &str,
     ) -> Result<GuiInteractionSession, GuiInteractionError> {
         self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+            .map_err(|e| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: e.to_string(),
+            })?;
         let service = self.require_gui_service()?;
         service.cancel_session(session_id, capability_token).await
     }
@@ -492,7 +516,10 @@ impl AutomationController {
         capability_token: &str,
     ) -> Result<broadcast::Receiver<GuiSessionEvent>, GuiInteractionError> {
         self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+            .map_err(|e| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: e.to_string(),
+            })?;
         let service = self.require_gui_service()?;
         service
             .subscribe_session(session_id, capability_token)

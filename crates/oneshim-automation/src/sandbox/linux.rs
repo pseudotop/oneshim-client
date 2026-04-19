@@ -164,7 +164,7 @@ impl Sandbox for LinuxSandbox {
             action: action.clone(),
         };
         let request_json =
-            serde_json::to_string(&request).map_err(|e| CoreError::SandboxExecutionV2 {
+            serde_json::to_string(&request).map_err(|e| CoreError::SandboxExecution {
                 code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                 message: format!("serialize: {e}"),
             })?;
@@ -223,7 +223,7 @@ impl Sandbox for LinuxSandbox {
             }
         }
 
-        let mut child = cmd.spawn().map_err(|e| CoreError::SandboxExecutionV2 {
+        let mut child = cmd.spawn().map_err(|e| CoreError::SandboxExecution {
             code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
             message: format!("spawn failed: {e}"),
         })?;
@@ -234,14 +234,14 @@ impl Sandbox for LinuxSandbox {
             stdin
                 .write_all(request_json.as_bytes())
                 .await
-                .map_err(|e| CoreError::SandboxExecutionV2 {
+                .map_err(|e| CoreError::SandboxExecution {
                     code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                     message: format!("stdin write: {e}"),
                 })?;
             stdin
                 .write_all(b"\n")
                 .await
-                .map_err(|e| CoreError::SandboxExecutionV2 {
+                .map_err(|e| CoreError::SandboxExecution {
                     code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                     message: format!("stdin newline: {e}"),
                 })?;
@@ -254,26 +254,28 @@ impl Sandbox for LinuxSandbox {
         )
         .await
         .map_err(|_| CoreError::ExecutionTimeout { timeout_ms })?
-        .map_err(|e| CoreError::SandboxExecutionV2 {
+        .map_err(|e| CoreError::SandboxExecution {
             code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
             message: format!("wait failed: {e}"),
         })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(CoreError::SandboxExecution(format!(
-                "child exited {} — stderr: {}",
-                output.status,
-                stderr.trim()
-            )));
+            return Err(CoreError::SandboxExecution {
+                code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                message: format!("child exited {} — stderr: {}", output.status, stderr.trim()),
+            });
         }
 
         let response = ipc::parse_worker_response(&output.stdout)?;
         if !response.success {
-            return Err(CoreError::SandboxExecution(format!(
-                "worker reported failure: {}",
-                response.error.unwrap_or_default()
-            )));
+            return Err(CoreError::SandboxExecution {
+                code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                message: format!(
+                    "worker reported failure: {}",
+                    response.error.unwrap_or_default()
+                ),
+            });
         }
 
         tracing::info!(action = ?action, "Linux sandbox execution completed via worker");

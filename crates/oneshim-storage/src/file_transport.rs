@@ -137,7 +137,7 @@ impl SyncTransport for FileSyncTransport {
         let changes = changes.clone();
 
         tokio::task::spawn_blocking(move || {
-            let json = serde_json::to_vec(&changes).map_err(|e| CoreError::InternalV2 {
+            let json = serde_json::to_vec(&changes).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("serialize changeset: {e}"),
             })?;
@@ -148,22 +148,22 @@ impl SyncTransport for FileSyncTransport {
             let tmp_path = folder.join(format!("{filename}.tmp"));
 
             // Atomic write: write to .tmp, fsync, rename
-            std::fs::write(&tmp_path, &encrypted).map_err(|e| CoreError::InternalV2 {
+            std::fs::write(&tmp_path, &encrypted).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("write tmp file: {e}"),
             })?;
 
             // fsync the file
-            let file = std::fs::File::open(&tmp_path).map_err(|e| CoreError::InternalV2 {
+            let file = std::fs::File::open(&tmp_path).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("open tmp for fsync: {e}"),
             })?;
-            file.sync_all().map_err(|e| CoreError::InternalV2 {
+            file.sync_all().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("fsync: {e}"),
             })?;
 
-            std::fs::rename(&tmp_path, &final_path).map_err(|e| CoreError::InternalV2 {
+            std::fs::rename(&tmp_path, &final_path).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("rename tmp to final: {e}"),
             })?;
@@ -172,7 +172,7 @@ impl SyncTransport for FileSyncTransport {
             Ok(())
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking join error: {e}"),
         })?
@@ -185,7 +185,7 @@ impl SyncTransport for FileSyncTransport {
         let since = since.clone();
 
         tokio::task::spawn_blocking(move || {
-            let entries = std::fs::read_dir(&folder).map_err(|e| CoreError::InternalV2 {
+            let entries = std::fs::read_dir(&folder).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("read sync folder: {e}"),
             })?;
@@ -193,7 +193,7 @@ impl SyncTransport for FileSyncTransport {
             let mut best: Option<(Hlc, PathBuf)> = None;
 
             for entry in entries {
-                let entry = entry.map_err(|e| CoreError::InternalV2 {
+                let entry = entry.map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("dir entry: {e}"),
                 })?;
@@ -235,13 +235,13 @@ impl SyncTransport for FileSyncTransport {
             match best {
                 None => Ok(None),
                 Some((_, path)) => {
-                    let data = std::fs::read(&path).map_err(|e| CoreError::InternalV2 {
+                    let data = std::fs::read(&path).map_err(|e| CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: format!("read changeset file: {e}"),
                     })?;
                     let plaintext = Self::decrypt(&passphrase, &data)?;
                     let cs: ChangeSet =
-                        serde_json::from_slice(&plaintext).map_err(|e| CoreError::InternalV2 {
+                        serde_json::from_slice(&plaintext).map_err(|e| CoreError::Internal {
                             code: oneshim_core::error_codes::InternalCode::Generic,
                             message: format!("deserialize changeset: {e}"),
                         })?;
@@ -255,7 +255,7 @@ impl SyncTransport for FileSyncTransport {
             }
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking join error: {e}"),
         })?
@@ -266,7 +266,7 @@ impl SyncTransport for FileSyncTransport {
         let local_device_id = self.local_device_id.clone();
 
         tokio::task::spawn_blocking(move || {
-            let entries = std::fs::read_dir(&folder).map_err(|e| CoreError::InternalV2 {
+            let entries = std::fs::read_dir(&folder).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("read sync folder: {e}"),
             })?;
@@ -275,7 +275,7 @@ impl SyncTransport for FileSyncTransport {
                 std::collections::HashMap::new();
 
             for entry in entries {
-                let entry = entry.map_err(|e| CoreError::InternalV2 {
+                let entry = entry.map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("dir entry: {e}"),
                 })?;
@@ -307,7 +307,7 @@ impl SyncTransport for FileSyncTransport {
                 .collect())
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking join error: {e}"),
         })?
@@ -318,21 +318,21 @@ impl SyncTransport for FileSyncTransport {
         let device_id = device_id.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let entries = std::fs::read_dir(&folder).map_err(|e| CoreError::InternalV2 {
+            let entries = std::fs::read_dir(&folder).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("read sync folder: {e}"),
             })?;
 
             let mut removed = 0u32;
             for entry in entries {
-                let entry = entry.map_err(|e| CoreError::InternalV2 {
+                let entry = entry.map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("dir entry: {e}"),
                 })?;
                 let name = entry.file_name().to_string_lossy().to_string();
                 if let Some((file_device_id, _, _)) = Self::parse_filename(&name) {
                     if file_device_id == device_id {
-                        std::fs::remove_file(entry.path()).map_err(|e| CoreError::InternalV2 {
+                        std::fs::remove_file(entry.path()).map_err(|e| CoreError::Internal {
                             code: oneshim_core::error_codes::InternalCode::Generic,
                             message: format!("remove changeset file: {e}"),
                         })?;
@@ -345,7 +345,7 @@ impl SyncTransport for FileSyncTransport {
             Ok(())
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking join error: {e}"),
         })?

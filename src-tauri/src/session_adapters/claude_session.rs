@@ -106,17 +106,17 @@ impl ConversationSession for ClaudeSubprocessSession {
 
         let mut child = cmd.spawn().map_err(|err| {
             *self.state.lock() = SessionState::Failed;
-            CoreError::InternalV2 {
+            CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to spawn Claude session subprocess: {err}"),
             }
         })?;
 
-        let stdout = child.stdout.take().ok_or_else(|| CoreError::InternalV2 {
+        let stdout = child.stdout.take().ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "Failed to capture Claude session stdout".to_string(),
         })?;
-        let mut stderr = child.stderr.take().ok_or_else(|| CoreError::InternalV2 {
+        let mut stderr = child.stderr.take().ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "Failed to capture Claude session stderr".to_string(),
         })?;

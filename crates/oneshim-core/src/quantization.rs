@@ -31,16 +31,18 @@ impl ScalarQuantizer {
     /// - NaN/Inf: rejected via `f32::is_finite()` pre-scan
     pub fn quantize(vector: &[f32]) -> Result<QuantizedVector, CoreError> {
         if vector.is_empty() {
-            return Err(CoreError::Internal(
-                "cannot quantize zero-length vector".to_string(),
-            ));
+            return Err(CoreError::Internal {
+                code: crate::error_codes::InternalCode::Generic,
+                message: "cannot quantize zero-length vector".to_string(),
+            });
         }
 
         // Reject NaN/Inf
         if !vector.iter().all(|v| v.is_finite()) {
-            return Err(CoreError::Internal(
-                "vector contains NaN or Inf values".to_string(),
-            ));
+            return Err(CoreError::Internal {
+                code: crate::error_codes::InternalCode::Generic,
+                message: "vector contains NaN or Inf values".to_string(),
+            });
         }
 
         let min = vector.iter().cloned().fold(f32::INFINITY, f32::min);
@@ -82,10 +84,13 @@ impl ScalarQuantizer {
         expected_dim: usize,
     ) -> Result<QuantizedVector, CoreError> {
         if vector.len() != expected_dim {
-            return Err(CoreError::InvalidArguments(format!(
-                "Vector dimension mismatch: expected {expected_dim}, got {}",
-                vector.len()
-            )));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: format!(
+                    "Vector dimension mismatch: expected {expected_dim}, got {}",
+                    vector.len()
+                ),
+            });
         }
         Self::quantize(vector)
     }
@@ -108,16 +113,16 @@ impl ScalarQuantizer {
         b: &QuantizedVector,
     ) -> Result<f32, CoreError> {
         if a.data.is_empty() || b.data.is_empty() {
-            return Err(CoreError::InvalidArguments(
-                "cannot compute cosine similarity on empty vectors".to_string(),
-            ));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "cannot compute cosine similarity on empty vectors".to_string(),
+            });
         }
         if a.data.len() != b.data.len() {
-            return Err(CoreError::InvalidArguments(format!(
-                "Dimension mismatch: {} vs {}",
-                a.data.len(),
-                b.data.len()
-            )));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: format!("Dimension mismatch: {} vs {}", a.data.len(), b.data.len()),
+            });
         }
 
         Ok(Self::cosine_similarity_int8_unchecked(a, b))

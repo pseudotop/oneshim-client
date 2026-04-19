@@ -40,7 +40,7 @@ pub fn compute_challenge_response(
     let key = sync_crypto::derive_key(passphrase, &salt)?;
 
     type HmacSha256 = Hmac<Sha256>;
-    let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| CoreError::InternalV2 {
+    let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("HMAC init: {e}"),
     })?;
@@ -63,7 +63,7 @@ pub fn verify_challenge_response(
     let key = sync_crypto::derive_key(passphrase, &salt)?;
 
     type HmacSha256 = Hmac<Sha256>;
-    let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| CoreError::InternalV2 {
+    let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("HMAC init: {e}"),
     })?;

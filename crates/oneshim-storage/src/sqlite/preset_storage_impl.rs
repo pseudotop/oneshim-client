@@ -8,7 +8,7 @@ use super::SqliteStorage;
 impl PresetStorage for SqliteStorage {
     /// List all custom presets from the `automation_presets` table.
     fn list_presets(&self) -> Result<Vec<WorkflowPreset>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -19,7 +19,7 @@ impl PresetStorage for SqliteStorage {
                  FROM automation_presets
                  ORDER BY name",
             )
-            .map_err(|e| CoreError::StorageV2 { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("prepare: {e}") })?;
+            .map_err(|e| CoreError::Storage { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("prepare: {e}") })?;
 
         let rows = stmt
             .query_map([], |row| {
@@ -34,14 +34,14 @@ impl PresetStorage for SqliteStorage {
                     ai_profile_id: row.get(7)?,
                 })
             })
-            .map_err(|e| CoreError::StorageV2 {
+            .map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("query: {e}"),
             })?;
 
         let mut result = Vec::new();
         for row in rows {
-            let row = row.map_err(|e| CoreError::StorageV2 {
+            let row = row.map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("row: {e}"),
             })?;
@@ -52,7 +52,7 @@ impl PresetStorage for SqliteStorage {
 
     /// Get a single preset by ID.
     fn get_preset(&self, id: &str) -> Result<Option<WorkflowPreset>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -79,7 +79,7 @@ impl PresetStorage for SqliteStorage {
         match result {
             Ok(row) => Ok(Some(row.into_preset()?)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::StorageV2 {
+            Err(e) => Err(CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("query: {e}"),
             }),
@@ -89,18 +89,17 @@ impl PresetStorage for SqliteStorage {
     /// Insert or replace a preset. Sets `updated_at` to now; sets `created_at`
     /// only for new rows.
     fn save_preset(&self, preset: &WorkflowPreset) -> Result<(), CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
 
-        let steps_json =
-            serde_json::to_string(&preset.steps).map_err(|e| CoreError::StorageV2 {
-                code: oneshim_core::error_codes::StorageCode::Failed,
-                message: format!("serialize steps: {e}"),
-            })?;
+        let steps_json = serde_json::to_string(&preset.steps).map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
+            message: format!("serialize steps: {e}"),
+        })?;
         let category_str =
-            serde_json::to_string(&preset.category).map_err(|e| CoreError::StorageV2 {
+            serde_json::to_string(&preset.category).map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("serialize category: {e}"),
             })?;
@@ -132,7 +131,7 @@ impl PresetStorage for SqliteStorage {
                 now,
             ],
         )
-        .map_err(|e| CoreError::StorageV2 { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("upsert: {e}") })?;
+        .map_err(|e| CoreError::Storage { code: oneshim_core::error_codes::StorageCode::Failed, message: format!("upsert: {e}") })?;
 
         Ok(())
     }
@@ -140,7 +139,7 @@ impl PresetStorage for SqliteStorage {
     /// Delete a preset by ID. Built-in presets (builtin=1) are protected and
     /// will not be deleted. Returns true if a row was actually removed.
     fn delete_preset(&self, id: &str) -> Result<bool, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::StorageV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("lock: {e}"),
         })?;
@@ -150,7 +149,7 @@ impl PresetStorage for SqliteStorage {
                 "DELETE FROM automation_presets WHERE id = ?1 AND builtin = 0",
                 [id],
             )
-            .map_err(|e| CoreError::StorageV2 {
+            .map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("delete: {e}"),
             })?;
@@ -174,7 +173,7 @@ struct PresetRow {
 impl PresetRow {
     fn into_preset(self) -> Result<WorkflowPreset, CoreError> {
         let steps: Vec<WorkflowStep> =
-            serde_json::from_str(&self.steps_json).map_err(|e| CoreError::StorageV2 {
+            serde_json::from_str(&self.steps_json).map_err(|e| CoreError::Storage {
                 code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("deserialize steps: {e}"),
             })?;

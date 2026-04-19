@@ -39,7 +39,7 @@ impl SqliteStorage {
         generated_at_str: &str,
     ) -> Result<DailyDigest, CoreError> {
         let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d").map_err(|e| {
-            CoreError::InternalV2 {
+            CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Invalid date in daily_digests: {e}"),
             }
@@ -47,16 +47,16 @@ impl SqliteStorage {
         let insight = insight_json
             .map(serde_json::from_str)
             .transpose()
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to deserialize insight: {e}"),
             })?;
-        let timeline = serde_json::from_str(timeline_json).map_err(|e| CoreError::InternalV2 {
+        let timeline = serde_json::from_str(timeline_json).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Failed to deserialize timeline: {e}"),
         })?;
         let statistics =
-            serde_json::from_str(statistics_json).map_err(|e| CoreError::InternalV2 {
+            serde_json::from_str(statistics_json).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to deserialize statistics: {e}"),
             })?;
@@ -334,7 +334,7 @@ impl DigestStorage for SqliteStorage {
         &self,
         limit: usize,
     ) -> Result<Vec<oneshim_core::models::weekly_digest::WeeklyDigest>, CoreError> {
-        let guard = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let guard = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -342,7 +342,7 @@ impl DigestStorage for SqliteStorage {
             .prepare(
                 "SELECT stats_json, comparison_json, llm_narrative FROM weekly_digests ORDER BY week_start DESC LIMIT ?1",
             )
-            .map_err(|e| CoreError::InternalV2 { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to prepare weekly_digests query: {e}") })?;
+            .map_err(|e| CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to prepare weekly_digests query: {e}") })?;
         let digests: Vec<oneshim_core::models::weekly_digest::WeeklyDigest> = stmt
             .query_map(rusqlite::params![limit as i64], |row| {
                 let stats_json: String = row.get(0)?;
@@ -350,7 +350,7 @@ impl DigestStorage for SqliteStorage {
                 let llm_narrative: Option<String> = row.get(2)?;
                 Ok((stats_json, comparison_json, llm_narrative))
             })
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to query weekly_digests: {e}"),
             })?
@@ -380,11 +380,11 @@ impl DigestStorage for SqliteStorage {
         &self,
         digest: &oneshim_core::models::weekly_digest::WeeklyDigest,
     ) -> Result<(), CoreError> {
-        let guard = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let guard = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
-        let stats_json = serde_json::to_string(digest).map_err(|e| CoreError::InternalV2 {
+        let stats_json = serde_json::to_string(digest).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Failed to serialize digest: {e}"),
         })?;
@@ -401,12 +401,12 @@ impl DigestStorage for SqliteStorage {
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 rusqlite::params![week_start, week_end, stats_json, comparison_json, digest.llm_narrative],
             )
-            .map_err(|e| CoreError::InternalV2 { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to save weekly digest: {e}") })?;
+            .map_err(|e| CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to save weekly digest: {e}") })?;
         Ok(())
     }
 
     fn save_daily_digest(&self, digest: &DailyDigest) -> Result<(), CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -417,17 +417,17 @@ impl DigestStorage for SqliteStorage {
             .as_ref()
             .map(serde_json::to_string)
             .transpose()
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to serialize insight: {e}"),
             })?;
         let timeline_json =
-            serde_json::to_string(&digest.timeline).map_err(|e| CoreError::InternalV2 {
+            serde_json::to_string(&digest.timeline).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to serialize timeline: {e}"),
             })?;
         let statistics_json =
-            serde_json::to_string(&digest.statistics).map_err(|e| CoreError::InternalV2 {
+            serde_json::to_string(&digest.statistics).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to serialize statistics: {e}"),
             })?;
@@ -438,13 +438,13 @@ impl DigestStorage for SqliteStorage {
              VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![date_str, insight_json, timeline_json, statistics_json, generated_at],
         )
-        .map_err(|e| CoreError::InternalV2 { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to save daily digest: {e}") })?;
+        .map_err(|e| CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to save daily digest: {e}") })?;
 
         Ok(())
     }
 
     fn get_daily_digest(&self, date: &str) -> Result<Option<DailyDigest>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -481,7 +481,7 @@ impl DigestStorage for SqliteStorage {
                 Ok(Some(digest))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::InternalV2 {
+            Err(e) => Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to get daily digest: {e}"),
             }),
@@ -489,7 +489,7 @@ impl DigestStorage for SqliteStorage {
     }
 
     fn list_daily_digests(&self, limit: usize) -> Result<Vec<DailyDigest>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -499,7 +499,7 @@ impl DigestStorage for SqliteStorage {
                 "SELECT date, insight_json, timeline_json, statistics_json, generated_at
                  FROM daily_digests ORDER BY date DESC LIMIT ?1",
             )
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to prepare daily_digests query: {e}"),
             })?;
@@ -519,7 +519,7 @@ impl DigestStorage for SqliteStorage {
                     generated_at_str,
                 ))
             })
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to query daily_digests: {e}"),
             })?
@@ -542,7 +542,7 @@ impl DigestStorage for SqliteStorage {
     }
 
     fn get_segments_for_date(&self, date: &str) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -573,7 +573,7 @@ impl DigestStorage for SqliteStorage {
                  WHERE start_time >= ?1 AND start_time <= ?2
                  ORDER BY start_time ASC",
             )
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to prepare segments query: {e}"),
             })?;
@@ -597,7 +597,7 @@ impl DigestStorage for SqliteStorage {
                     llm_summary: row.get(9)?,
                 })
             })
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to query segments: {e}"),
             })?
@@ -728,7 +728,7 @@ impl SegmentQueryStorage for SqliteStorage {
         if segment_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -783,7 +783,7 @@ impl GuiInteractionStorage for SqliteStorage {
         let scrubbed_text = input.element_text.map(scrub_basic_pii);
         let scrubbed_ref = scrubbed_text.as_deref();
 
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -802,7 +802,7 @@ impl GuiInteractionStorage for SqliteStorage {
                 input.type_confidence,
             ],
         )
-        .map_err(|e| CoreError::InternalV2 { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to save GUI interaction: {e}") })?;
+        .map_err(|e| CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!("Failed to save GUI interaction: {e}") })?;
         Ok(())
     }
 
@@ -810,7 +810,7 @@ impl GuiInteractionStorage for SqliteStorage {
         &self,
         segment_id: &str,
     ) -> Result<Vec<GuiInteractionRecord>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -822,7 +822,7 @@ impl GuiInteractionStorage for SqliteStorage {
                  WHERE segment_id = ?1
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to prepare GUI interaction query: {e}"),
             })?;
@@ -843,7 +843,7 @@ impl GuiInteractionStorage for SqliteStorage {
                     type_confidence: row.get::<_, Option<f64>>(10)?.unwrap_or(1.0) as f32,
                 })
             })
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to query GUI interactions: {e}"),
             })?
@@ -858,7 +858,7 @@ impl GuiInteractionStorage for SqliteStorage {
         start: &str,
         end: &str,
     ) -> Result<Vec<(String, u32)>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -870,7 +870,7 @@ impl GuiInteractionStorage for SqliteStorage {
                  GROUP BY hour
                  ORDER BY hour",
             )
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to prepare GUI interaction density query: {e}"),
             })?;
@@ -879,7 +879,7 @@ impl GuiInteractionStorage for SqliteStorage {
             .query_map(rusqlite::params![start, end], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
             })
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("GUI interaction density query failed: {e}"),
             })?

@@ -253,7 +253,7 @@ impl OidcDeviceFlowIntegrationAuthPort {
         let client = reqwest::Client::builder()
             .timeout(config.request_timeout)
             .build()
-            .map_err(|error| CoreError::NetworkV2 {
+            .map_err(|error| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("failed to build integration OIDC auth HTTP client: {error}"),
             })?;
@@ -336,7 +336,7 @@ impl OidcDeviceFlowIntegrationAuthPort {
                     url,
                 )
                 .await?;
-            let proof = proof.ok_or_else(|| CoreError::AuthV2 {
+            let proof = proof.ok_or_else(|| CoreError::Auth {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: "DPoP integration auth requires a request proof, but none was provided."
                     .to_string(),
@@ -346,12 +346,12 @@ impl OidcDeviceFlowIntegrationAuthPort {
 
         request.send().await.map_err(|error| {
             if error.is_timeout() {
-                CoreError::RequestTimeoutV2 {
+                CoreError::RequestTimeout {
                     code: oneshim_core::error_codes::NetworkCode::Timeout,
                     timeout_ms: self.config.request_timeout.as_millis() as u64,
                 }
             } else {
-                CoreError::NetworkV2 {
+                CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: format!("integration auth request failed: {error}"),
                 }
@@ -383,7 +383,7 @@ impl OidcDeviceFlowIntegrationAuthPort {
         if !response.status().is_success() {
             let body = response.text().await.unwrap_or_default();
             self.auth.clear_material().await?;
-            return Err(CoreError::AuthV2 {
+            return Err(CoreError::Auth {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: format!("integration refresh failed: {body}"),
             });
@@ -423,7 +423,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
                 if let Some(refresh_token) = material.refresh_token.as_deref() {
                     self.refresh_access_token_if_needed(refresh_token).await?
                 } else {
-                    return Err(CoreError::AuthV2 {
+                    return Err(CoreError::Auth {
                         code: oneshim_core::error_codes::AuthCode::Failed,
                         message:
                             "integration device authorization has expired; re-authorize the device"
@@ -445,7 +445,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
         }
 
         let status = self.current_auth_status().await?;
-        Err(CoreError::AuthV2 {
+        Err(CoreError::Auth {
             code: oneshim_core::error_codes::AuthCode::Failed,
             message: status.message.unwrap_or_else(|| {
                 let scopes = self
@@ -576,7 +576,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
             *self.last_error.write().await = Some(format!(
                 "integration device authorization bootstrap failed: {body}"
             ));
-            return Err(CoreError::AuthV2 {
+            return Err(CoreError::Auth {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: format!("integration device authorization bootstrap failed: {body}"),
             });
@@ -619,7 +619,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
             .flows
             .get(flow_id)
             .await
-            .ok_or_else(|| CoreError::NotFoundV2 {
+            .ok_or_else(|| CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "integration_device_authorization_flow".to_string(),
                 id: flow_id.to_string(),
@@ -721,7 +721,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
             }
             _ => {
                 *self.last_error.write().await = Some(message.clone());
-                Err(CoreError::AuthV2 {
+                Err(CoreError::Auth {
                     code: oneshim_core::error_codes::AuthCode::Failed,
                     message: format!("integration token exchange failed: {message}"),
                 })
@@ -732,7 +732,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
     async fn cancel_device_authorization(&self, flow_id: &str) -> Result<(), CoreError> {
         let removed = self.flows.remove(flow_id).await;
         if removed.is_none() {
-            return Err(CoreError::NotFoundV2 {
+            return Err(CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "integration_device_authorization_flow".to_string(),
                 id: flow_id.to_string(),

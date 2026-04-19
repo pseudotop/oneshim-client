@@ -52,25 +52,25 @@ pub(super) fn require_endpoint_config<'a>(
     endpoint: Option<&'a ExternalApiEndpoint>,
     field_name: &str,
 ) -> Result<&'a ExternalApiEndpoint, CoreError> {
-    let endpoint = endpoint.ok_or_else(|| CoreError::ConfigV2 {
+    let endpoint = endpoint.ok_or_else(|| CoreError::Config {
         code: oneshim_core::error_codes::ConfigCode::Invalid,
         message: format!("Remote AI provider usage requires `{field_name}` to be configured."),
     })?;
 
     if endpoint.endpoint.trim().is_empty() {
-        return Err(CoreError::ConfigV2 {
+        return Err(CoreError::Config {
             code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: format!("`{field_name}.endpoint` must not be empty."),
         });
     }
     if !(endpoint.endpoint.starts_with("http://") || endpoint.endpoint.starts_with("https://")) {
-        return Err(CoreError::ConfigV2 {
+        return Err(CoreError::Config {
             code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: format!("`{field_name}.endpoint` must be an http:// or https:// URL."),
         });
     }
     if endpoint.timeout_secs == 0 {
-        return Err(CoreError::ConfigV2 {
+        return Err(CoreError::Config {
             code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: format!("`{field_name}.timeout_secs` must be greater than 0."),
         });

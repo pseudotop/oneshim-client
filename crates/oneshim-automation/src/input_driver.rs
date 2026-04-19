@@ -138,7 +138,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .move_mouse(x, y, enigo::Coordinate::Abs)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Mouse move failed: {e}"),
             })?;
@@ -151,7 +151,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .move_mouse(x, y, enigo::Coordinate::Abs)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Mouse move failed: {e}"),
             })?;
@@ -162,7 +162,7 @@ impl InputDriver for EnigoInputDriver {
         };
         enigo
             .button(btn, enigo::Direction::Click)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Mouse click failed: {e}"),
             })?;
@@ -173,7 +173,7 @@ impl InputDriver for EnigoInputDriver {
         use enigo::Keyboard;
         debug!(text_len = text.len(), "[Enigo] text");
         let mut enigo = self.enigo.lock().await;
-        enigo.text(text).map_err(|e| CoreError::InternalV2 {
+        enigo.text(text).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Text input failed: {e}"),
         })?;
@@ -186,7 +186,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .key(Self::parse_key(key), enigo::Direction::Press)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Key press failed: {e}"),
             })?;
@@ -199,7 +199,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .key(Self::parse_key(key), enigo::Direction::Release)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Key release failed: {e}"),
             })?;
@@ -213,7 +213,7 @@ impl InputDriver for EnigoInputDriver {
         for key_str in keys {
             enigo
                 .key(Self::parse_key(key_str), enigo::Direction::Press)
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("Hotkey press failed: {e}"),
                 })?;
@@ -221,7 +221,7 @@ impl InputDriver for EnigoInputDriver {
         for key_str in keys.iter().rev() {
             enigo
                 .key(Self::parse_key(key_str), enigo::Direction::Release)
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("Hotkey release failed: {e}"),
                 })?;

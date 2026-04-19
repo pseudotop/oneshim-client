@@ -163,7 +163,7 @@ async fn fake_server_propagates_retry_after_rate_limits() {
         .expect_err("rate-limited egress should fail");
 
     match error {
-        CoreError::RateLimitV2 {
+        CoreError::RateLimit {
             code: oneshim_core::error_codes::NetworkCode::RateLimit,
             retry_after_secs,
         } => assert_eq!(retry_after_secs, 7),
@@ -538,7 +538,7 @@ async fn fake_server_websocket_channel_times_out_on_incomplete_ack() {
         .expect_err("incomplete websocket ack should time out");
 
     match error {
-        CoreError::RequestTimeoutV2 {
+        CoreError::RequestTimeout {
             code: oneshim_core::error_codes::NetworkCode::Timeout,
             timeout_ms,
         } => assert_eq!(timeout_ms, 200),
@@ -670,7 +670,7 @@ async fn websocket_session_coordinator_reconnects_after_live_channel_drop() {
         .heartbeat(&first_session.session_id)
         .await
         .expect_err("second heartbeat should fail after channel drop");
-    assert!(matches!(heartbeat_error, CoreError::NetworkV2 { .. }));
+    assert!(matches!(heartbeat_error, CoreError::Network { .. }));
 
     let resumed = coordinator
         .connect(requested_scopes)
@@ -710,7 +710,7 @@ async fn websocket_session_coordinator_handles_repeated_live_channel_churn() {
             .await
             .expect_err("subsequent heartbeat should fail after live channel drop");
         assert!(
-            matches!(error, CoreError::NetworkV2 { .. }),
+            matches!(error, CoreError::Network { .. }),
             "cycle {cycle} should surface network error, got {error}"
         );
 

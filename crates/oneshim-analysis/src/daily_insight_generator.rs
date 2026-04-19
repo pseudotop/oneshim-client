@@ -240,7 +240,7 @@ mod tests {
         ) -> Result<String, CoreError> {
             match &self.response_text {
                 Some(text) => Ok(text.clone()),
-                None => Err(CoreError::AnalysisV2 {
+                None => Err(CoreError::Analysis {
                     code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                     message: "LLM unavailable".into(),
                 }),

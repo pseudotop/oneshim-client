@@ -28,7 +28,7 @@ impl OcrProvider for MacOsNativeOcr {
         let data = image.to_vec();
         tokio::task::spawn_blocking(move || recognize_text_blocking(&data))
             .await
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Vision OCR task join error: {e}"),
             })?
@@ -60,7 +60,7 @@ fn recognize_text_blocking(data: &[u8]) -> Result<Vec<OcrResult>, CoreError> {
             use image::GenericImageView;
             img.dimensions()
         })
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Failed to decode image for dimensions: {e}"),
         })?;
@@ -76,7 +76,7 @@ fn recognize_text_blocking(data: &[u8]) -> Result<Vec<OcrResult>, CoreError> {
 
     // --- Create VNImageRequestHandler initWithData:options: ---
     let handler_cls =
-        AnyClass::get(c"VNImageRequestHandler").ok_or_else(|| CoreError::InternalV2 {
+        AnyClass::get(c"VNImageRequestHandler").ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "VNImageRequestHandler class not found".into(),
         })?;
@@ -90,7 +90,7 @@ fn recognize_text_blocking(data: &[u8]) -> Result<Vec<OcrResult>, CoreError> {
 
     // --- Create VNRecognizeTextRequest ---
     let request_cls =
-        AnyClass::get(c"VNRecognizeTextRequest").ok_or_else(|| CoreError::InternalV2 {
+        AnyClass::get(c"VNRecognizeTextRequest").ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "VNRecognizeTextRequest class not found".into(),
         })?;
@@ -109,7 +109,7 @@ fn recognize_text_blocking(data: &[u8]) -> Result<Vec<OcrResult>, CoreError> {
     let _: () = unsafe { msg_send![&request, setUsesLanguageCorrection: yes] };
 
     // --- Create NSArray with single request ---
-    let nsarray_cls = AnyClass::get(c"NSArray").ok_or_else(|| CoreError::InternalV2 {
+    let nsarray_cls = AnyClass::get(c"NSArray").ok_or_else(|| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: "NSArray class not found".into(),
     })?;
@@ -129,7 +129,7 @@ fn recognize_text_blocking(data: &[u8]) -> Result<Vec<OcrResult>, CoreError> {
         } else {
             "unknown Vision error".to_string()
         };
-        return Err(CoreError::InternalV2 {
+        return Err(CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Vision performRequests failed: {err_msg}"),
         });

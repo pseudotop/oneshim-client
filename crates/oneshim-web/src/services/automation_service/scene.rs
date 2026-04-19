@@ -51,22 +51,14 @@ impl AutomationSceneQueryService {
             controller.analyze_scene(app_name, screen_id).await
         };
 
-        #[allow(deprecated)]
         match analyze_result {
             Ok(scene) => Ok(scene),
-            // V2 variants
             Err(
-                CoreError::PolicyDeniedV2 { message: msg, .. }
-                | CoreError::InvalidArgumentsV2 { message: msg, .. },
+                CoreError::PolicyDenied { message: msg, .. }
+                | CoreError::InvalidArguments { message: msg, .. },
             ) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::ElementNotFoundV2 { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
-            // V1 deprecated variants
-            Err(
-                CoreError::PolicyDenied(msg)
-                | CoreError::InvalidArguments(msg)
-                | CoreError::ElementNotFound(msg),
-            ) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::InternalV2 {
+            Err(CoreError::ElementNotFound { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
+            Err(CoreError::Internal {
                 code: _,
                 message: msg,
             }) if msg.contains("Scene analyzer")

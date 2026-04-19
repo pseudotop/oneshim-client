@@ -4,7 +4,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::InterpretedAction;
 
 pub(super) fn parse_claude_response(body: &str) -> Result<InterpretedAction, CoreError> {
-    let response: Value = serde_json::from_str(body).map_err(|e| CoreError::InternalV2 {
+    let response: Value = serde_json::from_str(body).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("LLM Failed to parse response JSON: {}", e),
     })?;
@@ -15,7 +15,7 @@ pub(super) fn parse_claude_response(body: &str) -> Result<InterpretedAction, Cor
         .and_then(|arr| arr.first())
         .and_then(|block| block.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or_else(|| CoreError::InternalV2 {
+        .ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "No text found in LLM response".to_string(),
         })?;
@@ -24,12 +24,12 @@ pub(super) fn parse_claude_response(body: &str) -> Result<InterpretedAction, Cor
 }
 
 pub(super) fn parse_openai_response(body: &str) -> Result<InterpretedAction, CoreError> {
-    let response: Value = serde_json::from_str(body).map_err(|e| CoreError::InternalV2 {
+    let response: Value = serde_json::from_str(body).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("LLM Failed to parse response JSON: {}", e),
     })?;
 
-    let text = extract_openai_text(&response).ok_or_else(|| CoreError::InternalV2 {
+    let text = extract_openai_text(&response).ok_or_else(|| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: "No text found in OpenAI response".to_string(),
     })?;
@@ -38,7 +38,7 @@ pub(super) fn parse_openai_response(body: &str) -> Result<InterpretedAction, Cor
 }
 
 pub(super) fn parse_google_response(body: &str) -> Result<InterpretedAction, CoreError> {
-    let response: Value = serde_json::from_str(body).map_err(|e| CoreError::InternalV2 {
+    let response: Value = serde_json::from_str(body).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("LLM Failed to parse response JSON: {}", e),
     })?;
@@ -53,7 +53,7 @@ pub(super) fn parse_google_response(body: &str) -> Result<InterpretedAction, Cor
         .and_then(|parts| parts.first())
         .and_then(|part| part.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or_else(|| CoreError::InternalV2 {
+        .ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "No text found in Google response".to_string(),
         })?;
@@ -72,7 +72,7 @@ fn parse_action_json(text: &str) -> Result<InterpretedAction, CoreError> {
         text
     };
 
-    serde_json::from_str(json_str).map_err(|e| CoreError::InternalV2 {
+    serde_json::from_str(json_str).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!(
             "Failed to parse InterpretedAction from LLM response: {} (raw: {})",

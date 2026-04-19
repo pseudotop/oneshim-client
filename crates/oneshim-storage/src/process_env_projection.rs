@@ -76,7 +76,7 @@ impl SecretProjectionPort for ProcessEnvSecretProjection {
         request: SecretProjectionRequest,
     ) -> Result<SecretProjectionResult, CoreError> {
         if request.target != ProjectionTarget::ProcessEnv {
-            return Err(CoreError::InvalidArgumentsV2 {
+            return Err(CoreError::InvalidArguments {
                 code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
                 message:
                     "process-env projection adapter only supports ProjectionTarget::ProcessEnv"
@@ -87,7 +87,7 @@ impl SecretProjectionPort for ProcessEnvSecretProjection {
         let template =
             self.templates
                 .get(&request.consumer_id)
-                .ok_or_else(|| CoreError::ConfigV2 {
+                .ok_or_else(|| CoreError::Config {
                     code: oneshim_core::error_codes::ConfigCode::Invalid,
                     message: format!(
                         "no process-env projection template registered for consumer '{}'",
@@ -99,7 +99,7 @@ impl SecretProjectionPort for ProcessEnvSecretProjection {
             .secret_store
             .retrieve(&request.namespace, &request.key)
             .await?
-            .ok_or_else(|| CoreError::AuthV2 {
+            .ok_or_else(|| CoreError::Auth {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: format!(
                     "secret not found for projection request {}:{}",
@@ -238,7 +238,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, CoreError::ConfigV2 { .. }));
+        assert!(matches!(err, CoreError::Config { .. }));
     }
 
     #[test]

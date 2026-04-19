@@ -17,12 +17,11 @@ use oneshim_core::error::CoreError;
 /// Returns (cert_pem, key_pem) as byte vectors.
 pub fn generate_self_signed_cert(device_id: &str) -> Result<(Vec<u8>, Vec<u8>), CoreError> {
     let subject_alt_name = format!("oneshim-sync-{device_id}");
-    let mut params = rcgen::CertificateParams::new(vec![subject_alt_name]).map_err(|e| {
-        CoreError::InternalV2 {
+    let mut params =
+        rcgen::CertificateParams::new(vec![subject_alt_name]).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("cert params: {e}"),
-        }
-    })?;
+        })?;
     params.distinguished_name = rcgen::DistinguishedName::new();
     params.distinguished_name.push(
         rcgen::DnType::CommonName,
@@ -33,13 +32,13 @@ pub fn generate_self_signed_cert(device_id: &str) -> Result<(Vec<u8>, Vec<u8>), 
     let expiry_year = now.year() + 10;
     params.not_after = rcgen::date_time_ymd(expiry_year, now.month() as u8, now.day() as u8);
 
-    let key_pair = rcgen::KeyPair::generate().map_err(|e| CoreError::InternalV2 {
+    let key_pair = rcgen::KeyPair::generate().map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("key generation: {e}"),
     })?;
     let cert = params
         .self_signed(&key_pair)
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("self-sign: {e}"),
         })?;
@@ -56,7 +55,7 @@ pub fn generate_self_signed_cert(device_id: &str) -> Result<(Vec<u8>, Vec<u8>), 
 /// Returns the hex-encoded fingerprint.
 pub fn compute_cert_fingerprint(cert_pem: &[u8]) -> Result<String, CoreError> {
     // Parse PEM to get DER bytes
-    let pem_str = std::str::from_utf8(cert_pem).map_err(|e| CoreError::InternalV2 {
+    let pem_str = std::str::from_utf8(cert_pem).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("invalid PEM encoding: {e}"),
     })?;
@@ -87,7 +86,7 @@ fn extract_der_from_pem(pem_str: &str) -> Result<Vec<u8>, CoreError> {
     }
 
     if base64_content.is_empty() {
-        return Err(CoreError::InternalV2 {
+        return Err(CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "no certificate data found in PEM".to_string(),
         });
@@ -95,7 +94,7 @@ fn extract_der_from_pem(pem_str: &str) -> Result<Vec<u8>, CoreError> {
 
     base64::engine::general_purpose::STANDARD
         .decode(&base64_content)
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("base64 decode: {e}"),
         })
@@ -112,11 +111,11 @@ pub fn load_or_generate_cert(
     let key_path = config_dir.join("sync_key.pem");
 
     if cert_path.exists() && key_path.exists() {
-        let cert_pem = std::fs::read(&cert_path).map_err(|e| CoreError::InternalV2 {
+        let cert_pem = std::fs::read(&cert_path).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("read cert: {e}"),
         })?;
-        let key_pem = std::fs::read(&key_path).map_err(|e| CoreError::InternalV2 {
+        let key_pem = std::fs::read(&key_path).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("read key: {e}"),
         })?;
@@ -128,15 +127,15 @@ pub fn load_or_generate_cert(
     let (cert_pem, key_pem) = generate_self_signed_cert(device_id)?;
     let fingerprint = compute_cert_fingerprint(&cert_pem)?;
 
-    std::fs::create_dir_all(config_dir).map_err(|e| CoreError::InternalV2 {
+    std::fs::create_dir_all(config_dir).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("create config dir: {e}"),
     })?;
-    std::fs::write(&cert_path, &cert_pem).map_err(|e| CoreError::InternalV2 {
+    std::fs::write(&cert_path, &cert_pem).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("write cert: {e}"),
     })?;
-    std::fs::write(&key_path, &key_pem).map_err(|e| CoreError::InternalV2 {
+    std::fs::write(&key_path, &key_pem).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("write key: {e}"),
     })?;
@@ -146,7 +145,7 @@ pub fn load_or_generate_cert(
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
-        std::fs::set_permissions(&key_path, perms).map_err(|e| CoreError::InternalV2 {
+        std::fs::set_permissions(&key_path, perms).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("set key permissions: {e}"),
         })?;

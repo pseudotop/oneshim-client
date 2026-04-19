@@ -24,9 +24,10 @@ pub trait AnalysisProvider: Send + Sync {
         _context_json: &str,
         _system_prompt: &str,
     ) -> Result<String, CoreError> {
-        Err(CoreError::Analysis(
-            "summarize_text not implemented for this provider".into(),
-        ))
+        Err(CoreError::Analysis {
+            code: crate::error_codes::ProviderCode::AnalysisFailed,
+            message: "summarize_text not implemented for this provider".into(),
+        })
     }
 
     fn provider_name(&self) -> &str;

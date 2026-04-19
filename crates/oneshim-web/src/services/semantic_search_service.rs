@@ -47,7 +47,7 @@ async fn embed_query(
     embedding_provider
         .embed(sanitized)
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Embedding failed: {e}"),
         })

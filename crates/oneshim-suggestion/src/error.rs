@@ -14,7 +14,7 @@ impl From<SuggestionError> for CoreError {
     fn from(err: SuggestionError) -> Self {
         match err {
             SuggestionError::Core(e) => e,
-            SuggestionError::Internal(msg) => CoreError::InternalV2 {
+            SuggestionError::Internal(msg) => CoreError::Internal {
                 code: InternalCode::Generic,
                 message: msg,
             },

@@ -28,7 +28,7 @@ impl OcrProvider for LocalOcrProvider {
         {
             use crate::ocr::OcrExtractor;
 
-            let img = image::load_from_memory(image).map_err(|e| CoreError::OcrErrorV2 {
+            let img = image::load_from_memory(image).map_err(|e| CoreError::OcrError {
                 code: oneshim_core::error_codes::ProviderCode::OcrFailed,
                 message: format!("Image decoding failed: {e}"),
             })?;
@@ -37,7 +37,7 @@ impl OcrProvider for LocalOcrProvider {
             let word_boxes = extractor
                 .extract_words_with_boxes(&img)
                 .await
-                .map_err(|e| CoreError::OcrErrorV2 {
+                .map_err(|e| CoreError::OcrError {
                     code: oneshim_core::error_codes::ProviderCode::OcrFailed,
                     message: format!("OCR extraction failed: {e}"),
                 })?;

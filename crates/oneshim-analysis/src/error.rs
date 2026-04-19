@@ -29,19 +29,19 @@ impl From<AnalysisError> for CoreError {
     fn from(err: AnalysisError) -> Self {
         match err {
             AnalysisError::Core(e) => e,
-            AnalysisError::VectorIndex(msg) => CoreError::InternalV2 {
+            AnalysisError::VectorIndex(msg) => CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             },
-            AnalysisError::Clustering(msg) => CoreError::AnalysisV2 {
+            AnalysisError::Clustering(msg) => CoreError::Analysis {
                 code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: msg,
             },
-            AnalysisError::LlmService(msg) => CoreError::AnalysisV2 {
+            AnalysisError::LlmService(msg) => CoreError::Analysis {
                 code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: msg,
             },
-            AnalysisError::Internal(msg) => CoreError::InternalV2 {
+            AnalysisError::Internal(msg) => CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             },

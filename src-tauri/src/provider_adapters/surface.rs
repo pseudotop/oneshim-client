@@ -100,7 +100,7 @@ pub(super) fn unsupported_ocr_surface_runtime(
         ));
     }
 
-    Err(CoreError::ConfigV2 {
+    Err(CoreError::Config {
         code: oneshim_core::error_codes::ConfigCode::Invalid,
         message: reason,
     })

@@ -29,7 +29,7 @@ impl RuntimeLogProvider for TauriRuntimeLogProvider {
 
         tokio::task::spawn_blocking(move || {
             let latest_log =
-                log_helpers::newest_log_file(&log_dir).map_err(|msg| CoreError::InternalV2 {
+                log_helpers::newest_log_file(&log_dir).map_err(|msg| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: msg,
                 })?;
@@ -37,7 +37,7 @@ impl RuntimeLogProvider for TauriRuntimeLogProvider {
             let (log_file, line_count, recent_text) = if let Some(path) = latest_log {
                 let (count, text) =
                     log_helpers::tail_log_file(&path, line_limit).map_err(|msg| {
-                        CoreError::InternalV2 {
+                        CoreError::Internal {
                             code: oneshim_core::error_codes::InternalCode::Generic,
                             message: msg,
                         }
@@ -55,7 +55,7 @@ impl RuntimeLogProvider for TauriRuntimeLogProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Log snapshot task failed: {e}"),
         })?

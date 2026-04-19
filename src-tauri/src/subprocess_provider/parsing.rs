@@ -102,7 +102,7 @@ pub(super) fn write_subprocess_ocr_image(
         _ => "bin",
     };
     let path = workdir.join(format!("ocr-input.{extension}"));
-    std::fs::write(&path, image).map_err(|err| CoreError::InternalV2 {
+    std::fs::write(&path, image).map_err(|err| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("Failed to write subprocess OCR image input: {err}"),
     })?;
@@ -112,7 +112,7 @@ pub(super) fn write_subprocess_ocr_image(
 pub(super) fn parse_ocr_output(raw: &str) -> Result<Vec<OcrResult>, CoreError> {
     let normalized = raw.trim();
     if normalized.is_empty() {
-        return Err(CoreError::InternalV2 {
+        return Err(CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "Subprocess CLI returned an empty OCR response.".to_string(),
         });
@@ -134,7 +134,7 @@ pub(super) fn parse_ocr_output(raw: &str) -> Result<Vec<OcrResult>, CoreError> {
         }
     }
 
-    Err(CoreError::InternalV2 {
+    Err(CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!(
             "Subprocess CLI returned non-JSON OCR output: {}",
@@ -190,7 +190,7 @@ fn normalize_ocr_results(results: Vec<OcrResult>) -> Vec<OcrResult> {
 pub(super) fn parse_interpreted_action_output(raw: &str) -> Result<InterpretedAction, CoreError> {
     let normalized = raw.trim();
     if normalized.is_empty() {
-        return Err(CoreError::InternalV2 {
+        return Err(CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "Subprocess CLI returned an empty response.".to_string(),
         });
@@ -212,7 +212,7 @@ pub(super) fn parse_interpreted_action_output(raw: &str) -> Result<InterpretedAc
         }
     }
 
-    Err(CoreError::InternalV2 {
+    Err(CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!(
             "Subprocess CLI returned non-JSON intent output: {}",
@@ -276,7 +276,7 @@ pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreE
         || lowered.contains("sign in")
         || lowered.contains("not authenticated")
     {
-        return CoreError::AuthV2 {
+        return CoreError::Auth {
             code: oneshim_core::error_codes::AuthCode::Failed,
             message: format!(
                 "{} CLI authentication is required: {}",
@@ -286,7 +286,7 @@ pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreE
         };
     }
 
-    CoreError::InternalV2 {
+    CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!(
             "{} CLI invocation failed: {}",
@@ -298,15 +298,15 @@ pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreE
 
 pub(super) fn is_gemini_json_flag_error(error: &CoreError) -> bool {
     let message = match error {
-        CoreError::InternalV2 {
+        CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: value,
         }
-        | CoreError::ConfigV2 {
+        | CoreError::Config {
             code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: value,
         }
-        | CoreError::AuthV2 {
+        | CoreError::Auth {
             code: oneshim_core::error_codes::AuthCode::Failed,
             message: value,
         } => value,

@@ -44,7 +44,7 @@ impl RemoteSyncTransport {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .map_err(|e| CoreError::NetworkV2 {
+            .map_err(|e| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("Failed to build HTTP client: {e}"),
             })?;
@@ -72,12 +72,12 @@ impl RemoteSyncTransport {
 
     fn map_error(&self, e: reqwest::Error, context: &str) -> CoreError {
         if e.is_timeout() {
-            CoreError::RequestTimeoutV2 {
+            CoreError::RequestTimeout {
                 code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout_ms,
             }
         } else {
-            CoreError::NetworkV2 {
+            CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("{context}: {e}"),
             }
@@ -87,11 +87,11 @@ impl RemoteSyncTransport {
     fn check_response_status(status: reqwest::StatusCode, body: &str) -> Result<(), CoreError> {
         match status.as_u16() {
             200 | 204 => Ok(()),
-            401 | 403 => Err(CoreError::AuthV2 {
+            401 | 403 => Err(CoreError::Auth {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: format!("Sync auth failed: {body}"),
             }),
-            404 => Err(CoreError::NotFoundV2 {
+            404 => Err(CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "SyncEndpoint".to_string(),
                 id: body.to_string(),
@@ -103,16 +103,16 @@ impl RemoteSyncTransport {
             }
             429 => {
                 let retry_secs = 60u64; // Default; actual parsing in retry loop
-                Err(CoreError::RateLimitV2 {
+                Err(CoreError::RateLimit {
                     code: oneshim_core::error_codes::NetworkCode::RateLimit,
                     retry_after_secs: retry_secs,
                 })
             }
-            503 => Err(CoreError::ServiceUnavailableV2 {
+            503 => Err(CoreError::ServiceUnavailable {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: body.to_string(),
             }),
-            _ => Err(CoreError::InternalV2 {
+            _ => Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Sync API error ({status}): {body}"),
             }),
@@ -122,13 +122,13 @@ impl RemoteSyncTransport {
     fn is_retryable(error: &CoreError) -> bool {
         matches!(
             error,
-            CoreError::NetworkV2 { .. }
-                | CoreError::RequestTimeoutV2 {
+            CoreError::Network { .. }
+                | CoreError::RequestTimeout {
                     code: oneshim_core::error_codes::NetworkCode::Timeout,
                     ..
                 }
-                | CoreError::ServiceUnavailableV2 { .. }
-                | CoreError::RateLimitV2 {
+                | CoreError::ServiceUnavailable { .. }
+                | CoreError::RateLimit {
                     code: oneshim_core::error_codes::NetworkCode::RateLimit,
                     ..
                 }
@@ -139,14 +139,14 @@ impl RemoteSyncTransport {
 #[async_trait]
 impl SyncTransport for RemoteSyncTransport {
     async fn push(&self, changes: &ChangeSet) -> Result<(), CoreError> {
-        let json = serde_json::to_vec(changes).map_err(|e| CoreError::InternalV2 {
+        let json = serde_json::to_vec(changes).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("serialize changeset: {e}"),
         })?;
         let encrypted = sync_crypto::encrypt(&self.passphrase, &json)?;
         let (header_name, header_value) = self.auth_header();
 
-        let mut last_error = CoreError::InternalV2 {
+        let mut last_error = CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "push failed".to_string(),
         };
@@ -175,7 +175,7 @@ impl SyncTransport for RemoteSyncTransport {
                             return Ok(()); // SyncEngine handles re-pull
                         }
                         429 => {
-                            last_error = CoreError::RateLimitV2 {
+                            last_error = CoreError::RateLimit {
                                 code: oneshim_core::error_codes::NetworkCode::RateLimit,
                                 retry_after_secs: retry_after,
                             };
@@ -198,7 +198,7 @@ impl SyncTransport for RemoteSyncTransport {
             }
 
             let delay = match &last_error {
-                CoreError::RateLimitV2 {
+                CoreError::RateLimit {
                     code: oneshim_core::error_codes::NetworkCode::RateLimit,
                     retry_after_secs,
                 } => Duration::from_secs(*retry_after_secs),
@@ -223,7 +223,7 @@ impl SyncTransport for RemoteSyncTransport {
             self.endpoint, since.wall_ms, since.counter, self.local_device_id
         );
 
-        let mut last_error = CoreError::InternalV2 {
+        let mut last_error = CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "pull failed".to_string(),
         };
@@ -241,7 +241,7 @@ impl SyncTransport for RemoteSyncTransport {
                     match status.as_u16() {
                         204 => return Ok(None),
                         200 => {
-                            let bytes = resp.bytes().await.map_err(|e| CoreError::NetworkV2 {
+                            let bytes = resp.bytes().await.map_err(|e| CoreError::Network {
                                 code: oneshim_core::error_codes::NetworkCode::Generic,
                                 message: format!("read pull response: {e}"),
                             })?;
@@ -251,7 +251,7 @@ impl SyncTransport for RemoteSyncTransport {
                             let plaintext = sync_crypto::decrypt(&self.passphrase, &bytes)?;
                             let cs: ChangeSet =
                                 serde_json::from_slice(&plaintext).map_err(|e| {
-                                    CoreError::InternalV2 {
+                                    CoreError::Internal {
                                         code: oneshim_core::error_codes::InternalCode::Generic,
                                         message: format!("deserialize changeset: {e}"),
                                     }
@@ -267,13 +267,13 @@ impl SyncTransport for RemoteSyncTransport {
                             let retry_after = extract_retry_after(&resp);
                             let body = resp.text().await.unwrap_or_default();
                             last_error = match status.as_u16() {
-                                429 => CoreError::RateLimitV2 {
+                                429 => CoreError::RateLimit {
                                     code: oneshim_core::error_codes::NetworkCode::RateLimit,
                                     retry_after_secs: retry_after,
                                 },
                                 _ => Self::check_response_status(status, &body)
                                     .err()
-                                    .unwrap_or_else(|| CoreError::InternalV2 {
+                                    .unwrap_or_else(|| CoreError::Internal {
                                         code: oneshim_core::error_codes::InternalCode::Generic,
                                         message: "unexpected".into(),
                                     }),
@@ -313,13 +313,13 @@ impl SyncTransport for RemoteSyncTransport {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::check_response_status(status, &body)
                 .err()
-                .unwrap_or_else(|| CoreError::InternalV2 {
+                .unwrap_or_else(|| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: "unexpected".into(),
                 }));
         }
 
-        let peers: Vec<PeerInfo> = resp.json().await.map_err(|e| CoreError::InternalV2 {
+        let peers: Vec<PeerInfo> = resp.json().await.map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("parse peers response: {e}"),
         })?;
@@ -422,7 +422,7 @@ mod tests {
 
         let transport = test_transport(&server.url());
         let result = transport.push(&test_changeset()).await;
-        assert!(matches!(result, Err(CoreError::AuthV2 { .. })));
+        assert!(matches!(result, Err(CoreError::Auth { .. })));
         mock.assert_async().await;
     }
 

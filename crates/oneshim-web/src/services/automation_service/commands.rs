@@ -236,16 +236,25 @@ impl AutomationCommandService {
             }),
             #[allow(deprecated)]
             Err(
-                CoreError::PolicyDenied(msg)
-                | CoreError::InvalidArguments(msg)
-                | CoreError::ElementNotFound(msg),
+                CoreError::PolicyDenied {
+                    code: oneshim_core::error_codes::PolicyCode::Denied,
+                    message: msg,
+                }
+                | CoreError::InvalidArguments {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+                    message: msg,
+                }
+                | CoreError::ElementNotFound {
+                    code: oneshim_core::error_codes::UiCode::ElementMissing,
+                    name: msg,
+                },
             ) => Err(ApiError::BadRequest(msg)),
             Err(
-                CoreError::PolicyDeniedV2 { message: msg, .. }
-                | CoreError::InvalidArgumentsV2 { message: msg, .. },
+                CoreError::PolicyDenied { message: msg, .. }
+                | CoreError::InvalidArguments { message: msg, .. },
             ) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::ElementNotFoundV2 { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::InternalV2 {
+            Err(CoreError::ElementNotFound { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
+            Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             }) if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") => {
@@ -341,18 +350,27 @@ impl AutomationCommandService {
                 }
                 #[allow(deprecated)]
                 Err(
-                    CoreError::PolicyDenied(msg)
-                    | CoreError::InvalidArguments(msg)
-                    | CoreError::ElementNotFound(msg),
+                    CoreError::PolicyDenied {
+                        code: oneshim_core::error_codes::PolicyCode::Denied,
+                        message: msg,
+                    }
+                    | CoreError::InvalidArguments {
+                        code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+                        message: msg,
+                    }
+                    | CoreError::ElementNotFound {
+                        code: oneshim_core::error_codes::UiCode::ElementMissing,
+                        name: msg,
+                    },
                 ) => return Err(ApiError::BadRequest(msg)),
                 Err(
-                    CoreError::PolicyDeniedV2 { message: msg, .. }
-                    | CoreError::InvalidArgumentsV2 { message: msg, .. },
+                    CoreError::PolicyDenied { message: msg, .. }
+                    | CoreError::InvalidArguments { message: msg, .. },
                 ) => return Err(ApiError::BadRequest(msg)),
-                Err(CoreError::ElementNotFoundV2 { name: msg, .. }) => {
+                Err(CoreError::ElementNotFound { name: msg, .. }) => {
                     return Err(ApiError::BadRequest(msg));
                 }
-                Err(CoreError::InternalV2 {
+                Err(CoreError::Internal {
                     code: _,
                     message: msg,
                 }) if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") => {

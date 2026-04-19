@@ -288,7 +288,7 @@ impl RemoteLlmProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })
@@ -305,7 +305,7 @@ impl RemoteLlmProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })
@@ -317,7 +317,7 @@ impl RemoteLlmProvider {
             provider_specs::SurfaceCapabilityKind::Llm,
             parameters,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })

@@ -238,7 +238,7 @@ pub fn materialize_bridge_file(
     context_export_path: &Path,
 ) -> Result<bool, CoreError> {
     if let Some(parent) = plan.file_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| CoreError::InternalV2 {
+        std::fs::create_dir_all(parent).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!(
                 "브리지 디렉토리 create failure ({}): {}",
@@ -256,7 +256,7 @@ pub fn materialize_bridge_file(
         }
     }
 
-    std::fs::write(&plan.file_path, content).map_err(|e| CoreError::InternalV2 {
+    std::fs::write(&plan.file_path, content).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!(
             "브리지 file create failure ({}): {}",
@@ -337,7 +337,7 @@ fn revoke_bridge_file(plan: &CliBridgePlan) -> Result<BridgeFileRevokeOutcome, C
         return Ok(BridgeFileRevokeOutcome::Skipped);
     }
 
-    let contents = std::fs::read_to_string(&plan.file_path).map_err(|e| CoreError::InternalV2 {
+    let contents = std::fs::read_to_string(&plan.file_path).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!(
             "bridge file read failure ({}): {}",
@@ -350,7 +350,7 @@ fn revoke_bridge_file(plan: &CliBridgePlan) -> Result<BridgeFileRevokeOutcome, C
         return Ok(BridgeFileRevokeOutcome::Skipped);
     }
 
-    std::fs::remove_file(&plan.file_path).map_err(|e| CoreError::InternalV2 {
+    std::fs::remove_file(&plan.file_path).map_err(|e| CoreError::Internal {
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!(
             "bridge file remove failure ({}): {}",

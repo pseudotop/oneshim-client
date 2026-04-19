@@ -14,7 +14,7 @@ impl From<EmbeddingError> for CoreError {
     fn from(err: EmbeddingError) -> Self {
         match err {
             EmbeddingError::Core(e) => e,
-            EmbeddingError::Internal(msg) => CoreError::InternalV2 {
+            EmbeddingError::Internal(msg) => CoreError::Internal {
                 code: InternalCode::Generic,
                 message: msg,
             },

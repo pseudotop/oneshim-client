@@ -28,7 +28,7 @@ impl IntegrationSessionStorePort for FileIntegrationSessionStore {
             Ok::<_, crate::error::StorageError>(inner.load_session_sync())
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -39,7 +39,7 @@ impl IntegrationSessionStorePort for FileIntegrationSessionStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.store_session_sync(state))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -50,7 +50,7 @@ impl IntegrationSessionStorePort for FileIntegrationSessionStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.clear_session_sync())
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -73,7 +73,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.enqueue_outbox_sync(envelope, payload))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -89,7 +89,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
             Ok::<_, crate::error::StorageError>(inner.list_outbox_sync(limit))
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -101,7 +101,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         let queue_ids = queue_ids.to_vec();
         tokio::task::spawn_blocking(move || inner.delete_outbox_sync(&queue_ids))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -114,7 +114,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
             Ok::<_, crate::error::StorageError>(inner.outbox_pending_count_sync())
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -127,7 +127,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
             Ok::<_, crate::error::StorageError>(inner.outbox_ack_cursor_sync())
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -138,7 +138,7 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.store_outbox_ack_cursor_sync(cursor))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -165,7 +165,7 @@ impl IntegrationPromptReceiptStorePort for FileIntegrationInboxStore {
             inner.record_prompt_receipt_sync(&prompt_id, envelope, receipt)
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -179,7 +179,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.upsert_inbox_sync(prompts))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -192,7 +192,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
             Ok::<_, crate::error::StorageError>(inner.list_inbox_pending_sync())
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -208,7 +208,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
             Ok::<_, crate::error::StorageError>(inner.list_inbox_unpresented_sync(limit))
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -221,7 +221,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
             Ok::<_, crate::error::StorageError>(inner.inbox_pending_count_sync())
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -237,7 +237,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         let prompt_id = prompt_id.to_string();
         tokio::task::spawn_blocking(move || inner.mark_presented_sync(&prompt_id, presented_at))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -256,7 +256,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
             inner.update_inbox_status_sync(&prompt_id, status, reason)
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -267,7 +267,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.expire_inbox_sync())
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -280,7 +280,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
             Ok::<_, crate::error::StorageError>(inner.inbox_ack_cursor_sync())
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -291,7 +291,7 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.store_inbox_ack_cursor_sync(cursor))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -313,7 +313,7 @@ impl IntegrationAuditPort for FileIntegrationAuditStore {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.record_audit_sync(record))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?
@@ -329,7 +329,7 @@ impl IntegrationAuditPort for FileIntegrationAuditStore {
             Ok::<_, crate::error::StorageError>(inner.recent_audit_sync(limit))
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -351,7 +351,7 @@ impl IntegrationCheckpointStorePort for FileIntegrationCheckpointStore {
             Ok::<_, crate::error::StorageError>(inner.load_checkpoint_sync(&namespace))
         })
         .await
-        .map_err(|err| CoreError::InternalV2 {
+        .map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking: {err}"),
         })?
@@ -363,7 +363,7 @@ impl IntegrationCheckpointStorePort for FileIntegrationCheckpointStore {
         let namespace = namespace.to_string();
         tokio::task::spawn_blocking(move || inner.store_checkpoint_sync(&namespace, cursor))
             .await
-            .map_err(|err| CoreError::InternalV2 {
+            .map_err(|err| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking: {err}"),
             })?

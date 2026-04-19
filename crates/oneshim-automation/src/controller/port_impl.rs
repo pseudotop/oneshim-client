@@ -195,7 +195,7 @@ impl AutomationPort for AutomationController {
             if confirmation.nonce != nonce {
                 // Re-insert so a legitimate caller can still respond.
                 map.insert(command_id.to_string(), (confirmation, sender));
-                return Err(CoreError::PermissionDeniedV2 {
+                return Err(CoreError::PermissionDenied {
                     code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
                     message: format!(
                         "confirm automation command '{}': nonce mismatch",
@@ -210,7 +210,7 @@ impl AutomationPort for AutomationController {
             let _ = sender.send(approved);
             Ok(())
         } else {
-            Err(CoreError::NotFoundV2 {
+            Err(CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "PendingConfirmation".to_string(),
                 id: command_id.to_string(),

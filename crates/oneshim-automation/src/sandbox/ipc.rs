@@ -67,10 +67,8 @@ pub fn resolve_worker_path() -> Result<PathBuf, oneshim_core::error::CoreError> 
         }
     }
 
-    Err(oneshim_core::error::CoreError::SandboxExecution(
-        "sandbox worker binary not found: checked adjacent to executable, Tauri sidecar, and PATH"
-            .into(),
-    ))
+    Err(oneshim_core::error::CoreError::SandboxExecution { code: oneshim_core::error_codes::SandboxCode::ExecutionFailed, message: "sandbox worker binary not found: checked adjacent to executable, Tauri sidecar, and PATH"
+            .into() })
 }
 
 /// Returns the Rust target triple for the current platform.
@@ -108,14 +106,14 @@ pub fn parse_worker_response(
     let stdout_str = String::from_utf8_lossy(stdout);
     let trimmed = stdout_str.trim();
     if trimmed.is_empty() {
-        return Err(oneshim_core::error::CoreError::SandboxExecution(
-            "worker produced no output on stdout".into(),
-        ));
+        return Err(oneshim_core::error::CoreError::SandboxExecution {
+            code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+            message: "worker produced no output on stdout".into(),
+        });
     }
-    serde_json::from_str(trimmed).map_err(|e| {
-        oneshim_core::error::CoreError::SandboxExecution(format!(
-            "failed to parse worker response: {e} -- stdout: {trimmed}"
-        ))
+    serde_json::from_str(trimmed).map_err(|e| oneshim_core::error::CoreError::SandboxExecution {
+        code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+        message: format!("failed to parse worker response: {e} -- stdout: {trimmed}"),
     })
 }
 

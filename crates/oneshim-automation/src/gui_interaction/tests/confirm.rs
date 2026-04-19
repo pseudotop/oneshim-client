@@ -56,7 +56,7 @@ async fn confirm_rejects_unknown_candidate() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::BadRequest(_)));
+    assert!(matches!(err, GuiInteractionError::BadRequest { .. }));
 }
 
 #[tokio::test]
@@ -84,7 +84,7 @@ async fn confirm_rejects_when_focus_changed() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::FocusDrift(_)));
+    assert!(matches!(err, GuiInteractionError::FocusDrift { .. }));
 }
 
 #[tokio::test]
@@ -109,7 +109,7 @@ async fn confirm_type_text_requires_text() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::BadRequest(_)));
+    assert!(matches!(err, GuiInteractionError::BadRequest { .. }));
 }
 
 // ── Build candidates tests ──────────────────────────────────────────

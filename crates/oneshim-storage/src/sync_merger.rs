@@ -83,7 +83,7 @@ impl ChangeMerger for SqliteSyncMerger {
         let local_device_id = self.local_device_id.clone();
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = conn.lock().map_err(|e| CoreError::InternalV2 {
+            let mut guard = conn.lock().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("SQLite lock poisoned: {e}"),
             })?;
@@ -110,7 +110,7 @@ impl ChangeMerger for SqliteSyncMerger {
             let mut result = SyncResult::default();
 
             // All merge operations run inside a single transaction
-            let tx = guard.transaction().map_err(|e| CoreError::InternalV2 {
+            let tx = guard.transaction().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("begin transaction: {e}"),
             })?;
@@ -156,12 +156,12 @@ impl ChangeMerger for SqliteSyncMerger {
                     changes.watermark.counter,
                 ],
             )
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("update sync_peers: {e}"),
             })?;
 
-            tx.commit().map_err(|e| CoreError::InternalV2 {
+            tx.commit().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("commit transaction: {e}"),
             })?;
@@ -179,7 +179,7 @@ impl ChangeMerger for SqliteSyncMerger {
             Ok(result)
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("spawn_blocking join error: {e}"),
         })?

@@ -48,24 +48,32 @@ impl BinaryQuantizer {
         dimensions: usize,
     ) -> Result<QuantileThresholds, CoreError> {
         if vectors.is_empty() {
-            return Err(CoreError::Internal(
-                "cannot compute thresholds on empty vector set".to_string(),
-            ));
+            return Err(CoreError::Internal {
+                code: crate::error_codes::InternalCode::Generic,
+                message: "cannot compute thresholds on empty vector set".to_string(),
+            });
         }
         if vectors.len() < 2 {
-            return Err(CoreError::Internal(
-                "cannot compute quantile thresholds with fewer than 2 vectors".to_string(),
-            ));
+            return Err(CoreError::Internal {
+                code: crate::error_codes::InternalCode::Generic,
+                message: "cannot compute quantile thresholds with fewer than 2 vectors".to_string(),
+            });
         }
         if dimensions == 0 {
-            return Err(CoreError::Internal("dimensions must be > 0".to_string()));
+            return Err(CoreError::Internal {
+                code: crate::error_codes::InternalCode::Generic,
+                message: "dimensions must be > 0".to_string(),
+            });
         }
         for (i, v) in vectors.iter().enumerate() {
             if v.len() != dimensions {
-                return Err(CoreError::Internal(format!(
-                    "vector {i} has {} dimensions, expected {dimensions}",
-                    v.len()
-                )));
+                return Err(CoreError::Internal {
+                    code: crate::error_codes::InternalCode::Generic,
+                    message: format!(
+                        "vector {i} has {} dimensions, expected {dimensions}",
+                        v.len()
+                    ),
+                });
             }
         }
 
@@ -125,11 +133,14 @@ impl BinaryQuantizer {
         thresholds: &QuantileThresholds,
     ) -> Result<BinaryCode, CoreError> {
         if vector.len() != thresholds.dimensions {
-            return Err(CoreError::Internal(format!(
-                "vector length {} does not match threshold dimensions {}",
-                vector.len(),
-                thresholds.dimensions
-            )));
+            return Err(CoreError::Internal {
+                code: crate::error_codes::InternalCode::Generic,
+                message: format!(
+                    "vector length {} does not match threshold dimensions {}",
+                    vector.len(),
+                    thresholds.dimensions
+                ),
+            });
         }
 
         let num_bytes = (thresholds.dimensions * 2).div_ceil(8);

@@ -213,7 +213,7 @@ impl SessionManagerImpl {
                 self.emit_state_change(session_id, managed.state, SessionState::Terminated, reason);
                 Ok(())
             }
-            None => Err(CoreError::InternalV2 {
+            None => Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("session not found: {session_id}"),
             }),
@@ -229,7 +229,7 @@ impl SessionManagerImpl {
     ) -> Result<(), CoreError> {
         let mut sessions = self.sessions.write().await;
         if sessions.len() >= self.config.max_concurrent_sessions as usize {
-            return Err(CoreError::InternalV2 {
+            return Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!(
                     "max concurrent sessions ({}) reached",
@@ -277,7 +277,7 @@ impl SessionManager for SessionManagerImpl {
         sessions
             .get(session_id)
             .map(|m| m.session.clone())
-            .ok_or_else(|| CoreError::InternalV2 {
+            .ok_or_else(|| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("session not found: {session_id}"),
             })

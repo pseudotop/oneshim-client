@@ -136,7 +136,7 @@ async fn extract_window_elements_permission_denied_without_access() {
         .await;
     assert!(matches!(
         result,
-        Err(oneshim_core::error::CoreError::PermissionDeniedV2 { .. })
+        Err(oneshim_core::error::CoreError::PermissionDenied { .. })
     ));
 }
 

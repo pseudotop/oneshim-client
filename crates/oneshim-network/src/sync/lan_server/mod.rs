@@ -180,18 +180,18 @@ impl LanPeerServer {
             let listener =
                 tokio::net::TcpListener::bind(addr)
                     .await
-                    .map_err(|e| CoreError::InternalV2 {
+                    .map_err(|e| CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: format!("failed to bind LAN server on {addr}: {e}"),
                     })?;
-            let actual_addr = listener.local_addr().map_err(|e| CoreError::InternalV2 {
+            let actual_addr = listener.local_addr().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("failed to get local addr: {e}"),
             })?;
             let bound_port = actual_addr.port();
 
             // Convert to std listener for axum-server
-            let std_listener = listener.into_std().map_err(|e| CoreError::InternalV2 {
+            let std_listener = listener.into_std().map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("failed to convert listener: {e}"),
             })?;
@@ -200,7 +200,7 @@ impl LanPeerServer {
             let shutdown_handle = axum_handle.clone();
 
             let tls_server = axum_server::from_tcp_rustls(std_listener, config).map_err(|e| {
-                CoreError::InternalV2 {
+                CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("TLS server init: {e}"),
                 }
@@ -232,14 +232,14 @@ impl LanPeerServer {
             let listener =
                 tokio::net::TcpListener::bind(addr)
                     .await
-                    .map_err(|e| CoreError::InternalV2 {
+                    .map_err(|e| CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: format!("failed to bind LAN server on {addr}: {e}"),
                     })?;
 
             let actual_port = listener
                 .local_addr()
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("failed to get local addr: {e}"),
                 })?

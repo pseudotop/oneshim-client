@@ -27,12 +27,18 @@ pub trait AudioCapturePort: Send + Sync {
         _config: VadConfig,
         _on_speech_signal: Arc<dyn Fn() + Send + Sync>,
     ) -> Result<(), CoreError> {
-        Err(CoreError::AudioCapture("VAD not supported".into()))
+        Err(CoreError::AudioCapture {
+            code: crate::error_codes::AudioCode::CaptureFailed,
+            message: "VAD not supported".into(),
+        })
     }
 
     /// Stop VAD listening mode.
     fn stop_vad(&self) -> Result<(), CoreError> {
-        Err(CoreError::AudioCapture("VAD not supported".into()))
+        Err(CoreError::AudioCapture {
+            code: crate::error_codes::AudioCode::CaptureFailed,
+            message: "VAD not supported".into(),
+        })
     }
 
     /// Whether VAD listening is currently active.
@@ -43,6 +49,9 @@ pub trait AudioCapturePort: Send + Sync {
     /// Drain the speech buffer and return resampled 16kHz audio.
     /// Called by the receiver task after on_speech_signal fires.
     fn drain_speech_buffer(&self) -> Result<AudioBuffer, CoreError> {
-        Err(CoreError::AudioCapture("VAD not supported".into()))
+        Err(CoreError::AudioCapture {
+            code: crate::error_codes::AudioCode::CaptureFailed,
+            message: "VAD not supported".into(),
+        })
     }
 }

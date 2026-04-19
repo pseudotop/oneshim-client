@@ -70,7 +70,7 @@ impl ElementFinder for PlatformAccessibilityElementFinder {
         });
 
         if elements.is_empty() {
-            return Err(CoreError::ElementNotFoundV2 {
+            return Err(CoreError::ElementNotFound {
                 code: oneshim_core::error_codes::UiCode::ElementMissing,
                 name: "No accessibility candidates matched query".to_string(),
             });
@@ -86,7 +86,7 @@ impl ElementFinder for PlatformAccessibilityElementFinder {
     ) -> Result<UiScene, CoreError> {
         let nodes = query_accessibility_nodes()?;
         if nodes.is_empty() {
-            return Err(CoreError::ElementNotFoundV2 {
+            return Err(CoreError::ElementNotFound {
                 code: oneshim_core::error_codes::UiCode::ElementMissing,
                 name: "No accessibility elements discovered".to_string(),
             });
@@ -159,7 +159,7 @@ fn query_accessibility_nodes() -> Result<Vec<AccessibilityNode>, CoreError> {
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", unix)))]
     {
-        Err(CoreError::ServiceUnavailableV2 {
+        Err(CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: "Accessibility adapter is not available on this platform".to_string(),
         })
@@ -225,14 +225,14 @@ fn query_macos_accessibility_nodes() -> Result<Vec<AccessibilityNode>, CoreError
         .arg("-e")
         .arg(script)
         .output()
-        .map_err(|e| CoreError::ServiceUnavailableV2 {
+        .map_err(|e| CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: format!("macOS AX probe launch failed: {e}"),
         })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CoreError::ServiceUnavailableV2 {
+        return Err(CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: format!(
                 "macOS AX probe failed (check Accessibility permission): {}",
@@ -304,14 +304,14 @@ fn query_windows_accessibility_nodes() -> Result<Vec<AccessibilityNode>, CoreErr
             script,
         ])
         .output()
-        .map_err(|e| CoreError::ServiceUnavailableV2 {
+        .map_err(|e| CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: format!("Windows UIA probe launch failed: {e}"),
         })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CoreError::ServiceUnavailableV2 {
+        return Err(CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: format!("Windows UIA probe failed: {}", stderr.trim()),
         });
@@ -329,7 +329,7 @@ fn query_linux_accessibility_nodes() -> Result<Vec<AccessibilityNode>, CoreError
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+        .ok_or_else(|| CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: "Linux accessibility probe requires xdotool and active X11/XWayland session"
                 .to_string(),
@@ -365,7 +365,7 @@ fn query_linux_accessibility_nodes() -> Result<Vec<AccessibilityNode>, CoreError
         .ok()
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
-        .ok_or_else(|| CoreError::ServiceUnavailableV2 {
+        .ok_or_else(|| CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: "Failed to read active window geometry".to_string(),
         })?;
@@ -387,7 +387,7 @@ fn query_linux_accessibility_nodes() -> Result<Vec<AccessibilityNode>, CoreError
     }
 
     if w == 0 || h == 0 {
-        return Err(CoreError::ServiceUnavailableV2 {
+        return Err(CoreError::ServiceUnavailable {
             code: oneshim_core::error_codes::ServiceCode::Unavailable,
             message: "Invalid active window geometry from xdotool".to_string(),
         });
@@ -458,7 +458,7 @@ fn parse_accessibility_lines(raw: &str) -> Result<Vec<AccessibilityNode>, CoreEr
     }
 
     if nodes.is_empty() {
-        return Err(CoreError::ElementNotFoundV2 {
+        return Err(CoreError::ElementNotFound {
             code: oneshim_core::error_codes::UiCode::ElementMissing,
             name: "Accessibility probe returned no actionable elements".to_string(),
         });

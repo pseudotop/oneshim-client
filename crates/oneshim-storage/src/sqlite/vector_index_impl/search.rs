@@ -20,7 +20,7 @@ pub(super) async fn search_ivf_impl(
     // Clone probe IDs out of the cache guard before any further awaits.
     let probe_ids = {
         let cache = index.centroid_cache.read().await;
-        let centroids = cache.as_ref().ok_or_else(|| CoreError::InternalV2 {
+        let centroids = cache.as_ref().ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "IVF index not built yet".to_string(),
         })?;
@@ -32,7 +32,7 @@ pub(super) async fn search_ivf_impl(
         // Pre-validate dimensions once before the hot loop.
         if let Some(first) = centroids.first() {
             if first.vector.data.len() != query_vector.data.len() {
-                return Err(CoreError::InvalidArgumentsV2 {
+                return Err(CoreError::InvalidArguments {
                     code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
                     message: format!(
                         "Dimension mismatch: centroid {} vs query {}",
@@ -133,7 +133,7 @@ pub(super) async fn search_ivf_binary_impl(
     // Clone probe IDs out of the cache guard before any further awaits.
     let probe_ids = {
         let cache = index.centroid_cache.read().await;
-        let centroids = cache.as_ref().ok_or_else(|| CoreError::InternalV2 {
+        let centroids = cache.as_ref().ok_or_else(|| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: "IVF index not built yet".to_string(),
         })?;
@@ -145,7 +145,7 @@ pub(super) async fn search_ivf_binary_impl(
         // Pre-validate dimensions once before the hot loop.
         if let Some(first) = centroids.first() {
             if first.vector.data.len() != query_vector.data.len() {
-                return Err(CoreError::InvalidArgumentsV2 {
+                return Err(CoreError::InvalidArguments {
                     code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
                     message: format!(
                         "Dimension mismatch: centroid {} vs query {}",

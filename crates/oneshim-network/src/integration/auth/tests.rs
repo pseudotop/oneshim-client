@@ -477,7 +477,7 @@ async fn cancel_device_authorization_requires_existing_flow() {
         .unwrap_err();
     assert!(matches!(
         error,
-        CoreError::NotFoundV2 {
+        CoreError::NotFound {
             code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
             ..
         }

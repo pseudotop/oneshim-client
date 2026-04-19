@@ -27,7 +27,7 @@ pub struct IndexMeta {
 
 /// Port for vector index build and search operations.
 ///
-/// All methods have default implementations returning `CoreError::Internal("not implemented")`
+/// All methods have default implementations returning `CoreError::Internal { code: crate::error_codes::InternalCode::Generic, message: "not implemented" }`
 /// so that test mocks compile without change.
 #[async_trait]
 #[allow(clippy::too_many_arguments)]
@@ -42,9 +42,10 @@ pub trait VectorIndex: Send + Sync {
         _n_clusters: usize,
         _n_iterations: usize,
     ) -> Result<usize, CoreError> {
-        Err(CoreError::Internal(
-            "build_ivf_index not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "build_ivf_index not implemented".into(),
+        })
     }
 
     /// Build (or rebuild) 2-bit binary codes for all indexed vectors.
@@ -52,9 +53,10 @@ pub trait VectorIndex: Send + Sync {
     /// Computes quantile thresholds across the collection, encodes each vector,
     /// and persists the codes. Returns the number of codes generated.
     async fn build_binary_codes(&self) -> Result<u64, CoreError> {
-        Err(CoreError::Internal(
-            "build_binary_codes not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "build_binary_codes not implemented".into(),
+        })
     }
 
     /// Search using IVF partitioning with INT8 cosine similarity.
@@ -69,7 +71,10 @@ pub trait VectorIndex: Send + Sync {
         _time_decay_hours: f32,
         _filters: &SearchFilters,
     ) -> Result<Vec<SearchResult>, CoreError> {
-        Err(CoreError::Internal("search_ivf not implemented".into()))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "search_ivf not implemented".into(),
+        })
     }
 
     /// Search using IVF + 2-bit binary Hamming filter + INT8 re-ranking.
@@ -87,9 +92,10 @@ pub trait VectorIndex: Send + Sync {
         _time_decay_hours: f32,
         _filters: &SearchFilters,
     ) -> Result<Vec<SearchResult>, CoreError> {
-        Err(CoreError::Internal(
-            "search_ivf_binary not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "search_ivf_binary not implemented".into(),
+        })
     }
 
     /// Assign a single vector to its nearest IVF cluster (incremental update).
@@ -98,9 +104,10 @@ pub trait VectorIndex: Send + Sync {
         _vector_id: i64,
         _vector: &QuantizedVector,
     ) -> Result<(), CoreError> {
-        Err(CoreError::Internal(
-            "assign_to_cluster not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "assign_to_cluster not implemented".into(),
+        })
     }
 
     /// Store a single binary code for a vector (incremental update).
@@ -109,27 +116,33 @@ pub trait VectorIndex: Send + Sync {
         _vector_id: i64,
         _code: &BinaryCode,
     ) -> Result<(), CoreError> {
-        Err(CoreError::Internal(
-            "store_binary_code not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "store_binary_code not implemented".into(),
+        })
     }
 
     /// Get metadata about the current index state.
     async fn get_index_meta(&self) -> Result<IndexMeta, CoreError> {
-        Err(CoreError::Internal("get_index_meta not implemented".into()))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "get_index_meta not implemented".into(),
+        })
     }
 
     /// Count vectors that have not been assigned to any IVF cluster.
     async fn count_unindexed(&self) -> Result<u64, CoreError> {
-        Err(CoreError::Internal(
-            "count_unindexed not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "count_unindexed not implemented".into(),
+        })
     }
 
     /// Load the quantile thresholds used for binary encoding, if available.
     async fn load_quantile_thresholds(&self) -> Result<Option<QuantileThresholds>, CoreError> {
-        Err(CoreError::Internal(
-            "load_quantile_thresholds not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "load_quantile_thresholds not implemented".into(),
+        })
     }
 }

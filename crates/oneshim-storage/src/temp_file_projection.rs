@@ -197,7 +197,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
         request: SecretProjectionRequest,
     ) -> Result<SecretProjectionResult, CoreError> {
         if request.target != ProjectionTarget::TempFile {
-            return Err(CoreError::InvalidArgumentsV2 {
+            return Err(CoreError::InvalidArguments {
                 code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
                 message: "temp-file projection adapter only supports ProjectionTarget::TempFile"
                     .to_string(),
@@ -207,7 +207,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
         let template =
             self.templates
                 .get(&request.consumer_id)
-                .ok_or_else(|| CoreError::ConfigV2 {
+                .ok_or_else(|| CoreError::Config {
                     code: oneshim_core::error_codes::ConfigCode::Invalid,
                     message: format!(
                         "no temp-file projection template registered for consumer '{}'",
@@ -219,7 +219,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
             .secret_store
             .retrieve(&request.namespace, &request.key)
             .await?
-            .ok_or_else(|| CoreError::AuthV2 {
+            .ok_or_else(|| CoreError::Auth {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: format!(
                     "secret not found for projection request {}:{}",
@@ -227,7 +227,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
                 ),
             })?;
 
-        std::fs::create_dir_all(&self.projection_dir).map_err(|e| CoreError::InternalV2 {
+        std::fs::create_dir_all(&self.projection_dir).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!(
                 "failed to create temp projection dir ({}): {}",
@@ -245,7 +245,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
             .prefix(&Self::file_prefix(template))
             .suffix(".secret")
             .tempfile_in(&self.projection_dir)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!(
                     "failed to create projected temp file in {}: {}",
@@ -256,11 +256,11 @@ impl SecretProjectionPort for TempFileSecretProjection {
         temp_file
             .as_file()
             .set_len(0)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("failed to initialize temp file: {e}"),
             })?;
-        std::fs::write(temp_file.path(), secret).map_err(|e| CoreError::InternalV2 {
+        std::fs::write(temp_file.path(), secret).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!(
                 "failed to write projected temp file ({}): {}",
@@ -274,7 +274,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
 
             let permissions = std::fs::Permissions::from_mode(0o600);
             std::fs::set_permissions(temp_file.path(), permissions).map_err(|e| {
-                CoreError::InternalV2 {
+                CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!(
                         "failed to secure projected temp file ({}): {}",
@@ -290,7 +290,7 @@ impl SecretProjectionPort for TempFileSecretProjection {
             Err(err) => (err.file.path().to_path_buf(), Some(err.error)),
         };
         if let Some(err) = keep_error {
-            return Err(CoreError::InternalV2 {
+            return Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!(
                     "failed to persist projected temp file ({}): {}",
@@ -547,7 +547,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, CoreError::ConfigV2 { .. }));
+        assert!(matches!(err, CoreError::Config { .. }));
     }
 
     #[test]

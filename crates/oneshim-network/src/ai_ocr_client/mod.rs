@@ -53,7 +53,7 @@ fn apply_auth_headers(
         ProviderAuthScheme::Bearer => {
             Ok(builder.header("Authorization", format!("Bearer {api_key}")))
         }
-        ProviderAuthScheme::AwsSignatureV4 => Err(CoreError::ConfigV2 {
+        ProviderAuthScheme::AwsSignatureV4 => Err(CoreError::Config {
             code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
             message: "AWS Bedrock is intentionally unsupported in this build".into(),
         }),
@@ -66,7 +66,7 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })
@@ -77,7 +77,7 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })
@@ -89,7 +89,7 @@ impl RemoteOcrProvider {
             provider_specs::SurfaceCapabilityKind::Ocr,
             parameters,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })
@@ -102,7 +102,7 @@ impl RemoteOcrProvider {
         {
             return Ok(());
         }
-        match ollama::probe_ollama_model_supports_ocr(&self.http_client, &self.endpoint, model).await { Ok(Some(true)) | Ok(None) => Ok(()), Ok(Some(false)) => Err(CoreError::ConfigV2 { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!("Selected Ollama model '{model}' does not advertise image support. Choose a multimodal model such as 'qwen3-vl:8b' or 'gemma3:4b'.") }), Err(error) => { warn!(endpoint = %self.endpoint, model = %model, error = %error, "Failed to verify Ollama OCR model capability; proceeding with request."); Ok(()) } }
+        match ollama::probe_ollama_model_supports_ocr(&self.http_client, &self.endpoint, model).await { Ok(Some(true)) | Ok(None) => Ok(()), Ok(Some(false)) => Err(CoreError::Config { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!("Selected Ollama model '{model}' does not advertise image support. Choose a multimodal model such as 'qwen3-vl:8b' or 'gemma3:4b'.") }), Err(error) => { warn!(endpoint = %self.endpoint, model = %model, error = %error, "Failed to verify Ollama OCR model capability; proceeding with request."); Ok(()) } }
     }
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, crate::error::NetworkError> {
         use crate::error::NetworkError;
@@ -381,7 +381,7 @@ impl OcrProvider for RemoteOcrProvider {
                 ])?;
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::ConfigV2 {
+                return Err(CoreError::Config {
                     code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
                     message: "AWS Bedrock is intentionally unsupported in this build".into(),
                 });
@@ -405,18 +405,18 @@ impl OcrProvider for RemoteOcrProvider {
         if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
-        let response = builder.send().await.map_err(|e| CoreError::NetworkV2 {
+        let response = builder.send().await.map_err(|e| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: format!("OCR API request failed: {}", e),
         })?;
         let status = response.status();
-        let body = response.text().await.map_err(|e| CoreError::NetworkV2 {
+        let body = response.text().await.map_err(|e| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: format!("OCR API response read failure: {}", e),
         })?;
         if !status.is_success() {
             warn!(status = %status, "OCR API error response");
-            return Err(CoreError::OcrErrorV2 {
+            return Err(CoreError::OcrError {
                 code: oneshim_core::error_codes::ProviderCode::OcrFailed,
                 message: format!(
                     "OCR API error ({}): {}",

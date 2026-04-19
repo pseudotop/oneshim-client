@@ -112,26 +112,26 @@ mod fastembed_impl {
             let text = text.to_owned();
 
             tokio::task::spawn_blocking(move || {
-                let mut guard = model.lock().map_err(|e| CoreError::InternalV2 {
+                let mut guard = model.lock().map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("fastembed lock poisoned: {e}"),
                 })?;
                 let results = guard
                     .embed(vec![text], None)
-                    .map_err(|e| CoreError::InternalV2 {
+                    .map_err(|e| CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: format!("fastembed embed failed: {e}"),
                     })?;
                 results
                     .into_iter()
                     .next()
-                    .ok_or_else(|| CoreError::InternalV2 {
+                    .ok_or_else(|| CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: "fastembed returned empty result".into(),
                     })
             })
             .await
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking join error: {e}"),
             })?
@@ -142,17 +142,17 @@ mod fastembed_impl {
             let texts = texts.to_vec();
 
             tokio::task::spawn_blocking(move || {
-                let mut guard = model.lock().map_err(|e| CoreError::InternalV2 {
+                let mut guard = model.lock().map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("fastembed lock poisoned: {e}"),
                 })?;
-                guard.embed(texts, None).map_err(|e| CoreError::InternalV2 {
+                guard.embed(texts, None).map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("fastembed batch embed failed: {e}"),
                 })
             })
             .await
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("spawn_blocking join error: {e}"),
             })?
@@ -288,14 +288,14 @@ mod stub_impl {
     #[async_trait]
     impl EmbeddingProvider for LocalEmbeddingProvider {
         async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
-            Err(CoreError::InternalV2 {
+            Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "fastembed-local feature is not enabled — cannot embed locally".into(),
             })
         }
 
         async fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
-            Err(CoreError::InternalV2 {
+            Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "fastembed-local feature is not enabled — cannot embed locally".into(),
             })
@@ -693,7 +693,7 @@ mod tests {
 
         #[test]
         fn embedding_error_from_core_error() {
-            let core = CoreError::InternalV2 {
+            let core = CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "core problem".to_owned(),
             };
@@ -710,20 +710,20 @@ mod tests {
         fn embedding_error_into_core_error_internal() {
             let emb = EmbeddingError::Internal("embed fail".to_owned());
             let core: CoreError = emb.into();
-            assert!(matches!(core, CoreError::InternalV2 { .. }));
+            assert!(matches!(core, CoreError::Internal { .. }));
             assert!(core.to_string().contains("embed fail"));
         }
 
         #[test]
         fn embedding_error_into_core_error_roundtrip() {
             // CoreError -> EmbeddingError -> CoreError preserves the variant.
-            let original = CoreError::InternalV2 {
+            let original = CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "roundtrip".to_owned(),
             };
             let emb: EmbeddingError = original.into();
             let back: CoreError = emb.into();
-            assert!(matches!(back, CoreError::InternalV2 { .. }));
+            assert!(matches!(back, CoreError::Internal { .. }));
             assert!(back.to_string().contains("roundtrip"));
         }
 
@@ -739,7 +739,7 @@ mod tests {
 
         #[test]
         fn embedding_error_core_variant_is_debug_printable() {
-            let core = CoreError::NetworkV2 {
+            let core = CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: "net err".to_owned(),
             };
@@ -753,14 +753,14 @@ mod tests {
 
         #[test]
         fn core_error_network_converts_to_embedding_error() {
-            let core = CoreError::NetworkV2 {
+            let core = CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: "timeout".to_owned(),
             };
             let emb: EmbeddingError = core.into();
             // Converting back should preserve as CoreError (via transparent).
             let back: CoreError = emb.into();
-            assert!(matches!(back, CoreError::NetworkV2 { .. }));
+            assert!(matches!(back, CoreError::Network { .. }));
         }
     }
 
@@ -802,14 +802,14 @@ mod tests {
         #[async_trait]
         impl EmbeddingProvider for ErrProvider {
             async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
-                Err(CoreError::InternalV2 {
+                Err(CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: "mock primary failure".into(),
                 })
             }
 
             async fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
-                Err(CoreError::InternalV2 {
+                Err(CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: "mock primary batch failure".into(),
                 })
@@ -891,7 +891,7 @@ mod tests {
         impl EmbeddingProvider for ToggleProvider {
             async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
                 if self.should_fail.load(Ordering::Relaxed) {
-                    Err(CoreError::InternalV2 {
+                    Err(CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: "toggle: failing".into(),
                     })
@@ -902,7 +902,7 @@ mod tests {
 
             async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
                 if self.should_fail.load(Ordering::Relaxed) {
-                    Err(CoreError::InternalV2 {
+                    Err(CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: "toggle: batch failing".into(),
                     })

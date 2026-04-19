@@ -187,7 +187,7 @@ impl LanSyncTransport {
         peer_id: &str,
         resp: reqwest::Response,
     ) -> Result<Option<ChangeSet>, CoreError> {
-        let bytes = resp.bytes().await.map_err(|e| CoreError::NetworkV2 {
+        let bytes = resp.bytes().await.map_err(|e| CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: format!("read pull body: {e}"),
         })?;
@@ -198,7 +198,7 @@ impl LanSyncTransport {
 
         let plaintext = sync_crypto::decrypt(&self.passphrase, &bytes)?;
         let changesets: Vec<ChangeSet> =
-            serde_json::from_slice(&plaintext).map_err(|e| CoreError::InternalV2 {
+            serde_json::from_slice(&plaintext).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("deserialize pull response: {e}"),
             })?;

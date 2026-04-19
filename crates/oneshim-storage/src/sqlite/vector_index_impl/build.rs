@@ -60,7 +60,7 @@ impl VectorIndex for SqliteVectorIndex {
             .await?;
 
         if vectors.is_empty() {
-            return Err(CoreError::InternalV2 {
+            return Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "no vectors available for IVF index build".to_string(),
             });
@@ -256,7 +256,7 @@ impl VectorIndex for SqliteVectorIndex {
 
         // Store thresholds as JSON
         let thresholds_json =
-            serde_json::to_string(&thresholds).map_err(|e| CoreError::InternalV2 {
+            serde_json::to_string(&thresholds).map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("Failed to serialize thresholds: {e}"),
             })?;

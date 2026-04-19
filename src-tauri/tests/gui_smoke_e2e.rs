@@ -84,13 +84,13 @@ impl ElementFinder for E2eFinder {
 
     async fn analyze_scene(&self, _: Option<&str>, _: Option<&str>) -> Result<UiScene, CoreError> {
         if self.fail_permission.load(Ordering::Relaxed) {
-            return Err(CoreError::PermissionDeniedV2 {
+            return Err(CoreError::PermissionDenied {
                 code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
                 message: "Accessibility denied".into(),
             });
         }
         if self.should_fail.load(Ordering::Relaxed) {
-            return Err(CoreError::InternalV2 {
+            return Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "No display".into(),
             });
@@ -303,7 +303,7 @@ async fn e2e_permission_denied() {
     h.finder.fail_permission.store(true, Ordering::Relaxed);
     let err = h.svc.create_session(req()).await.unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::Internal(_)),
+        matches!(err, GuiInteractionError::Internal { .. }),
         "got: {err:?}"
     );
 }
@@ -319,7 +319,7 @@ async fn e2e_focus_drift_on_execute() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::FocusDrift(_)),
+        matches!(err, GuiInteractionError::FocusDrift { .. }),
         "got: {err:?}"
     );
 }
@@ -335,7 +335,7 @@ async fn e2e_expired_ticket() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::TicketInvalid(_)),
+        matches!(err, GuiInteractionError::TicketInvalid { .. }),
         "got: {err:?}"
     );
 }
@@ -350,7 +350,7 @@ async fn e2e_headless_no_display() {
     h.finder.should_fail.store(true, Ordering::Relaxed);
     let err = h.svc.create_session(req()).await.unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::Internal(_)),
+        matches!(err, GuiInteractionError::Internal { .. }),
         "got: {err:?}"
     );
 }
@@ -363,7 +363,7 @@ async fn e2e_missing_hmac_secret() {
     let svc = GuiInteractionService::new(f, p, o, None);
     let err = svc.create_session(req()).await.unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::Unavailable(_)),
+        matches!(err, GuiInteractionError::Unavailable { .. }),
         "got: {err:?}"
     );
 }

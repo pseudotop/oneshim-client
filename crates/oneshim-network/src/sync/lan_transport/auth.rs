@@ -81,13 +81,13 @@ impl LanSyncTransport {
             })
             .send()
             .await
-            .map_err(|e| CoreError::NetworkV2 {
+            .map_err(|e| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("challenge request to {peer_id}: {e}"),
             })?;
 
         if !challenge_resp.status().is_success() {
-            return Err(CoreError::NetworkV2 {
+            return Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!(
                     "challenge request to {peer_id} returned {}",
@@ -100,13 +100,13 @@ impl LanSyncTransport {
             challenge_resp
                 .json()
                 .await
-                .map_err(|e| CoreError::NetworkV2 {
+                .map_err(|e| CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: format!("parse challenge from {peer_id}: {e}"),
                 })?;
 
         // Step 2: Compute HMAC response
-        let nonce_bytes = hex::decode(&challenge.nonce).map_err(|e| CoreError::InternalV2 {
+        let nonce_bytes = hex::decode(&challenge.nonce).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("decode nonce hex: {e}"),
         })?;
@@ -129,13 +129,13 @@ impl LanSyncTransport {
             })
             .send()
             .await
-            .map_err(|e| CoreError::NetworkV2 {
+            .map_err(|e| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("verify request to {peer_id}: {e}"),
             })?;
 
         if !verify_resp.status().is_success() {
-            return Err(CoreError::NetworkV2 {
+            return Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!(
                     "authentication with {peer_id} failed (status {})",
@@ -144,11 +144,10 @@ impl LanSyncTransport {
             });
         }
 
-        let verify: VerifyResponse =
-            verify_resp.json().await.map_err(|e| CoreError::NetworkV2 {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("parse verify from {peer_id}: {e}"),
-            })?;
+        let verify: VerifyResponse = verify_resp.json().await.map_err(|e| CoreError::Network {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("parse verify from {peer_id}: {e}"),
+        })?;
 
         debug!(
             peer_id,

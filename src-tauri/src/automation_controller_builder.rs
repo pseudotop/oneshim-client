@@ -305,7 +305,7 @@ fn preflight_provider_oauth_connection(
         return Ok(oauth_port);
     }
 
-    let oauth = oauth_port.ok_or_else(|| oneshim_core::error::CoreError::ConfigV2 {
+    let oauth = oauth_port.ok_or_else(|| oneshim_core::error::CoreError::Config {
         code: oneshim_core::error_codes::ConfigCode::Invalid,
         message: "ProviderOAuth mode requires an available OS secret store".to_string(),
     })?;
@@ -313,13 +313,13 @@ fn preflight_provider_oauth_connection(
     for provider_id in selected_provider_ids {
         let status = handle
             .block_on(oauth.connection_status(&provider_id))
-            .map_err(|e| oneshim_core::error::CoreError::ConfigV2 {
+            .map_err(|e| oneshim_core::error::CoreError::Config {
                 code: oneshim_core::error_codes::ConfigCode::Invalid,
                 message: e.to_string(),
             })?;
 
         if !status.connected && !status.has_refresh_token {
-            return Err(oneshim_core::error::CoreError::ConfigV2 { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!(
+            return Err(oneshim_core::error::CoreError::Config { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!(
                 "ProviderOAuth mode requires an active OAuth connection or a refresh token for provider '{provider_id}'."
             ) });
         }

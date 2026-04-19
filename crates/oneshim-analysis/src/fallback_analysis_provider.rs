@@ -138,7 +138,7 @@ impl AnalysisProvider for NoOpAnalysisProvider {
         _context_json: &str,
         _system_prompt: &str,
     ) -> Result<String, CoreError> {
-        Err(CoreError::AnalysisV2 {
+        Err(CoreError::Analysis {
             code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
             message: "No LLM provider configured".into(),
         })
@@ -207,7 +207,7 @@ mod tests {
             _context_json: &str,
             _system_prompt: &str,
         ) -> Result<Vec<Suggestion>, CoreError> {
-            Err(CoreError::AnalysisV2 {
+            Err(CoreError::Analysis {
                 code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: "provider failure".into(),
             })
@@ -218,7 +218,7 @@ mod tests {
             _context_json: &str,
             _system_prompt: &str,
         ) -> Result<String, CoreError> {
-            Err(CoreError::AnalysisV2 {
+            Err(CoreError::Analysis {
                 code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: "provider failure".into(),
             })
@@ -257,7 +257,7 @@ mod tests {
         let provider =
             FallbackAnalysisProvider::new(Arc::new(FailProvider), Arc::new(FailProvider));
         let err = provider.analyze("{}", "").await.unwrap_err();
-        assert!(matches!(err, CoreError::AnalysisV2 { .. }));
+        assert!(matches!(err, CoreError::Analysis { .. }));
         assert!(!provider.is_primary_healthy());
     }
 
@@ -296,8 +296,8 @@ mod tests {
     async fn noop_summarize_returns_error() {
         let provider = NoOpAnalysisProvider;
         let err = provider.summarize_text("{}", "").await.unwrap_err();
-        assert!(matches!(err, CoreError::AnalysisV2 { .. }));
-        if let CoreError::AnalysisV2 {
+        assert!(matches!(err, CoreError::Analysis { .. }));
+        if let CoreError::Analysis {
             code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
             message: msg,
         } = err

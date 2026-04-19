@@ -14,12 +14,12 @@ use super::SessionManagerImpl;
 pub(super) fn is_transient_error(error: &CoreError) -> bool {
     matches!(
         error,
-        CoreError::NetworkV2 {
+        CoreError::Network {
             code: oneshim_core::error_codes::NetworkCode::Generic,
             message: _
-        } | CoreError::RequestTimeoutV2 { .. }
-            | CoreError::RateLimitV2 { .. }
-            | CoreError::ServiceUnavailableV2 { .. }
+        } | CoreError::RequestTimeout { .. }
+            | CoreError::RateLimit { .. }
+            | CoreError::ServiceUnavailable { .. }
     )
 }
 
@@ -74,14 +74,14 @@ impl SessionManagerImpl {
         let mut sessions = self.sessions.write().await;
         let managed = sessions
             .get_mut(session_id)
-            .ok_or_else(|| CoreError::InternalV2 {
+            .ok_or_else(|| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("session not found: {session_id}"),
             })?;
 
         if managed.retry_count >= self.config.max_retries {
             managed.state = SessionState::Failed;
-            return Err(CoreError::InternalV2 {
+            return Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "max retries exceeded".into(),
             });

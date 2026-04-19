@@ -44,59 +44,59 @@ impl From<AutomationError> for CoreError {
         match err {
             AutomationError::Core(e) => e,
             AutomationError::Io(e) => CoreError::Io(e),
-            AutomationError::PolicyDenied(msg) => CoreError::PolicyDeniedV2 {
+            AutomationError::PolicyDenied(msg) => CoreError::PolicyDenied {
                 code: oneshim_core::error_codes::PolicyCode::Denied,
                 message: msg,
             },
-            AutomationError::SandboxUnsupported(msg) => CoreError::SandboxUnsupportedV2 {
+            AutomationError::SandboxUnsupported(msg) => CoreError::SandboxUnsupported {
                 code: oneshim_core::error_codes::SandboxCode::UnsupportedPlatform,
                 message: msg,
             },
-            AutomationError::SandboxInit(msg) => CoreError::SandboxInitV2 {
+            AutomationError::SandboxInit(msg) => CoreError::SandboxInit {
                 code: oneshim_core::error_codes::SandboxCode::InitFailed,
                 message: msg,
             },
-            AutomationError::SandboxExecution(msg) => CoreError::SandboxExecutionV2 {
+            AutomationError::SandboxExecution(msg) => CoreError::SandboxExecution {
                 code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                 message: msg,
             },
-            AutomationError::SandboxEnforcement(msg) => CoreError::SandboxExecutionV2 {
+            AutomationError::SandboxEnforcement(msg) => CoreError::SandboxExecution {
                 code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
                 message: msg,
             },
-            AutomationError::ExecutionTimeout { timeout_ms } => CoreError::ExecutionTimeoutV2 {
+            AutomationError::ExecutionTimeout { timeout_ms } => CoreError::ExecutionTimeout {
                 code: oneshim_core::error_codes::SandboxCode::Timeout,
                 timeout_ms,
             },
-            AutomationError::ElementNotFound(msg) => CoreError::ElementNotFoundV2 {
+            AutomationError::ElementNotFound(msg) => CoreError::ElementNotFound {
                 code: oneshim_core::error_codes::UiCode::ElementMissing,
                 name: msg,
             },
-            AutomationError::Config(msg) => CoreError::ConfigV2 {
+            AutomationError::Config(msg) => CoreError::Config {
                 code: oneshim_core::error_codes::ConfigCode::Invalid,
                 message: msg,
             },
-            AutomationError::ServiceUnavailable(msg) => CoreError::ServiceUnavailableV2 {
+            AutomationError::ServiceUnavailable(msg) => CoreError::ServiceUnavailable {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: msg,
             },
-            AutomationError::PrivacyDenied(msg) => CoreError::PrivacyDeniedV2 {
+            AutomationError::PrivacyDenied(msg) => CoreError::PrivacyDenied {
                 code: oneshim_core::error_codes::PermissionCode::PrivacyDenied,
                 message: msg,
             },
-            AutomationError::InvalidArguments(msg) => CoreError::InvalidArgumentsV2 {
+            AutomationError::InvalidArguments(msg) => CoreError::InvalidArguments {
                 code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
                 message: msg,
             },
-            AutomationError::Internal(msg) => CoreError::InternalV2 {
+            AutomationError::Internal(msg) => CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: msg,
             },
-            AutomationError::UserDenied => CoreError::PolicyDeniedV2 {
+            AutomationError::UserDenied => CoreError::PolicyDenied {
                 code: oneshim_core::error_codes::PolicyCode::Denied,
                 message: "user denied automation command".to_string(),
             },
-            AutomationError::PolicyBlocked => CoreError::PolicyDeniedV2 {
+            AutomationError::PolicyBlocked => CoreError::PolicyDenied {
                 code: oneshim_core::error_codes::PolicyCode::Denied,
                 message: "policy blocks execution of this command".to_string(),
             },

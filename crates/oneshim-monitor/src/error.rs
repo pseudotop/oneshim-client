@@ -14,7 +14,7 @@ impl From<MonitorError> for CoreError {
     fn from(err: MonitorError) -> Self {
         match err {
             MonitorError::Core(e) => e,
-            MonitorError::Internal(msg) => CoreError::InternalV2 {
+            MonitorError::Internal(msg) => CoreError::Internal {
                 code: InternalCode::Generic,
                 message: msg,
             },

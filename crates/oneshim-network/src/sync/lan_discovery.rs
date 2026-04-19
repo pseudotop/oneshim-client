@@ -86,7 +86,7 @@ impl LanDiscovery {
             return Ok(());
         }
 
-        let daemon = ServiceDaemon::new().map_err(|e| CoreError::InternalV2 {
+        let daemon = ServiceDaemon::new().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("failed to create mDNS daemon: {e}"),
         })?;
@@ -97,7 +97,7 @@ impl LanDiscovery {
         // -- Start browsing --
         let receiver = daemon
             .browse(SERVICE_TYPE)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("failed to start mDNS browse: {e}"),
             })?;
@@ -144,7 +144,7 @@ impl LanDiscovery {
             self.port,
             &properties[..],
         )
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("failed to create service info: {e}"),
         })?;
@@ -153,7 +153,7 @@ impl LanDiscovery {
 
         daemon
             .register(service_info)
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("failed to register mDNS service: {e}"),
             })?;

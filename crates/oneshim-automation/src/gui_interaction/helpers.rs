@@ -69,10 +69,9 @@ pub(super) fn build_actions_for_candidate(
                 .text
                 .clone()
                 .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| {
-                    GuiInteractionError::BadRequest(
-                        "type_text action requires non-empty text".to_string(),
-                    )
+                .ok_or_else(|| GuiInteractionError::BadRequest {
+                    code: oneshim_core::error_codes::GuiCode::BadRequest,
+                    message: "type_text action requires non-empty text".to_string(),
                 })?;
             vec![
                 AutomationAction::MouseClick {
@@ -97,38 +96,29 @@ pub(super) fn is_expired_past_grace(expires_at: &DateTime<Utc>, grace_secs: i64)
 }
 
 pub(super) fn map_core_error(err: CoreError) -> GuiInteractionError {
-    #[allow(deprecated)]
     match err {
-        // V2 variants (post Phase 4)
-        CoreError::PolicyDeniedV2 { message: msg, .. }
-        | CoreError::PrivacyDeniedV2 { message: msg, .. } => GuiInteractionError::ForbiddenV2 {
+        CoreError::PolicyDenied { message: msg, .. }
+        | CoreError::PrivacyDenied { message: msg, .. } => GuiInteractionError::Forbidden {
             code: oneshim_core::error_codes::GuiCode::Forbidden,
             message: msg,
         },
-        CoreError::InvalidArgumentsV2 { message: msg, .. } => GuiInteractionError::BadRequestV2 {
+        CoreError::InvalidArguments { message: msg, .. } => GuiInteractionError::BadRequest {
             code: oneshim_core::error_codes::GuiCode::BadRequest,
             message: msg,
         },
-        CoreError::ElementNotFoundV2 { name: msg, .. } => GuiInteractionError::BadRequestV2 {
+        CoreError::ElementNotFound { name: msg, .. } => GuiInteractionError::BadRequest {
             code: oneshim_core::error_codes::GuiCode::BadRequest,
             message: msg,
         },
-        CoreError::ServiceUnavailableV2 { message: msg, .. }
-        | CoreError::SandboxUnsupportedV2 { message: msg, .. }
-        | CoreError::SandboxInitV2 { message: msg, .. } => GuiInteractionError::UnavailableV2 {
+        CoreError::ServiceUnavailable { message: msg, .. }
+        | CoreError::SandboxUnsupported { message: msg, .. }
+        | CoreError::SandboxInit { message: msg, .. } => GuiInteractionError::Unavailable {
             code: oneshim_core::error_codes::GuiCode::Unavailable,
             message: msg,
         },
-        // V1 deprecated variants (removed in Phase 4 alongside V1 variant deletion)
-        CoreError::PolicyDenied(msg) | CoreError::PrivacyDenied(msg) => {
-            GuiInteractionError::Forbidden(msg)
-        }
-        CoreError::ElementNotFound(msg) | CoreError::InvalidArguments(msg) => {
-            GuiInteractionError::BadRequest(msg)
-        }
-        CoreError::ServiceUnavailable(msg)
-        | CoreError::SandboxUnsupported(msg)
-        | CoreError::SandboxInit(msg) => GuiInteractionError::Unavailable(msg),
-        other => GuiInteractionError::Internal(other.to_string()),
+        other => GuiInteractionError::Internal {
+            code: oneshim_core::error_codes::GuiCode::InternalError,
+            message: other.to_string(),
+        },
     }
 }

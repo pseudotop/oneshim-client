@@ -663,7 +663,7 @@ async fn analyze_scene_requires_scene_finder() {
     controller.set_enabled(true);
 
     let err = controller.analyze_scene(None, None).await.unwrap_err();
-    assert!(matches!(err, CoreError::InternalV2 { .. }));
+    assert!(matches!(err, CoreError::Internal { .. }));
 }
 
 #[tokio::test]

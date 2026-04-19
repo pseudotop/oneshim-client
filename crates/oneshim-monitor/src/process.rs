@@ -80,7 +80,7 @@ impl ProcessMonitor for ProcessTracker {
     }
 
     async fn get_top_processes(&self, limit: usize) -> Result<Vec<ProcessInfo>, CoreError> {
-        let mut sys = self.sys.lock().map_err(|e| CoreError::InternalV2 {
+        let mut sys = self.sys.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Failed to acquire system lock: {e}"),
         })?;
@@ -113,7 +113,7 @@ impl ProcessMonitor for ProcessTracker {
         foreground_pid: Option<u32>,
         top_n: usize,
     ) -> Result<Vec<ProcessDetail>, CoreError> {
-        let mut sys = self.sys.lock().map_err(|e| CoreError::InternalV2 {
+        let mut sys = self.sys.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("Failed to acquire system lock: {e}"),
         })?;

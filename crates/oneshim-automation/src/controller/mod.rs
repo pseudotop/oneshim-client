@@ -233,11 +233,12 @@ impl AutomationController {
     pub(super) fn require_gui_service(
         &self,
     ) -> Result<&Arc<GuiInteractionService>, GuiInteractionError> {
-        self.gui_service.as_ref().ok_or_else(|| {
-            GuiInteractionError::Unavailable(
-                "GUI interaction service is not configured".to_string(),
-            )
-        })
+        self.gui_service
+            .as_ref()
+            .ok_or_else(|| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: "GUI interaction service is not configured".to_string(),
+            })
     }
 
     fn command_execution_gate(&self) -> CommandExecutionGate {

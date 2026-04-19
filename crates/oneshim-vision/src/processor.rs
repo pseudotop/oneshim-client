@@ -126,7 +126,7 @@ impl FrameProcessor for EdgeFrameProcessor {
                 encoder::encode_webp_base64(&frame_ref, WebPQuality::High)
             })
             .await
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("encode task panicked: {e}"),
             })??;
@@ -145,7 +145,7 @@ impl FrameProcessor for EdgeFrameProcessor {
             debug!("(in progress {:.1})", importance);
             // Compute delta while holding the lock, then drop before .await
             let delta_result = {
-                let prev = self.prev_frame.lock().map_err(|e| CoreError::InternalV2 {
+                let prev = self.prev_frame.lock().map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("prev_frame lock poisoned: {e}"),
                 })?;
@@ -156,7 +156,7 @@ impl FrameProcessor for EdgeFrameProcessor {
             }; // MutexGuard dropped here
 
             let has_prev = {
-                let prev = self.prev_frame.lock().map_err(|e| CoreError::InternalV2 {
+                let prev = self.prev_frame.lock().map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("prev_frame lock poisoned: {e}"),
                 })?;
@@ -170,7 +170,7 @@ impl FrameProcessor for EdgeFrameProcessor {
                         encoder::encode_webp_base64(&frame_ref, WebPQuality::Medium)
                     })
                     .await
-                    .map_err(|e| CoreError::InternalV2 {
+                    .map_err(|e| CoreError::Internal {
                         code: oneshim_core::error_codes::InternalCode::Generic,
                         message: format!("encode task panicked: {e}"),
                     })??;
@@ -188,7 +188,7 @@ impl FrameProcessor for EdgeFrameProcessor {
                     encoder::encode_webp_base64(&frame_ref, WebPQuality::Medium)
                 })
                 .await
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("encode task panicked: {e}"),
                 })??;
@@ -208,7 +208,7 @@ impl FrameProcessor for EdgeFrameProcessor {
                 encoder::encode_webp_base64(&thumb, WebPQuality::Low)
             })
             .await
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("encode task panicked: {e}"),
             })??;
@@ -222,7 +222,7 @@ impl FrameProcessor for EdgeFrameProcessor {
             None
         };
 
-        *self.prev_frame.lock().map_err(|e| CoreError::InternalV2 {
+        *self.prev_frame.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("prev_frame lock poisoned: {e}"),
         })? = Some(current_frame);
@@ -246,13 +246,13 @@ impl FrameProcessor for EdgeFrameProcessor {
             use base64::Engine;
             base64::engine::general_purpose::STANDARD
                 .decode(&encoded)
-                .map_err(|e| CoreError::InternalV2 {
+                .map_err(|e| CoreError::Internal {
                     code: oneshim_core::error_codes::InternalCode::Generic,
                     message: format!("base64 decode failed: {e}"),
                 })
         })
         .await
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("thumbnail task panicked: {e}"),
         })?

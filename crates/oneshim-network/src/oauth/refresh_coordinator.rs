@@ -268,7 +268,7 @@ mod tests {
     impl OAuthPort for MockOAuthPort {
         async fn start_flow(&self, provider_id: &str) -> Result<OAuthFlowHandle, CoreError> {
             warn!("MockOAuthPort::start_flow called unexpectedly for {provider_id}");
-            Err(CoreError::NetworkV2 {
+            Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!(
                     "start_flow not supported in MockOAuthPort (provider: {provider_id})"
@@ -277,14 +277,14 @@ mod tests {
         }
         async fn flow_status(&self, flow_id: &str) -> Result<OAuthFlowStatus, CoreError> {
             warn!("MockOAuthPort::flow_status called unexpectedly for {flow_id}");
-            Err(CoreError::NetworkV2 {
+            Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("flow_status not supported in MockOAuthPort (flow: {flow_id})"),
             })
         }
         async fn cancel_flow(&self, flow_id: &str) -> Result<(), CoreError> {
             warn!("MockOAuthPort::cancel_flow called unexpectedly for {flow_id}");
-            Err(CoreError::NetworkV2 {
+            Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("cancel_flow not supported in MockOAuthPort (flow: {flow_id})"),
             })
@@ -295,7 +295,7 @@ mod tests {
         }
         async fn revoke(&self, provider_id: &str) -> Result<(), CoreError> {
             warn!("MockOAuthPort::revoke called unexpectedly for {provider_id}");
-            Err(CoreError::NetworkV2 {
+            Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("revoke not supported in MockOAuthPort (provider: {provider_id})"),
             })
@@ -504,7 +504,7 @@ mod tests {
         impl OAuthPort for CountingMockOAuthPort {
             async fn start_flow(&self, provider_id: &str) -> Result<OAuthFlowHandle, CoreError> {
                 warn!("CountingMockOAuthPort::start_flow called unexpectedly for {provider_id}");
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: format!(
                     "start_flow not supported in CountingMockOAuthPort (provider: {provider_id})"
@@ -513,7 +513,7 @@ mod tests {
             }
             async fn flow_status(&self, flow_id: &str) -> Result<OAuthFlowStatus, CoreError> {
                 warn!("CountingMockOAuthPort::flow_status called unexpectedly for {flow_id}");
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: format!(
                         "flow_status not supported in CountingMockOAuthPort (flow: {flow_id})"
@@ -522,7 +522,7 @@ mod tests {
             }
             async fn cancel_flow(&self, flow_id: &str) -> Result<(), CoreError> {
                 warn!("CountingMockOAuthPort::cancel_flow called unexpectedly for {flow_id}");
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: format!(
                         "cancel_flow not supported in CountingMockOAuthPort (flow: {flow_id})"
@@ -540,7 +540,7 @@ mod tests {
             }
             async fn revoke(&self, provider_id: &str) -> Result<(), CoreError> {
                 warn!("CountingMockOAuthPort::revoke called unexpectedly for {provider_id}");
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: format!(
                         "revoke not supported in CountingMockOAuthPort (provider: {provider_id})"
@@ -706,19 +706,19 @@ mod tests {
         #[async_trait]
         impl OAuthPort for ErrorMockOAuthPort {
             async fn start_flow(&self, _: &str) -> Result<OAuthFlowHandle, CoreError> {
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: "mock".into(),
                 })
             }
             async fn flow_status(&self, _: &str) -> Result<OAuthFlowStatus, CoreError> {
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: "mock".into(),
                 })
             }
             async fn cancel_flow(&self, _: &str) -> Result<(), CoreError> {
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: "mock".into(),
                 })
@@ -727,7 +727,7 @@ mod tests {
                 Ok(None)
             }
             async fn revoke(&self, _: &str) -> Result<(), CoreError> {
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: "mock".into(),
                 })
@@ -750,7 +750,7 @@ mod tests {
                 _provider_id: &str,
                 _min_valid_for_secs: i64,
             ) -> Result<RefreshResult, CoreError> {
-                Err(CoreError::NetworkV2 {
+                Err(CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: "connection refused".into(),
                 })

@@ -24,7 +24,7 @@ impl SqliteRegimeManagerStateStore {
 #[async_trait]
 impl RegimeStoragePort for SqliteRegimeManagerStateStore {
     async fn load_all(&self) -> Result<Vec<Regime>, CoreError> {
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -35,7 +35,7 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
                 |r| r.get(0),
             )
             .optional()
-            .map_err(|e| CoreError::InternalV2 {
+            .map_err(|e| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: e.to_string(),
             })?;
@@ -75,11 +75,11 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
     }
 
     async fn save_all(&self, regimes: &[Regime]) -> Result<(), CoreError> {
-        let json = serde_json::to_string(regimes).map_err(|e| CoreError::InternalV2 {
+        let json = serde_json::to_string(regimes).map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: e.to_string(),
         })?;
-        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+        let conn = self.conn.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("SQLite lock poisoned: {e}"),
         })?;
@@ -94,7 +94,7 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
              )",
             rusqlite::params![json],
         )
-        .map_err(|e| CoreError::InternalV2 {
+        .map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: e.to_string(),
         })?;

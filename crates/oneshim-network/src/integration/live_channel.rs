@@ -39,7 +39,7 @@ impl WebSocketIntegrationSessionChannel {
     pub async fn connect(url: &str, headers: HeaderMap) -> Result<Self, CoreError> {
         let mut request = url
             .into_client_request()
-            .map_err(|err| CoreError::ValidationV2 {
+            .map_err(|err| CoreError::Validation {
                 code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field: "integration.session.channel_url".to_string(),
                 message: format!("invalid websocket URL: {err}"),
@@ -51,7 +51,7 @@ impl WebSocketIntegrationSessionChannel {
 
         let (stream, _) = tokio_tungstenite::connect_async(request)
             .await
-            .map_err(|err| CoreError::NetworkV2 {
+            .map_err(|err| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("integration websocket connect failed: {err}"),
             })?;
@@ -135,7 +135,7 @@ impl WebSocketIntegrationSessionChannel {
     }
 
     pub async fn send_json<T: serde::Serialize>(&self, payload: &T) -> Result<(), CoreError> {
-        let text = serde_json::to_string(payload).map_err(|err| CoreError::InternalV2 {
+        let text = serde_json::to_string(payload).map_err(|err| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: format!("integration websocket serialization failed: {err}"),
         })?;
@@ -143,7 +143,7 @@ impl WebSocketIntegrationSessionChannel {
         sender
             .send(Message::Text(text.into()))
             .await
-            .map_err(|err| CoreError::NetworkV2 {
+            .map_err(|err| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("integration websocket send failed: {err}"),
             })
@@ -193,7 +193,7 @@ impl WebSocketIntegrationSessionChannel {
 
             let now = tokio::time::Instant::now();
             if now >= deadline {
-                return Err(CoreError::RequestTimeoutV2 {
+                return Err(CoreError::RequestTimeout {
                     code: oneshim_core::error_codes::NetworkCode::Timeout,
                     timeout_ms: timeout.as_millis() as u64,
                 });
@@ -201,7 +201,7 @@ impl WebSocketIntegrationSessionChannel {
 
             tokio::time::timeout_at(deadline, self.ack_notify.notified())
                 .await
-                .map_err(|_| CoreError::RequestTimeoutV2 {
+                .map_err(|_| CoreError::RequestTimeout {
                     code: oneshim_core::error_codes::NetworkCode::Timeout,
                     timeout_ms: timeout.as_millis() as u64,
                 })?;
@@ -236,7 +236,7 @@ impl WebSocketIntegrationSessionChannel {
         sender
             .send(Message::Close(None))
             .await
-            .map_err(|err| CoreError::NetworkV2 {
+            .map_err(|err| CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("integration websocket close failed: {err}"),
             })

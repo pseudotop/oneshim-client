@@ -129,7 +129,7 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })?;
@@ -173,7 +173,7 @@ impl HttpApiSession {
                 options.response_format,
                 options.tools,
             )),
-            _ => Err(CoreError::InternalV2 {
+            _ => Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("unsupported request shape for HTTP API session: {shape:?}"),
             }),
@@ -190,7 +190,7 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })?;
@@ -212,7 +212,7 @@ impl HttpApiSession {
                 builder.header("Authorization", format!("Bearer {}", token))
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                return Err(CoreError::ConfigV2 {
+                return Err(CoreError::Config {
                     code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
                     message: "AWS Bedrock is intentionally unsupported in this build".into(),
                 });
@@ -308,7 +308,7 @@ impl ConversationSession for HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::InternalV2 {
+        .map_err(|msg| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
             message: msg,
         })?;
@@ -349,7 +349,7 @@ impl ConversationSession for HttpApiSession {
 
         let response = builder.send().await.map_err(|e| {
             *self.state.lock() = SessionState::Failed;
-            CoreError::NetworkV2 {
+            CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!("HTTP API session request failed: {e}"),
             }
@@ -362,7 +362,7 @@ impl ConversationSession for HttpApiSession {
                 .await
                 .unwrap_or_else(|_| "failed to read error body".to_string());
             *self.state.lock() = SessionState::Failed;
-            return Err(CoreError::NetworkV2 {
+            return Err(CoreError::Network {
                 code: oneshim_core::error_codes::NetworkCode::Generic,
                 message: format!(
                     "HTTP API error ({status}): {}",
@@ -453,7 +453,7 @@ impl ConversationSession for HttpApiSession {
                         if !accumulated.is_empty() {
                             save_assistant_response(&history, &accumulated, max_turns).await;
                         }
-                        Err(CoreError::NetworkV2 { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("SSE stream error: {e}") })?;
+                        Err(CoreError::Network { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("SSE stream error: {e}") })?;
                     }
                 }
             }

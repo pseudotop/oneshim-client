@@ -51,7 +51,7 @@ async fn prepare_execution_rejects_nonce_replay() {
         .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::TicketInvalid(_)));
+    assert!(matches!(err, GuiInteractionError::TicketInvalid { .. }));
 }
 
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn prepare_execution_rejects_tampered_signature() {
         .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::TicketInvalid(_)));
+    assert!(matches!(err, GuiInteractionError::TicketInvalid { .. }));
 }
 
 #[tokio::test]
@@ -102,7 +102,7 @@ async fn prepare_execution_rejects_wrong_session_state() {
         .await
         .unwrap_err();
     // Should fail because there is no confirmed_action
-    assert!(matches!(err, GuiInteractionError::TicketInvalid(_)));
+    assert!(matches!(err, GuiInteractionError::TicketInvalid { .. }));
 }
 
 #[tokio::test]
@@ -119,7 +119,7 @@ async fn prepare_execution_rejects_focus_drift() {
         .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::FocusDrift(_)));
+    assert!(matches!(err, GuiInteractionError::FocusDrift { .. }));
 }
 
 // ── Complete execution tests ────────────────────────────────────────
@@ -188,7 +188,7 @@ async fn cancel_rejects_invalid_token() {
         .cancel_session(&sid, "wrong-token")
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::Unauthorized));
+    assert!(matches!(err, GuiInteractionError::Unauthorized { .. }));
 }
 
 // ── Expiry tests ────────────────────────────────────────────────────
@@ -242,7 +242,7 @@ async fn highlight_rejects_expired_session() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::TicketInvalid(_)));
+    assert!(matches!(err, GuiInteractionError::TicketInvalid { .. }));
 }
 
 // ── Full flow integration test ──────────────────────────────────────
@@ -347,7 +347,7 @@ async fn subscribe_session_requires_valid_token() {
         .subscribe_session(&sid, "wrong-token")
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::Unauthorized));
+    assert!(matches!(err, GuiInteractionError::Unauthorized { .. }));
 }
 
 #[tokio::test]
@@ -359,7 +359,7 @@ async fn subscribe_session_rejects_unknown_session() {
         .subscribe_session("nonexistent-session", "any-token")
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::NotFound(_)));
+    assert!(matches!(err, GuiInteractionError::NotFound { .. }));
 }
 
 #[tokio::test]
@@ -683,7 +683,7 @@ async fn prepare_execution_fails_after_max_drift_retries() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::FocusDrift(_)));
+    assert!(matches!(err, GuiInteractionError::FocusDrift { .. }));
     // confirm_candidate calls validate once, then prepare_execution calls
     // initial + MAX_RETRIES = 1 + (1 + MAX_RETRIES) = MAX_RETRIES + 2
     assert_eq!(

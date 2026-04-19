@@ -147,7 +147,7 @@ fn requested_provider_secret_backend() -> Result<RequestedProviderSecretBackend,
         "os_secret_store" | "os" | "keychain" => Ok(RequestedProviderSecretBackend::OsSecretStore),
         "file_secret_store" | "file" => Ok(RequestedProviderSecretBackend::FileSecretStore),
         "env" => Ok(RequestedProviderSecretBackend::Env),
-        other => Err(CoreError::ConfigV2 { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!(
+        other => Err(CoreError::Config { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!(
             "Unsupported provider secret backend '{other}'. Expected auto, os_secret_store, file_secret_store, or env."
         ) }),
     }

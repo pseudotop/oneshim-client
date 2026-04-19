@@ -21,7 +21,7 @@ impl FallbackSttProvider {
 
     /// Whether an error should trigger fallback (transient errors only, NOT timeouts).
     fn should_fallback(err: &CoreError) -> bool {
-        !matches!(err, CoreError::RequestTimeoutV2 { .. })
+        !matches!(err, CoreError::RequestTimeout { .. })
     }
 }
 
@@ -114,7 +114,7 @@ mod tests {
         let fb = FallbackSttProvider::new(
             Arc::new(ErrorProvider {
                 name: "cloud",
-                error: || CoreError::NetworkV2 {
+                error: || CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: "connection refused".into(),
                 },
@@ -136,7 +136,7 @@ mod tests {
         let fb = FallbackSttProvider::new(
             Arc::new(ErrorProvider {
                 name: "cloud",
-                error: || CoreError::RequestTimeoutV2 {
+                error: || CoreError::RequestTimeout {
                     code: oneshim_core::error_codes::NetworkCode::Timeout,
                     timeout_ms: 10000,
                 },
@@ -155,14 +155,14 @@ mod tests {
         let fb = FallbackSttProvider::new(
             Arc::new(ErrorProvider {
                 name: "cloud",
-                error: || CoreError::NetworkV2 {
+                error: || CoreError::Network {
                     code: oneshim_core::error_codes::NetworkCode::Generic,
                     message: "cloud down".into(),
                 },
             }),
             Arc::new(ErrorProvider {
                 name: "local",
-                error: || CoreError::SpeechToTextV2 {
+                error: || CoreError::SpeechToText {
                     code: oneshim_core::error_codes::AudioCode::SttFailed,
                     message: "model missing".into(),
                 },

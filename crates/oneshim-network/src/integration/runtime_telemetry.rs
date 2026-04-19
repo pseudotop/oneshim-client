@@ -80,7 +80,7 @@ mod tests {
         telemetry
             .record_failure(
                 IntegrationRuntimeLane::Egress,
-                &CoreError::ServiceUnavailableV2 {
+                &CoreError::ServiceUnavailable {
                     code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "egress unavailable".to_string(),
                 },

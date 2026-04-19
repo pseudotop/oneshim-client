@@ -251,7 +251,7 @@ async fn prompt_receipt_store_rejects_duplicate_lifecycle_recording() {
         .await
         .expect_err("duplicate prompt receipt should fail");
 
-    assert!(matches!(err, CoreError::ValidationV2 { .. }));
+    assert!(matches!(err, CoreError::Validation { .. }));
 }
 
 #[tokio::test]

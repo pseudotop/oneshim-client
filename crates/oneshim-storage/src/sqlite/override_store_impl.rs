@@ -319,7 +319,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            matches!(err, CoreError::NotFoundV2 { .. }),
+            matches!(err, CoreError::NotFound { .. }),
             "expected NotFoundV2, got: {err:?}"
         );
     }
