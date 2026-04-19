@@ -234,14 +234,21 @@ impl AutomationCommandService {
                 planned_intent: planned.planned_intent,
                 result: planned.result,
             }),
+            #[allow(deprecated)]
             Err(
                 CoreError::PolicyDenied(msg)
                 | CoreError::InvalidArguments(msg)
                 | CoreError::ElementNotFound(msg),
             ) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::Internal(msg))
-                if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") =>
-            {
+            Err(
+                CoreError::PolicyDeniedV2 { message: msg, .. }
+                | CoreError::InvalidArgumentsV2 { message: msg, .. },
+            ) => Err(ApiError::BadRequest(msg)),
+            Err(CoreError::ElementNotFoundV2 { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
+            Err(CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: msg,
+            }) if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") => {
                 Err(ApiError::BadRequest(msg))
             }
             Err(e) => Err(ApiError::Internal(format!(
@@ -332,14 +339,23 @@ impl AutomationCommandService {
                         break;
                     }
                 }
+                #[allow(deprecated)]
                 Err(
                     CoreError::PolicyDenied(msg)
                     | CoreError::InvalidArguments(msg)
                     | CoreError::ElementNotFound(msg),
                 ) => return Err(ApiError::BadRequest(msg)),
-                Err(CoreError::Internal(msg))
-                    if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") =>
-                {
+                Err(
+                    CoreError::PolicyDeniedV2 { message: msg, .. }
+                    | CoreError::InvalidArgumentsV2 { message: msg, .. },
+                ) => return Err(ApiError::BadRequest(msg)),
+                Err(CoreError::ElementNotFoundV2 { name: msg, .. }) => {
+                    return Err(ApiError::BadRequest(msg));
+                }
+                Err(CoreError::InternalV2 {
+                    code: _,
+                    message: msg,
+                }) if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") => {
                     return Err(ApiError::BadRequest(msg));
                 }
                 Err(e) => {

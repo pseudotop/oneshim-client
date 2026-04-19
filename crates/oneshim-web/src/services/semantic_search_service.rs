@@ -47,7 +47,10 @@ async fn embed_query(
     embedding_provider
         .embed(sanitized)
         .await
-        .map_err(|e| CoreError::Internal(format!("Embedding failed: {e}")))
+        .map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Embedding failed: {e}"),
+        })
 }
 
 /// Build the set of segment IDs that should receive an FTS-boost in hybrid mode.
