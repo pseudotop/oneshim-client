@@ -268,4 +268,69 @@ mod tests {
         assert_eq!(provider.model_id(), "text-embedding-3-small");
         assert_eq!(provider.dimensions(), 1536);
     }
+
+    /// iter-67 regression guards for iter-56a semantic HTTP status mapping.
+    /// Each test asserts the typed CoreError variant for a specific status.
+    async fn run_status_mapping_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!(r#"{{"error": "http {status}"}}"#))
+            .create_async()
+            .await;
+        let provider = RemoteEmbeddingProvider::new(
+            server.url(),
+            "key".to_string(),
+            "model".to_string(),
+            3,
+            30,
+        );
+        provider.embed("test").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn status_403_maps_to_auth() {
+        let err = run_status_mapping_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_408_maps_to_timeout() {
+        let err = run_status_mapping_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_429_maps_to_rate_limit() {
+        let err = run_status_mapping_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_502_maps_to_service_unavailable() {
+        let err = run_status_mapping_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_504_maps_to_timeout() {
+        let err = run_status_mapping_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
 }
