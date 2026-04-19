@@ -48,13 +48,11 @@ impl AiModelCatalogQueryService {
             Some(resolve_model_discovery_api_key(request, &self.ctx, provider_type).await?)
         };
         if matches!(auth_scheme, ProviderAuthScheme::AwsSignatureV4) {
+            // AWS Bedrock intentionally unsupported per ADR-019.
             return Ok(ProviderModelsResponse {
                 models: Vec::new(),
                 model_details: Vec::new(),
-                notice: Some(
-                    "AWS Signature V4 model discovery is not yet supported for this provider surface."
-                        .to_string(),
-                ),
+                notice: Some("AWS Bedrock is intentionally unsupported in this build.".to_string()),
             });
         }
         if let Some(notice) = ai_provider_spec_service::ocr_model_catalog_notice_for_surface(
