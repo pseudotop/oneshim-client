@@ -39,6 +39,21 @@ pub fn map_grpc_status_error(operation: &str, status: Status) -> NetworkError {
             resource_type: format!("grpc_method:{operation}"),
             id: message,
         },
+        // Iter-92: previously these codes fell into the Http wildcard, losing
+        // their semantic signal for telemetry and retry decisions.
+        Code::Internal | Code::DataLoss => {
+            NetworkError::Internal(format!("{operation}: server-side {code} — {message}"))
+        }
+        Code::AlreadyExists => NetworkError::Validation {
+            // Conflict — client attempted to create an entity that already
+            // exists. Non-retryable; semantically a client-side request
+            // failure surfaced as validation.
+            field: "grpc_request".to_string(),
+            message: format!("{operation}: already exists — {message}"),
+        },
+        Code::Aborted => NetworkError::ServiceUnavailable(format!(
+            "{operation}: transaction aborted (concurrency) — {message}"
+        )),
         _ => NetworkError::Http(format!("{operation}: {message} ({code})")),
     }
 }
@@ -141,5 +156,68 @@ mod tests {
             }
             other => panic!("Unimplemented must map to NetworkError::NotFound, got: {other:?}"),
         }
+    }
+
+    /// Iter-92 regression guard: Code::Internal means the server had an
+    /// internal error — wire this through NetworkError::Internal (wire code
+    /// `internal.generic`) so telemetry can distinguish server-internal from
+    /// generic HTTP failures. Pre-iter-92 this fell into the Http wildcard
+    /// (wire code `network.generic`), conflating the two.
+    #[test]
+    fn maps_internal_to_internal_error() {
+        let err = map_grpc_status_error("Rpc", Status::internal("db connection lost"));
+        match err {
+            NetworkError::Internal(msg) => {
+                assert!(msg.contains("Rpc"), "expected operation in msg, got: {msg}");
+                assert!(msg.contains("db connection"), "expected detail, got: {msg}");
+            }
+            other => panic!("Code::Internal must map to NetworkError::Internal, got: {other:?}"),
+        }
+    }
+
+    /// Iter-92 regression guard: Code::DataLoss is catastrophic. Route
+    /// through NetworkError::Internal (not Http wildcard) so downstream
+    /// wire code is `internal.generic` and alerts can fire on frequency.
+    #[test]
+    fn maps_data_loss_to_internal_error() {
+        let err = map_grpc_status_error("Rpc", Status::data_loss("storage corruption detected"));
+        assert!(
+            matches!(err, NetworkError::Internal(_)),
+            "Code::DataLoss must map to NetworkError::Internal, got: {err:?}"
+        );
+    }
+
+    /// Iter-92 regression guard: Code::AlreadyExists is a client-side
+    /// conflict — entity being created already exists. Maps to Validation
+    /// so wire code signals a request-error (non-retryable) distinct from
+    /// generic HTTP failures.
+    #[test]
+    fn maps_already_exists_to_validation_error() {
+        let err = map_grpc_status_error("CreateUser", Status::already_exists("user id taken"));
+        match err {
+            NetworkError::Validation { field, message } => {
+                assert_eq!(field, "grpc_request");
+                assert!(
+                    message.contains("already exists"),
+                    "expected 'already exists' in message, got: {message}"
+                );
+            }
+            other => {
+                panic!("Code::AlreadyExists must map to NetworkError::Validation, got: {other:?}")
+            }
+        }
+    }
+
+    /// Iter-92 regression guard: Code::Aborted is a transient concurrency
+    /// failure (typically optimistic-concurrency retry). Maps to
+    /// ServiceUnavailable so downstream retry logic treats it as
+    /// retryable-with-backoff (wire code `service.unavailable`).
+    #[test]
+    fn maps_aborted_to_service_unavailable() {
+        let err = map_grpc_status_error("UpdateSession", Status::aborted("txn conflict"));
+        assert!(
+            matches!(err, NetworkError::ServiceUnavailable(_)),
+            "Code::Aborted must map to NetworkError::ServiceUnavailable, got: {err:?}"
+        );
     }
 }
