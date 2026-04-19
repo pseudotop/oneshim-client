@@ -43,9 +43,13 @@ pub trait SessionManager: Send + Sync {
     /// Create a new session with the given provider.
     ///
     /// # Errors
-    /// Returns `CoreError::Internal` if max concurrent sessions reached or
-    /// provider detection fails, `CoreError::InvalidArguments` if required
-    /// config fields are missing, `CoreError::Auth` if credentials unavailable.
+    /// Returns `CoreError::ServiceUnavailable` if max concurrent sessions
+    /// reached (iter-97: was `Internal` before; capacity is a transient
+    /// service-availability condition). Returns `CoreError::NotFound` if
+    /// subprocess CLI surface detection fails (iter-94). Returns
+    /// `CoreError::InvalidArguments` if required config fields are missing
+    /// in the request payload. Returns `CoreError::Auth` if credentials
+    /// unavailable.
     async fn create_session(
         &self,
         config: SessionConfig,
@@ -54,7 +58,10 @@ pub trait SessionManager: Send + Sync {
     /// Terminate a session.
     ///
     /// # Errors
-    /// Returns `CoreError::Internal` if the session ID is not found.
+    /// Returns `CoreError::NotFound` (wire: `not_found.resource_missing`)
+    /// if the session ID is not found. Iter-94: previously documented as
+    /// `Internal`, but the implementation emits `NotFound` consistent with
+    /// the catalog-miss pattern.
     async fn kill_session(&self, session_id: &str) -> Result<(), CoreError>;
 
     /// List active sessions.
@@ -63,7 +70,8 @@ pub trait SessionManager: Send + Sync {
     /// Retrieve a session by ID.
     ///
     /// # Errors
-    /// Returns `CoreError::Internal` if the session ID is not found.
+    /// Returns `CoreError::NotFound` (wire: `not_found.resource_missing`)
+    /// if the session ID is not found.
     async fn get_session(
         &self,
         session_id: &str,

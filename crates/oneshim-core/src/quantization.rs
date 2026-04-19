@@ -26,9 +26,12 @@ impl ScalarQuantizer {
     /// Quantize a f32 embedding vector to INT8.
     ///
     /// Edge cases:
-    /// - Zero-length vector: returns `CoreError::Internal`
+    /// - Zero-length vector: returns `CoreError::InvalidArguments`
+    ///   (wire: `validation.invalid_arguments`). Iter-95 corrected this
+    ///   from `Internal` — input-validation failures aren't internal errors.
     /// - Constant vector (all same value): scale=1.0, offset=min, all INT8=0
-    /// - NaN/Inf: rejected via `f32::is_finite()` pre-scan
+    /// - NaN/Inf: rejected via `f32::is_finite()` pre-scan, returns
+    ///   `CoreError::InvalidArguments`
     pub fn quantize(vector: &[f32]) -> Result<QuantizedVector, CoreError> {
         // Iter-95: input-validation errors use InvalidArguments consistent with
         // cosine_similarity_int8 below (wire code `validation.invalid_arguments`).
