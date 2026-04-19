@@ -469,9 +469,20 @@ impl ConversationSession for LocalLlmSession {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
             *self.state.lock() = SessionState::Failed;
-            return Err(CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("Ollama API error {status}: {body_text}"),
+            // Ollama runs locally, so timeouts/gateway errors are rare. 404
+            // most commonly means "model not pulled" — distinguish it so the
+            // frontend can hint at `ollama pull <model>` rather than generic
+            // "network error". (iter-55c)
+            return Err(match status.as_u16() {
+                404 => CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                    resource_type: "ollama_model".to_string(),
+                    id: format!("{body_text} (hint: try `ollama pull <model>`)"),
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("Ollama API error {status}: {body_text}"),
+                },
             });
         }
 
