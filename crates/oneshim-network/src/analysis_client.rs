@@ -594,4 +594,73 @@ mod tests {
             ),
         }
     }
+
+    // iter-71 regression guards for iter-59b semantic HTTP status mapping
+    // in analysis_client.rs::analyze. Shared helper pattern matches
+    // iter-67..70.
+    async fn run_analyze_status_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
+        };
+        let client = AnalysisClient::new(&config);
+        client.analyze("{}", "sys").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn analyze_403_maps_to_auth() {
+        let err = run_analyze_status_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_408_maps_to_timeout() {
+        let err = run_analyze_status_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_429_maps_to_rate_limit() {
+        let err = run_analyze_status_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_502_maps_to_service_unavailable() {
+        let err = run_analyze_status_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_504_maps_to_timeout() {
+        let err = run_analyze_status_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
 }
