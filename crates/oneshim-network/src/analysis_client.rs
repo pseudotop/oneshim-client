@@ -717,4 +717,17 @@ mod tests {
             "500 should fall back to CoreError::Analysis (domain-specific), got: {err:?}"
         );
     }
+
+    /// iter-79: matching fallback guard for summarize_text (iter-74 sibling).
+    /// Same mapping as analyze, but dispatched from a different method —
+    /// test separately so a regression in summarize's error flow is caught
+    /// even if analyze's tests still pass.
+    #[tokio::test]
+    async fn summarize_500_falls_back_to_analysis_error() {
+        let err = run_summarize_status_test(500).await;
+        assert!(
+            matches!(err, CoreError::Analysis { .. }),
+            "500 should fall back to CoreError::Analysis, got: {err:?}"
+        );
+    }
 }

@@ -685,4 +685,17 @@ mod tests {
             "401 → Auth, got: {err:?}"
         );
     }
+
+    /// iter-79: domain-fallback guard for login. 500 (not in specific arms)
+    /// falls back to CoreError::Auth/Failed — the login-endpoint-appropriate
+    /// wildcard. Catches regressions that broaden the transient-class arms
+    /// (429/502/503/504) into the 5xx space.
+    #[tokio::test]
+    async fn login_500_falls_back_to_auth() {
+        let err = run_login_status_test(500).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::Auth { .. }),
+            "500 should fall back to Auth (domain-appropriate for login endpoint), got: {err:?}"
+        );
+    }
 }
