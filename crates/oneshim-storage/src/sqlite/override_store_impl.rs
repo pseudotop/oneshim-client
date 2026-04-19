@@ -320,7 +320,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(
             matches!(err, CoreError::NotFound { .. }),
-            "expected NotFoundV2, got: {err:?}"
+            "expected NotFound, got: {err:?}"
         );
     }
 

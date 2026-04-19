@@ -49,7 +49,7 @@ Examples: `config.invalid`, `network.timeout`, `provider.bedrock.unsupported`.
 3. Phase 3: C5 Bedrock skip + this ADR.
 4. Phase 4: V1 deletion + V2 → canonical rename (rust-analyzer LSP, not sed).
 
-CI deprecation gating warn-only through Phase 3 (`-A deprecated` in lefthook clippy), flips to `-D deprecated` at Phase 4.
+CI deprecation gating warn-only through Phase 3 (`-A deprecated` escape hatch in lefthook clippy). Phase 4 removes the escape hatch, restoring `-D warnings` (Rust's `deprecated` lint defaults to warn, so `-D warnings` fails CI on any remaining V1 usage).
 
 ### 5. Bedrock re-introduction checklist
 
