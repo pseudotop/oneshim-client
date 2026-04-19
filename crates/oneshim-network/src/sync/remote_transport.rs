@@ -689,4 +689,24 @@ mod tests {
             "504 must map to CoreError::RequestTimeout, got: {err:?}"
         );
     }
+
+    /// iter-78: domain fallback. 500 (not in specific arms) stays as Network.
+    /// Complements `forget_peer_bubbles_server_error` (which asserts only the
+    /// error message) with a variant-level assertion.
+    #[tokio::test]
+    async fn forget_peer_500_falls_back_to_network() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("DELETE", "/sync/peers/x")
+            .with_status(500)
+            .with_body("internal server error")
+            .create_async()
+            .await;
+        let transport = test_transport(&server.url());
+        let err = transport.forget_peer("x").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::Network { .. }),
+            "500 should fall back to Network, got: {err:?}"
+        );
+    }
 }

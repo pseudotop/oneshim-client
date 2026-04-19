@@ -418,4 +418,14 @@ mod http_status_mapping {
             "504 → RequestTimeout, got: {err:?}"
         );
     }
+
+    /// iter-78: domain fallback. Unmapped statuses stay as CoreError::Network.
+    #[tokio::test]
+    async fn status_500_falls_back_to_network() {
+        let err = run_status_mapping_test(500).await;
+        assert!(
+            matches!(err, CoreError::Network { .. }),
+            "500 should fall back to Network, got: {err:?}"
+        );
+    }
 }
