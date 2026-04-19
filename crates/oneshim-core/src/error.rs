@@ -133,10 +133,14 @@ pub enum CoreError {
     SecretStoreError { code: SecretCode, message: String },
 
     // === `#[from]`-wrapped external error types ===
-    #[error("Serialization error: {0}")]
+    // Wire codes are hardcoded in Display templates because these variants do
+    // not carry a typed `code:` field (spec §4.6). Must stay in sync with the
+    // `impl code()` arms in this file. Wire-format immutability (ADR-019 §7.5)
+    // means these strings won't change.
+    #[error("Serialization error [internal.serialization]: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    #[error("I/O error: {0}")]
+    #[error("I/O error [internal.io]: {0}")]
     Io(#[from] std::io::Error),
 }
 
@@ -278,5 +282,26 @@ mod tests {
             code: GuiCode::Unauthorized,
         };
         assert_eq!(err.code(), "gui.unauthorized");
+    }
+
+    /// ADR-019 §1 regression guard: #[from] variants must surface their wire
+    /// code in Display output so users logging `{err}` see the code without
+    /// needing to call err.code() separately. The code is hardcoded in the
+    /// template (these variants don't carry a typed code: field per spec §4.6).
+    #[test]
+    fn from_variants_display_includes_wire_code() {
+        let ser_err: CoreError = serde_json::from_str::<i32>("nope")
+            .expect_err("should be serde error")
+            .into();
+        assert!(
+            format!("{ser_err}").contains("[internal.serialization]"),
+            "Serialization Display missing wire code: {ser_err}"
+        );
+
+        let io_err: CoreError = std::io::Error::other("fail").into();
+        assert!(
+            format!("{io_err}").contains("[internal.io]"),
+            "Io Display missing wire code: {io_err}"
+        );
     }
 }
