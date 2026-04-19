@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `validate_integrity_policy` no longer requires `signature_public_key` to be non-empty; built-in `TRUSTED_PUBLIC_KEYS` array is authoritative. Format validation still applies when a non-empty override is provided.
 
+### Fixed
+
+- `notarize-macos-release-assets` workflow now auto-triggers for `workflow_dispatch`-originated parent release runs. Previous `startsWith(head_branch, 'v')` gate filtered dispatched parents (where `head_branch == main`) out of the notarize path; tag resolution now uses the parent run's `displayTitle` via `gh run view` with a regex fallback against the full display-title payload.
+
 ### Infrastructure
 
 - Spec + plan: `docs/reviews/2026-04-18-phase4-updater-hardening-{design,plan}.md`.
