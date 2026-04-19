@@ -395,6 +395,7 @@ Ports (Arc<dyn T>) created for the Scheduler should be shared with AppState, not
 - [ADR-003: Directory Module Pattern for Large Source Files](docs/architecture/ADR-003-directory-module-pattern.md)
 - [ADR-004: Tauri v2 Migration (iced → Tauri v2 + WebView)](docs/architecture/ADR-004-tauri-v2-migration.md) ([한국어](docs/architecture/ADR-004-tauri-v2-migration.ko.md))
 - [ADR-019: Error Code Infrastructure + AWS Bedrock Intentional Non-Support](docs/architecture/ADR-019-error-code-infrastructure.md) ([한국어](docs/architecture/ADR-019-error-code-infrastructure.ko.md)) — typed `code` field on every struct-variant of `CoreError`/`GuiInteractionError` (`#[from]` variants derive code via `impl code()` per §7); Bedrock deleted from catalog; re-introduction requires §5 8-step checklist
+- [HTTP Status Error Mapping Pattern](docs/guides/http-status-error-mapping.md) ([한국어](docs/guides/http-status-error-mapping.ko.md)) — canonical 401/403/404/408/429/502/503/504 → wire code table applied across 14 HTTP dispatchers; follow this pattern when adding new HTTP call sites
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
