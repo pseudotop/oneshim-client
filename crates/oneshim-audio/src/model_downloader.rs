@@ -17,7 +17,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::audio::{DownloadProgress, ModelDownloadStatus};
 use oneshim_core::ports::model_downloader::ModelDownloader;
 
-const BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+const DEFAULT_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 pub fn model_filename(size: WhisperModelSize) -> &'static str {
     match size {
@@ -39,6 +39,7 @@ pub fn model_expected_bytes(size: WhisperModelSize) -> u64 {
 
 pub struct WhisperModelDownloader {
     client: reqwest::Client,
+    base_url: String,
 }
 
 impl Default for WhisperModelDownloader {
@@ -51,6 +52,18 @@ impl WhisperModelDownloader {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::new(),
+            base_url: DEFAULT_BASE_URL.to_string(),
+        }
+    }
+
+    /// Test/override constructor — use when pointing at a mock server or a
+    /// mirror. Production code should call `new()` to use the canonical
+    /// Huggingface URL.
+    #[doc(hidden)]
+    pub fn new_with_base_url(base_url: impl Into<String>) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
         }
     }
 }
@@ -65,7 +78,7 @@ impl ModelDownloader for WhisperModelDownloader {
         cancelled: Arc<AtomicBool>,
     ) -> Result<PathBuf, CoreError> {
         let filename = model_filename(model);
-        let url = format!("{BASE_URL}/{filename}");
+        let url = format!("{}/{filename}", self.base_url);
         let final_path = dest_dir.join(filename);
         let part_path = dest_dir.join(format!("{filename}.part"));
 
@@ -296,5 +309,76 @@ mod tests {
         let dir = tempdir().unwrap();
         dl.delete_model(WhisperModelSize::Medium, dir.path())
             .unwrap();
+    }
+
+    // iter-80 regression guards for iter-60 semantic HTTP status mapping
+    // in download(). Uses `new_with_base_url` to point the downloader at
+    // a mockito server.
+    async fn run_download_status_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/ggml-tiny.bin")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+
+        let dl = WhisperModelDownloader::new_with_base_url(server.url());
+        let dir = tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        dl.download(
+            WhisperModelSize::Tiny,
+            dir.path(),
+            tx,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn download_403_maps_to_auth() {
+        let err = run_download_status_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn download_404_maps_to_not_found() {
+        let err = run_download_status_test(404).await;
+        assert!(
+            matches!(err, CoreError::NotFound { .. }),
+            "404 → NotFound (model artifact missing), got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn download_429_maps_to_rate_limit() {
+        let err = run_download_status_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn download_503_maps_to_service_unavailable() {
+        let err = run_download_status_test(503).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "503 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    /// Domain fallback. 500 falls back to Network/Generic.
+    #[tokio::test]
+    async fn download_500_falls_back_to_network() {
+        let err = run_download_status_test(500).await;
+        assert!(
+            matches!(err, CoreError::Network { .. }),
+            "500 should fall back to Network, got: {err:?}"
+        );
     }
 }
