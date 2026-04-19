@@ -170,9 +170,10 @@ impl ElementFinder for PermissionDeniedElementFinder {
         _role: Option<&str>,
         _region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
-        Err(CoreError::PolicyDenied(
-            "Accessibility permission denied".to_string(),
-        ))
+        Err(CoreError::PolicyDeniedV2 {
+            code: oneshim_core::error_codes::PolicyCode::Denied,
+            message: "Accessibility permission denied".to_string(),
+        })
     }
 
     async fn analyze_scene(
@@ -180,9 +181,10 @@ impl ElementFinder for PermissionDeniedElementFinder {
         _app_name: Option<&str>,
         _screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
-        Err(CoreError::PolicyDenied(
-            "Accessibility permission denied".to_string(),
-        ))
+        Err(CoreError::PolicyDeniedV2 {
+            code: oneshim_core::error_codes::PolicyCode::Denied,
+            message: "Accessibility permission denied".to_string(),
+        })
     }
 
     fn name(&self) -> &str {

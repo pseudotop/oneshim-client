@@ -663,7 +663,7 @@ async fn analyze_scene_requires_scene_finder() {
     controller.set_enabled(true);
 
     let err = controller.analyze_scene(None, None).await.unwrap_err();
-    assert!(matches!(err, CoreError::Internal(_)));
+    assert!(matches!(err, CoreError::InternalV2 { .. }));
 }
 
 #[tokio::test]
@@ -875,7 +875,7 @@ async fn execute_intent_internal_timeout_reports_effective_limit() {
     assert!(!result.success);
     assert_eq!(
         result.error.as_deref(),
-        Some("Execution timeout exceeded: 10ms")
+        Some("Execution timeout [sandbox.timeout] exceeded: 10ms")
     );
 }
 

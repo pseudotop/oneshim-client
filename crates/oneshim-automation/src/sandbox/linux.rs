@@ -163,8 +163,11 @@ impl Sandbox for LinuxSandbox {
         let request = ipc::SandboxRequest {
             action: action.clone(),
         };
-        let request_json = serde_json::to_string(&request)
-            .map_err(|e| CoreError::SandboxExecution(format!("serialize: {e}")))?;
+        let request_json =
+            serde_json::to_string(&request).map_err(|e| CoreError::SandboxExecutionV2 {
+                code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                message: format!("serialize: {e}"),
+            })?;
 
         // Build BPF program before fork — heap allocation is unsafe post-fork.
         #[cfg(feature = "linux-sandbox")]
@@ -220,9 +223,10 @@ impl Sandbox for LinuxSandbox {
             }
         }
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| CoreError::SandboxExecution(format!("spawn failed: {e}")))?;
+        let mut child = cmd.spawn().map_err(|e| CoreError::SandboxExecutionV2 {
+            code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+            message: format!("spawn failed: {e}"),
+        })?;
 
         // Write serialized request to child stdin
         if let Some(mut stdin) = child.stdin.take() {
@@ -230,11 +234,17 @@ impl Sandbox for LinuxSandbox {
             stdin
                 .write_all(request_json.as_bytes())
                 .await
-                .map_err(|e| CoreError::SandboxExecution(format!("stdin write: {e}")))?;
+                .map_err(|e| CoreError::SandboxExecutionV2 {
+                    code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                    message: format!("stdin write: {e}"),
+                })?;
             stdin
                 .write_all(b"\n")
                 .await
-                .map_err(|e| CoreError::SandboxExecution(format!("stdin newline: {e}")))?;
+                .map_err(|e| CoreError::SandboxExecutionV2 {
+                    code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+                    message: format!("stdin newline: {e}"),
+                })?;
             drop(stdin);
         }
 
@@ -244,7 +254,10 @@ impl Sandbox for LinuxSandbox {
         )
         .await
         .map_err(|_| CoreError::ExecutionTimeout { timeout_ms })?
-        .map_err(|e| CoreError::SandboxExecution(format!("wait failed: {e}")))?;
+        .map_err(|e| CoreError::SandboxExecutionV2 {
+            code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
+            message: format!("wait failed: {e}"),
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

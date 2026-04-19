@@ -375,8 +375,8 @@ async fn m5_permission_denied_returns_forbidden() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::Forbidden(_)),
-        "Expected Forbidden, got: {err:?}"
+        matches!(err, GuiInteractionError::ForbiddenV2 { .. }),
+        "Expected ForbiddenV2, got: {err:?}"
     );
 }
 

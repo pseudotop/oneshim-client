@@ -119,7 +119,7 @@ pub(super) fn map_core_error(err: CoreError) -> GuiInteractionError {
             code: oneshim_core::error_codes::GuiCode::Unavailable,
             message: msg,
         },
-        // V1 deprecated variants (removed in Phase 4)
+        // V1 deprecated variants (removed in Phase 4 alongside V1 variant deletion)
         CoreError::PolicyDenied(msg) | CoreError::PrivacyDenied(msg) => {
             GuiInteractionError::Forbidden(msg)
         }
