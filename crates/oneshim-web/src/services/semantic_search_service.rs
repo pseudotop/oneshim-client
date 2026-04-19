@@ -39,18 +39,14 @@ pub(crate) fn resolve_mode(mode: Option<&str>) -> &str {
     }
 }
 
-/// Embed a sanitized query, wrapping provider errors in `CoreError::Internal`.
+/// Embed a sanitized query. Errors from the provider pass through unchanged,
+/// preserving their typed wire code (ADR-019 §1) so callers / telemetry can
+/// distinguish e.g. `provider.analysis_failed` from `config.invalid`.
 async fn embed_query(
     embedding_provider: &Arc<dyn EmbeddingProvider>,
     sanitized: &str,
 ) -> Result<Vec<f32>, CoreError> {
-    embedding_provider
-        .embed(sanitized)
-        .await
-        .map_err(|e| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
-            message: format!("Embedding failed: {e}"),
-        })
+    embedding_provider.embed(sanitized).await
 }
 
 /// Build the set of segment IDs that should receive an FTS-boost in hybrid mode.
