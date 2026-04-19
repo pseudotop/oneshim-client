@@ -11,6 +11,16 @@ use crate::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
 ///
 /// 구현체는 내부적으로 interior mutability를 사용하여 `&self`로 mutation을 처리합니다.
 /// (ADR-001 §2: 포트 트레잇은 `&self` 사용, 구현체는 `RwLock` 사용)
+///
+/// # Errors
+/// **No fallible methods.** Every method returns `()`, `usize`, `bool`,
+/// `Vec<AuditEntry>`, or `AuditStats` — not `Result<_, _>`. This is by
+/// design: the audit log is best-effort instrumentation that must never
+/// block the automation path. Buffer overflow is silently dropped and
+/// surfaced via `stats().dropped_count`; batch upload failures are
+/// retained internally and retried by the `AuditLogger` impl.
+/// `record_session_event` has a no-op default for adapters that don't
+/// support session audit.
 #[async_trait]
 pub trait AuditLogPort: Send + Sync {
     // ── Query methods ──

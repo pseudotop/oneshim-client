@@ -32,6 +32,15 @@ use crate::models::coaching::GoalProgressView;
 /// The async methods (`snooze_profile`, `record_feedback`, `all_goal_progress`,
 /// `update_regime_goals`) are used by Tauri IPC commands which already run in
 /// an async context and can `.await` directly.
+///
+/// # Errors
+/// **No fallible methods.** All methods return `Vec<GoalProgressView>`,
+/// `Option<String>`, `u32`, or `()` — not `Result<_, _>`. Internal
+/// failures (tokio RwLock poisoning, missing regime goals, unknown
+/// profile) are logged by the `CoachingEngine` impl and return the
+/// most sensible neutral value (empty Vec, None, 0, or silent no-op).
+/// This matches the ADR-017 feedback-loop philosophy: coaching must
+/// never block the UX path on its own errors.
 #[async_trait]
 pub trait CoachingPort: Send + Sync {
     /// Return goal progress for all configured regimes (blocking).

@@ -13,15 +13,19 @@ use async_trait::async_trait;
 
 /// Routes user reactions into learning components.
 ///
+/// # Errors
+/// `Err(_)` is reserved for **programmer bugs only** — mutex poisoning,
+/// invariant violations, broken channel after spawn. The canonical
+/// wire-code mapping for such faults is `CoreError::Internal` (wire:
+/// `internal.generic`). Implementations MUST NOT escalate expected
+/// failure classes (network, database, transient unavailability) as
+/// `Err`; those are logged and swallowed internally per the ADR-017
+/// fire-and-forget contract.
+///
 /// # Failure semantics
 ///
 /// Fire-and-forget from the caller's perspective. `FeedbackSender` MUST NOT
 /// block user-path accept/reject on a sink error.
-///
-/// The `Result` return is ONLY for programmer bugs (mutex poisoning,
-/// invariant violations). All expected failure classes — network, database,
-/// transient unavailability — are the implementation's responsibility to log
-/// and swallow internally; they MUST NOT escalate as `Err`.
 ///
 /// # Latency budget
 ///
