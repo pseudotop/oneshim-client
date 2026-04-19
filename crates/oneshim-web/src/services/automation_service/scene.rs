@@ -32,7 +32,7 @@ impl AutomationSceneQueryService {
                 .ctx
                 .storage
                 .get_frame_file_path(frame_id)
-                .map_err(|e| ApiError::Internal(format!("frame path query failure: {e}")))?
+                .map_err(ApiError::from)?
                 .ok_or_else(|| ApiError::NotFound(format!("frame {frame_id} has no image")))?;
 
             let image_path = resolve_frame_image_path(&self.ctx, &stored_path)?;

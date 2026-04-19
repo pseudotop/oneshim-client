@@ -211,7 +211,7 @@ fn restore_settings_to_context(
             config.notification.high_usage_threshold = settings.high_usage_threshold_percent as u32;
             Ok(())
         })
-        .map_err(|error| ApiError::Internal(format!("Failed to save settings: {error}")))?;
+        .map_err(ApiError::from)?;
 
     Ok(())
 }

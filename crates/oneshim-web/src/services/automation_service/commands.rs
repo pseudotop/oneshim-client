@@ -56,7 +56,7 @@ impl AutomationCommandService {
                 config.automation.custom_presets.push(new_preset);
                 Ok(())
             })
-            .map_err(|e| ApiError::Internal(format!("Failed to save preset: {e}")))?;
+            .map_err(ApiError::from)?;
 
         if duplicate {
             return Err(ApiError::Conflict(format!(
@@ -94,7 +94,7 @@ impl AutomationCommandService {
                 }
                 Ok(())
             })
-            .map_err(|e| ApiError::Internal(format!("Failed to update preset: {e}")))?;
+            .map_err(ApiError::from)?;
 
         if !found {
             return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
@@ -113,7 +113,7 @@ impl AutomationCommandService {
                 found = config.automation.custom_presets.len() < before_len;
                 Ok(())
             })
-            .map_err(|e| ApiError::Internal(format!("Failed to delete preset: {e}")))?;
+            .map_err(ApiError::from)?;
 
         if !found {
             return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));

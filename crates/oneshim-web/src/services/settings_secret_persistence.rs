@@ -215,7 +215,7 @@ async fn persist_api_key_binding(
 
     let (namespace, key) =
         provider_api_key_secret_ref(provider_type_id(endpoint.provider_type), profile_id)
-            .map_err(|e| ApiError::Internal(format!("Failed to derive secret namespace: {e}")))?;
+            .map_err(ApiError::from)?;
 
     secret_store
         .store(&namespace, key, api_key)
