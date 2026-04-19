@@ -40,6 +40,9 @@ Examples: `config.invalid`, `network.timeout`, `provider.bedrock.unsupported`.
   - `http_api_session/mod.rs` (1 arm: auth)
 - Enum variants `AiProviderType::Bedrock`, `ProviderAuthScheme::AwsSignatureV4`, `ProviderRequestShape::BedrockConverse` **retained** (runtime-unreachable after catalog delete) for minimal-churn future re-introduction path.
 - OCR `apply_auth_headers` signature changed from infallible to `Result<_, CoreError>` to close the silent no-auth fallthrough security bug.
+- Defense-in-depth guards in sibling client paths that bypass the 7 match arms above — both added during post-merge drift audit, both return the same `CoreError::Config { code: UnsupportedProviderBedrock, .. }`:
+  - `crates/oneshim-network/src/analysis_client.rs::analyze` — early-return guard prevents silently sending OpenAI-format request with Bearer auth to a Bedrock endpoint.
+  - `crates/oneshim-web/src/services/ai_model_catalog_web_service.rs::list_models` — early-return guard fires **before** `resolve_model_discovery_api_key()` so users without AWS credentials see the graceful unsupported notice rather than a generic "no API key" error.
 
 ### 4. Migration strategy (soft V1→V2)
 

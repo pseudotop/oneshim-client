@@ -197,6 +197,15 @@ impl AnalysisProvider for AnalysisClient {
             "Calling analysis LLM API"
         );
 
+        // ADR-019 §3: Bedrock is intentionally unsupported. Reject before attempting
+        // to build/send a request with incompatible format + auth.
+        if matches!(self.provider_type, AiProviderType::Bedrock) {
+            return Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                message: "AWS Bedrock is intentionally unsupported in this build".into(),
+            });
+        }
+
         let body = self.build_request_body(context_json, system_prompt);
 
         let mut builder = self
