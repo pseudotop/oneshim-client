@@ -64,6 +64,9 @@ impl From<oneshim_core::error::CoreError> for ApiError {
             | CoreError::ConsentRequired { message, .. }
             | CoreError::OAuthError { message, .. }
             | CoreError::OAuthRefreshError { message, .. } => ApiError::Unauthorized(message),
+            CoreError::ConsentExpired { .. } => {
+                ApiError::Unauthorized("consent expired".to_string())
+            }
             CoreError::NotFound {
                 resource_type, id, ..
             } => ApiError::NotFound(format!("{resource_type}: {id}")),
