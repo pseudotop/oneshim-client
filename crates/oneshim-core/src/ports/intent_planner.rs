@@ -6,14 +6,21 @@ use async_trait::async_trait;
 use crate::error::CoreError;
 use crate::models::intent::AutomationIntent;
 
-/// IntentPlanner adapters emit `CoreError::Analysis`
-/// (wire: `provider.analysis_failed`) for LLM-side planning failures
-/// (empty output, non-parseable plan). HTTP-layer failures follow the
-/// canonical semantic status mapping. See
-/// `docs/guides/http-status-error-mapping.md`.
+/// Translates natural-language intent hints into structured automation intents.
 ///
-/// The caller surfaces "IntentPlanner is not configured" as
-/// `CoreError::Config { ConfigCode::Missing }` (iter-100).
+/// # Errors
+/// - `CoreError::Analysis` (wire: `provider.analysis_failed`) for
+///   LLM-side planning failures: empty output, non-parseable plan,
+///   schema-violating intent fields.
+/// - HTTP-layer failures follow the canonical semantic status mapping:
+///   `CoreError::Auth` (401/403), `CoreError::RequestTimeout` (408/504),
+///   `CoreError::RateLimit` (429), `CoreError::ServiceUnavailable`
+///   (502/503). See `docs/guides/http-status-error-mapping.md`.
+/// - `CoreError::Network` (wire: `network.connection_failed`) for
+///   pre-response transport failures.
+/// - Caller-side gate: "IntentPlanner is not configured" surfaces as
+///   `CoreError::Config { code: ConfigCode::Missing }` from the
+///   dispatch layer (iter-100), not inside this port's impls.
 #[async_trait]
 pub trait IntentPlanner: Send + Sync {
     async fn plan(&self, intent_hint: &str) -> Result<AutomationIntent, CoreError>;
