@@ -122,7 +122,7 @@ When a new `#[from]`-wrapped external error type is added to `CoreError`:
 
 ### Post-merge test coverage additions
 
-Between the initial ADR and the current state, 80+ regression tests were added covering the semantic HTTP status mapping across 13 of 14 dispatchers. Each test verifies a specific status-code → CoreError variant mapping AND (for most dispatchers) a domain-fallback assertion. See [`docs/guides/http-status-error-mapping.md`](../guides/http-status-error-mapping.md) for the canonical pattern and the full dispatcher registry.
+Between the initial ADR and the current state, 85+ regression tests were added covering the semantic HTTP status mapping across 14 of 15 dispatchers. Each test verifies a specific status-code → CoreError variant mapping AND (for most dispatchers) a domain-fallback assertion. See [`docs/guides/http-status-error-mapping.md`](../guides/http-status-error-mapping.md) for the canonical pattern and the full dispatcher registry. The 15th dispatcher (`auth::refresh`) was added iter-98 with 5 regression tests (401/429/503/504/500).
 
 ### Post-merge orphan wire-code cleanup (pre-merge)
 
