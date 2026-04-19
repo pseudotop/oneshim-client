@@ -406,3 +406,90 @@ fn ocr_strategy_try_from_accepts_supported_shapes() {
         );
     }
 }
+
+// iter-69 regression guards for iter-59a semantic HTTP status mapping
+// in ai_ocr_client::extract_elements. Shared helper pattern matches
+// iter-67/68.
+#[cfg(test)]
+mod http_status_mapping {
+    use super::*;
+    use oneshim_core::ports::ocr_provider::OcrProvider;
+
+    async fn run_status_mapping_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!(r#"{{"error": "http {status}"}}"#))
+            .create_async()
+            .await;
+
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Anthropic,
+            surface_id: None,
+            credential: None,
+        };
+        let provider = RemoteOcrProvider::new(&config).expect("provider init");
+        // Minimal valid PNG (1x1 transparent pixel) for request body.
+        let tiny_png = vec![
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+        provider
+            .extract_elements(&tiny_png, "png")
+            .await
+            .unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn status_403_maps_to_auth() {
+        let err = run_status_mapping_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_408_maps_to_timeout() {
+        let err = run_status_mapping_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_429_maps_to_rate_limit() {
+        let err = run_status_mapping_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_502_maps_to_service_unavailable() {
+        let err = run_status_mapping_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_504_maps_to_timeout() {
+        let err = run_status_mapping_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+}
