@@ -203,14 +203,14 @@ fn validate_remote_endpoint(
     field_name: &str,
 ) -> Result<(), CoreError> {
     let endpoint = endpoint.ok_or_else(|| CoreError::Config {
-        code: crate::error_codes::ConfigCode::Invalid,
+        code: crate::error_codes::ConfigCode::Missing,
         message: format!("`{field_name}` is required when a remote provider is selected."),
     })?;
 
     let endpoint_url = endpoint.endpoint.trim();
     if endpoint_url.is_empty() {
         return Err(CoreError::Config {
-            code: crate::error_codes::ConfigCode::Invalid,
+            code: crate::error_codes::ConfigCode::Missing,
             message: format!("`{field_name}.endpoint` must not be empty."),
         });
     }
@@ -233,7 +233,7 @@ fn validate_remote_endpoint(
 
     if requires_plaintext_api_key && endpoint.api_key.trim().is_empty() && !has_api_key_binding {
         return Err(CoreError::Config {
-            code: crate::error_codes::ConfigCode::Invalid,
+            code: crate::error_codes::ConfigCode::Missing,
             message: format!(
             "`{field_name}.api_key` must not be empty unless a credential binding is configured."
         ),
@@ -242,7 +242,7 @@ fn validate_remote_endpoint(
 
     if endpoint.timeout_secs == 0 {
         return Err(CoreError::Config {
-            code: crate::error_codes::ConfigCode::Invalid,
+            code: crate::error_codes::ConfigCode::OutOfRange,
             message: format!("`{field_name}.timeout_secs` must be >= 1."),
         });
     }

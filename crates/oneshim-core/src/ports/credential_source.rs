@@ -104,8 +104,11 @@ impl CredentialSource {
             }
         }
 
-        Err(CoreError::Config { code: crate::error_codes::ConfigCode::Invalid, message: "AI provider API key is not configured in a supported secret backend. Save it through Settings or configure an environment-backed credential source."
-                .to_string() })
+        Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: "AI provider API key is not configured in a supported secret backend. Save it through Settings or configure an environment-backed credential source."
+                .to_string(),
+        })
     }
 
     /// Resolve to a bearer token string at request time.
