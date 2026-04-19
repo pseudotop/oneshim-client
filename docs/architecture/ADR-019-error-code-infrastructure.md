@@ -30,6 +30,8 @@ all lowercase, snake_case, dot-separated
 
 Examples: `config.invalid`, `network.timeout`, `provider.bedrock.unsupported`.
 
+Wire-code `{domain}` prefix usually matches the Rust enum category (e.g., `ConfigCode::Invalid` → `config.invalid`). The `UnsupportedProviderBedrock` variant is a deliberate exception: it lives on `ConfigCode` (because Bedrock-unsupported surfaces at config-load/request-build time) but carries a `provider.*` wire code so observability dashboards can group all provider-unsupported signals into one namespace without crossing the `config.*` vs `provider.*` boundary. The file-level docstring in `crates/oneshim-core/src/error_codes/config.rs` records this exception.
+
 ### 3. AWS Bedrock: intentionally unsupported
 
 - Bedrock vendor + `provider_surface.bedrock.direct_api` surface **removed** from `specs/providers/provider-surface-catalog.json`.

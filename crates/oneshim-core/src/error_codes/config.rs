@@ -1,6 +1,10 @@
 //! ConfigCode — Config 카테고리 에러 코드.
 //!
-//! 네이밍: `config.*` 접두사. 신규 코드 추가 시 ADR-019 §2 컨벤션 준수.
+//! 네이밍: `config.*` 접두사가 기본. 신규 코드 추가 시 ADR-019 §2 컨벤션 준수.
+//!
+//! 예외: `UnsupportedProviderBedrock`은 의도적으로 `provider.bedrock.unsupported`
+//! 와이어 코드를 사용 — 관측성 대시보드가 provider-unsupported를 단일 `provider.*`
+//! 네임스페이스로 그룹핑할 수 있게 함. 이 exception은 ADR-019 §3에서 명시.
 
 // `define_code_enum!` is re-exported at crate root via `#[macro_export]` in
 // `error_codes/macros.rs`; no explicit `use` needed within the same crate.
