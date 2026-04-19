@@ -14,6 +14,21 @@ use crate::provider_surface::{provider_surface_uses_no_auth, provider_vendor_id_
 // --- Type definitions ---
 
 /// Source of authentication credentials for AI provider requests.
+///
+/// # Errors
+/// Resolution methods on this enum emit:
+/// - `CoreError::Config` with `ConfigCode::Missing` (wire:
+///   `config.missing`) for absent prerequisites: secret store not
+///   initialized when the backend requires one (iter-99), `profile_id`
+///   required for env-backed credentials but not supplied (iter-99).
+/// - `CoreError::Config` with `ConfigCode::Invalid` (wire:
+///   `config.invalid`) for unsupported `CredentialAuthMode` +
+///   `CredentialBackendKind` combinations.
+/// - `CoreError::OAuthError` (wire: `oauth.failed`) when managed-OAuth
+///   token lookup fails (provider not registered, token expired beyond
+///   refresh window).
+/// - `CoreError::Auth` (wire: `auth.failed`) when the resolved secret
+///   returns an empty string at resolve time.
 #[derive(Clone)]
 pub enum CredentialSource {
     /// No credential is required for this transport surface.

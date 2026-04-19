@@ -14,6 +14,15 @@ use crate::error::CoreError;
 /// Diagnostic methods (`frames_dir`, `buffer_pool_stats`, `disk_status`)
 /// remain on the concrete type — they are infrastructure-level concerns
 /// that do not belong in the port contract.
+///
+/// # Errors
+/// - `CoreError::Storage` (wire: `storage.failed`) for SQLite
+///   index/retention metadata operations (iter-47 mass fix pattern).
+/// - `CoreError::AudioCapture` is NOT used — frame save uses
+///   `CoreError::Io` (wire: `internal.io`) via `#[from]` for filesystem
+///   write failures (ADR-019 §7).
+/// - `save_frames_batch` returns per-frame Results; a single failure
+///   does not abort the batch — callers inspect each item.
 #[async_trait]
 pub trait FrameStoragePort: Send + Sync {
     /// Save a single frame image. Returns the relative path of the saved file.
