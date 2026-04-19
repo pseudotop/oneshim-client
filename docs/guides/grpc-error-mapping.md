@@ -2,11 +2,12 @@
 
 # gRPC Error Mapping Guide
 
-This guide defines how ONESHIM client maps gRPC status errors into `CoreError`.
+This guide defines how ONESHIM client maps gRPC status errors into `NetworkError` (which then converts to `CoreError` at the port boundary via `impl From<NetworkError> for CoreError`).
 
 ## Source
 
-- Implementation: `crates/oneshim-network/src/grpc/error_mapping.rs`
+- Status → NetworkError: `crates/oneshim-network/src/grpc/error_mapping.rs`
+- NetworkError → CoreError: `crates/oneshim-network/src/error.rs` `impl From<NetworkError> for CoreError`
 - Consumers:
   - `crates/oneshim-network/src/grpc/auth_client.rs`
   - `crates/oneshim-network/src/grpc/session_client.rs`
@@ -15,14 +16,28 @@ This guide defines how ONESHIM client maps gRPC status errors into `CoreError`.
 
 ## Mapping Policy
 
-| gRPC `Code` | Mapped `CoreError` | Notes |
-|---|---|---|
-| `Unauthenticated`, `PermissionDenied` | `CoreError::Auth` | Authentication/authorization failure |
-| `NotFound` | `CoreError::NotFound` | Operation name and status message are propagated |
-| `InvalidArgument`, `FailedPrecondition`, `OutOfRange` | `CoreError::Validation` | Reported as request validation failure |
-| `ResourceExhausted` | `CoreError::RateLimit` | Uses `retry-after` or `x-retry-after-seconds`, default `60` |
-| `Unavailable` | `CoreError::ServiceUnavailable` | Service availability outage |
-| other codes | `CoreError::Network` | Generic network/transport domain fallback |
+Two-step mapping — gRPC Status → `NetworkError` → `CoreError`:
+
+| gRPC `Code` | `NetworkError` | Final `CoreError` + wire code (per [ADR-019](../architecture/ADR-019-error-code-infrastructure.md)) | Notes |
+|---|---|---|---|
+| `Unauthenticated`, `PermissionDenied` | `Auth` | `CoreError::Auth { code: AuthCode::Failed, .. }` → `auth.failed` | Authentication/authorization failure |
+| `NotFound` | `NotFound { resource_type, id }` | `CoreError::NotFound { code: NotFoundCode::ResourceMissing, .. }` → `not_found.resource_missing` | Operation name + status message propagated |
+| `InvalidArgument`, `FailedPrecondition`, `OutOfRange` | `Validation { field, message }` | `CoreError::Validation { code: ValidationCode::InvalidField, .. }` → `validation.invalid_field` | Reported as request validation failure |
+| `ResourceExhausted` | `RateLimited { retry_after_secs }` | `CoreError::RateLimit { code: NetworkCode::RateLimit, .. }` → `network.rate_limit` | Uses `retry-after` or `x-retry-after-seconds`, default `60` |
+| `Unavailable` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | Service availability outage |
+| other codes | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | Generic network/transport domain fallback |
+
+## Consuming the wire code
+
+Per [ADR-019](../architecture/ADR-019-error-code-infrastructure.md), every `CoreError` variant carries a typed `code: XxxCode` field. Use `err.code() -> &'static str` to obtain the stable wire-format string for Grafana/logs/i18n:
+
+```rust
+let err: CoreError = map_grpc_status_error("login", status).into();
+tracing::error!(code = err.code(), %err, "grpc call failed");
+// → logs include `code="auth.failed"` etc.
+```
+
+Released code strings are immutable (wire contract). Additions require updating `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt`.
 
 ## Verification
 
