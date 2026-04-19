@@ -5,6 +5,16 @@ use async_trait::async_trait;
 use crate::error::CoreError;
 use crate::models::ai_session::{MessageRecord, SessionRecord, SessionState};
 
+/// Persist AI conversation sessions and per-turn messages.
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for all SQLite operations
+/// (iter-47 mass fix pattern: execute/query/transaction). Session/message
+/// not-found during update or delete is a rowcount=0 condition that
+/// implementations typically treat as Ok(()) rather than a distinct error;
+/// consult the adapter for exact semantic. `purge_expired` and `next_seq`
+/// do not surface not-found — they return 0 / empty when there is nothing
+/// to act on.
 #[async_trait]
 pub trait SessionStoragePort: Send + Sync {
     /// Persist a new session record.
