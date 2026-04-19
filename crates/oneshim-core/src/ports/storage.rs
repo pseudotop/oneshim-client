@@ -14,8 +14,11 @@ use crate::models::system::SystemMetrics;
 /// Local event and suggestion persistence.
 ///
 /// # Errors
-/// All methods return `CoreError::Internal` on SQLite failures (lock
-/// contention, constraint violation, disk I/O).
+/// All methods return `CoreError::Storage` (wire: `storage.failed`) on
+/// SQLite failures (lock contention, constraint violation, disk I/O).
+/// Iter-47: previously documented as `Internal`; the mass conversion of
+/// `StorageError::Internal` → `CoreError::Storage` made the earlier doc
+/// stale for ~476 call sites.
 #[async_trait]
 pub trait StorageService: Send + Sync {
     async fn save_event(&self, event: &Event) -> Result<(), CoreError>;
