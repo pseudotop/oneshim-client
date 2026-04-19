@@ -31,6 +31,14 @@ pub fn map_grpc_status_error(operation: &str, status: Status) -> NetworkError {
             // timeout is already logged at request-site.
             timeout_ms: 0,
         },
+        Code::Unimplemented => NetworkError::NotFound {
+            // Server doesn't implement this RPC — semantically the RPC resource
+            // is missing, not a generic HTTP failure. Non-retryable (server
+            // won't grow the method on retry); wire code `not_found.resource_missing`
+            // helps telemetry isolate client/server version-skew scenarios.
+            resource_type: format!("grpc_method:{operation}"),
+            id: message,
+        },
         _ => NetworkError::Http(format!("{operation}: {message} ({code})")),
     }
 }
@@ -107,5 +115,31 @@ mod tests {
             matches!(err, NetworkError::Timeout { .. }),
             "DeadlineExceeded must map to NetworkError::Timeout, got: {err:?}"
         );
+    }
+
+    /// iter-53 regression guard: gRPC Code::Unimplemented means the server
+    /// doesn't implement the RPC — semantically the method is missing.
+    /// Maps to NetworkError::NotFound so downstream CoreError is
+    /// `not_found.resource_missing` (not retryable; clearly signals
+    /// client/server version skew in telemetry).
+    #[test]
+    fn maps_unimplemented_to_not_found() {
+        let err = map_grpc_status_error(
+            "CreateSession",
+            Status::unimplemented("method not found on server"),
+        );
+        match err {
+            NetworkError::NotFound { resource_type, id } => {
+                assert!(
+                    resource_type.contains("CreateSession"),
+                    "resource_type should mention the operation, got: {resource_type}"
+                );
+                assert!(
+                    id.contains("method not found"),
+                    "id should preserve server message, got: {id}"
+                );
+            }
+            other => panic!("Unimplemented must map to NetworkError::NotFound, got: {other:?}"),
+        }
     }
 }

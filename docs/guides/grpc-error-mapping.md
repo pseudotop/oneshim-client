@@ -26,7 +26,8 @@ Two-step mapping — gRPC Status → `NetworkError` → `CoreError`:
 | `ResourceExhausted` | `RateLimited { retry_after_secs }` | `CoreError::RateLimit { code: NetworkCode::RateLimit, .. }` → `network.rate_limit` | Uses `retry-after` or `x-retry-after-seconds`, default `60` |
 | `Unavailable` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | Service availability outage |
 | `DeadlineExceeded` | `Timeout { timeout_ms: 0 }` | `CoreError::RequestTimeout { code: NetworkCode::Timeout, .. }` → `network.timeout` | Client-side deadline elapsed (sentinel timeout_ms=0; request-site logs the real timeout) |
-| other codes | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | Generic network/transport domain fallback |
+| `Unimplemented` | `NotFound { resource_type: "grpc_method:OP", id }` | `CoreError::NotFound { code: NotFoundCode::ResourceMissing, .. }` → `not_found.resource_missing` | Server doesn't implement the RPC — typically a client/server version skew. Non-retryable |
+| other codes | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | Generic network/transport domain fallback (covers Cancelled, Unknown, AlreadyExists, Aborted, Internal, DataLoss) |
 
 ## Consuming the wire code
 

@@ -26,7 +26,8 @@
 | `ResourceExhausted` | `RateLimited { retry_after_secs }` | `CoreError::RateLimit { code: NetworkCode::RateLimit, .. }` → `network.rate_limit` | `retry-after` 또는 `x-retry-after-seconds` 사용, 기본값 `60` |
 | `Unavailable` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | 서비스 가용성 장애 |
 | `DeadlineExceeded` | `Timeout { timeout_ms: 0 }` | `CoreError::RequestTimeout { code: NetworkCode::Timeout, .. }` → `network.timeout` | 클라이언트측 데드라인 초과 (sentinel timeout_ms=0; 실제 timeout은 request-site 로그 참조) |
-| 기타 코드 | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | 일반 네트워크/전송 도메인 fallback |
+| `Unimplemented` | `NotFound { resource_type: "grpc_method:OP", id }` | `CoreError::NotFound { code: NotFoundCode::ResourceMissing, .. }` → `not_found.resource_missing` | 서버가 해당 RPC 미구현 — 일반적으로 client/server 버전 불일치. 재시도 불가 |
+| 기타 코드 | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | 일반 네트워크/전송 도메인 fallback (Cancelled, Unknown, AlreadyExists, Aborted, Internal, DataLoss 포함) |
 
 ## Wire 코드 소비
 
