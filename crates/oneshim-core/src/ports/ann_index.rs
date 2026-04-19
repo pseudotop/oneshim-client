@@ -16,6 +16,14 @@ use crate::error::CoreError;
 /// # Implementations
 ///
 /// - `HnswAdapter` (oneshim-analysis, feature = "hnsw") — usearch HNSW index
+///
+/// # Errors
+/// - `CoreError::Analysis` (wire: `provider.analysis_failed`) for HNSW
+///   library failures (usearch add/search/remove), capacity growth
+///   errors, file I/O during save/load.
+/// - `CoreError::Internal` (wire: `internal.generic`) for tokio
+///   spawn_blocking JoinError — HNSW calls run on a blocking thread
+///   pool to avoid stalling tokio workers during SIMD vector math.
 #[async_trait]
 pub trait AnnIndex: Send + Sync {
     /// Insert a vector under the given key.
