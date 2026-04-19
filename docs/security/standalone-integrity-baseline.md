@@ -26,7 +26,11 @@ The goal is to keep the standalone trust model strict today, while making future
 - When `integrity.require_signed_policy_bundle=true`, startup MUST verify:
   - `integrity.policy_file_path`
   - `integrity.policy_signature_path`
-  - `integrity.policy_public_key` (or fallback to `update.signature_public_key`)
+  - `integrity.policy_public_key` (authoritative — configure this explicitly).
+    Historical note: an `update.signature_public_key` fallback path still exists
+    in the integrity guard, but since the D9/I-4 cleanup `update.signature_public_key`
+    defaults to an empty string, so the fallback is inert unless that field is
+    explicitly configured. Prefer `integrity.policy_public_key`.
 - If signature validation fails, the app MUST fail closed at startup.
 - Release pipeline SHOULD publish `runtime-policy.json`, `.sha256`, and `.sig` together.
 

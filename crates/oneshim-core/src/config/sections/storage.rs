@@ -353,5 +353,48 @@ fn default_update_require_signature() -> bool {
 }
 
 fn default_update_signature_public_key() -> String {
-    "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=".to_string()
+    // D9 (Phase 4): TRUSTED_PUBLIC_KEYS (src-tauri/src/updater/trusted_keys.rs)
+    // is the authoritative trust source for update-installer signatures.
+    // This field is now an optional user override (e.g. dev self-signing);
+    // default empty means "no override".
+    //
+    // Secondary consumer: src-tauri/src/integrity_guard.rs uses this field
+    // as a fallback when `integrity.policy_public_key` is None. With the
+    // empty default, that fallback is inert (decode of empty base64 produces
+    // empty bytes, which fails the 32-byte shape check in verify_signed_policy_bundle).
+    // The security baseline docs (docs/security/standalone-integrity-baseline.{md,ko.md})
+    // reflect this — rely on `integrity.policy_public_key` explicitly.
+    String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_update_signature_public_key_is_empty() {
+        assert_eq!(default_update_signature_public_key(), "");
+    }
+
+    #[test]
+    fn validate_integrity_policy_passes_with_default_config() {
+        // Guard: prevents regressing to a hardcoded default that might
+        // conflict with validation (e.g., a future non-base64 placeholder).
+        let config = UpdateConfig::default();
+        assert!(
+            config.validate_integrity_policy().is_ok(),
+            "default UpdateConfig must validate: {:?}",
+            config.validate_integrity_policy()
+        );
+    }
+
+    #[test]
+    fn default_update_config_has_empty_signature_public_key() {
+        // I-4 invariant: the per-config default MUST NOT be a hardcoded
+        // copy of TRUSTED_PUBLIC_KEYS[0]. This test catches a silent revert
+        // to any non-empty default (including a rotated-key hardcoded copy)
+        // that would re-introduce the "user-configured override" false
+        // positive during key rotation.
+        assert_eq!(UpdateConfig::default().signature_public_key, "");
+    }
 }

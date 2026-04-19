@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `validate_integrity_policy` no longer requires `signature_public_key` to be non-empty; built-in `TRUSTED_PUBLIC_KEYS` array is authoritative. Format validation still applies when a non-empty override is provided.
+- `update.signature_public_key` default is now empty string (was a hardcoded copy of `TRUSTED_PUBLIC_KEYS[0]`); `TRUSTED_PUBLIC_KEYS` is the sole authoritative trust source by default. Existing configs with a non-empty value continue to function as an override (unchanged semantics). Closes holistic review I-4.
 
 ### Fixed
 
