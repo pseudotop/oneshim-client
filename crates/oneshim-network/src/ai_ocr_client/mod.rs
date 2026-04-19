@@ -416,13 +416,35 @@ impl OcrProvider for RemoteOcrProvider {
         })?;
         if !status.is_success() {
             warn!(status = %status, "OCR API error response");
-            return Err(CoreError::OcrError {
-                code: oneshim_core::error_codes::ProviderCode::OcrFailed,
-                message: format!(
-                    "OCR API error ({}): {}",
-                    status,
-                    body.chars().take(200).collect::<String>()
-                ),
+            let message = format!(
+                "OCR API error ({}): {}",
+                status,
+                body.chars().take(200).collect::<String>()
+            );
+            // Semantic HTTP status mapping per iter-54/55/56/58 — even OCR
+            // domain errors benefit from differentiating auth/timeout/rate-limit
+            // from generic OCR failures.
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::OcrError {
+                    code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                    message,
+                },
             });
         }
         let results = strategy.parse_response(&body)?;
