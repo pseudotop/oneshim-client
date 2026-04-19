@@ -6,6 +6,17 @@ use crate::error::CoreError;
 
 /// Port for generating vector embeddings from text.
 /// Adapters: local (fastembed-rs) or remote (OpenAI text-embedding-3-small etc.)
+///
+/// # Errors
+/// - Remote adapters: HTTP-layer failures follow the canonical semantic status
+///   mapping (`auth.failed` / `network.timeout` / `network.rate_limit` /
+///   `service.unavailable` / `network.generic`). See
+///   `docs/guides/http-status-error-mapping.md`. Parse/provider failures
+///   emit `CoreError::Network` with generic domain fallback.
+/// - Local adapters without the `fastembed-local` feature: emit
+///   `CoreError::ServiceUnavailable` (wire: `service.unavailable`,
+///   iter-109 re-route from Internal) — the embedding service is
+///   unavailable in this build.
 #[async_trait]
 pub trait EmbeddingProvider: Send + Sync {
     /// Embed a single text into a vector of floats.

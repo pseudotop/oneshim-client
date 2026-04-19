@@ -33,6 +33,17 @@ pub struct SkillContext {
     pub active_skill_body: Option<String>,
 }
 
+/// LLM provider adapters emit `CoreError::Analysis`
+/// (wire: `provider.analysis_failed`) for LLM-side failures — empty response,
+/// non-parseable intent output, malformed JSON. HTTP-layer failures follow
+/// the canonical semantic status mapping (`auth.failed` / `network.timeout` /
+/// `network.rate_limit` / `service.unavailable`). See
+/// `docs/guides/http-status-error-mapping.md`.
+///
+/// AWS Bedrock is intentionally unsupported (ADR-019 §3); adapters for
+/// `ProviderAuthScheme::AwsSignatureV4` return `CoreError::Config {
+/// ConfigCode::UnsupportedProviderBedrock }` (wire:
+/// `provider.bedrock.unsupported`).
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn interpret_intent(
