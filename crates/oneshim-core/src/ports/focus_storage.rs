@@ -9,6 +9,18 @@ use crate::models::work_session::{AppCategory, FocusMetrics, Interruption, WorkS
 /// Binary crates (`oneshim-app`, `src-tauri`) consume this trait via
 /// `Arc<dyn FocusStorage>`.  The canonical implementation lives in
 /// `oneshim-storage` (backed by SQLite).
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for all SQLite operations
+/// (iter-47 mass fix pattern: execute/query/transaction/lastInsertRowId).
+/// Conventions:
+/// - `get_pending_interruption` returns `Ok(None)` when no active row
+///   exists; it does not surface NotFound.
+/// - `record_interruption_resume` / `mark_suggestion_shown_by_id` /
+///   `end_work_session` with an unknown id are treated as rowcount=0
+///   no-ops (Ok(())) by the current SQLite adapter.
+/// - `save_rule_suggestion` returns the persisted `suggestion_id`
+///   (string UUID) on success; uniqueness violations bubble up as Storage.
 pub trait FocusStorage: Send + Sync {
     fn increment_focus_metrics(
         &self,
