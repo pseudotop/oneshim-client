@@ -353,5 +353,30 @@ fn default_update_require_signature() -> bool {
 }
 
 fn default_update_signature_public_key() -> String {
-    "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=".to_string()
+    // D9 (Phase 4): TRUSTED_PUBLIC_KEYS (src-tauri/src/updater/trusted_keys.rs)
+    // is the authoritative trust source. This field is now an optional user
+    // override (e.g. dev self-signing); default empty means "no override".
+    String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_update_signature_public_key_is_empty() {
+        assert_eq!(default_update_signature_public_key(), "");
+    }
+
+    #[test]
+    fn validate_integrity_policy_passes_with_default_config() {
+        // Guard: prevents regressing to a hardcoded default that might
+        // conflict with validation (e.g., a future non-base64 placeholder).
+        let config = UpdateConfig::default();
+        assert!(
+            config.validate_integrity_policy().is_ok(),
+            "default UpdateConfig must validate: {:?}",
+            config.validate_integrity_policy()
+        );
+    }
 }
