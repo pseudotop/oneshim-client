@@ -104,8 +104,17 @@
 
 ## 실패 시맨틱
 
-1. 2xx가 아닌 응답 => 어댑터 오류 (`CoreError::Network` 또는 `CoreError::OcrError`)
-2. 파싱 불일치 => 어댑터 오류 (LLM은 `CoreError::Internal`, OCR은 `CoreError::OcrError`)
+1. 2xx가 아닌 응답 => 어댑터 오류, 시맨틱 HTTP status 매핑 경로
+   (wire code: `auth.failed`, `network.timeout`, `network.rate_limit`,
+   `service.unavailable`, domain-fallback `provider.ocr_failed` /
+   `provider.analysis_failed` / `network.generic`). 상세는
+   [`docs/guides/http-status-error-mapping.ko.md`](../guides/http-status-error-mapping.ko.md) 참조.
+2. 파싱 불일치 => 어댑터 오류.
+   - **LLM**: `CoreError::Analysis { ProviderCode::AnalysisFailed }` (wire:
+     `provider.analysis_failed`). iter-93 drift 수정 이후; 기존 `CoreError::Internal`은
+     provider 이상 동작을 텔레메트리에서 숨겼음.
+   - **OCR**: `CoreError::OcrError { ProviderCode::OcrFailed }` (wire:
+     `provider.ocr_failed`).
 3. `fallback_to_local=true`면 로컬 제공자로 폴백될 수 있습니다.
 4. 폴백 비활성 시 원격 설정/초기화 오류는 fail-closed로 처리해야 합니다.
 
