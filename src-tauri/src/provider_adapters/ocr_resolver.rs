@@ -171,8 +171,9 @@ pub(super) fn resolve_ocr_provider(
             }
             #[cfg(not(feature = "server"))]
             {
-                Err(CoreError::Config {
-                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                // Iter-109: feature-gate disabled = service unavailable.
+                Err(CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "Remote OCR provider requires the 'server' feature".to_string(),
                 })
             }

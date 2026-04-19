@@ -288,15 +288,20 @@ mod stub_impl {
     #[async_trait]
     impl EmbeddingProvider for LocalEmbeddingProvider {
         async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
-            Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            // Iter-109: feature-gate disabled at compile = the service is
+            // unavailable in this build (iter-108 pattern). Wire code
+            // `service.unavailable` lets frontend show a clean "not
+            // available in your build" message.
+            Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: "fastembed-local feature is not enabled — cannot embed locally".into(),
             })
         }
 
         async fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
-            Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            // Iter-109: same as embed() above.
+            Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: "fastembed-local feature is not enabled — cannot embed locally".into(),
             })
         }

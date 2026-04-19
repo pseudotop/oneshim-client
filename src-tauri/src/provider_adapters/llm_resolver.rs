@@ -150,8 +150,11 @@ pub(super) fn resolve_llm_provider(
             }
             #[cfg(not(feature = "server"))]
             {
-                Err(CoreError::Config {
-                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                // Iter-109: feature-gate disabled = service unavailable in
+                // this build (iter-108 pattern). User's config isn't
+                // "invalid" per se; it's fine in a build with the feature.
+                Err(CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
                     message: "Remote LLM provider requires the 'server' feature".to_string(),
                 })
             }

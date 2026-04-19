@@ -561,7 +561,19 @@ mod tests {
             None,
         ) {
             Ok(_) => panic!("Expected an error"),
-            Err(err) => assert!(matches!(err, CoreError::Config { .. })),
+            // Iter-109: emission variant depends on whether the `server`
+            // feature is enabled:
+            // - with server: CoreError::Config (config missing — iter-99)
+            // - without server: CoreError::ServiceUnavailable (feature gate)
+            // Accept both since the test runs under different feature
+            // combinations.
+            Err(err) => assert!(
+                matches!(
+                    err,
+                    CoreError::Config { .. } | CoreError::ServiceUnavailable { .. }
+                ),
+                "expected Config or ServiceUnavailable, got: {err:?}"
+            ),
         }
     }
 
