@@ -1,0 +1,129 @@
+[English](./http-status-error-mapping.md) | [한국어](./http-status-error-mapping.ko.md)
+
+# HTTP Status 에러 매핑 패턴
+
+이 문서는 외부 HTTP 호출의 응답 status code를 `CoreError` / `NetworkError` / `ApiError` variant로 일관되게 매핑하는 방법을 정의합니다 ([ADR-019](../architecture/ADR-019-error-code-infrastructure.ko.md) wire code 기준).
+
+## 배경
+
+ADR-019의 `err.code()` wire code는 Grafana group-by-code, code 기반 i18n 룩업, code 기반 retry 로직을 가능하게 합니다. 각 HTTP 디스패처가 non-success 응답을 임의의 variant로 매핑하면 이 세 소비자가 일관된 동작을 기대할 수 없습니다.
+
+이 패턴이 확립되기 전에는 `oneshim-network`, `oneshim-audio`, `oneshim-web` 전반 14개 디스패처가 각자 다른 arm subset(대개 401/404/429/503)만 처리하고 나머지는 `Network::Generic`이나 도메인 fallback(`OcrError`, `SttFailed` 등)으로 collapse했습니다. 프론트엔드는 408 timeout과 502 bad gateway를 동일한 `network.generic`으로 보게 됩니다.
+
+## 정식 매핑
+
+| HTTP status | CoreError variant | Wire code | 재시도 가능? |
+|---|---|---|---|
+| 401 Unauthorized | `Auth` | `auth.failed` | 아니오 |
+| 403 Forbidden | `Auth` | `auth.failed` | 아니오 |
+| 404 Not Found | `NotFound` | `not_found.resource_missing` | 아니오 |
+| 408 Request Timeout | `RequestTimeout` | `network.timeout` | 예 |
+| 429 Too Many Requests | `RateLimit` | `network.rate_limit` | 예 (backoff) |
+| 502 Bad Gateway | `ServiceUnavailable` | `service.unavailable` | 예 |
+| 503 Service Unavailable | `ServiceUnavailable` | `service.unavailable` | 예 |
+| 504 Gateway Timeout | `RequestTimeout` | `network.timeout` | 예 |
+| 기타 non-success | 도메인별 또는 `Network` | 다양 | 경우에 따라 |
+
+## 정식 구현
+
+```rust
+if !status.is_success() {
+    let message = format!("<컨텍스트>: HTTP {status} {body}");
+    return Err(match status.as_u16() {
+        401 | 403 => CoreError::Auth {
+            code: AuthCode::Failed,
+            message,
+        },
+        404 => CoreError::NotFound {
+            code: NotFoundCode::ResourceMissing,
+            resource_type: "<설명>".into(),
+            id: body,
+        },
+        408 | 504 => CoreError::RequestTimeout {
+            code: NetworkCode::Timeout,
+            timeout_ms: 0, // sentinel; 실제 timeout은 request-site 로그 참조
+        },
+        429 => CoreError::RateLimit {
+            code: NetworkCode::RateLimit,
+            retry_after_secs: 60, // 또는 Retry-After 헤더 파싱
+        },
+        502 | 503 => CoreError::ServiceUnavailable {
+            code: ServiceCode::Unavailable,
+            message,
+        },
+        _ => CoreError::Network {           // 또는 도메인별 fallback
+            code: NetworkCode::Generic,
+            message,
+        },
+    });
+}
+```
+
+`NetworkError` 기반 디스패처는 `NetworkError::Auth / Timeout / RateLimited / ServiceUnavailable / Http`으로 대체(의미론적으로 동일; `From<NetworkError> for CoreError` impl이 같은 wire code 방출).
+
+`ApiError` 기반 web handler는 `ApiError::Unauthorized / Forbidden / NotFound / ServiceUnavailable / BadRequest / Internal`로 매핑. `ApiError`는 전용 Timeout/TooManyRequests variant가 없으므로 408/429/504는 `ServiceUnavailable`로 collapse.
+
+## 도메인별 fallback
+
+`_` wildcard는 도메인별 variant가 있으면 `Network::Generic` 대신 사용. 예:
+
+- OCR path: `_ => CoreError::OcrError { code: ProviderCode::OcrFailed, .. }`
+- STT path: `_ => CoreError::SpeechToText { code: AudioCode::SttFailed, .. }`
+- Analysis path: `_ => CoreError::Analysis { code: ProviderCode::AnalysisFailed, .. }`
+
+알려진 status와 일치하지 않는 "기타" 버킷의 도메인 컨텍스트를 보존.
+
+## 이 패턴을 따르는 디스패처
+
+14개 디스패처 (2026-04-20 기준):
+
+| Crate / module | 상태 |
+|---|---|
+| `oneshim-network::http_client::check_response` | ✓ |
+| `oneshim-network::integration/http_transport::check_response` | ✓ |
+| `oneshim-network::sync/remote_transport::check_response_status` | ✓ |
+| `oneshim-network::ai_llm_client/request::send_and_parse` | ✓ |
+| `oneshim-network::local_llm_session` (Ollama, 404 only) | ✓ |
+| `oneshim-network::remote_embedding_client` | ✓ |
+| `oneshim-network::ai_ocr_client::extract_elements` | ✓ |
+| `oneshim-network::analysis_client` (analyze + summarize) | ✓ |
+| `oneshim-network::http_api_session` | ✓ |
+| `oneshim-network::auth::login` | ✓ |
+| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ |
+| `oneshim-audio::cloud_stt` | ✓ |
+| `oneshim-audio::model_downloader` | ✓ |
+| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) |
+
+## 의도적 제외
+
+- **`oneshim-network::oauth::token_exchange`** — 자체 `TokenErrorResponse` + `OAuthErrorKind` 분류(RFC 6749)가 semantic 차별화(`invalid_grant`, `invalid_client`, `server_error` 등)를 처리. HTTP-status arm을 위에 얹으면 중복/충돌.
+- **`oneshim-network::integration/auth::oidc_device_flow`** — 동일; OIDC device flow는 RFC 8628 기준 자체 에러 코드(`authorization_pending`, `slow_down`, `expired_token`).
+- **`oneshim-network::sse_client`** — retry loop, 무한 재시도 + 로그; `CoreError` 방출 없음.
+- **`oneshim-network::sync/lan_transport::push/pull`** — best-effort (returns `Ok(bool)`), non-fatal peer failures.
+
+## 신규 HTTP 디스패처 추가
+
+새 HTTP 호출 도입 시:
+
+1. `if !status.is_success()` 블록은 위 canonical 매핑 사용
+2. `_` wildcard는 적절한 도메인별 fallback 선택
+3. 위 디스패처 테이블에 행 추가
+4. (선택) 해당 엔드포인트의 401 → `Auth`, 429 → `RateLimit` 등을 검증하는 회귀 테스트 추가
+
+## 검증
+
+```bash
+# Wire-contract snapshot test가 code 안정성 보장:
+cargo test -p oneshim-core --test wire_contract_snapshot
+
+# 디스패처별 테스트 예시:
+cargo test -p oneshim-network --lib http_client::tests::forbidden_403_maps_to_auth
+cargo test -p oneshim-network --lib http_client::tests::request_timeout_408_maps_to_timeout
+cargo test -p oneshim-network --lib http_client::tests::bad_gateway_502_maps_to_service_unavailable
+cargo test -p oneshim-network --lib http_client::tests::gateway_timeout_504_maps_to_timeout
+```
+
+## 관련
+
+- [ADR-019](../architecture/ADR-019-error-code-infrastructure.ko.md) — wire code 인프라
+- [gRPC 에러 매핑 가이드](./grpc-error-mapping.ko.md) — gRPC Status code의 유사 패턴
