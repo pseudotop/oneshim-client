@@ -334,3 +334,88 @@ fn local_openai_compatible_llm_requires_explicit_model_selection() {
         .to_string()
         .contains("requires an explicit model selection"));
 }
+
+// iter-68 regression guards for iter-55b semantic HTTP status mapping
+// in ai_llm_client/request::send_and_parse. Shared helper pattern
+// mirrors iter-67's remote_embedding_client tests.
+#[cfg(test)]
+mod http_status_mapping {
+    use super::*;
+    use oneshim_core::ports::llm_provider::{LlmProvider, ScreenContext};
+
+    async fn run_status_mapping_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!(r#"{{"error": "http {status}"}}"#))
+            .create_async()
+            .await;
+
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Anthropic,
+            surface_id: None,
+            credential: None,
+        };
+        let provider = RemoteLlmProvider::new(&config).expect("provider init");
+        let ctx = ScreenContext {
+            visible_texts: vec!["Save".to_string()],
+            active_app: "App".to_string(),
+            active_window_title: "Window".to_string(),
+            layout_description: None,
+        };
+        provider
+            .interpret_intent(&ctx, "click save")
+            .await
+            .unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn status_403_maps_to_auth() {
+        let err = run_status_mapping_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_408_maps_to_timeout() {
+        let err = run_status_mapping_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_429_maps_to_rate_limit() {
+        let err = run_status_mapping_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_502_maps_to_service_unavailable() {
+        let err = run_status_mapping_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_504_maps_to_timeout() {
+        let err = run_status_mapping_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+}
