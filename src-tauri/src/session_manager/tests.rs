@@ -81,10 +81,18 @@ async fn create_subprocess_session_uses_detected_surface() {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].session_id, session.session_id());
     } else {
+        // Iter-94: error type refactored from Internal to NotFound. The
+        // `subprocess_cli_surface` resource-type identifier and the
+        // `not_found.resource_missing` wire code are the stable contract
+        // for this detection-miss scenario going forward.
         let err_msg = expect_err_msg(result);
         assert!(
-            err_msg.contains("no supported subprocess CLI surface detected"),
-            "unexpected error: {err_msg}",
+            err_msg.contains("subprocess_cli_surface"),
+            "expected `subprocess_cli_surface` in err: {err_msg}",
+        );
+        assert!(
+            err_msg.contains("not_found.resource_missing"),
+            "expected wire code in err: {err_msg}",
         );
     }
 }
@@ -636,5 +644,37 @@ async fn emit_state_change_no_panic_without_handle() {
         SessionState::Active,
         SessionState::Failed,
         "test",
+    );
+}
+
+/// Iter-94 regression guard: requesting a subprocess surface that isn't
+/// installed must produce a NotFound error with wire code
+/// `not_found.resource_missing` and resource_type `subprocess_cli_surface`.
+/// Pre-iter-94 this was CoreError::Internal with `internal.generic`, which
+/// conflated missing-CLI scenarios with genuine runtime failures in
+/// telemetry.
+#[tokio::test]
+async fn missing_subprocess_cli_surface_maps_to_not_found() {
+    let mgr = test_manager();
+    let config = SessionConfig {
+        transport: SessionTransport::Subprocess,
+        surface_id: Some("provider_surface.definitely_not_real".to_string()),
+        model: None,
+        system_prompt: None,
+        tools_enabled: false,
+    };
+    let result = mgr.create_session(config).await;
+    let err = match result {
+        Ok(_) => panic!("unknown surface id must error"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "not_found.resource_missing");
+    assert!(
+        err.to_string().contains("subprocess_cli_surface"),
+        "err should reference the resource_type, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("definitely_not_real"),
+        "err should carry the requested surface id, got: {err}"
     );
 }

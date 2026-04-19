@@ -77,9 +77,15 @@ impl SessionManagerImpl {
                 })
                 .map(|surface| surface.detected.clone())
                 .ok_or_else(|| {
-                    CoreError::Internal { code: oneshim_core::error_codes::InternalCode::Generic, message: format!(
-                        "requested subprocess CLI surface '{requested_surface_id}' is not detected on this system"
-                    ) }
+                    // Iter-94: NotFound semantically (the requested subprocess
+                    // CLI tool is not installed / not detected); wire code
+                    // `not_found.resource_missing` helps telemetry distinguish
+                    // missing-tool from internal runtime failure.
+                    CoreError::NotFound {
+                        code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                        resource_type: "subprocess_cli_surface".to_string(),
+                        id: requested_surface_id.to_string(),
+                    }
                 })?
         } else {
             probed_surfaces
@@ -93,10 +99,15 @@ impl SessionManagerImpl {
                         .first()
                         .map(|surface| surface.detected.clone())
                 })
-                .ok_or_else(|| CoreError::Internal {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
-                    message: "no supported subprocess CLI surface detected on this system"
-                        .to_string(),
+                .ok_or_else(|| {
+                    // Iter-94: no subprocess CLI detected — surface-level
+                    // NotFound. Distinguishes "user hasn't installed any
+                    // supported CLI" from generic runtime failure in logs.
+                    CoreError::NotFound {
+                        code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                        resource_type: "subprocess_cli_surface".to_string(),
+                        id: "any".to_string(),
+                    }
                 })?
         };
 
@@ -154,17 +165,22 @@ impl SessionManagerImpl {
                 })?;
 
         // Resolve surface spec from the provider catalog.
+        // Iter-94: catalog lookup miss = NotFound (the surface id references
+        // an entry that doesn't exist in the catalog); not an internal error.
         let surface_spec = provider_specs::provider_surface_spec(surface_id).map_err(|msg| {
-            CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: msg,
+            CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: "provider_surface".to_string(),
+                id: format!("{surface_id}: {msg}"),
             }
         })?;
+        // Iter-94: unknown provider_type = invalid config (the vendor_id
+        // doesn't map to any known provider type).
         let provider_type = oneshim_core::provider_surface::provider_type_from_vendor_id(
             &surface_spec.provider_type,
         )
-        .ok_or_else(|| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .ok_or_else(|| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: format!(
                 "unknown provider_type for vendor '{}'",
                 surface_spec.vendor_id
@@ -172,14 +188,16 @@ impl SessionManagerImpl {
         })?;
 
         // Resolve the LLM transport endpoint from the catalog.
+        // Iter-94: transport catalog miss = NotFound.
         let transport_spec = provider_specs::resolved_transport_spec(
             provider_type,
             Some(surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
-            message: msg,
+        .map_err(|msg| CoreError::NotFound {
+            code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+            resource_type: "provider_transport".to_string(),
+            id: format!("{surface_id}/llm: {msg}"),
         })?;
 
         // Model: explicit > catalog default > error.

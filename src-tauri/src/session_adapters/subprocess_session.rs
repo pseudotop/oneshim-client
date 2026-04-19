@@ -102,8 +102,14 @@ impl GenericSubprocessSession {
         {
             self.run_gemini(prompt).await
         } else {
-            Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            // Iter-94: reachable only if caller configured a surface that has
+            // no conversation-session implementation on this code path. That's
+            // a configuration mismatch (invalid surface for this operation),
+            // not an internal error — wire code `config.invalid` lets
+            // telemetry/i18n surface "pick a different provider" rather than
+            // "something broke inside oneshim".
+            Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
                 message: format!(
                     "subprocess conversation sessions are not implemented for surface '{}'",
                     self.surface.surface_id
