@@ -97,7 +97,29 @@ pub(super) fn is_expired_past_grace(expires_at: &DateTime<Utc>, grace_secs: i64)
 }
 
 pub(super) fn map_core_error(err: CoreError) -> GuiInteractionError {
+    #[allow(deprecated)]
     match err {
+        // V2 variants (post Phase 4)
+        CoreError::PolicyDeniedV2 { message: msg, .. }
+        | CoreError::PrivacyDeniedV2 { message: msg, .. } => GuiInteractionError::ForbiddenV2 {
+            code: oneshim_core::error_codes::GuiCode::Forbidden,
+            message: msg,
+        },
+        CoreError::InvalidArgumentsV2 { message: msg, .. } => GuiInteractionError::BadRequestV2 {
+            code: oneshim_core::error_codes::GuiCode::BadRequest,
+            message: msg,
+        },
+        CoreError::ElementNotFoundV2 { name: msg, .. } => GuiInteractionError::BadRequestV2 {
+            code: oneshim_core::error_codes::GuiCode::BadRequest,
+            message: msg,
+        },
+        CoreError::ServiceUnavailableV2 { message: msg, .. }
+        | CoreError::SandboxUnsupportedV2 { message: msg, .. }
+        | CoreError::SandboxInitV2 { message: msg, .. } => GuiInteractionError::UnavailableV2 {
+            code: oneshim_core::error_codes::GuiCode::Unavailable,
+            message: msg,
+        },
+        // V1 deprecated variants (removed in Phase 4)
         CoreError::PolicyDenied(msg) | CoreError::PrivacyDenied(msg) => {
             GuiInteractionError::Forbidden(msg)
         }
