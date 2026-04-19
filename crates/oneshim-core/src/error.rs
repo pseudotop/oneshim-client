@@ -1,9 +1,9 @@
 use thiserror::Error;
 
 use crate::error_codes::{
-    AudioCode, AuthCode, ConfigCode, ConsentCode, GuiCode, IntegrityCode, InternalCode,
-    NetworkCode, NotFoundCode, OAuthCode, PermissionCode, PolicyCode, ProviderCode, SandboxCode,
-    SecretCode, ServiceCode, StorageCode, UiCode, ValidationCode,
+    AudioCode, AuthCode, ConfigCode, ConsentCode, GuiCode, InternalCode, NetworkCode, NotFoundCode,
+    OAuthCode, PermissionCode, PolicyCode, ProviderCode, SandboxCode, SecretCode, ServiceCode,
+    StorageCode, UiCode, ValidationCode,
 };
 use crate::ports::oauth::OAuthErrorKind;
 
@@ -68,21 +68,11 @@ pub enum CoreError {
     #[error("UI element not found [{code}]: {name}")]
     ElementNotFound { code: UiCode, name: String },
 
-    #[error("Binary hash mismatch [{code}]: expected={expected}, actual={actual}")]
-    BinaryHashMismatch {
-        code: IntegrityCode,
-        expected: String,
-        actual: String,
-    },
-
     #[error("Internal error [{code}]: {message}")]
     Internal { code: InternalCode, message: String },
 
     #[error("Policy denied [{code}]: {message}")]
     PolicyDenied { code: PolicyCode, message: String },
-
-    #[error("Process not allowed [{code}]: {message}")]
-    ProcessNotAllowed { code: PolicyCode, message: String },
 
     #[error("Consent required [{code}]: {message}")]
     ConsentRequired { code: ConsentCode, message: String },
@@ -160,10 +150,8 @@ impl CoreError {
             Self::InvalidArguments { code, .. } => code.as_str(),
             Self::NotFound { code, .. } => code.as_str(),
             Self::ElementNotFound { code, .. } => code.as_str(),
-            Self::BinaryHashMismatch { code, .. } => code.as_str(),
             Self::Internal { code, .. } => code.as_str(),
             Self::PolicyDenied { code, .. } => code.as_str(),
-            Self::ProcessNotAllowed { code, .. } => code.as_str(),
             Self::ConsentRequired { code, .. } => code.as_str(),
             Self::ConsentExpired { code } => code.as_str(),
             Self::SandboxInit { code, .. } => code.as_str(),

@@ -79,8 +79,7 @@ impl From<oneshim_core::error::CoreError> for ApiError {
             }
             CoreError::PolicyDenied { message, .. }
             | CoreError::PrivacyDenied { message, .. }
-            | CoreError::PermissionDenied { message, .. }
-            | CoreError::ProcessNotAllowed { message, .. } => ApiError::Forbidden(message),
+            | CoreError::PermissionDenied { message, .. } => ApiError::Forbidden(message),
             CoreError::InvalidArguments { message, .. }
             | CoreError::Config { message, .. }
             | CoreError::Network { message, .. }
@@ -108,7 +107,7 @@ mod tests {
     /// Regression guard: CoreError::PermissionDenied must map to HTTP 403
     /// Forbidden (not 500 Internal). Was dropping into the wildcard arm
     /// before iter-40 drift audit; caught by noting sibling semantic-
-    /// denial variants (PolicyDenied, PrivacyDenied, ProcessNotAllowed)
+    /// denial variants (PolicyDenied, PrivacyDenied)
     /// already mapped to Forbidden.
     #[test]
     fn permission_denied_maps_to_forbidden() {

@@ -10,13 +10,12 @@
 #[macro_use]
 mod macros;
 
-// 19 code enum submodules grouped by domain.
+// 18 code enum submodules grouped by domain.
 pub mod audio;
 pub mod auth;
 pub mod config;
 pub mod consent;
 pub mod gui;
-pub mod integrity;
 pub mod internal;
 pub mod network;
 pub mod not_found;
@@ -36,7 +35,6 @@ pub use auth::AuthCode;
 pub use config::ConfigCode;
 pub use consent::ConsentCode;
 pub use gui::GuiCode;
-pub use integrity::IntegrityCode;
 pub use internal::InternalCode;
 pub use network::NetworkCode;
 pub use not_found::NotFoundCode;
@@ -72,9 +70,6 @@ pub fn all_codes() -> Vec<&'static str> {
         codes.push(c.as_str());
     }
     for c in GuiCode::all() {
-        codes.push(c.as_str());
-    }
-    for c in IntegrityCode::all() {
         codes.push(c.as_str());
     }
     for c in InternalCode::all() {

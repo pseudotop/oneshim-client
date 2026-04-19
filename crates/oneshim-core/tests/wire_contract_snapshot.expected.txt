@@ -19,11 +19,9 @@ gui.not_found
 gui.ticket_invalid
 gui.unauthorized
 gui.unavailable
-integrity.hash_mismatch
 internal.generic
 internal.io
 internal.serialization
-network.failed
 network.generic
 network.rate_limit
 network.timeout
@@ -36,7 +34,6 @@ permission.permission_denied
 permission.privacy_denied
 policy.denied
 policy.generic
-policy.process_denied
 provider.analysis_failed
 provider.bedrock.unsupported
 provider.generic

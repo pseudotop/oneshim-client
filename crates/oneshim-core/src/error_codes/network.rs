@@ -3,8 +3,6 @@
 define_code_enum! {
     /// Network 카테고리 에러 코드.
     pub enum NetworkCode {
-        /// 네트워크 요청 일반 실패 (연결 거부, DNS 실패 등).
-        Failed => "network.failed",
         /// 요청 타임아웃 초과.
         Timeout => "network.timeout",
         /// 서버 레이트 리밋 도달 (429).

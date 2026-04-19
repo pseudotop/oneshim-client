@@ -5,8 +5,6 @@ define_code_enum! {
     pub enum PolicyCode {
         /// 정책 거부.
         Denied => "policy.denied",
-        /// 프로세스 허용 안 됨.
-        ProcessDenied => "policy.process_denied",
         /// 세분화 미완료.
         Generic => "policy.generic",
     }

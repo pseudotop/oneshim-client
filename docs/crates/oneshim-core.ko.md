@@ -302,9 +302,7 @@ pub enum CoreError {
 
     // 정책/자동화 에러
     #[error("정책 거부: {0}")] PolicyDenied(String),
-    #[error("프로세스 불허: {0}")] ProcessNotAllowed(String),
     #[error("잘못된 인자: {0}")] InvalidArguments(String),
-    #[error("바이너리 해시 불일치")] BinaryHashMismatch { expected: String, actual: String },
 
     // 동의 에러
     #[error("동의 필요: {0}")] ConsentRequired(String),

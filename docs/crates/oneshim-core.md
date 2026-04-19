@@ -302,9 +302,7 @@ pub enum CoreError {
 
     // Policy/automation errors
     #[error("Policy denied: {0}")] PolicyDenied(String),
-    #[error("Process not allowed: {0}")] ProcessNotAllowed(String),
     #[error("Invalid arguments: {0}")] InvalidArguments(String),
-    #[error("Binary hash mismatch")] BinaryHashMismatch { expected: String, actual: String },
 
     // Consent errors
     #[error("Consent required: {0}")] ConsentRequired(String),

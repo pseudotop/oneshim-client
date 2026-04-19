@@ -15,7 +15,7 @@ Two needs converged: introduce error-code infrastructure AND ship Bedrock as the
 
 ### 1. Error code infrastructure
 
-- 19 code enums (`ConfigCode`, `NetworkCode`, ..., `GuiCode`) defined via a single `define_code_enum!` macro that generates enum body, `as_str` match, `Display` impl, and `all()` enumerator from one variant list.
+- 18 code enums (`ConfigCode`, `NetworkCode`, ..., `GuiCode`) defined via a single `define_code_enum!` macro that generates enum body, `as_str` match, `Display` impl, and `all()` enumerator from one variant list.
 - Every struct-variant of `CoreError` and `GuiInteractionError` carries a typed `code` field; `#[from]`-wrapped external error types (`Serialization`, `Io`) derive their code via `impl code()` per §7.
 - Unified accessor `err.code() -> &'static str` for telemetry/logs/i18n.
 - Wire-format codes follow `{domain}.{category}[.{qualifier}]` convention.
@@ -123,3 +123,13 @@ When a new `#[from]`-wrapped external error type is added to `CoreError`:
 ### Post-merge test coverage additions
 
 Between the initial ADR and the current state, 80+ regression tests were added covering the semantic HTTP status mapping across 13 of 14 dispatchers. Each test verifies a specific status-code → CoreError variant mapping AND (for most dispatchers) a domain-fallback assertion. See [`docs/guides/http-status-error-mapping.md`](../guides/http-status-error-mapping.md) for the canonical pattern and the full dispatcher registry.
+
+### Post-merge orphan wire-code cleanup (pre-merge)
+
+During final drift audit, 3 wire codes and 2 `CoreError` variants were identified as declared-but-never-constructed and removed before merge per YAGNI:
+
+- `CoreError::BinaryHashMismatch` + `IntegrityCode::HashMismatch` (+ entire `IntegrityCode` enum) — Binary integrity is handled inside the updater via `UpdateError::Integrity`; this `CoreError` variant has no construction site since v0.1.0 and no `From<UpdateError> for CoreError` conversion. The whole enum file was deleted.
+- `CoreError::ProcessNotAllowed` + `PolicyCode::ProcessDenied` — Redundant with `PolicyDenied` (same field shape, only display-text differed). All automation paths emit `PolicyDenied`; zero construction sites for `ProcessNotAllowed`.
+- `NetworkCode::Failed` — Reserved for connection-level failure (per docstring intent) but never wired up; all non-timeout network errors use `NetworkCode::Generic`. Kept `NetworkCode::Generic` as the canonical fallback.
+
+Wire snapshot: 57 → 54 codes. Code enum count: 19 → 18. Removed entirely pre-merge since the wire contract hasn't yet been released to any external consumer. If any of these semantics resurface as a real need post-merge, normal wire-immutability procedure applies (append, don't replace).
