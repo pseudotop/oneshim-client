@@ -21,9 +21,10 @@ use super::SqliteVectorStore;
 impl VectorStore for SqliteVectorStore {
     async fn store(&self, vector: Vec<f32>, metadata: EmbeddingMetadata) -> Result<(), CoreError> {
         if vector.is_empty() {
-            return Err(CoreError::InvalidArguments(
-                "Cannot store empty f32 vector".to_string(),
-            ));
+            return Err(CoreError::InvalidArgumentsV2 {
+                code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+                message: "Cannot store empty f32 vector".to_string(),
+            });
         }
 
         let blob = f32_vec_to_bytes(&vector);
@@ -292,18 +293,22 @@ impl VectorStore for SqliteVectorStore {
     ) -> Result<(), CoreError> {
         // Validate INT8 vector is non-empty before persisting.
         if vector_int8.data.is_empty() {
-            return Err(CoreError::InvalidArguments(
-                "Cannot store empty INT8 vector".to_string(),
-            ));
+            return Err(CoreError::InvalidArgumentsV2 {
+                code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+                message: "Cannot store empty INT8 vector".to_string(),
+            });
         }
 
         // Validate f32/INT8 dimension consistency when f32 is being stored.
         if !skip_float32 && vector_f32.len() != vector_int8.data.len() {
-            return Err(CoreError::InvalidArguments(format!(
-                "Vector dimension mismatch: f32 has {}, INT8 has {}",
-                vector_f32.len(),
-                vector_int8.data.len()
-            )));
+            return Err(CoreError::InvalidArgumentsV2 {
+                code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+                message: format!(
+                    "Vector dimension mismatch: f32 has {}, INT8 has {}",
+                    vector_f32.len(),
+                    vector_int8.data.len()
+                ),
+            });
         }
 
         // When skip_float32 is true, store an empty BLOB instead of the f32 data.

@@ -298,7 +298,10 @@ impl SecretStore for KeychainSecretStore {
         let v = value.to_owned();
         tokio::task::spawn_blocking(move || ops.store_sync(&ns, &k, &v))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
             .map_err(CoreError::from)
     }
 
@@ -308,7 +311,10 @@ impl SecretStore for KeychainSecretStore {
         let k = key.to_owned();
         tokio::task::spawn_blocking(move || ops.retrieve_sync(&ns, &k))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
             .map_err(CoreError::from)
     }
 
@@ -318,7 +324,10 @@ impl SecretStore for KeychainSecretStore {
         let k = key.to_owned();
         tokio::task::spawn_blocking(move || ops.delete_sync(&ns, &k))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
             .map_err(CoreError::from)
     }
 
@@ -327,7 +336,10 @@ impl SecretStore for KeychainSecretStore {
         let ns = namespace.to_owned();
         tokio::task::spawn_blocking(move || ops.delete_namespace_sync(&ns))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
             .map_err(CoreError::from)
     }
 }

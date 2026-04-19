@@ -506,8 +506,8 @@ async fn save_metrics_mutex_poison_returns_err_variant_only() {
         .save_metrics(&sample_metrics(Utc::now(), 10.0))
         .await;
     assert!(
-        matches!(result, Err(CoreError::Internal(_))),
-        "expected Err(CoreError::Internal(_)), got {result:?}"
+        matches!(result, Err(CoreError::InternalV2 { .. })),
+        "expected Err(CoreError::InternalV2 {{ .. }}), got {result:?}"
     );
 }
 

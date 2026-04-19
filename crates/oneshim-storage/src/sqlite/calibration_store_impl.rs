@@ -21,14 +21,17 @@ impl CalibrationWriter for SqliteStorage {
             return Ok(());
         }
 
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("SQLite lock poisoned: {e}"),
+        })?;
 
         let tx = conn
             .unchecked_transaction()
-            .map_err(|e| CoreError::Internal(format!("Failed to begin transaction: {e}")))?;
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to begin transaction: {e}"),
+            })?;
 
         // Ensure params snapshot exists (idempotent upsert).
         // Each entry carries `params_json` — we deduplicate by `params_version_id`
@@ -39,7 +42,10 @@ impl CalibrationWriter for SqliteStorage {
                     "INSERT OR IGNORE INTO trigger_params_snapshots (id, preset, params_json)
                      VALUES (?1, ?2, ?3)",
                 )
-                .map_err(|e| CoreError::Internal(format!("prepare snapshot stmt: {e}")))?;
+                .map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("prepare snapshot stmt: {e}"),
+                })?;
 
             let mut seen_versions = std::collections::HashSet::new();
             for entry in entries {
@@ -51,7 +57,10 @@ impl CalibrationWriter for SqliteStorage {
                     };
                     insert_snapshot
                         .execute(params![entry.params_version_id, "default", json])
-                        .map_err(|e| CoreError::Internal(format!("insert params snapshot: {e}")))?;
+                        .map_err(|e| CoreError::InternalV2 {
+                            code: oneshim_core::error_codes::InternalCode::Generic,
+                            message: format!("insert params snapshot: {e}"),
+                        })?;
                 }
             }
         }
@@ -67,7 +76,10 @@ impl CalibrationWriter for SqliteStorage {
                       trigger_action, active_regime_id, params_version_id, is_noise)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 )
-                .map_err(|e| CoreError::Internal(format!("prepare calibration stmt: {e}")))?;
+                .map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("prepare calibration stmt: {e}"),
+                })?;
 
             for entry in entries {
                 let action_str = entry.trigger_action.map(|a| enum_to_sql_str(&a));
@@ -89,22 +101,27 @@ impl CalibrationWriter for SqliteStorage {
                     entry.params_version_id,
                     entry.is_noise as i32,
                 ])
-                .map_err(|e| CoreError::Internal(format!("insert calibration entry: {e}")))?;
+                .map_err(|e| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("insert calibration entry: {e}"),
+                })?;
             }
         }
 
-        tx.commit()
-            .map_err(|e| CoreError::Internal(format!("commit calibration batch: {e}")))?;
+        tx.commit().map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("commit calibration batch: {e}"),
+        })?;
 
         debug!("logged {} calibration entries", entries.len());
         Ok(())
     }
 
     fn flag_noise_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<u64, CoreError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let conn = self.conn.lock().map_err(|e| CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("SQLite lock poisoned: {e}"),
+        })?;
 
         let updated = conn
             .execute(
@@ -112,7 +129,10 @@ impl CalibrationWriter for SqliteStorage {
                  WHERE timestamp >= ?1 AND timestamp <= ?2",
                 params![from.to_rfc3339(), to.to_rfc3339()],
             )
-            .map_err(|e| CoreError::Internal(format!("flag noise range: {e}")))?;
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("flag noise range: {e}"),
+            })?;
 
         debug!("flagged {} calibration entries as noise", updated);
         Ok(updated as u64)

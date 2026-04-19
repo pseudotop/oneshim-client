@@ -36,16 +36,31 @@ impl From<StorageError> for CoreError {
     fn from(err: StorageError) -> Self {
         match err {
             StorageError::Core(e) => e,
-            StorageError::Sqlite(e) => CoreError::Storage(e.to_string()),
+            StorageError::Sqlite(e) => CoreError::StorageV2 {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: e.to_string(),
+            },
             StorageError::Io(e) => CoreError::Io(e),
-            StorageError::SecretStore(msg) => CoreError::SecretStoreError(msg),
+            StorageError::SecretStore(msg) => CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: msg,
+            },
             StorageError::NotFound { resource_type, id } => {
                 CoreError::NotFound { resource_type, id }
             }
-            StorageError::Encryption(msg) => CoreError::Internal(msg),
+            StorageError::Encryption(msg) => CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: msg,
+            },
             StorageError::Validation { field, message } => CoreError::Validation { field, message },
-            StorageError::Config(msg) => CoreError::Config(msg),
-            StorageError::Internal(msg) => CoreError::Internal(msg),
+            StorageError::Config(msg) => CoreError::ConfigV2 {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
+                message: msg,
+            },
+            StorageError::Internal(msg) => CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: msg,
+            },
         }
     }
 }

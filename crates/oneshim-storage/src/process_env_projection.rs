@@ -76,28 +76,35 @@ impl SecretProjectionPort for ProcessEnvSecretProjection {
         request: SecretProjectionRequest,
     ) -> Result<SecretProjectionResult, CoreError> {
         if request.target != ProjectionTarget::ProcessEnv {
-            return Err(CoreError::InvalidArguments(
-                "process-env projection adapter only supports ProjectionTarget::ProcessEnv"
-                    .to_string(),
-            ));
+            return Err(CoreError::InvalidArgumentsV2 {
+                code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+                message:
+                    "process-env projection adapter only supports ProjectionTarget::ProcessEnv"
+                        .to_string(),
+            });
         }
 
-        let template = self.templates.get(&request.consumer_id).ok_or_else(|| {
-            CoreError::Config(format!(
-                "no process-env projection template registered for consumer '{}'",
-                request.consumer_id
-            ))
-        })?;
+        let template =
+            self.templates
+                .get(&request.consumer_id)
+                .ok_or_else(|| CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                    message: format!(
+                        "no process-env projection template registered for consumer '{}'",
+                        request.consumer_id
+                    ),
+                })?;
 
         let secret = self
             .secret_store
             .retrieve(&request.namespace, &request.key)
             .await?
-            .ok_or_else(|| {
-                CoreError::Auth(format!(
+            .ok_or_else(|| CoreError::AuthV2 {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!(
                     "secret not found for projection request {}:{}",
                     request.namespace, request.key
-                ))
+                ),
             })?;
 
         let env_vars = template
@@ -231,7 +238,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, CoreError::Config(_)));
+        assert!(matches!(err, CoreError::ConfigV2 { .. }));
     }
 
     #[test]

@@ -154,7 +154,10 @@ impl SecretStore for FileSecretStore {
         let value = value.to_string();
         tokio::task::spawn_blocking(move || inner.store_sync(&namespace, &key, &value))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
             .map_err(CoreError::from)
     }
 
@@ -164,7 +167,10 @@ impl SecretStore for FileSecretStore {
         let key = key.to_string();
         tokio::task::spawn_blocking(move || Ok(inner.retrieve_sync(&namespace, &key)))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
     }
 
     async fn delete(&self, namespace: &str, key: &str) -> Result<(), CoreError> {
@@ -173,7 +179,10 @@ impl SecretStore for FileSecretStore {
         let key = key.to_string();
         tokio::task::spawn_blocking(move || inner.delete_sync(&namespace, &key))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
             .map_err(CoreError::from)
     }
 
@@ -182,7 +191,10 @@ impl SecretStore for FileSecretStore {
         let namespace = namespace.to_string();
         tokio::task::spawn_blocking(move || inner.delete_namespace_sync(&namespace))
             .await
-            .map_err(|e| CoreError::SecretStoreError(format!("spawn_blocking: {e}")))?
+            .map_err(|e| CoreError::SecretStoreErrorV2 {
+                code: oneshim_core::error_codes::SecretCode::Failed,
+                message: format!("spawn_blocking: {e}"),
+            })?
             .map_err(CoreError::from)
     }
 }

@@ -28,10 +28,8 @@ impl EnvSecretStore {
     }
 
     fn read_only_error() -> CoreError {
-        CoreError::SecretStoreError(
-            "environment-backed secret store is read-only; modify the environment source instead"
-                .to_string(),
-        )
+        CoreError::SecretStoreErrorV2 { code: oneshim_core::error_codes::SecretCode::Failed, message: "environment-backed secret store is read-only; modify the environment source instead"
+                .to_string(), }
     }
 }
 
@@ -83,6 +81,6 @@ mod tests {
             .store("provider/openai/default", "api_key", "sk-test")
             .await
             .unwrap_err();
-        assert!(matches!(err, CoreError::SecretStoreError(_)));
+        assert!(matches!(err, CoreError::SecretStoreErrorV2 { .. }));
     }
 }
