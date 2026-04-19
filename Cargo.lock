@@ -5515,6 +5515,7 @@ dependencies = [
  "criterion",
  "oneshim-core",
  "serde",
+ "serial_test",
  "sysinfo",
  "tempfile",
  "thiserror 2.0.18",

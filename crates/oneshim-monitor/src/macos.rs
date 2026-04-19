@@ -201,8 +201,15 @@ pub fn get_mouse_position_macos() -> Option<MousePosition> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    // Tests below mutate the module-level CONSECUTIVE_TIMEOUTS static.
+    // #[serial] forces them to run one at a time to prevent cross-test
+    // races where one test's store(0) reset clobbers another's
+    // store(CIRCUIT_BREAKER_THRESHOLD) precondition.
 
     #[tokio::test]
+    #[serial]
     async fn get_active_window_returns_result() {
         // Reset circuit breaker for test isolation
         CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
@@ -235,6 +242,7 @@ mod tests {
     };
 
     #[tokio::test]
+    #[serial]
     async fn circuit_breaker_skips_when_tripped() {
         // Simulate threshold timeouts
         CONSECUTIVE_TIMEOUTS.store(CIRCUIT_BREAKER_THRESHOLD, Ordering::Relaxed);
@@ -253,6 +261,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn circuit_breaker_reset_on_zero() {
         CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
         assert_eq!(CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed), 0);

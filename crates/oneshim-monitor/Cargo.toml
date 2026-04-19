@@ -30,6 +30,7 @@ windows-sys = { workspace = true }
 tempfile = { workspace = true }
 criterion = { workspace = true }
 tokio = { workspace = true }
+serial_test = "3"
 
 [[bench]]
 name = "monitor_bench"
