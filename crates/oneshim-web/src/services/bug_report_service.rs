@@ -25,7 +25,14 @@ impl BugReportService {
         pii_level: Option<String>,
     ) -> Result<BugReportBundleDto, ApiError> {
         let sanitizer = self.ctx.pii_sanitizer.as_ref().ok_or_else(|| {
-            ApiError::Internal("PII sanitizer not configured — cannot produce bug report".into())
+            // Iter-101: safety-refusal because PII sanitizer wiring is
+            // absent in this deployment. Route as 503 ServiceUnavailable
+            // (admin action required) rather than 500 Internal (suggests
+            // runtime crash). Semantic: the bug-report feature itself is
+            // unavailable until the admin completes deployment wiring.
+            ApiError::ServiceUnavailable(
+                "PII sanitizer not configured — cannot produce bug report".into(),
+            )
         })?;
 
         let diagnostics = SupportDiagnosticsQueryService::new(self.ctx.support.clone())
