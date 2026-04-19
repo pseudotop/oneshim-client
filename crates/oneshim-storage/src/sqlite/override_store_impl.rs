@@ -319,8 +319,8 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            matches!(err, CoreError::NotFound { .. }),
-            "expected NotFound, got: {err:?}"
+            matches!(err, CoreError::NotFoundV2 { .. }),
+            "expected NotFoundV2, got: {err:?}"
         );
     }
 
