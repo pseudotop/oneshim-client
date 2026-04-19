@@ -50,9 +50,9 @@ impl From<StorageError> for CoreError {
                 resource_type,
                 id,
             },
-            StorageError::Encryption(msg) => CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: msg,
+            StorageError::Encryption(msg) => CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("encryption: {msg}"),
             },
             StorageError::Validation { field, message } => CoreError::Validation {
                 code: oneshim_core::error_codes::ValidationCode::InvalidField,
