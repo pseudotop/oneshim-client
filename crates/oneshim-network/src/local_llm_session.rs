@@ -459,9 +459,19 @@ impl ConversationSession for LocalLlmSession {
             .await
             .map_err(|e| {
                 *self.state.lock() = SessionState::Failed;
-                CoreError::Network {
-                    code: oneshim_core::error_codes::NetworkCode::Generic,
-                    message: format!("Ollama request failed: {e}"),
+                // Iter-90: Ollama is local, timeouts are rare but possible when
+                // a large model is still loading. Keep the canonical split so
+                // Grafana/logs can distinguish slow-model-load from true failure.
+                if e.is_timeout() {
+                    CoreError::RequestTimeout {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
+                        timeout_ms: 0,
+                    }
+                } else {
+                    CoreError::Network {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("Ollama request failed: {e}"),
+                    }
                 }
             })?;
 
@@ -505,7 +515,21 @@ impl ConversationSession for LocalLlmSession {
 
             while let Some(chunk_result) = byte_stream.next().await {
                 let bytes = chunk_result
-                    .map_err(|e| CoreError::Network { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("stream read error: {e}") })?;
+                    .map_err(|e| {
+                        // Iter-90: stream-read timeout gets the dedicated wire
+                        // code; keep consistent with send()-time handling above.
+                        if e.is_timeout() {
+                            CoreError::RequestTimeout {
+                                code: oneshim_core::error_codes::NetworkCode::Timeout,
+                                timeout_ms: 0,
+                            }
+                        } else {
+                            CoreError::Network {
+                                code: oneshim_core::error_codes::NetworkCode::Generic,
+                                message: format!("stream read error: {e}"),
+                            }
+                        }
+                    })?;
                 let text = String::from_utf8_lossy(&bytes);
                 line_buffer.push_str(&text);
 

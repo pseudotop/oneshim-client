@@ -228,14 +228,27 @@ impl AnalysisProvider for AnalysisClient {
             }
         }
 
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| NetworkError::Analysis(format!("Analysis API request failed: {}", e)))?;
+        let response = builder.send().await.map_err(|e| {
+            // Iter-90: route timeouts through NetworkError::Timeout so wire
+            // code is network.timeout, not provider.analysis_failed.
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Analysis API request failed: {}", e))
+            }
+        })?;
 
         let status = response.status();
         let response_text = response.text().await.map_err(|e| {
-            NetworkError::Analysis(format!("Failed to read analysis response: {}", e))
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Failed to read analysis response: {}", e))
+            }
         })?;
 
         if !status.is_success() {
@@ -312,14 +325,27 @@ impl AnalysisProvider for AnalysisClient {
             }
         }
 
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| NetworkError::Analysis(format!("Summarize API request failed: {}", e)))?;
+        let response = builder.send().await.map_err(|e| {
+            // Iter-90: route timeouts through NetworkError::Timeout so wire
+            // code is network.timeout, not provider.analysis_failed.
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Summarize API request failed: {}", e))
+            }
+        })?;
 
         let status = response.status();
         let response_text = response.text().await.map_err(|e| {
-            NetworkError::Analysis(format!("Failed to read summary response: {}", e))
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Failed to read summary response: {}", e))
+            }
         })?;
 
         if !status.is_success() {

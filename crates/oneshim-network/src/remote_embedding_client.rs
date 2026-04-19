@@ -73,9 +73,19 @@ impl RemoteEmbeddingProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("Embedding API request failed: {e}"),
+            .map_err(|e| {
+                // Iter-90: split timeout vs generic per canonical pattern.
+                if e.is_timeout() {
+                    CoreError::RequestTimeout {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
+                        timeout_ms: 0, // sentinel; client-level timeout is in reqwest builder
+                    }
+                } else {
+                    CoreError::Network {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("Embedding API request failed: {e}"),
+                    }
+                }
             })?;
 
         let status = response.status();

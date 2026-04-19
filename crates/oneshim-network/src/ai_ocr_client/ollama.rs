@@ -93,9 +93,19 @@ pub(super) async fn probe_ollama_model_supports_ocr(
         .json(&serde_json::json!({ "model": model }))
         .send()
         .await
-        .map_err(|error| CoreError::Network {
-            code: oneshim_core::error_codes::NetworkCode::Generic,
-            message: format!("Ollama model capability probe failed: {error}"),
+        .map_err(|error| {
+            // Iter-90: split timeout vs generic per canonical pattern.
+            if error.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("Ollama model capability probe failed: {error}"),
+                }
+            }
         })?;
     let status = response.status();
     let body = response.text().await.map_err(|error| CoreError::Network {

@@ -24,6 +24,29 @@ ADR-019의 `err.code()` wire code는 Grafana group-by-code, code 기반 i18n 룩
 | 504 Gateway Timeout | `RequestTimeout` | `network.timeout` | 예 |
 | 기타 non-success | 도메인별 또는 `Network` | 다양 | 경우에 따라 |
 
+## Pre-response (reqwest) 타임아웃 처리
+
+HTTP status code를 받기 전, `reqwest::Client::send()`는 transport-level 에러로 실패할 수 있습니다. **Timeout 에러는 반드시 `NetworkCode::Timeout`으로 라우팅**되어야 하며, 도메인별 fallback으로 가면 안 됩니다. 그렇지 않으면 Grafana에서 connection timeout과 500 server error가 동일하게 보입니다:
+
+```rust
+let response = builder.send().await.map_err(|e| {
+    if e.is_timeout() {
+        CoreError::RequestTimeout {
+            code: NetworkCode::Timeout,
+            timeout_ms: 0,  // sentinel 또는 self.timeout_secs * 1000 (가능하면)
+        }
+    } else {
+        // 도메인별 fallback
+        CoreError::Network {
+            code: NetworkCode::Generic,
+            message: format!("<컨텍스트>: {e}"),
+        }
+    }
+})?;
+```
+
+Body read (`response.text().await`)와 stream chunk read에도 동일 패턴 적용 — 헤더 도착 후에도 타임아웃 가능. `NetworkError` 기반 디스패처는 `NetworkError::Timeout { timeout_ms }` 방출.
+
 ## 정식 구현
 
 ```rust

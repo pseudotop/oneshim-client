@@ -157,15 +157,35 @@ impl RemoteLlmProvider {
             if let Some(ref flag) = self.last_request_ok {
                 flag.store(false, Ordering::Relaxed);
             }
-            CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("LLM API request failed: {}", e),
+            // Iter-90: split timeout vs generic per canonical pattern
+            // (cloud_stt.rs:107, http_client.rs map_reqwest_error).
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0, // sentinel; configured timeout is in request-site logs
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("LLM API request failed: {}", e),
+                }
             }
         })?;
         let status = response.status();
-        let body = response.text().await.map_err(|e| CoreError::Network {
-            code: oneshim_core::error_codes::NetworkCode::Generic,
-            message: format!("LLM API response read failure: {}", e),
+        let body = response.text().await.map_err(|e| {
+            // Iter-90: body-read timeout is also a timeout; keep the split
+            // consistent with send()-time timeout handling above.
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("LLM API response read failure: {}", e),
+                }
+            }
         })?;
         if !status.is_success() {
             if let Some(ref flag) = self.last_request_ok {

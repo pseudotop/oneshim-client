@@ -353,9 +353,17 @@ impl ConversationSession for HttpApiSession {
 
         let response = builder.send().await.map_err(|e| {
             *self.state.lock() = SessionState::Failed;
-            CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("HTTP API session request failed: {e}"),
+            // Iter-90: split timeout vs generic per canonical pattern.
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("HTTP API session request failed: {e}"),
+                }
             }
         })?;
 

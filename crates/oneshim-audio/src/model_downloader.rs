@@ -90,15 +90,22 @@ impl ModelDownloader for WhisperModelDownloader {
 
         info!(model = ?model, url = %url, "starting model download");
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("model download request: {e}"),
-            })?;
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            // Iter-90: split timeout vs generic per canonical pattern
+            // (cloud_stt.rs:107, http_client.rs map_reqwest_error) so
+            // Grafana can group model-download timeouts separately.
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0, // sentinel; reqwest client-level timeout is not exposed
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("model download request: {e}"),
+                }
+            }
+        })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -156,9 +163,20 @@ impl ModelDownloader for WhisperModelDownloader {
                 });
             }
 
-            let chunk = chunk_result.map_err(|e| CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("download stream: {e}"),
+            let chunk = chunk_result.map_err(|e| {
+                // Iter-90: stream-read timeout propagates the same wire code
+                // as send()-time timeout (see top of this function).
+                if e.is_timeout() {
+                    CoreError::RequestTimeout {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
+                        timeout_ms: 0,
+                    }
+                } else {
+                    CoreError::Network {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("download stream: {e}"),
+                    }
+                }
             })?;
 
             file.write_all(&chunk)

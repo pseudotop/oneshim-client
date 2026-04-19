@@ -24,6 +24,29 @@ Before this pattern was established, 14 dispatchers across `oneshim-network`, `o
 | 504 Gateway Timeout | `RequestTimeout` | `network.timeout` | Yes |
 | Other non-success | Domain-specific or `Network` | various | Depends |
 
+## Pre-response (reqwest) timeout handling
+
+Before we have an HTTP status code at all, `reqwest::Client::send()` can fail with a transport-level error. **Timeout errors must route to `NetworkCode::Timeout`**, not to the domain-specific fallback. Otherwise a connection-timeout and a 500-server-error would look identical in Grafana:
+
+```rust
+let response = builder.send().await.map_err(|e| {
+    if e.is_timeout() {
+        CoreError::RequestTimeout {
+            code: NetworkCode::Timeout,
+            timeout_ms: 0,  // sentinel, or self.timeout_secs * 1000 if available
+        }
+    } else {
+        // domain-specific fallback
+        CoreError::Network {
+            code: NetworkCode::Generic,
+            message: format!("<context>: {e}"),
+        }
+    }
+})?;
+```
+
+The same pattern applies to body-read (`response.text().await`) and stream-chunk reads — both can time out after the headers have arrived. For `NetworkError`-based dispatchers, emit `NetworkError::Timeout { timeout_ms }` instead.
+
 ## Canonical implementation
 
 ```rust

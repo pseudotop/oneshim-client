@@ -405,14 +405,33 @@ impl OcrProvider for RemoteOcrProvider {
         if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
-        let response = builder.send().await.map_err(|e| CoreError::Network {
-            code: oneshim_core::error_codes::NetworkCode::Generic,
-            message: format!("OCR API request failed: {}", e),
+        let response = builder.send().await.map_err(|e| {
+            // Iter-90: split timeout vs generic (canonical pattern).
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("OCR API request failed: {}", e),
+                }
+            }
         })?;
         let status = response.status();
-        let body = response.text().await.map_err(|e| CoreError::Network {
-            code: oneshim_core::error_codes::NetworkCode::Generic,
-            message: format!("OCR API response read failure: {}", e),
+        let body = response.text().await.map_err(|e| {
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("OCR API response read failure: {}", e),
+                }
+            }
         })?;
         if !status.is_success() {
             warn!(status = %status, "OCR API error response");

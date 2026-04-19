@@ -81,9 +81,19 @@ impl LanSyncTransport {
             })
             .send()
             .await
-            .map_err(|e| CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("challenge request to {peer_id}: {e}"),
+            .map_err(|e| {
+                // Iter-90: split timeout vs generic per canonical pattern.
+                if e.is_timeout() {
+                    CoreError::RequestTimeout {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
+                        timeout_ms: 0,
+                    }
+                } else {
+                    CoreError::Network {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("challenge request to {peer_id}: {e}"),
+                    }
+                }
             })?;
 
         if !challenge_resp.status().is_success() {
@@ -147,9 +157,18 @@ impl LanSyncTransport {
             })
             .send()
             .await
-            .map_err(|e| CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("verify request to {peer_id}: {e}"),
+            .map_err(|e| {
+                if e.is_timeout() {
+                    CoreError::RequestTimeout {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
+                        timeout_ms: 0,
+                    }
+                } else {
+                    CoreError::Network {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("verify request to {peer_id}: {e}"),
+                    }
+                }
             })?;
 
         if !verify_resp.status().is_success() {
