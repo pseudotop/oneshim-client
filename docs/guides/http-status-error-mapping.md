@@ -98,7 +98,7 @@ This preserves domain context for the "didn't match any known status" bucket.
 
 ## Dispatchers currently following this pattern
 
-14 dispatchers (as of 2026-04-20). **Impl** = mapping is implemented. **Tests** = has regression tests covering the mapping (specific-arm + fallback).
+15 dispatchers. **Impl** = mapping is implemented. **Tests** = has regression tests covering the mapping (specific-arm + fallback).
 
 | Crate / module | Impl | Tests |
 |---|---|---|
@@ -113,6 +113,7 @@ This preserves domain context for the "didn't match any known status" bucket.
 | `oneshim-network::analysis_client::summarize` | ✓ | ✓ specific (3 spot-checks) + fallback |
 | `oneshim-network::http_api_session` | ✓ | ✓ specific + fallback |
 | `oneshim-network::auth::login` | ✓ | ✓ specific + fallback |
+| `oneshim-network::auth::refresh` | ✓ | ✓ specific (4 arms: 401/429/503/504) + fallback (500) — added iter-98 |
 | `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | ⏸ deferred — LAN sync enforces TLS-only; mock HTTP via mockito is insufficient. Would require rustls-TlsAcceptor + generated test certs. Semantic mapping is implemented and defensive; regression impact is limited because peer-auth failures are rare and non-catastrophic (LAN sync is best-effort) |
 | `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
 | `oneshim-audio::model_downloader` | ✓ | ✓ specific + fallback (needed `new_with_base_url` injection) |
