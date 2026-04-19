@@ -537,4 +537,40 @@ mod tests {
         let body = serde_json::json!({"choices": []});
         assert!(client.extract_text(&body).is_err());
     }
+
+    /// ADR-019 §3 regression guard: `analyze()` must reject Bedrock before
+    /// attempting the HTTP call. A regression that removes the guard would
+    /// silently send OpenAI-format payloads to whatever endpoint the user
+    /// configured, rather than returning the typed UnsupportedProviderBedrock
+    /// code that telemetry/i18n depend on.
+    #[tokio::test]
+    async fn analyze_rejects_bedrock_provider() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://bedrock-runtime.us-east-1.amazonaws.com".to_string(),
+            api_key: String::new(),
+            model: Some("anthropic.claude-3-5-sonnet".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Bedrock,
+            surface_id: None,
+            credential: None,
+        };
+        let client = AnalysisClient::new(&config);
+        let result = client.analyze("{}", "you are a test").await;
+        match result {
+            Err(CoreError::Config { code, message }) => {
+                assert_eq!(
+                    code,
+                    oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    "expected UnsupportedProviderBedrock code, got {code:?}"
+                );
+                assert!(
+                    message.contains("Bedrock"),
+                    "expected Bedrock-mentioning message, got {message:?}"
+                );
+            }
+            other => panic!(
+                "expected CoreError::Config {{ UnsupportedProviderBedrock, .. }}, got {other:?}"
+            ),
+        }
+    }
 }
