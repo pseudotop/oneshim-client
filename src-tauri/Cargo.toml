@@ -154,3 +154,4 @@ tokio-test = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
 zeroize = { workspace = true }
+serial_test = "3"

@@ -326,6 +326,18 @@ pub async fn report_frontend_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    // Tests that mutate the three global cooldown maps
+    // (NOTIFICATION_COOLDOWN, RECOVERY_COOLDOWN, LOG_COOLDOWN) must run
+    // serially — reset_all_cooldowns() wipes all three maps and would
+    // race with other cooldown tests running in parallel, causing
+    // intermittent assertion failures (observed ~1 in 5 parallel runs
+    // before this serialization was added).
+    //
+    // Tests using `#[serial]` share a single global lock, so they
+    // effectively run in sequence while tests without the attribute
+    // continue to run in parallel with each other.
 
     fn reset_all_cooldowns() {
         for mutex in [&NOTIFICATION_COOLDOWN, &RECOVERY_COOLDOWN, &LOG_COOLDOWN] {
@@ -360,6 +372,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn check_and_update_cooldown_first_call_allows() {
         reset_all_cooldowns();
         let allowed =
@@ -368,6 +381,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn check_and_update_cooldown_blocks_within_window() {
         reset_all_cooldowns();
         let route = "/test-cooldown-block";
@@ -378,6 +392,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn check_and_update_cooldown_separates_by_route() {
         reset_all_cooldowns();
         let cooldown = Duration::from_secs(10);
@@ -498,6 +513,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn notification_cooldown_separates_severities() {
         // NC-NEW-4 regression: warning/error/critical on the same route
         // must not share a cooldown bucket. A benign warning notification
@@ -520,6 +536,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn recovery_cooldown_separates_strategies() {
         // NC-1 regression: reset-route and full-reload share a route, so
         // the cooldown key must include strategy. Use the helper (NC-NEW-5)
