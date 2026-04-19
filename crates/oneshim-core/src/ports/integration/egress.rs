@@ -1,4 +1,20 @@
 //! Integration outbound egress ports, policy, and audit.
+//!
+//! # Errors (all traits in this module)
+//! - `CoreError::Storage` (wire: `storage.failed`) — outbox enqueue /
+//!   list_pending / delete / cursor persistence failure (SQLite-backed
+//!   outbox), audit record persistence in `IntegrationAuditPort`.
+//! - `CoreError::Network` (wire: `network.connection_failed`),
+//!   `CoreError::RequestTimeout`, `CoreError::RateLimit`,
+//!   `CoreError::ServiceUnavailable` — `flush` delegating to the
+//!   integration transport follows the canonical HTTP semantic mapping.
+//! - `CoreError::Auth` (wire: `auth.failed`) — outbound transport
+//!   auth rejection surfaces through `flush`.
+//! - Policy denial is NOT an error — `authorize_insight` returns
+//!   `Ok(IntegrationEgressDecision::deny(reason))` rather than Err.
+//!   Policy engine failure (e.g., rule-load I/O) surfaces as
+//!   `CoreError::Io` (wire: `internal.io`) or `CoreError::Internal`.
+//! - Empty queue / no pending cursor = `Ok(0)` / `Ok(None)` / `Ok(vec![])`.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

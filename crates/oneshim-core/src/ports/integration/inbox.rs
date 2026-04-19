@@ -1,4 +1,22 @@
 //! Integration inbound inbox ports — prompt delivery, lifecycle, and signaling.
+//!
+//! # Errors (all traits in this module)
+//! - `CoreError::Network` / `CoreError::RequestTimeout` /
+//!   `CoreError::RateLimit` / `CoreError::ServiceUnavailable` /
+//!   `CoreError::Auth` — `refresh` and `acknowledge`/`dismiss` delegate
+//!   to the transport and follow the canonical HTTP semantic mapping.
+//! - `CoreError::Storage` (wire: `storage.failed`) — all local
+//!   persistence methods (upsert_prompts, list_pending/unpresented,
+//!   pending_count, mark_presented, update_status, expire_stale,
+//!   ack-cursor load/store, record_prompt_receipt).
+//! - `CoreError::NotFound` (wire: `resource.not_found`,
+//!   `resource_type = "prompt"`) — `acknowledge`/`dismiss`/
+//!   `mark_presented`/`update_status` with an unknown `prompt_id`.
+//!   Some adapters treat unknown id as rowcount=0 no-op (Ok(())); check
+//!   the specific impl for behavior.
+//! - `CoreError::Internal` (wire: `internal.generic`) — OS-level
+//!   notification presentation failure in `IntegrationPromptPresenterPort`
+//!   (desktop notifier backend unavailable / stale handle).
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};

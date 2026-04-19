@@ -1,4 +1,18 @@
 //! Integration insight producer, source, and checkpoint ports.
+//!
+//! # Errors (all traits in this module)
+//! - `CoreError::Storage` (wire: `storage.failed`) — all methods are
+//!   SQLite-backed (local suggestion query, insight candidate
+//!   enumeration, checkpoint cursor load/store). iter-47 mass fix
+//!   pattern applies.
+//! - `CoreError::Internal` (wire: `internal.generic`) — insight
+//!   producer fan-out failure (source returned candidate but enqueue
+//!   onto the egress outbox failed for non-Storage reasons).
+//! - Empty result sets are `Ok(Vec::new())` / `Ok(None)` — absence of
+//!   candidates / absence of a persisted checkpoint is not Err.
+//! - `checkpoint_namespace()` is infallible (`&'static str`); namespace
+//!   collisions between producers are a programmer bug, not a runtime
+//!   error — enforced at compile time via literal string constants.
 
 use async_trait::async_trait;
 
