@@ -80,8 +80,8 @@ impl AnnIndex for HnswAdapter {
             let cap = idx.capacity();
             if cap > 0 && size > cap * 80 / 100 {
                 let new_cap = cap * 2;
-                idx.reserve(new_cap).map_err(|e| CoreError::Internal {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
+                idx.reserve(new_cap).map_err(|e| CoreError::Analysis {
+                    code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                     message: format!("HNSW reserve (grow) failed: {e}"),
                 })?;
                 tracing::debug!(
@@ -90,8 +90,8 @@ impl AnnIndex for HnswAdapter {
                     "HNSW index capacity doubled"
                 );
             }
-            idx.add(key, &vec).map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            idx.add(key, &vec).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: format!("HNSW add failed: {e}"),
             })?;
             Ok(())
@@ -110,8 +110,8 @@ impl AnnIndex for HnswAdapter {
         let idx = Arc::clone(&self.index);
         let q = query.to_vec();
         tokio::task::spawn_blocking(move || {
-            let matches = idx.search(&q, k).map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            let matches = idx.search(&q, k).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: format!("HNSW search failed: {e}"),
             })?;
             Ok(matches
@@ -130,8 +130,8 @@ impl AnnIndex for HnswAdapter {
     async fn remove(&self, key: u64) -> Result<(), CoreError> {
         let idx = Arc::clone(&self.index);
         tokio::task::spawn_blocking(move || -> Result<(), CoreError> {
-            idx.remove(key).map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            idx.remove(key).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: format!("HNSW remove failed: {e}"),
             })?;
             Ok(())
@@ -166,8 +166,8 @@ impl AnnIndex for HnswAdapter {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "Non-UTF-8 HNSW data path".into(),
             })?;
-            idx.save(tmp_str).map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            idx.save(tmp_str).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: format!("HNSW save failed: {e}"),
             })?;
             std::fs::rename(&tmp_path, &path).map_err(|e| CoreError::Internal {
@@ -193,8 +193,8 @@ impl AnnIndex for HnswAdapter {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "Non-UTF-8 HNSW data path".into(),
             })?;
-            idx.load(path_str).map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            idx.load(path_str).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: format!("HNSW load failed: {e}"),
             })?;
             Ok(())
