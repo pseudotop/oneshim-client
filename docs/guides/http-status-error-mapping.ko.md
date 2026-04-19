@@ -90,7 +90,7 @@ if !status.is_success() {
 | `oneshim-network::analysis_client::summarize` | ✓ | ✓ specific (3 spot-check) + fallback |
 | `oneshim-network::http_api_session` | ✓ | ✓ specific + fallback |
 | `oneshim-network::auth::login` | ✓ | ✓ specific + fallback |
-| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | — (infra debt: TLS 서버 fixture 필요) |
+| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | ⏸ deferred — LAN sync는 TLS 전용; mockito HTTP mock 으로 테스트 불가. rustls-TlsAcceptor + 테스트 cert 생성 필요. 시맨틱 매핑 구현은 완료되었고 defensive 성격 (LAN sync는 best-effort이고 peer-auth 실패는 드물고 non-catastrophic) |
 | `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
 | `oneshim-audio::model_downloader` | ✓ | ✓ specific + fallback (`new_with_base_url` 주입 refactor 필요했음) |
 | `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | ✓ specific + fallback |
