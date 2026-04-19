@@ -353,3 +353,56 @@ fn apply_auth_headers_succeeds_for_supported_schemes() {
         );
     }
 }
+
+/// ADR-019 §3 regression guard: OcrProviderStrategy::try_from must reject
+/// BedrockConverse shape at the strategy-dispatch boundary. Unlike the
+/// other OCR paths that fail on catalog lookup (Bedrock absent), this one
+/// takes the shape as direct input, so it's the only defense if someone
+/// constructs the shape manually (e.g., unit-test fixture, re-introduction
+/// without SigV4 work).
+#[test]
+fn ocr_strategy_try_from_rejects_bedrock_converse() {
+    let result = OcrProviderStrategy::try_from(ProviderRequestShape::BedrockConverse);
+    match result {
+        Err(CoreError::Config { code, message }) => {
+            assert_eq!(
+                code,
+                oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                "expected UnsupportedProviderBedrock code, got {code:?}"
+            );
+            assert!(
+                message.contains("Bedrock"),
+                "expected Bedrock-mentioning message, got {message:?}"
+            );
+        }
+        Ok(strategy) => panic!(
+            "expected Err for BedrockConverse but got Ok({strategy:?}) — a regression would enable OCR dispatch to an unsupported provider"
+        ),
+        Err(other) => panic!(
+            "expected CoreError::Config {{ UnsupportedProviderBedrock, .. }}, got {other:?}"
+        ),
+    }
+}
+
+/// Positive control: every non-Bedrock shape must round-trip to a
+/// valid strategy variant, so the dispatch table stays exhaustive after
+/// the BedrockConverse Err arm.
+#[test]
+fn ocr_strategy_try_from_accepts_supported_shapes() {
+    for shape in [
+        ProviderRequestShape::AnthropicMessages,
+        ProviderRequestShape::AnthropicVisionMessages,
+        ProviderRequestShape::OpenAiChatCompletions,
+        ProviderRequestShape::OpenAiVisionChatCompletions,
+        ProviderRequestShape::OpenAiResponses,
+        ProviderRequestShape::GoogleGenerateContent,
+        ProviderRequestShape::GoogleVisionAnnotate,
+    ] {
+        let result = OcrProviderStrategy::try_from(shape);
+        assert!(
+            result.is_ok(),
+            "OcrProviderStrategy::try_from({shape:?}) unexpectedly failed: {:?}",
+            result.err()
+        );
+    }
+}
