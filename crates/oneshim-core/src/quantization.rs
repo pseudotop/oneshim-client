@@ -30,17 +30,21 @@ impl ScalarQuantizer {
     /// - Constant vector (all same value): scale=1.0, offset=min, all INT8=0
     /// - NaN/Inf: rejected via `f32::is_finite()` pre-scan
     pub fn quantize(vector: &[f32]) -> Result<QuantizedVector, CoreError> {
+        // Iter-95: input-validation errors use InvalidArguments consistent with
+        // cosine_similarity_int8 below (wire code `validation.invalid_arguments`).
+        // Pre-iter-95 these were `internal.generic`, conflating caller-side
+        // bad input with true internal runtime failures in telemetry.
         if vector.is_empty() {
-            return Err(CoreError::Internal {
-                code: crate::error_codes::InternalCode::Generic,
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
                 message: "cannot quantize zero-length vector".to_string(),
             });
         }
 
         // Reject NaN/Inf
         if !vector.iter().all(|v| v.is_finite()) {
-            return Err(CoreError::Internal {
-                code: crate::error_codes::InternalCode::Generic,
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
                 message: "vector contains NaN or Inf values".to_string(),
             });
         }
@@ -297,5 +301,28 @@ mod tests {
             err_msg.contains("384") && err_msg.contains("100"),
             "error should mention expected and actual dims, got: {err_msg}"
         );
+    }
+
+    /// Iter-95 regression guard: input-validation errors in quantize() must
+    /// emit wire code `validation.invalid_arguments`, not `internal.generic`.
+    /// Pre-iter-95 the zero-length and NaN guards used InternalCode::Generic,
+    /// drifting from the sibling cosine_similarity_int8 which correctly uses
+    /// InvalidArguments.
+    #[test]
+    fn quantize_empty_vector_emits_invalid_arguments_code() {
+        let err = ScalarQuantizer::quantize(&[]).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn quantize_nan_vector_emits_invalid_arguments_code() {
+        let err = ScalarQuantizer::quantize(&[0.5, f32::NAN, 0.3]).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn quantize_inf_vector_emits_invalid_arguments_code() {
+        let err = ScalarQuantizer::quantize(&[0.5, f32::INFINITY, 0.3]).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
     }
 }

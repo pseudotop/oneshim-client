@@ -142,8 +142,10 @@ fn write_overlay_payload(handle_id: &str, req: &HighlightRequest) -> Result<Path
         code: oneshim_core::error_codes::InternalCode::Generic,
         message: format!("Overlay payload serialization failed: {e}"),
     })?;
-    fs::write(&path, bytes)
-        .map_err(|e| CoreError::Io(std::io::Error::new(e.kind(), e.to_string())))?;
+    // Iter-95: was rebuilding io::Error via io::Error::new(kind, to_string()),
+    // which flattens the original error's source chain. Use `?` with the
+    // CoreError::Io #[from] conversion to preserve the original std::io::Error.
+    fs::write(&path, bytes)?;
 
     Ok(path)
 }
