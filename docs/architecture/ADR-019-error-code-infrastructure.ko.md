@@ -117,3 +117,8 @@ Code enum(`ConfigCode` 등)은 `#[non_exhaustive]` **부착**:
 3. **프런트엔드 i18n 연결** — `err.code()` 문자열을 프런트엔드 i18n 계층에 translation key로 공급. key 누락 시 fallback message 필요. ~1일.
 4. **`Internal` 코드 granularity 세분화** — Phase 4 종료 시점에 `InternalCode`는 `Generic`, `Io`, `Serialization` 보유. callsite 1위 variant (`Internal` = ~416 사이트)는 프로덕션 텔레메트리 신호에 따라 추가 세분 가능. 영구 개선 항목.
 5. **Sandbox variant 통합** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` 의미 중복; 단일 variant로 통합 가능. 별도 리팩토링, 블로킹 아님.
+6. **`sync/lan_transport::authenticate_with_peer` 회귀 테스트** — LAN sync는 TLS 전용이라 mockito HTTP mock으로 테스트 불가. rustls-TlsAcceptor 테스트 fixture (생성된 cert 포함) 작성은 가능하지만 방어적 코드 경로에 비해 과도한 비용 (시맨틱 매핑은 §12 기준 구현 완료; deferral 근거는 `docs/guides/http-status-error-mapping.ko.md` 참조).
+
+### Post-merge 테스트 커버리지 확장
+
+초기 ADR과 현재 상태 사이에, 13개 (14개 중)의 디스패처에 걸쳐 시맨틱 HTTP status 매핑을 검증하는 80+ 회귀 테스트가 추가됨. 각 테스트는 특정 status code → CoreError variant 매핑을 검증하고, 대부분의 디스패처는 도메인 fallback assertion도 포함. 정식 패턴과 전체 디스패처 레지스트리는 [`docs/guides/http-status-error-mapping.ko.md`](../guides/http-status-error-mapping.ko.md) 참조.

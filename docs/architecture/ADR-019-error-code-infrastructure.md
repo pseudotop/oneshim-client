@@ -118,3 +118,8 @@ When a new `#[from]`-wrapped external error type is added to `CoreError`:
 3. **Frontend i18n wiring** — feed `err.code()` strings as translation keys in the frontend i18n layer. Requires a fallback message when a key is missing. ~1 day.
 4. **`Internal` code granularity refinement** — at Phase 4 end, `InternalCode` has `Generic`, `Io`, `Serialization`. Top 1 variant by callsite count (`Internal` = ~416 sites) may benefit from further subdivision driven by production telemetry signals. Evergreen.
 5. **Sandbox variant consolidation** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` overlap semantically; could unify under a single variant. Separate refactor, not blocking.
+6. **`sync/lan_transport::authenticate_with_peer` regression tests** — LAN sync enforces TLS-only, so mockito HTTP mock doesn't work. Writing a rustls-TlsAcceptor test fixture with generated certs is feasible but disproportionate for a defensive code path (semantic mapping is implemented per §12; see `docs/guides/http-status-error-mapping.md` for deferral rationale).
+
+### Post-merge test coverage additions
+
+Between the initial ADR and the current state, 80+ regression tests were added covering the semantic HTTP status mapping across 13 of 14 dispatchers. Each test verifies a specific status-code → CoreError variant mapping AND (for most dispatchers) a domain-fallback assertion. See [`docs/guides/http-status-error-mapping.md`](../guides/http-status-error-mapping.md) for the canonical pattern and the full dispatcher registry.
