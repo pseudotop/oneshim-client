@@ -299,3 +299,57 @@ fn remote_ocr_provider_info() {
     assert_eq!(results.len(), 2);
     assert!((results[0].confidence - 0.8).abs() < f64::EPSILON);
 }
+
+/// ADR-019 §3 core security-fix regression guard: `apply_auth_headers`
+/// must return a typed error on `AwsSignatureV4`, not silently fall
+/// through (original pre-ADR-019 behavior). This is the foundational
+/// contract that changed the function's signature from infallible to
+/// `Result<_, CoreError>`. A regression that reverted the signature or
+/// removed the error would silently send unauthenticated requests to
+/// Bedrock endpoints — a real security bug.
+#[test]
+fn apply_auth_headers_rejects_aws_sigv4() {
+    let client = reqwest::Client::new();
+    let builder = client.get("https://bedrock-runtime.us-east-1.amazonaws.com");
+    let result = apply_auth_headers(ProviderAuthScheme::AwsSignatureV4, builder, "irrelevant");
+    match result {
+        Err(CoreError::Config { code, message }) => {
+            assert_eq!(
+                code,
+                oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                "expected UnsupportedProviderBedrock code, got {code:?}"
+            );
+            assert!(
+                message.contains("Bedrock"),
+                "expected Bedrock-mentioning message, got {message:?}"
+            );
+        }
+        Ok(_) => panic!(
+            "apply_auth_headers(AwsSignatureV4, ..) returned Ok — SILENT NO-AUTH FALLTHROUGH REGRESSION"
+        ),
+        Err(other) => panic!(
+            "expected CoreError::Config {{ UnsupportedProviderBedrock, .. }}, got {other:?}"
+        ),
+    }
+}
+
+/// Positive control: non-AwsSignatureV4 schemes must still succeed after
+/// the signature change, so we don't accidentally regress valid auth paths.
+#[test]
+fn apply_auth_headers_succeeds_for_supported_schemes() {
+    let client = reqwest::Client::new();
+    for scheme in [
+        ProviderAuthScheme::None,
+        ProviderAuthScheme::Bearer,
+        ProviderAuthScheme::XApiKey,
+        ProviderAuthScheme::XGoogApiKey,
+    ] {
+        let builder = client.get("https://api.example.com");
+        let result = apply_auth_headers(scheme, builder, "test-key");
+        assert!(
+            result.is_ok(),
+            "apply_auth_headers({scheme:?}, ..) unexpectedly failed: {:?}",
+            result.err()
+        );
+    }
+}
