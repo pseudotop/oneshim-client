@@ -29,6 +29,18 @@ pub struct IndexMeta {
 ///
 /// All methods have default implementations returning `CoreError::Internal { code: crate::error_codes::InternalCode::Generic, message: "not implemented" }`
 /// so that test mocks compile without change.
+///
+/// # Errors
+/// - `CoreError::Storage` (wire: `storage.failed`) — production adapters
+///   (`SqliteVectorIndex`) surface SQLite errors during build/search/
+///   centroid persistence (iter-47 mass fix pattern).
+/// - `CoreError::Internal` (wire: `internal.generic`) — trait default
+///   impls return "not implemented"; k-means convergence failure;
+///   dimension-mismatch between query vector and stored centroids.
+/// - Build operations (`build_ivf_index`, `build_binary_codes`) on an
+///   empty collection return `Ok(0)` rather than an error — callers
+///   infer no-op from the zero count.
+/// - `get_index_meta` on a never-built index returns `Ok(IndexMeta { ivf_built_at: None, .. })`, not Err.
 #[async_trait]
 #[allow(clippy::too_many_arguments)]
 pub trait VectorIndex: Send + Sync {

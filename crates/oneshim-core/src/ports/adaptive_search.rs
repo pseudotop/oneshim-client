@@ -12,6 +12,17 @@ use crate::models::embedding::{SearchFilters, SearchResult};
 /// collection size and available indices, then execute the search.
 ///
 /// Primary adapter: `AdaptiveSearchCoordinator` in oneshim-analysis.
+///
+/// # Errors
+/// - `CoreError::Storage` (wire: `storage.failed`) — delegated from the
+///   underlying `VectorIndex` / `VectorStore` (SQLite read of vectors,
+///   centroids, or binary codes).
+/// - `CoreError::Internal` (wire: `internal.generic`) — query/index
+///   dimension mismatch, strategy routing failure, or unimplemented
+///   fallback in test/mock adapters (`VectorIndex` default impls).
+/// - No distinct "empty collection" error — callers receive
+///   `Ok(Vec::new())` when no vectors match filters or the collection
+///   is empty.
 #[async_trait]
 pub trait AdaptiveSearchPort: Send + Sync {
     /// Search using the auto-selected (or forced) strategy.
