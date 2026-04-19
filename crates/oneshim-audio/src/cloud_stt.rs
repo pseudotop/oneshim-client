@@ -29,13 +29,19 @@ impl CloudSttProvider {
         timeout_secs: u32,
     ) -> Result<Self, CoreError> {
         if api_key.is_empty() {
-            return Err(CoreError::SpeechToText("cloud STT API key is empty".into()));
+            return Err(CoreError::SpeechToTextV2 {
+                code: oneshim_core::error_codes::AudioCode::SttFailed,
+                message: "cloud STT API key is empty".into(),
+            });
         }
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(u64::from(timeout_secs)))
             .build()
-            .map_err(|e| CoreError::SpeechToText(format!("build HTTP client: {e}")))?;
+            .map_err(|e| CoreError::SpeechToTextV2 {
+                code: oneshim_core::error_codes::AudioCode::SttFailed,
+                message: format!("build HTTP client: {e}"),
+            })?;
 
         Ok(Self {
             client,
@@ -68,7 +74,10 @@ impl SttProvider for CloudSttProvider {
         let file_part = multipart::Part::bytes(wav_bytes)
             .file_name("audio.wav")
             .mime_str("audio/wav")
-            .map_err(|e| CoreError::SpeechToText(format!("create multipart: {e}")))?;
+            .map_err(|e| CoreError::SpeechToTextV2 {
+                code: oneshim_core::error_codes::AudioCode::SttFailed,
+                message: format!("create multipart: {e}"),
+            })?;
 
         let mut form = multipart::Form::new()
             .part("file", file_part)
@@ -96,20 +105,25 @@ impl SttProvider for CloudSttProvider {
             .await
             .map_err(|e| {
                 if e.is_timeout() {
-                    CoreError::RequestTimeout {
+                    CoreError::RequestTimeoutV2 {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
                         timeout_ms: u64::from(self.timeout_secs) * 1000,
                     }
                 } else {
-                    CoreError::Network(format!("cloud STT request: {e}"))
+                    CoreError::NetworkV2 {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("cloud STT request: {e}"),
+                    }
                 }
             })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(CoreError::SpeechToText(format!(
-                "cloud STT error: HTTP {status} — {body}"
-            )));
+            return Err(CoreError::SpeechToTextV2 {
+                code: oneshim_core::error_codes::AudioCode::SttFailed,
+                message: format!("cloud STT error: HTTP {status} — {body}"),
+            });
         }
 
         #[derive(serde::Deserialize)]
@@ -117,10 +131,14 @@ impl SttProvider for CloudSttProvider {
             text: String,
         }
 
-        let result: OpenAiResponse = response
-            .json()
-            .await
-            .map_err(|e| CoreError::SpeechToText(format!("parse cloud response: {e}")))?;
+        let result: OpenAiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| CoreError::SpeechToTextV2 {
+                    code: oneshim_core::error_codes::AudioCode::SttFailed,
+                    message: format!("parse cloud response: {e}"),
+                })?;
 
         let processing_secs = start.elapsed().as_secs_f32();
         debug!(
