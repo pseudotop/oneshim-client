@@ -212,7 +212,21 @@ pub(crate) fn read_capability_token(headers: &HeaderMap) -> Result<String, ApiEr
 }
 
 pub(crate) fn map_gui_error(error: GuiInteractionError) -> ApiError {
+    #[allow(deprecated)]
     match error {
+        // V2 variants (will remain after Phase 4 rename)
+        GuiInteractionError::UnauthorizedV2 { .. } => {
+            ApiError::Unauthorized("Invalid GUI session token".to_string())
+        }
+        GuiInteractionError::NotFoundV2 { name, .. } => ApiError::NotFound(name),
+        GuiInteractionError::BadRequestV2 { message, .. } => ApiError::BadRequest(message),
+        GuiInteractionError::ForbiddenV2 { message, .. } => ApiError::Forbidden(message),
+        GuiInteractionError::FocusDriftV2 { message, .. } => ApiError::Conflict(message),
+        GuiInteractionError::TicketInvalidV2 { message, .. } => ApiError::Unprocessable(message),
+        GuiInteractionError::UnavailableV2 { message, .. } => ApiError::ServiceUnavailable(message),
+        GuiInteractionError::InternalV2 { message, .. } => ApiError::Internal(message),
+
+        // V1 deprecated variants (removed in Phase 4 alongside V1 variant deletion)
         GuiInteractionError::Unauthorized => {
             ApiError::Unauthorized("Invalid GUI session token".to_string())
         }

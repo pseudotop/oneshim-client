@@ -167,7 +167,10 @@ pre-commit:
           echo "clippy: skipped (subagent mode)"
           exit 0
         fi
-        cargo clippy --workspace --all-targets --quiet -- -D warnings
+        # `-A deprecated`: ADR-019 migration window (Phase 1-3) — deprecated
+        # warnings are the Phase 2 retrofit signal and must be tolerated by CI
+        # until Phase 4 per spec §5.2. Phase 4 PR flips back to `-D deprecated`.
+        cargo clippy --workspace --all-targets --quiet -- -D warnings -A deprecated
       stage_fixed: true
     route-integrity:
       glob: "crates/oneshim-web/frontend/src/{routes,pages,components/shell}/**/*.{ts,tsx}"
