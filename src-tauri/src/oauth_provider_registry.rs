@@ -100,9 +100,12 @@ pub fn selected_managed_oauth_provider_ids(
         if let Some(surface_id) =
             default_provider_surface_id(AiProviderType::OpenAi, AiAccessMode::ProviderOAuth)
         {
-            let surface = provider_surface_spec(surface_id).map_err(|msg| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: msg,
+            // Iter-107: catalog-miss = NotFound (consistent with iter-94
+            // session_manager/factory.rs fixes).
+            let surface = provider_surface_spec(surface_id).map_err(|msg| CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: "provider_surface".to_string(),
+                id: format!("{surface_id}: {msg}"),
             })?;
             provider_ids.push(surface.vendor_id.clone());
         } else {
@@ -139,14 +142,16 @@ fn managed_oauth_transport_spec(
     kind: ProviderTransportKind,
 ) -> Result<&ProviderTransportSpec, CoreError> {
     managed_oauth_surface(endpoint)?;
+    // Iter-107: transport catalog miss = NotFound.
     let spec = provider_specs::resolved_transport_spec(
         endpoint.provider_type,
         endpoint.surface_id.as_deref(),
         kind,
     )
-    .map_err(|msg| CoreError::Internal {
-        code: oneshim_core::error_codes::InternalCode::Generic,
-        message: msg,
+    .map_err(|msg| CoreError::NotFound {
+        code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+        resource_type: "provider_transport".to_string(),
+        id: format!("{:?}/{kind:?}: {msg}", endpoint.provider_type),
     })?;
 
     Ok(spec)
@@ -167,12 +172,17 @@ fn managed_oauth_surface(
                         .to_string(),
                 })?,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
-            message: msg,
+        // Iter-107: surface-id-not-in-catalog = NotFound.
+        .map_err(|msg| CoreError::NotFound {
+            code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+            resource_type: "provider_surface".to_string(),
+            id: msg,
         })?;
-    if parse_surface_execution_kind(&surface.execution_kind).map_err(|msg| CoreError::Internal {
-        code: oneshim_core::error_codes::InternalCode::Generic,
+    // Iter-107: catalog metadata has bad execution_kind value = invalid
+    // catalog data (programmer/catalog bug). Config::Invalid fits the
+    // "catalog contains an unsupported value" semantic better than Internal.
+    if parse_surface_execution_kind(&surface.execution_kind).map_err(|msg| CoreError::Config {
+        code: oneshim_core::error_codes::ConfigCode::Invalid,
         message: msg,
     })? != SurfaceExecutionKind::ManagedHttp
     {
