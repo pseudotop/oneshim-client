@@ -18,7 +18,7 @@ impl SessionsQueryService {
         self.ctx
             .storage
             .list_session_stats(50)
-            .map_err(|error| ApiError::Internal(error.to_string()))
+            .map_err(ApiError::from)
             .map(|sessions| {
                 sessions
                     .into_iter()
