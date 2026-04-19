@@ -105,3 +105,11 @@ When a new `#[from]`-wrapped external error type is added to `CoreError`:
 
 - Phase 4 rename requires brief freeze on in-flight `CoreError` / `GuiInteractionError` PRs.
 - Post-Phase-4 Grafana dashboard relabeling is a follow-up (not blocking).
+
+### Known follow-ups (not blocking)
+
+1. **Tauri IPC code propagation** — `src-tauri/src/commands/*.rs` uses `.map_err(|e| e.to_string())` at ~58 callsites, converting `CoreError` into a plain `String` for the frontend. The typed `err.code()` is lost in this boundary. Follow-up: introduce `IpcError { code: String, message: String }` DTO and update callsites; allow the frontend to branch programmatically on `code` instead of substring-matching the display message. Scope: ~0.5 day; independent of this ADR.
+2. **Grafana dashboard relabeling** — replace message-regex panels with `code`-label group-by once log pipelines surface `err.code()`. ~0.5 day.
+3. **Frontend i18n wiring** — feed `err.code()` strings as translation keys in the frontend i18n layer. Requires a fallback message when a key is missing. ~1 day.
+4. **`Internal` code granularity refinement** — at Phase 4 end, `InternalCode` has `Generic`, `Io`, `Serialization`. Top 1 variant by callsite count (`Internal` = ~416 sites) may benefit from further subdivision driven by production telemetry signals. Evergreen.
+5. **Sandbox variant consolidation** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` overlap semantically; could unify under a single variant. Separate refactor, not blocking.

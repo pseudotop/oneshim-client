@@ -104,3 +104,11 @@ Code enum(`ConfigCode` 등)은 `#[non_exhaustive]` **부착**:
 
 - Phase 4 rename 시 `CoreError` / `GuiInteractionError` 작업 중인 PR 간 잠깐 동결 필요.
 - Phase 4 이후 Grafana 대시보드 재라벨링은 follow-up (비-블로킹).
+
+### 알려진 follow-up (비-블로킹)
+
+1. **Tauri IPC code 전파** — `src-tauri/src/commands/*.rs`의 ~58 callsite가 `.map_err(|e| e.to_string())` 사용, `CoreError`를 plain `String`으로 프런트엔드에 전달. 타입화된 `err.code()`가 이 경계에서 소실. Follow-up: `IpcError { code: String, message: String }` DTO 도입 + callsite 업데이트, 프런트엔드가 display message substring 매칭 대신 `code`로 프로그래밍적 분기 가능. 규모: ~0.5일. 본 ADR과 독립.
+2. **Grafana 대시보드 재라벨링** — 로그 파이프라인이 `err.code()` 노출 이후 message-regex 패널을 `code`-label group-by로 교체. ~0.5일.
+3. **프런트엔드 i18n 연결** — `err.code()` 문자열을 프런트엔드 i18n 계층에 translation key로 공급. key 누락 시 fallback message 필요. ~1일.
+4. **`Internal` 코드 granularity 세분화** — Phase 4 종료 시점에 `InternalCode`는 `Generic`, `Io`, `Serialization` 보유. callsite 1위 variant (`Internal` = ~416 사이트)는 프로덕션 텔레메트리 신호에 따라 추가 세분 가능. 영구 개선 항목.
+5. **Sandbox variant 통합** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` 의미 중복; 단일 variant로 통합 가능. 별도 리팩토링, 블로킹 아님.
