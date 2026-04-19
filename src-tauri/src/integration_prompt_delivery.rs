@@ -77,7 +77,10 @@ impl IntegrationPromptPresenterPort for TauriIntegrationPromptPresenter {
         let payload = prompt_payload(prompt);
         self.app_handle
             .emit(INTEGRATION_PROMPT_EVENT, &payload)
-            .map_err(|err| CoreError::Internal(format!("emit integration prompt event: {err}")))?;
+            .map_err(|err| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("emit integration prompt event: {err}"),
+            })?;
 
         if let Err(err) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
             .builder()
@@ -244,7 +247,8 @@ mod tests {
             let mut guard = self.prompts.lock().await;
             guard
                 .get_mut(prompt_id)
-                .ok_or_else(|| CoreError::NotFound {
+                .ok_or_else(|| CoreError::NotFoundV2 {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_prompt".to_string(),
                     id: prompt_id.to_string(),
                 })?

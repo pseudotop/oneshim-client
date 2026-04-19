@@ -84,10 +84,16 @@ impl ElementFinder for E2eFinder {
 
     async fn analyze_scene(&self, _: Option<&str>, _: Option<&str>) -> Result<UiScene, CoreError> {
         if self.fail_permission.load(Ordering::Relaxed) {
-            return Err(CoreError::PermissionDenied("Accessibility denied".into()));
+            return Err(CoreError::PermissionDeniedV2 {
+                code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
+                message: "Accessibility denied".into(),
+            });
         }
         if self.should_fail.load(Ordering::Relaxed) {
-            return Err(CoreError::Internal("No display".into()));
+            return Err(CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: "No display".into(),
+            });
         }
         Ok(Self::scene())
     }

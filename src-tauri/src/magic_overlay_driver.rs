@@ -71,8 +71,9 @@ impl OverlayDriver for MagicOverlayDriver {
 
         self.app_handle
             .emit("overlay:update-focus", &payload)
-            .map_err(|e| {
-                CoreError::Internal(format!("Failed to emit overlay:update-focus: {e}"))
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to emit overlay:update-focus: {e}"),
             })?;
 
         tracing::debug!(
@@ -91,7 +92,10 @@ impl OverlayDriver for MagicOverlayDriver {
     async fn clear_highlights(&self, handle_id: &str) -> Result<(), CoreError> {
         self.app_handle
             .emit("overlay:clear-focus", handle_id)
-            .map_err(|e| CoreError::Internal(format!("Failed to emit overlay:clear-focus: {e}")))?;
+            .map_err(|e| CoreError::InternalV2 {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to emit overlay:clear-focus: {e}"),
+            })?;
 
         tracing::debug!(handle_id, "MagicOverlayDriver: cleared highlights");
         Ok(())

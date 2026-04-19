@@ -459,7 +459,10 @@ async fn report_failure_transient_auto_recovers() {
     let session = mgr.create_session(config).await.expect("create session");
     let id = session.session_id().to_string();
 
-    let err = CoreError::Network("connection reset".into());
+    let err = CoreError::NetworkV2 {
+        code: oneshim_core::error_codes::NetworkCode::Generic,
+        message: "connection reset".into(),
+    };
     let result = mgr.report_failure(&id, &err).await;
     assert_eq!(result, SessionState::Active);
 
@@ -482,7 +485,10 @@ async fn report_failure_permanent_sets_failed() {
     let session = mgr.create_session(config).await.expect("create session");
     let id = session.session_id().to_string();
 
-    let err = CoreError::Auth("invalid API key".into());
+    let err = CoreError::AuthV2 {
+        code: oneshim_core::error_codes::AuthCode::Failed,
+        message: "invalid API key".into(),
+    };
     let result = mgr.report_failure(&id, &err).await;
     assert_eq!(result, SessionState::Failed);
 
@@ -515,7 +521,10 @@ async fn report_failure_exhausts_retries() {
     let session = mgr.create_session(session_config).await.expect("create");
     let id = session.session_id().to_string();
 
-    let err = CoreError::Network("timeout".into());
+    let err = CoreError::NetworkV2 {
+        code: oneshim_core::error_codes::NetworkCode::Generic,
+        message: "timeout".into(),
+    };
     // First 3 should auto-recover.
     for i in 1..=3 {
         let result = mgr.report_failure(&id, &err).await;
@@ -529,7 +538,10 @@ async fn report_failure_exhausts_retries() {
 #[tokio::test]
 async fn report_failure_nonexistent_session() {
     let mgr = test_manager();
-    let err = CoreError::Network("test".into());
+    let err = CoreError::NetworkV2 {
+        code: oneshim_core::error_codes::NetworkCode::Generic,
+        message: "test".into(),
+    };
     let result = mgr.report_failure("no-such-id", &err).await;
     assert_eq!(result, SessionState::Terminated);
 }

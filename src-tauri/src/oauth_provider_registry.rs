@@ -100,7 +100,11 @@ pub fn selected_managed_oauth_provider_ids(
         if let Some(surface_id) =
             default_provider_surface_id(AiProviderType::OpenAi, AiAccessMode::ProviderOAuth)
         {
-            let surface = provider_surface_spec(surface_id).map_err(CoreError::Internal)?;
+            let surface =
+                provider_surface_spec(surface_id).map_err(|msg| CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: msg,
+                })?;
             provider_ids.push(surface.vendor_id.clone());
         } else {
             provider_ids.push("openai".to_string());
@@ -141,7 +145,10 @@ fn managed_oauth_transport_spec(
         endpoint.surface_id.as_deref(),
         kind,
     )
-    .map_err(CoreError::Internal)?;
+    .map_err(|msg| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: msg,
+    })?;
 
     Ok(spec)
 }
@@ -151,17 +158,26 @@ fn managed_oauth_surface(
     endpoint: &ExternalApiEndpoint,
 ) -> Result<&oneshim_api_contracts::provider_specs::ProviderSurfaceSpec, CoreError> {
     let surface = provider_surface_spec(endpoint.surface_id.as_deref().ok_or_else(|| {
-        CoreError::Config(
-            "Managed OAuth endpoint is missing provider surface metadata.".to_string(),
-        )
+        CoreError::ConfigV2 {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: "Managed OAuth endpoint is missing provider surface metadata.".to_string(),
+        }
     })?)
-    .map_err(CoreError::Internal)?;
-    if parse_surface_execution_kind(&surface.execution_kind).map_err(CoreError::Internal)?
-        != SurfaceExecutionKind::ManagedHttp
+    .map_err(|msg| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: msg,
+    })?;
+    if parse_surface_execution_kind(&surface.execution_kind).map_err(|msg| {
+        CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: msg,
+        }
+    })? != SurfaceExecutionKind::ManagedHttp
     {
-        return Err(CoreError::Config(
-            "Selected provider surface does not use managed OAuth transport.".to_string(),
-        ));
+        return Err(CoreError::ConfigV2 {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: "Selected provider surface does not use managed OAuth transport.".to_string(),
+        });
     }
     Ok(surface)
 }
@@ -183,7 +199,7 @@ fn maybe_push_managed_provider(
             }
             Ok(())
         }
-        Err(CoreError::Config(_)) => Ok(()),
+        Err(CoreError::ConfigV2 { .. }) => Ok(()),
         Err(error) => Err(error),
     }
 }

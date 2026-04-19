@@ -63,8 +63,9 @@ impl ElementFinder for CompositeElementFinder {
                 Err(err) => last_err = Some(err),
             }
         }
-        Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound("No element found by any configured finder".to_string())
+        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFoundV2 {
+            code: oneshim_core::error_codes::UiCode::ElementMissing,
+            name: "No element found by any configured finder".to_string(),
         }))
     }
 
@@ -82,8 +83,9 @@ impl ElementFinder for CompositeElementFinder {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound("No scene produced by any configured finder".to_string())
+        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFoundV2 {
+            code: oneshim_core::error_codes::UiCode::ElementMissing,
+            name: "No scene produced by any configured finder".to_string(),
         }))
     }
 
@@ -114,10 +116,9 @@ impl ElementFinder for CompositeElementFinder {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound(
-                "No image scene produced by any configured finder".to_string(),
-            )
+        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFoundV2 {
+            code: oneshim_core::error_codes::UiCode::ElementMissing,
+            name: "No image scene produced by any configured finder".to_string(),
         }))
     }
 
@@ -254,9 +255,10 @@ impl ElementFinder for LatestFrameOcrElementFinder {
         region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
         if !self.refresh_latest_frame().await? {
-            return Err(CoreError::ElementNotFound(
-                "자동화용 최신 frame이 없습니다".to_string(),
-            ));
+            return Err(CoreError::ElementNotFoundV2 {
+                code: oneshim_core::error_codes::UiCode::ElementMissing,
+                name: "자동화용 최신 frame이 없습니다".to_string(),
+            });
         }
         self.inner.find_element(text, role, region).await
     }
@@ -267,9 +269,10 @@ impl ElementFinder for LatestFrameOcrElementFinder {
         screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
         if !self.refresh_latest_frame().await? {
-            return Err(CoreError::ElementNotFound(
-                "자동화용 최신 frame이 없습니다".to_string(),
-            ));
+            return Err(CoreError::ElementNotFoundV2 {
+                code: oneshim_core::error_codes::UiCode::ElementMissing,
+                name: "자동화용 최신 frame이 없습니다".to_string(),
+            });
         }
         self.inner
             .analyze_scene(app_name, screen_id)
@@ -338,9 +341,10 @@ mod tests {
             }
 
             if image_format != "webp" {
-                return Err(CoreError::OcrError(format!(
-                    "예상치 못한 포맷: {image_format}"
-                )));
+                return Err(CoreError::OcrErrorV2 {
+                    code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                    message: format!("예상치 못한 포맷: {image_format}"),
+                });
             }
 
             Ok(vec![OcrResult {
@@ -496,7 +500,7 @@ mod tests {
             .find_element(Some("save"), None, None)
             .await
             .unwrap_err();
-        assert!(matches!(err, CoreError::ElementNotFound(_)));
+        assert!(matches!(err, CoreError::ElementNotFoundV2 { .. }));
     }
 
     #[test]
@@ -557,7 +561,7 @@ mod tests {
             None,
         ) {
             Ok(_) => panic!("Expected an error"),
-            Err(err) => assert!(matches!(err, CoreError::Config(_))),
+            Err(err) => assert!(matches!(err, CoreError::ConfigV2 { .. })),
         }
     }
 

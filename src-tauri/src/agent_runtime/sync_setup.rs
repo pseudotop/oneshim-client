@@ -67,9 +67,10 @@ pub(super) async fn build_sync_engine(
             .map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>),
             None => {
                 warn!("sync transport=file but sync_folder not configured");
-                Err(CoreError::Internal(
-                    "sync_folder required for file transport".into(),
-                ))
+                Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "sync_folder required for file transport".into(),
+                })
             }
         },
         SyncTransportKind::Remote => match &config.sync.remote_endpoint {
@@ -92,9 +93,10 @@ pub(super) async fn build_sync_engine(
             }
             None => {
                 warn!("sync transport=remote but remote_endpoint not configured");
-                Err(CoreError::Internal(
-                    "remote_endpoint required for remote transport".into(),
-                ))
+                Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "remote_endpoint required for remote transport".into(),
+                })
             }
         },
         SyncTransportKind::Lan => {
@@ -129,7 +131,10 @@ pub(super) async fn build_sync_engine(
             {
                 let _ = data_dir; // suppress unused warning
                 warn!("LAN sync requires 'lan-sync' feature; sync disabled");
-                Err(CoreError::Internal("lan-sync feature not enabled".into()))
+                Err(CoreError::InternalV2 {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: "lan-sync feature not enabled".into(),
+                })
             }
         }
     };

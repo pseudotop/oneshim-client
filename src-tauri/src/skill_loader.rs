@@ -126,7 +126,8 @@ impl SkillLoader for FileSkillLoader {
             })
             .get(name)
             .cloned()
-            .ok_or_else(|| CoreError::NotFound {
+            .ok_or_else(|| CoreError::NotFoundV2 {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "Skill".into(),
                 id: name.into(),
             })

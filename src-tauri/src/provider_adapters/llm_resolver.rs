@@ -56,7 +56,10 @@ pub(super) fn resolve_cli_subscription_llm_provider_with_detected(
         ));
     }
 
-    Err(CoreError::Config(reason))
+    Err(CoreError::ConfigV2 {
+        code: oneshim_core::error_codes::ConfigCode::Invalid,
+        message: reason,
+    })
 }
 
 fn cli_subscription_unavailable_reason(
@@ -147,9 +150,10 @@ pub(super) fn resolve_llm_provider(
             }
             #[cfg(not(feature = "server"))]
             {
-                Err(CoreError::Config(
-                    "Remote LLM provider requires the 'server' feature".to_string(),
-                ))
+                Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                    message: "Remote LLM provider requires the 'server' feature".to_string(),
+                })
             }
         }
     }

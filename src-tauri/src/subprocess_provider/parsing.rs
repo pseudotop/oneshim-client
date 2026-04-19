@@ -102,8 +102,9 @@ pub(super) fn write_subprocess_ocr_image(
         _ => "bin",
     };
     let path = workdir.join(format!("ocr-input.{extension}"));
-    std::fs::write(&path, image).map_err(|err| {
-        CoreError::Internal(format!("Failed to write subprocess OCR image input: {err}"))
+    std::fs::write(&path, image).map_err(|err| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("Failed to write subprocess OCR image input: {err}"),
     })?;
     Ok(path)
 }
@@ -111,9 +112,10 @@ pub(super) fn write_subprocess_ocr_image(
 pub(super) fn parse_ocr_output(raw: &str) -> Result<Vec<OcrResult>, CoreError> {
     let normalized = raw.trim();
     if normalized.is_empty() {
-        return Err(CoreError::Internal(
-            "Subprocess CLI returned an empty OCR response.".to_string(),
-        ));
+        return Err(CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Subprocess CLI returned an empty OCR response.".to_string(),
+        });
     }
 
     if let Ok(envelope) = serde_json::from_str::<SubprocessOcrEnvelope>(normalized) {
@@ -132,10 +134,13 @@ pub(super) fn parse_ocr_output(raw: &str) -> Result<Vec<OcrResult>, CoreError> {
         }
     }
 
-    Err(CoreError::Internal(format!(
-        "Subprocess CLI returned non-JSON OCR output: {}",
-        truncate_for_error(normalized)
-    )))
+    Err(CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!(
+            "Subprocess CLI returned non-JSON OCR output: {}",
+            truncate_for_error(normalized)
+        ),
+    })
 }
 
 fn parse_ocr_value(value: &serde_json::Value) -> Option<Vec<OcrResult>> {
@@ -185,9 +190,10 @@ fn normalize_ocr_results(results: Vec<OcrResult>) -> Vec<OcrResult> {
 pub(super) fn parse_interpreted_action_output(raw: &str) -> Result<InterpretedAction, CoreError> {
     let normalized = raw.trim();
     if normalized.is_empty() {
-        return Err(CoreError::Internal(
-            "Subprocess CLI returned an empty response.".to_string(),
-        ));
+        return Err(CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Subprocess CLI returned an empty response.".to_string(),
+        });
     }
 
     if let Ok(action) = serde_json::from_str::<InterpretedAction>(normalized) {
@@ -206,10 +212,13 @@ pub(super) fn parse_interpreted_action_output(raw: &str) -> Result<InterpretedAc
         }
     }
 
-    Err(CoreError::Internal(format!(
-        "Subprocess CLI returned non-JSON intent output: {}",
-        truncate_for_error(normalized)
-    )))
+    Err(CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!(
+            "Subprocess CLI returned non-JSON intent output: {}",
+            truncate_for_error(normalized)
+        ),
+    })
 }
 
 fn parse_interpreted_action_value(value: &serde_json::Value) -> Option<InterpretedAction> {
@@ -267,23 +276,40 @@ pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreE
         || lowered.contains("sign in")
         || lowered.contains("not authenticated")
     {
-        return CoreError::Auth(format!(
-            "{} CLI authentication is required: {}",
-            cli_id,
-            truncate_for_error(normalized)
-        ));
+        return CoreError::AuthV2 {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: format!(
+                "{} CLI authentication is required: {}",
+                cli_id,
+                truncate_for_error(normalized)
+            ),
+        };
     }
 
-    CoreError::Internal(format!(
-        "{} CLI invocation failed: {}",
-        cli_id,
-        truncate_for_error(normalized)
-    ))
+    CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!(
+            "{} CLI invocation failed: {}",
+            cli_id,
+            truncate_for_error(normalized)
+        ),
+    }
 }
 
 pub(super) fn is_gemini_json_flag_error(error: &CoreError) -> bool {
     let message = match error {
-        CoreError::Internal(value) | CoreError::Config(value) | CoreError::Auth(value) => value,
+        CoreError::InternalV2 {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: value,
+        }
+        | CoreError::ConfigV2 {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: value,
+        }
+        | CoreError::AuthV2 {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: value,
+        } => value,
         _ => return false,
     };
     let lowered = message.to_ascii_lowercase();

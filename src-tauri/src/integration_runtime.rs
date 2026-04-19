@@ -311,12 +311,14 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
         }
 
         let transport_assembly = assemble_https_transport(
-            bootstrap_url.ok_or_else(|| {
-                CoreError::Config("runtime_configured requires bootstrap_url".into())
+            bootstrap_url.ok_or_else(|| CoreError::ConfigV2 {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
+                message: "runtime_configured requires bootstrap_url".into(),
             })?,
             Duration::from_secs(integration.request_timeout_secs),
-            auth.clone().ok_or_else(|| {
-                CoreError::Config("runtime_configured requires an integration auth port".into())
+            auth.clone().ok_or_else(|| CoreError::ConfigV2 {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
+                message: "runtime_configured requires an integration auth port".into(),
             })?,
             &supported_auth_schemes,
             self.secret_store.clone(),

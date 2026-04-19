@@ -21,7 +21,7 @@ impl FallbackSttProvider {
 
     /// Whether an error should trigger fallback (transient errors only, NOT timeouts).
     fn should_fallback(err: &CoreError) -> bool {
-        !matches!(err, CoreError::RequestTimeout { .. })
+        !matches!(err, CoreError::RequestTimeoutV2 { .. })
     }
 }
 
@@ -114,7 +114,10 @@ mod tests {
         let fb = FallbackSttProvider::new(
             Arc::new(ErrorProvider {
                 name: "cloud",
-                error: || CoreError::Network("connection refused".into()),
+                error: || CoreError::NetworkV2 {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: "connection refused".into(),
+                },
             }),
             Arc::new(SuccessProvider {
                 name: "local",
@@ -133,7 +136,10 @@ mod tests {
         let fb = FallbackSttProvider::new(
             Arc::new(ErrorProvider {
                 name: "cloud",
-                error: || CoreError::RequestTimeout { timeout_ms: 10000 },
+                error: || CoreError::RequestTimeoutV2 {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 10000,
+                },
             }),
             Arc::new(SuccessProvider {
                 name: "local",
@@ -149,11 +155,17 @@ mod tests {
         let fb = FallbackSttProvider::new(
             Arc::new(ErrorProvider {
                 name: "cloud",
-                error: || CoreError::Network("cloud down".into()),
+                error: || CoreError::NetworkV2 {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: "cloud down".into(),
+                },
             }),
             Arc::new(ErrorProvider {
                 name: "local",
-                error: || CoreError::SpeechToText("model missing".into()),
+                error: || CoreError::SpeechToTextV2 {
+                    code: oneshim_core::error_codes::AudioCode::SttFailed,
+                    message: "model missing".into(),
+                },
             }),
         );
         let result = fb.transcribe(AudioBuffer::new(vec![0.0; 100])).await;

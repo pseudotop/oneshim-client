@@ -41,9 +41,10 @@ impl PlatformOverlayDriver {
 impl OverlayDriver for PlatformOverlayDriver {
     async fn show_highlights(&self, req: HighlightRequest) -> Result<HighlightHandle, CoreError> {
         if req.targets.is_empty() {
-            return Err(CoreError::InvalidArguments(
-                "Overlay request requires at least one highlight target".to_string(),
-            ));
+            return Err(CoreError::InvalidArgumentsV2 {
+                code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+                message: "Overlay request requires at least one highlight target".to_string(),
+            });
         }
 
         let handle_id = Uuid::new_v4().to_string();
@@ -137,8 +138,10 @@ fn write_overlay_payload(handle_id: &str, req: &HighlightRequest) -> Result<Path
     };
 
     let path = std::env::temp_dir().join(format!("oneshim-overlay-{handle_id}.json"));
-    let bytes = serde_json::to_vec(&payload)
-        .map_err(|e| CoreError::Internal(format!("Overlay payload serialization failed: {e}")))?;
+    let bytes = serde_json::to_vec(&payload).map_err(|e| CoreError::InternalV2 {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("Overlay payload serialization failed: {e}"),
+    })?;
     fs::write(&path, bytes)
         .map_err(|e| CoreError::Io(std::io::Error::new(e.kind(), e.to_string())))?;
 
@@ -159,9 +162,10 @@ fn spawn_overlay_process(payload_path: &PathBuf) -> Result<Child, CoreError> {
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         let _ = payload_path;
-        Err(CoreError::ServiceUnavailable(
-            "Overlay driver is not available on this platform".to_string(),
-        ))
+        Err(CoreError::ServiceUnavailableV2 {
+            code: oneshim_core::error_codes::ServiceCode::Unavailable,
+            message: "Overlay driver is not available on this platform".to_string(),
+        })
     }
 }
 
@@ -224,15 +228,17 @@ root.mainloop()
                 .arg("-c")
                 .arg(PYTHON_OVERLAY_SCRIPT)
                 .arg(payload_path);
-            fallback.spawn().map_err(|e| {
-                CoreError::ServiceUnavailable(format!(
-                    "Python overlay runtime unavailable (python3/python): {e}"
-                ))
-            })
+            fallback
+                .spawn()
+                .map_err(|e| CoreError::ServiceUnavailableV2 {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: format!("Python overlay runtime unavailable (python3/python): {e}"),
+                })
         }
-        Err(err) => Err(CoreError::ServiceUnavailable(format!(
-            "Failed to launch Python overlay process: {err}"
-        ))),
+        Err(err) => Err(CoreError::ServiceUnavailableV2 {
+            code: oneshim_core::error_codes::ServiceCode::Unavailable,
+            message: format!("Failed to launch Python overlay process: {err}"),
+        }),
     }
 }
 
@@ -292,8 +298,9 @@ foreach ($form in $forms) {
         ])
         .arg(payload_path)
         .spawn()
-        .map_err(|e| {
-            CoreError::ServiceUnavailable(format!("Failed to launch Windows overlay process: {e}"))
+        .map_err(|e| CoreError::ServiceUnavailableV2 {
+            code: oneshim_core::error_codes::ServiceCode::Unavailable,
+            message: format!("Failed to launch Windows overlay process: {e}"),
         })
 }
 
@@ -372,7 +379,7 @@ mod tests {
         let driver = PlatformOverlayDriver::new();
         let req = test_request(vec![]);
         let err = driver.show_highlights(req).await.unwrap_err();
-        assert!(matches!(err, CoreError::InvalidArguments(_)));
+        assert!(matches!(err, CoreError::InvalidArgumentsV2 { .. }));
     }
 
     #[tokio::test]

@@ -96,7 +96,10 @@ pub(super) fn resolve_cli_subscription_ocr_provider(
                         Some(reason),
                     ));
                 }
-                return Err(CoreError::Config(reason));
+                return Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                    message: reason,
+                });
             }
 
             return unsupported_ocr_surface_runtime(config, &surface_id, transport);
@@ -147,10 +150,11 @@ pub(super) fn resolve_ocr_provider(
                         )?;
                         let privacy_guard =
                             external_ocr_privacy_guard.clone().ok_or_else(|| {
-                                CoreError::Config(
-                                    "Remote OCR provider requires a runtime privacy guard"
+                                CoreError::ConfigV2 {
+                                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                                    message: "Remote OCR provider requires a runtime privacy guard"
                                         .to_string(),
-                                )
+                                }
                             })?;
                         let remote = Arc::new(RemoteOcrProvider::new_with_credential(
                             endpoint, credential,
@@ -167,9 +171,10 @@ pub(super) fn resolve_ocr_provider(
             }
             #[cfg(not(feature = "server"))]
             {
-                Err(CoreError::Config(
-                    "Remote OCR provider requires the 'server' feature".to_string(),
-                ))
+                Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                    message: "Remote OCR provider requires the 'server' feature".to_string(),
+                })
             }
         }
     }
@@ -196,8 +201,9 @@ pub(super) fn resolve_ocr_provider_oauth(
         oauth_port,
         api_base_url,
     };
-    let privacy_guard = external_ocr_privacy_guard.ok_or_else(|| {
-        CoreError::Config("Remote OCR provider requires a runtime privacy guard".to_string())
+    let privacy_guard = external_ocr_privacy_guard.ok_or_else(|| CoreError::ConfigV2 {
+        code: oneshim_core::error_codes::ConfigCode::Invalid,
+        message: "Remote OCR provider requires a runtime privacy guard".to_string(),
     })?;
     let remote = Arc::new(RemoteOcrProvider::new_with_credential(
         endpoint, credential,
