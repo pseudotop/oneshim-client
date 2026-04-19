@@ -1,4 +1,5 @@
 use oneshim_core::error::CoreError;
+use oneshim_core::error_codes::InternalCode;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,7 +14,10 @@ impl From<EmbeddingError> for CoreError {
     fn from(err: EmbeddingError) -> Self {
         match err {
             EmbeddingError::Core(e) => e,
-            EmbeddingError::Internal(msg) => CoreError::Internal(msg),
+            EmbeddingError::Internal(msg) => CoreError::InternalV2 {
+                code: InternalCode::Generic,
+                message: msg,
+            },
         }
     }
 }
