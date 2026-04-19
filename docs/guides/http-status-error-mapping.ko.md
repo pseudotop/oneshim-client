@@ -75,24 +75,25 @@ if !status.is_success() {
 
 ## 이 패턴을 따르는 디스패처
 
-14개 디스패처 (2026-04-20 기준):
+14개 디스패처 (2026-04-20 기준). **구현** = 매핑 구현됨. **테스트** = 매핑을 검증하는 회귀 테스트 (specific-arm + fallback) 존재.
 
-| Crate / module | 상태 |
-|---|---|
-| `oneshim-network::http_client::check_response` | ✓ |
-| `oneshim-network::integration/http_transport::check_response` | ✓ |
-| `oneshim-network::sync/remote_transport::check_response_status` | ✓ |
-| `oneshim-network::ai_llm_client/request::send_and_parse` | ✓ |
-| `oneshim-network::local_llm_session` (Ollama, 404 only) | ✓ |
-| `oneshim-network::remote_embedding_client` | ✓ |
-| `oneshim-network::ai_ocr_client::extract_elements` | ✓ |
-| `oneshim-network::analysis_client` (analyze + summarize) | ✓ |
-| `oneshim-network::http_api_session` | ✓ |
-| `oneshim-network::auth::login` | ✓ |
-| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ |
-| `oneshim-audio::cloud_stt` | ✓ |
-| `oneshim-audio::model_downloader` | ✓ |
-| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) |
+| Crate / module | 구현 | 테스트 |
+|---|---|---|
+| `oneshim-network::http_client::check_response` | ✓ | ✓ specific (4 arm); fallback 의도적으로 `Internal` |
+| `oneshim-network::integration/http_transport::check_response` | ✓ | — (infra debt: `IntegrationAuthContext` 필요) |
+| `oneshim-network::sync/remote_transport::check_response_status` | ✓ | ✓ specific + fallback |
+| `oneshim-network::ai_llm_client/request::send_and_parse` | ✓ | ✓ specific + fallback |
+| `oneshim-network::local_llm_session` (Ollama, 404 only) | ✓ | ✓ specific (404) + fallback (500) |
+| `oneshim-network::remote_embedding_client` | ✓ | ✓ specific + fallback |
+| `oneshim-network::ai_ocr_client::extract_elements` | ✓ | ✓ specific + fallback |
+| `oneshim-network::analysis_client::analyze` | ✓ | ✓ specific + fallback |
+| `oneshim-network::analysis_client::summarize` | ✓ | ✓ specific (3 spot-check) + fallback |
+| `oneshim-network::http_api_session` | ✓ | — (infra debt: `SessionMessage` 파이프라인 필요) |
+| `oneshim-network::auth::login` | ✓ | ✓ specific + fallback |
+| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | — (infra debt: TLS 서버 fixture 필요) |
+| `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
+| `oneshim-audio::model_downloader` | ✓ | ✓ specific + fallback (`new_with_base_url` 주입 refactor 필요했음) |
+| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | — (infra debt: `AiModelCatalogWebContext` 필요) |
 
 ## 의도적 제외
 

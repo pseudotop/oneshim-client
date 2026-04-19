@@ -75,24 +75,25 @@ This preserves domain context for the "didn't match any known status" bucket.
 
 ## Dispatchers currently following this pattern
 
-14 dispatchers (as of 2026-04-20):
+14 dispatchers (as of 2026-04-20). **Impl** = mapping is implemented. **Tests** = has regression tests covering the mapping (specific-arm + fallback).
 
-| Crate / module | Status |
-|---|---|
-| `oneshim-network::http_client::check_response` | ✓ |
-| `oneshim-network::integration/http_transport::check_response` | ✓ |
-| `oneshim-network::sync/remote_transport::check_response_status` | ✓ |
-| `oneshim-network::ai_llm_client/request::send_and_parse` | ✓ |
-| `oneshim-network::local_llm_session` (Ollama, 404-only) | ✓ |
-| `oneshim-network::remote_embedding_client` | ✓ |
-| `oneshim-network::ai_ocr_client::extract_elements` | ✓ |
-| `oneshim-network::analysis_client` (analyze + summarize) | ✓ |
-| `oneshim-network::http_api_session` | ✓ |
-| `oneshim-network::auth::login` | ✓ |
-| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ |
-| `oneshim-audio::cloud_stt` | ✓ |
-| `oneshim-audio::model_downloader` | ✓ |
-| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) |
+| Crate / module | Impl | Tests |
+|---|---|---|
+| `oneshim-network::http_client::check_response` | ✓ | ✓ specific (4 arms); fallback intentionally `Internal` |
+| `oneshim-network::integration/http_transport::check_response` | ✓ | — (infra debt: needs `IntegrationAuthContext`) |
+| `oneshim-network::sync/remote_transport::check_response_status` | ✓ | ✓ specific + fallback |
+| `oneshim-network::ai_llm_client/request::send_and_parse` | ✓ | ✓ specific + fallback |
+| `oneshim-network::local_llm_session` (Ollama, 404-only) | ✓ | ✓ specific (404) + fallback (500) |
+| `oneshim-network::remote_embedding_client` | ✓ | ✓ specific + fallback |
+| `oneshim-network::ai_ocr_client::extract_elements` | ✓ | ✓ specific + fallback |
+| `oneshim-network::analysis_client::analyze` | ✓ | ✓ specific + fallback |
+| `oneshim-network::analysis_client::summarize` | ✓ | ✓ specific (3 spot-checks) + fallback |
+| `oneshim-network::http_api_session` | ✓ | — (infra debt: needs `SessionMessage` pipeline) |
+| `oneshim-network::auth::login` | ✓ | ✓ specific + fallback |
+| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | — (infra debt: needs TLS server fixture) |
+| `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
+| `oneshim-audio::model_downloader` | ✓ | ✓ specific + fallback (needed `new_with_base_url` injection) |
+| `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | — (infra debt: needs `AiModelCatalogWebContext`) |
 
 ## Intentionally excluded
 
