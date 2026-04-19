@@ -16,7 +16,7 @@ Two needs converged: introduce error-code infrastructure AND ship Bedrock as the
 ### 1. Error code infrastructure
 
 - 19 code enums (`ConfigCode`, `NetworkCode`, ..., `GuiCode`) defined via a single `define_code_enum!` macro that generates enum body, `as_str` match, `Display` impl, and `all()` enumerator from one variant list.
-- Every `CoreError` and `GuiInteractionError` variant carries a typed `code` field.
+- Every struct-variant of `CoreError` and `GuiInteractionError` carries a typed `code` field; `#[from]`-wrapped external error types (`Serialization`, `Io`) derive their code via `impl code()` per §7.
 - Unified accessor `err.code() -> &'static str` for telemetry/logs/i18n.
 - Wire-format codes follow `{domain}.{category}[.{qualifier}]` convention.
 - Released code strings are immutable (wire contract). New codes append; renames require an RFC PR.
