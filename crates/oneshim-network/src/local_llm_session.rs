@@ -1014,4 +1014,57 @@ mod tests {
         assert_eq!(usage.input_tokens, 45);
         assert_eq!(usage.output_tokens, 123);
     }
+
+    /// iter-73 regression guard for iter-55c Ollama 404 semantic mapping.
+    /// Ollama returns 404 when a model isn't pulled; we surface this as
+    /// CoreError::NotFound with resource_type="ollama_model" so frontend
+    /// can suggest `ollama pull <model>` rather than "network error".
+    #[tokio::test]
+    async fn ollama_404_maps_to_not_found_with_model_hint() {
+        use oneshim_core::models::ai_session::SessionMessage;
+        use oneshim_core::ports::conversation_session::ConversationSession;
+
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/api/chat")
+            .with_status(404)
+            .with_body("model 'llama3' not found — try `ollama pull llama3`")
+            .create_async()
+            .await;
+
+        let session = LocalLlmSession::new(
+            "test-session".to_string(),
+            "llama3".to_string(),
+            server.url(),
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "hello".to_string(),
+            attachments: vec![],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let result = session.send_message(&message).await;
+        match result {
+            Err(CoreError::NotFound {
+                resource_type, id, ..
+            }) => {
+                assert_eq!(
+                    resource_type, "ollama_model",
+                    "resource_type should be ollama_model"
+                );
+                assert!(
+                    id.contains("ollama pull") || id.contains("not found"),
+                    "id should carry the pull hint, got: {id}"
+                );
+            }
+            Err(other) => panic!("expected CoreError::NotFound, got: {other:?}"),
+            Ok(_) => panic!("expected error, got Ok"),
+        }
+    }
 }
