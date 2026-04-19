@@ -630,4 +630,59 @@ mod tests {
         assert!(err.contains("token refresh failure"));
         mock.assert_async().await;
     }
+
+    // iter-70 regression guards for iter-61a semantic HTTP status mapping
+    // in auth.rs::login. Shared helper pattern matches iter-67..69.
+    async fn run_login_status_test(status: u16) -> oneshim_core::error::CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/api/v1/auth/tokens")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+        let tm = TokenManager::new(&server.url());
+        tm.login("u@test.com", "p").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn login_429_maps_to_rate_limit() {
+        let err = run_login_status_test(429).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_503_maps_to_service_unavailable() {
+        let err = run_login_status_test(503).await;
+        assert!(
+            matches!(
+                err,
+                oneshim_core::error::CoreError::ServiceUnavailable { .. }
+            ),
+            "503 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_504_maps_to_timeout() {
+        let err = run_login_status_test(504).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_401_stays_as_auth() {
+        // Sanity check: 401 (the "normal" login failure) still maps to
+        // CoreError::Auth so iter-61a didn't regress the common case.
+        let err = run_login_status_test(401).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::Auth { .. }),
+            "401 → Auth, got: {err:?}"
+        );
+    }
 }
