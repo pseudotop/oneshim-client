@@ -21,8 +21,6 @@ define_code_enum! {
         Unavailable => "gui.unavailable",
         /// GUI 런타임 내부 오류.
         InternalError => "gui.internal_error",
-        /// 세분화 미완료.
-        Generic => "gui.generic",
     }
 }
 

@@ -13,7 +13,6 @@ consent.required
 gui.bad_request
 gui.focus_drift
 gui.forbidden
-gui.generic
 gui.internal_error
 gui.not_found
 gui.ticket_invalid
