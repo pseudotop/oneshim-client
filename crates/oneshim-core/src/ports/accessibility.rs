@@ -17,6 +17,16 @@ use crate::models::focused_element::{AccessibilityElement, FocusedElementInfo};
 /// - Never panic on OS permission revocation at runtime
 /// - Apply PII-level gating according to the provided level
 /// - Use `Zeroizing<String>` for raw text before PII filtering (in adapter)
+///
+/// # Errors
+/// - `CoreError::PermissionDenied` (wire: `permission.permission_denied`)
+///   when OS accessibility permission is missing at a point where the
+///   adapter must fail-closed (e.g., `extract_window_elements` on macOS
+///   AX tree traversal). The single-element `extract_focused_element`
+///   degrades to `Ok(None)` instead per the MUST above.
+/// - `CoreError::Internal` (wire: `internal.generic`) for tokio
+///   spawn_blocking JoinError when native AX FFI is run on a blocking
+///   thread (macOS/Linux/Windows native adapters).
 #[async_trait]
 pub trait AccessibilityExtractor: Send + Sync {
     /// Extract the currently focused UI element, filtered by PII level.

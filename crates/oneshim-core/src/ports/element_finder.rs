@@ -8,6 +8,20 @@ use crate::error::CoreError;
 use crate::models::intent::{ElementBounds, UiElement};
 use crate::models::ui_scene::UiScene;
 
+/// # Errors
+/// - Accessibility adapter path: `CoreError::PermissionDenied`
+///   (wire: `permission.permission_denied`) if OS accessibility
+///   permission is missing; `CoreError::ElementNotFound`
+///   (wire: `ui.element_missing`) if requested element is not present.
+/// - Scene-analysis adapters may additionally emit `CoreError::OcrError`
+///   (wire: `provider.ocr_failed`) and `CoreError::Analysis`
+///   (wire: `provider.analysis_failed`) propagated from underlying
+///   OCR/LLM providers.
+/// - Default `analyze_scene` / `analyze_scene_from_image` impls emit
+///   `CoreError::Internal` with "does not support" messages — callers
+///   (`oneshim-web::automation_service::scene::analyze_scene`) pattern-
+///   match BOTH `Internal` AND `Config` variants on these messages and
+///   route to HTTP 400 BadRequest. See iter-101/104 cascading fix.
 #[async_trait]
 pub trait ElementFinder: Send + Sync {
     async fn find_element(
