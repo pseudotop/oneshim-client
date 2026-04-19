@@ -4,6 +4,20 @@
 **Date**: 2026-03-09
 **Scope**: All crates using tokio async runtime
 
+> **Note on CoreError syntax in example snippets**: Examples below use the
+> pre-[ADR-019](./ADR-019-error-code-infrastructure.md) tuple-variant syntax
+> `CoreError::Internal(String)`. After ADR-019 these must be written as
+> struct variants with a typed `code` field:
+> ```rust
+> CoreError::Internal {
+>     code: oneshim_core::error_codes::InternalCode::Generic,
+>     message: format!("..."),
+> }
+> ```
+> The patterns (spawn_blocking wrapping, subprocess timeout, lock-poison
+> map_err) are unchanged — only the construction call sites need the new
+> struct shape. See ADR-019 for the wire-code contract.
+
 ---
 
 ## Context
