@@ -88,9 +88,35 @@ impl ModelDownloader for WhisperModelDownloader {
             })?;
 
         if !response.status().is_success() {
-            return Err(CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!("model download failed: HTTP {}", response.status()),
+            let status = response.status();
+            let message = format!("model download failed: HTTP {status}");
+            // Semantic HTTP status mapping per iter-54..59 pattern.
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                404 => CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                    resource_type: "model_artifact".to_string(),
+                    id: message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message,
+                },
             });
         }
 

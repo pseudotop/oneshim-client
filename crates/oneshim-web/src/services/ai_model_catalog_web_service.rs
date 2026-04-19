@@ -109,11 +109,24 @@ impl AiModelCatalogQueryService {
             ))
         })?;
         if !status.is_success() {
-            return Err(ApiError::ServiceUnavailable(format!(
+            let message = format!(
                 "Model discovery failed ({}): {}",
                 status,
                 truncate_error(&body)
-            )));
+            );
+            // Semantic ApiError mapping per iter-54..59 pattern (ApiError
+            // variants are web-layer HTTP status equivalents).
+            return Err(match status.as_u16() {
+                400 => ApiError::BadRequest(message),
+                401 => ApiError::Unauthorized(message),
+                403 => ApiError::Forbidden(message),
+                404 => ApiError::NotFound(message),
+                // 408/429/502/503/504 all represent transient or retry-worthy
+                // upstream failures — map to ServiceUnavailable (ApiError has
+                // no dedicated TooManyRequests/Timeout variants).
+                408 | 429 | 502 | 503 | 504 => ApiError::ServiceUnavailable(message),
+                _ => ApiError::Internal(message),
+            });
         }
 
         let mut discovered_models = parse_models(
