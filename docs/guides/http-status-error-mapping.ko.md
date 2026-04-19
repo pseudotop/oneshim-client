@@ -88,7 +88,7 @@ if !status.is_success() {
 | `oneshim-network::ai_ocr_client::extract_elements` | ✓ | ✓ specific + fallback |
 | `oneshim-network::analysis_client::analyze` | ✓ | ✓ specific + fallback |
 | `oneshim-network::analysis_client::summarize` | ✓ | ✓ specific (3 spot-check) + fallback |
-| `oneshim-network::http_api_session` | ✓ | — (infra debt: `SessionMessage` 파이프라인 필요) |
+| `oneshim-network::http_api_session` | ✓ | ✓ specific + fallback |
 | `oneshim-network::auth::login` | ✓ | ✓ specific + fallback |
 | `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | — (infra debt: TLS 서버 fixture 필요) |
 | `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |

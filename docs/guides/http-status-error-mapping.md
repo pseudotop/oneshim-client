@@ -88,7 +88,7 @@ This preserves domain context for the "didn't match any known status" bucket.
 | `oneshim-network::ai_ocr_client::extract_elements` | ✓ | ✓ specific + fallback |
 | `oneshim-network::analysis_client::analyze` | ✓ | ✓ specific + fallback |
 | `oneshim-network::analysis_client::summarize` | ✓ | ✓ specific (3 spot-checks) + fallback |
-| `oneshim-network::http_api_session` | ✓ | — (infra debt: needs `SessionMessage` pipeline) |
+| `oneshim-network::http_api_session` | ✓ | ✓ specific + fallback |
 | `oneshim-network::auth::login` | ✓ | ✓ specific + fallback |
 | `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | — (infra debt: needs TLS server fixture) |
 | `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
