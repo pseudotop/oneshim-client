@@ -1067,4 +1067,49 @@ mod tests {
             Ok(_) => panic!("expected error, got Ok"),
         }
     }
+
+    /// iter-76 regression guard: non-404 HTTP errors from Ollama fall back
+    /// to CoreError::Network (not NotFound), so the "model not pulled" UX
+    /// only triggers for the specific 404 case.
+    #[tokio::test]
+    async fn ollama_500_maps_to_network_generic() {
+        use oneshim_core::models::ai_session::SessionMessage;
+        use oneshim_core::ports::conversation_session::ConversationSession;
+
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/api/chat")
+            .with_status(500)
+            .with_body("Internal Server Error")
+            .create_async()
+            .await;
+
+        let session = LocalLlmSession::new(
+            "test-session".to_string(),
+            "llama3".to_string(),
+            server.url(),
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "hello".to_string(),
+            attachments: vec![],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let result = session.send_message(&message).await;
+        match result {
+            Err(CoreError::Network { .. }) => {
+                // Expected: 500 (non-404) falls back to Network/Generic
+            }
+            Err(other) => {
+                panic!("500 should map to CoreError::Network (not domain-specific), got: {other:?}")
+            }
+            Ok(_) => panic!("expected error, got Ok"),
+        }
+    }
 }
