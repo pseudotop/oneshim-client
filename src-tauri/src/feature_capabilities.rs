@@ -801,46 +801,29 @@ mod tests {
             .any(|value| value == "local_server:ollama"));
     }
 
+    /// ADR-019 regression guard: Bedrock is intentionally unsupported.
+    /// The `provider_surface.bedrock.direct_api` catalog entry was removed
+    /// in Phase 3 of the error-code-infrastructure migration. This test
+    /// asserts the catalog does NOT contain Bedrock — catching accidental
+    /// re-introduction without the SigV4 implementation checklist (ADR-019 §5).
     #[tokio::test]
-    async fn unsupported_direct_http_surface_is_reported_unavailable_without_probe() {
-        let surface = provider_surface_catalog()
-            .expect("catalog should load")
+    async fn bedrock_surface_removed_per_adr_019() {
+        let catalog = provider_surface_catalog().expect("catalog should load");
+        let bedrock_surface = catalog
             .surfaces
             .iter()
-            .find(|surface| surface.surface_id == "provider_surface.bedrock.direct_api")
-            .expect("bedrock surface should exist")
-            .clone();
-
-        let feature = probed_http_surface_feature(&surface).await;
-
-        assert_eq!(feature.availability, FeatureAvailability::Unavailable);
-        assert_eq!(
-            feature.status_reason.as_deref(),
-            Some("runtime_unsupported:aws_signature_v4")
+            .find(|surface| surface.surface_id == "provider_surface.bedrock.direct_api");
+        assert!(
+            bedrock_surface.is_none(),
+            "Bedrock surface must remain absent from catalog (ADR-019 §5)"
         );
-        assert_eq!(
-            feature.status_copy_key.as_deref(),
-            Some("featureCapability.surface.provider_surface.bedrock.direct_api.unavailable")
-        );
-    }
-
-    #[tokio::test]
-    async fn unsupported_direct_http_surface_endpoint_probe_short_circuits() {
-        let result = probe_provider_surface_endpoint(
-            "provider_surface.bedrock.direct_api",
-            "llm_api",
-            "https://bedrock-runtime.us-east-1.amazonaws.com/model/anthropic.claude-3-5-sonnet/converse",
-        )
-        .await;
-
-        assert_eq!(result.availability, FeatureAvailability::Unavailable);
-        assert_eq!(
-            result.status_reason.as_deref(),
-            Some("runtime_unsupported:aws_signature_v4")
-        );
-        assert_eq!(
-            result.status_copy_key.as_deref(),
-            Some("featureCapability.surface.provider_surface.bedrock.direct_api.unavailable")
+        let bedrock_vendor = catalog
+            .vendors
+            .iter()
+            .find(|vendor| vendor.vendor_id == "bedrock");
+        assert!(
+            bedrock_vendor.is_none(),
+            "Bedrock vendor must remain absent from catalog (ADR-019 §5)"
         );
     }
 
