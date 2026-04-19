@@ -150,9 +150,11 @@ impl GrpcConfig {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| {
-                NetworkError::Config(
-                    "grpc.tls_domain_name is required when grpc.use_tls=true".to_string(),
-                )
+                // Iter-99: "is required when ..." = Missing semantics.
+                NetworkError::Core(oneshim_core::error::CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Missing,
+                    message: "grpc.tls_domain_name is required when grpc.use_tls=true".to_string(),
+                })
             })?;
 
         if domain.contains('/') {
@@ -211,20 +213,26 @@ impl GrpcConfig {
                     .tls_client_cert_path
                     .as_deref()
                     .ok_or_else(|| {
-                        NetworkError::Config(
-                            "grpc.tls_client_cert_path is required when grpc.mtls_enabled=true"
-                                .to_string(),
-                        )
+                        // Iter-99: required-when → Missing.
+                        NetworkError::Core(oneshim_core::error::CoreError::Config {
+                            code: oneshim_core::error_codes::ConfigCode::Missing,
+                            message:
+                                "grpc.tls_client_cert_path is required when grpc.mtls_enabled=true"
+                                    .to_string(),
+                        })
                     })?
                     .trim();
                 let key_path = self
                     .tls_client_key_path
                     .as_deref()
                     .ok_or_else(|| {
-                        NetworkError::Config(
-                            "grpc.tls_client_key_path is required when grpc.mtls_enabled=true"
-                                .to_string(),
-                        )
+                        // Iter-99: required-when → Missing.
+                        NetworkError::Core(oneshim_core::error::CoreError::Config {
+                            code: oneshim_core::error_codes::ConfigCode::Missing,
+                            message:
+                                "grpc.tls_client_key_path is required when grpc.mtls_enabled=true"
+                                    .to_string(),
+                        })
                     })?
                     .trim();
 
@@ -300,9 +308,11 @@ impl GrpcConfig {
             .unwrap_or(false);
 
         if !valid {
-            return Err(NetworkError::Config(format!(
-                "{field} is required when grpc.mtls_enabled=true"
-            )));
+            // Iter-99: "is required when" = Missing (not Invalid).
+            return Err(NetworkError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: format!("{field} is required when grpc.mtls_enabled=true"),
+            }));
         }
 
         Ok(())
@@ -460,5 +470,46 @@ mod tests {
 
         assert_eq!(config.rest_endpoint, "http://localhost:8000");
         assert!(config.rest_tls.is_none());
+    }
+
+    /// Iter-99 regression guards: "is required" validation errors emit
+    /// ConfigCode::Missing (wire code `config.missing`), not the old
+    /// ConfigCode::Invalid. Lets telemetry distinguish missing TLS config
+    /// from invalid format/combination.
+    #[test]
+    fn test_validate_missing_tls_domain_name_emits_missing() {
+        let mut config = GrpcConfig::default();
+        config.use_tls = true;
+        config.tls_domain_name = None;
+        let err = config.validate_transport_security().unwrap_err();
+        let core: oneshim_core::error::CoreError = err.into();
+        assert_eq!(core.code(), "config.missing");
+    }
+
+    #[test]
+    fn test_validate_missing_client_cert_emits_missing() {
+        let mut config = GrpcConfig::default();
+        config.use_tls = true;
+        config.mtls_enabled = true;
+        config.tls_domain_name = Some("api.example.com".to_string());
+        // tls_ca_cert_path is optional per required_path for the ca field
+        config.tls_ca_cert_path = Some("/tmp/ca.pem".to_string());
+        config.tls_client_cert_path = None; // Missing
+        config.tls_client_key_path = Some("/tmp/key.pem".to_string());
+        let err = config.validate_transport_security().unwrap_err();
+        let core: oneshim_core::error::CoreError = err.into();
+        assert_eq!(core.code(), "config.missing");
+    }
+
+    /// Pre-iter-99 guard: mtls+use_tls combination check stays as Invalid
+    /// (the values are present, their combination is illegal).
+    #[test]
+    fn test_validate_mtls_without_tls_stays_invalid() {
+        let mut config = GrpcConfig::default();
+        config.mtls_enabled = true;
+        config.use_tls = false;
+        let err = config.validate_transport_security().unwrap_err();
+        let core: oneshim_core::error::CoreError = err.into();
+        assert_eq!(core.code(), "config.invalid");
     }
 }

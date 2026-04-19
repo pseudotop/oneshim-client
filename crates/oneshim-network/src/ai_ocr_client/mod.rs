@@ -113,9 +113,12 @@ impl RemoteOcrProvider {
         )
         .map_err(NetworkError::Internal)?;
         if !matches!(auth_scheme, ProviderAuthScheme::None) && config.api_key.is_empty() {
-            return Err(NetworkError::Config(
-                "AI OCR API key is not configured. Set it in Settings.".into(),
-            ));
+            // Iter-99: "not configured" is Missing semantics. Route via
+            // NetworkError::Core to emit ConfigCode::Missing wire code.
+            return Err(NetworkError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "AI OCR API key is not configured. Set it in Settings.".into(),
+            }));
         }
         let credential = if matches!(auth_scheme, ProviderAuthScheme::None) {
             CredentialSource::NoAuth
