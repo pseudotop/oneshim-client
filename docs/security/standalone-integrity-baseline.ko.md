@@ -28,7 +28,11 @@
 - `integrity.require_signed_policy_bundle=true`일 때 시작 시 다음 항목을 반드시 검증합니다.
   - `integrity.policy_file_path`
   - `integrity.policy_signature_path`
-  - `integrity.policy_public_key` (없으면 `update.signature_public_key` 사용)
+  - `integrity.policy_public_key` (권장 설정 — 이 값을 명시적으로 설정해야 합니다).
+    과거에는 `update.signature_public_key`가 fallback 경로로 사용되었지만,
+    D9/I-4 정리 이후 `update.signature_public_key` 기본값이 빈 문자열이므로,
+    해당 필드를 명시적으로 설정하지 않는 이상 fallback 경로는 작동하지 않습니다.
+    `integrity.policy_public_key`를 직접 설정하는 것을 권장합니다.
 - 서명 검증 실패 시 앱은 시작 단계에서 fail-closed로 종료되어야 합니다.
 - 릴리즈 파이프라인은 `runtime-policy.json`, `.sha256`, `.sig`를 함께 배포해야 합니다.
 
