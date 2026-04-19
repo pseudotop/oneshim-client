@@ -302,9 +302,13 @@ async fn e2e_permission_denied() {
     let h = harness();
     h.finder.fail_permission.store(true, Ordering::Relaxed);
     let err = h.svc.create_session(req()).await.unwrap_err();
+    // Iter-91: PermissionDenied is a denial variant — maps to Forbidden with
+    // wire code `gui.forbidden`. Pre-iter-91 this erroneously fell through to
+    // Internal (`gui.internal_error`), losing the denial semantic for
+    // frontend i18n. The new assertion validates the corrected mapping.
     assert!(
-        matches!(err, GuiInteractionError::Internal { .. }),
-        "got: {err:?}"
+        matches!(err, GuiInteractionError::Forbidden { .. }),
+        "expected Forbidden for permission denial; got: {err:?}"
     );
 }
 
