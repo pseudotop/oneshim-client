@@ -3,6 +3,23 @@
 //! The [`WebStorage`] supertrait composes focused sub-traits, each covering a
 //! single storage concern.  Consumers that only need a subset of capabilities
 //! can accept the narrow sub-trait instead of the full `WebStorage`.
+//!
+//! # Errors (applies to all sub-traits)
+//! `CoreError::Storage` (wire: `storage.failed`) for every SQLite operation
+//! (iter-47 mass fix pattern: prepare/query/execute/transaction/FTS5 match).
+//! Consistent conventions across sub-traits:
+//! - Get-style methods returning `Option<T>` use `Ok(None)` for not-found
+//!   (tag_id, frame_id, date, suggestion_id).
+//! - List-style methods use `Ok(Vec::new())` / `Ok(HashMap::new())` for
+//!   empty results rather than an Err variant.
+//! - Mutators returning `Result<bool, _>` (e.g., `update_tag`, `delete_tag`,
+//!   `dismiss_unified_suggestion`) use `Ok(false)` to signal rowcount=0.
+//! - `mark_suggestion_*` variants (rowcount=0 on unknown id) are Ok(()) —
+//!   no distinct NotFound error is surfaced.
+//! - Default-implementation sub-traits (`DigestStorage`, `GuiInteractionStorage`,
+//!   `HabitStorage`, `SegmentQueryStorage`, `CoachingQueryStorage`) provide
+//!   no-op/`Ok(vec![])` defaults for stores without those tables; only
+//!   override implementations can surface Storage errors.
 
 use chrono::{DateTime, Utc};
 

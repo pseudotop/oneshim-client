@@ -3,6 +3,13 @@ use crate::models::suggestion::SuggestionHistoryEntry;
 
 /// Storage port for few-shot prompt example retrieval and feedback recording.
 /// Synchronous — matches StorageService / FocusStorage pattern (SQLite sync ops).
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for SQLite prepare/query/
+/// execute operations (iter-47 mass fix pattern). Empty feedback history
+/// is `Ok(Vec::new())`; `record_suggestion_feedback` on a non-existent
+/// `suggestion_id` is treated as no-op by current adapters rather than
+/// an error — check the implementation for exact rowcount semantics.
 pub trait FewShotStorage: Send + Sync {
     fn get_suggestions_with_feedback(
         &self,
