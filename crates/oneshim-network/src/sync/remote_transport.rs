@@ -325,9 +325,13 @@ impl SyncTransport for RemoteSyncTransport {
                 }));
         }
 
-        let peers: Vec<PeerInfo> = resp.json().await.map_err(|e| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
-            message: format!("parse peers response: {e}"),
+        let peers: Vec<PeerInfo> = resp.json().await.map_err(|e| {
+            // Match sister module integration/http_transport/connect.rs pattern:
+            // wrap as CoreError::Serialization so wire code is `internal.serialization`
+            // (indicating parse failure) rather than generic `internal.generic`.
+            CoreError::Serialization(serde_json::Error::io(std::io::Error::other(format!(
+                "parse peers response: {e}"
+            ))))
         })?;
         debug!(count = peers.len(), "discovered remote peers");
         Ok(peers)
