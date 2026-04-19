@@ -1,14 +1,16 @@
 # Error Code Infrastructure + C5 AWS Bedrock Skip — Design Spec
 
 - **Date**: 2026-04-19
-- **Status**: Draft (pending review loop)
+- **Status**: **SHIPPED 2026-04-19** (branch `feature/error-code-phase1`, see ADR-019 for final architectural record)
 - **Author**: richard.kim0828@gmail.com
 - **Related**:
   - C5 entry of `docs/reviews/2026-04-16-feature-gaps-analysis.md`
-  - ADR-019 (to be authored alongside implementation) — Error Code Infrastructure
+  - [ADR-019](../../architecture/ADR-019-error-code-infrastructure.md) — Error Code Infrastructure (accepted and implemented)
   - ADR-001 §1 (Rust client error strategy)
   - ADR-003 (Directory module pattern)
   - Memory patterns: `feedback_cross_consumer_audit`, `feedback_holistic_pre_merge_review`, `feedback_3loop_quality_gate`
+
+> **Note for future readers**: This is the design spec that was written before implementation. The document contains V1/V2 coexistence discussion (§4.4, §5) which describes the *migration path* — the final shipped code has V1 deleted and V2 renamed to canonical. ADR-019 is the authoritative architectural record; this spec is preserved as design history.
 
 ---
 

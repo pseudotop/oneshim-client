@@ -1,5 +1,7 @@
 # Error Code Infrastructure + C5 AWS Bedrock Skip — Implementation Plan
 
+> **Status: SHIPPED 2026-04-19** (branch `feature/error-code-phase1`). Plan preserved as execution history. See [ADR-019](../../architecture/ADR-019-error-code-infrastructure.md) for the final architectural record.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Retrofit `CoreError` (32 variants, 1,052 sites) and `GuiInteractionError` (8 variants, 97 sites) across the 14-crate workspace to carry typed error code enums; ship AWS Bedrock as the first intentionally-unsupported provider via `ConfigCode::UnsupportedProviderBedrock`; delete Bedrock from the provider catalog; fix OCR no-auth fallthrough security bug.
