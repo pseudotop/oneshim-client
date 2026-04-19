@@ -71,6 +71,9 @@ impl From<oneshim_core::error::CoreError> for ApiError {
             | CoreError::SandboxUnsupported { message, .. } => {
                 ApiError::ServiceUnavailable(message)
             }
+            rate_or_timeout @ (CoreError::RateLimit { .. } | CoreError::RequestTimeout { .. }) => {
+                ApiError::ServiceUnavailable(rate_or_timeout.to_string())
+            }
             CoreError::PolicyDenied { message, .. }
             | CoreError::PrivacyDenied { message, .. }
             | CoreError::PermissionDenied { message, .. }
@@ -114,6 +117,33 @@ mod tests {
         assert!(
             matches!(api, ApiError::Forbidden(_)),
             "PermissionDenied must map to 403 Forbidden, got: {api:?}"
+        );
+    }
+
+    /// Regression guard: transient-unavailability variants (RateLimit,
+    /// RequestTimeout) must map to HTTP 503 ServiceUnavailable (not 500
+    /// Internal). These represent upstream-service issues the client
+    /// should retry, not server-side bugs. Caught by iter-41 drift audit.
+    #[test]
+    fn rate_limit_and_timeout_map_to_service_unavailable() {
+        let rate = oneshim_core::error::CoreError::RateLimit {
+            code: oneshim_core::error_codes::NetworkCode::RateLimit,
+            retry_after_secs: 30,
+        };
+        let api: ApiError = rate.into();
+        assert!(
+            matches!(api, ApiError::ServiceUnavailable(_)),
+            "RateLimit must map to 503 ServiceUnavailable, got: {api:?}"
+        );
+
+        let timeout = oneshim_core::error::CoreError::RequestTimeout {
+            code: oneshim_core::error_codes::NetworkCode::Timeout,
+            timeout_ms: 5000,
+        };
+        let api: ApiError = timeout.into();
+        assert!(
+            matches!(api, ApiError::ServiceUnavailable(_)),
+            "RequestTimeout must map to 503 ServiceUnavailable, got: {api:?}"
         );
     }
 }
