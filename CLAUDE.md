@@ -394,6 +394,7 @@ Ports (Arc<dyn T>) created for the Scheduler should be shared with AppState, not
 - [ADR-002: OS GUI Interaction Boundary and Runtime Split](docs/architecture/ADR-002-os-gui-interaction-boundary.md)
 - [ADR-003: Directory Module Pattern for Large Source Files](docs/architecture/ADR-003-directory-module-pattern.md)
 - [ADR-004: Tauri v2 Migration (iced → Tauri v2 + WebView)](docs/architecture/ADR-004-tauri-v2-migration.md) ([한국어](docs/architecture/ADR-004-tauri-v2-migration.ko.md))
+- [ADR-019: Error Code Infrastructure + AWS Bedrock Intentional Non-Support](docs/architecture/ADR-019-error-code-infrastructure.md) ([한국어](docs/architecture/ADR-019-error-code-infrastructure.ko.md)) — typed `code` field on every `CoreError`/`GuiInteractionError` variant; Bedrock deleted from catalog; re-introduction requires §5 8-step checklist
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
