@@ -15,6 +15,20 @@ pub struct SandboxCapabilities {
     pub process_isolation: bool,
 }
 
+/// # Errors
+/// Sandbox emissions split by failure phase (iter-88 re-route):
+/// - `CoreError::SandboxInit` (wire: `sandbox.init_failed`) for
+///   enforcement setup failures: seccomp filter build/compile/apply,
+///   Landlock ruleset creation, Windows Job Object/Restricted Token
+///   setup, macOS Seatbelt. All pre-exec phases route here.
+/// - `CoreError::SandboxExecution` (wire: `sandbox.execution_failed`)
+///   for post-exec runtime failures: child process termination,
+///   output parsing errors.
+/// - `CoreError::SandboxUnsupported` (wire: `sandbox.unsupported_platform`)
+///   when the platform lacks the sandbox feature gate (e.g.,
+///   `linux-sandbox` / `windows-sandbox` feature not compiled in).
+/// - `CoreError::ExecutionTimeout` (wire: `sandbox.timeout`) when the
+///   sandboxed action exceeds its timeout budget.
 #[async_trait]
 pub trait Sandbox: Send + Sync {
     fn platform(&self) -> &str;

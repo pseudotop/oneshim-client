@@ -87,6 +87,21 @@ pub enum RefreshResult {
 ///
 /// Implementations coordinate PKCE, callback server, token exchange,
 /// and secure storage.
+///
+/// # Errors
+/// - `CoreError::OAuthError` (wire: `oauth.failed`) for provider-side
+///   token exchange / PKCE verification failures, including
+///   RFC 6749 error classification (`invalid_grant`, `invalid_client`,
+///   `server_error`). See `oneshim-network::oauth::token_exchange`.
+/// - `CoreError::OAuthRefreshError` (wire: `oauth.refresh_failed`)
+///   for refresh-specific failures (see ADR-019 §3.5 for the
+///   `OAuthErrorKind` classification carried in the variant).
+/// - `CoreError::Auth` (wire: `auth.failed`) for session-token-level
+///   auth failures distinct from the OAuth flow itself.
+/// - `CoreError::SecretStoreError` (wire: `secret.failed`) when
+///   secret-store read/write for OAuth tokens fails.
+/// - Note: HTTP-status arms NOT applied to token exchange — RFC 6749
+///   semantic classification is the source of truth.
 #[async_trait]
 pub trait OAuthPort: Send + Sync {
     /// Start an OAuth authorization flow. Returns a handle with the auth URL
