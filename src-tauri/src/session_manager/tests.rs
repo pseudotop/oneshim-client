@@ -174,8 +174,18 @@ async fn create_session_enforces_max_concurrent_limit() {
 
     let _s1 = mgr.create_session(make_config()).await.expect("session 1");
     let _s2 = mgr.create_session(make_config()).await.expect("session 2");
-    let err_msg = expect_err_msg(mgr.create_session(make_config()).await);
-    assert!(err_msg.contains("max concurrent sessions"));
+    // Iter-97: capacity limit emits CoreError::ServiceUnavailable with wire
+    // code `service.unavailable` (was Internal.Generic pre-iter-97).
+    let result = mgr.create_session(make_config()).await;
+    let err = match result {
+        Ok(_) => panic!("third session should fail when at capacity"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "service.unavailable");
+    assert!(
+        err.to_string().contains("max concurrent sessions"),
+        "err should reference capacity limit, got: {err}"
+    );
 }
 
 #[tokio::test]
@@ -438,10 +448,17 @@ async fn recover_session_fails_after_max_retries() {
     let _ = mgr.recover_session(&id).await.expect("recovery 2");
 
     // Third attempt should fail.
-    let err_msg = expect_err_msg(mgr.recover_session(&id).await);
+    // Iter-97: retry exhaustion emits CoreError::ServiceUnavailable with wire
+    // code `service.unavailable` (was Internal.Generic pre-iter-97).
+    let result = mgr.recover_session(&id).await;
+    let err = match result {
+        Ok(_) => panic!("third recover should fail after exhausting retries"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "service.unavailable");
     assert!(
-        err_msg.contains("max retries exceeded"),
-        "unexpected error: {err_msg}",
+        err.to_string().contains("max retries exceeded"),
+        "err should reference retry exhaustion, got: {err}"
     );
 
     // Session state should be Failed.

@@ -230,8 +230,13 @@ impl SessionManagerImpl {
     ) -> Result<(), CoreError> {
         let mut sessions = self.sessions.write().await;
         if sessions.len() >= self.config.max_concurrent_sessions as usize {
-            return Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            // Iter-97: capacity-limit hit is a service-availability condition
+            // (transient; client can retry after an existing session ends).
+            // Wire code `service.unavailable` distinguishes this from true
+            // internal failures; frontend can show "try again soon" rather
+            // than "something broke inside oneshim".
+            return Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: format!(
                     "max concurrent sessions ({}) reached",
                     self.config.max_concurrent_sessions,

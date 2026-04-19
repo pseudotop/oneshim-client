@@ -82,8 +82,12 @@ impl SessionManagerImpl {
 
         if managed.retry_count >= self.config.max_retries {
             managed.state = SessionState::Failed;
-            return Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            // Iter-97: retry exhaustion means the service is effectively
+            // unavailable for this session's adapter. Wire code
+            // `service.unavailable` lets telemetry distinguish "we gave up
+            // after N retries" from "something broke inside oneshim".
+            return Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: "max retries exceeded".into(),
             });
         }
