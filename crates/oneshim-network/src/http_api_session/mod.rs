@@ -212,11 +212,9 @@ impl HttpApiSession {
                 builder.header("Authorization", format!("Bearer {}", token))
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                return Err(CoreError::InternalV2 {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
-                    message:
-                        "AWS Signature V4 authentication is not yet supported for API sessions"
-                            .to_string(),
+                return Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
                 });
             }
         };

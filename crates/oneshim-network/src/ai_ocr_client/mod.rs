@@ -43,19 +43,20 @@ fn apply_auth_headers(
     auth_scheme: ProviderAuthScheme,
     builder: reqwest::RequestBuilder,
     api_key: &str,
-) -> reqwest::RequestBuilder {
+) -> Result<reqwest::RequestBuilder, CoreError> {
     match auth_scheme {
-        ProviderAuthScheme::None => builder,
-        ProviderAuthScheme::XApiKey => builder
+        ProviderAuthScheme::None => Ok(builder),
+        ProviderAuthScheme::XApiKey => Ok(builder
             .header("x-api-key", api_key)
-            .header("anthropic-version", crate::ANTHROPIC_API_VERSION),
-        ProviderAuthScheme::XGoogApiKey => builder.header("x-goog-api-key", api_key),
-        ProviderAuthScheme::Bearer => builder.header("Authorization", format!("Bearer {api_key}")),
-        ProviderAuthScheme::AwsSignatureV4 => {
-            // AWS Signature V4 requires request signing which is not yet implemented for OCR.
-            // Fall back to no-auth; callers should gate on provider type before reaching here.
-            builder
+            .header("anthropic-version", crate::ANTHROPIC_API_VERSION)),
+        ProviderAuthScheme::XGoogApiKey => Ok(builder.header("x-goog-api-key", api_key)),
+        ProviderAuthScheme::Bearer => {
+            Ok(builder.header("Authorization", format!("Bearer {api_key}")))
         }
+        ProviderAuthScheme::AwsSignatureV4 => Err(CoreError::ConfigV2 {
+            code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+            message: "AWS Bedrock is intentionally unsupported in this build".into(),
+        }),
     }
 }
 impl RemoteOcrProvider {
@@ -380,11 +381,9 @@ impl OcrProvider for RemoteOcrProvider {
                 ])?;
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::InternalV2 {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
-                    message:
-                        "Bedrock Converse request shape is not yet supported for OCR extraction"
-                            .to_string(),
+                return Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
                 });
             }
         }
@@ -398,10 +397,10 @@ impl OcrProvider for RemoteOcrProvider {
             .json(&request_body);
         let auth_scheme = self.ocr_auth_scheme()?;
         if matches!(auth_scheme, ProviderAuthScheme::None) {
-            builder = apply_auth_headers(auth_scheme, builder, "");
+            builder = apply_auth_headers(auth_scheme, builder, "")?;
         } else {
             let bearer_token = self.credential.resolve_bearer_token().await?;
-            builder = apply_auth_headers(auth_scheme, builder, &bearer_token);
+            builder = apply_auth_headers(auth_scheme, builder, &bearer_token)?;
         }
         if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));

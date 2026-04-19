@@ -110,10 +110,9 @@ impl RemoteLlmProvider {
                 });
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::InternalV2 {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
-                    message: "Bedrock Converse request shape is not yet supported for LLM chat"
-                        .to_string(),
+                return Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
                 });
             }
         };
@@ -148,11 +147,9 @@ impl RemoteLlmProvider {
                 }
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                return Err(CoreError::InternalV2 {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
-                    message:
-                        "AWS Signature V4 authentication is not yet supported for LLM requests"
-                            .to_string(),
+                return Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
                 });
             }
         }
@@ -201,8 +198,10 @@ impl RemoteLlmProvider {
                 });
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::InternalV2 { code: oneshim_core::error_codes::InternalCode::Generic, message: "Bedrock Converse request shape is not yet supported for LLM response parsing"
-                        .to_string() });
+                return Err(CoreError::ConfigV2 {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
+                });
             }
         };
         if let Some(ref flag) = self.last_request_ok {
