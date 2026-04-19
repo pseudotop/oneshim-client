@@ -591,7 +591,11 @@ mod tests {
         client.update_policies(vec![policy]).await;
 
         let result = client.issue_command_token("pol-1").await;
-        assert!(matches!(result, Err(AutomationError::Config(_))));
+        // Iter-100: signing-secret env var missing now routes to
+        // AutomationError::Core(Config{Missing}) → wire config.missing.
+        let err = result.unwrap_err();
+        let core: oneshim_core::error::CoreError = err.into();
+        assert_eq!(core.code(), "config.missing");
 
         drop(env_guard);
     }

@@ -180,7 +180,13 @@ impl AutomationController {
             .scene_finder
             .as_ref()
             .ok_or_else(|| {
-                AutomationError::Internal("Scene analyzer is not configured".to_string())
+                // Iter-100: "not configured" = Missing semantic. Route via
+                // AutomationError::Core to emit ConfigCode::Missing wire code
+                // (config.missing) instead of internal.generic.
+                AutomationError::Core(oneshim_core::error::CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Missing,
+                    message: "Scene analyzer is not configured".to_string(),
+                })
             })?
             .clone();
 
@@ -207,21 +213,33 @@ impl AutomationController {
 
     pub(super) fn require_intent_executor(&self) -> Result<&Arc<IntentExecutor>, AutomationError> {
         self.intent_executor.as_ref().ok_or_else(|| {
-            AutomationError::Internal("IntentExecutor is not configured".to_string())
+            // Iter-100: "not configured" = Missing semantic.
+            AutomationError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "IntentExecutor is not configured".to_string(),
+            })
         })
     }
 
     pub(super) fn require_intent_planner(
         &self,
     ) -> Result<&Arc<dyn IntentPlanner>, AutomationError> {
-        self.intent_planner
-            .as_ref()
-            .ok_or_else(|| AutomationError::Internal("IntentPlanner is not configured".to_string()))
+        self.intent_planner.as_ref().ok_or_else(|| {
+            // Iter-100: "not configured" = Missing semantic.
+            AutomationError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "IntentPlanner is not configured".to_string(),
+            })
+        })
     }
 
     pub(super) fn require_scene_finder(&self) -> Result<&Arc<dyn ElementFinder>, AutomationError> {
         self.scene_finder.as_ref().ok_or_else(|| {
-            AutomationError::Internal("Scene analyzer is not configured".to_string())
+            // Iter-100: "not configured" = Missing semantic.
+            AutomationError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "Scene analyzer is not configured".to_string(),
+            })
         })
     }
 

@@ -102,10 +102,17 @@ pub(super) fn issue_command_token_for_policy(
 
     if policy.require_signed_token {
         let secret = load_signing_secret().ok_or_else(|| {
-            AutomationError::Config(format!(
-                "서명 policy이 active화되어 있지만 {} 환경 변수가 비어 있습니다.",
-                POLICY_TOKEN_SIGNING_SECRET_ENV
-            ))
+            // Iter-100: env var empty = Missing semantic, not Invalid.
+            // Route via Core wrapper so wire code is config.missing, helping
+            // telemetry distinguish "admin forgot to set env var" from
+            // "admin set an invalid value".
+            AutomationError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: format!(
+                    "서명 policy이 active화되어 있지만 {} 환경 변수가 비어 있습니다.",
+                    POLICY_TOKEN_SIGNING_SECRET_ENV
+                ),
+            })
         })?;
         let signature =
             compute_policy_token_signature(&policy.policy_id, nonce, command_hash, &secret);
