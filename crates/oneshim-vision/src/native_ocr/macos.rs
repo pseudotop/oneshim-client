@@ -60,8 +60,8 @@ fn recognize_text_blocking(data: &[u8]) -> Result<Vec<OcrResult>, CoreError> {
             use image::GenericImageView;
             img.dimensions()
         })
-        .map_err(|e| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|e| CoreError::OcrError {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
             message: format!("Failed to decode image for dimensions: {e}"),
         })?;
 
@@ -129,8 +129,8 @@ fn recognize_text_blocking(data: &[u8]) -> Result<Vec<OcrResult>, CoreError> {
         } else {
             "unknown Vision error".to_string()
         };
-        return Err(CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        return Err(CoreError::OcrError {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
             message: format!("Vision performRequests failed: {err_msg}"),
         });
     }
