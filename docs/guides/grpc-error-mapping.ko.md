@@ -25,6 +25,7 @@
 | `InvalidArgument`, `FailedPrecondition`, `OutOfRange` | `Validation { field, message }` | `CoreError::Validation { code: ValidationCode::InvalidField, .. }` → `validation.invalid_field` | 요청 유효성 실패 |
 | `ResourceExhausted` | `RateLimited { retry_after_secs }` | `CoreError::RateLimit { code: NetworkCode::RateLimit, .. }` → `network.rate_limit` | `retry-after` 또는 `x-retry-after-seconds` 사용, 기본값 `60` |
 | `Unavailable` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | 서비스 가용성 장애 |
+| `DeadlineExceeded` | `Timeout { timeout_ms: 0 }` | `CoreError::RequestTimeout { code: NetworkCode::Timeout, .. }` → `network.timeout` | 클라이언트측 데드라인 초과 (sentinel timeout_ms=0; 실제 timeout은 request-site 로그 참조) |
 | 기타 코드 | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | 일반 네트워크/전송 도메인 fallback |
 
 ## Wire 코드 소비

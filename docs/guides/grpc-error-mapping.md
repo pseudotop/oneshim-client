@@ -25,6 +25,7 @@ Two-step mapping — gRPC Status → `NetworkError` → `CoreError`:
 | `InvalidArgument`, `FailedPrecondition`, `OutOfRange` | `Validation { field, message }` | `CoreError::Validation { code: ValidationCode::InvalidField, .. }` → `validation.invalid_field` | Reported as request validation failure |
 | `ResourceExhausted` | `RateLimited { retry_after_secs }` | `CoreError::RateLimit { code: NetworkCode::RateLimit, .. }` → `network.rate_limit` | Uses `retry-after` or `x-retry-after-seconds`, default `60` |
 | `Unavailable` | `ServiceUnavailable` | `CoreError::ServiceUnavailable { code: ServiceCode::Unavailable, .. }` → `service.unavailable` | Service availability outage |
+| `DeadlineExceeded` | `Timeout { timeout_ms: 0 }` | `CoreError::RequestTimeout { code: NetworkCode::Timeout, .. }` → `network.timeout` | Client-side deadline elapsed (sentinel timeout_ms=0; request-site logs the real timeout) |
 | other codes | `Http` | `CoreError::Network { code: NetworkCode::Generic, .. }` → `network.generic` | Generic network/transport domain fallback |
 
 ## Consuming the wire code
