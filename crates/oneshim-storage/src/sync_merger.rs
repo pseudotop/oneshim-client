@@ -110,8 +110,8 @@ impl ChangeMerger for SqliteSyncMerger {
             let mut result = SyncResult::default();
 
             // All merge operations run inside a single transaction
-            let tx = guard.transaction().map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            let tx = guard.transaction().map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("begin transaction: {e}"),
             })?;
 
@@ -156,13 +156,13 @@ impl ChangeMerger for SqliteSyncMerger {
                     changes.watermark.counter,
                 ],
             )
-            .map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            .map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("update sync_peers: {e}"),
             })?;
 
-            tx.commit().map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            tx.commit().map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
                 message: format!("commit transaction: {e}"),
             })?;
 

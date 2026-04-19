@@ -35,8 +35,8 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
                 |r| r.get(0),
             )
             .optional()
-            .map_err(|e| CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            .map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
                 message: e.to_string(),
             })?;
 
@@ -94,8 +94,8 @@ impl RegimeStoragePort for SqliteRegimeManagerStateStore {
              )",
             rusqlite::params![json],
         )
-        .map_err(|e| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
             message: e.to_string(),
         })?;
         Ok(())
