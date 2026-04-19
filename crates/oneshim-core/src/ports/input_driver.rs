@@ -6,6 +6,17 @@ use async_trait::async_trait;
 
 use crate::error::CoreError;
 
+/// Synthetic input driver adapters emit `CoreError::Internal`
+/// (wire: `internal.generic`) for enigo library failures and platform-
+/// specific input injection errors (e.g., macOS CGEvent posting,
+/// Windows SendInput). These are truly internal failures — the OS
+/// refused our injection request for reasons outside typical
+/// error-categorization.
+///
+/// `CoreError::PermissionDenied` (wire: `permission.permission_denied`)
+/// flows from the upstream accessibility adapter when macOS Accessibility
+/// or Input Monitoring permission is missing; InputDriver doesn't emit
+/// it directly — callers check permission before invoking.
 #[async_trait]
 pub trait InputDriver: Send + Sync {
     async fn mouse_move(&self, x: i32, y: i32) -> Result<(), CoreError>;
