@@ -59,7 +59,7 @@ pub async fn get_gui_heatmap(
     let density = context
         .storage
         .query_gui_interaction_density(&start, &end)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .map_err(ApiError::from)?;
 
     let cells: Vec<GuiHeatmapCell> = density
         .into_iter()

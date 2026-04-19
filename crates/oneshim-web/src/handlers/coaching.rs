@@ -17,7 +17,7 @@ pub async fn get_coaching_history(
         .core
         .storage
         .query_coaching_events(params.limit.unwrap_or(50), params.offset.unwrap_or(0))
-        .map_err(|e: oneshim_core::error::CoreError| ApiError::Internal(e.to_string()))?;
+        .map_err(ApiError::from)?;
 
     Ok(Json(
         events
@@ -96,7 +96,7 @@ pub async fn get_habits(
         .core
         .storage
         .query_habit_streaks(days)
-        .map_err(|e: oneshim_core::error::CoreError| ApiError::Internal(e.to_string()))?;
+        .map_err(ApiError::from)?;
 
     Ok(Json(
         rows.into_iter().map(HabitStreakResponse::from).collect(),
