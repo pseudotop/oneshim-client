@@ -80,7 +80,7 @@ This preserves domain context for the "didn't match any known status" bucket.
 | Crate / module | Impl | Tests |
 |---|---|---|
 | `oneshim-network::http_client::check_response` | ✓ | ✓ specific (4 arms); fallback intentionally `Internal` |
-| `oneshim-network::integration/http_transport::check_response` | ✓ | — (infra debt: needs `IntegrationAuthContext`) |
+| `oneshim-network::integration/http_transport::check_response` | ✓ | ✓ specific + fallback |
 | `oneshim-network::sync/remote_transport::check_response_status` | ✓ | ✓ specific + fallback |
 | `oneshim-network::ai_llm_client/request::send_and_parse` | ✓ | ✓ specific + fallback |
 | `oneshim-network::local_llm_session` (Ollama, 404-only) | ✓ | ✓ specific (404) + fallback (500) |

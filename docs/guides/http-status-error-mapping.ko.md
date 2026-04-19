@@ -80,7 +80,7 @@ if !status.is_success() {
 | Crate / module | 구현 | 테스트 |
 |---|---|---|
 | `oneshim-network::http_client::check_response` | ✓ | ✓ specific (4 arm); fallback 의도적으로 `Internal` |
-| `oneshim-network::integration/http_transport::check_response` | ✓ | — (infra debt: `IntegrationAuthContext` 필요) |
+| `oneshim-network::integration/http_transport::check_response` | ✓ | ✓ specific + fallback |
 | `oneshim-network::sync/remote_transport::check_response_status` | ✓ | ✓ specific + fallback |
 | `oneshim-network::ai_llm_client/request::send_and_parse` | ✓ | ✓ specific + fallback |
 | `oneshim-network::local_llm_session` (Ollama, 404 only) | ✓ | ✓ specific (404) + fallback (500) |
