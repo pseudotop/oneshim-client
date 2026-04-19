@@ -63,8 +63,14 @@ impl From<StorageError> for CoreError {
                 code: oneshim_core::error_codes::ConfigCode::Invalid,
                 message: msg,
             },
-            StorageError::Internal(msg) => CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            // StorageError::Internal is constructed almost exclusively at SQLite
+            // operation boundaries (400+ sites: query/execute/commit/prepare + KDF,
+            // AES, disk, lock poison). Wire code is therefore storage.failed —
+            // the observed failure IS a storage operation, even when the root
+            // cause is a panic (mutex poison) or a crypto library. Callers that
+            // need a different code should construct CoreError directly.
+            StorageError::Internal(msg) => CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
                 message: msg,
             },
         }

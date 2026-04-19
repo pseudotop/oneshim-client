@@ -500,14 +500,16 @@ async fn save_metrics_mutex_poison_returns_err_variant_only() {
     })
     .await;
 
-    // The subsequent save_metrics should propagate as CoreError::Internal.
+    // The subsequent save_metrics should propagate as CoreError::Storage.
     // Variant-only match — error string varies per call site (see spec Section 7).
+    // iter-47: changed from Internal → Storage when StorageError::Internal
+    // mapping was redirected to storage.failed (observed failure IS a storage op).
     let result = storage
         .save_metrics(&sample_metrics(Utc::now(), 10.0))
         .await;
     assert!(
-        matches!(result, Err(CoreError::Internal { .. })),
-        "expected Err(CoreError::Internal {{ .. }}), got {result:?}"
+        matches!(result, Err(CoreError::Storage { .. })),
+        "expected Err(CoreError::Storage {{ .. }}), got {result:?}"
     );
 }
 
