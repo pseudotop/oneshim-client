@@ -101,6 +101,11 @@ impl RemoteSyncTransport {
                 debug!("sync push conflict (409), will re-pull");
                 Ok(())
             }
+            // 408/504 are timeout-class — wire code `network.timeout` (iter-55)
+            408 | 504 => Err(CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
+                timeout_ms: 0, // sentinel: server-side timeout, unknown budget
+            }),
             429 => {
                 let retry_secs = 60u64; // Default; actual parsing in retry loop
                 Err(CoreError::RateLimit {
@@ -108,7 +113,8 @@ impl RemoteSyncTransport {
                     retry_after_secs: retry_secs,
                 })
             }
-            503 => Err(CoreError::ServiceUnavailable {
+            // 502 Bad Gateway is a transient upstream failure (iter-55)
+            502 | 503 => Err(CoreError::ServiceUnavailable {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: body.to_string(),
             }),

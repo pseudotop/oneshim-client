@@ -245,11 +245,22 @@ impl HttpsIntegrationHttpShared {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: format!("{context}: {body}"),
             }),
+            404 => Err(CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: context.to_string(),
+                id: body,
+            }),
+            // 408/504 are timeout-class — wire code `network.timeout` (iter-55)
+            408 | 504 => Err(CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
+                timeout_ms: 0, // sentinel: server-side timeout, unknown budget
+            }),
             429 => Err(CoreError::RateLimit {
                 code: oneshim_core::error_codes::NetworkCode::RateLimit,
                 retry_after_secs: retry_after,
             }),
-            503 => Err(CoreError::ServiceUnavailable {
+            // 502 Bad Gateway is a transient upstream failure (iter-55)
+            502 | 503 => Err(CoreError::ServiceUnavailable {
                 code: oneshim_core::error_codes::ServiceCode::Unavailable,
                 message: body,
             }),
