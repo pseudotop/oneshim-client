@@ -29,8 +29,8 @@ impl From<AnalysisError> for CoreError {
     fn from(err: AnalysisError) -> Self {
         match err {
             AnalysisError::Core(e) => e,
-            AnalysisError::VectorIndex(msg) => CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            AnalysisError::VectorIndex(msg) => CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
                 message: msg,
             },
             AnalysisError::Clustering(msg) => CoreError::Analysis {
