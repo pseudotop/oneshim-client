@@ -384,6 +384,10 @@ let suggestions = client.list_suggestions(request).await;
 
 ### CoreError 매핑
 
+[ADR-019](../architecture/ADR-019-error-code-infrastructure.ko.md)에 따라
+모든 `CoreError` struct-variant는 타입화된 `code: XxxCode` 필드를 보유합니다.
+variant tuple shape 매칭 대신 `err.code()`를 telemetry/i18n/재시도 분류에 사용.
+
 ```rust
 use oneshim_core::error::CoreError;
 
@@ -391,36 +395,45 @@ match client.login(email, password, org_id).await {
     Ok(response) => {
         // 성공
     }
-    Err(CoreError::Network(msg)) => {
-        // 네트워크 연결 오류
-        eprintln!("네트워크 오류: {}", msg);
+    Err(CoreError::Network { message, .. }) => {
+        // Transport 레벨 네트워크 에러 (특정 HTTP status 아님).
+        eprintln!("네트워크 오류: {}", message);
     }
-    Err(CoreError::RateLimit { retry_after }) => {
-        // 429 Too Many Requests
-        if let Some(duration) = retry_after {
-            tokio::time::sleep(duration).await;
-        }
+    Err(CoreError::RateLimit { retry_after_secs, .. }) => {
+        // 429 / gRPC RESOURCE_EXHAUSTED. `retry_after_secs`는 항상 Some
+        // (헤더 or 기본값 60).
+        tokio::time::sleep(std::time::Duration::from_secs(retry_after_secs)).await;
     }
-    Err(CoreError::ServiceUnavailable) => {
-        // 503 Service Unavailable
-        // 백오프 후 재시도
+    Err(CoreError::ServiceUnavailable { message, .. }) => {
+        // 503 / gRPC UNAVAILABLE / gRPC ABORTED — backoff 재시도 가능.
+        eprintln!("서비스 불가: {}", message);
+    }
+    Err(CoreError::RequestTimeout { timeout_ms, .. }) => {
+        // 408/504 / gRPC DEADLINE_EXCEEDED.
+        eprintln!("{timeout_ms}ms 타임아웃");
     }
     Err(e) => {
-        eprintln!("기타 오류: {}", e);
+        // Grafana / i18n / 구조화 로깅을 위한 wire code 문자열.
+        tracing::error!(code = e.code(), %e, "gRPC 호출 실패");
     }
 }
 ```
 
 ### gRPC Status → CoreError 매핑
 
-| gRPC Status | CoreError |
-|-------------|-----------|
-| `UNAVAILABLE` | `ServiceUnavailable` |
-| `DEADLINE_EXCEEDED` | `Network("timeout")` |
-| `UNAUTHENTICATED` | `Unauthorized` |
-| `PERMISSION_DENIED` | `Forbidden` |
-| `NOT_FOUND` | `NotFound` |
-| `RESOURCE_EXHAUSTED` | `RateLimit` |
+완전한 2단계 매핑(gRPC `Code` → `NetworkError` → `CoreError` + wire code)은
+[gRPC 에러 매핑 가이드](./grpc-error-mapping.ko.md) 참조. 요약:
+
+| gRPC `Code` | `CoreError` variant | Wire code |
+|---|---|---|
+| `Unauthenticated`, `PermissionDenied` | `Auth` | `auth.failed` |
+| `NotFound`, `Unimplemented` | `NotFound` | `not_found.resource_missing` |
+| `InvalidArgument`, `FailedPrecondition`, `OutOfRange`, `AlreadyExists` | `Validation` | `validation.invalid_field` |
+| `ResourceExhausted` | `RateLimit` | `network.rate_limit` |
+| `Unavailable`, `Aborted` | `ServiceUnavailable` | `service.unavailable` |
+| `DeadlineExceeded` | `RequestTimeout` | `network.timeout` |
+| `Internal`, `DataLoss` | `Internal` | `internal.generic` |
+| `Cancelled`, `Unknown` | `Network` | `network.generic` |
 
 ## 재시도 로직
 
@@ -441,9 +454,13 @@ where
     for attempt in 0..max_retries {
         match operation().await {
             Ok(result) => return Ok(result),
-            Err(CoreError::Network(_)) |
-            Err(CoreError::RateLimit { .. }) |
-            Err(CoreError::ServiceUnavailable) => {
+            // ADR-019 struct-variant syntax — code field required.
+            Err(
+                CoreError::Network { .. }
+                | CoreError::RateLimit { .. }
+                | CoreError::ServiceUnavailable { .. }
+                | CoreError::RequestTimeout { .. },
+            ) => {
                 if attempt < max_retries - 1 {
                     tokio::time::sleep(delay).await;
                     delay = std::cmp::min(delay * 2, max_delay);
@@ -453,7 +470,10 @@ where
         }
     }
 
-    Err(CoreError::Network("Max retries exceeded".into()))
+    Err(CoreError::ServiceUnavailable {
+        code: oneshim_core::error_codes::ServiceCode::Unavailable,
+        message: "Max retries exceeded".into(),
+    })
 }
 ```
 

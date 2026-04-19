@@ -384,6 +384,11 @@ let suggestions = client.list_suggestions(request).await;
 
 ### CoreError Mapping
 
+Per [ADR-019](../architecture/ADR-019-error-code-infrastructure.md), every
+`CoreError` struct-variant carries a typed `code: XxxCode` field. Use
+`err.code()` for telemetry/i18n/retry classification rather than matching
+on variant tuple shape.
+
 ```rust
 use oneshim_core::error::CoreError;
 
@@ -391,36 +396,47 @@ match client.login(email, password, org_id).await {
     Ok(response) => {
         // Success
     }
-    Err(CoreError::Network(msg)) => {
-        // Network connection error
-        eprintln!("Network error: {}", msg);
+    Err(CoreError::Network { message, .. }) => {
+        // Transport-level network error (not a specific HTTP status).
+        eprintln!("Network error: {}", message);
     }
-    Err(CoreError::RateLimit { retry_after }) => {
-        // 429 Too Many Requests
-        if let Some(duration) = retry_after {
-            tokio::time::sleep(duration).await;
-        }
+    Err(CoreError::RateLimit { retry_after_secs, .. }) => {
+        // 429 / gRPC RESOURCE_EXHAUSTED. `retry_after_secs` is always Some
+        // (defaulted from headers or to 60).
+        tokio::time::sleep(std::time::Duration::from_secs(retry_after_secs)).await;
     }
-    Err(CoreError::ServiceUnavailable) => {
-        // 503 Service Unavailable
-        // Retry with backoff
+    Err(CoreError::ServiceUnavailable { message, .. }) => {
+        // 503 / gRPC UNAVAILABLE / gRPC ABORTED — retryable with backoff.
+        eprintln!("Service unavailable: {}", message);
+    }
+    Err(CoreError::RequestTimeout { timeout_ms, .. }) => {
+        // 408/504 / gRPC DEADLINE_EXCEEDED.
+        eprintln!("Timeout after {timeout_ms}ms");
     }
     Err(e) => {
-        eprintln!("Other error: {}", e);
+        // Wire code string for Grafana / i18n / structured logging.
+        tracing::error!(code = e.code(), %e, "gRPC call failed");
     }
 }
 ```
 
 ### gRPC Status → CoreError Mapping
 
-| gRPC Status | CoreError |
-|-------------|-----------|
-| `UNAVAILABLE` | `ServiceUnavailable` |
-| `DEADLINE_EXCEEDED` | `Network("timeout")` |
-| `UNAUTHENTICATED` | `Unauthorized` |
-| `PERMISSION_DENIED` | `Forbidden` |
-| `NOT_FOUND` | `NotFound` |
-| `RESOURCE_EXHAUSTED` | `RateLimit` |
+See the canonical table in
+[gRPC Error Mapping Guide](./grpc-error-mapping.md) for the complete
+two-step mapping (gRPC `Code` → `NetworkError` → `CoreError` + wire code
+per ADR-019). Summary:
+
+| gRPC `Code` | `CoreError` variant | Wire code |
+|---|---|---|
+| `Unauthenticated`, `PermissionDenied` | `Auth` | `auth.failed` |
+| `NotFound`, `Unimplemented` | `NotFound` | `not_found.resource_missing` |
+| `InvalidArgument`, `FailedPrecondition`, `OutOfRange`, `AlreadyExists` | `Validation` | `validation.invalid_field` |
+| `ResourceExhausted` | `RateLimit` | `network.rate_limit` |
+| `Unavailable`, `Aborted` | `ServiceUnavailable` | `service.unavailable` |
+| `DeadlineExceeded` | `RequestTimeout` | `network.timeout` |
+| `Internal`, `DataLoss` | `Internal` | `internal.generic` |
+| `Cancelled`, `Unknown` | `Network` | `network.generic` |
 
 ## Retry Logic
 
@@ -441,9 +457,13 @@ where
     for attempt in 0..max_retries {
         match operation().await {
             Ok(result) => return Ok(result),
-            Err(CoreError::Network(_)) |
-            Err(CoreError::RateLimit { .. }) |
-            Err(CoreError::ServiceUnavailable) => {
+            // ADR-019 struct-variant syntax — every variant has a `code` field.
+            Err(
+                CoreError::Network { .. }
+                | CoreError::RateLimit { .. }
+                | CoreError::ServiceUnavailable { .. }
+                | CoreError::RequestTimeout { .. },
+            ) => {
                 if attempt < max_retries - 1 {
                     tokio::time::sleep(delay).await;
                     delay = std::cmp::min(delay * 2, max_delay);
@@ -453,7 +473,10 @@ where
         }
     }
 
-    Err(CoreError::Network("Max retries exceeded".into()))
+    Err(CoreError::ServiceUnavailable {
+        code: oneshim_core::error_codes::ServiceCode::Unavailable,
+        message: "Max retries exceeded".into(),
+    })
 }
 ```
 
