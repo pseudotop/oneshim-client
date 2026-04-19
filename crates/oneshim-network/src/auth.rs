@@ -129,9 +129,28 @@ impl TokenManager {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(CoreError::Auth {
-                code: oneshim_core::error_codes::AuthCode::Failed,
-                message: format!("login failure ({status}): {text}"),
+            let message = format!("login failure ({status}): {text}");
+            // Semantic status mapping per iter-54..60. For login specifically,
+            // 401/403 are definitive auth failures, but 429/503/504 indicate
+            // transient auth-service issues that frontend should surface
+            // differently (e.g., "try again shortly" vs "credentials wrong").
+            return Err(match status.as_u16() {
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
             });
         }
 
