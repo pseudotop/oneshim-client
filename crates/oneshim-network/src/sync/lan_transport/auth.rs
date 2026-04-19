@@ -87,12 +87,30 @@ impl LanSyncTransport {
             })?;
 
         if !challenge_resp.status().is_success() {
-            return Err(CoreError::Network {
-                code: oneshim_core::error_codes::NetworkCode::Generic,
-                message: format!(
-                    "challenge request to {peer_id} returned {}",
-                    challenge_resp.status()
-                ),
+            let status = challenge_resp.status();
+            let message = format!("challenge request to {peer_id} returned {status}");
+            // Semantic status mapping per iter-54..60 for LAN peer errors.
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message,
+                },
             });
         }
 
