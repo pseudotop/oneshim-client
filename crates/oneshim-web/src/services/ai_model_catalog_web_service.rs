@@ -42,19 +42,21 @@ impl AiModelCatalogQueryService {
             provider_type,
             requested_surface_id.as_deref(),
         )?;
-        let api_key = if matches!(auth_scheme, ProviderAuthScheme::None) {
-            None
-        } else {
-            Some(resolve_model_discovery_api_key(request, &self.ctx, provider_type).await?)
-        };
+        // AWS Bedrock intentionally unsupported per ADR-019 §3. Return early
+        // BEFORE resolving AWS credentials so users without keys see the graceful
+        // "unsupported" notice instead of a generic "no API key" error.
         if matches!(auth_scheme, ProviderAuthScheme::AwsSignatureV4) {
-            // AWS Bedrock intentionally unsupported per ADR-019.
             return Ok(ProviderModelsResponse {
                 models: Vec::new(),
                 model_details: Vec::new(),
                 notice: Some("AWS Bedrock is intentionally unsupported in this build.".to_string()),
             });
         }
+        let api_key = if matches!(auth_scheme, ProviderAuthScheme::None) {
+            None
+        } else {
+            Some(resolve_model_discovery_api_key(request, &self.ctx, provider_type).await?)
+        };
         if let Some(notice) = ai_provider_spec_service::ocr_model_catalog_notice_for_surface(
             provider_type,
             requested_surface_id.as_deref(),
