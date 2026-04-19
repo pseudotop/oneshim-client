@@ -71,7 +71,7 @@ Recommended sequencing: Critical → Cross-domain A/B (config/telemetry) → Deg
 **Resolution**: "intentionally unsupported" path chosen via [ADR-019](../architecture/ADR-019-error-code-infrastructure.md) §3. AWS Bedrock is no longer advertised. Shipped on branch `feature/error-code-phase1`:
 
 - Catalog: `specs/providers/provider-surface-catalog.json` no longer has `bedrock` vendor or `provider_surface.bedrock.direct_api` surface.
-- 7 match arms in `oneshim-network` return `CoreError::Config { code: ConfigCode::UnsupportedProviderBedrock, message: "AWS Bedrock is intentionally unsupported in this build" }`.
+- 8 match arms in `oneshim-network` + 2 defense-in-depth guards (`analysis_client::analyze`, `ai_model_catalog_web_service::list_models`) return `CoreError::Config { code: ConfigCode::UnsupportedProviderBedrock, message: "AWS Bedrock is intentionally unsupported in this build" }`. Arm count bumped during post-merge drift audit: `http_api_session::build_request_body` now has an explicit `BedrockConverse` arm (previously collapsed into a generic `InternalCode::Generic` wildcard).
 - OCR `apply_auth_headers` signature: infallible → `Result<_, CoreError>` — closes silent no-auth fallthrough security bug on `AwsSignatureV4` auth scheme.
 - Frontend `ProviderWizard.tsx` removed Amazon Bedrock card.
 - Regression guard: `feature_capabilities::bedrock_surface_removed_per_adr_019` test asserts absence.

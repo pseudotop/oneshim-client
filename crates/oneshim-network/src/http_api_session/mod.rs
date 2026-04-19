@@ -173,6 +173,10 @@ impl HttpApiSession {
                 options.response_format,
                 options.tools,
             )),
+            ProviderRequestShape::BedrockConverse => Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                message: "AWS Bedrock is intentionally unsupported in this build".into(),
+            }),
             _ => Err(CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: format!("unsupported request shape for HTTP API session: {shape:?}"),

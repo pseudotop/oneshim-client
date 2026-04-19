@@ -33,14 +33,14 @@ Examples: `config.invalid`, `network.timeout`, `provider.bedrock.unsupported`.
 ### 3. AWS Bedrock: intentionally unsupported
 
 - Bedrock vendor + `provider_surface.bedrock.direct_api` surface **removed** from `specs/providers/provider-surface-catalog.json`.
-- 7 match arms across `oneshim-network` return `CoreError::Config { code: ConfigCode::UnsupportedProviderBedrock, .. }`:
+- 8 match arms across `oneshim-network` return `CoreError::Config { code: ConfigCode::UnsupportedProviderBedrock, .. }`:
   - `ai_ocr_client/mod.rs` (2 arms: auth + BedrockConverse request shape)
   - `ai_ocr_client/strategy.rs` (1 arm: strategy selection)
   - `ai_llm_client/request.rs` (3 arms: request build + auth + response parse)
-  - `http_api_session/mod.rs` (1 arm: auth)
+  - `http_api_session/mod.rs` (2 arms: auth + BedrockConverse request shape — 2nd arm added during post-merge drift audit; previously the wildcard `_` arm returned `InternalCode::Generic` for BedrockConverse, silently mislabeling it)
 - Enum variants `AiProviderType::Bedrock`, `ProviderAuthScheme::AwsSignatureV4`, `ProviderRequestShape::BedrockConverse` **retained** (runtime-unreachable after catalog delete) for minimal-churn future re-introduction path.
 - OCR `apply_auth_headers` signature changed from infallible to `Result<_, CoreError>` to close the silent no-auth fallthrough security bug.
-- Defense-in-depth guards in sibling client paths that bypass the 7 match arms above — both added during post-merge drift audit, both return the same `CoreError::Config { code: UnsupportedProviderBedrock, .. }`:
+- Defense-in-depth guards in sibling client paths that bypass the 8 match arms above — both added during post-merge drift audit, both return the same `CoreError::Config { code: UnsupportedProviderBedrock, .. }`:
   - `crates/oneshim-network/src/analysis_client.rs::analyze` — early-return guard prevents silently sending OpenAI-format request with Bearer auth to a Bedrock endpoint.
   - `crates/oneshim-web/src/services/ai_model_catalog_web_service.rs::list_models` — early-return guard fires **before** `resolve_model_discovery_api_key()` so users without AWS credentials see the graceful unsupported notice rather than a generic "no API key" error.
 
