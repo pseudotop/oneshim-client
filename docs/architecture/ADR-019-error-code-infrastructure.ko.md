@@ -144,4 +144,7 @@ YAGNI 를 wire code 에서 adapter error type 으로 확장:
 - **iter-164**: `NetworkError`에 construction site 0건인 dead variant 5개 (`Serialization`, `OAuth`, `OAuthRefresh`, `Ocr`, `SecretStore`) 존재 — `impl From<NetworkError> for CoreError`의 match arm 들이 실제로 unreachable. variant 5개 + arm 제거로 활성 `NetworkError` 12개 (이전 17개). `StorageError::Core` / `StorageError::Io` 는 명시적 construction 0건이지만 `#[from]` 래핑 + 198개 함수에서 `?`-propagation 으로 사용되므로 정당하게 유지 확인.
 - **iter-165**: adapter error 감사를 4개 enum 으로 확장 — 총 10개 dead variant 추가 제거. `AutomationError` × 5 (`Config`, `Io` (automation 내 `?`-propagation 사용처 없음), `PrivacyDenied`, `SandboxUnsupported`, `ServiceUnavailable`; `UserDenied` / `PolicyBlocked` unit variant 은 regression-guard 테스트 `all_policy_denial_variants_share_single_wire_code`가 canonical `policy.denied` 매핑을 문서화하고 dead `ProcessDenied` wire code 재도입 dispatcher drift 를 예방하므로 유지). `VisionError` × 2 (`PermissionDenied`, `ElementNotFound`). `AnalysisError` × 2 (`Internal`, `LlmService`). `SuggestionError` × 1 (`Internal`). 설계 패턴 확립: 모든 adapter error type 에 `#[from] Core` variant 를 `CoreError` composition 의 미래 escape hatch 로 유지 (현재 `?`-propagation callsite 가 없더라도).
 
-Current wire snapshot: **41 codes**.
+정당화된 재확장:
+- **D7 iter-001 (2026-04-20)**: `ServiceCode::CircuitOpen` / `service.circuit_open` — D7 circuit breaker broadening 으로 도입된 신규 코드. 로컬측 브레이커 fast-fail (`service.circuit_open`) 과 서버측 503 (`service.unavailable`) 을 구분. 스냅샷 41 → 42. Frontend i18n + Grafana 알람에서 두 신호를 구별 가능: `service.unavailable` = "서버가 503 응답"; `service.circuit_open` = "클라이언트가 로컬에서 호출 차단".
+
+Current wire snapshot: **42 codes**.
