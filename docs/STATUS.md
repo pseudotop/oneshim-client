@@ -27,7 +27,7 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## Current Snapshot (2026-04-19)
+## Current Snapshot (2026-04-20)
 
 ### Version
 
@@ -35,7 +35,7 @@ v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 
 ### Workspace
 
-- **Crates**: 14 (including oneshim-audio)
+- **Packages**: 15 per `cargo metadata --no-deps` (14 crates under `crates/` including `oneshim-sandbox-worker` + `src-tauri`; planned `oneshim-ui` and former `crates/oneshim-app/` removed by ADR-004 Tauri migration)
 - **SQLite schema**: V31 (V31 added by Phase 3 for `regime_manager_state`)
 
 ### Workflow Status
@@ -49,7 +49,7 @@ v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **3,641 passed, 0 failed, 21 ignored** (post-ADR-019 + drift-audit baseline. Cumulative growth from prior 3,455: ADR-019 Error Code Infrastructure + C5 Bedrock skip + post-merge drift audit iter 87~168 added ~186 tests — 85+ HTTP status-mapping regression tests across 15 dispatchers, ~38 Internal→specific-variant re-route tests, 4 subprocess_kind (iter-149) + 3 LLM envelope-extraction (iter-151) + other targeted regression guards. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`).
+- `cargo test --workspace`: pass — **3,651 passed, 0 failed, 21 ignored** (post-ADR-019 + drift-audit + Follow-up baseline. Cumulative growth from prior 3,455: ADR-019 Error Code Infrastructure + C5 Bedrock skip + post-merge drift audit iter 87~214 added ~196 tests — 85+ HTTP status-mapping regression tests across 15 dispatchers, ~38 Internal→specific-variant re-route tests, 4 subprocess_kind (iter-149) + 3 LLM envelope-extraction (iter-151) + 6 `map_challenge_status_to_error` (iter-195 Follow-up #5) + 10 `IpcError` contract tests (iter-196 Follow-up #1) + other targeted regression guards. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`).
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass

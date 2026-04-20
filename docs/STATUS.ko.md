@@ -27,7 +27,7 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## 현재 스냅샷 (2026-04-19)
+## 현재 스냅샷 (2026-04-20)
 
 ### 버전
 
@@ -35,7 +35,7 @@ v0.4.39-rc.1 (Phase 5-D8 완료; Phase 4 Updater Hardening 출시)
 
 ### 워크스페이스
 
-- **크레이트**: 14개 (oneshim-audio 포함)
+- **패키지**: 15개 (`cargo metadata --no-deps` 기준 — `crates/` 하위 14개(`oneshim-sandbox-worker` 포함) + `src-tauri`; 원래 계획된 `oneshim-ui` 및 과거 `crates/oneshim-app/` 은 ADR-004 Tauri 마이그레이션으로 제거됨)
 - **SQLite 스키마**: V31 (V31은 Phase 3 `regime_manager_state`에서 추가)
 
 ### 워크플로우 상태
@@ -49,7 +49,7 @@ v0.4.39-rc.1 (Phase 5-D8 완료; Phase 4 Updater Hardening 출시)
 
 - `cargo check --workspace`: 통과
 - `cargo clippy --workspace --all-targets -- -D warnings`: 통과
-- `cargo test --workspace`: 통과 — **3,641 통과, 0 실패, 21 무시** (ADR-019 + drift-audit 반영 후 baseline. 이전 2,995에서 누적 증가: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime, Phase 4 Updater Hardening +27, Phase 5-D8 PR1/PR2/PR3 +27, ADR-019 + post-merge drift audit iter 87~168 +186 (HTTP status 매핑 회귀 테스트, Internal→specific re-route, subprocess_kind 분기, LLM envelope 추출 등). Phase 2 telemetry 테스트는 `--features telemetry -- --test-threads=1` 로 별도 실행).
+- `cargo test --workspace`: 통과 — **3,651 통과, 0 실패, 21 무시** (ADR-019 + drift-audit + Follow-up 반영 후 baseline. 이전 2,995에서 누적 증가: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime, Phase 4 Updater Hardening +27, Phase 5-D8 PR1/PR2/PR3 +27, ADR-019 + post-merge drift audit iter 87~214 +196 (HTTP status 매핑 회귀 테스트, Internal→specific re-route, subprocess_kind 분기, LLM envelope 추출 + iter-195 `map_challenge_status_to_error` +6 + iter-196 `IpcError` 계약 테스트 +10 등). Phase 2 telemetry 테스트는 `--features telemetry -- --test-threads=1` 로 별도 실행).
 - `cargo fmt --check`: 통과
 - `pnpm lint` (`crates/oneshim-web/frontend`): 통과
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): 통과
