@@ -162,9 +162,9 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `sse_client.rs`: `SseStreamClient` — SSE stream + auto-reconnect (exponential backoff 1s→30s)
 - `compression.rs`: `AdaptiveCompressor` — auto selection of gzip/zstd/lz4
 - `batch_uploader.rs`: `BatchUploader` — Lock-free SegQueue + dynamic batch size + retry
-- `circuit_breaker.rs`: per-endpoint circuit breaker + `serial_test` guarded flake-free tests (iter-X fix in ADR-019 audit)
+- `circuit_breaker.rs`: per-endpoint `CircuitBreaker` + `CircuitBreakerRegistry` (D7 broadening 2026-04-20). Shared across 6 consumers: `BatchUploader` (original), `RemoteEmbeddingProvider`, `AnalysisClient`, `RemoteOcrProvider`, `RemoteLlmProvider`, `HttpApiSession`. Registry keyed by `scheme://host:port`. `serial_test` guards module-global state paths. See [docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md](docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md).
 - `connectivity.rs`: connectivity detection + backoff helpers
-- `resilience.rs`: shared resilience primitives
+- `resilience.rs`: shared resilience primitives — `jittered_backoff_delay`, `classify_for_breaker` (D7 classification: 5xx/401/429/transport = Failure, 2xx = Success, other 4xx = Neutral), `endpoint_authority` (breaker registry key derivation), `BreakerSignal` enum.
 - `error.rs`: `NetworkError` enum (13 variants, typed-code per ADR-019)
 - `http_api_session/`: HTTP-based `ApiSession` (stateful chat/tool-calling) — directory module with anthropic.rs, google.rs, openai.rs provider-specific request builders, mod.rs orchestrator, tests.rs
 - `local_llm_session.rs`: local `ApiSession` via subprocess LLM (bridges via `subprocess_provider`)
