@@ -151,7 +151,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `config/`: `AppConfig` + section settings — directory module (ADR-003)
   - `mod.rs`: `AppConfig` struct + `Default` impl + helpers + re-exports
   - `enums.rs`: `PiiFilterLevel`, `Weekday`, `SandboxProfile`, `AiAccessMode`, `AiProviderType`, etc.
-  - `sections.rs`: 20 config section structs (`NotificationConfig`, `TelemetryConfig`, `PrivacyConfig`, `ScheduleConfig`, `FileAccessConfig`, etc.) + `Default` impls
+  - `sections/`: 37 config section structs in per-domain files (`NotificationConfig`, `TelemetryConfig`, `PrivacyConfig`, `ScheduleConfig`, `FileAccessConfig`, `IntegrationConfig`, `SyncConfig`, `SandboxConfig`, etc.) + `Default` impls. Directory module split from the old single `sections.rs` per ADR-003.
 - `consent.rs`: `ConsentManager`, `ConsentPermissions`, `ConsentRecord` — GDPR Article 17/20 compliant
 - `config_manager.rs`: JSON-based config file manager + platform-specific paths
 
