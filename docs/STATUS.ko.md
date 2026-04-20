@@ -49,7 +49,7 @@ v0.4.39-rc.1 (Phase 5-D8 완료; Phase 4 Updater Hardening 출시)
 
 - `cargo check --workspace`: 통과
 - `cargo clippy --workspace --all-targets -- -D warnings`: 통과
-- `cargo test --workspace`: 통과 — **3,651 통과, 0 실패, 21 무시** (ADR-019 + drift-audit + Follow-up 반영 후 baseline. 이전 2,995에서 누적 증가: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime, Phase 4 Updater Hardening +27, Phase 5-D8 PR1/PR2/PR3 +27, ADR-019 + post-merge drift audit iter 87~214 +196 (HTTP status 매핑 회귀 테스트, Internal→specific re-route, subprocess_kind 분기, LLM envelope 추출 + iter-195 `map_challenge_status_to_error` +6 + iter-196 `IpcError` 계약 테스트 +10 등). Phase 2 telemetry 테스트는 `--features telemetry -- --test-threads=1` 로 별도 실행).
+- `cargo test --workspace`: 통과 — **3,651 통과, 0 실패, 21 무시** (ADR-019 + drift-audit + Follow-up 반영 후 baseline. 이전 2,995에서 누적 증가: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime, Phase 4 Updater Hardening +27, Phase 5-D8 PR1/PR2/PR3 +27, ADR-019 + post-merge drift audit iter 87~214 +196 (HTTP status 매핑 회귀 테스트, Internal→specific re-route, subprocess_kind 분기, LLM envelope 추출 + iter-196 `IpcError` 계약 테스트 +10 등). Phase 2 telemetry 테스트는 `--features telemetry -- --test-threads=1` 로 별도 실행. **3,651에 미포함**: 6 `map_challenge_status_to_error` 테스트 (iter-195 Follow-up #5) 는 `lan-sync` feature gate 뒤에 있어 기본 워크스페이스 실행에 포함되지 않음 — `cargo test -p oneshim-network --features lan-sync --lib sync::lan_transport::auth` 로 별도 실행).
 - `cargo fmt --check`: 통과
 - `pnpm lint` (`crates/oneshim-web/frontend`): 통과
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): 통과
