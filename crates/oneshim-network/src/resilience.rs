@@ -102,6 +102,57 @@ impl RetryBackoffGate {
     }
 }
 
+/// Outcome of a network call from the circuit breaker's perspective.
+///
+/// Used by adapters wired to `CircuitBreakerRegistry` to classify HTTP
+/// responses before recording into the per-endpoint `CircuitBreaker`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BreakerSignal {
+    Success,
+    Failure,
+    /// Caller-side bug or ambiguous response — do not affect breaker state.
+    Neutral,
+}
+
+/// Classify an HTTP outcome for circuit breaker accounting.
+///
+/// - `status: Some(s)`: HTTP response status code observed.
+/// - `status: None`: no response received.
+/// - `transport_err: true`: DNS/connect/read error (takes precedence over status).
+///
+/// Rules:
+/// - 2xx → `Success`.
+/// - 5xx, 401, 429, or transport error → `Failure` (endpoint health concern).
+/// - 4xx other than 401/429 → `Neutral` (caller-side bug; must not trip the
+///   shared breaker for every other caller against the same endpoint).
+pub fn classify_for_breaker(status: Option<u16>, transport_err: bool) -> BreakerSignal {
+    if transport_err {
+        return BreakerSignal::Failure;
+    }
+    match status {
+        Some(s) if (200..300).contains(&s) => BreakerSignal::Success,
+        Some(401) | Some(429) => BreakerSignal::Failure,
+        Some(s) if s >= 500 => BreakerSignal::Failure,
+        Some(_) => BreakerSignal::Neutral,
+        None => BreakerSignal::Failure,
+    }
+}
+
+/// Returns `"scheme://host:port"` — path/query/fragment stripped.
+/// Port canonicalizes to the scheme default if absent (https → 443, http → 80),
+/// so `https://api.openai.com/v1/chat` and `https://api.openai.com:443/v1/embeddings`
+/// produce the same key and share one `CircuitBreaker`.
+///
+/// # Errors
+/// Returns `url::ParseError` when the input is not a valid absolute URL.
+pub fn endpoint_authority(url: &str) -> Result<String, url::ParseError> {
+    let parsed = ::url::Url::parse(url)?;
+    let scheme = parsed.scheme();
+    let host = parsed.host_str().unwrap_or("");
+    let port = parsed.port_or_known_default().unwrap_or(0);
+    Ok(format!("{scheme}://{host}:{port}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +184,117 @@ mod tests {
 
         gate.on_success();
         assert!(gate.is_ready(Instant::now()));
+    }
+
+    // ── classify_for_breaker ────────────────────────────────────────────
+
+    #[test]
+    fn classify_success_on_2xx() {
+        assert_eq!(
+            classify_for_breaker(Some(200), false),
+            BreakerSignal::Success
+        );
+        assert_eq!(
+            classify_for_breaker(Some(201), false),
+            BreakerSignal::Success
+        );
+        assert_eq!(
+            classify_for_breaker(Some(299), false),
+            BreakerSignal::Success
+        );
+    }
+
+    #[test]
+    fn classify_failure_on_5xx() {
+        assert_eq!(
+            classify_for_breaker(Some(500), false),
+            BreakerSignal::Failure
+        );
+        assert_eq!(
+            classify_for_breaker(Some(502), false),
+            BreakerSignal::Failure
+        );
+        assert_eq!(
+            classify_for_breaker(Some(503), false),
+            BreakerSignal::Failure
+        );
+    }
+
+    #[test]
+    fn classify_failure_on_transport_error() {
+        assert_eq!(classify_for_breaker(None, true), BreakerSignal::Failure);
+        // transport_err takes precedence even when status is present:
+        assert_eq!(
+            classify_for_breaker(Some(200), true),
+            BreakerSignal::Failure
+        );
+    }
+
+    #[test]
+    fn classify_failure_on_auth_and_rate_limit() {
+        assert_eq!(
+            classify_for_breaker(Some(401), false),
+            BreakerSignal::Failure
+        );
+        assert_eq!(
+            classify_for_breaker(Some(429), false),
+            BreakerSignal::Failure
+        );
+    }
+
+    #[test]
+    fn classify_neutral_on_4xx_caller_bug() {
+        // 400, 404, 422 are caller-side / ambiguous — must not trip the shared breaker.
+        assert_eq!(
+            classify_for_breaker(Some(400), false),
+            BreakerSignal::Neutral
+        );
+        assert_eq!(
+            classify_for_breaker(Some(404), false),
+            BreakerSignal::Neutral
+        );
+        assert_eq!(
+            classify_for_breaker(Some(422), false),
+            BreakerSignal::Neutral
+        );
+    }
+
+    // ── endpoint_authority ──────────────────────────────────────────────
+
+    #[test]
+    fn authority_canonicalizes_default_https_port() {
+        assert_eq!(
+            endpoint_authority("https://api.openai.com/v1/chat").unwrap(),
+            "https://api.openai.com:443"
+        );
+    }
+
+    #[test]
+    fn authority_canonicalizes_default_http_port() {
+        assert_eq!(
+            endpoint_authority("http://localhost/health").unwrap(),
+            "http://localhost:80"
+        );
+    }
+
+    #[test]
+    fn authority_preserves_explicit_port() {
+        assert_eq!(
+            endpoint_authority("http://localhost:11434/api/generate").unwrap(),
+            "http://localhost:11434"
+        );
+    }
+
+    #[test]
+    fn authority_collapses_path_and_query() {
+        let a = endpoint_authority("https://api.openai.com/v1/embeddings?model=foo").unwrap();
+        let b = endpoint_authority("https://api.openai.com/v1/chat").unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a, "https://api.openai.com:443");
+    }
+
+    #[test]
+    fn authority_rejects_malformed_url() {
+        assert!(endpoint_authority("not a url").is_err());
     }
 }
