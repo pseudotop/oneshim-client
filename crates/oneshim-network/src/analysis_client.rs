@@ -4,12 +4,19 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::{Priority, Suggestion, SuggestionSource, SuggestionType};
 use oneshim_core::ports::analysis_provider::AnalysisProvider;
 use serde::Deserialize;
+use std::sync::Arc;
 use tracing::{debug, warn};
 
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry, CircuitState};
 use crate::error::NetworkError;
+use crate::resilience::{classify_for_breaker, endpoint_authority, BreakerSignal};
 
 /// Adapter implementing `AnalysisProvider` by calling a remote LLM API.
 /// Reuses the same multi-provider HTTP pattern as `RemoteLlmProvider`.
+///
+/// D7: Guarded by a per-endpoint `CircuitBreaker` shared across both
+/// funnels (`analyze` + `summarize_text`) — a persistent outage at the
+/// analysis endpoint fast-fails either call in microseconds.
 pub struct AnalysisClient {
     http_client: reqwest::Client,
     endpoint: String,
@@ -17,6 +24,7 @@ pub struct AnalysisClient {
     model: String,
     provider_type: AiProviderType,
     timeout_secs: u64,
+    breaker: Arc<CircuitBreaker>,
 }
 
 /// Private struct for parsing LLM suggestion candidates from JSON.
@@ -31,7 +39,10 @@ struct SuggestionCandidate {
 }
 
 impl AnalysisClient {
-    pub fn new(config: &ExternalApiEndpoint) -> Self {
+    pub fn new(
+        config: &ExternalApiEndpoint,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
+    ) -> Self {
         if !matches!(config.provider_type, AiProviderType::Ollama) && config.api_key.is_empty() {
             warn!(
                 "AnalysisClient: empty API key for {:?} provider",
@@ -44,6 +55,11 @@ impl AnalysisClient {
             .build()
             .unwrap_or_default();
 
+        // D7: resolve per-endpoint breaker.
+        let breaker_key = endpoint_authority(&config.endpoint)
+            .unwrap_or_else(|_| format!("malformed::{}", config.endpoint));
+        let breaker = breaker_registry.get(&breaker_key);
+
         Self {
             http_client,
             endpoint: config.endpoint.clone(),
@@ -53,6 +69,35 @@ impl AnalysisClient {
             }),
             provider_type: config.provider_type,
             timeout_secs: config.timeout_secs,
+            breaker,
+        }
+    }
+
+    /// D7 helper: returns Err if breaker is Open, allowing the caller to
+    /// short-circuit before constructing a request.
+    fn check_breaker(&self) -> Result<(), CoreError> {
+        if matches!(self.breaker.check(), CircuitState::Open { .. }) {
+            Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::CircuitOpen,
+                message: format!("circuit open for {}", self.endpoint),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// D7 helper: record the breaker outcome based on initial HTTP send result.
+    /// Called immediately after `.send().await`, before error-mapping, so the
+    /// breaker sees the raw transport + status signal.
+    fn record_breaker_outcome(&self, send_result: &Result<reqwest::Response, reqwest::Error>) {
+        let signal = match send_result {
+            Ok(resp) => classify_for_breaker(Some(resp.status().as_u16()), false),
+            Err(_) => classify_for_breaker(None, true),
+        };
+        match signal {
+            BreakerSignal::Success => self.breaker.record_success(),
+            BreakerSignal::Failure => self.breaker.record_failure(),
+            BreakerSignal::Neutral => {}
         }
     }
 
@@ -189,6 +234,9 @@ impl AnalysisProvider for AnalysisClient {
         context_json: &str,
         system_prompt: &str,
     ) -> Result<Vec<Suggestion>, CoreError> {
+        // D7: pre-flight breaker check.
+        self.check_breaker()?;
+
         debug!(
             endpoint = %self.endpoint,
             model = %self.model,
@@ -228,7 +276,10 @@ impl AnalysisProvider for AnalysisClient {
             }
         }
 
-        let response = builder.send().await.map_err(|e| {
+        let send_result = builder.send().await;
+        // D7: record breaker outcome based on initial send result.
+        self.record_breaker_outcome(&send_result);
+        let response = send_result.map_err(|e| {
             // Iter-90: route timeouts through NetworkError::Timeout so wire
             // code is network.timeout, not provider.analysis_failed.
             if e.is_timeout() {
@@ -297,6 +348,9 @@ impl AnalysisProvider for AnalysisClient {
         context_json: &str,
         system_prompt: &str,
     ) -> Result<String, CoreError> {
+        // D7: pre-flight breaker check.
+        self.check_breaker()?;
+
         debug!(
             endpoint = %self.endpoint,
             model = %self.model,
@@ -325,7 +379,10 @@ impl AnalysisProvider for AnalysisClient {
             }
         }
 
-        let response = builder.send().await.map_err(|e| {
+        let send_result = builder.send().await;
+        // D7: record breaker outcome based on initial send result.
+        self.record_breaker_outcome(&send_result);
+        let response = send_result.map_err(|e| {
             // Iter-90: route timeouts through NetworkError::Timeout so wire
             // code is network.timeout, not provider.analysis_failed.
             if e.is_timeout() {
@@ -500,7 +557,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         let body = client.build_request_body("ctx", "sys");
 
         assert_eq!(body["model"], "claude-sonnet-4-20250514");
@@ -520,7 +577,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         let body = client.build_request_body("ctx", "sys");
 
         assert_eq!(body["model"], "gpt-5.4");
@@ -542,7 +599,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         let body = serde_json::json!({
             "content": [{"type": "text", "text": "[{\"type\": \"ProductivityTip\", \"content\": \"test\", \"confidence\": 0.8}]"}]
         });
@@ -561,7 +618,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         let body = serde_json::json!({
             "choices": [{"message": {"content": "[]"}}]
         });
@@ -580,7 +637,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         let body = serde_json::json!({"choices": []});
         assert!(client.extract_text(&body).is_err());
     }
@@ -601,7 +658,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         let result = client.analyze("{}", "you are a test").await;
         match result {
             Err(CoreError::Config { code, message }) => {
@@ -641,7 +698,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         client.analyze("{}", "sys").await.unwrap_err()
     }
 
@@ -709,7 +766,7 @@ mod tests {
             surface_id: None,
             credential: None,
         };
-        let client = AnalysisClient::new(&config);
+        let client = AnalysisClient::new(&config, CircuitBreakerRegistry::new());
         client.summarize_text("{}", "sys").await.unwrap_err()
     }
 
@@ -754,6 +811,140 @@ mod tests {
         assert!(
             matches!(err, CoreError::Analysis { .. }),
             "500 should fall back to CoreError::Analysis, got: {err:?}"
+        );
+    }
+
+    // ── D7 Circuit breaker behavior ───────────────────────────────────────
+
+    fn breaker_registry_with_fast_config(server_url: &str) -> Arc<CircuitBreakerRegistry> {
+        let registry = CircuitBreakerRegistry::new();
+        let key = endpoint_authority(server_url).unwrap();
+        let _ = registry.get_with_config(
+            &key,
+            crate::circuit_breaker::CircuitBreakerConfig {
+                failure_threshold: 3,
+                initial_cooldown: std::time::Duration::from_millis(50),
+                max_cooldown: std::time::Duration::from_millis(200),
+                half_open_probes: 1,
+            },
+        );
+        registry
+    }
+
+    fn make_analysis_client(
+        server_url: &str,
+        registry: Arc<CircuitBreakerRegistry>,
+    ) -> AnalysisClient {
+        let config = ExternalApiEndpoint {
+            endpoint: server_url.to_string(),
+            api_key: "test-key".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
+        };
+        AnalysisClient::new(&config, registry)
+    }
+
+    #[tokio::test]
+    async fn breaker_closed_passthrough_analyze() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_body(
+                serde_json::json!({
+                    "choices": [{"message": {"content": "[]"}}]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config(&server.url());
+        let client = make_analysis_client(&server.url(), registry);
+        let result = client.analyze("{}", "sys").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn breaker_open_fast_fails_analyze() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .expect_at_most(3) // after 3 failures breaker is open; should NOT hit server on 4th
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config(&server.url());
+        let client = make_analysis_client(&server.url(), registry);
+        for _ in 0..3 {
+            let _ = client.analyze("{}", "sys").await;
+        }
+        let result = client.analyze("{}", "sys").await;
+        match result {
+            Err(CoreError::ServiceUnavailable { code, .. }) => {
+                assert_eq!(code, oneshim_core::error_codes::ServiceCode::CircuitOpen);
+            }
+            other => panic!("expected ServiceUnavailable CircuitOpen, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_open_also_blocks_summarize() {
+        // Verify the SAME breaker state shared by both funnels: if analyze()
+        // trips the breaker, summarize_text() is also blocked.
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .expect_at_most(3)
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config(&server.url());
+        let client = make_analysis_client(&server.url(), registry);
+        // Trip via analyze().
+        for _ in 0..3 {
+            let _ = client.analyze("{}", "sys").await;
+        }
+        // summarize_text() on the same client sees Open immediately.
+        let result = client.summarize_text("{}", "sys").await;
+        match result {
+            Err(CoreError::ServiceUnavailable { code, .. }) => {
+                assert_eq!(code, oneshim_core::error_codes::ServiceCode::CircuitOpen);
+            }
+            other => panic!("expected cross-funnel CircuitOpen, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_half_open_failure_doubles_cooldown_analysis() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config(&server.url());
+        let client = make_analysis_client(&server.url(), registry.clone());
+        for _ in 0..3 {
+            let _ = client.analyze("{}", "sys").await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(70)).await;
+        let _ = client.analyze("{}", "sys").await;
+
+        let key = endpoint_authority(&server.url()).unwrap();
+        let breaker = registry.get(&key);
+        assert_eq!(
+            breaker.stats().current_cooldown,
+            std::time::Duration::from_millis(100)
         );
     }
 }
