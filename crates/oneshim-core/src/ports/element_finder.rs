@@ -18,10 +18,18 @@ use crate::models::ui_scene::UiScene;
 ///   (wire: `provider.analysis_failed`) propagated from underlying
 ///   OCR/LLM providers.
 /// - Default `analyze_scene` / `analyze_scene_from_image` impls emit
-///   `CoreError::Internal` with "does not support" messages — callers
-///   (`oneshim-web::automation_service::scene::analyze_scene`) pattern-
-///   match BOTH `Internal` AND `Config` variants on these messages and
-///   route to HTTP 400 BadRequest. See iter-101/104 cascading fix.
+///   `CoreError::Internal` (`internal.generic`) with "does not support
+///   scene analysis" / "does not support direct image scene analysis"
+///   messages. Caller `oneshim-web::automation_service::scene::analyze_scene`
+///   pattern-matches BOTH `Internal` AND `Config` variants where message
+///   contains "Scene analyzer" (Config.Missing from iter-100 controller
+///   gate), "scene analysis is not supported", or "direct image scene
+///   analysis", and routes to HTTP 400 BadRequest. See iter-101/104
+///   cascading fix. NOTE: the first default's message ("does not support
+///   scene analysis") doesn't match any of the three substrings; if a
+///   future adapter leaves the default in place, its Err would fall
+///   through to ApiError::Internal. All current production adapters
+///   override both defaults, so this gap is latent.
 #[async_trait]
 pub trait ElementFinder: Send + Sync {
     async fn find_element(
