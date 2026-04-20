@@ -38,12 +38,12 @@ v0.4.39-rc.1 (Phase 5-D8 완료; Phase 4 Updater Hardening 출시)
 - **패키지**: 15개 (`cargo metadata --no-deps` 기준 — `crates/` 하위 14개(`oneshim-sandbox-worker` 포함) + `src-tauri`; 원래 계획된 `oneshim-ui` 및 과거 `crates/oneshim-app/` 은 ADR-004 Tauri 마이그레이션으로 제거됨)
 - **SQLite 스키마**: V31 (V31은 Phase 3 `regime_manager_state`에서 추가)
 
-### 워크플로우 상태
+### 워크플로우 상태 (2026-04-20 기준 spot-check)
 
-- 최신 `main` CI: 실패 (`CI`) — [Run 23740715704](https://github.com/pseudotop/oneshim-client/actions/runs/23740715704) (2026-03-30). 원인: `oneshim-embedding` 생성자 커버리지가 live Hugging Face 다운로드에 의존했고 HTTP 504로 실패했습니다.
-- 최신 성공 전체 CI: 성공 (`CI`, PR #263) — [Run 23740036667](https://github.com/pseudotop/oneshim-client/actions/runs/23740036667) (2026-03-30).
-- 최신 RC 릴리스: 성공 (`Release`, 태그 `v0.4.11-rc.2`) — [Run 23740840957](https://github.com/pseudotop/oneshim-client/actions/runs/23740840957) (2026-03-30).
-- 최신 stable 복구 릴리스: 성공 (`Release`, `v0.4.10` workflow_dispatch) — [Run 23732221718](https://github.com/pseudotop/oneshim-client/actions/runs/23732221718) (2026-03-30).
+- **최신 `main` CI** (`fix(updater): per-PID boot_count markers ...`): 실패 — [Run 24623392589](https://github.com/pseudotop/oneshim-client/actions/runs/24623392589) (2026-04-19). 원인: 크로스 플랫폼 `Build` job 이 `ARTIFACT-DL` 로 `frontend-dist-bundle` artifact 를 다운로드하려 하지만, main push 에서는 `Frontend (build + e2e)` job 이 `skipped` (frontend-touched PR 에서만 실행). 알려진 CI 구성 drift 이며, Rust 테스트 surface 는 green. 본 브랜치 외부에서 트래킹 중.
+- **최신 PR 컨텍스트 CI 성공**: 성공 — [Run 24622597161](https://github.com/pseudotop/oneshim-client/actions/runs/24622597161) (2026-04-19, 브랜치 `fix/updater-boot-count-per-pid-markers`). PR CI 는 안정적으로 통과 — artifact gap 은 main-push-only 현상.
+- **최신 Release RC**: 성공 (`Release`, `v0.4.38-rc.4`) — [Run 24570428239](https://github.com/pseudotop/oneshim-client/actions/runs/24570428239) (2026-04-17). 직전 v0.4.38-rc.3 실패는 다른 원인.
+- **최근 stable 태그**: v0.4.37 (2026-04-12). 현재 브랜치는 ADR-019 PR 랜딩 이후 `promote-stable.sh` 로 v0.4.39-rc.1 → stable 승격 대상.
 
 ### 로컬 검증 Baseline
 

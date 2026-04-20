@@ -38,12 +38,12 @@ v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 - **Packages**: 15 per `cargo metadata --no-deps` (14 crates under `crates/` including `oneshim-sandbox-worker` + `src-tauri`; planned `oneshim-ui` and former `crates/oneshim-app/` removed by ADR-004 Tauri migration)
 - **SQLite schema**: V31 (V31 added by Phase 3 for `regime_manager_state`)
 
-### Workflow Status
+### Workflow Status (as of 2026-04-20 spot-check)
 
-- Latest `main` CI run: failure (`CI`) — [Run 23740715704](https://github.com/pseudotop/oneshim-client/actions/runs/23740715704) (2026-03-30). Root cause: `oneshim-embedding` constructor coverage depended on a live Hugging Face download and failed on HTTP 504.
-- Latest successful full CI run: success (`CI`, PR #263) — [Run 23740036667](https://github.com/pseudotop/oneshim-client/actions/runs/23740036667) (2026-03-30).
-- Latest RC release run: success (`Release`, tag `v0.4.11-rc.2`) — [Run 23740840957](https://github.com/pseudotop/oneshim-client/actions/runs/23740840957) (2026-03-30).
-- Latest successful stable recovery run: success (`Release`, workflow_dispatch for `v0.4.10`) — [Run 23732221718](https://github.com/pseudotop/oneshim-client/actions/runs/23732221718) (2026-03-30).
+- **Latest `main` CI run** (`fix(updater): per-PID boot_count markers ...`): failure — [Run 24623392589](https://github.com/pseudotop/oneshim-client/actions/runs/24623392589) (2026-04-19). Root cause: cross-platform `Build` jobs try to download the `frontend-dist-bundle` artifact via `ARTIFACT-DL`, but the `Frontend (build + e2e)` job is `skipped` on main pushes (only runs on frontend-touched PRs). Known CI-config drift; Rust test surface is green. Tracked outside this branch.
+- **Latest PR-context CI success**: success — [Run 24622597161](https://github.com/pseudotop/oneshim-client/actions/runs/24622597161) (2026-04-19, branch `fix/updater-boot-count-per-pid-markers`). PR CI runs pass reliably — the artifact gap is main-push-only.
+- **Latest Release RC**: success (`Release`, `v0.4.38-rc.4`) — [Run 24570428239](https://github.com/pseudotop/oneshim-client/actions/runs/24570428239) (2026-04-17). Preceded by v0.4.38-rc.3 failure for different root cause.
+- **Most recent stable tag**: v0.4.37 (2026-04-12). Current branch targets v0.4.39-rc.1 → stable via `promote-stable.sh` after ADR-019 PR lands.
 
 ### Local Verification Baseline
 
