@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Repository guardrails for humans and AI agents.
-This project is a DDD + Hexagonal Architecture workspace. Keep boundaries explicit.
+This project is a 14-crate Cargo workspace following Hexagonal Architecture (Ports & Adapters). Keep boundaries explicit. (The parent ONESHIM project additionally uses DDD on the server side; this `client-rust` workspace is Hexagonal-only.)
 
 ## Scope
 
@@ -9,9 +9,9 @@ These rules apply to the entire repository unless a subdirectory adds stricter g
 
 ## Architecture Summary
 
-1. `oneshim-core` is the domain contract layer.
-2. Adapter crates implement ports from `oneshim-core`.
-3. `oneshim-app` is the composition root and runtime orchestrator.
+1. `oneshim-core` is the domain contract layer (ports, models, errors).
+2. Adapter crates (`oneshim-network`, `oneshim-storage`, `oneshim-monitor`, `oneshim-vision`, `oneshim-suggestion`, `oneshim-automation`, `oneshim-analysis`, `oneshim-embedding`, `oneshim-audio`, `oneshim-web`) implement ports from `oneshim-core`.
+3. `src-tauri/` (package name `oneshim-app`) is the composition root + runtime orchestrator. The former `crates/oneshim-app/` is DEPRECATED and removed from the workspace.
 4. `oneshim-web` is a delivery layer (HTTP handlers + frontend), not a domain layer.
 5. `oneshim-automation` enforces policy, sandbox, audit, and action execution flows.
 
