@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SOURCE_SVG="${1:-assets/brand/logo-icon.svg}"
-OUTPUT_DIR="${2:-crates/oneshim-app/assets}"
+OUTPUT_DIR="${2:-src-tauri/icons}"
 
 if [[ ! -f "$SOURCE_SVG" ]]; then
   echo "[ERROR] Source logo not found: $SOURCE_SVG" >&2
