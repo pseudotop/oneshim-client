@@ -98,6 +98,18 @@ jobs:
         working-directory: crates/oneshim-web/frontend
         run: pnpm install --frozen-lockfile && pnpm build
 
+      - name: Create sandbox worker stub for Tauri externalBin
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            touch "src-tauri/oneshim-sandbox-worker-${TARGET}.exe"
+          else
+            touch "src-tauri/oneshim-sandbox-worker-${TARGET}"
+            chmod +x "src-tauri/oneshim-sandbox-worker-${TARGET}"
+          fi
+
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }} -p oneshim-app --features grpc
 
