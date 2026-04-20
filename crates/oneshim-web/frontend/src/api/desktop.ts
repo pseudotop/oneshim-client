@@ -27,10 +27,11 @@
  * });
  * ```
  *
- * During the migration window (112 commands migrating in phased PRs per
- * the Follow-up #1 design doc), some commands still return plain `string`
- * errors. Callers SHOULD use `isIpcError` and fall back to string
- * handling — do NOT assume every thrown Tauri error matches this shape.
+ * Post-migration (all 114 commands across 17 files migrated in iter-196~204),
+ * the typed envelope is the norm. The `isIpcError` type guard + plain-string
+ * fallback below remain for defence-in-depth — e.g., future commands that
+ * haven't been converted, or legacy callers running during a rollback window.
+ * Do NOT assume every thrown Tauri error matches this shape.
  */
 export interface IpcError {
   readonly code: string

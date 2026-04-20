@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-20
 **Status:** ✅ SHIPPED (iter-196 foundation; iter-197/199/201/203/204 migration batches)
-**Scope:** `src-tauri/src/commands/*.rs` (112 command signatures), `src-tauri/src/ipc_error.rs` (new), `crates/oneshim-web/frontend/src/api/desktop.ts` (or equivalent TS types)
+**Scope:** `src-tauri/src/commands/*.rs` (112 command signatures designed; real scan found **114** — see post-execution banner), `src-tauri/src/ipc_error.rs` (new), `crates/oneshim-web/frontend/src/api/desktop.ts` (or equivalent TS types)
 **Origin:** ADR-019 §Known follow-ups #1 — "Tauri IPC code propagation"
 **Parent ADR:** [ADR-019](../architecture/ADR-019-error-code-infrastructure.md)
 **Target version:** post-ADR-019 merge (v0.4.40-rc.1+)
@@ -21,7 +21,7 @@ pub async fn foo() -> Result<Bar, String> {
 }
 ```
 
-Count: **112 command signatures** returning `Result<_, String>` across 20 command files, with **~106 callsites** using `.to_string()` to collapse errors. Frontend sees only the Display string, so if a user gets a `Config.Invalid` at the same callsite as `Config.Missing`, they're indistinguishable on the frontend.
+Count: **112 command signatures** returning `Result<_, String>` (design-time estimate; real scan at execution revealed **114 across 17 files**) with **~106 callsites** using `.to_string()` to collapse errors. Frontend sees only the Display string, so if a user gets a `Config.Invalid` at the same callsite as `Config.Missing`, they're indistinguishable on the frontend.
 
 Since ADR-019's whole value proposition to the frontend was "branch programmatically on `code`", this is a first-class gap.
 
