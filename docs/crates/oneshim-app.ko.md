@@ -14,30 +14,56 @@
 
 ## 디렉토리 구조
 
+> **참고**: `oneshim-app` 패키지는 [ADR-004](../architecture/ADR-004-tauri-v2-migration.ko.md) Tauri v2 마이그레이션에 따라 이제 `src-tauri/` (composition root) 에 위치합니다. 구 `crates/oneshim-app/` 디렉토리는 워크스페이스에서 제거되었습니다.
+
 ```
-oneshim-app/src/
-├── main.rs                      # 진입점, DI 와이어링
-├── gui_runner.rs                # GUI + Agent 통합 런타임
-├── automation_runtime.rs        # AI 제공자 런타임 와이어링
-├── provider_adapters.rs         # AI 제공자 어댑터 해석
+src-tauri/src/  (패키지: oneshim-app)
+├── main.rs                      # 진입점 — Tauri builder + DI 와이어링
+├── setup.rs, setup_platform.rs, setup_shortcuts.rs, setup_windows.rs
+├── lifecycle.rs                 # 시그널 처리, 우아한 종료
+├── tray.rs, tray_icon.rs        # 시스템 트레이 메뉴 + 아이콘
+├── autostart.rs                 # 자동 시작 설정 (launchd/레지스트리)
+├── ipc_error.rs                 # IpcError DTO — Tauri IPC (ADR-019 Follow-up #1)
+├── notification_manager.rs      # 쿨다운 기반 알림 매니저
+├── commands/                    # 114개 Tauri IPC command 핸들러 (17 파일, 디렉토리 모듈)
+├── scheduler/                   # 16 루프 백그라운드 스케줄러 (디렉토리 모듈)
+│   ├── config.rs, mod.rs
+│   ├── analysis_pipeline/, gui_pipeline.rs, heatmap.rs, shared_regime_state.rs
+│   └── loops/                   # 16 spawn 함수: monitor, metrics, process, sync,
+│                                #   heartbeat, aggregation, notification, focus,
+│                                #   event_snapshot, oauth_refresh, analysis,
+│                                #   cross_device_sync, coaching + 조건부:
+│                                #   health_check, suggestion_sse, suggestion_maintenance
+├── updater/                     # 자동 업데이트 (디렉토리 모듈)
+│                                # D9 다중키 Ed25519 trust (trusted_keys.rs), D10 방어적
+│                                # 롤아웃 처리, D11 self-healthy probe + 자동 rollback
+├── focus_analyzer/              # 포커스 분석 (디렉토리 모듈)
+├── agent_runtime/, session_manager/, session_adapters/, feedback_sink/
+├── provider_adapters/, subprocess_provider/
+├── services/                    # 도메인 서비스 (log_helpers 등)
+├── telemetry/                   # OpenTelemetry 계측 (디렉토리 모듈)
+├── native_border/               # 플랫폼 네이티브 창 테두리 스타일
+├── {bootstrap,background,server,web,integration,agent,update}_runtime.rs  # 7 runtime facade
+├── app_runtime_launch.rs        # 메인 launch 오케스트레이션 (gRPC UnifiedClient + REST 와이어링)
+├── agent_runtime_support.rs     # Agent 모드 runtime 지원
+├── magic_overlay.rs, magic_overlay_driver.rs  # ADR-002 M3 WebView 오버레이 브리지
+├── update_coordinator.rs, update_runtime.rs
+├── platform_overlay.rs, platform_accessibility.rs, macos_integration.rs
+├── auditing_session.rs, auth_cli.rs, bridge_cli.rs, secret_cli.rs
+├── integrity_guard.rs, integration_policy.rs, integration_insight_source.rs,
+│   integration_prompt_delivery.rs
+├── capture_services.rs, storage_runtime.rs, sync_engine.rs,
+│   fallback_stt.rs, feature_capabilities.rs
+├── suggestion_manager.rs, workflow_intelligence.rs
+├── bootstrap_preflight.rs
+├── desktop_permissions.rs, desktop_startup.rs
+├── oauth_provider_registry.rs, provider_secret_backend.rs
+├── runtime_bridges.rs, runtime_state.rs, server_runtime_context.rs
+├── session_context.rs, focus_auto.rs, focus_mode.rs, focus_probe_adapter.rs
+├── skill_loader.rs, log_retention.rs, memory_profiler.rs
 ├── cli_subscription_bridge.rs   # CLI 구독 브리지 아티팩트 동기화
-├── scheduler/                   # 스케줄러 — 디렉토리 모듈 (ADR-003)
-│   ├── mod.rs                   # Scheduler 구조체 + run() + 재export + 테스트
-│   ├── config.rs                # SchedulerConfig, PlatformEgressPolicy, 상수
-│   └── loops.rs                 # 9개 루프 본체 함수
-├── focus_analyzer/              # 포커스 분석 — 디렉토리 모듈 (ADR-003)
-│   ├── mod.rs                   # FocusAnalyzer 구조체 + 공개 API + 재export + 테스트
-│   ├── models.rs                # FocusAnalyzerConfig, SuggestionCooldowns, SessionTracker
-│   └── suggestions.rs           # 제안 생성기 + 쿨다운 + 포커스 점수
-├── updater/                     # 자동 업데이트 — 디렉토리 모듈 (ADR-003)
-│   ├── mod.rs                   # Updater 구조체 + 오케스트레이터 + 재export + 테스트
-│   ├── github.rs                # GitHub API: 릴리스, 에셋 선택, 버전 플로어
-│   ├── install.rs               # 다운로드 + 압축해제 + 바이너리 교체 + 서명
-│   └── state.rs                 # 마지막 확인 시각, 버전 영속화
-├── lifecycle.rs                 # 라이프사이클 - 시그널 처리
-├── event_bus.rs                 # 내부 이벤트 라우팅
-├── autostart.rs                 # 자동 시작 설정
-└── notification_manager.rs      # 쿨다운 기반 알림 매니저
+├── automation_runtime.rs, automation_controller_builder.rs
+└── launch_resources.rs
 ```
 
 ## CLI 구독 브리지
@@ -255,7 +281,7 @@ impl Autostart {
 
 릴리스 아티팩트는 `.github/workflows/release.yml`에서 생성되며, 다음 경로에서 공통으로 소비한다.
 
-- 앱 내 업데이트: `crates/oneshim-app/src/updater/`
+- 앱 내 업데이트: `src-tauri/src/updater/`
 - 터미널 인스톨러:
   - `scripts/install.sh`
   - `scripts/install.ps1`

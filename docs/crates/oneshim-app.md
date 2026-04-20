@@ -14,30 +14,56 @@ The binary entry point. DI wiring, scheduler, and lifecycle management.
 
 ## Directory Structure
 
+> **Note**: the `oneshim-app` package now lives at `src-tauri/` (composition root) per [ADR-004](../architecture/ADR-004-tauri-v2-migration.md) Tauri v2 migration. The former `crates/oneshim-app/` directory was removed from the workspace.
+
 ```
-oneshim-app/src/
-├── main.rs                      # Entry point, DI wiring
-├── gui_runner.rs                # GUI + Agent integrated runtime
-├── automation_runtime.rs        # AI provider runtime wiring
-├── provider_adapters.rs         # AI provider adapter resolution
+src-tauri/src/  (package: oneshim-app)
+├── main.rs                      # Entry point — Tauri builder + DI wiring
+├── setup.rs, setup_platform.rs, setup_shortcuts.rs, setup_windows.rs
+├── lifecycle.rs                 # Signal handling, graceful shutdown
+├── tray.rs, tray_icon.rs        # System tray menu + icon
+├── autostart.rs                 # Auto-start configuration (launchd/registry)
+├── ipc_error.rs                 # IpcError DTO for Tauri IPC (ADR-019 Follow-up #1)
+├── notification_manager.rs      # Cooldown-based notification manager
+├── commands/                    # 114 Tauri IPC command handlers across 17 files (directory module)
+├── scheduler/                   # 16-loop background scheduler (directory module)
+│   ├── config.rs, mod.rs
+│   ├── analysis_pipeline/, gui_pipeline.rs, heatmap.rs, shared_regime_state.rs
+│   └── loops/                   # 16 spawn functions: monitor, metrics, process, sync,
+│                                #   heartbeat, aggregation, notification, focus,
+│                                #   event_snapshot, oauth_refresh, analysis,
+│                                #   cross_device_sync, coaching + conditional:
+│                                #   health_check, suggestion_sse, suggestion_maintenance
+├── updater/                     # Auto-update (directory module)
+│                                # D9 multi-key Ed25519 trust (trusted_keys.rs), D10 defensive
+│                                # rollout handling, D11 self-healthy probe with automatic rollback
+├── focus_analyzer/              # Focus analysis (directory module)
+├── agent_runtime/, session_manager/, session_adapters/, feedback_sink/
+├── provider_adapters/, subprocess_provider/
+├── services/                    # Domain services (log_helpers, etc.)
+├── telemetry/                   # OpenTelemetry instrumentation (directory module)
+├── native_border/               # Platform-native window border styling
+├── {bootstrap,background,server,web,integration,agent,update}_runtime.rs  # 7 runtime facades
+├── app_runtime_launch.rs        # Main launch orchestration (wires gRPC UnifiedClient + REST)
+├── agent_runtime_support.rs     # Agent-mode runtime support
+├── magic_overlay.rs, magic_overlay_driver.rs  # ADR-002 M3 WebView overlay bridge
+├── update_coordinator.rs, update_runtime.rs
+├── platform_overlay.rs, platform_accessibility.rs, macos_integration.rs
+├── auditing_session.rs, auth_cli.rs, bridge_cli.rs, secret_cli.rs
+├── integrity_guard.rs, integration_policy.rs, integration_insight_source.rs,
+│   integration_prompt_delivery.rs
+├── capture_services.rs, storage_runtime.rs, sync_engine.rs,
+│   fallback_stt.rs, feature_capabilities.rs
+├── suggestion_manager.rs, workflow_intelligence.rs
+├── bootstrap_preflight.rs
+├── desktop_permissions.rs, desktop_startup.rs
+├── oauth_provider_registry.rs, provider_secret_backend.rs
+├── runtime_bridges.rs, runtime_state.rs, server_runtime_context.rs
+├── session_context.rs, focus_auto.rs, focus_mode.rs, focus_probe_adapter.rs
+├── skill_loader.rs, log_retention.rs, memory_profiler.rs
 ├── cli_subscription_bridge.rs   # CLI subscription bridge artifact sync
-├── scheduler/                   # Scheduler — directory module (ADR-003)
-│   ├── mod.rs                   # Scheduler struct + run() + re-exports + tests
-│   ├── config.rs                # SchedulerConfig, PlatformEgressPolicy, constants
-│   └── loops.rs                 # 9 loop body functions
-├── focus_analyzer/              # Focus analysis — directory module (ADR-003)
-│   ├── mod.rs                   # FocusAnalyzer struct + public API + re-exports + tests
-│   ├── models.rs                # FocusAnalyzerConfig, SuggestionCooldowns, SessionTracker
-│   └── suggestions.rs           # suggestion generators + cooldown + focus score
-├── updater/                     # Auto update — directory module (ADR-003)
-│   ├── mod.rs                   # Updater struct + orchestrator + re-exports + tests
-│   ├── github.rs                # GitHub API: releases, asset selection, version floor
-│   ├── install.rs               # download + decompress + binary replace + signature
-│   └── state.rs                 # last check time, version persistence
-├── lifecycle.rs                 # Lifecycle - signal handling
-├── event_bus.rs                 # Internal event routing
-├── autostart.rs                 # Auto-start configuration
-└── notification_manager.rs      # Cooldown-based notification manager
+├── automation_runtime.rs, automation_controller_builder.rs
+└── launch_resources.rs
 ```
 
 ## CLI Subscription Bridge
@@ -79,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
     // 2. run integrity preflight, evaluate AI access mode
     // 3. build storage/monitor/network/vision/automation components
     // 4. resolve provider adapters + optional CLI bridge sync
-    // 5. start scheduler (9-loop orchestration)
+    // 5. start scheduler (16-loop orchestration)
     // 6. start web server + optional update coordinator
     // 7. wait shutdown signal and finalize session
     Ok(())
@@ -88,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
 
 ### Scheduler (`scheduler/`)
 
-Current scheduler is a **9-loop orchestrator** (`Scheduler::run()` → `run_scheduler_loops()`), not a 3-loop model. Split into `config.rs` (configuration) and `loops.rs` (loop bodies) per ADR-003.
+Current scheduler is a **16-loop orchestrator** (`Scheduler::run()` → `run_scheduler_loops()`), not the original 3-loop / 9-loop models. Split into `config.rs` (configuration) and `loops/` directory (per-loop body files — `monitor.rs`, `events.rs`, `network.rs`, `sync.rs`, `intelligence.rs`, etc.) per ADR-003.
 
 | Loop | Interval | Responsibility |
 |------|----------|----------------|
@@ -255,7 +281,7 @@ Auto update flow is driven by `Updater` + `update_coordinator`. Split into `gith
 
 Release artifacts are packaged by `.github/workflows/release.yml`, then consumed by:
 
-- App updater (`crates/oneshim-app/src/updater.rs`) for in-app updates
+- App updater (`src-tauri/src/updater/`) for in-app updates (D9/D10/D11 hardening; directory module)
 - Cross-platform terminal installers:
   - `scripts/install.sh`
   - `scripts/install.ps1`
@@ -269,7 +295,7 @@ The installers and updater share the same release assets/checksum/signature side
 1. `main.rs` / `gui_runner.rs` loads config and wires DI (storage, monitor, network, vision, automation, web).
 2. Access mode is evaluated (`LocalModel`, `ProviderApiKey`, `ProviderSubscriptionCli`, `ProviderOAuth`) and AI adapters are resolved.
 3. Optional CLI subscription bridge artifacts are synced in subscription mode.
-4. Scheduler starts 9 loops and optional subsystems (notification/focus/realtime).
+4. Scheduler starts 16 loops (13 unconditional + 3 conditional — health_check, suggestion_sse, suggestion_maintenance).
 5. Web server serves API + embedded frontend and consumes shared realtime events.
 6. Update coordinator checks release channel and handles gated install actions.
 7. Shutdown signal triggers graceful stop and session finalization.
