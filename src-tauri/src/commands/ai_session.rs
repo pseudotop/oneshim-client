@@ -16,15 +16,25 @@ use oneshim_core::models::ai_session::{
 };
 use oneshim_core::ports::conversation_session::SessionManager;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::{AiSessionRuntimeState, SuggestionRuntimeState};
 use tracing::debug;
 
+/// Require a live session manager; returns a service.unavailable IpcError
+/// when the manager is not wired (non-AI-enabled builds or early startup).
 fn require_session_manager_impl(
     state: &AiSessionRuntimeState,
-) -> Result<Arc<crate::session_manager::SessionManagerImpl>, String> {
+) -> Result<Arc<crate::session_manager::SessionManagerImpl>, IpcError> {
     state
         .manager_impl()
-        .ok_or_else(|| "session manager not available".to_string())
+        .ok_or_else(|| IpcError::new("service.unavailable", "session manager not available"))
+}
+
+/// Canonical "session storage not available" error — used by commands that
+/// require the persistent SessionStorage adapter (historical queries, renames,
+/// deletes).
+fn session_storage_not_available() -> IpcError {
+    IpcError::new("service.unavailable", "session storage not available")
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,14 +53,11 @@ pub struct SendSessionMessageRequest {
 pub async fn create_ai_session(
     state: tauri::State<'_, AiSessionRuntimeState>,
     config: SessionConfig,
-) -> Result<ConversationSessionInfo, String> {
+) -> Result<ConversationSessionInfo, IpcError> {
     let mgr = require_session_manager_impl(&state)?;
 
     let system_prompt = config.system_prompt.clone();
-    let session = mgr
-        .create_session(config)
-        .await
-        .map_err(|e| e.to_string())?;
+    let session = mgr.create_session(config).await.map_err(IpcError::from)?;
     let info = session.info();
 
     // Fire-and-forget: persist session metadata
@@ -86,19 +93,24 @@ pub async fn send_session_message(
     state: tauri::State<'_, AiSessionRuntimeState>,
     suggestion_state: tauri::State<'_, SuggestionRuntimeState>,
     request: SendSessionMessageRequest,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let mgr = require_session_manager_impl(&state)?;
     let suggestion_mgr = suggestion_state.manager();
 
-    // Check daily token budget before sending
+    // Check daily token budget before sending. Dedicated wire code
+    // so the frontend can surface this distinctly from other policy
+    // denials (show a budget-exhausted UI, prompt upgrade, etc.).
     if !mgr.check_token_budget(&request.session_id).await {
-        return Err("Daily token budget exhausted".to_string());
+        return Err(IpcError::new(
+            "policy.denied",
+            "Daily token budget exhausted",
+        ));
     }
 
     let session = mgr
         .get_session(&request.session_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     // Reset idle timer — keeps the session in Active state.
     mgr.touch_session(&request.session_id).await;
@@ -119,7 +131,7 @@ pub async fn send_session_message(
         Ok(s) => s,
         Err(err) => {
             mgr_clone.report_failure(&request.session_id, &err).await;
-            return Err(err.to_string());
+            return Err(IpcError::from(err));
         }
     };
 
@@ -291,12 +303,12 @@ pub async fn send_session_message(
 pub async fn kill_ai_session(
     state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let mgr = require_session_manager_impl(&state)?;
 
     mgr.kill_session(&session_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     // Fire-and-forget: mark terminated in DB
     if let Some(ss) = state.session_storage() {
@@ -314,13 +326,13 @@ pub async fn kill_ai_session(
 pub async fn retry_ai_session(
     state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
-) -> Result<ConversationSessionInfo, String> {
+) -> Result<ConversationSessionInfo, IpcError> {
     let mgr = require_session_manager_impl(&state)?;
 
     let session = mgr
         .recover_session(&session_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
     Ok(session.info())
 }
 
@@ -328,7 +340,7 @@ pub async fn retry_ai_session(
 #[command]
 pub async fn list_ai_sessions(
     state: tauri::State<'_, AiSessionRuntimeState>,
-) -> Result<Vec<ConversationSessionInfo>, String> {
+) -> Result<Vec<ConversationSessionInfo>, IpcError> {
     let mut result = vec![];
 
     if let Some(mgr) = state.manager_impl() {
@@ -359,14 +371,14 @@ pub async fn load_session_messages(
     session_id: String,
     limit: Option<u32>,
     offset: Option<u32>,
-) -> Result<Vec<MessageRecord>, String> {
+) -> Result<Vec<MessageRecord>, IpcError> {
     let ss = state
         .session_storage()
-        .ok_or_else(|| "session storage not available".to_string())?;
+        .ok_or_else(session_storage_not_available)?;
 
     ss.load_messages(&session_id, limit.unwrap_or(100), offset.unwrap_or(0))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
 
 /// Delete a persisted session and all its messages.
@@ -374,14 +386,12 @@ pub async fn load_session_messages(
 pub async fn delete_session_history(
     state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let ss = state
         .session_storage()
-        .ok_or_else(|| "session storage not available".to_string())?;
+        .ok_or_else(session_storage_not_available)?;
 
-    ss.delete_session(&session_id)
-        .await
-        .map_err(|e| e.to_string())
+    ss.delete_session(&session_id).await.map_err(IpcError::from)
 }
 
 /// Rename (set display title) for an AI session.
@@ -390,21 +400,21 @@ pub async fn rename_ai_session(
     state: tauri::State<'_, AiSessionRuntimeState>,
     session_id: String,
     new_title: String,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let ss = state
         .session_storage()
-        .ok_or_else(|| "session storage not available".to_string())?;
+        .ok_or_else(session_storage_not_available)?;
 
     ss.update_session_title(&session_id, &new_title)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
 
 /// Get token usage for the current day across all sessions.
 #[command]
 pub async fn get_token_usage(
     state: tauri::State<'_, AiSessionRuntimeState>,
-) -> Result<TokenUsageResponse, String> {
+) -> Result<TokenUsageResponse, IpcError> {
     let mgr = require_session_manager_impl(&state)?;
 
     let (input, output) = mgr.get_global_token_usage().await;
