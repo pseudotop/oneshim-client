@@ -215,9 +215,10 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `history.rs`: FIFO history cache
 
 ### oneshim-storage (Local Storage)
-- `sqlite.rs`: `SqliteStorage` (impl StorageService) — WAL mode + PRAGMA optimizations
-- `migration.rs`: schema V1-V22 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching, app_meta, session_audit, ai_sessions, type_confidence)
+- `sqlite/`: `SqliteStorage` (impl StorageService + 10+ other port traits) — WAL mode + PRAGMA optimizations. Directory module per ADR-003; sub-modules: `metrics/`, `edge_intelligence/`, `annotation_storage_impl`, `coaching_storage`, `few_shot_storage_impl`, `focus_storage_impl`, `frames`, `fts_search_impl`, `habit_storage`, `integration_query_impl`, `lan_pin_store`, `override_store_impl`, `preset_storage_impl`, `port_contract_tests`, etc.
+- `migration/`: schema V1–V31 as per-version files (`v01_v08.rs`, `v09_v18.rs`, `v19_v21.rs`, `v22_v23.rs`, `v23_v24.rs`, `v25.rs`, `v26.rs`, `v27.rs`, `v28.rs`, `v29.rs`, `v30.rs`, `v31_regime_manager_state.rs`) + `CURRENT_VERSION: u32 = 31` constant. Covers events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching, app_meta, session_audit, ai_sessions, type_confidence, regime_manager_state (v31).
 - `frame_storage.rs`: Frame image file storage + retention policy + buffer pool + parallel I/O
+- `integration_state_store/`, `regime_manager_state_store.rs`, `sync_extractor.rs`, `sync_merger.rs`, `device_identity.rs`, `keychain.rs`, `file_secret_store.rs`, `env_secret_store.rs`, `encryption.rs`, `maintenance.rs`, `process_env_projection.rs`, `file_transport.rs` — various orthogonal storage adapters.
 - Retention Policy: 30 days, 500MB
 - Performance optimization: compound indexes, batch inserts, memory cache, ArrayQueue buffer pool
 
@@ -258,11 +259,11 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ### oneshim-web (Local Web Dashboard)
 - `lib.rs`: `WebServer` — Axum 0.8 HTTP server + graceful shutdown
-- `routes.rs`: REST API route definitions (16+ endpoints)
-- `handlers/`: metrics, processes, idle, sessions, frames, events, stats, tags, focus
+- `routes.rs`: 118 REST route definitions registered via `.route(...)` (368 LoC) — covers metrics, processes, idle, sessions, frames, events, stats, tags, focus, ai_models, ai_provider_surfaces, ai_session, annotations, automation, automation_gui, backup, bug_report, coaching, daily_digest, dashboard, data, digests, export, integration, etc. Contract-frozen via `docs/contracts/oneshim-web.v1.openapi.yaml` + `http-interface-manifest.v1.json`.
+- `handlers/`: 44 handler files across domain-grouped subdirectories + flat files. Originally 9 handlers at Phase-1; grew with superpowers/phase-4 features.
 - `embedded.rs`: static file serving for React frontend using rust-embed
 - `error.rs`: `ApiError` — JSON error responses
-- `frontend/`: React 18 + Vite + Tailwind CSS + Recharts + FocusWidget
+- `frontend/`: React 18.3 + Vite + Tailwind CSS + Recharts + FocusWidget + i18n (en/ko) + Biome lint + Vitest tests + Playwright e2e + Storybook review catalog
 
 ### oneshim-automation (Automation Control)
 - `controller/`: `AutomationController` — directory module (ADR-003)
