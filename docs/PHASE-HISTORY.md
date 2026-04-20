@@ -131,3 +131,38 @@ Detailed changelog of each implementation phase. For current crate structure and
 - Frontend 테스트 인프라: Vitest + React Testing Library
 - MSW (Mock Service Worker) API mocking
 - E2E: Playwright screenshot capture
+
+## Phase 2: Config Change Bus + Telemetry Exporter (v0.4.x, 2026-04-17)
+
+- `ConfigManager` 내부 `tokio::sync::watch::Sender<Arc<AppConfig>>` 기반 runtime config broadcast bus
+- `TelemetryHandle` + `tracing_subscriber::reload::Layer` — OTel exporter 를 재시작 없이 swap
+- `src-tauri` 의 `telemetry` Cargo feature 뒤로 OTLP 의존성/런타임 export 머신어리 격리 (기본 빌드 오버헤드 0)
+- Design + plan: `docs/reviews/2026-04-17-phase2-config-telemetry-{design,plan}.md`
+
+## Phase 3: FeedbackSignalSink + regime_id + RegimeManager Persistence (v0.4.x, 2026-04-18)
+
+- `FeedbackSignalSink` port + `CompositeFeedbackSink` — user feedback 를 `CoachingEngine` + `RegimeClassifier` 로 fan-out (fire-and-forget, ~10ms 지연 예산)
+- `search_filtered` / `search_quantized` 의 silent-ignore warning → 실제 `WHERE activity_segments.regime_id` 필터
+- `RegimeManager` state 를 startup hydrate + graceful shutdown persist
+- Design + plan: `docs/reviews/2026-04-18-phase3-regime-feedback-learning-{spec,plan}.md`
+
+## Phase 4: Updater Hardening (D9 + D10 + D11) (v0.4.x, 2026-04-18)
+
+- **D9** Multi-key Ed25519 trust array (`TRUSTED_PUBLIC_KEYS` in `src-tauri/src/updater/trusted_keys.rs`) — built-in 키 리스트가 권위; 사용자 override 보다 선행
+- **D10** Defensive rollout — `check_for_updates_from` 은 `installation_id` 부재 시 rollout-EXCLUDED 처리; `<!-- rollout:N -->` 규약
+- **D11** Post-install self-healthy probe + automatic rollback (`.install_pending_{VER}`/`.boot_count_{VER}`/`.self_healthy_{VER}` state files; 2회 연속 실패 시 이전 binary 복원, macOS + Linux 에서만; Windows 는 문서화된 no-op)
+- Design + plan: `docs/reviews/2026-04-18-phase4-updater-hardening-{design,plan}.md`
+
+## Phase 5-D8: Storage Test Backfill (v0.4.x, 2026-04-18)
+
+- 저장소 crate 의 테스트 gap backfill — CHECK violation 유발 기법, invalid payload injection, mutex poisoning tractable path 커버 (+27 new tests)
+- Design: `docs/reviews/2026-04-18-phase5-d8-storage-test-backfill-spec.md`
+
+## ADR-019: Error Code Infrastructure + C5 AWS Bedrock Skip (v0.4.39-rc.1, 2026-04-19)
+
+- 18 typed code enums under `crates/oneshim-core/src/error_codes/` via single-source `define_code_enum!` macro
+- 30 `CoreError` variants (28 struct + 2 `#[from]`-wrapped) + 8 `GuiInteractionError` variants with typed `code: XxxCode` field; `err.code() -> &'static str` unified accessor
+- Wire-format contract locked via `tests/wire_contract_snapshot.{rs,expected.txt}` — **41 codes** (57 → 41 after YAGNI cleanup)
+- C5: AWS Bedrock catalog-deleted; 8 match arms + 2 defense-in-depth guards return `ConfigCode::UnsupportedProviderBedrock`; OCR silent no-auth fallthrough closed
+- ~1,030 callsites retrofitted via 4-phase soft-migration (V1→V2→V1-rename); post-merge drift audit iter 87~177 removed 16 orphan wire codes + 15 dead adapter-error variants + ~138 `Internal.Generic` re-routes + 62/62 port `# Errors` doc standardization + HTTP status mapping canonicalization + doc-org convergence
+- ADR + companion: `docs/architecture/ADR-019-error-code-infrastructure.{md,ko.md}`; CHANGELOG `[Unreleased]` line 12 carries the full summary
