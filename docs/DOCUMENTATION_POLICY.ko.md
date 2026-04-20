@@ -30,5 +30,10 @@
 - `docs/migration/`는 마이그레이션 이력/단계 아카이브 문서를 관리합니다. `README`는 최신 상태로 유지하고, 하위 문서는 migration 인덱스에서 active/legacy로 구분합니다.
 - `docs/security/`는 보안 기준선 및 무결성 운영 문서를 관리합니다.
 - `docs/qa/`는 QA 템플릿과 실행 기록 메타 문서를 관리합니다.
+- `docs/reviews/`는 스프린트 phase 의 설계+계획 짝(`YYYY-MM-DD-phaseN-<topic>-{design,spec,plan}.md`)을 관리합니다. `docs/plan/` (단일 파일 계획)과 달리, `reviews/` 는 한 phase 의 "설계 → 구현 계획" 짝을 같이 캡쳐합니다.
+- `docs/roadmap/`는 장기 horizon 다중 phase roadmap 문서를 관리합니다.
+- `docs/specs/`는 개별 기능의 상세 functional spec 을 관리합니다 (ADR 보다 앞서거나 보완).
+- `docs/testing/`는 테스트 전략 문서를 관리합니다.
+- `docs/superpowers/`는 대부분 gitignore 이며 `superpowers` 플러그인 워크플로우의 세션 단위 spec/plan/review/brainstorm 아티팩트를 관리합니다. 영속성 있는 결정은 `architecture/`/`plan/`/`reviews/` 로 승격해야 합니다.
 
 현재 문서 맵은 [docs/README.ko.md](./README.ko.md)를 참조하세요.

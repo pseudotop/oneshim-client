@@ -31,6 +31,11 @@
 - `docs/migration/` stores migration history and archive-oriented phase documents. Keep `README` files current, and classify sub-docs as active vs legacy in the migration index.
 - `docs/security/` stores security baseline and integrity operations docs.
 - `docs/qa/` stores QA templates and run artifacts metadata.
+- `docs/reviews/` stores sprint-phase design+plan pairs (`YYYY-MM-DD-phaseN-<topic>-{design,spec,plan}.md`). Unlike `docs/plan/` (single-file plans), `reviews/` captures design-then-implementation-plan pairs for one phase.
+- `docs/roadmap/` stores multi-phase roadmap documents spanning longer horizons.
+- `docs/specs/` stores detailed functional specs for individual features (typically predate or complement an ADR).
+- `docs/testing/` stores testing strategy docs.
+- `docs/superpowers/` is mostly gitignored and stores session-scoped specs, plans, reviews, and brainstorm artifacts from the `superpowers` plugin workflow. Durable decisions should graduate to `architecture/`, `plan/`, or `reviews/`.
 
 See [docs/README.md](./README.md) for the current document map.
 
