@@ -7,9 +7,10 @@ use crate::models::suggestion::SuggestionHistoryEntry;
 /// # Errors
 /// `CoreError::Storage` (wire: `storage.failed`) for SQLite prepare/query/
 /// execute operations (iter-47 mass fix pattern). Empty feedback history
-/// is `Ok(Vec::new())`; `record_suggestion_feedback` on a non-existent
-/// `suggestion_id` is treated as no-op by current adapters rather than
-/// an error — check the implementation for exact rowcount semantics.
+/// is `Ok(Vec::new())`. The current `SqliteStorage` adapter's
+/// `record_suggestion_feedback` executes an UPDATE without checking
+/// rowcount, so a non-existent `suggestion_id` is a silent no-op
+/// (`Ok(())`) — unknown IDs do NOT surface NotFound.
 pub trait FewShotStorage: Send + Sync {
     fn get_suggestions_with_feedback(
         &self,
