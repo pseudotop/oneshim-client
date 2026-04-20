@@ -135,6 +135,7 @@ Wire snapshot: 57 → 54 codes (iter-87). Code enum 개수: 19 → 18 (iter-87).
 
 이후 iteration 추가 orphan 정리:
 - **iter-148**: `GuiCode::Generic` / `gui.generic` — emission site 0건; `GuiInteractionError::Internal`은 항상 `GuiCode::InternalError` 사용. Snapshot 54 → 53.
-- **iter-161**: 11개 추가 `*Code::Generic` placeholder variants (audio/config/consent/oauth/permission/policy/provider/secret/service/storage/validation) — 모두 Phase 2 boilerplate이며 Phase 4 완료 이후 emission site 0건. Snapshot 53 → 42. 유지: `auth.generic` (1 site), `internal.generic` (Internal fallback, 수백 개 site), `network.generic` (HTTP status fallback, ~70 site).
+- **iter-161**: 11개 추가 `*Code::Generic` placeholder variants (audio/config/consent/oauth/permission/policy/provider/secret/service/storage/validation) — 모두 Phase 2 boilerplate이며 Phase 4 완료 이후 emission site 0건. Snapshot 53 → 42.
+- **iter-163**: `AuthCode::Generic` / `auth.generic` — iter-161 재감사 시 "1 site" 카운트가 test-only (`TestSessionPort` mock) 임이 확인됨; test는 `AuthCode::Failed`로 전환 ("not authenticated" 의미에 정확히 부합). Snapshot 42 → 41. 유지 Generic variant (2개, 실제 emission 있음): `internal.generic` (workspace-wide Internal fallback, 수백 개 site), `network.generic` (HTTP status fallback, ~70 site).
 
-Current wire snapshot: **42 codes**.
+Current wire snapshot: **41 codes**.

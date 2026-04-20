@@ -136,6 +136,7 @@ Wire snapshot: 57 → 54 codes (iter-87). Code enum count: 19 → 18 (iter-87). 
 
 Continued orphan cleanup in later iterations:
 - **iter-148**: `GuiCode::Generic` / `gui.generic` — 0 emission sites; `GuiInteractionError::Internal` always uses `GuiCode::InternalError`. Snapshot 54 → 53.
-- **iter-161**: 11 additional `*Code::Generic` placeholder variants (audio/config/consent/oauth/permission/policy/provider/secret/service/storage/validation) — all Phase 2 boilerplate with 0 emission sites after Phase 4 complete. Snapshot 53 → 42. Retained: `auth.generic` (1 site), `internal.generic` (Internal fallback, hundreds of sites), `network.generic` (HTTP status fallback, ~70 sites).
+- **iter-161**: 11 additional `*Code::Generic` placeholder variants (audio/config/consent/oauth/permission/policy/provider/secret/service/storage/validation) — all Phase 2 boilerplate with 0 emission sites after Phase 4 complete. Snapshot 53 → 42.
+- **iter-163**: `AuthCode::Generic` / `auth.generic` — iter-161's "1 site" count was test-only (`TestSessionPort` mock); test switched to `AuthCode::Failed` (semantically correct for "not authenticated"). Snapshot 42 → 41. Retained Generic variants (2 genuinely-active): `internal.generic` (workspace-wide Internal fallback, hundreds of sites), `network.generic` (HTTP status fallback, ~70 sites).
 
-Current wire snapshot: **42 codes**.
+Current wire snapshot: **41 codes**.
