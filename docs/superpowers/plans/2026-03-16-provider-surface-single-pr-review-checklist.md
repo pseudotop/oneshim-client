@@ -3,12 +3,12 @@
 # Provider Surface Single-PR Review Checklist
 
 Date: 2026-03-16
-Status: Draft
+Status: OBSOLETE (see top-banner) — retained as historical reference
 
-Companion documents:
-- [2026-03-15-provider-surface-architecture-design.md](/Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/Documents/vscode/__INDIVISUAL__/oneshim/client-rust/docs/superpowers/specs/2026-03-15-provider-surface-architecture-design.md)
-- [2026-03-15-provider-surface-migration-plan.md](/Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/Documents/vscode/__INDIVISUAL__/oneshim/client-rust/docs/superpowers/plans/2026-03-15-provider-surface-migration-plan.md)
-- [2026-03-15-credential-backend-migration-plan.md](/Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/Documents/vscode/__INDIVISUAL__/oneshim/client-rust/docs/superpowers/plans/2026-03-15-credential-backend-migration-plan.md)
+Companion documents (referenced during authoring; the actual companion documents were never created at those paths. The provider-surface + credential-backend work was merged in a prior session without these specific doc artifacts):
+- `2026-03-15-provider-surface-architecture-design.md` (never authored at this path)
+- `2026-03-15-provider-surface-migration-plan.md` (never authored at this path)
+- `2026-03-15-credential-backend-migration-plan.md` (never authored at this path)
 
 ## Purpose
 
@@ -265,8 +265,7 @@ Must verify:
 Primary files:
 - `docs/contracts/http-interface-manifest.v1.json`
 - `docs/contracts/oneshim-web.v1.openapi.yaml`
-- `docs/superpowers/specs/2026-03-15-provider-surface-architecture-design.md`
-- `docs/superpowers/plans/2026-03-15-provider-surface-migration-plan.md`
+- (historical: `2026-03-15-provider-surface-architecture-design.md` and `2026-03-15-provider-surface-migration-plan.md` referenced during authoring but never created at those paths)
 
 ## Required Validation Commands
 
