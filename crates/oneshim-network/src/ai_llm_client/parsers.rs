@@ -12,8 +12,8 @@ pub(super) fn parse_claude_response(body: &str) -> Result<InterpretedAction, Cor
         .and_then(|arr| arr.first())
         .and_then(|block| block.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or_else(|| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .ok_or_else(|| CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
             message: "No text found in LLM response".to_string(),
         })?;
 
@@ -23,8 +23,8 @@ pub(super) fn parse_claude_response(body: &str) -> Result<InterpretedAction, Cor
 pub(super) fn parse_openai_response(body: &str) -> Result<InterpretedAction, CoreError> {
     let response: Value = serde_json::from_str(body).map_err(CoreError::from)?;
 
-    let text = extract_openai_text(&response).ok_or_else(|| CoreError::Internal {
-        code: oneshim_core::error_codes::InternalCode::Generic,
+    let text = extract_openai_text(&response).ok_or_else(|| CoreError::Analysis {
+        code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
         message: "No text found in OpenAI response".to_string(),
     })?;
 
@@ -44,8 +44,8 @@ pub(super) fn parse_google_response(body: &str) -> Result<InterpretedAction, Cor
         .and_then(|parts| parts.first())
         .and_then(|part| part.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or_else(|| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .ok_or_else(|| CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
             message: "No text found in Google response".to_string(),
         })?;
 

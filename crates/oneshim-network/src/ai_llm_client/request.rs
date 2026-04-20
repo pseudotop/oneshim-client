@@ -103,8 +103,8 @@ impl RemoteLlmProvider {
                 serde_json::json!({ "model": self.model, "max_tokens": 512, "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}] })
             }
             ProviderRequestShape::GoogleVisionAnnotate => {
-                return Err(CoreError::Internal {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
                     message: "LLM transport shape resolved to OCR-only Google Vision Annotate"
                         .to_string(),
                 });
@@ -234,8 +234,8 @@ impl RemoteLlmProvider {
             | ProviderRequestShape::OpenAiVisionChatCompletions
             | ProviderRequestShape::OpenAiResponses => parsers::parse_openai_response(&body)?,
             ProviderRequestShape::GoogleVisionAnnotate => {
-                return Err(CoreError::Internal {
-                    code: oneshim_core::error_codes::InternalCode::Generic,
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
                     message: "LLM transport shape resolved to OCR-only Google Vision Annotate"
                         .to_string(),
                 });

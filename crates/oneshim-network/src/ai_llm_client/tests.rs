@@ -218,6 +218,43 @@ fn parse_openai_response_no_choices() {
     assert!(result.is_err());
 }
 
+/// Iter-151 regression guard: parsers that can't extract text from a
+/// syntactically-valid LLM response envelope must emit
+/// `CoreError::Analysis` / `provider.analysis_failed`, not
+/// `Internal.Generic`. The provider responded; the provider misbehaved;
+/// telemetry should attribute that to the LLM, not our internals.
+#[test]
+fn claude_empty_envelope_maps_to_analysis_failed() {
+    let body = r#"{"content": []}"#;
+    let err = match parsers::parse_claude_response(body) {
+        Ok(_) => panic!("empty claude envelope should fail"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "provider.analysis_failed");
+}
+
+#[test]
+fn openai_empty_envelope_maps_to_analysis_failed() {
+    // No "choices" key, no "output_text", no "output" — the extractor
+    // has no path to any text. This is the envelope-exhaustion case.
+    let body = r#"{}"#;
+    let err = match parsers::parse_openai_response(body) {
+        Ok(_) => panic!("empty openai envelope should fail"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "provider.analysis_failed");
+}
+
+#[test]
+fn google_empty_envelope_maps_to_analysis_failed() {
+    let body = r#"{"candidates": []}"#;
+    let err = match parsers::parse_google_response(body) {
+        Ok(_) => panic!("empty google envelope should fail"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "provider.analysis_failed");
+}
+
 #[test]
 fn build_system_prompt_no_skills() {
     let ctx = SkillContext::default();
