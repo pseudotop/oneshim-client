@@ -18,6 +18,7 @@ import {
 } from '../../components/ui'
 import { DEFAULT_WEB_PORT } from '../../constants'
 import { addToast } from '../../hooks/useToast'
+import { translateError, type WireErrorLocale } from '../../i18n/translateError'
 import { form } from '../../styles/tokens'
 import { IS_TAURI } from '../../utils/platform'
 import { useSettingsFormContext } from '../settings/SettingsFormContext'
@@ -272,7 +273,7 @@ function ViewSetupGuideButton() {
 }
 
 function SupportToolsCard() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -293,7 +294,14 @@ function SupportToolsCard() {
           fetchSupportDiagnostics(),
           includeLogs && IS_TAURI
             ? invokeDesktop<RuntimeLogSnapshot>('get_runtime_log_snapshot', { lineLimit: 200 }).catch((error) => {
-                const message = error instanceof Error ? error.message : t('settings.supportLogsLoadFailed')
+                // ADR-019 Follow-up #3: route IpcError through translateError so
+                // typed wire codes (internal.generic, storage.failed, etc.)
+                // surface as localized user-facing messages rather than raw
+                // Display strings. Falls through to the existing i18n key for
+                // non-IpcError shapes (HTTP/network layer errors before the
+                // command runs).
+                const locale = (i18n.language?.startsWith('ko') ? 'ko' : 'en') as WireErrorLocale
+                const message = translateError(error, locale) || t('settings.supportLogsLoadFailed')
                 setLogsError(message)
                 return null
               })
@@ -311,7 +319,7 @@ function SupportToolsCard() {
         setLoading(false)
       }
     },
-    [developerDetails, t],
+    [developerDetails, t, i18n],
   )
 
   useEffect(() => {

@@ -1,15 +1,11 @@
-import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
 
-import { type IpcError } from '../../api/desktop'
+import type { IpcError } from '../../api/desktop'
 
-import {
-  hasTranslation,
-  translateError,
-  translatedCodes,
-} from '../translateError'
+import { hasTranslation, translatedCodes, translateError } from '../translateError'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -33,13 +29,10 @@ describe('wire-code i18n coverage', () => {
     expect(registry).toHaveLength(41)
   })
 
-  it.each(['en', 'ko'] as const)(
-    'every wire code has a %s translation',
-    (locale) => {
-      const missing = registry.filter((code) => !hasTranslation(code, locale))
-      expect(missing, `missing ${locale} translations`).toEqual([])
-    },
-  )
+  it.each(['en', 'ko'] as const)('every wire code has a %s translation', (locale) => {
+    const missing = registry.filter((code) => !hasTranslation(code, locale))
+    expect(missing, `missing ${locale} translations`).toEqual([])
+  })
 
   it('en and ko resource sets have the same keys (no drift between locales)', () => {
     const enCodes = new Set(translatedCodes('en'))
@@ -59,9 +52,7 @@ describe('translateError', () => {
 
   it('formats a known wire code with the {message} placeholder in ko', () => {
     const err: IpcError = { code: 'config.invalid', message: 'bad value' }
-    expect(translateError(err, 'ko')).toBe(
-      '설정 값이 올바르지 않습니다: bad value',
-    )
+    expect(translateError(err, 'ko')).toBe('설정 값이 올바르지 않습니다: bad value')
   })
 
   it('handles codes without placeholders (consent.expired, network.rate_limit, etc.)', () => {
@@ -75,12 +66,8 @@ describe('translateError', () => {
       code: 'provider.bedrock.unsupported',
       message: 'AWS Bedrock is intentionally unsupported in this build',
     }
-    expect(translateError(err, 'en')).toBe(
-      'AWS Bedrock is not supported in this build',
-    )
-    expect(translateError(err, 'ko')).toBe(
-      '이 빌드는 AWS Bedrock을 지원하지 않습니다',
-    )
+    expect(translateError(err, 'en')).toBe('AWS Bedrock is not supported in this build')
+    expect(translateError(err, 'ko')).toBe('이 빌드는 AWS Bedrock을 지원하지 않습니다')
   })
 
   it('falls back to English when locale translation is missing', () => {

@@ -33,8 +33,8 @@
  * handling — do NOT assume every thrown Tauri error matches this shape.
  */
 export interface IpcError {
-  readonly code: string;
-  readonly message: string;
+  readonly code: string
+  readonly message: string
 }
 
 /**
@@ -47,13 +47,13 @@ export interface IpcError {
  */
 export function isIpcError(x: unknown): x is IpcError {
   return (
-    typeof x === "object" &&
+    typeof x === 'object' &&
     x !== null &&
-    "code" in x &&
-    "message" in x &&
-    typeof (x as { code: unknown }).code === "string" &&
-    typeof (x as { message: unknown }).message === "string"
-  );
+    'code' in x &&
+    'message' in x &&
+    typeof (x as { code: unknown }).code === 'string' &&
+    typeof (x as { message: unknown }).message === 'string'
+  )
 }
 
 /**
@@ -71,13 +71,13 @@ export function isIpcError(x: unknown): x is IpcError {
  */
 export function errorMessageFromInvoke(err: unknown): string {
   if (isIpcError(err)) {
-    return err.message;
+    return err.message
   }
-  if (typeof err === "string") {
-    return err;
+  if (typeof err === 'string') {
+    return err
   }
   if (err instanceof Error) {
-    return err.message;
+    return err.message
   }
-  return String(err);
+  return String(err)
 }

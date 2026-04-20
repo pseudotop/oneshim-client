@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { errorMessageFromInvoke, isIpcError, type IpcError } from '../desktop'
+import { errorMessageFromInvoke, type IpcError, isIpcError } from '../desktop'
 
 describe('isIpcError type guard', () => {
   it('matches a well-formed IpcError envelope', () => {
