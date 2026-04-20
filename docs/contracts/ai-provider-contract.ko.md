@@ -10,9 +10,9 @@
 
 ## 범위
 
-- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client.rs`)
-- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client.rs`)
-- 어댑터 해석/폴백 (`crates/oneshim-app/src/provider_adapters.rs`)
+- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client/` — ADR-003 디렉토리 모듈)
+- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client/` — ADR-003 디렉토리 모듈)
+- 어댑터 해석/폴백 (`src-tauri/src/provider_adapters/` — ADR-004 Tauri v2 마이그레이션으로 `crates/oneshim-app/` 에서 경로 변경된 디렉토리 모듈)
 
 ## 제공자 타입
 

@@ -10,9 +10,9 @@ This document defines the versioned request/response contract expected by the re
 
 ## Scope
 
-- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client.rs`)
-- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client.rs`)
-- Adapter resolution and fallback (`crates/oneshim-app/src/provider_adapters.rs`)
+- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client/` — directory module per ADR-003)
+- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client/` — directory module per ADR-003)
+- Adapter resolution and fallback (`src-tauri/src/provider_adapters/` — directory module; path changed from `crates/oneshim-app/` per ADR-004 Tauri v2 migration)
 
 ## Provider Types
 
