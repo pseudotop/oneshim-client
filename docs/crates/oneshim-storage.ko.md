@@ -15,9 +15,26 @@ SQLite 기반 로컬 데이터 저장소 크레이트.
 
 ```
 oneshim-storage/src/
-├── lib.rs         # 크레이트 루트
-├── sqlite.rs      # SqliteStorage - StorageService 구현
-└── migration.rs   # 스키마 마이그레이션
+├── lib.rs                            # 크레이트 루트
+├── sqlite/                           # SqliteStorage — StorageService 외 10+ 포트 구현 (ADR-003 디렉토리 모듈)
+│   ├── mod.rs, metrics/, edge_intelligence/
+│   ├── annotation_storage_impl.rs, coaching_storage.rs
+│   ├── few_shot_storage_impl.rs, focus_storage_impl.rs
+│   ├── frames.rs, fts_search_impl.rs, habit_storage.rs
+│   ├── integration_query_impl.rs, override_store_impl.rs
+│   ├── preset_storage_impl.rs, port_contract_tests.rs
+├── migration/                        # 스키마 V1→V31 마이그레이션 (`CURRENT_VERSION: u32 = 31`)
+│   ├── mod.rs                        # 오케스트레이터 (run_migrations, get_version)
+│   ├── v01_v08.rs, v09_v18.rs, v19_v21.rs, v22_v23.rs, v23_v24.rs
+│   ├── v25.rs, v26.rs, v27.rs, v28.rs, v29.rs, v30.rs
+│   └── v31_regime_manager_state.rs   # 최신 V31
+├── frame_storage.rs                  # 프레임 이미지 파일 저장 + 보존 정책 + 버퍼 풀
+├── integration_state_store/, regime_manager_state_store.rs — orthogonal state stores
+├── sync_extractor.rs, sync_merger.rs — cross-device sync
+├── device_identity.rs, keychain.rs, file_secret_store.rs, env_secret_store.rs,
+│   encryption.rs, process_env_projection.rs, file_transport.rs, lan_pin_store.rs —
+│   credential/sync 어댑터 (superpowers-era)
+└── maintenance.rs                    # 보존/vacuum 헬퍼
 ```
 
 ## 주요 컴포넌트
@@ -120,7 +137,9 @@ impl StorageService for SqliteStorage {
 
 ## 데이터베이스 스키마
 
-### V1 스키마 (migration.rs)
+스키마는 V1(아래 원래 Phase-2 베이스라인)에서 **V31**(현재 — `migration/mod.rs`의 `CURRENT_VERSION: u32 = 31`)까지 진화했습니다. 각 버전별 증분 변경(컬럼 추가, 테이블 이름 변경, 신규 테이블 — focus_metrics, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching, app_meta, session_audit, ai_sessions, type_confidence, regime_manager_state)은 `migration/v*.rs` 파일 참조.
+
+### V1 스키마 (migration/v01_v08.rs, 원래 Phase-2 베이스라인)
 
 ```sql
 -- events 테이블: 컨텍스트 이벤트 저장
