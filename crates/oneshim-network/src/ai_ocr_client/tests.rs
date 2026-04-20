@@ -11,7 +11,7 @@ fn new_remote_ocr_empty_key_error() {
         surface_id: None,
         credential: None,
     };
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("not configured"));
@@ -28,7 +28,7 @@ fn new_remote_ocr_with_key() {
         surface_id: None,
         credential: None,
     };
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_ok());
 }
 
@@ -44,7 +44,8 @@ fn generic_ocr_uses_spec_shape_and_default_model() {
         credential: None,
     };
 
-    let provider = RemoteOcrProvider::new(&config).expect("generic OCR provider should build");
+    let provider = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new())
+        .expect("generic OCR provider should build");
     assert_eq!(
         provider.ocr_request_shape().expect("shape should resolve"),
         ProviderRequestShape::OpenAiVisionChatCompletions
@@ -64,7 +65,8 @@ fn ollama_ocr_initializes_without_api_key() {
         credential: None,
     };
 
-    let provider = RemoteOcrProvider::new(&config).expect("ollama OCR provider should build");
+    let provider = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new())
+        .expect("ollama OCR provider should build");
     assert_eq!(
         provider.ocr_request_shape().expect("shape should resolve"),
         ProviderRequestShape::OpenAiVisionChatCompletions
@@ -84,7 +86,7 @@ fn ollama_ocr_rejects_known_text_only_model() {
         credential: None,
     };
 
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("OCR-capable"));
@@ -102,7 +104,7 @@ fn local_openai_compatible_ocr_requires_explicit_model_selection() {
         credential: None,
     };
 
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
@@ -122,7 +124,7 @@ fn local_openai_compatible_ocr_rejects_model_without_structured_output() {
         credential: None,
     };
 
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let message = result.unwrap_err().to_string();
     assert!(
@@ -144,7 +146,7 @@ fn new_remote_ocr_rejects_retired_model_by_policy() {
         credential: None,
     };
 
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("retired as of"));
@@ -162,7 +164,8 @@ fn google_surface_uses_surface_transport_shape() {
         credential: None,
     };
 
-    let provider = RemoteOcrProvider::new(&config).expect("google OCR provider should build");
+    let provider = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new())
+        .expect("google OCR provider should build");
     assert_eq!(
         provider.ocr_request_shape().expect("shape should resolve"),
         ProviderRequestShape::GoogleVisionAnnotate
@@ -181,7 +184,7 @@ fn new_remote_ocr_rejects_known_non_ocr_model() {
         credential: None,
     };
 
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("not marked as OCR-capable"));
@@ -199,7 +202,7 @@ fn google_ocr_rejects_explicit_model_selection() {
         credential: None,
     };
 
-    let result = RemoteOcrProvider::new(&config);
+    let result = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("does not support configurable model selection"));
@@ -433,7 +436,8 @@ mod http_status_mapping {
             surface_id: None,
             credential: None,
         };
-        let provider = RemoteOcrProvider::new(&config).expect("provider init");
+        let provider = RemoteOcrProvider::new(&config, crate::CircuitBreakerRegistry::new())
+            .expect("provider init");
         // Minimal valid PNG (1x1 transparent pixel) for request body.
         let tiny_png = vec![
             0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
@@ -502,6 +506,151 @@ mod http_status_mapping {
         assert!(
             matches!(err, CoreError::OcrError { .. }),
             "500 should fall back to CoreError::OcrError (domain-specific), got: {err:?}"
+        );
+    }
+
+    // ── D7 Circuit breaker behavior ───────────────────────────────────────
+
+    fn tiny_png() -> Vec<u8> {
+        vec![
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ]
+    }
+
+    fn breaker_registry_with_fast_config_ocr(
+        server_url: &str,
+    ) -> std::sync::Arc<crate::CircuitBreakerRegistry> {
+        let registry = crate::CircuitBreakerRegistry::new();
+        let key = crate::resilience::endpoint_authority(server_url).unwrap();
+        let _ = registry.get_with_config(
+            &key,
+            crate::circuit_breaker::CircuitBreakerConfig {
+                failure_threshold: 3,
+                initial_cooldown: std::time::Duration::from_millis(50),
+                max_cooldown: std::time::Duration::from_millis(200),
+                half_open_probes: 1,
+            },
+        );
+        registry
+    }
+
+    fn make_ocr_provider(
+        server_url: &str,
+        registry: std::sync::Arc<crate::CircuitBreakerRegistry>,
+    ) -> RemoteOcrProvider {
+        let config = ExternalApiEndpoint {
+            endpoint: server_url.to_string(),
+            api_key: "test-key".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Anthropic,
+            surface_id: None,
+            credential: None,
+        };
+        RemoteOcrProvider::new(&config, registry).expect("provider init")
+    }
+
+    #[tokio::test]
+    async fn breaker_closed_passthrough_ocr() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_body(
+                serde_json::json!({
+                    "content": [{"type": "text", "text": "[]"}]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config_ocr(&server.url());
+        let provider = make_ocr_provider(&server.url(), registry);
+        let _ = provider.extract_elements(&tiny_png(), "png").await;
+        // Closed → server was hit; even if parsing fails, the breaker stayed closed.
+    }
+
+    #[tokio::test]
+    async fn breaker_open_fast_fails_ocr() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .expect_at_most(3)
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config_ocr(&server.url());
+        let provider = make_ocr_provider(&server.url(), registry);
+        for _ in 0..3 {
+            let _ = provider.extract_elements(&tiny_png(), "png").await;
+        }
+        let result = provider.extract_elements(&tiny_png(), "png").await;
+        match result {
+            Err(CoreError::ServiceUnavailable { code, .. }) => {
+                assert_eq!(code, oneshim_core::error_codes::ServiceCode::CircuitOpen);
+            }
+            other => panic!("expected CircuitOpen, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_half_open_failure_doubles_cooldown_ocr() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config_ocr(&server.url());
+        let provider = make_ocr_provider(&server.url(), registry.clone());
+        for _ in 0..3 {
+            let _ = provider.extract_elements(&tiny_png(), "png").await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(70)).await;
+        let _ = provider.extract_elements(&tiny_png(), "png").await;
+
+        let key = crate::resilience::endpoint_authority(&server.url()).unwrap();
+        let breaker = registry.get(&key);
+        assert_eq!(
+            breaker.stats().current_cooldown,
+            std::time::Duration::from_millis(100)
+        );
+    }
+
+    #[tokio::test]
+    async fn breaker_not_affected_by_caller_bug_4xx() {
+        // 400 Bad Request is a caller bug (bad payload) — breaker should stay Closed.
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(400)
+            .with_body("bad request")
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_with_fast_config_ocr(&server.url());
+        let provider = make_ocr_provider(&server.url(), registry.clone());
+        // 5 consecutive 400s — should NOT trip (Neutral classification).
+        for _ in 0..5 {
+            let _ = provider.extract_elements(&tiny_png(), "png").await;
+        }
+        let key = crate::resilience::endpoint_authority(&server.url()).unwrap();
+        let breaker = registry.get(&key);
+        assert!(
+            matches!(
+                breaker.check(),
+                crate::circuit_breaker::CircuitState::Closed
+            ),
+            "400s should NOT trip the shared breaker (caller bug, not endpoint health)"
         );
     }
 }

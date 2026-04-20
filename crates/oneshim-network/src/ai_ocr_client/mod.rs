@@ -9,7 +9,12 @@ use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
+use std::sync::Arc;
 use tracing::{debug, warn};
+
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry, CircuitState};
+use crate::resilience::{classify_for_breaker, endpoint_authority, BreakerSignal};
+
 mod ollama;
 mod parsers;
 mod strategy;
@@ -18,6 +23,12 @@ mod tests;
 pub use strategy::OcrProviderStrategy;
 /// - Claude Vision (Anthropic): `POST /v1/messages` + image content block
 /// - Google Cloud Vision: `POST /v1/images:annotate` + TEXT_DETECTION
+///
+/// D7: Guarded by a per-endpoint `CircuitBreaker` resolved from a shared
+/// `CircuitBreakerRegistry`. The Ollama model-capability probe in
+/// `ensure_runtime_ocr_model_ready` is intentionally NOT wrapped — it's a
+/// sidecar that runs once per call; if the probe fails transiently the
+/// subsequent main OCR send drives breaker state.
 pub struct RemoteOcrProvider {
     http_client: reqwest::Client,
     endpoint: String,
@@ -27,6 +38,7 @@ pub struct RemoteOcrProvider {
     surface_id: Option<String>,
     #[allow(dead_code)]
     timeout_secs: u64,
+    breaker: Arc<CircuitBreaker>,
 }
 impl std::fmt::Debug for RemoteOcrProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -104,7 +116,10 @@ impl RemoteOcrProvider {
         }
         match ollama::probe_ollama_model_supports_ocr(&self.http_client, &self.endpoint, model).await { Ok(Some(true)) | Ok(None) => Ok(()), Ok(Some(false)) => Err(CoreError::Config { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!("Selected Ollama model '{model}' does not advertise image support. Choose a multimodal model such as 'qwen3-vl:8b' or 'gemma3:4b'.") }), Err(error) => { warn!(endpoint = %self.endpoint, model = %model, error = %error, "Failed to verify Ollama OCR model capability; proceeding with request."); Ok(()) } }
     }
-    pub fn new(config: &ExternalApiEndpoint) -> Result<Self, crate::error::NetworkError> {
+    pub fn new(
+        config: &ExternalApiEndpoint,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
+    ) -> Result<Self, crate::error::NetworkError> {
         use crate::error::NetworkError;
         let auth_scheme = provider_specs::resolved_auth_scheme(
             config.provider_type,
@@ -226,6 +241,10 @@ impl RemoteOcrProvider {
             }
         }
         debug!(endpoint = %config.endpoint, model = ?config.model, timeout = config.timeout_secs, "RemoteOcrProvider initialize");
+        // D7: resolve per-endpoint breaker.
+        let breaker_key = endpoint_authority(&config.endpoint)
+            .unwrap_or_else(|_| format!("malformed::{}", config.endpoint));
+        let breaker = breaker_registry.get(&breaker_key);
         Ok(Self {
             http_client,
             endpoint: config.endpoint.clone(),
@@ -234,11 +253,13 @@ impl RemoteOcrProvider {
             provider_type: config.provider_type,
             surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
+            breaker,
         })
     }
     pub fn new_with_credential(
         config: &ExternalApiEndpoint,
         credential: CredentialSource,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Result<Self, crate::error::NetworkError> {
         use crate::error::NetworkError;
         let http_client = reqwest::Client::builder()
@@ -335,6 +356,10 @@ impl RemoteOcrProvider {
             .api_base_url()
             .map(String::from)
             .unwrap_or_else(|| config.endpoint.clone());
+        // D7: resolve per-endpoint breaker.
+        let breaker_key =
+            endpoint_authority(&endpoint).unwrap_or_else(|_| format!("malformed::{endpoint}"));
+        let breaker = breaker_registry.get(&breaker_key);
         Ok(Self {
             http_client,
             endpoint,
@@ -343,6 +368,7 @@ impl RemoteOcrProvider {
             provider_type: config.provider_type,
             surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
+            breaker,
         })
     }
 }
@@ -353,6 +379,13 @@ impl OcrProvider for RemoteOcrProvider {
         image: &[u8],
         image_format: &str,
     ) -> Result<Vec<OcrResult>, CoreError> {
+        // D7: pre-flight breaker check.
+        if matches!(self.breaker.check(), CircuitState::Open { .. }) {
+            return Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::CircuitOpen,
+                message: format!("circuit open for {}", self.endpoint),
+            });
+        }
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(image);
         let media_type = match image_format {
@@ -412,7 +445,18 @@ impl OcrProvider for RemoteOcrProvider {
         if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
-        let response = builder.send().await.map_err(|e| {
+        let send_result = builder.send().await;
+        // D7: classify for breaker accounting before error mapping.
+        let signal = match &send_result {
+            Ok(resp) => classify_for_breaker(Some(resp.status().as_u16()), false),
+            Err(_) => classify_for_breaker(None, true),
+        };
+        match signal {
+            BreakerSignal::Success => self.breaker.record_success(),
+            BreakerSignal::Failure => self.breaker.record_failure(),
+            BreakerSignal::Neutral => {}
+        }
+        let response = send_result.map_err(|e| {
             // Iter-90: split timeout vs generic (canonical pattern).
             if e.is_timeout() {
                 CoreError::RequestTimeout {

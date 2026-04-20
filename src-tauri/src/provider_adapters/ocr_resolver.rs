@@ -157,7 +157,11 @@ pub(super) fn resolve_ocr_provider(
                                 }
                             })?;
                         let remote = Arc::new(RemoteOcrProvider::new_with_credential(
-                            endpoint, credential,
+                            endpoint,
+                            credential,
+                            // D7: per-adapter registry; iter-011 will consolidate
+                            // to a workspace-wide shared registry.
+                            oneshim_network::CircuitBreakerRegistry::new(),
                         )?) as Arc<dyn OcrProvider>;
                         Ok(Arc::new(GuardedOcrProvider::new(
                             remote,
@@ -207,7 +211,10 @@ pub(super) fn resolve_ocr_provider_oauth(
         message: "Remote OCR provider requires a runtime privacy guard".to_string(),
     })?;
     let remote = Arc::new(RemoteOcrProvider::new_with_credential(
-        endpoint, credential,
+        endpoint,
+        credential,
+        // D7: per-adapter registry; iter-011 will consolidate.
+        oneshim_network::CircuitBreakerRegistry::new(),
     )?) as Arc<dyn OcrProvider>;
     Ok((
         Arc::new(GuardedOcrProvider::new(
