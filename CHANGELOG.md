@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pre-Phase 4 baseline: **3,418**
   - Phase 4 Updater Hardening: 3,418 → **3,445** (+27) across oneshim-app, oneshim-api-contracts, oneshim-web (includes Loop 3 iter 1 fix commits: 2 `rollback_tests` unit tests + 1 foreign-version-sweep test).
   - ADR-019 + post-merge drift audit iter 87~214: 3,445 → **3,651** (+206): 85+ HTTP status-mapping regression tests across 15 dispatchers, ~38 Internal→specific-variant re-route tests, 6 `map_challenge_status_to_error` tests (Follow-up #5), 10 `IpcError` contract tests (Follow-up #1), subprocess_kind + LLM envelope-extraction guards, `serial_test` circuit-breaker flake fix.
-  - **Current baseline: 3,651 passed / 0 failed / 21 ignored** per `cargo test --workspace`. Also 18 Vitest + 13 Vitest frontend tests (ADR-019 Follow-up #3 i18n translator + Follow-up #1 desktop.ts type guard) outside the Rust count.
+  - **Current baseline: 3,651 passed / 0 failed / 21 ignored** per `cargo test --workspace`. Frontend suite: **262 passed across 40 test files** via `pnpm test`; of those, **31 are ADR-019-scoped** (18 i18n translator coverage-parity tests in `src/i18n/__tests__/translateError.test.ts` — Follow-up #3, + 13 `IpcError` TS-type-guard tests in `src/api/__tests__/desktop.test.ts` — Follow-up #1).
 
 ## [0.4.39-rc.1] - 2026-04-18
 
