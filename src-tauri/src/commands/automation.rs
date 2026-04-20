@@ -2,7 +2,16 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::AutomationRuntimeState;
+
+/// Canonical "Automation not available" error — surfaced when commands
+/// require a live automation controller but the feature is disabled or
+/// unwired. service.unavailable lets the frontend surface a graceful
+/// feature-disabled message.
+fn automation_not_available() -> IpcError {
+    IpcError::new("service.unavailable", "Automation not available")
+}
 
 #[derive(Serialize)]
 pub struct AutomationAvailabilityDto {
@@ -29,7 +38,7 @@ pub struct PresetRunResultDto {
 #[command]
 pub async fn check_automation_available(
     state: tauri::State<'_, AutomationRuntimeState>,
-) -> Result<AutomationAvailabilityDto, String> {
+) -> Result<AutomationAvailabilityDto, IpcError> {
     Ok(AutomationAvailabilityDto {
         available: state.controller().is_some(),
     })
@@ -39,7 +48,7 @@ pub async fn check_automation_available(
 #[command]
 pub async fn list_automation_presets(
     _state: tauri::State<'_, AutomationRuntimeState>,
-) -> Result<Vec<PresetDto>, String> {
+) -> Result<Vec<PresetDto>, IpcError> {
     // Presets are loaded from config at startup. For now return empty
     // until the controller exposes a preset listing method.
     // The web dashboard uses REST API which has full preset CRUD.
@@ -51,15 +60,18 @@ pub async fn list_automation_presets(
 pub async fn run_automation_preset(
     state: tauri::State<'_, AutomationRuntimeState>,
     preset_id: String,
-) -> Result<PresetRunResultDto, String> {
-    let _controller = state.controller().ok_or("Automation not available")?;
+) -> Result<PresetRunResultDto, IpcError> {
+    let _controller = state.controller().ok_or_else(automation_not_available)?;
 
     // Preset lookup requires access to config or storage.
     // For now, return an error indicating the preset wasn't found.
     // Full implementation will query presets from the web API layer.
-    Err(format!(
-        "Preset '{}' not found via IPC. Use the web dashboard for preset management.",
-        preset_id
+    Err(IpcError::new(
+        "not_found.resource_missing",
+        format!(
+            "Preset '{}' not found via IPC. Use the web dashboard for preset management.",
+            preset_id
+        ),
     ))
 }
 
@@ -68,8 +80,8 @@ pub async fn run_automation_preset(
 pub async fn execute_automation_hint(
     state: tauri::State<'_, AutomationRuntimeState>,
     hint: String,
-) -> Result<String, String> {
-    let controller = state.controller().ok_or("Automation not available")?;
+) -> Result<String, IpcError> {
+    let controller = state.controller().ok_or_else(automation_not_available)?;
 
     let command_id = uuid::Uuid::new_v4().to_string();
     let session_id = uuid::Uuid::new_v4().to_string();
@@ -77,24 +89,24 @@ pub async fn execute_automation_hint(
     let result = controller
         .execute_intent_hint(&command_id, &session_id, &hint)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
-    serde_json::to_string(&result).map_err(|e| e.to_string())
+    serde_json::to_string(&result).map_err(IpcError::from)
 }
 
 /// Analyze the current screen for automation targets.
 #[command]
 pub async fn analyze_automation_scene(
     state: tauri::State<'_, AutomationRuntimeState>,
-) -> Result<String, String> {
-    let controller = state.controller().ok_or("Automation not available")?;
+) -> Result<String, IpcError> {
+    let controller = state.controller().ok_or_else(automation_not_available)?;
 
     let scene = controller
         .analyze_scene(None, None)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
-    serde_json::to_string(&scene).map_err(|e| e.to_string())
+    serde_json::to_string(&scene).map_err(IpcError::from)
 }
 
 // ── Confirmation flow ──
@@ -113,13 +125,13 @@ pub struct PendingConfirmationDto {
 #[command]
 pub async fn get_pending_confirmations(
     state: tauri::State<'_, AutomationRuntimeState>,
-) -> Result<Vec<PendingConfirmationDto>, String> {
-    let controller = state.controller().ok_or("Automation not available")?;
+) -> Result<Vec<PendingConfirmationDto>, IpcError> {
+    let controller = state.controller().ok_or_else(automation_not_available)?;
 
     let confirmations = controller
         .list_pending_confirmations()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     Ok(confirmations
         .into_iter()
@@ -142,11 +154,11 @@ pub async fn confirm_automation_command(
     command_id: String,
     nonce: String,
     approved: bool,
-) -> Result<(), String> {
-    let controller = state.controller().ok_or("Automation not available")?;
+) -> Result<(), IpcError> {
+    let controller = state.controller().ok_or_else(automation_not_available)?;
 
     controller
         .submit_confirmation(&command_id, &nonce, approved)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
