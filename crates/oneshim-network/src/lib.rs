@@ -45,6 +45,9 @@ pub mod analysis_client;
 pub mod auth;
 pub mod batch_uploader;
 pub mod circuit_breaker;
+pub use circuit_breaker::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerRegistry, CircuitState,
+};
 pub mod compression;
 pub mod connectivity;
 pub mod http_api_session;

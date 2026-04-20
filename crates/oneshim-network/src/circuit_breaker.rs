@@ -1,4 +1,6 @@
 use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::warn;
 
@@ -137,6 +139,52 @@ impl CircuitBreaker {
             consecutive_failures: inner.consecutive_failures,
             current_cooldown: inner.current_cooldown,
         }
+    }
+}
+
+// ── CircuitBreakerRegistry ──────────────────────────────────────────
+
+/// Registry of per-endpoint `CircuitBreaker` instances keyed by
+/// `scheme://host:port` so multiple adapters targeting the same endpoint
+/// share one breaker's state.
+///
+/// Intended to be constructed once at DI wiring time and `Arc::clone`-ed
+/// into every adapter that needs a breaker. Adapters resolve their
+/// endpoint's breaker via [`CircuitBreakerRegistry::get`] or
+/// [`CircuitBreakerRegistry::get_with_config`] during construction and
+/// hold the resulting `Arc<CircuitBreaker>` long-term — the registry's
+/// mutex is only taken on the lookup, not per request.
+#[derive(Default)]
+pub struct CircuitBreakerRegistry {
+    inner: Mutex<HashMap<String, Arc<CircuitBreaker>>>,
+}
+
+impl CircuitBreakerRegistry {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    /// Get-or-create the breaker for `endpoint_key` using `CircuitBreakerConfig::default()`.
+    pub fn get(&self, endpoint_key: &str) -> Arc<CircuitBreaker> {
+        self.get_with_config(endpoint_key, CircuitBreakerConfig::default())
+    }
+
+    /// Get-or-create the breaker for `endpoint_key` using the supplied config.
+    ///
+    /// If a breaker already exists for the key, the supplied `config` is
+    /// **ignored** — the first caller's config wins for that key. This is
+    /// intentional: per-endpoint config overrides should be set consistently
+    /// at DI time, not derived lazily.
+    pub fn get_with_config(
+        &self,
+        endpoint_key: &str,
+        config: CircuitBreakerConfig,
+    ) -> Arc<CircuitBreaker> {
+        let mut guard = self.inner.lock();
+        guard
+            .entry(endpoint_key.to_string())
+            .or_insert_with(|| Arc::new(CircuitBreaker::new(config)))
+            .clone()
     }
 }
 
@@ -295,5 +343,69 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
+    }
+
+    // ── CircuitBreakerRegistry tests ────────────────────────────────────
+
+    #[test]
+    fn registry_shares_breaker_for_same_key() {
+        let registry = CircuitBreakerRegistry::new();
+        let a = registry.get("https://api.openai.com:443");
+        let b = registry.get("https://api.openai.com:443");
+        for _ in 0..3 {
+            a.record_failure();
+        }
+        assert!(matches!(b.check(), CircuitState::Open { .. }));
+    }
+
+    #[test]
+    fn registry_isolates_different_keys() {
+        let registry = CircuitBreakerRegistry::new();
+        let a = registry.get("https://a.example.com:443");
+        let b = registry.get("https://b.example.com:443");
+        for _ in 0..3 {
+            a.record_failure();
+        }
+        assert!(matches!(a.check(), CircuitState::Open { .. }));
+        assert!(matches!(b.check(), CircuitState::Closed));
+    }
+
+    #[test]
+    fn registry_accepts_per_key_config() {
+        let registry = CircuitBreakerRegistry::new();
+        let cb = registry.get_with_config(
+            "https://api.example.com:443",
+            CircuitBreakerConfig {
+                failure_threshold: 1,
+                ..Default::default()
+            },
+        );
+        cb.record_failure();
+        assert!(matches!(cb.check(), CircuitState::Open { .. }));
+    }
+
+    #[test]
+    fn registry_first_config_wins_for_key() {
+        // A second get_with_config on the same key should NOT replace the breaker.
+        let registry = CircuitBreakerRegistry::new();
+        let a = registry.get_with_config(
+            "https://api.example.com:443",
+            CircuitBreakerConfig {
+                failure_threshold: 1,
+                ..Default::default()
+            },
+        );
+        // Lookup with a different config for the same key: should return the
+        // same breaker (first config wins).
+        let b = registry.get_with_config(
+            "https://api.example.com:443",
+            CircuitBreakerConfig {
+                failure_threshold: 99,
+                ..Default::default()
+            },
+        );
+        // Trip via a — one failure suffices (threshold 1).
+        a.record_failure();
+        assert!(matches!(b.check(), CircuitState::Open { .. }));
     }
 }
