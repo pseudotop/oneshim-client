@@ -24,7 +24,9 @@ use crate::session_adapters::claude_normalizer::normalize_claude_stream_event;
 use crate::session_adapters::prompt_payload::{
     extract_native_response_schema, render_message_payload,
 };
-use crate::subprocess_provider::{classify_subprocess_error, DetectedSubprocessCli};
+use crate::subprocess_provider::{
+    classify_subprocess_error, DetectedSubprocessCli, SubprocessKind,
+};
 use tracing::debug;
 
 pub struct ClaudeSubprocessSession {
@@ -198,7 +200,8 @@ impl ConversationSession for ClaudeSubprocessSession {
             let stderr_output = stderr_task.await.unwrap_or_default();
 
             if !status.success() && !emitted_terminal_error {
-                let classified = classify_subprocess_error(&surface_id, &stderr_output);
+                let classified =
+                    classify_subprocess_error(SubprocessKind::Llm, &surface_id, &stderr_output);
                 yield OutboundMessage::Error {
                     code: "subprocess_error".to_string(),
                     message: classified.to_string(),

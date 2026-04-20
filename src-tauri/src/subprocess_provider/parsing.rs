@@ -275,7 +275,25 @@ pub(super) fn truncate_for_error(value: &str) -> String {
     format!("{truncated}...")
 }
 
-pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreError {
+/// Subprocess role hint used by `classify_subprocess_error` to pick a
+/// provider-specific wire code for the generic "CLI invocation failed"
+/// fallthrough (iter-149). Auth-keyword stderr still routes to
+/// `CoreError::Auth` regardless of kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubprocessKind {
+    /// LLM intent-planning subprocess — fallthrough → `CoreError::Analysis`
+    /// (`provider.analysis_failed`).
+    Llm,
+    /// OCR extraction subprocess — fallthrough → `CoreError::OcrError`
+    /// (`provider.ocr_failed`).
+    Ocr,
+}
+
+pub(crate) fn classify_subprocess_error(
+    kind: SubprocessKind,
+    surface_id: &str,
+    stderr: &str,
+) -> CoreError {
     let normalized = stderr.trim();
     let lowered = normalized.to_ascii_lowercase();
     let cli_id =
@@ -295,13 +313,20 @@ pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreE
         };
     }
 
-    CoreError::Internal {
-        code: oneshim_core::error_codes::InternalCode::Generic,
-        message: format!(
-            "{} CLI invocation failed: {}",
-            cli_id,
-            truncate_for_error(normalized)
-        ),
+    let message = format!(
+        "{} CLI invocation failed: {}",
+        cli_id,
+        truncate_for_error(normalized)
+    );
+    match kind {
+        SubprocessKind::Llm => CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message,
+        },
+        SubprocessKind::Ocr => CoreError::OcrError {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message,
+        },
     }
 }
 
@@ -565,5 +590,49 @@ mod tests {
             message: "unrecognized option: --output-format".into(),
         };
         assert!(is_gemini_json_flag_error(&err));
+    }
+
+    /// Iter-149 regression guard: LLM subprocess non-zero exit without auth
+    /// keyword should surface as `CoreError::Analysis`
+    /// (`provider.analysis_failed`), not `Internal.Generic`. The subprocess IS
+    /// the LLM provider — its exit failure is a provider failure.
+    #[test]
+    fn llm_subprocess_generic_exit_maps_to_analysis() {
+        let err =
+            classify_subprocess_error(SubprocessKind::Llm, "codex_llm", "segfault: core dumped");
+        assert_eq!(err.code(), "provider.analysis_failed");
+    }
+
+    /// Iter-149 regression guard: OCR subprocess non-zero exit without auth
+    /// keyword should surface as `CoreError::OcrError`
+    /// (`provider.ocr_failed`), not `Internal.Generic`.
+    #[test]
+    fn ocr_subprocess_generic_exit_maps_to_ocr_error() {
+        let err = classify_subprocess_error(SubprocessKind::Ocr, "gemini_ocr", "model not found");
+        assert_eq!(err.code(), "provider.ocr_failed");
+    }
+
+    /// Iter-149: auth-keyword stderr still routes to CoreError::Auth
+    /// regardless of SubprocessKind. Verified for both Llm and Ocr kinds so
+    /// a refactor that accidentally stops checking auth keywords in one
+    /// branch fails the test.
+    #[test]
+    fn auth_keyword_wins_over_kind_for_llm() {
+        let err = classify_subprocess_error(
+            SubprocessKind::Llm,
+            "codex_llm",
+            "please sign in to continue",
+        );
+        assert_eq!(err.code(), "auth.failed");
+    }
+
+    #[test]
+    fn auth_keyword_wins_over_kind_for_ocr() {
+        let err = classify_subprocess_error(
+            SubprocessKind::Ocr,
+            "gemini_ocr",
+            "not authenticated: run gcloud auth login",
+        );
+        assert_eq!(err.code(), "auth.failed");
     }
 }

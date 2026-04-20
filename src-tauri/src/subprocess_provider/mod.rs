@@ -111,7 +111,9 @@ struct SubprocessOcrEnvelope {
 
 // ── Internal helper re-exports for submodules ─────────────────
 
-pub(crate) use parsing::{append_model_flag, append_oneshot_flags, classify_subprocess_error};
+pub(crate) use parsing::{
+    append_model_flag, append_oneshot_flags, classify_subprocess_error, SubprocessKind,
+};
 #[allow(unused_imports)]
 use parsing::{
     build_codex_ocr_prompt, build_intent_prompt, build_path_based_ocr_prompt, find_executable,

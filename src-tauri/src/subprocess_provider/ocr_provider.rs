@@ -15,7 +15,7 @@ use super::{
     classify_subprocess_error, default_llm_model_for_surface, default_ocr_model_for_surface,
     invocation_runtime_for_surface, is_gemini_json_flag_error, parse_ocr_output,
     provider_name_for_surface_id, write_subprocess_ocr_image, BoxFuture, DetectedSubprocessCli,
-    DEFAULT_SUBPROCESS_TIMEOUT_SECS, OCR_SCHEMA_JSON,
+    SubprocessKind, DEFAULT_SUBPROCESS_TIMEOUT_SECS, OCR_SCHEMA_JSON,
 };
 use oneshim_api_contracts::provider_specs::subprocess_supports_json_output;
 
@@ -136,6 +136,7 @@ impl SubprocessOcrProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Ocr,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -181,6 +182,7 @@ impl SubprocessOcrProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Ocr,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -205,6 +207,7 @@ impl SubprocessOcrProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Ocr,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));

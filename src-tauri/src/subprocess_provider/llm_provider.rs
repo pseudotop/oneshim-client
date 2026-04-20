@@ -16,7 +16,7 @@ use super::{
     append_model_flag, append_oneshot_flags, build_intent_prompt, classify_subprocess_error,
     default_llm_model_for_surface, invocation_runtime_for_surface, is_gemini_json_flag_error,
     parse_interpreted_action_output, provider_name_for_surface_id, BoxFuture,
-    DetectedSubprocessCli, ACTION_SCHEMA_JSON, DEFAULT_SUBPROCESS_TIMEOUT_SECS,
+    DetectedSubprocessCli, SubprocessKind, ACTION_SCHEMA_JSON, DEFAULT_SUBPROCESS_TIMEOUT_SECS,
 };
 use oneshim_api_contracts::provider_specs::subprocess_supports_json_output;
 
@@ -130,6 +130,7 @@ impl SubprocessLlmProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -175,6 +176,7 @@ impl SubprocessLlmProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -200,6 +202,7 @@ impl SubprocessLlmProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));

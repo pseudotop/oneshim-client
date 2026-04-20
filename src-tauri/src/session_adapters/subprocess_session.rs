@@ -28,6 +28,7 @@ use crate::session_adapters::prompt_payload::{
 };
 use crate::subprocess_provider::{
     append_model_flag, append_oneshot_flags, classify_subprocess_error, DetectedSubprocessCli,
+    SubprocessKind,
 };
 use tracing::debug;
 
@@ -162,6 +163,7 @@ impl GenericSubprocessSession {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -197,6 +199,7 @@ impl GenericSubprocessSession {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -372,7 +375,8 @@ impl GenericSubprocessSession {
             let stderr_output = stderr_task.await.unwrap_or_default();
 
             if !status.success() {
-                let classified = classify_subprocess_error(&surface_id, &stderr_output);
+                let classified =
+                    classify_subprocess_error(SubprocessKind::Llm, &surface_id, &stderr_output);
                 yield OutboundMessage::Error {
                     code: "subprocess_error".to_string(),
                     message: classified.to_string(),
