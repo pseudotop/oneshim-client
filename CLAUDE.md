@@ -257,30 +257,33 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `window_layout.rs`: `WindowLayoutTracker` — window layout change tracking
 - `error.rs`: `MonitorError` (ADR-019 typed codes)
 
-### oneshim-vision (Edge Image Processing)
+### oneshim-vision (Edge Image Processing) — 22 top-level entries
 - `capture.rs`: `ScreenCapture` — multi-monitor capture using xcap
 - `trigger.rs`: `SmartCaptureTrigger` (impl CaptureTrigger) — event classification + importance + throttle, interior mutability (`Mutex<TriggerState>`)
 - `delta.rs`: 16x16 tile comparison → changed region extraction (pointer-based fast pixel access)
 - `encoder.rs`: WebP encoding (Low/Medium/High quality) + stat-based quality prediction
 - `thumbnail.rs`: fast_image_resize + LRU caching (100 entries, FNV-1a hash)
+- `ring_buffer.rs`: bounded frame ring buffer
 - `processor.rs`: `EdgeFrameProcessor` (impl FrameProcessor) — branches by importance, interior mutability (`Mutex<Option<DynamicImage>>` for prev_frame)
   - >= 0.8: Full + OCR
   - >= 0.5: Delta
   - >= 0.3: Thumbnail
   - < 0.3: Metadata only
 - `ocr.rs`: `OcrExtractor` — leptess(Tesseract) OCR (`#[cfg(feature = "ocr")]`), async support
+- `local_ocr_provider.rs`: local OCR provider impl
 - `privacy.rs`: PII filter levels (Off/Basic/Standard/Strict cascaded inheritance), sensitive app auto-detection, phone/API key/IP/email/credit card/SSN/file path masking
+- `privacy_gateway.rs`: centralized privacy gateway wrapping filter + sensitive-app detection
 - `timeline.rs`: In-memory frame timeline + filters
+- `element_finder.rs`: `ElementFinder` impl — combines GUI detection + AX + spatial query (R-tree via `rstar`)
+- `work_classifier.rs`: activity classification from frame features
 - `gui_detector/`: GUI element detection — directory module (ADR-003)
-  - `mod.rs`: `GuiDetector` struct + public API + re-exports
-  - `correlation.rs`: GUI correlation logic
-  - `inference.rs`: element inference
-  - `tests.rs`: unit tests
-- `accessibility/macos/`: macOS accessibility adapter — directory module (ADR-003)
-  - `mod.rs`: re-exports
-  - `extractor.rs`: AX tree element extraction
-  - `observer.rs`: AX notification observer
-  - `tests.rs`: unit tests
+  - correlation, inference, tests
+- `contour_classifier/`: OpenCV-like contour-based classifier — directory module
+- `ml_classifier/`: ML-based classifier (inference pipeline) — directory module
+- `native_detect/`: native platform GUI detection — directory module
+- `native_ocr/`: native platform OCR — directory module
+- `accessibility/`: platform accessibility adapters — `macos/` (AX extractor + observer + tests), `windows/` (UIA CacheRequest), `linux/` (AT-SPI via atspi 0.29)
+- `error.rs`: `VisionError` (ADR-019 typed codes)
 
 ### oneshim-web (Local Web Dashboard)
 - `lib.rs`: `WebServer` — Axum 0.8 HTTP server + graceful shutdown
@@ -311,29 +314,29 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `sandbox/`: per-platform sandbox enforcement (Windows Job Objects, Linux seccomp+Landlock, macOS App Sandbox) — invoked out-of-process via `oneshim-sandbox-worker`
 - `error.rs`: `AutomationError` (ADR-019 typed codes)
 
-### oneshim-analysis (LLM Analysis Pipeline)
-- `analyzer.rs`: `ContextAnalyzer` — segment summarization via LLM, regime classification
-- `embedding_pipeline.rs`: `EmbeddingPipeline` — content activity + LLM summary embedding with optional INT8 quantization
-- `vector_retriever.rs`: `VectorRetriever` — vector similarity search with quantized + adaptive strategy support
-- `regime_classifier.rs`: `RegimeClassifier` — behavioral regime detection and labeling
-- `regime_manager.rs`: `RegimeManager` — regime lifecycle (create, merge, split, mark_seen)
-- `auto_tuner.rs`: `EmaStatsTracker`, `DriftDetector` — exponential moving average baselines and behavioral drift detection
-- `coaching_engine/`: `CoachingEngine` — directory module (ADR-003)
-  - `mod.rs`: `CoachingEngine` struct + public API + re-exports
-  - `guards.rs`: coaching guard conditions and eligibility checks
-  - `triggers.rs`: coaching trigger evaluation and event matching
-- `coaching_template/`: coaching template system — directory module (ADR-003)
-  - `mod.rs`: template registry + public API + re-exports
-  - `templates.rs`: built-in coaching template definitions
-- `adaptive_search.rs`: `AdaptiveSearchCoordinator` — auto strategy selection (brute-force / IVF / IVF+binary)
+### oneshim-analysis (LLM Analysis Pipeline) — 56 source files grouped by theme
+- **Context + segmentation**: `analyzer.rs` (ContextAnalyzer — LLM segment summarization + regime classification), `assembler.rs`, `segment_buffer.rs`, `segment_summarizer.rs`, `llm_segment_summarizer.rs`, `content_tracker.rs`
+- **Regime pipeline**: `regime_classifier.rs`, `regime_detector.rs`, `regime_manager.rs`, `regime_analysis_facade.rs`, `regime_goal_tracker.rs` — behavioral regime lifecycle (create, merge, split, mark_seen) + facade for external consumption
+- **Embeddings + vector search**: `embedding_pipeline.rs` (INT8 quantization), `vector_retriever.rs`, `adaptive_search.rs` (auto strategy: brute-force / IVF / IVF+binary), `hnsw_adapter.rs`, `hybrid_search_service.rs`, `query_expander.rs`, `few_shot_selector.rs`
+- **Clustering**: `kmeans_adapter.rs`, `gmm_detector.rs`, `hdbscan_detector.rs`, `clustering_strategy.rs`
+- **Work classification**: `work_type_classifier.rs`, `llm_work_type_refiner.rs`, `gui_work_type_refiner.rs`, `gui_aggregator.rs`, `terminal_detector.rs`, `title_bar_parser/`, `document_heading.rs`
+- **Tuning + feedback**: `auto_tuner.rs` (EmaStatsTracker + DriftDetector), `adaptive_trigger.rs`, `calibration_buffer.rs`, `feedback_tracker.rs`, `param_resolver.rs`, `constraint_builder.rs`
+- **Digests + insights**: `daily_digest_generator.rs`, `weekly_digest_generator.rs`, `daily_insight_generator.rs`, `digest_exporter.rs`
+- **Coaching** (ADR-003 directory modules):
+  - `coaching_engine/`: `CoachingEngine` struct + guards (eligibility checks) + triggers (event matching)
+  - `coaching_template/`: template registry + built-in coaching templates
+- **Pattern mining**: `pattern_miner/` — directory module
+- **Suggestion filter + misc**: `suggestion_filter.rs`, `prompts.rs`, `fallback_analysis_provider.rs`, `focus_shared.rs`
+- `error.rs`: `AnalysisError` (ADR-019 typed codes)
 
 ### oneshim-embedding (Vector Embedding + Compression)
 - `lib.rs`: `EmbeddingService` — vector embedding generation, INT8 scalar quantization, similarity search
 - Compression: 4x storage reduction via INT8 quantization with configurable float32 retention
 
-### oneshim-api-contracts (Shared API Type Contracts)
-- Shared request/response types between client crates
-- Ensures API contract consistency across the workspace
+### oneshim-api-contracts (Shared API Type Contracts) — 44 domain-grouped files
+- Shared request/response types between `src-tauri` (Tauri commands) + `oneshim-web` (REST handlers) + frontend
+- Ensures API contract consistency across the workspace; contract-frozen via `docs/contracts/oneshim-web.v1.openapi.yaml` + `http-interface-manifest.v1.json`
+- **Per-domain contract files**: `ai_providers`, `ai_session`, `annotations`, `automation`, `automation_gui`, `backup`, `bug_report`, `coaching`, `common`, `dashboard`, `data`, `digests`, `events`, `export`, `focus`, `frames`, `idle`, `integration`, `metrics`, `onboarding`, `playbooks`, `pomodoro`, `processes`, `recalibration`, `reports`, `search`, `sessions`, `settings`, `stats`, `stream`, `suggestions`, `support`, `tags`, `timeline`, `update` — each carries the request/response DTOs for its surface.
 - `provider_specs/`: AI provider specifications — directory module (ADR-003)
   - `mod.rs`: re-exports + public API
   - `enums.rs`: provider type enums
@@ -344,6 +347,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `resolvers.rs`: provider resolution logic
   - `validation.rs`: spec validation rules
   - `tests.rs`: unit tests
+- `error.rs`: shared error/response types
 
 ### oneshim-audio (Audio Capture + STT)
 - `capture.rs`: Cross-platform microphone capture via cpal, auto-resampling to 16kHz mono
