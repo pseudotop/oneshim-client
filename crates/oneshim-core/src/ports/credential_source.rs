@@ -16,19 +16,24 @@ use crate::provider_surface::{provider_surface_uses_no_auth, provider_vendor_id_
 /// Source of authentication credentials for AI provider requests.
 ///
 /// # Errors
-/// Resolution methods on this enum emit:
-/// - `CoreError::Config` with `ConfigCode::Missing` (wire:
-///   `config.missing`) for absent prerequisites: secret store not
-///   initialized when the backend requires one (iter-99), `profile_id`
-///   required for env-backed credentials but not supplied (iter-99).
+/// Resolution methods on this enum emit (verified against
+/// `CredentialSource::from_api_key_endpoint_for_profile` + `resolve_bearer_token`):
 /// - `CoreError::Config` with `ConfigCode::Invalid` (wire:
-///   `config.invalid`) for unsupported `CredentialAuthMode` +
-///   `CredentialBackendKind` combinations.
+///   `config.invalid`) — secret store not initialized when the backend
+///   requires one. The condition is a broken-config semantic ("your
+///   credential backend declares it needs a secret store, but one isn't
+///   wired") rather than a Missing-field semantic.
+/// - `CoreError::Config` with `ConfigCode::Missing` (wire:
+///   `config.missing`) — `profile_id` required for env-backed
+///   credentials but not supplied (iter-99); or the terminal fallback
+///   "AI provider API key is not configured in a supported secret
+///   backend" path (no matching credential binding at all).
 /// - `CoreError::OAuthError` (wire: `oauth.failed`) when managed-OAuth
 ///   token lookup fails (provider not registered, token expired beyond
 ///   refresh window).
 /// - `CoreError::Auth` (wire: `auth.failed`) when the resolved secret
-///   returns an empty string at resolve time.
+///   entry is absent from the backend at resolve time
+///   (`StoredSecret::retrieve` returns `Ok(None)`).
 #[derive(Clone)]
 pub enum CredentialSource {
     /// No credential is required for this transport surface.
