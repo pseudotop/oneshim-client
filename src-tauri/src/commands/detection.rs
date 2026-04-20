@@ -2,6 +2,7 @@ use serde::Serialize;
 use tauri::State;
 use tracing::{info, warn};
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::DetectionRuntimeState;
 
 #[derive(Debug, Serialize)]
@@ -13,7 +14,7 @@ pub struct ToggleDetectionResponse {
 pub async fn toggle_detection_overlay(
     active: bool,
     state: State<'_, DetectionRuntimeState>,
-) -> Result<ToggleDetectionResponse, String> {
+) -> Result<ToggleDetectionResponse, IpcError> {
     state.set_active(active);
 
     if active {
@@ -36,9 +37,16 @@ pub async fn toggle_detection_overlay(
 #[tauri::command]
 pub async fn refresh_detection_overlay(
     state: State<'_, DetectionRuntimeState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     if !state.is_active() {
-        return Err("detection overlay is not active".to_string());
+        // Precondition violation: caller requested an operation that depends
+        // on runtime state not yet established. validation.invalid_arguments
+        // surfaces this as "the request was malformed given current state"
+        // — frontend can branch on this code to re-enable the overlay first.
+        return Err(IpcError::new(
+            "validation.invalid_arguments",
+            "detection overlay is not active",
+        ));
     }
     info!("detection overlay manual refresh");
     spawn_detection_analysis_from_state(&state);

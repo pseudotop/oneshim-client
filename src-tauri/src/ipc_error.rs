@@ -47,15 +47,9 @@ use serde::Serialize;
 /// consumers should branch on `code` — NOT substring-match `message`.
 ///
 /// Construct via the `From<CoreError>` impl rather than building directly;
-/// direct construction is allowed for input-validation errors where no
-/// upstream `CoreError` exists (e.g., argument parsing at command entry).
-// This module is infrastructure for ADR-019 Follow-up #1. The 112 Tauri
-// command signatures that currently use `Result<_, String>` will migrate to
-// `Result<_, IpcError>` in subsequent PRs (see the phased migration plan in
-// docs/reviews/2026-04-20-adr019-followup-ipc-error-dto-design.md). Until
-// the first command file migrates, the type is only exercised by unit tests
-// — silence the unused-code warnings to keep the foundation PR green.
-#[allow(dead_code)]
+/// direct construction (`IpcError::new(...)`) is allowed for input-validation
+/// errors where no upstream `CoreError` exists (e.g., argument parsing or
+/// precondition violations at command entry).
 #[derive(Debug, Clone, Serialize)]
 pub struct IpcError {
     /// Wire-format error code (e.g., `"config.invalid"`, `"network.timeout"`).
@@ -64,7 +58,6 @@ pub struct IpcError {
     pub message: String,
 }
 
-#[allow(dead_code)]
 impl IpcError {
     /// Construct a new `IpcError` directly. Prefer the `From<CoreError>` impl
     /// when an upstream error is available. This constructor is useful for

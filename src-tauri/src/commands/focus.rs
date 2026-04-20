@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::AppState;
 
 #[derive(Serialize)]
@@ -16,7 +17,7 @@ pub async fn toggle_focus_mode(
     state: tauri::State<'_, AppState>,
     active: bool,
     duration_minutes: Option<u32>,
-) -> Result<FocusModeResponse, String> {
+) -> Result<FocusModeResponse, IpcError> {
     if active {
         state
             .focus_mode
@@ -36,7 +37,7 @@ pub async fn toggle_focus_mode(
 #[command]
 pub async fn get_focus_mode_status(
     state: tauri::State<'_, AppState>,
-) -> Result<FocusModeResponse, String> {
+) -> Result<FocusModeResponse, IpcError> {
     Ok(FocusModeResponse {
         active: state.focus_mode.is_active(),
         auto: state.focus_mode.is_auto_activated(),
