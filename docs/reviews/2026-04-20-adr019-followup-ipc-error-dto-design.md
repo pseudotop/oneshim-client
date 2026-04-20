@@ -1,10 +1,13 @@
 # ADR-019 Follow-up #1 — Tauri IPC Typed Error DTO Design
 
 **Date:** 2026-04-20
+**Status:** ✅ SHIPPED (iter-196 foundation; iter-197/199/201/203/204 migration batches)
 **Scope:** `src-tauri/src/commands/*.rs` (112 command signatures), `src-tauri/src/ipc_error.rs` (new), `crates/oneshim-web/frontend/src/api/desktop.ts` (or equivalent TS types)
 **Origin:** ADR-019 §Known follow-ups #1 — "Tauri IPC code propagation"
 **Parent ADR:** [ADR-019](../architecture/ADR-019-error-code-infrastructure.md)
 **Target version:** post-ADR-019 merge (v0.4.40-rc.1+)
+
+> **Actual scope at ship:** **114/114** command signatures migrated across **17** files (not 112 — the real scan revealed 114). Infrastructure as designed (`IpcError` struct + `From` chain impls + frontend TS type guard), plus 2 feature-gated adapter-error impls (`NetworkError` under `analysis`, `EmbeddingError` under `embedding`) that the design didn't enumerate. 10 Rust contract tests + 13 Vitest unit tests. 2 UI integration demos (`GeneralTab::SupportToolsCard` translateError-as-primary + `BugReportWizard::handleExport` translateError-as-detail-suffix) added in iter-210/212 as part of Follow-up #3.
 
 ## Context
 

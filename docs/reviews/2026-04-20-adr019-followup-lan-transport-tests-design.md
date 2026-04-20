@@ -1,10 +1,13 @@
 # ADR-019 Follow-up #5 — LAN Transport Auth Regression Tests Design
 
 **Date:** 2026-04-20
+**Status:** ✅ SHIPPED (iter-195)
 **Scope:** `crates/oneshim-network/src/sync/lan_transport/auth.rs`, new rustls-based test fixture module
 **Origin:** ADR-019 §Known follow-ups #6 — "`sync/lan_transport::authenticate_with_peer` regression tests"
 **Parent ADR:** [ADR-019](../architecture/ADR-019-error-code-infrastructure.md)
 **Target version:** post-ADR-019 merge (independent timing)
+
+> **Execution deviation:** The original design proposed an `rcgen` + `tokio_rustls::TlsAcceptor` fixture. Implementation chose a simpler **pure-function extraction** (`map_challenge_status_to_error(status_code, peer_id) -> CoreError` private helper + 6 unit tests covering 401/403/429/503/504 + 500-fallback). Same coverage on the error-mapping logic, no dev-dep additions, sub-millisecond per test. The fixture approach remains valid for future test cases that exercise the full handshake flow; this shipment covers the status→error mapping regression surface flagged in ADR-019.
 
 ## Context
 

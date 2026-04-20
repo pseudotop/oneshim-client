@@ -1,11 +1,14 @@
 # ADR-019 Follow-up #3 — Frontend i18n Wiring Design
 
 **Date:** 2026-04-20
+**Status:** ✅ SHIPPED (iter-205 core; iter-210/212 UI demos; iter-214 lefthook guard wired)
 **Scope:** `crates/oneshim-web/frontend/src/i18n/` (or equivalent i18n module), error-facing UI components, translation resource files
 **Origin:** ADR-019 §Known follow-ups #3 — "Frontend i18n wiring"
 **Parent ADR:** [ADR-019](../architecture/ADR-019-error-code-infrastructure.md)
 **Dependency:** Follow-up #1 (IpcError DTO) — frontend must see `{code, message}` not free string
 **Target version:** Frontend-side release (no Rust change)
+
+> **Shipped beyond the design:** the snapshot-driven coverage-parity test (Vitest reads `wire_contract_snapshot.expected.txt` directly) was an addition to the original design's build-time check — it gives the same fail-fast guarantee via the existing `pnpm test` run without needing a separate CI stage. Also added: `lefthook.yml` pre-commit hook (iter-214) that runs `scripts/check-wire-error-i18n-coverage.sh` (~3ms) on any staged change to the 3 source-of-truth files, catching drift before CI.
 
 ## Context
 
