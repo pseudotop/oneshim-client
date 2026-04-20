@@ -21,7 +21,7 @@ fn new_remote_llm_rejects_retired_model_by_policy() {
         credential: None,
     };
 
-    let result = RemoteLlmProvider::new(&config);
+    let result = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("retired as of"));
@@ -39,7 +39,8 @@ fn openai_llm_uses_spec_default_model() {
         credential: None,
     };
 
-    let provider = RemoteLlmProvider::new(&config).expect("provider should initialize");
+    let provider = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new())
+        .expect("provider should initialize");
     assert_eq!(provider.model, "gpt-5.4");
     assert_eq!(
         provider.llm_request_shape().expect("shape should resolve"),
@@ -59,7 +60,7 @@ fn new_remote_llm_rejects_known_non_llm_model() {
         credential: None,
     };
 
-    let result = RemoteLlmProvider::new(&config);
+    let result = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("not marked as LLM-capable"));
@@ -77,7 +78,8 @@ fn ollama_llm_initializes_without_api_key() {
         credential: None,
     };
 
-    let provider = RemoteLlmProvider::new(&config).expect("ollama llm should initialize");
+    let provider = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new())
+        .expect("ollama llm should initialize");
     assert_eq!(provider.model, "qwen3:8b");
     assert_eq!(
         provider.llm_request_shape().expect("shape should resolve"),
@@ -98,7 +100,8 @@ fn google_llm_rewrites_endpoint_for_selected_model() {
             credential: None,
         };
 
-    let provider = RemoteLlmProvider::new(&config).expect("google llm should initialize");
+    let provider = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new())
+        .expect("google llm should initialize");
     assert_eq!(
         provider.endpoint,
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
@@ -308,7 +311,7 @@ fn responses_api_body_format() {
         surface_id: None,
         credential: None,
     };
-    let provider = RemoteLlmProvider::new(&config).unwrap();
+    let provider = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new()).unwrap();
     let body = provider.build_responses_api_body("system prompt", "user input");
 
     assert_eq!(body["model"], "gpt-5.4");
@@ -330,7 +333,7 @@ fn openai_llm_uses_responses_api_from_spec() {
         surface_id: None,
         credential: None,
     };
-    let provider = RemoteLlmProvider::new(&config).unwrap();
+    let provider = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new()).unwrap();
     assert!(provider.uses_responses_api());
 }
 
@@ -345,7 +348,7 @@ fn managed_openai_surface_uses_surface_shape() {
         surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
         credential: None,
     };
-    let provider = RemoteLlmProvider::new(&config).unwrap();
+    let provider = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new()).unwrap();
     assert_eq!(provider.model, "gpt-5.4");
     assert_eq!(
         provider.llm_request_shape().expect("shape should resolve"),
@@ -364,7 +367,7 @@ fn local_openai_compatible_llm_requires_explicit_model_selection() {
         surface_id: Some("provider_surface.generic.local_openai_compatible".to_string()),
         credential: None,
     };
-    let result = RemoteLlmProvider::new(&config);
+    let result = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new());
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
@@ -398,7 +401,8 @@ mod http_status_mapping {
             surface_id: None,
             credential: None,
         };
-        let provider = RemoteLlmProvider::new(&config).expect("provider init");
+        let provider = RemoteLlmProvider::new(&config, crate::CircuitBreakerRegistry::new())
+            .expect("provider init");
         let ctx = ScreenContext {
             visible_texts: vec!["Save".to_string()],
             active_app: "App".to_string(),
@@ -464,5 +468,152 @@ mod http_status_mapping {
             matches!(err, CoreError::Network { .. }),
             "500 should fall back to Network, got: {err:?}"
         );
+    }
+
+    // ── D7 Circuit breaker behavior ───────────────────────────────────────
+
+    fn breaker_registry_fast_llm(server_url: &str) -> Arc<crate::CircuitBreakerRegistry> {
+        let registry = crate::CircuitBreakerRegistry::new();
+        let key = crate::resilience::endpoint_authority(server_url).unwrap();
+        let _ = registry.get_with_config(
+            &key,
+            crate::circuit_breaker::CircuitBreakerConfig {
+                failure_threshold: 3,
+                initial_cooldown: std::time::Duration::from_millis(50),
+                max_cooldown: std::time::Duration::from_millis(200),
+                half_open_probes: 1,
+            },
+        );
+        registry
+    }
+
+    fn test_screen_ctx() -> ScreenContext {
+        ScreenContext {
+            visible_texts: vec!["Save".to_string()],
+            active_app: "App".to_string(),
+            active_window_title: "Window".to_string(),
+            layout_description: None,
+        }
+    }
+
+    fn make_llm_provider(
+        server_url: &str,
+        registry: Arc<crate::CircuitBreakerRegistry>,
+    ) -> RemoteLlmProvider {
+        let config = ExternalApiEndpoint {
+            endpoint: server_url.to_string(),
+            api_key: "test-key".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Anthropic,
+            surface_id: None,
+            credential: None,
+        };
+        RemoteLlmProvider::new(&config, registry).expect("provider init")
+    }
+
+    #[tokio::test]
+    async fn breaker_open_fast_fails_llm() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .expect_at_most(3)
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_fast_llm(&server.url());
+        let provider = make_llm_provider(&server.url(), registry);
+        for _ in 0..3 {
+            let _ = provider
+                .interpret_intent(&test_screen_ctx(), "click save")
+                .await;
+        }
+        let result = provider
+            .interpret_intent(&test_screen_ctx(), "click save")
+            .await;
+        match result {
+            Err(CoreError::ServiceUnavailable { code, .. }) => {
+                assert_eq!(code, oneshim_core::error_codes::ServiceCode::CircuitOpen);
+            }
+            other => panic!("expected CircuitOpen, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_half_open_failure_doubles_cooldown_llm() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_fast_llm(&server.url());
+        let provider = make_llm_provider(&server.url(), registry.clone());
+        for _ in 0..3 {
+            let _ = provider
+                .interpret_intent(&test_screen_ctx(), "click save")
+                .await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(70)).await;
+        let _ = provider
+            .interpret_intent(&test_screen_ctx(), "click save")
+            .await;
+
+        let key = crate::resilience::endpoint_authority(&server.url()).unwrap();
+        let breaker = registry.get(&key);
+        assert_eq!(
+            breaker.stats().current_cooldown,
+            std::time::Duration::from_millis(100)
+        );
+    }
+
+    /// Registry-sharing test (spec §Testing integration test): two adapters
+    /// pointing at the same endpoint share one breaker. When the LLM provider
+    /// trips, the embedding provider sees Open immediately.
+    #[tokio::test]
+    async fn shared_registry_trips_across_adapters() {
+        use crate::remote_embedding_client::RemoteEmbeddingProvider;
+        use oneshim_core::ports::embedding_provider::EmbeddingProvider;
+
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(503)
+            .with_body("down")
+            .create_async()
+            .await;
+
+        let registry = breaker_registry_fast_llm(&server.url());
+        let llm = make_llm_provider(&server.url(), registry.clone());
+        let emb = RemoteEmbeddingProvider::new(
+            server.url(),
+            "test-key".to_string(),
+            "text-embedding-3-small".to_string(),
+            3,
+            30,
+            registry.clone(),
+        );
+
+        // Trip via the LLM's 3 failures.
+        for _ in 0..3 {
+            let _ = llm.interpret_intent(&test_screen_ctx(), "click save").await;
+        }
+        // Embedding client sharing the same endpoint sees Open immediately —
+        // no server hit, just the local fast-fail.
+        let result = emb.embed("test text").await;
+        match result {
+            Err(CoreError::ServiceUnavailable { code, .. }) => {
+                assert_eq!(
+                    code,
+                    oneshim_core::error_codes::ServiceCode::CircuitOpen,
+                    "shared registry should propagate Open state across adapters"
+                );
+            }
+            other => panic!("expected CircuitOpen via shared registry, got {other:?}"),
+        }
     }
 }

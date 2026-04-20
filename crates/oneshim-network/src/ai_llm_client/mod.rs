@@ -12,11 +12,19 @@ use oneshim_core::ports::llm_provider::{
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tracing::{debug, warn};
+
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry};
+use crate::resilience::endpoint_authority;
+
 mod parsers;
 mod request;
 #[cfg(test)]
 mod tests;
 /// - Claude (Anthropic): `POST /v1/messages`
+///
+/// D7: Guarded by a per-endpoint `CircuitBreaker` resolved at construction
+/// time. The `send_and_parse` funnel in `request.rs` uses `self.breaker` to
+/// pre-flight check + record outcome.
 pub struct RemoteLlmProvider {
     http_client: reqwest::Client,
     endpoint: String,
@@ -29,6 +37,9 @@ pub struct RemoteLlmProvider {
     /// Health flag: `true` after a successful LLM request, `false` on failure.
     /// Read by the health-check loop. `None` when no caller has wired a flag.
     last_request_ok: Option<Arc<AtomicBool>>,
+    /// D7: per-endpoint circuit breaker (shared via registry across adapter
+    /// instances targeting the same endpoint).
+    pub(super) breaker: Arc<CircuitBreaker>,
 }
 impl std::fmt::Debug for RemoteLlmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -79,7 +90,10 @@ impl RemoteLlmProvider {
         let suffix = &rest[action_idx..];
         format!("{prefix}{model}{suffix}")
     }
-    pub fn new(config: &ExternalApiEndpoint) -> Result<Self, crate::error::NetworkError> {
+    pub fn new(
+        config: &ExternalApiEndpoint,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
+    ) -> Result<Self, crate::error::NetworkError> {
         use crate::error::NetworkError;
         let auth_scheme = provider_specs::resolved_auth_scheme(
             config.provider_type,
@@ -182,6 +196,10 @@ impl RemoteLlmProvider {
         .map_err(NetworkError::Config)?;
         debug!(endpoint = %config.endpoint, model = %model, timeout = config.timeout_secs, "RemoteLlmProvider initialize");
         let endpoint = Self::resolved_runtime_endpoint(config, &model)?;
+        // D7: resolve per-endpoint breaker.
+        let breaker_key =
+            endpoint_authority(&endpoint).unwrap_or_else(|_| format!("malformed::{endpoint}"));
+        let breaker = breaker_registry.get(&breaker_key);
         Ok(Self {
             http_client,
             endpoint,
@@ -191,6 +209,7 @@ impl RemoteLlmProvider {
             surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
             last_request_ok: None,
+            breaker,
         })
     }
     /// Attach a shared health flag that is set to `true` on successful LLM request
@@ -203,6 +222,7 @@ impl RemoteLlmProvider {
     pub fn new_with_credential(
         config: &ExternalApiEndpoint,
         credential: CredentialSource,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Result<Self, crate::error::NetworkError> {
         use crate::error::NetworkError;
         let http_client = reqwest::Client::builder()
@@ -281,6 +301,10 @@ impl RemoteLlmProvider {
                 Self::resolved_runtime_endpoint(config, &model)
                     .unwrap_or_else(|_| config.endpoint.clone())
             });
+        // D7: resolve per-endpoint breaker.
+        let breaker_key =
+            endpoint_authority(&endpoint).unwrap_or_else(|_| format!("malformed::{endpoint}"));
+        let breaker = breaker_registry.get(&breaker_key);
         Ok(Self {
             http_client,
             endpoint,
@@ -290,6 +314,7 @@ impl RemoteLlmProvider {
             surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
             last_request_ok: None,
+            breaker,
         })
     }
     fn llm_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {

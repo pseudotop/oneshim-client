@@ -2,6 +2,8 @@ use std::sync::atomic::Ordering;
 
 use super::parsers;
 use super::RemoteLlmProvider;
+use crate::circuit_breaker::CircuitState;
+use crate::resilience::{classify_for_breaker, BreakerSignal};
 use oneshim_api_contracts::provider_specs::ProviderAuthScheme;
 use oneshim_api_contracts::provider_specs::ProviderRequestShape;
 use oneshim_core::error::CoreError;
@@ -122,6 +124,13 @@ impl RemoteLlmProvider {
         &self,
         request_body: &serde_json::Value,
     ) -> Result<InterpretedAction, CoreError> {
+        // D7: pre-flight breaker check.
+        if matches!(self.breaker.check(), CircuitState::Open { .. }) {
+            return Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::CircuitOpen,
+                message: format!("circuit open for {}", self.endpoint),
+            });
+        }
         let mut builder = self
             .http_client
             .post(&self.endpoint)
@@ -153,7 +162,18 @@ impl RemoteLlmProvider {
                 });
             }
         }
-        let response = builder.send().await.map_err(|e| {
+        let send_result = builder.send().await;
+        // D7: classify for breaker accounting before error mapping.
+        let signal = match &send_result {
+            Ok(resp) => classify_for_breaker(Some(resp.status().as_u16()), false),
+            Err(_) => classify_for_breaker(None, true),
+        };
+        match signal {
+            BreakerSignal::Success => self.breaker.record_success(),
+            BreakerSignal::Failure => self.breaker.record_failure(),
+            BreakerSignal::Neutral => {}
+        }
+        let response = send_result.map_err(|e| {
             if let Some(ref flag) = self.last_request_ok {
                 flag.store(false, Ordering::Relaxed);
             }
