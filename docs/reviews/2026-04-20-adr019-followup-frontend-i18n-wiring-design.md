@@ -182,6 +182,8 @@ test("translateError falls back gracefully for unknown code", () => {
 
 **Total effort estimate:** ~1 day.
 
+> **Post-execution reality:** Items 1+2 shipped together in iter-205 (single commit, combined the infra + all 41×2-locale translations since the coverage-parity test gates them together). Item 3 is partially shipped as demonstrations — 2 UI sites integrated (iter-210 `GeneralTab::SupportToolsCard` translateError-as-primary, iter-212 `BugReportWizard::handleExport` translateError-as-detail-suffix) rather than the estimated 30-50. The remaining 28-48 sites are *piecemeal follow-up-free*: the snapshot-driven parity tests prevent Rust-↔-TS drift regardless of how many UI catch-sites migrate, so future `.catch((err) => err.message)` call-sites can adopt the pattern on demand without needing a coordinated sweep. iter-214 added a lefthook pre-commit hook wiring the coverage script — not part of the original design but caught en/ko drift faster than the Vitest parity test alone.
+
 **Hard dependency**: Follow-up #1 must land first. Without `IpcError`, the frontend has no `code` field to key on.
 
 ## Out of Scope

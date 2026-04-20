@@ -154,6 +154,8 @@ This closes the registry — all 15 dispatchers now have both Impl ✓ and Tests
 
 **Total effort estimate:** ~3 hours (0.5 day). Safe to do post-merge.
 
+> **Post-execution reality:** PR1 (fixture + dev-deps) didn't happen. Chose the pure-function-extraction approach from §Alternatives — refactored the inline `match status.as_u16()` in `crates/oneshim-network/src/sync/lan_transport/auth.rs` into `map_challenge_status_to_error(status_code, peer_id) -> CoreError` and tested that helper directly with 6 unit tests (401/403/429/503/504 + 500-fallback). Same regression surface, no rustls dev-deps, sub-millisecond per test. Single iter (iter-195), closer to ~30 minutes elapsed than the estimated ~3 hours. Registry row in `docs/guides/http-status-error-mapping.md` updated in the same commit. The fixture approach remains valid for future tests that need the full TLS handshake flow.
+
 ## Out of Scope
 
 - Integration tests of peer discovery (LAN peer discovery is a separate port; different scope).
