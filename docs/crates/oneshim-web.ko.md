@@ -2,7 +2,7 @@
 
 # oneshim-web
 
-로컬 웹 대시보드 크레이트. Axum 0.7 기반 REST API와 React 18 프론트엔드를 제공합니다.
+로컬 웹 대시보드 크레이트. Axum 0.8 기반 REST API와 React 18.3 프론트엔드를 제공합니다.
 
 ## 기능
 
@@ -18,39 +18,31 @@
 oneshim-web/
 ├── src/
 │   ├── lib.rs          # WebServer + AppState (audit_logger 포함)
-│   ├── routes.rs       # 라우트 정의 (HTTP 표면의 기준 소스)
+│   ├── routes.rs       # 118개 라우트 정의 (368 LoC) — HTTP 표면의 기준 소스;
+│   │                   # docs/contracts/oneshim-web.v1.openapi.yaml +
+│   │                   # http-interface-manifest.v1.json 로 contract freeze
 │   ├── error.rs        # ApiError 타입
-│   ├── embedded.rs     # 정적 파일 서빙
-│   └── handlers/       # API 핸들러
-│       ├── metrics.rs
-│       ├── processes.rs
-│       ├── idle.rs
-│       ├── sessions.rs
-│       ├── frames.rs
-│       ├── events.rs
-│       ├── stats.rs
-│       ├── tags.rs
-│       ├── search.rs
-│       ├── reports.rs
-│       ├── timeline.rs
-│       ├── focus.rs
-│       ├── backup.rs
-│       ├── export.rs
-│       ├── settings.rs    # AppSettings DTO + 자동화/샌드박스/AI 설정
-│       └── automation/    # 자동화 API 핸들러 — 디렉토리 모듈 (ADR-003)
-│           ├── mod.rs     # 재export + 라우터
-│           ├── helpers.rs # 내부 헬퍼 함수
-│           ├── scene.rs   # 씬 분석 + 캘리브레이션
-│           └── execution.rs # 의도/프리셋/정책 핸들러
-└── frontend/           # React 프론트엔드
+│   ├── embedded.rs     # 정적 파일 서빙 (rust-embed)
+│   └── handlers/       # 44개 API 핸들러 파일 (플랫 + 도메인 그룹):
+│       # 원래 17개 (아래 Phase-1 베이스라인). Superpowers + Phase-4로 확장.
+│       # 도메인 그룹 서브디렉토리 + 플랫 파일:
+│       # ai_models, ai_provider_surfaces, ai_session, annotations, automation,
+│       # automation_gui, backup, bug_report, coaching, daily_digest, dashboard,
+│       # data, digests, events, export, focus, frames, idle, integration,
+│       # metrics, onboarding, playbooks, pomodoro, processes, recalibration,
+│       # reports, search, sessions, settings, stats, stream, suggestions,
+│       # support, tags, timeline, update + automation/ 서브디렉토리
+│       # (mod.rs + helpers.rs + scene.rs + execution.rs).
+└── frontend/           # React 18.3 프론트엔드
     ├── src/
     │   ├── pages/      # 페이지 컴포넌트 (Dashboard, Automation, Settings 등)
     │   ├── components/ # UI 컴포넌트
-    │   ├── api/        # API 클라이언트
+    │   ├── api/        # API 클라이언트 (ADR-019 IpcError TS type guard 포함한 desktop.ts)
     │   ├── hooks/      # React 훅
-    │   ├── i18n/       # 다국어 번역 (한/영)
+    │   ├── i18n/       # i18n 번역 (en/ko) + wire-errors.{en,ko}.json (41 code)
     │   └── styles/     # 디자인 토큰
-    └── e2e/            # Playwright E2E 테스트
+    ├── e2e/            # Playwright E2E 테스트
+    └── # Biome (lint), Vitest (unit), Playwright (e2e), Storybook (review catalog)
 ```
 
 ## AppState

@@ -12,15 +12,15 @@
   - `docs/contracts/oneshim-web.v1.openapi.yaml`
   - `docs/contracts/http-api-standardization.md`
 
-## Current Modules
+## Current Modules (44 total)
 
-- `common`: shared query/pagination DTOs.
-- `error`: API error payload DTOs.
-- `settings`: app settings, storage stats, and remote provider endpoint DTOs.
-- `ai_providers`: provider preset catalog and model discovery request/response DTOs.
-- `metrics`, `processes`, `frames`, `events`, `stats`, `reports`, `search`, `sessions`, `idle`.
-- `tags`, `timeline`, `focus`, `data`, `export`, `backup`, `onboarding`, `support`.
-- `automation`, `automation_gui`, `stream`, `update`.
+- **Infrastructure**: `common` (shared query/pagination), `error` (API error payloads), `lib` (crate root).
+- **Settings & Providers**: `settings` (app settings, storage stats, remote provider endpoints), `ai_providers` (provider preset catalog + model discovery), `provider_specs/` (directory module — AI provider specifications: enums, models, helpers, parsers, queries, resolvers, validation, tests).
+- **Core telemetry**: `metrics`, `processes`, `frames`, `events`, `stats`, `reports`, `search`, `sessions`, `idle`.
+- **Tagging & presentation**: `tags`, `timeline`, `focus`, `data`, `export`, `backup`, `onboarding`, `support`.
+- **Automation & GUI**: `automation`, `automation_gui`, `stream`, `update`.
+- **AI pipeline**: `ai_session`, `annotations`, `coaching`, `daily_digest`, `digests`, `suggestions`.
+- **Integrations & workflows**: `bug_report`, `dashboard`, `integration`, `playbooks`, `pomodoro`, `recalibration`.
 
 ## Design Rules
 

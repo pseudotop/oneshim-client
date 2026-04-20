@@ -13,7 +13,7 @@
 
 ```
 oneshim-automation/src/
-├── lib.rs              # 크레이트 루트 (10개 모듈)
+├── lib.rs              # 크레이트 루트 (16개 모듈)
 ├── action_dispatcher.rs # AutomationActionDispatcher — 액션 실행 포트
 ├── audit.rs            # AuditLogger — 감사 로깅 (14개 메서드)
 ├── controller/         # AutomationController — 디렉토리 모듈 (ADR-003)
@@ -21,21 +21,25 @@ oneshim-automation/src/
 │   ├── types.rs        # AutomationCommand, CommandResult, WorkflowResult 등
 │   ├── intent.rs       # 의도 실행 + 씬 분석 메서드
 │   └── preset.rs       # 워크플로우/프리셋 실행 메서드
+├── gui_interaction/    # GUI V2 세션 + nonce 재생 방지 + TTL (ADR-002 M3)
 ├── input_driver.rs     # NoOpInputDriver — 테스트/기본 입력 드라이버
+├── intent_planner.rs   # 의도 플래닝 (파싱 + 시퀀싱)
 ├── intent_resolver.rs  # IntentResolver + IntentExecutor — 의도 해석 + 실행
 ├── local_llm.rs        # LocalLlmProvider — 로컬 LLM (규칙 기반)
+├── overlay.rs          # 오버레이 드라이버 인터페이스 (src-tauri의 MagicOverlayDriver가 구현)
 ├── policy/             # PolicyClient — 디렉토리 모듈 (ADR-003)
 │   ├── mod.rs          # 공개 API + 재export + 테스트
 │   ├── models.rs       # AuditLevel, ExecutionPolicy, PolicyCache, ProcessOutput
 │   └── token.rs        # 토큰 생성, 파싱, 서명 검증, HMAC
 ├── presets.rs          # builtin_presets() — 내장 워크플로우 10개
 ├── resolver.rs         # 정책 → 샌드박스 프로필 리졸버 (순수 함수 3개)
-└── sandbox/            # OS 네이티브 커널 샌드박스
-    ├── mod.rs          # create_platform_sandbox() 팩토리
-    ├── noop.rs         # NoOpSandbox — 비활성 시 기본
-    ├── linux.rs        # LinuxSandbox — seccomp + namespaces
-    ├── macos.rs        # MacOsSandbox — sandbox-exec + App Sandbox
-    └── windows.rs      # WindowsSandbox — Job Objects + AppContainers
+├── sandbox/            # OS 네이티브 커널 샌드박스
+│   ├── mod.rs          # create_platform_sandbox() 팩토리
+│   ├── noop.rs         # NoOpSandbox — 비활성 시 기본
+│   ├── linux.rs        # LinuxSandbox — seccomp + namespaces
+│   ├── macos.rs        # MacOsSandbox — sandbox-exec + App Sandbox
+│   └── windows.rs      # WindowsSandbox — Job Objects + AppContainers
+└── error.rs            # AutomationError (ADR-019 typed code)
 ```
 
 ## 모듈

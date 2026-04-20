@@ -13,7 +13,7 @@ Uses a 2-layer action model: **AutomationIntent** (server→client high-level in
 
 ```
 oneshim-automation/src/
-├── lib.rs              # Crate root (10 modules)
+├── lib.rs              # Crate root (16 modules)
 ├── action_dispatcher.rs # AutomationActionDispatcher — action execution port
 ├── audit.rs            # AuditLogger — audit logging (14 methods)
 ├── controller/         # AutomationController — directory module (ADR-003)
@@ -21,21 +21,25 @@ oneshim-automation/src/
 │   ├── types.rs        # AutomationCommand, CommandResult, WorkflowResult, etc.
 │   ├── intent.rs       # intent execution + scene analysis methods
 │   └── preset.rs       # workflow/preset execution methods
+├── gui_interaction/    # GUI V2 session + nonce replay protection + TTL (ADR-002 M3)
 ├── input_driver.rs     # NoOpInputDriver — test/default input driver
+├── intent_planner.rs   # Intent planning (parse + sequence)
 ├── intent_resolver.rs  # IntentResolver + IntentExecutor — intent resolution + execution
 ├── local_llm.rs        # LocalLlmProvider — local LLM (rule-based)
+├── overlay.rs          # Overlay driver interface (implemented by MagicOverlayDriver in src-tauri)
 ├── policy/             # PolicyClient — directory module (ADR-003)
 │   ├── mod.rs          # public API + re-exports + tests
 │   ├── models.rs       # AuditLevel, ExecutionPolicy, PolicyCache, ProcessOutput
 │   └── token.rs        # token generation, parsing, signature verification, HMAC
 ├── presets.rs          # builtin_presets() — 10 builtin workflows
 ├── resolver.rs         # Policy → sandbox profile resolver (3 pure functions)
-└── sandbox/            # OS native kernel sandbox
-    ├── mod.rs          # create_platform_sandbox() factory
-    ├── noop.rs         # NoOpSandbox — passthrough when disabled
-    ├── linux.rs        # LinuxSandbox — seccomp + namespaces
-    ├── macos.rs        # MacOsSandbox — sandbox-exec + App Sandbox
-    └── windows.rs      # WindowsSandbox — Job Objects + AppContainers
+├── sandbox/            # OS native kernel sandbox
+│   ├── mod.rs          # create_platform_sandbox() factory
+│   ├── noop.rs         # NoOpSandbox — passthrough when disabled
+│   ├── linux.rs        # LinuxSandbox — seccomp + namespaces
+│   ├── macos.rs        # MacOsSandbox — sandbox-exec + App Sandbox
+│   └── windows.rs      # WindowsSandbox — Job Objects + AppContainers
+└── error.rs            # AutomationError (ADR-019 typed codes)
 ```
 
 ## Modules
