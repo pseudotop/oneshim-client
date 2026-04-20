@@ -1,6 +1,7 @@
 use std::sync::atomic::Ordering;
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::AppState;
 use oneshim_core::ports::web_storage::DigestStorage;
 
@@ -14,13 +15,15 @@ pub async fn semantic_search(
     _state: tauri::State<'_, AppState>,
     _query: String,
     _limit: Option<usize>,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<serde_json::Value>, IpcError> {
     // The Tauri semantic search command delegates to the web API endpoint.
     // The web API has access to the embedding provider and vector store via AppState.
-    Err(
-        "Semantic search requires embedding pipeline — use the web API at /api/semantic-search"
-            .to_string(),
-    )
+    // Return service.unavailable so frontend can show a graceful "use the web
+    // dashboard instead" redirect rather than a generic failure.
+    Err(IpcError::new(
+        "service.unavailable",
+        "Semantic search requires embedding pipeline — use the web API at /api/semantic-search",
+    ))
 }
 
 /// Get weekly digest for the given week offset (0 = current, -1 = last week).
@@ -28,7 +31,7 @@ pub async fn semantic_search(
 pub async fn get_weekly_digest(
     state: tauri::State<'_, AppState>,
     week_offset: Option<i32>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, IpcError> {
     let offset = week_offset.unwrap_or(0);
     let limit = if offset == 0 {
         1
@@ -39,11 +42,11 @@ pub async fn get_weekly_digest(
     let digests = state
         .storage
         .list_weekly_digests(limit)
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     let target_idx = offset.unsigned_abs() as usize;
     if let Some(digest) = digests.into_iter().nth(target_idx) {
-        serde_json::to_value(&digest).map_err(|e| e.to_string())
+        serde_json::to_value(&digest).map_err(IpcError::from)
     } else {
         Ok(serde_json::json!(null))
     }
@@ -57,27 +60,31 @@ pub async fn get_weekly_digest(
 pub async fn get_dashboard_day(
     state: tauri::State<'_, AppState>,
     date: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, IpcError> {
     let date_str = date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
 
     // Validate date format
-    let naive_date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-        .map_err(|e| format!("Invalid date format: {e}"))?;
+    let naive_date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|e| {
+        IpcError::new(
+            "validation.invalid_arguments",
+            format!("Invalid date format: {e}"),
+        )
+    })?;
 
     // Check cache first
     if let Some(cached) = state
         .storage
         .get_daily_digest(&date_str)
-        .map_err(|e| e.to_string())?
+        .map_err(IpcError::from)?
     {
-        return serde_json::to_value(&cached).map_err(|e| e.to_string());
+        return serde_json::to_value(&cached).map_err(IpcError::from);
     }
 
     // Not cached — generate from segments on-demand
     let segment_records = state
         .storage
         .get_segments_for_date(&date_str)
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     if segment_records.is_empty() {
         return Ok(serde_json::json!(null));
@@ -108,7 +115,7 @@ pub async fn get_dashboard_day(
         tracing::warn!("Failed to cache daily digest: {e}");
     }
 
-    serde_json::to_value(&digest).map_err(|e| e.to_string())
+    serde_json::to_value(&digest).map_err(IpcError::from)
 }
 
 /// Get the daily digest for a given date. If not cached, returns null.
@@ -116,19 +123,23 @@ pub async fn get_dashboard_day(
 pub async fn get_daily_digest(
     state: tauri::State<'_, AppState>,
     date: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, IpcError> {
     let date_str = date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
 
     // Validate date format
-    chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-        .map_err(|e| format!("Invalid date format: {e}"))?;
+    chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|e| {
+        IpcError::new(
+            "validation.invalid_arguments",
+            format!("Invalid date format: {e}"),
+        )
+    })?;
 
     if let Some(digest) = state
         .storage
         .get_daily_digest(&date_str)
-        .map_err(|e| e.to_string())?
+        .map_err(IpcError::from)?
     {
-        serde_json::to_value(&digest).map_err(|e| e.to_string())
+        serde_json::to_value(&digest).map_err(IpcError::from)
     } else {
         Ok(serde_json::json!(null))
     }
@@ -143,7 +154,7 @@ pub async fn create_override(
     segment_id: String,
     original_regime_id: Option<String>,
     action: oneshim_core::models::recalibration::UserOverrideAction,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, IpcError> {
     let entry = oneshim_core::models::recalibration::RegimeOverride {
         override_id: uuid::Uuid::new_v4().to_string(),
         segment_id,
@@ -159,7 +170,7 @@ pub async fn create_override(
         .storage
         .save_override(&entry)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     Ok(serde_json::json!({
         "ok": true,
@@ -172,13 +183,13 @@ pub async fn create_override(
 pub async fn delete_override(
     state: tauri::State<'_, AppState>,
     override_id: String,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, IpcError> {
     use oneshim_core::ports::override_store::OverrideStore;
     state
         .storage
         .delete_override(&override_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     Ok(serde_json::json!({
         "ok": true,
@@ -192,7 +203,7 @@ pub async fn list_overrides(
     state: tauri::State<'_, AppState>,
     from: Option<String>,
     to: Option<String>,
-) -> Result<Vec<oneshim_core::models::recalibration::RegimeOverride>, String> {
+) -> Result<Vec<oneshim_core::models::recalibration::RegimeOverride>, IpcError> {
     let from_dt: chrono::DateTime<chrono::Utc> = from
         .as_deref()
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
@@ -210,14 +221,14 @@ pub async fn list_overrides(
         .storage
         .list_overrides(from_dt, to_dt)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
 
 /// Request on-demand re-clustering. The scheduler picks up the flag.
 #[command]
 pub async fn trigger_recluster(
     state: tauri::State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, IpcError> {
     state.recluster_requested.store(true, Ordering::Relaxed);
 
     Ok(serde_json::json!({
