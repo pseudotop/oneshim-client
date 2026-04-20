@@ -1,7 +1,7 @@
 # ADR-019 Known Follow-ups — Roadmap
 
-**Date:** 2026-04-20
-**Status:** Design-complete, execution pending
+**Date:** 2026-04-20 (authored) · **Last updated:** 2026-04-20 post-execution
+**Status:** 4 of 5 shipped to the client-rust extent (#1, #3, #5 complete; #2 Rust-side complete, ops-side external; #4 evergreen)
 **Parent ADR:** [ADR-019](../architecture/ADR-019-error-code-infrastructure.md)
 
 This doc aggregates all ADR-019 §Known follow-ups as executable workstreams. Each has a paired design doc; plans are authored when execution is sequenced.
@@ -10,11 +10,11 @@ This doc aggregates all ADR-019 §Known follow-ups as executable workstreams. Ea
 
 | # | Title | Status | Design Doc | Effort | Dependency |
 |---|-------|--------|-----------|--------|------------|
-| 1 | Tauri IPC typed-code propagation | Designed | [ipc-error-dto-design](./2026-04-20-adr019-followup-ipc-error-dto-design.md) | ~1.5 day | none |
-| 2 | Grafana dashboard relabeling | Designed | [grafana-relabeling-design](./2026-04-20-adr019-followup-grafana-relabeling-design.md) | ~1 day (elapsed) | ops coordination |
-| 3 | Frontend i18n wiring | Designed | [frontend-i18n-wiring-design](./2026-04-20-adr019-followup-frontend-i18n-wiring-design.md) | ~1 day | Follow-up #1 |
+| 1 | Tauri IPC typed-code propagation | ✅ SHIPPED (iter-196/197/199/201/203/204) | [ipc-error-dto-design](./2026-04-20-adr019-followup-ipc-error-dto-design.md) | ~1.5 day | none |
+| 2 | Grafana dashboard relabeling | 🟡 Rust-side SHIPPED (iter-206/208); ops-side external | [grafana-relabeling-design](./2026-04-20-adr019-followup-grafana-relabeling-design.md) | ~1 day (elapsed) | ops coordination |
+| 3 | Frontend i18n wiring | ✅ SHIPPED (iter-205/210/212/214) | [frontend-i18n-wiring-design](./2026-04-20-adr019-followup-frontend-i18n-wiring-design.md) | ~1 day | Follow-up #1 |
 | 4 | InternalCode granularity refinement | Evergreen | (N/A — driven by production telemetry) | ongoing | Follow-up #2 (data) |
-| 5 | LAN transport auth regression tests | Designed | [lan-transport-tests-design](./2026-04-20-adr019-followup-lan-transport-tests-design.md) | ~0.5 day | none |
+| 5 | LAN transport auth regression tests | ✅ SHIPPED (iter-195) | [lan-transport-tests-design](./2026-04-20-adr019-followup-lan-transport-tests-design.md) | ~0.5 day | none |
 
 ## Recommended Sequencing
 
