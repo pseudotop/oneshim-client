@@ -6,92 +6,67 @@
 
 ---
 
-## Phase 0: 프로젝트 기반 구축
+## Phase 0: 프로젝트 기반 구축 ✅ 완료
 
 **목표**: Rust workspace 생성, 빌드 파이프라인 설정
 
-```
-[ ] Cargo workspace 초기화 (8개 크레이트)
-[ ] CI/CD 설정 (cargo test, cargo clippy, cargo fmt)
-[ ] 크로스 컴파일 설정 (macOS universal + Windows x64)
-[ ] .cargo/config.toml 빌드 최적화
-```
+- [x] Cargo workspace (현재 15개 패키지 — `cargo metadata --no-deps`)
+- [x] CI/CD (cargo test, cargo clippy, cargo fmt)
+- [x] 크로스 컴파일 (macOS universal + Windows x64 + Linux)
+- [x] `.cargo/config.toml` 빌드 최적화
 
-## Phase 1: 핵심 모델 + 네트워크 (P0 — SSE 연결)
+## Phase 1: 핵심 모델 + 네트워크 (P0 — SSE 연결) ✅ 완료
 
 **목표**: 서버와 SSE로 연결하여 제안을 수신하는 최소 파이프라인
 
-```
-[ ] oneshim-core: 모델 구조체 (serde), trait 정의, 에러 타입
-[ ] oneshim-network/auth.rs: 로그인 → JWT 토큰 저장 → 자동 갱신
-[ ] oneshim-network/http_client.rs: reqwest 기반 API 클라이언트
-[ ] oneshim-network/sse_client.rs: SSE 스트림 연결 + 이벤트 파싱
-[ ] oneshim-suggestion/receiver.rs: SSE 이벤트 → Suggestion 구조체 변환
-[ ] oneshim-suggestion/feedback.rs: 수락/거절 HTTP POST
-[ ] oneshim-app/main.rs: 최소 실행 — 로그인 → SSE 연결 → stdout 출력
-```
+- [x] `oneshim-core` 모델 + trait + 에러 타입 (ADR-019 typed code로 발전)
+- [x] `oneshim-network/auth.rs` JWT 로그인 + 자동 갱신
+- [x] `oneshim-network/http_client.rs` reqwest 기반 API 클라이언트
+- [x] `oneshim-network/sse_client.rs` SSE 스트림 + 자동 재연결
+- [x] `oneshim-suggestion/receiver.rs` SSE → Suggestion 변환
+- [x] `oneshim-suggestion/feedback.rs` 수락/거절 HTTP POST + FeedbackRetryQueue
 
-**검증**: `cargo run` → 서버에서 SSE 제안 수신 → 터미널에 출력
+**검증**: `cargo run -p oneshim-app` → SSE 제안 수신 → UI surface.
 
-## Phase 2: 로컬 저장소 + 모니터링 + Edge Vision
+## Phase 2: 로컬 저장소 + 모니터링 + Edge Vision ✅ 완료
 
 **목표**: 컨텍스트 수집 + 이미지 Edge 처리 → 로컬 저장 → 배치 업로드
 
-```
-[ ] oneshim-storage/sqlite.rs: 이벤트 로그 + 프레임 인덱스 테이블, CRUD, 보존 정책
-[ ] oneshim-storage/migration.rs: 스키마 버전 관리
-[ ] oneshim-monitor/system.rs: sysinfo 기반 CPU/메모리/디스크/네트워크
-[ ] oneshim-monitor/process.rs: 활성 창 정보 (플랫폼 분기)
-[ ] oneshim-monitor/macos.rs: CoreGraphics 프론트 앱 감지
-[ ] oneshim-monitor/windows.rs: Win32 GetForegroundWindow
-[ ] oneshim-vision/capture.rs: xcap 기반 스크린 캡처 (멀티모니터)
-[ ] oneshim-vision/trigger.rs: 스마트 캡처 트리거 (이벤트 기반, 5초 쓰로틀)
-[ ] oneshim-vision/processor.rs: Edge 전처리 오케스트레이터 (중요도별 분기)
-[ ] oneshim-vision/delta.rs: 델타 인코딩 (이전 프레임 대비 변경 영역만 추출)
-[ ] oneshim-vision/encoder.rs: WebP/JPEG 인코딩 + 품질 자동 선택
-[ ] oneshim-vision/thumbnail.rs: 480×270 썸네일 생성
-[ ] oneshim-vision/ocr.rs: Tesseract FFI 로컬 OCR (텍스트 메타 추출)
-[ ] oneshim-vision/timeline.rs: 프레임 인덱스 관리 (SQLite 연동, 리와인드 지원)
-[ ] oneshim-vision/privacy.rs: PII 필터링 (창 제목 새니타이징)
-[ ] oneshim-network/batch_uploader.rs: 배치 큐 + 재시도 + 압축 (메타+이미지 혼합)
-[ ] oneshim-network/compression.rs: gzip/zstd/lz4 선택적 압축
-[ ] oneshim-app/scheduler.rs: 모니터링 루프 (1초), 동기화 루프 (10초), 하트비트
-```
+- [x] `oneshim-storage/sqlite.rs` + V1–V22 마이그레이션 (events, frames, work_sessions, focus_metrics, IVF index, coaching 등)
+- [x] `oneshim-monitor/{system,process,macos,windows,linux,activity,input_activity,window_layout}.rs` — 플랫폼 분기 active window + 메트릭 + idle + 레이아웃 추적
+- [x] `oneshim-vision/{capture,trigger,processor,delta,encoder,thumbnail,ocr,timeline,privacy}.rs` — Edge 파이프라인 (xcap 멀티모니터 캡처 → WebP 인코더 → 썸네일 LRU → 중요도별 delta/OCR → Off/Basic/Standard/Strict 단계 PII 필터)
+- [x] `oneshim-network/{batch_uploader,compression}.rs` — lock-free SegQueue + gzip/zstd/lz4 자동 선택
+- [x] `src-tauri/src/scheduler/` — 16 루프 background scheduler (원래 계획된 단일 `scheduler.rs` 대체)
 
-**검증**: 컨텍스트 수집 + 스크린샷 Edge 처리 → SQLite 저장 → 메타+전처리 이미지 배치 업로드 → SSE 수신
+**검증**: 컨텍스트 수집 + 스크린샷 Edge 처리 → SQLite retention → 메타+이미지 배치 업로드 → SSE 수신.
 
-## Phase 3: UI 기반
+## Phase 3: UI 기반 ✅ 완료 (Tauri 경유 — ADR-004 참조)
 
 **목표**: 시스템 트레이 + 제안 알림 + 메인 창 + 리와인드 타임라인
 
-```
-[ ] oneshim-ui/tray.rs: 시스템 트레이 아이콘 + 메뉴 (Show/Hide, Settings, Quit)
-[ ] oneshim-ui/views/suggestion_popup.rs: 제안 토스트/팝업 (수락/거절 버튼)
-[ ] oneshim-ui/views/main_window.rs: 현재 컨텍스트 + 상태 표시
-[ ] oneshim-ui/views/status_bar.rs: 연결 상태, 메트릭
-[ ] oneshim-ui/views/context_panel.rs: 활성 앱, 시스템 리소스
-[ ] oneshim-ui/views/timeline_view.rs: 스크린샷 리와인드 타임라인 (썸네일 스크롤)
-[ ] oneshim-ui/theme.rs: 다크/라이트 테마
-[ ] oneshim-suggestion/presenter.rs: 제안 → UI 데이터 변환 (파이프라인 프리뷰 포함)
-[ ] oneshim-suggestion/queue.rs: 로컬 제안 큐 (최대 50개, 우선순위)
-```
+> 원래 계획된 `oneshim-ui` 크레이트(iced)는 [ADR-004](../architecture/ADR-004-tauri-v2-migration.ko.md)에 따라 **Tauri v2 + React** 로 교체. 논리적 산출물은 새 surface 로 shipped:
 
-**검증**: 트레이 아이콘 → SSE 제안 수신 → 데스크톱 알림/팝업 → 수락/거절 → 타임라인 리와인드
+- [x] 시스템 트레이 (`src-tauri/src/tray.rs`)
+- [x] 제안 popup / toast — 데스크톱 알림 + MagicOverlay(ADR-002 M3) 로 전달
+- [x] 메인 창 + status bar + context panel — `crates/oneshim-web/frontend/src/pages/` 하위 React 페이지
+- [x] 타임라인 rewind — frame timeline (in-memory + SQLite 기반)
+- [x] 다크/라이트 테마 — React `useTheme` hook
+- [x] `oneshim-suggestion/{presenter,queue}.rs` — SuggestionView + BTreeSet 우선순위 큐 (최대 50)
 
-## Phase 4: 완성도
+**검증**: Tray → SSE 제안 → 데스크톱 알림/팝업 → 수락/거절 → 타임라인 리와인드.
+
+## Phase 4: 완성도 ✅ 완료
 
 **목표**: 기능 완전성 + 배포 준비
 
-```
-[ ] oneshim-ui/views/settings.rs: 설정 화면
-[ ] oneshim-suggestion/history.rs: 제안 이력 로컬 캐시
-[ ] oneshim-app/lifecycle.rs: 시작/종료, 리소스 정리
-[ ] oneshim-app/event_bus.rs: 내부 이벤트 (tokio::broadcast)
-[ ] 자동 시작 설정 (launchd / 레지스트리)
-[ ] 자동 업데이트 메커니즘
-[ ] 인스톨러 빌드 (.dmg, .exe/.msi)
-[ ] README, 사용자 가이드
-```
+- [x] 설정 화면 — React 설정 탭 (GeneralTab, NotificationsTab, PermissionsTab, PrivacyTab 등)
+- [x] `oneshim-suggestion/history.rs` FIFO 이력 캐시
+- [x] Lifecycle (start/shutdown + 리소스 정리) — `src-tauri/src/lifecycle/`
+- [x] 내부 이벤트 버스 — scheduler 전역 tokio::broadcast
+- [x] 자동 시작 (launchd / 레지스트리)
+- [x] 자동 업데이트 메커니즘 — `src-tauri/src/updater/` with D9 다중키 Ed25519 trust + D10 방어적 rollout + D11 self-healthy probe with 자동 rollback
+- [x] 인스톨러 빌드 (.dmg, .exe/.msi, .deb/.AppImage) via `cargo tauri build`
+- [x] README + 사용자 가이드 + 한국어 companion 문서
 
 ## Phase 5: 자동 업데이트
 
@@ -150,21 +125,21 @@
 
 ## 성공 기준
 
-### Phase 1 완료 기준 (MVP)
-- [ ] `cargo run` → 서버 로그인 → SSE 연결 → 제안 수신 → 터미널 출력
-- [ ] 제안 수락/거절 피드백 전송 → 서버에서 확인
+### Phase 1 완료 기준 (MVP) ✅
+- [x] `cargo run` → 서버 로그인 → SSE 연결 → 제안 수신
+- [x] 제안 수락/거절 피드백 전송 → 서버에서 확인
 
-### Phase 2 완료 기준
-- [ ] 컨텍스트 수집 (활성 창, CPU, 메모리) → SQLite 저장 → 배치 업로드
-- [ ] 스크린 캡처 → Edge 전처리 (델타/썸네일/OCR) → 메타+이미지 배치 전송
-- [ ] 프레임 인덱스 SQLite 저장 + 보존 정책 동작
-- [ ] 서버에서 컨텍스트 기반 제안 생성 → SSE로 수신
+### Phase 2 완료 기준 ✅
+- [x] 컨텍스트 수집 (활성 창, CPU, 메모리) → SQLite 저장 → 배치 업로드
+- [x] 스크린 캡처 → Edge 전처리 (델타/썸네일/OCR) → 메타+이미지 배치 전송
+- [x] 프레임 인덱스 SQLite 저장 + 보존 정책 (30일 / 500MB)
+- [x] 서버에서 컨텍스트 기반 제안 생성 → SSE로 수신
 
-### Phase 3 완료 기준
-- [ ] 시스템 트레이 아이콘 + 메뉴
-- [ ] 제안 수신 → 데스크톱 알림 → 수락/거절 UI
-- [ ] 메인 창: 현재 컨텍스트 + 상태 표시
-- [ ] 타임라인 리와인드: 썸네일 스크롤 + 텍스트 검색
+### Phase 3 완료 기준 ✅ (Tauri 경유 — ADR-004)
+- [x] 시스템 트레이 아이콘 + 메뉴 (`src-tauri/src/tray.rs`)
+- [x] 제안 수신 → 데스크톱 알림 → 수락/거절 UI
+- [x] 메인 창: React 기반 현재 컨텍스트 + 상태 표시
+- [x] 타임라인 리와인드: 썸네일 스크롤 + 텍스트 검색 (FTS5)
 
 ### Phase 4 완료 기준 (GA)
 - [x] .dmg / .exe 단일 바이너리 배포
