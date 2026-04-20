@@ -112,12 +112,14 @@ Code enum(`ConfigCode` 등)은 `#[non_exhaustive]` **부착**:
 
 ### 알려진 follow-up (비-블로킹)
 
-1. **Tauri IPC code 전파** — `src-tauri/src/commands/*.rs`의 ~58 callsite가 `.map_err(|e| e.to_string())` 사용, `CoreError`를 plain `String`으로 프런트엔드에 전달. 타입화된 `err.code()`가 이 경계에서 소실. Follow-up: `IpcError { code: String, message: String }` DTO 도입 + callsite 업데이트, 프런트엔드가 display message substring 매칭 대신 `code`로 프로그래밍적 분기 가능. 규모: ~0.5일. 본 ADR과 독립.
-2. **Grafana 대시보드 재라벨링** — 로그 파이프라인이 `err.code()` 노출 이후 message-regex 패널을 `code`-label group-by로 교체. ~0.5일.
-3. **프런트엔드 i18n 연결** — `err.code()` 문자열을 프런트엔드 i18n 계층에 translation key로 공급. key 누락 시 fallback message 필요. ~1일.
-4. **`Internal` 코드 granularity 세분화** — Phase 4 종료 시점에 `InternalCode`는 `Generic`, `Io`, `Serialization` 보유. Post-merge drift audit iter 88~109가 ~122개 Internal emission을 더 구체적인 variant로 재라우팅(Config.Missing/Invalid/OutOfRange, NotFound, ServiceUnavailable, InvalidArguments, Analysis, OcrError). 현재 Internal callsite 개수: ~294 (Phase 4 종료 시 ~416). 추가 세분화는 프로덕션 텔레메트리 기반 영구 개선 항목.
-5. **Sandbox variant 통합** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` 의미 중복; 단일 variant로 통합 가능. 별도 리팩토링, 블로킹 아님.
-6. **`sync/lan_transport::authenticate_with_peer` 회귀 테스트** — LAN sync는 TLS 전용이라 mockito HTTP mock으로 테스트 불가. rustls-TlsAcceptor 테스트 fixture (생성된 cert 포함) 작성은 가능하지만 방어적 코드 경로에 비해 과도한 비용 (시맨틱 매핑은 canonical HTTP status 패턴 기준 구현 완료; 패턴 레지스트리 및 deferral 근거는 `docs/guides/http-status-error-mapping.ko.md` 참조).
+아래 모든 follow-up 은 `docs/reviews/2026-04-20-adr019-followup-*.md` 에 design doc 이 존재하며, 종합 로드맵은 `docs/reviews/2026-04-20-adr019-followups-roadmap.md`. 각각 독립 PR 시리즈로 실행 가능하며 ADR-019 머지를 막지 않음.
+
+1. **Tauri IPC code 전파** — `src-tauri/src/commands/*.rs`의 ~106 callsite 가 `.map_err(|e| e.to_string())` 사용 (112개 command 시그니처가 `Result<_, String>` 반환), `CoreError` 를 plain `String` 으로 프런트엔드에 전달. 타입화된 `err.code()` 가 이 경계에서 소실. 설계: `IpcError { code, message }` DTO + `From<CoreError>` chain impl + 단계별 command 마이그레이션. [ipc-error-dto-design](../reviews/2026-04-20-adr019-followup-ipc-error-dto-design.md) 참조. ~1.5일.
+2. **Grafana 대시보드 재라벨링** — message-regex 패널을 `err_code` 인덱스 라벨 group-by 로 교체. 설계: `err.code = %e.code()` tracing 필드 + Loki 파이프라인에서 `[code]` 를 label 로 승격 + 패널/알림 마이그레이션. [grafana-relabeling-design](../reviews/2026-04-20-adr019-followup-grafana-relabeling-design.md) 참조. 경과 ~1일.
+3. **프런트엔드 i18n 연결** — `err.code()` 문자열을 프런트엔드 i18n 계층에 translation key 로 공급. 설계: 41개 키 en/ko translation resource + `translateError` 헬퍼 + wire-contract snapshot 대비 build-time coverage check. Follow-up #1 에 hard dependency. [frontend-i18n-wiring-design](../reviews/2026-04-20-adr019-followup-frontend-i18n-wiring-design.md) 참조. ~1일.
+4. **`Internal` 코드 granularity 세분화** — Phase 4 종료 시점에 `InternalCode` 는 `Generic`, `Io`, `Serialization` 보유. Post-merge drift audit iter 88~109 가 ~122개 Internal emission 을 더 구체적인 variant 로 재라우팅(Config.Missing/Invalid/OutOfRange, NotFound, ServiceUnavailable, InvalidArguments, Analysis, OcrError). 현재 Internal callsite 개수: ~294 (Phase 4 종료 시 ~416). 추가 세분화는 프로덕션 텔레메트리 기반 영구 개선 항목 — Follow-up #2 의 텔레메트리 시그널에 의존.
+5. **Sandbox variant 통합** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` 의미 중복; 단일 variant 로 통합 가능. 별도 리팩토링, 블로킹 아님.
+6. **`sync/lan_transport::authenticate_with_peer` 회귀 테스트** — LAN sync 는 TLS 전용이라 mockito HTTP mock 으로 테스트 불가. 설계: `rcgen` + `tokio_rustls::TlsAcceptor` 테스트 fixture + 다른 14 dispatcher 와 동일한 5개 canonical status 테스트 (401/429/503/504/500). [lan-transport-tests-design](../reviews/2026-04-20-adr019-followup-lan-transport-tests-design.md) 참조. ~0.5일.
 
 ### Post-merge 테스트 커버리지 확장
 
