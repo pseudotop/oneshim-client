@@ -51,7 +51,7 @@ Each follow-up design doc enumerates its own out-of-scope items. Cross-cutting n
 
 ## Progress Tracking
 
-- [ ] Follow-up #1 — design landed 2026-04-20, awaiting plan + PR1 (infrastructure)
+- [x] Follow-up #1 — ✅ **Infrastructure landed iter-196** (2026-04-20). `src-tauri/src/ipc_error.rs` with `IpcError { code, message }` + 11 From-chain impls (CoreError, GuiInteractionError, 6 unconditional adapters + 2 feature-gated + 2 stdlib) + 10 contract tests. The 112 command signature migrations follow in subsequent PRs per the staged plan.
 - [ ] Follow-up #2 — design landed 2026-04-20, awaiting ops scheduling
 - [ ] Follow-up #3 — design landed 2026-04-20, blocked on #1
 - [ ] Follow-up #4 — evergreen, re-evaluate quarterly against Grafana telemetry
