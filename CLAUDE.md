@@ -145,9 +145,10 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ## Crate Summary
 
 ### oneshim-core (Foundation)
-- `models/`: suggestion, event, frame, context, session, system_metrics, batch
-- `ports/`: ApiClient, SseClient, StorageService, SystemMonitor, ProcessMonitor, ActivityMonitor, CaptureTrigger, FrameProcessor, DesktopNotifier, Compressor
-- `error.rs`: `CoreError` (thiserror) — Network, RequestTimeout, RateLimit, ServiceUnavailable variants
+- `models/`: 34+ domain types — suggestion, event, frame, context, session, system_metrics, batch (original Phase 1 set) plus ai_session, analysis, annotation, app_registry, audio, audit, automation, bug_report, coaching, coaching_template, daily_digest, embedding, focused_element, gui, gui_activity, gui_interaction, regime, and more (superpowers/phase-4/ADR-019 additions)
+- `ports/`: 57 port files declaring 95 traits — ApiClient, SseClient, StorageService, SystemMonitor, ProcessMonitor, ActivityMonitor, CaptureTrigger, FrameProcessor, DesktopNotifier, Compressor (original set) plus AnalysisProvider, AudioCapture, AuditLog, CoachingStorage, ElementFinder, EmbeddingProvider, FeedbackSignalSink, FrameStorage, IntentPlanner, LlmProvider, ModelDownloader, OcrProvider, OverlayDriver, OverrideStore, PiiSanitizer, PresetStorage, and more (see `crates/oneshim-core/src/ports/`). All traits carry `# Errors` docs per iter-174 port-trait doc campaign.
+- `error_codes/`: 18 typed code enums generated via single-source `define_code_enum!` macro per [ADR-019](docs/architecture/ADR-019-error-code-infrastructure.md)
+- `error.rs`: `CoreError` (thiserror) — 38 variants with typed `code: XxxCode` field per struct-variant (ADR-019). Headline variants: Config, Network, RequestTimeout, RateLimit, ServiceUnavailable, Auth, OAuth, Validation, InvalidArguments, NotFound, Storage, Automation, Vision, Analysis, Suggestion, Monitor, Embedding, etc. Wire-format contract locked at **41 codes** in `tests/wire_contract_snapshot.expected.txt`.
 - `config/`: `AppConfig` + section settings — directory module (ADR-003)
   - `mod.rs`: `AppConfig` struct + `Default` impl + helpers + re-exports
   - `enums.rs`: `PiiFilterLevel`, `Weekday`, `SandboxProfile`, `AiAccessMode`, `AiProviderType`, etc.
