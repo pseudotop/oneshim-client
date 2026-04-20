@@ -2,9 +2,9 @@
 
 # ADR-002: OS GUI 상호작용 경계와 런타임 분리
 
-**상태**: 제안됨
+**상태**: 채택됨 (Accepted) — 2026-04-20 제안됨 → 채택됨 승격. M3 네이티브 어댑터 구현 완료 (자세한 shipped scope 는 CLAUDE.md "ADR-002 M3 (Native Adapters)" 섹션 참조).
 **날짜**: 2026-02-25
-**범위**: `oneshim-core`, `oneshim-automation`, `oneshim-web`, `oneshim-ui`, `oneshim-app`
+**범위**: `oneshim-core` (`ElementFinder` / `OverlayDriver` / `FocusProbe` / `InputDriver` 포트), `oneshim-automation` (세션 상태 머신, capability/ticket 처리), `oneshim-vision` (R-tree 공간 인덱스, app-specific element-type override, accessibility 어댑터), `oneshim-web` (capability-token 핸들러), `src-tauri` (`MagicOverlayDriver` — ADR-004 Tauri v2 마이그레이션으로 원래 계획된 `oneshim-ui` 네이티브 오버레이 대신 WebView 브릿지 채택)
 
 ---
 

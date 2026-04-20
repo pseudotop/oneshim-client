@@ -2,7 +2,7 @@
 
 # ADR-015: Frame Storage Port Abstraction
 
-**Status**: Approved
+**Status**: Accepted
 **Date**: 2026-04-03
 **Scope**: `oneshim-core` ports, `oneshim-storage` adapter, `src-tauri` composition root
 

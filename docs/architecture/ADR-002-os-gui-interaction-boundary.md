@@ -2,9 +2,9 @@
 
 # ADR-002: OS GUI Interaction Boundary and Runtime Split
 
-**Status**: Proposed
+**Status**: Accepted (promoted from Proposed 2026-04-20; M3 native-adapter implementation complete — see CLAUDE.md "ADR-002 M3 (Native Adapters)" section for shipped scope)
 **Date**: 2026-02-25
-**Scope**: `oneshim-core`, `oneshim-automation`, `oneshim-web`, `oneshim-ui`, `oneshim-app`
+**Scope**: `oneshim-core` (`ElementFinder` / `OverlayDriver` / `FocusProbe` / `InputDriver` ports), `oneshim-automation` (session state machine, capability/ticket handling), `oneshim-vision` (R-tree spatial index, app-specific element type overrides, accessibility adapters), `oneshim-web` (capability-token handler), `src-tauri` (`MagicOverlayDriver` — the WebView bridge that replaced the originally-planned `oneshim-ui` native overlay after ADR-004's Tauri v2 migration)
 
 ---
 

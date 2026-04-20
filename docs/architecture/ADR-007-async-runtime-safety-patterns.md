@@ -1,6 +1,6 @@
 # ADR-007: Async Runtime Safety Patterns
 
-**Status**: Proposed
+**Status**: Accepted (promoted from Proposed 2026-04-20; three decisions — `spawn_blocking` boundary, subprocess execution, lock-poisoning handling — are all implemented across the workspace; referenced from `src-tauri/src/feedback_sink/mod.rs:40`)
 **Date**: 2026-03-09
 **Scope**: All crates using tokio async runtime
 

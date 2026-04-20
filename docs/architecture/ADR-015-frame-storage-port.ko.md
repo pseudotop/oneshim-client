@@ -2,7 +2,7 @@
 
 # ADR-015: 프레임 스토리지 포트 추상화
 
-**상태**: Approved
+**상태**: Accepted
 **날짜**: 2026-04-03
 **범위**: `oneshim-core` 포트, `oneshim-storage` 어댑터, `src-tauri` 컴포지션 루트
 

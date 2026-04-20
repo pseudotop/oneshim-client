@@ -2,7 +2,7 @@
 
 # ADR-017: FeedbackSignalSink
 
-**Status**: Approved
+**Status**: Accepted
 **Date**: 2026-04-18
 **Scope**: `oneshim-core::ports::feedback_signal_sink`, `oneshim-suggestion::FeedbackSender`, `oneshim-analysis::CoachingEngine/RegimeClassifier`, `src-tauri::feedback_sink::CompositeFeedbackSink`
 

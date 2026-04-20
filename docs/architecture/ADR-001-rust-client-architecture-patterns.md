@@ -2,7 +2,7 @@
 
 # ADR-001: Rust Client Architecture Patterns
 
-**Status**: Approved
+**Status**: Accepted
 **Date**: 2026-01-28
 **Scope**: Entire client-rust/
 
