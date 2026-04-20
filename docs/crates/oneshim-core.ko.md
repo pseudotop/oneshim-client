@@ -18,10 +18,11 @@ oneshim-core/src/
 ├── config/          # AppConfig 및 설정 섹션 — 디렉토리 모듈 (ADR-003)
 │   ├── mod.rs       # AppConfig 구조체 + Default + 재export
 │   ├── enums.rs     # PiiFilterLevel, Weekday, SandboxProfile, AiAccessMode 등
-│   └── sections.rs  # 20개 설정 섹션 구조체 + Default 구현
+│   └── sections/    # 37개 설정 섹션 구조체 (도메인별 파일로 분리) + Default 구현 (ADR-003 디렉토리 모듈)
 ├── config_manager.rs # JSON 기반 설정 파일 관리 + 플랫폼별 경로
 ├── consent.rs       # ConsentManager, GDPR Article 17/20 준수
-├── error.rs         # CoreError enum (thiserror, 23개 변형)
+├── error.rs         # CoreError enum (thiserror, 38개 변형; ADR-019 typed `code: XxxCode` 필드 포함)
+├── error_codes/     # 18개 typed code enum (ADR-019 `define_code_enum!` 매크로로 생성)
 ├── models/          # 도메인 모델
 │   ├── mod.rs
 │   ├── suggestion.rs   # Suggestion, SuggestionType, Priority

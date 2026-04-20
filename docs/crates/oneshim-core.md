@@ -18,10 +18,11 @@ oneshim-core/src/
 ├── config/          # AppConfig and configuration sections — directory module (ADR-003)
 │   ├── mod.rs       # AppConfig struct + Default + re-exports
 │   ├── enums.rs     # PiiFilterLevel, Weekday, SandboxProfile, AiAccessMode, etc.
-│   └── sections.rs  # 20 config section structs + Default impls
+│   └── sections/    # 37 config section structs across per-domain files + Default impls (directory module per ADR-003)
 ├── config_manager.rs # JSON-based config file management + platform-specific paths
 ├── consent.rs       # ConsentManager, GDPR Article 17/20 compliance
-├── error.rs         # CoreError enum (thiserror, 23 variants)
+├── error.rs         # CoreError enum (thiserror, 38 variants; typed `code: XxxCode` fields per ADR-019)
+├── error_codes/     # 18 typed code enums generated via `define_code_enum!` macro (ADR-019)
 ├── models/          # Domain models
 │   ├── mod.rs
 │   ├── suggestion.rs   # Suggestion, SuggestionType, Priority
