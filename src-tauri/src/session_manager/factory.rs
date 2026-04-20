@@ -255,6 +255,9 @@ impl SessionManagerImpl {
                 system_prompt: config.system_prompt.clone(),
                 config: self.config.clone(),
                 default_tools: default_tools.clone(),
+                // D7: per-session registry; iter-011 consolidates to a
+                // workspace-wide shared registry.
+                breaker_registry: oneshim_network::CircuitBreakerRegistry::new(),
             }));
 
         let wrapped: Arc<dyn ConversationSession> =
