@@ -6,8 +6,9 @@
 //!   the transport layer.
 //! - `CoreError::RequestTimeout` (wire: `network.timeout`) — connect,
 //!   heartbeat, or ack-cursor store exceeding transport timeout.
-//! - `CoreError::Network` (wire: `network.connection_failed`) —
-//!   pre-response transport failures (DNS, refused connection).
+//! - `CoreError::Network` (wire: `network.generic`) — pre-response
+//!   transport failures (DNS, refused connection) that don't match the
+//!   timeout/rate-limit specific variants.
 //! - `CoreError::ServiceUnavailable` (wire: `service.unavailable`) —
 //!   502/503 from the integration backend, or running with the
 //!   feature flag disabled.

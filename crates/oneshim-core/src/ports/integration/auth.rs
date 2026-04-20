@@ -8,8 +8,9 @@
 //!   device-code polling exceeding authorization-server timeout.
 //! - `CoreError::RateLimit` (wire: `network.rate_limit`) — 429 from
 //!   the authorization server's token/device endpoint.
-//! - `CoreError::Network` (wire: `network.connection_failed`) —
-//!   pre-response transport failures against the OIDC endpoint.
+//! - `CoreError::Network` (wire: `network.generic`) — pre-response
+//!   transport failures (DNS, refused connection) against the OIDC
+//!   endpoint.
 //! - `CoreError::Config` with `ConfigCode::Missing` (wire:
 //!   `config.missing`) — auth profile not configured, required claims
 //!   (client_id, token endpoint) absent.

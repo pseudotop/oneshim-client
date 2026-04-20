@@ -10,7 +10,7 @@ use crate::models::gui::{ExecutionBinding, FocusSnapshot, FocusValidation};
 /// Query the currently focused UI element and validate execution bindings.
 ///
 /// # Errors
-/// - `CoreError::PermissionDenied` (wire: `platform.permission_denied`) —
+/// - `CoreError::PermissionDenied` (wire: `permission.permission_denied`) —
 ///   accessibility permission missing (macOS TCC, Linux AT-SPI, Windows
 ///   UIAccess) at probe time.
 /// - `CoreError::GuiInteraction` (wire: `gui.*` per variant) — AX tree

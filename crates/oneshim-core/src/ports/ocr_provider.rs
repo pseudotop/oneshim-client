@@ -30,12 +30,13 @@ pub struct OcrResult {
 ///   status mapping: `CoreError::Auth` (401/403), `CoreError::RequestTimeout`
 ///   (408/504), `CoreError::RateLimit` (429), `CoreError::ServiceUnavailable`
 ///   (502/503). See `docs/guides/http-status-error-mapping.md`.
-/// - `CoreError::PermissionDenied` (wire: `platform.permission_denied`) —
+/// - `CoreError::PermissionDenied` (wire: `permission.permission_denied`) —
 ///   emitted upstream if screen-capture permission is missing; not
 ///   raised inside this port itself, but surfaces through callers that
 ///   feed it images captured without permission.
-/// - `CoreError::Network` (wire: `network.connection_failed`) for
-///   pre-response transport failures against remote OCR providers.
+/// - `CoreError::Network` (wire: `network.generic`) for pre-response
+///   transport failures (DNS, connection refused) against remote OCR
+///   providers.
 #[async_trait]
 pub trait OcrProvider: Send + Sync {
     async fn extract_elements(

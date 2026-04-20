@@ -46,8 +46,8 @@ pub struct SkillContext {
 ///   (wire: `provider.bedrock.unsupported`) when an adapter resolves an
 ///   AWS Bedrock provider — AWS SigV4 is intentionally unsupported per
 ///   ADR-019 §3 (re-introduction requires the §5 8-step checklist).
-/// - `CoreError::Network` (wire: `network.connection_failed`) for
-///   pre-response transport failures.
+/// - `CoreError::Network` (wire: `network.generic`) for pre-response
+///   transport failures (DNS, connection refused).
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn interpret_intent(

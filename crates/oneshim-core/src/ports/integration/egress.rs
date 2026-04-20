@@ -4,7 +4,7 @@
 //! - `CoreError::Storage` (wire: `storage.failed`) — outbox enqueue /
 //!   list_pending / delete / cursor persistence failure (SQLite-backed
 //!   outbox), audit record persistence in `IntegrationAuditPort`.
-//! - `CoreError::Network` (wire: `network.connection_failed`),
+//! - `CoreError::Network` (wire: `network.generic`),
 //!   `CoreError::RequestTimeout`, `CoreError::RateLimit`,
 //!   `CoreError::ServiceUnavailable` — `flush` delegating to the
 //!   integration transport follows the canonical HTTP semantic mapping.

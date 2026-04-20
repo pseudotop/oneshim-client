@@ -17,6 +17,12 @@ use crate::error::CoreError;
 ///   `CoreError::ServiceUnavailable` (wire: `service.unavailable`,
 ///   iter-109 re-route from Internal) — the embedding service is
 ///   unavailable in this build.
+/// - Local adapters WITH `fastembed-local` enabled: runtime ML inference
+///   faults (mutex poison, fastembed library error, empty-result
+///   fallback, `spawn_blocking` JoinError) emit `CoreError::Internal`
+///   (wire: `internal.generic`) with a context-prefixed message. These
+///   are genuine internal faults — the embedding library misbehaved in
+///   a way that doesn't fit Network/Analysis/Storage semantics.
 #[async_trait]
 pub trait EmbeddingProvider: Send + Sync {
     /// Embed a single text into a vector of floats.

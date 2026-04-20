@@ -16,8 +16,8 @@ use crate::models::intent::AutomationIntent;
 ///   `CoreError::Auth` (401/403), `CoreError::RequestTimeout` (408/504),
 ///   `CoreError::RateLimit` (429), `CoreError::ServiceUnavailable`
 ///   (502/503). See `docs/guides/http-status-error-mapping.md`.
-/// - `CoreError::Network` (wire: `network.connection_failed`) for
-///   pre-response transport failures.
+/// - `CoreError::Network` (wire: `network.generic`) for pre-response
+///   transport failures (DNS, connection refused).
 /// - Caller-side gate: "IntentPlanner is not configured" surfaces as
 ///   `CoreError::Config { code: ConfigCode::Missing }` from the
 ///   dispatch layer (iter-100), not inside this port's impls.

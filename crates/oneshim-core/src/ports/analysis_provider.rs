@@ -17,8 +17,9 @@ use crate::models::suggestion::Suggestion;
 ///   `CoreError::Auth` (401/403), `CoreError::RequestTimeout` (408/504),
 ///   `CoreError::RateLimit` (429), `CoreError::ServiceUnavailable` (502/503).
 ///   See `docs/guides/http-status-error-mapping.md` for the full table.
-/// - `CoreError::Network` (wire: `network.connection_failed`) for
-///   pre-response transport failures (DNS, connection refused).
+/// - `CoreError::Network` (wire: `network.generic`) for pre-response
+///   transport failures (DNS, connection refused) that don't match the
+///   timeout / rate-limit / service-unavailable specific variants.
 #[async_trait]
 pub trait AnalysisProvider: Send + Sync {
     /// Analyze assembled context and return productivity suggestions.
