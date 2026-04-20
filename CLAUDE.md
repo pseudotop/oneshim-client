@@ -162,6 +162,16 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `sse_client.rs`: `SseStreamClient` — SSE stream + auto-reconnect (exponential backoff 1s→30s)
 - `compression.rs`: `AdaptiveCompressor` — auto selection of gzip/zstd/lz4
 - `batch_uploader.rs`: `BatchUploader` — Lock-free SegQueue + dynamic batch size + retry
+- `circuit_breaker.rs`: per-endpoint circuit breaker + `serial_test` guarded flake-free tests (iter-X fix in ADR-019 audit)
+- `connectivity.rs`: connectivity detection + backoff helpers
+- `resilience.rs`: shared resilience primitives
+- `error.rs`: `NetworkError` enum (13 variants, typed-code per ADR-019)
+- `http_api_session/`: HTTP-based `ApiSession` (stateful chat/tool-calling) — directory module with anthropic.rs, google.rs, openai.rs provider-specific request builders, mod.rs orchestrator, tests.rs
+- `local_llm_session.rs`: local `ApiSession` via subprocess LLM (bridges via `subprocess_provider`)
+- `analysis_client.rs`: analysis provider client
+- `remote_embedding_client.rs`: remote embedding provider (`#[cfg(feature = "embedding-remote")]` or similar)
+- `oauth/`: OAuth 2.0 flow helpers — directory module
+- `proto/`: protobuf-generated types (tonic-build output)
 - `ai_llm_client/`: `RemoteLlmProvider` — directory module (ADR-003)
   - `mod.rs`: `RemoteLlmProvider` struct + `LlmProvider` impl + re-exports
   - `request.rs`: request building helpers per provider type
@@ -199,13 +209,16 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
     - `static_auth.rs`: static token authentication
     - `tests.rs`: unit tests
 - **gRPC Client** (`#[cfg(feature = "grpc")]`):
-  - `grpc/mod.rs`: module exports + `GrpcConfig`
+  - `grpc/mod.rs`: module exports
+  - `grpc/config.rs`: `GrpcConfig` — endpoints, fallback ports, TLS options
   - `grpc/auth_client.rs`: `GrpcAuthClient` — Login, Logout, RefreshToken, ValidateToken
   - `grpc/session_client.rs`: `GrpcSessionClient` — CreateSession, EndSession, Heartbeat
   - `grpc/context_client.rs`: `GrpcContextClient` — UploadBatch, SubscribeSuggestions, SendFeedback, ListSuggestions
+  - `grpc/health_client.rs`: `GrpcHealthClient` — Consumer Contract `ClientHealth.Ping` RPC
   - `grpc/unified_client.rs`: `UnifiedClient` — gRPC + REST unified client, Feature Flag based switching
   - `grpc/api_adapter.rs`: `GrpcApiAdapter` — `impl ApiClient` bridging UnifiedClient + HttpApiClient REST fallback
   - `grpc/sse_adapter.rs`: `GrpcSseAdapter` — `impl SseClient` bridging gRPC streaming to SuggestionReceiver
+  - `grpc/error_mapping.rs`: tonic `Status` → `NetworkError` conversion (maps gRPC codes → typed network variants)
 
 ### oneshim-suggestion (Suggestion Pipeline)
 - `receiver.rs`: SSE → `Suggestion` conversion + queue + notification
