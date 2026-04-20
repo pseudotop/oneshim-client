@@ -197,6 +197,6 @@ where `code` matches the ADR-019 wire-format registry.
 
 ## Implementation Plan
 
-~~See paired plan doc: `docs/reviews/2026-04-20-adr019-followup-ipc-error-dto-plan.md` (to be authored).~~ Execution shipped directly from this design's risk-order list (no separate plan doc authored) across 6 batches = iter-196 infrastructure batch (DTO + 12 From impls + 10 Rust contract tests + frontend TS guard) + 5 command-migration batches in iter-197/199/201/203/204 — see post-execution banner.
+~~See paired plan doc: `docs/reviews/2026-04-20-adr019-followup-ipc-error-dto-plan.md` (to be authored).~~ Execution shipped directly from this design's risk-order list (no separate plan doc authored) across 6 batches = iter-196 Rust infrastructure batch (DTO + 12 From impls + 10 Rust contract tests) + 5 command-migration batches (iter-197 also bundled the frontend TS guard — `IpcError` interface + `isIpcError` + `errorMessageFromInvoke` + 13 Vitest tests — alongside its 3-file migration batch; iter-199/201/203/204 are pure command migrations) — see post-execution banner.
 
 **Total effort estimate:** ~0.5 day (infrastructure + 1 command file migrated for PR1) + ~1 day (remaining 19 command files migrated + tests + frontend type) = **~1.5 day** staged across 2-3 PRs. *(At ship: real scan found 17 command files total, so post-PR1 the remaining batch was 16 files — see post-execution banner at the top of this file.)*
