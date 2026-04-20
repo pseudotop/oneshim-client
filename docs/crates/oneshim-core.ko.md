@@ -403,7 +403,7 @@ pub enum ExternalDataPolicy {
 ///
 /// URL 문자열 매칭 대신 명시적 enum으로 제공자를 구분한다.
 /// OSS 아키텍처에서 특정 벤더가 특권을 갖지 않도록 설정 파일 주도 방식으로 설계.
-/// `ai_llm_client.rs`와 `ai_ocr_client.rs`가 이 값을 읽어 요청 형식과
+/// `ai_llm_client/`와 `ai_ocr_client/` (ADR-003 디렉토리 모듈)가 이 값을 읽어 요청 형식과
 /// 인증 헤더를 결정하는 벤더 중립적 분기를 수행한다.
 pub enum AiProviderType {
     Anthropic,  // Anthropic Claude API — x-api-key 헤더 + /v1/messages 형식

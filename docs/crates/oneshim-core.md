@@ -404,7 +404,7 @@ pub enum ExternalDataPolicy {
 /// Distinguishes providers via explicit enum instead of URL string matching.
 /// Designed with a config-file-driven approach so no specific vendor holds
 /// privileges in the OSS architecture.
-/// `ai_llm_client.rs` and `ai_ocr_client.rs` read this value to perform
+/// `ai_llm_client/` and `ai_ocr_client/` (directory modules per ADR-003) read this value to perform
 /// vendor-neutral branching that determines request format and auth headers.
 pub enum AiProviderType {
     Anthropic,  // Anthropic Claude API — x-api-key header + /v1/messages format

@@ -195,7 +195,7 @@ pub enum AiProviderType {
 }
 ```
 
-#### RemoteLlmProvider (ai_llm_client.rs)
+#### RemoteLlmProvider (ai_llm_client/)
 
 `LlmProvider` 포트 구현 — 세정된 텍스트를 외부 LLM API로 전송해 UI 자동화 의도를 해석한다.
 이미지는 전송하지 않으며, Privacy Gateway를 통해 PII 필터가 적용된 텍스트만 전달한다.
@@ -225,7 +225,7 @@ impl LlmProvider for RemoteLlmProvider {
 - `AiProviderType::OpenAi` / `Generic` → `POST /v1/chat/completions`, `Bearer` 토큰, `choices[0].message.content` 파싱
 - `AiProviderType::Google` → `candidates[0].content.parts[0].text` 파싱
 
-#### RemoteOcrProvider (ai_ocr_client.rs)
+#### RemoteOcrProvider (ai_ocr_client/)
 
 `OcrProvider` 포트 구현 — 스크린샷(Base64)을 외부 AI Vision API로 전송해 텍스트와 바운딩 박스를 추출한다.
 이미지 전송 전 Privacy Gateway를 통한 PII 블러 및 사용자 동의 확인이 필수다.

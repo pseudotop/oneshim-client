@@ -212,7 +212,7 @@ pub enum AiProviderType {
 }
 ```
 
-#### RemoteLlmProvider (ai_llm_client.rs)
+#### RemoteLlmProvider (ai_llm_client/)
 
 `LlmProvider` port implementation — sends sanitized text to an external LLM API to interpret UI automation intents.
 Does not send images; only PII-filtered text is transmitted through the Privacy Gateway.
@@ -242,7 +242,7 @@ impl LlmProvider for RemoteLlmProvider {
 - `AiProviderType::OpenAi` / `Generic` → `POST /v1/chat/completions`, `Bearer` token, parses `choices[0].message.content`
 - `AiProviderType::Google` → parses `candidates[0].content.parts[0].text`
 
-#### RemoteOcrProvider (ai_ocr_client.rs)
+#### RemoteOcrProvider (ai_ocr_client/)
 
 `OcrProvider` port implementation — sends screenshots (Base64) to an external AI Vision API to extract text and bounding boxes.
 PII blurring through the Privacy Gateway and user consent verification are required before sending images.
