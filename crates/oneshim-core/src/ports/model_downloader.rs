@@ -16,13 +16,15 @@ use crate::models::audio::{DownloadProgress, ModelDownloadStatus};
 ///   (`auth.failed` / `not_found.resource_missing` for 404 /
 ///   `network.timeout` / `network.rate_limit` / `service.unavailable`).
 ///   See `docs/guides/http-status-error-mapping.md`.
-/// - `CoreError::AudioCapture` (wire: `audio.capture_failed`) for
-///   filesystem failures during the download (tempdir creation, chunk
-///   write, rename to final path). Also emitted on user cancellation.
+/// - `CoreError::AudioCapture` (wire: `audio.capture_failed`) for ALL
+///   filesystem failures across `download` AND `delete_model` (tempdir
+///   creation, chunk write, rename to final path, final-file delete).
+///   Also emitted on user cancellation. This is a deliberate grouping
+///   decision: every filesystem fault that blocks the Whisper audio
+///   feature surfaces under a single wire code so the frontend can
+///   show a unified "audio unavailable" recovery path.
 /// - reqwest-level timeouts (pre-HTTP-status) route to
 ///   `CoreError::RequestTimeout` per iter-90 canonical split.
-/// - `delete_model` emits `CoreError::Io` via `#[from]` for filesystem
-///   errors.
 #[async_trait]
 pub trait ModelDownloader: Send + Sync {
     /// Start downloading a Whisper model. Sends progress to `progress_tx`.

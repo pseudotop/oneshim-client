@@ -11,11 +11,15 @@ use crate::models::recalibration::RegimeOverride;
 /// Async port for CRUD operations on regime overrides.
 ///
 /// # Errors
-/// `CoreError::Storage` (wire: `storage.failed`) for SQLite operations
-/// (iter-47 mass fix pattern). `delete_override` with an unknown ID is
-/// treated as rowcount=0 by current adapters and returns `Ok(())`
-/// rather than a distinct NotFound. Empty range results from
-/// `list_overrides` are `Ok(Vec::new())`.
+/// - `CoreError::Storage` (wire: `storage.failed`) for SQLite operations
+///   (iter-47 mass fix pattern).
+/// - `CoreError::NotFound` (wire: `resource.not_found`,
+///   `resource_type = "RegimeOverride"`) from `delete_override` when the
+///   `override_id` doesn't match any row (rowcount=0 after DELETE). This
+///   diverges from session_storage/preset_storage, which treat rowcount=0
+///   as a no-op — override deletion is a user-explicit action, so
+///   unknown-ID is surfaced distinctly.
+/// - Empty range results from `list_overrides` are `Ok(Vec::new())`.
 #[async_trait]
 pub trait OverrideStore: Send + Sync {
     /// Persist a new user override.
