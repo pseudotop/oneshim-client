@@ -85,7 +85,7 @@ client-rust/
     ├── oneshim-lint/       # Workspace lint tool (language-check binary)
     ├── oneshim-api-contracts/ # Shared API type contracts
     ├── oneshim-audio/      # Audio capture and speech-to-text — cpal + whisper-rs
-    └── oneshim-app/        # ⚠️ DEPRECATED — removed from workspace (replaced by src-tauri)
+    └── oneshim-sandbox-worker/ # Out-of-process sandboxed automation action executor (stdin JSON → stdout JSON under platform sandbox)
 ```
 
 ## Core Architecture Rules
@@ -105,6 +105,7 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-embedding   ←  oneshim-core
               ←  oneshim-audio
               ←  oneshim-api-contracts
+              ←  oneshim-sandbox-worker  (standalone binary: stdin JSON → stdout JSON)
               ←  src-tauri           ←  (all, Tauri v2 main binary)
 
 oneshim-lint     (standalone — no oneshim-core dependency)
@@ -315,12 +316,17 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `cloud_stt.rs`: `CloudSttProvider` — cloud-based STT fallback (`#[cfg(feature = "cloud-stt")]`)
 - `model_downloader.rs`: Whisper model download support (`#[cfg(feature = "download")]`)
 
-### oneshim-app (crates/oneshim-app/) — DEPRECATED
-> **Removed from workspace.** Replaced by `src-tauri/` which is the active binary crate
-> (also named `oneshim-app` as its package). Do not add new code here.
+### oneshim-sandbox-worker (Sandboxed Automation Executor)
+- `main.rs`: Out-of-process action executor. Spawned by the parent `src-tauri` with platform sandbox constraints (Job Object on Windows, seccomp+Landlock on Linux, App Sandbox on macOS) already applied. Reads a `SandboxRequest` JSON from stdin, runs the `AutomationAction` via `oneshim-core` models, writes a `SandboxResponse` JSON to stdout. Keeps the main process isolated from action-side crashes and containment failures. Binary target: `oneshim-sandbox-worker`.
+
+### oneshim-app (formerly crates/oneshim-app/) — REMOVED
+> The `crates/oneshim-app/` directory no longer exists in the workspace.
+> Replaced by `src-tauri/` which is the active main binary crate (its package
+> name is still `oneshim-app` for external build-script compatibility).
 >
 > Legacy modules (scheduler, focus_analyzer, updater, lifecycle, etc.) have been
-> migrated into `src-tauri/src/`.
+> migrated into `src-tauri/src/`. Any reference to `crates/oneshim-app/*` in older
+> docs or commit messages is historical.
 
 ## Key Dependencies
 
