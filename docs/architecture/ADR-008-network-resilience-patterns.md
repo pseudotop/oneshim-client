@@ -131,11 +131,37 @@ pub struct CircuitBreaker {
 }
 ```
 
-Scope: Apply to `BatchUploader`. The flush path currently retries `max_retries`
-times per call with no memory across scheduler ticks, making it possible to
-hammer a permanently-down server on every 5-second cycle.
+Scope (2026-03-09 original): Apply to `BatchUploader`. The flush path currently
+retries `max_retries` times per call with no memory across scheduler ticks,
+making it possible to hammer a permanently-down server on every 5-second cycle.
 
 `HttpApiClient::execute_with_retry()` is already bounded per-call and is exempt.
+
+**Scope update 2026-04-20 (D7 broadening)**: The breaker now also guards
+`RemoteEmbeddingProvider`, `AnalysisClient`, `RemoteOcrProvider`,
+`RemoteLlmProvider`, and `HttpApiSession`. All 5 adapters resolve their
+per-endpoint breaker through a shared `CircuitBreakerRegistry` keyed by
+`scheme://host:port` so multiple adapters targeting the same endpoint
+(e.g., two OpenAI clients on different models) converge on one breaker.
+See [`docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md`](../superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md).
+
+Classification is centralized in `resilience::classify_for_breaker`:
+- 5xx / transport / 401 / 429 → `Failure` (endpoint health)
+- 2xx → `Success`
+- Other 4xx (400, 404, 422) → `Neutral` — caller bug; must not trip the
+  shared breaker for every other caller against the same endpoint
+
+Streaming sessions (`HttpApiSession`) use three-tier semantics: initial
+HTTP status drives the breaker; mid-stream disconnects do NOT record.
+This matches the BatchUploader pattern where "server acknowledged" = success.
+
+The Ollama model-capability probe in `ai_ocr_client::ensure_runtime_ocr_model_ready`
+is intentionally NOT wrapped — sidecar calls that fire once per request
+are out of scope; the main OCR send drives breaker state.
+
+Integration transports (`sync/remote_transport`, `integration/http_transport`)
+remain deferred — the breaker-placement decision (adapter layer vs port-trait
+layer) is its own follow-up pending the port-trait round.
 
 ---
 

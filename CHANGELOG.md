@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **D7 Circuit breaker broadening** (spec: [`docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md`](docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md)). Extends the existing `BatchUploader`-only circuit breaker to 5 additional adapters so a persistently unreachable AI endpoint fast-fails in microseconds instead of blocking every scheduler tick behind a 30–60 s timeout wall.
+  - **New infrastructure**: `CircuitBreakerRegistry` (shared per-endpoint `Arc<CircuitBreaker>` keyed by `scheme://host:port`), `resilience::classify_for_breaker` (centralized outcome classification), `resilience::endpoint_authority` (canonical registry key derivation with default-port normalization), `BreakerSignal` enum (`Success`/`Failure`/`Neutral`).
+  - **Adapter coverage** (5 new consumers): `RemoteEmbeddingProvider`, `AnalysisClient`, `RemoteOcrProvider`, `RemoteLlmProvider`, `HttpApiSession`.
+  - **New wire code**: `service.circuit_open` (ADR-019 catalog bumped 41 → 42). Distinguishes local-side breaker fast-fail from server-side 503 (`service.unavailable`) for observability and i18n.
+  - **Classification rules**: 5xx/401/429/transport → `Failure`; 2xx → `Success`; other 4xx (400, 404, 422) → `Neutral` (caller-bug category; must not trip the shared breaker for every other caller against the same endpoint).
+  - **Streaming semantics** (`HttpApiSession` spec O2): three-tier — initial HTTP status drives the breaker; mid-stream disconnects do NOT record. Matches `BatchUploader` precedent that "server acknowledged receipt" = success signal.
+  - **Tests**: ~34 new tests across the 5 adapters, including `shared_registry_trips_across_adapters` (validates cross-adapter state propagation via shared registry) and `breaker_not_affected_by_caller_bug_4xx` (locks `Neutral` semantics).
+
+### Changed
+
+- **`BatchUploader` circuit-open wire code rename** (D7): `NetworkError::CircuitOpen` previously mapped to `service.unavailable`; now maps to `service.circuit_open`. Users of structured logs or Grafana alerts filtering on the old code should match both during the deploy window. No code changes on the failure condition — just the wire code.
+
 - **ADR-019** Error Code Infrastructure + C5 AWS Bedrock intentional non-support. See [ADR-019](docs/architecture/ADR-019-error-code-infrastructure.md) (with Korean companion).
   - **Typed code on every error**: Every struct-variant of `CoreError` (28 struct + 2 `#[from]`-wrapped = 30 total) and `GuiInteractionError` (8 variants) carries a typed `code: XxxCode` field; the 2 `#[from]` variants derive their code via `impl CoreError::code()` per ADR-019 §7. `err.code() -> &'static str` is the unified wire-format entry point for Grafana/logs/i18n.
   - **Single-source wire contract**: 18 typed code enums under `crates/oneshim-core/src/error_codes/` generated via a `define_code_enum!` macro. Wire-format contract locked via `crates/oneshim-core/tests/wire_contract_snapshot.rs`.

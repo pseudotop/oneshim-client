@@ -95,7 +95,9 @@ async fn run_llm_smoke() {
 
 async fn run_ocr_smoke() {
     let endpoint = build_endpoint(SmokeTarget::Ocr);
-    let provider = RemoteOcrProvider::new(&endpoint).expect("OCR provider setup failed");
+    let provider =
+        RemoteOcrProvider::new(&endpoint, oneshim_network::CircuitBreakerRegistry::new())
+            .expect("OCR provider setup failed");
 
     let mut last_err = None;
     for attempt in 1..=2 {
