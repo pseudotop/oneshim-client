@@ -71,13 +71,11 @@ pub struct HttpApiSessionInit {
 }
 
 #[derive(Debug, Default)]
-#[allow(dead_code)] // Fields read in Task 2-5 (vision, structured output, tool calling)
 struct RequestOptions<'a> {
     response_format: Option<&'a serde_json::Value>,
     tools: Option<&'a [ToolDefinition]>,
 }
 
-#[allow(dead_code)] // Used in Task 5 (tool calling SSE parsing)
 struct PartialToolCall {
     id: String,
     name: String,
