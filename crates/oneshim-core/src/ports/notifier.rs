@@ -1,6 +1,7 @@
 //! Desktop notification port — defines the contract for displaying
 //! OS-native notifications (suggestions, alerts, errors).
-//! Implemented by `DesktopNotifierImpl` in platform-specific adapters.
+//! Implemented by `TauriNotifier` (production, uses `tauri_plugin_notification`)
+//! and `LogOnlyNotifier` (fallback, log-only) in `src-tauri/src/agent_runtime_support.rs`.
 
 use async_trait::async_trait;
 
