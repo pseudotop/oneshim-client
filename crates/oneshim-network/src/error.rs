@@ -21,21 +21,8 @@ pub enum NetworkError {
     #[error("authentication failed: {0}")]
     Auth(String),
 
-    #[error("OAuth error for {provider}: {message}")]
-    OAuth { provider: String, message: String },
-
-    #[error("OAuth refresh failed for {provider}: [{kind:?}] {message}")]
-    OAuthRefresh {
-        provider: String,
-        kind: oneshim_core::ports::oauth::OAuthErrorKind,
-        message: String,
-    },
-
     #[error("{resource_type} not found: {id}")]
     NotFound { resource_type: String, id: String },
-
-    #[error("serialization error: {0}")]
-    Serialization(String),
 
     #[error("configuration error: {0}")]
     Config(String),
@@ -48,12 +35,6 @@ pub enum NetworkError {
 
     #[error("policy denied: {0}")]
     PolicyDenied(String),
-
-    #[error("OCR error: {0}")]
-    Ocr(String),
-
-    #[error("secret store error: {0}")]
-    SecretStore(String),
 
     #[error("internal error: {0}")]
     Internal(String),
@@ -86,29 +67,10 @@ impl From<NetworkError> for CoreError {
                 code: oneshim_core::error_codes::AuthCode::Failed,
                 message: msg,
             },
-            NetworkError::OAuth { provider, message } => CoreError::OAuthError {
-                code: oneshim_core::error_codes::OAuthCode::Failed,
-                provider,
-                message,
-            },
-            NetworkError::OAuthRefresh {
-                provider,
-                kind,
-                message,
-            } => CoreError::OAuthRefreshError {
-                code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
-                provider,
-                kind,
-                message,
-            },
             NetworkError::NotFound { resource_type, id } => CoreError::NotFound {
                 code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type,
                 id,
-            },
-            NetworkError::Serialization(msg) => CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
-                message: format!("serialization: {msg}"),
             },
             NetworkError::Config(msg) => CoreError::Config {
                 code: oneshim_core::error_codes::ConfigCode::Invalid,
@@ -125,14 +87,6 @@ impl From<NetworkError> for CoreError {
             },
             NetworkError::PolicyDenied(msg) => CoreError::PolicyDenied {
                 code: oneshim_core::error_codes::PolicyCode::Denied,
-                message: msg,
-            },
-            NetworkError::Ocr(msg) => CoreError::OcrError {
-                code: oneshim_core::error_codes::ProviderCode::OcrFailed,
-                message: msg,
-            },
-            NetworkError::SecretStore(msg) => CoreError::SecretStoreError {
-                code: oneshim_core::error_codes::SecretCode::Failed,
                 message: msg,
             },
             NetworkError::Internal(msg) => CoreError::Internal {
