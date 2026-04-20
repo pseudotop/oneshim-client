@@ -46,6 +46,7 @@ mod integration_prompt_delivery;
 #[cfg(feature = "server")]
 mod integration_runtime;
 mod integrity_guard;
+mod ipc_error;
 mod launch_resources;
 mod lifecycle;
 mod log_retention;
