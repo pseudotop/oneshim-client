@@ -51,7 +51,7 @@ Each follow-up design doc enumerates its own out-of-scope items. Cross-cutting n
 
 ## Progress Tracking
 
-- [x] Follow-up #1 — ✅ **Infrastructure landed iter-196** (2026-04-20). `src-tauri/src/ipc_error.rs` with `IpcError { code, message }` + 11 From-chain impls (CoreError, GuiInteractionError, 6 unconditional adapters + 2 feature-gated + 2 stdlib) + 10 contract tests. The 112 command signature migrations follow in subsequent PRs per the staged plan.
+- [⏳] Follow-up #1 — 🟡 **Infrastructure + first 8 migrations shipped** (iter-196/197). `src-tauri/src/ipc_error.rs` with DTO + 11 From-chain impls + 10 contract tests (iter-196). `crates/oneshim-web/frontend/src/api/desktop.ts` with `IpcError` TS interface + `isIpcError` type guard + `errorMessageFromInvoke` helper + 13 Vitest unit tests (iter-197). 3 command files migrated (onboarding/detection/focus, 8/112 signatures ~7%). Remaining 104 signatures migrate in subsequent PRs per the risk-ordered plan: read-only first (capture_status/coaching/dashboard ~50), then state-mutating (settings/permissions/automation/sync/audio/suggestions ~40), then streaming (ai_session/analysis/integration/capture/bug_report/error_report/suggestion_parser ~50).
 - [ ] Follow-up #2 — design landed 2026-04-20, awaiting ops scheduling
 - [ ] Follow-up #3 — design landed 2026-04-20, blocked on #1
 - [ ] Follow-up #4 — evergreen, re-evaluate quarterly against Grafana telemetry
