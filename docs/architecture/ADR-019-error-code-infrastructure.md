@@ -118,7 +118,7 @@ When a new `#[from]`-wrapped external error type is added to `CoreError`:
 3. **Frontend i18n wiring** — feed `err.code()` strings as translation keys in the frontend i18n layer. Requires a fallback message when a key is missing. ~1 day.
 4. **`Internal` code granularity refinement** — at Phase 4 end, `InternalCode` has `Generic`, `Io`, `Serialization`. Post-merge drift audit iters 88~109 re-routed ~122 Internal emissions to more specific variants (Config.Missing/Invalid/OutOfRange, NotFound, ServiceUnavailable, InvalidArguments, Analysis, OcrError). Current Internal callsite count: ~294 (was ~416 at Phase 4 end). Further subdivision driven by production telemetry signals remains evergreen.
 5. **Sandbox variant consolidation** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` overlap semantically; could unify under a single variant. Separate refactor, not blocking.
-6. **`sync/lan_transport::authenticate_with_peer` regression tests** — LAN sync enforces TLS-only, so mockito HTTP mock doesn't work. Writing a rustls-TlsAcceptor test fixture with generated certs is feasible but disproportionate for a defensive code path (semantic mapping is implemented per §12; see `docs/guides/http-status-error-mapping.md` for deferral rationale).
+6. **`sync/lan_transport::authenticate_with_peer` regression tests** — LAN sync enforces TLS-only, so mockito HTTP mock doesn't work. Writing a rustls-TlsAcceptor test fixture with generated certs is feasible but disproportionate for a defensive code path (semantic mapping is implemented per the canonical HTTP status pattern; see `docs/guides/http-status-error-mapping.md` for the pattern registry and deferral rationale).
 
 ### Post-merge test coverage additions
 

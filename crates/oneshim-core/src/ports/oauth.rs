@@ -94,8 +94,12 @@ pub enum RefreshResult {
 ///   RFC 6749 error classification (`invalid_grant`, `invalid_client`,
 ///   `server_error`). See `oneshim-network::oauth::token_exchange`.
 /// - `CoreError::OAuthRefreshError` (wire: `oauth.refresh_failed`)
-///   for refresh-specific failures (see ADR-019 §3.5 for the
-///   `OAuthErrorKind` classification carried in the variant).
+///   for refresh-specific failures. The variant carries a typed
+///   `OAuthErrorKind` (InvalidGrant/InvalidClient/InvalidScope/
+///   ServerError/NetworkError/RateLimited/Unknown) classified from
+///   the HTTP response per RFC 6749. See
+///   `oneshim-network/src/oauth/token_exchange.rs::classify_error_response`
+///   for the full status-to-kind mapping.
 /// - `CoreError::Auth` (wire: `auth.failed`) for session-token-level
 ///   auth failures distinct from the OAuth flow itself.
 /// - `CoreError::SecretStoreError` (wire: `secret.failed`) when

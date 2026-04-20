@@ -125,8 +125,9 @@ pub enum CoreError {
     // === `#[from]`-wrapped external error types ===
     // Wire codes are hardcoded in Display templates because these variants do
     // not carry a typed `code:` field (spec §4.6). Must stay in sync with the
-    // `impl code()` arms in this file. Wire-format immutability (ADR-019 §7.5)
-    // means these strings won't change.
+    // `impl code()` arms in this file. Wire-format immutability (ADR-019 §1,
+    // "Released code strings are immutable (wire contract)") means these
+    // strings won't change.
     #[error("Serialization error [internal.serialization]: {0}")]
     Serialization(#[from] serde_json::Error),
 
