@@ -27,7 +27,7 @@
  * });
  * ```
  *
- * Post-migration (all 114 commands across 17 files migrated in iter-196~204),
+ * Post-migration (iter-196~204 migrated every command-decorated function; iter-204 milestone counted 114/17, current `grep -cE "#\[(tauri::)?command\]"` shows 106/19),
  * the typed envelope is the norm. The `isIpcError` type guard + plain-string
  * fallback below remain for defence-in-depth — e.g., future commands that
  * haven't been converted, or legacy callers running during a rollback window.

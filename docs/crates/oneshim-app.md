@@ -25,7 +25,7 @@ src-tauri/src/  (package: oneshim-app)
 ├── autostart.rs                 # Auto-start configuration (launchd/registry)
 ├── ipc_error.rs                 # IpcError DTO for Tauri IPC (ADR-019 Follow-up #1)
 ├── notification_manager.rs      # Cooldown-based notification manager
-├── commands/                    # 114 Tauri IPC command handlers across 17 files (directory module)
+├── commands/                    # 106 Tauri IPC command handlers across 19 files (directory module; all return `Result<_, IpcError>` per ADR-019 Follow-up #1)
 ├── scheduler/                   # 16-loop background scheduler (directory module)
 │   ├── config.rs, mod.rs
 │   ├── analysis_pipeline/, gui_pipeline.rs, heatmap.rs, shared_regime_state.rs

@@ -25,7 +25,7 @@ src-tauri/src/  (패키지: oneshim-app)
 ├── autostart.rs                 # 자동 시작 설정 (launchd/레지스트리)
 ├── ipc_error.rs                 # IpcError DTO — Tauri IPC (ADR-019 Follow-up #1)
 ├── notification_manager.rs      # 쿨다운 기반 알림 매니저
-├── commands/                    # 114개 Tauri IPC command 핸들러 (17 파일, 디렉토리 모듈)
+├── commands/                    # 106개 Tauri IPC command 핸들러 (19 파일, 디렉토리 모듈; ADR-019 Follow-up #1 로 모두 `Result<_, IpcError>` 반환)
 ├── scheduler/                   # 16 루프 백그라운드 스케줄러 (디렉토리 모듈)
 │   ├── config.rs, mod.rs
 │   ├── analysis_pipeline/, gui_pipeline.rs, heatmap.rs, shared_regime_state.rs
