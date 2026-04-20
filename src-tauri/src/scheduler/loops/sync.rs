@@ -120,14 +120,14 @@ impl Scheduler {
                                 debug!("cross-device sync cycle: no changes or skipped");
                             }
                             Err(e) => {
-                                warn!("cross-device sync cycle failed: {e}");
+                                warn!(err.code = %e.code(), "cross-device sync cycle failed: {e}");
                             }
                         }
                     }
                     _ = shutdown_rx.changed() => {
                         // Push pending changes before shutdown
                         if let Err(e) = engine.run_cycle().await {
-                            warn!("shutdown sync push failed: {e}");
+                            warn!(err.code = %e.code(), "shutdown sync push failed: {e}");
                         }
                         info!("cross-device sync loop ended");
                         break;
