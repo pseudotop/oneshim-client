@@ -10,7 +10,18 @@ use oneshim_core::models::ai_session::{
 use oneshim_core::ports::conversation_session::SessionManager;
 
 use crate::commands::suggestion_parser::try_extract_suggestions;
+use crate::ipc_error::IpcError;
 use crate::runtime_state::{AiSessionRuntimeState, AppState, SuggestionRuntimeState};
+
+/// Canonical "Suggestions not available" error — suggestion manager missing.
+fn suggestions_not_available() -> IpcError {
+    IpcError::new("service.unavailable", "Suggestions not available")
+}
+
+/// Canonical "AI sessions not available" error — AI session manager missing.
+fn ai_sessions_not_available() -> IpcError {
+    IpcError::new("service.unavailable", "AI sessions not available")
+}
 
 /// Enqueue a failed feedback for background retry and persist to SQLite.
 /// SQLite persist happens synchronously (primary durability guarantee).
@@ -80,8 +91,8 @@ fn source_label(source: &oneshim_core::models::suggestion::SuggestionSource) -> 
 #[command]
 pub async fn get_pending_suggestions(
     state: tauri::State<'_, SuggestionRuntimeState>,
-) -> Result<Vec<SuggestionViewDto>, String> {
-    let mgr = state.manager().ok_or("Suggestions not available")?;
+) -> Result<Vec<SuggestionViewDto>, IpcError> {
+    let mgr = state.manager().ok_or_else(suggestions_not_available)?;
 
     // Collect suggestions from queue into a Vec first, then drop the queue lock
     // BEFORE calling is_read() — is_read() acquires its own lock (read_ids),
@@ -128,8 +139,8 @@ pub async fn get_pending_suggestions(
 pub async fn get_suggestion_history(
     state: tauri::State<'_, SuggestionRuntimeState>,
     limit: Option<u32>,
-) -> Result<Vec<SuggestionHistoryDto>, String> {
-    let mgr = state.manager().ok_or("Suggestions not available")?;
+) -> Result<Vec<SuggestionHistoryDto>, IpcError> {
+    let mgr = state.manager().ok_or_else(suggestions_not_available)?;
 
     // Snapshot history entries and drop lock before calling is_read()
     let snapshot: Vec<_> = {
@@ -176,8 +187,8 @@ pub async fn submit_suggestion_feedback(
     suggestion_id: String,
     action: String,
     snooze_minutes: Option<u32>,
-) -> Result<(), String> {
-    let mgr = state.manager().ok_or("Suggestions not available")?;
+) -> Result<(), IpcError> {
+    let mgr = state.manager().ok_or_else(suggestions_not_available)?;
 
     // Send feedback to server (best-effort — enqueue for retry on failure)
     match action.as_str() {
@@ -250,7 +261,12 @@ pub async fn submit_suggestion_feedback(
             // Don't fall through to the accept/reject history block
             return Ok(());
         }
-        _ => return Err(format!("Unknown action: {action}. Use accept/reject/defer")),
+        _ => {
+            return Err(IpcError::new(
+                "validation.invalid_arguments",
+                format!("Unknown action: {action}. Use accept/reject/defer"),
+            ));
+        }
     }
 
     // Move accepted/rejected suggestion from queue to history.
@@ -307,20 +323,17 @@ pub async fn request_chat_suggestions(
     ai_state: tauri::State<'_, AiSessionRuntimeState>,
     suggestion_state: tauri::State<'_, SuggestionRuntimeState>,
     session_id: String,
-) -> Result<u32, String> {
+) -> Result<u32, IpcError> {
     let mgr = ai_state
         .manager_impl()
-        .ok_or_else(|| "AI sessions not available".to_string())?;
+        .ok_or_else(ai_sessions_not_available)?;
 
     let suggestion_mgr = suggestion_state
         .manager()
-        .ok_or_else(|| "suggestions not available".to_string())?;
+        .ok_or_else(suggestions_not_available)?;
 
     // Get session and send structured request
-    let session = mgr
-        .get_session(&session_id)
-        .await
-        .map_err(|e| format!("session not found: {e}"))?;
+    let session = mgr.get_session(&session_id).await.map_err(IpcError::from)?;
 
     let msg = SessionMessage {
         role: MessageRole::User,
@@ -331,10 +344,7 @@ pub async fn request_chat_suggestions(
         response_format: None,
     };
 
-    let mut stream = session
-        .send_message(&msg)
-        .await
-        .map_err(|e| format!("failed to send message: {e}"))?;
+    let mut stream = session.send_message(&msg).await.map_err(IpcError::from)?;
 
     // Drain stream and collect response text with a 60s timeout.
     // ResponseStream yields Result<OutboundMessage, CoreError>.
@@ -350,10 +360,13 @@ pub async fn request_chat_suggestions(
                     text = content;
                 }
                 Ok(OutboundMessage::Error { message, .. }) => {
-                    return Err(format!("AI error: {message}"));
+                    return Err(IpcError::new(
+                        "provider.analysis_failed",
+                        format!("AI error: {message}"),
+                    ));
                 }
                 Err(e) => {
-                    return Err(format!("Stream error: {e}"));
+                    return Err(IpcError::from(e));
                 }
                 _ => {}
             }
@@ -363,14 +376,19 @@ pub async fn request_chat_suggestions(
                 break;
             }
         }
-        Ok::<String, String>(text)
+        Ok::<String, IpcError>(text)
     })
     .await;
 
     let response_text = match drain_result {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => return Err(e),
-        Err(_) => return Err("Suggestion generation timed out after 60 seconds".to_string()),
+        Err(_) => {
+            return Err(IpcError::new(
+                "network.timeout",
+                "Suggestion generation timed out after 60 seconds",
+            ));
+        }
     };
 
     // Parse suggestions from response
@@ -405,14 +423,14 @@ pub async fn explain_suggestion_in_chat(
     suggestion_state: tauri::State<'_, SuggestionRuntimeState>,
     suggestion_id: String,
     session_id: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, IpcError> {
     let suggestion_mgr = suggestion_state
         .manager()
-        .ok_or_else(|| "suggestions not available".to_string())?;
+        .ok_or_else(suggestions_not_available)?;
 
     let ai_mgr = ai_state
         .manager_impl()
-        .ok_or_else(|| "AI sessions not available".to_string())?;
+        .ok_or_else(ai_sessions_not_available)?;
 
     // Find suggestion from queue or history.
     // Two-phase lookup: check queue first, then fall back to history.
@@ -435,7 +453,12 @@ pub async fn explain_suggestion_in_chat(
             .find(|e| e.suggestion.suggestion_id == suggestion_id);
         match entry {
             Some(e) => (e.suggestion.content.clone(), e.suggestion.reasoning.clone()),
-            None => return Err(format!("Suggestion {suggestion_id} not found")),
+            None => {
+                return Err(IpcError::new(
+                    "not_found.resource_missing",
+                    format!("Suggestion {suggestion_id} not found"),
+                ));
+            }
         }
     };
 
@@ -450,7 +473,12 @@ pub async fn explain_suggestion_in_chat(
                 .filter(|s| s.state == SessionState::Active || s.state == SessionState::Idle)
                 .max_by_key(|s| s.last_active)
                 .map(|s| s.session_id)
-                .ok_or_else(|| "No active chat session — open a chat first".to_string())?
+                .ok_or_else(|| {
+                    IpcError::new(
+                        "service.unavailable",
+                        "No active chat session — open a chat first",
+                    )
+                })?
         }
     };
 
@@ -460,12 +488,17 @@ pub async fn explain_suggestion_in_chat(
     match session_info {
         Some(info) if info.state == SessionState::Active || info.state == SessionState::Idle => {}
         Some(info) => {
-            return Err(format!(
-                "Session {} is not active (state: {:?})",
-                sid, info.state
-            ))
+            return Err(IpcError::new(
+                "validation.invalid_arguments",
+                format!("Session {} is not active (state: {:?})", sid, info.state),
+            ));
         }
-        None => return Err(format!("Session {sid} not found")),
+        None => {
+            return Err(IpcError::new(
+                "not_found.resource_missing",
+                format!("Session {sid} not found"),
+            ));
+        }
     }
 
     // Compose explain message
@@ -479,10 +512,7 @@ pub async fn explain_suggestion_in_chat(
 
     // Call session.send_message() directly and spawn a streaming task
     // that emits OutboundMessage events — replicating the pattern from ai_session.rs.
-    let session = ai_mgr
-        .get_session(&sid)
-        .await
-        .map_err(|e| format!("session error: {e}"))?;
+    let session = ai_mgr.get_session(&sid).await.map_err(IpcError::from)?;
 
     let user_content = prompt.clone();
     let msg = SessionMessage {
@@ -495,10 +525,7 @@ pub async fn explain_suggestion_in_chat(
     };
 
     let session_storage = ai_state.session_storage();
-    let stream = session
-        .send_message(&msg)
-        .await
-        .map_err(|e| format!("failed to send: {e}"))?;
+    let stream = session.send_message(&msg).await.map_err(IpcError::from)?;
 
     // Spawn streaming task to emit events + persist messages
     // (same pattern as send_session_message in ai_session.rs)
@@ -596,10 +623,10 @@ pub async fn explain_suggestion_in_chat(
 pub async fn save_suggestion_state(
     suggestion_state: tauri::State<'_, SuggestionRuntimeState>,
     app_state: tauri::State<'_, AppState>,
-) -> Result<u32, String> {
+) -> Result<u32, IpcError> {
     let mgr = suggestion_state
         .manager()
-        .ok_or("suggestions not available")?;
+        .ok_or_else(suggestions_not_available)?;
     let storage = &app_state.storage;
 
     let mut saved = 0u32;
@@ -662,8 +689,8 @@ pub struct SuggestionStatsDto {
 #[command]
 pub async fn get_suggestion_stats(
     state: tauri::State<'_, SuggestionRuntimeState>,
-) -> Result<SuggestionStatsDto, String> {
-    let mgr = state.manager().ok_or("suggestions not available")?;
+) -> Result<SuggestionStatsDto, IpcError> {
+    let mgr = state.manager().ok_or_else(suggestions_not_available)?;
     let stats = mgr.history().lock().await.stats();
     let rate = if stats.total > 0 {
         (stats.accepted as f64 / stats.total as f64) * 100.0
@@ -715,12 +742,12 @@ pub struct DailyStatDto {
 pub async fn get_suggestion_daily_stats(
     app_state: tauri::State<'_, AppState>,
     days: Option<u32>,
-) -> Result<Vec<DailyStatDto>, String> {
+) -> Result<Vec<DailyStatDto>, IpcError> {
     let days = days.unwrap_or(7).min(90);
     let records = app_state
         .storage
         .suggestion_daily_stats(days)
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
     Ok(records
         .into_iter()
         .map(|r| DailyStatDto {
@@ -751,8 +778,8 @@ pub struct DeferredSuggestionDto {
 #[command]
 pub async fn get_deferred_suggestions(
     state: tauri::State<'_, SuggestionRuntimeState>,
-) -> Result<Vec<DeferredSuggestionDto>, String> {
-    let mgr = state.manager().ok_or("suggestions not available")?;
+) -> Result<Vec<DeferredSuggestionDto>, IpcError> {
+    let mgr = state.manager().ok_or_else(suggestions_not_available)?;
     let deferred = mgr.deferred().lock().await;
     let now = chrono::Utc::now();
 

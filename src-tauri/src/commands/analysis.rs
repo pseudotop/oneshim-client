@@ -2,9 +2,16 @@ use serde::Serialize;
 use std::sync::atomic::Ordering;
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::{AppState, ConfigRuntimeState, EmbeddingRuntimeState};
 
 use super::deep_merge;
+
+// Note: `validate_analysis_config` returns Result<(), String> (preserved for
+// existing tests that substring-match). Its errors flow through
+// `ConfigManager::update_with`, which wraps them as CoreError::Config{Invalid}
+// — then From<CoreError> for IpcError produces `{code: "config.invalid", ...}`.
+// No local helper wrapper needed.
 
 /// 분석 설정 조회
 ///
@@ -13,7 +20,7 @@ use super::deep_merge;
 #[command]
 pub async fn get_analysis_config(
     state: tauri::State<'_, ConfigRuntimeState>,
-) -> Result<oneshim_core::config::AnalysisConfig, String> {
+) -> Result<oneshim_core::config::AnalysisConfig, IpcError> {
     let config = state.config_manager().get();
     Ok(config.analysis.clone())
 }
@@ -48,7 +55,7 @@ pub(crate) fn validate_analysis_config(
 pub async fn update_analysis_config(
     state: tauri::State<'_, ConfigRuntimeState>,
     patch: serde_json::Value,
-) -> Result<oneshim_core::config::AnalysisConfig, String> {
+) -> Result<oneshim_core::config::AnalysisConfig, IpcError> {
     let updated = state
         .config_manager()
         .update_with(|config| {
@@ -66,7 +73,7 @@ pub async fn update_analysis_config(
             config.analysis = new_analysis;
             Ok(())
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     Ok(updated.analysis)
 }
@@ -88,7 +95,7 @@ pub struct AnalysisStatusResponse {
 #[command]
 pub async fn get_analysis_status(
     state: tauri::State<'_, ConfigRuntimeState>,
-) -> Result<AnalysisStatusResponse, String> {
+) -> Result<AnalysisStatusResponse, IpcError> {
     let config = state.config_manager().get();
     let provider_name = config
         .ai_provider
@@ -113,11 +120,11 @@ pub async fn get_analysis_status(
 #[command]
 pub async fn reload_embedding_model(
     state: tauri::State<'_, EmbeddingRuntimeState>,
-) -> Result<u64, String> {
+) -> Result<u64, IpcError> {
     let reloadable = state
         .reloadable()
-        .ok_or_else(|| "Embedding provider not available".to_string())?;
-    reloadable.reload().map_err(|e| e.to_string())
+        .ok_or_else(|| IpcError::new("service.unavailable", "Embedding provider not available"))?;
+    reloadable.reload().map_err(IpcError::from)
 }
 
 /// Health status of the analysis LLM provider fallback chain.

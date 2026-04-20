@@ -9,6 +9,7 @@ use crate::feature_capabilities::{
     probe_provider_surface_endpoint as probe_provider_surface_endpoint_impl,
     FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
 };
+use crate::ipc_error::IpcError;
 use crate::runtime_state::{ConfigRuntimeState, SecretBackendCapabilities, SecretBackendState};
 use crate::services::log_helpers;
 use crate::updater::{UpdatePreview, Updater};
@@ -153,7 +154,7 @@ fn emit_frontend_log(level: &str, surface: &str, message: String, context: Optio
 #[command]
 pub async fn get_automation_status(
     state: tauri::State<'_, ConfigRuntimeState>,
-) -> Result<bool, String> {
+) -> Result<bool, IpcError> {
     Ok(state.config_manager().get().automation.enabled)
 }
 
@@ -161,7 +162,7 @@ pub async fn get_automation_status(
 #[command]
 pub async fn get_secret_backend_capabilities(
     state: tauri::State<'_, SecretBackendState>,
-) -> Result<SecretBackendCapabilities, String> {
+) -> Result<SecretBackendCapabilities, IpcError> {
     Ok(state.0.clone())
 }
 
@@ -169,7 +170,7 @@ pub async fn get_secret_backend_capabilities(
 #[command]
 pub async fn get_feature_capabilities(
     state: tauri::State<'_, FeatureCapabilityState>,
-) -> Result<FeatureCapabilitySnapshot, String> {
+) -> Result<FeatureCapabilitySnapshot, IpcError> {
     let secret_backend = state.0.clone();
     Ok(build_feature_capability_snapshot(&secret_backend).await)
 }
@@ -180,18 +181,19 @@ pub async fn probe_provider_surface_endpoint(
     surface_id: String,
     endpoint_kind: String,
     endpoint: String,
-) -> Result<ProviderEndpointProbeResult, String> {
+) -> Result<ProviderEndpointProbeResult, IpcError> {
     Ok(probe_provider_surface_endpoint_impl(&surface_id, &endpoint_kind, &endpoint).await)
 }
 
 #[command]
 pub async fn get_runtime_log_snapshot(
     line_limit: Option<usize>,
-) -> Result<RuntimeLogSnapshotDto, String> {
+) -> Result<RuntimeLogSnapshotDto, IpcError> {
     let line_limit = line_limit
         .unwrap_or(DEFAULT_LOG_LINE_LIMIT)
         .clamp(10, MAX_LOG_LINE_LIMIT);
     runtime_log_snapshot_from_dir(&log_helpers::runtime_log_dir(), line_limit)
+        .map_err(|msg| IpcError::new("internal.generic", msg))
 }
 
 #[command]
@@ -200,7 +202,7 @@ pub async fn record_frontend_log(
     level: String,
     message: String,
     context: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let surface = sanitize_frontend_surface(&surface);
     let surface = if surface.is_empty() {
         "unknown".to_string()
@@ -218,7 +220,12 @@ pub async fn record_frontend_log(
         "info" => "info",
         "warn" | "warning" => "warn",
         "error" => "error",
-        other => return Err(format!("Unsupported frontend log level: {other}")),
+        other => {
+            return Err(IpcError::new(
+                "validation.invalid_arguments",
+                format!("Unsupported frontend log level: {other}"),
+            ));
+        }
     };
     emit_frontend_log(level, &surface, message, context);
 
@@ -229,13 +236,13 @@ pub async fn record_frontend_log(
 #[command]
 pub async fn preview_update(
     state: tauri::State<'_, ConfigRuntimeState>,
-) -> Result<UpdatePreview, String> {
+) -> Result<UpdatePreview, IpcError> {
     let update_config = state.config_manager().get().update.clone();
     let updater = Updater::new(update_config);
     updater
         .preview_update_availability()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| IpcError::new("internal.generic", e.to_string()))
 }
 
 #[cfg(test)]
