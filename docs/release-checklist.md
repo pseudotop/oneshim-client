@@ -4,7 +4,7 @@
 
 ## Automated Gates (must be green)
 - [ ] Quick suite (PR CI) — all green
-- [ ] Nightly suite — last run green (within 24h)
+- [ ] `release-smoke.yml` — last run green on branch head
 - [ ] cargo-mutants score ≥ 70% on oneshim-core
 - [ ] Zero P0/P1 flaky tests in quarantine
 
@@ -27,4 +27,4 @@
 
 ## Sign-off
 - [ ] Maintainer approval
-- [ ] Tag created: `git tag -s v{VERSION}`
+- [ ] Release created via `./scripts/release.sh <VERSION>` (RC) or `./scripts/promote-stable.sh <RC-VERSION>` (stable promotion). **Do NOT use `git tag` directly** — `release.sh` synchronizes `CHANGELOG.md`, `Cargo.toml`, and `tauri.conf.json`, then creates the tag via verified signing. See [CLAUDE.md Release Process](../CLAUDE.md#release-process).
