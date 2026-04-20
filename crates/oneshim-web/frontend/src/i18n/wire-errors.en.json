@@ -35,6 +35,7 @@
   "sandbox.timeout": "Sandbox execution timed out",
   "sandbox.unsupported_platform": "Sandbox is not supported on this platform: {message}",
   "secret.failed": "Secret storage operation failed: {message}",
+  "service.circuit_open": "Network issue — we're pausing requests to let it recover",
   "service.unavailable": "Service temporarily unavailable: {message}",
   "storage.failed": "Local storage operation failed: {message}",
   "ui.element_missing": "UI element not found: {message}",

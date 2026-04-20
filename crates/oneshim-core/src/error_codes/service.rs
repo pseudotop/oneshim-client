@@ -3,6 +3,8 @@
 define_code_enum! {
     /// Service 카테고리 에러 코드.
     pub enum ServiceCode {
+        /// 로컬 서킷 브레이커가 열려 fast-fail 상태 (서버 측 장애와 구별).
+        CircuitOpen => "service.circuit_open",
         /// 서비스 일시 사용 불가.
         Unavailable => "service.unavailable",
     }
