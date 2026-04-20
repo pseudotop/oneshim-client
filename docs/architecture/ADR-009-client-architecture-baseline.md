@@ -2,7 +2,7 @@
 
 **Status**: Accepted
 **Date**: 2026-03-17
-**Scope**: `client-rust/`, with emphasis on `oneshim-app`, `oneshim-web`, integration runtime, and AI provider surfaces
+**Scope**: `client-rust/`, with emphasis on the `oneshim-app` package (now lives in `src-tauri/` — the former `crates/oneshim-app/` directory was removed by ADR-004 Tauri v2 migration; the package name `oneshim-app` is preserved), `oneshim-web`, integration runtime, and AI provider surfaces
 
 ---
 
