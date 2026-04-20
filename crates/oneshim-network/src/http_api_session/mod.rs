@@ -129,8 +129,8 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: msg,
         })?;
 
@@ -177,8 +177,8 @@ impl HttpApiSession {
                 code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
                 message: "AWS Bedrock is intentionally unsupported in this build".into(),
             }),
-            _ => Err(CoreError::Internal {
-                code: oneshim_core::error_codes::InternalCode::Generic,
+            _ => Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
                 message: format!("unsupported request shape for HTTP API session: {shape:?}"),
             }),
         }
@@ -194,8 +194,8 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: msg,
         })?;
 
@@ -312,8 +312,8 @@ impl ConversationSession for HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: msg,
         })?;
 

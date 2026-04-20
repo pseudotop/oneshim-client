@@ -8,14 +8,20 @@ use crate::models::bug_report::RuntimeLogSnapshot;
 /// Provides runtime log snapshots for bug reports.
 ///
 /// # Errors
-/// - `CoreError::Io` (wire: `internal.io`) — log directory read failure,
-///   file open failure, permission denied (propagated via `?` from
-///   `std::io::Error`).
-/// - `CoreError::Internal` (wire: `internal.generic`) — UTF-8 decode
-///   failure on corrupt log lines (adapters typically lossy-decode
-///   instead; check the implementation).
-/// - Absence of any log file on first launch is `Ok(RuntimeLogSnapshot::default())` /
-///   empty snapshot rather than Err.
+/// - `CoreError::Internal` (wire: `internal.generic`) — ALL file I/O
+///   failures from the reference `TauriRuntimeLogProvider` adapter
+///   (log directory read, log file open, log line read). The adapter
+///   uses a String-wrapping helper (`log_helpers::newest_log_file` /
+///   `tail_log_file`) that pre-formats `std::io::Error` into
+///   context-enriched strings, so the `#[from]` path to `CoreError::Io`
+///   isn't reached. Spec §4.6 forbids storing `InternalCode::Io` in
+///   `Internal { code }` — the current Internal.Generic + prefixed
+///   message is the canonical form for file-I/O errors that need
+///   context preservation. Future adapters MAY opt for `CoreError::Io`
+///   if they don't need context prefixes.
+/// - Absence of any log file on first launch is
+///   `Ok(RuntimeLogSnapshot { log_file: None, line_count: 0, recent_text: "" })`,
+///   not Err.
 #[async_trait]
 pub trait RuntimeLogProvider: Send + Sync {
     /// Read the tail of the most recent log file.
