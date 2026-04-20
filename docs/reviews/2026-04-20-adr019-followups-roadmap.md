@@ -55,6 +55,6 @@ Each follow-up design doc enumerates its own out-of-scope items. Cross-cutting n
 - [ ] Follow-up #2 — design landed 2026-04-20, awaiting ops scheduling
 - [ ] Follow-up #3 — design landed 2026-04-20, blocked on #1
 - [ ] Follow-up #4 — evergreen, re-evaluate quarterly against Grafana telemetry
-- [ ] Follow-up #5 — design landed 2026-04-20, awaiting plan + PR1 (fixture)
+- [x] Follow-up #5 — ✅ SHIPPED iter-194 (2026-04-20). Took the simpler pure-function-extraction approach instead of the initially-designed rustls-TlsAcceptor fixture — 6 tests cover the same 5 canonical statuses + a 403 variant.
 
 Update this table whenever a follow-up status changes.

@@ -97,31 +97,10 @@ impl LanSyncTransport {
             })?;
 
         if !challenge_resp.status().is_success() {
-            let status = challenge_resp.status();
-            let message = format!("challenge request to {peer_id} returned {status}");
-            // Semantic status mapping per iter-54..60 for LAN peer errors.
-            return Err(match status.as_u16() {
-                401 | 403 => CoreError::Auth {
-                    code: oneshim_core::error_codes::AuthCode::Failed,
-                    message,
-                },
-                408 | 504 => CoreError::RequestTimeout {
-                    code: oneshim_core::error_codes::NetworkCode::Timeout,
-                    timeout_ms: 0,
-                },
-                429 => CoreError::RateLimit {
-                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
-                    retry_after_secs: 60,
-                },
-                502 | 503 => CoreError::ServiceUnavailable {
-                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
-                    message,
-                },
-                _ => CoreError::Network {
-                    code: oneshim_core::error_codes::NetworkCode::Generic,
-                    message,
-                },
-            });
+            return Err(map_challenge_status_to_error(
+                challenge_resp.status().as_u16(),
+                peer_id,
+            ));
         }
 
         let challenge: ChallengeResponse =
@@ -222,5 +201,125 @@ impl LanSyncTransport {
     ) -> Result<String, CoreError> {
         let token = self.get_session_token(peer_id, peer).await?;
         Ok(token)
+    }
+}
+
+/// Map an HTTP status code from the `/sync/challenge` endpoint to a semantic
+/// `CoreError` per the canonical pattern in `docs/guides/http-status-error-mapping.md`.
+///
+/// 401/403 → `Auth { AuthCode::Failed }`
+/// 408/504 → `RequestTimeout { NetworkCode::Timeout }` (timeout_ms=0 is the
+///           sentinel for "server-reported timeout"; request-site logs the
+///           real client-side timeout separately)
+/// 429     → `RateLimit { NetworkCode::RateLimit, retry_after_secs=60 }`
+///           (60s default until we parse an actual `Retry-After` header here)
+/// 502/503 → `ServiceUnavailable { ServiceCode::Unavailable }`
+/// other   → `Network { NetworkCode::Generic }` (domain fallback)
+fn map_challenge_status_to_error(status_code: u16, peer_id: &str) -> CoreError {
+    let message = format!("challenge request to {peer_id} returned {status_code}");
+    match status_code {
+        401 | 403 => CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message,
+        },
+        408 | 504 => CoreError::RequestTimeout {
+            code: oneshim_core::error_codes::NetworkCode::Timeout,
+            timeout_ms: 0,
+        },
+        429 => CoreError::RateLimit {
+            code: oneshim_core::error_codes::NetworkCode::RateLimit,
+            retry_after_secs: 60,
+        },
+        502 | 503 => CoreError::ServiceUnavailable {
+            code: oneshim_core::error_codes::ServiceCode::Unavailable,
+            message,
+        },
+        _ => CoreError::Network {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message,
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR-019 §Known Follow-up #6 regression coverage.
+    /// Closes the LAN transport test gap (iter-98 covered the 14th dispatcher
+    /// `auth::refresh`; this is the 15th). Pattern mirrors the canonical
+    /// tests documented in `docs/guides/http-status-error-mapping.md`.
+
+    #[test]
+    fn map_challenge_status_401_maps_to_auth_failed() {
+        let err = map_challenge_status_to_error(401, "peer-a");
+        assert_eq!(err.code(), "auth.failed");
+        match err {
+            CoreError::Auth { message, .. } => {
+                assert!(message.contains("peer-a"));
+                assert!(message.contains("401"));
+            }
+            other => panic!("expected Auth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_challenge_status_403_maps_to_auth_failed() {
+        let err = map_challenge_status_to_error(403, "peer-b");
+        assert_eq!(err.code(), "auth.failed");
+    }
+
+    #[test]
+    fn map_challenge_status_429_maps_to_rate_limit() {
+        let err = map_challenge_status_to_error(429, "peer-c");
+        assert_eq!(err.code(), "network.rate_limit");
+        match err {
+            CoreError::RateLimit {
+                retry_after_secs, ..
+            } => {
+                assert_eq!(
+                    retry_after_secs, 60,
+                    "default retry_after_secs should be 60s when Retry-After header is not parsed"
+                );
+            }
+            other => panic!("expected RateLimit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_challenge_status_503_maps_to_service_unavailable() {
+        let err = map_challenge_status_to_error(503, "peer-d");
+        assert_eq!(err.code(), "service.unavailable");
+    }
+
+    #[test]
+    fn map_challenge_status_504_maps_to_request_timeout() {
+        let err = map_challenge_status_to_error(504, "peer-e");
+        assert_eq!(err.code(), "network.timeout");
+        match err {
+            CoreError::RequestTimeout { timeout_ms, .. } => {
+                assert_eq!(
+                    timeout_ms, 0,
+                    "server-reported timeout uses sentinel 0; client-side timeout logged elsewhere"
+                );
+            }
+            other => panic!("expected RequestTimeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_challenge_status_500_falls_back_to_network_generic() {
+        // Domain-fallback assertion per the canonical pattern — unknown statuses
+        // must not silently become Auth or ServiceUnavailable, they collapse
+        // into network.generic with the status number surfaced in the message.
+        let err = map_challenge_status_to_error(500, "peer-f");
+        assert_eq!(err.code(), "network.generic");
+        match err {
+            CoreError::Network { message, .. } => {
+                assert!(message.contains("peer-f"));
+                assert!(message.contains("500"));
+            }
+            other => panic!("expected Network, got {other:?}"),
+        }
     }
 }

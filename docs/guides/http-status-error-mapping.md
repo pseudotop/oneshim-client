@@ -114,7 +114,7 @@ This preserves domain context for the "didn't match any known status" bucket.
 | `oneshim-network::http_api_session` | ✓ | ✓ specific + fallback |
 | `oneshim-network::auth::login` | ✓ | ✓ specific + fallback |
 | `oneshim-network::auth::refresh` | ✓ | ✓ specific (4 arms: 401/429/503/504) + fallback (500) — added iter-98 |
-| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | ⏸ deferred — LAN sync enforces TLS-only; mock HTTP via mockito is insufficient. Would require rustls-TlsAcceptor + generated test certs. Semantic mapping is implemented and defensive; regression impact is limited because peer-auth failures are rare and non-catastrophic (LAN sync is best-effort) |
+| `oneshim-network::sync/lan_transport::authenticate_with_peer` | ✓ | ✓ 6 tests (iter-194) — refactored the inline status `match` into a pure `map_challenge_status_to_error(status_code, peer_id) -> CoreError` helper; covered by 5 canonical status tests (401/403/429/503/504) + 1 500-fallback test. Skipped the originally-planned rustls-TlsAcceptor fixture in favor of extracting the mapping to a pure function — same coverage, fraction of the test-infra cost. Follow-up #5 from [ADR-019 Known Follow-ups](../architecture/ADR-019-error-code-infrastructure.md#known-follow-ups-not-blocking) |
 | `oneshim-audio::cloud_stt` | ✓ | ✓ specific + fallback |
 | `oneshim-audio::model_downloader` | ✓ | ✓ specific + fallback (needed `new_with_base_url` injection) |
 | `oneshim-web::services::ai_model_catalog_web_service` | ✓ (ApiError form) | ✓ specific + fallback |
