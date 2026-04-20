@@ -70,6 +70,10 @@ pub(super) fn build_embedding_components(
                             "text-embedding-3-small".to_string(),
                             384,
                             30,
+                            // D7: per-adapter registry for now; a workspace-wide
+                            // registry threaded from the composition root will
+                            // come in iter-011 when all 5 adapters are wired.
+                            oneshim_network::CircuitBreakerRegistry::new(),
                         ),
                     ))
                 } else {
