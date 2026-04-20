@@ -65,10 +65,10 @@ client-rust/
 │   │   ├── main.rs         # Tauri app builder + DI wiring
 │   │   ├── tray.rs         # System tray menu
 │   │   ├── commands/       # Tauri IPC commands (directory module, ADR-003)
-│   │   └── scheduler/      # 9-loop background scheduler
+│   │   └── scheduler/      # 16-loop background scheduler (monitor, metrics, process, sync, heartbeat, aggregation, notification, focus, event_snapshot, oauth_refresh, analysis, cross_device_sync, coaching + conditional: health_check, suggestion_sse, suggestion_maintenance)
 │   └── tauri.conf.json     # Tauri configuration
 ├── docs/
-│   ├── architecture/   # ADR-001~ADR-004
+│   ├── architecture/   # ADR-001~ADR-019 (see docs/architecture/ADR-*.md)
 │   ├── guides/         # Playbooks/runbooks/how-to docs
 │   └── research/       # Exploratory notes
 └── crates/
