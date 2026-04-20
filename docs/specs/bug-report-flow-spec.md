@@ -1,8 +1,8 @@
 # Bug Report Flow — Design Specification
 
 **Date**: 2026-04-03
-**Status**: Draft
-**Version**: 0.4.16 target
+**Status**: ✅ SHIPPED — `crates/oneshim-web/frontend/src/components/BugReportWizard.tsx` + supporting commands (e.g., `src-tauri/src/commands/bug_report.rs`) live in the tree; `BugReportWizard::handleExport` integrated with ADR-019 `translateError` detail-suffix pattern in iter-212.
+**Version**: 0.4.16 target (shipped; tree is currently v0.4.39-rc.1+)
 
 ## 1. Overview
 

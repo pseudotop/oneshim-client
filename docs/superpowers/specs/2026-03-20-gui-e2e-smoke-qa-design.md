@@ -1,7 +1,7 @@
 # GUI V2 E2E Smoke Tests & QA — Design Spec
 
 > Created: 2026-03-20
-> Status: Proposed
+> Status: ✅ SHIPPED — 6 E2E smoke tests in `src-tauri/tests/gui_smoke_e2e.rs` (373 lines) landed under ADR-002 M3 (see `client-rust/CLAUDE.md` §Current Status).
 > Scope: Cross-crate integration tests, QA templates
 > Prerequisite: Native Platform Adapters spec, Failure Scenario Tests spec
 
