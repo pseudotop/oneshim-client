@@ -4,6 +4,19 @@
 **Date**: 2026-03-09
 **Scope**: `oneshim-network` crate, all network-facing adapters
 
+> **Note on CoreError syntax in example snippets**: Examples below use the
+> pre-[ADR-019](./ADR-019-error-code-infrastructure.md) syntax
+> `CoreError::RateLimit { retry_after_secs }`. After ADR-019 these must be
+> written as struct variants with a typed `code` field:
+> ```rust
+> CoreError::RateLimit {
+>     code: oneshim_core::error_codes::NetworkCode::RateLimit,
+>     retry_after_secs,
+> }
+> ```
+> The resilience patterns themselves (retry/backoff/circuit-breaker/retry-after
+> parsing) are unchanged by ADR-019.
+
 ---
 
 ## Context

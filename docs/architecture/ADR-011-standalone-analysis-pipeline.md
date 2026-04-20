@@ -75,7 +75,7 @@ pub trait AnalysisProvider: Send + Sync {
 - Returns `Vec<Suggestion>` directly — LLM response parsing is the adapter's responsibility, not the orchestrator's. Intermediate types (`SuggestionCandidate`) stay private within the adapter.
 - Accepts raw `context_json` + `system_prompt` strings — the orchestrator controls prompt construction, the adapter handles HTTP transport.
 
-**Error mapping**: LLM-specific failures (malformed response, content filter, token limit) use `CoreError::Analysis(String)`.
+**Error mapping**: LLM-specific failures (malformed response, content filter, token limit) use `CoreError::Analysis { code: ProviderCode::AnalysisFailed, message }` (wire: `provider.analysis_failed`) per [ADR-019](./ADR-019-error-code-infrastructure.md). Pre-ADR-019 the signature was `CoreError::Analysis(String)`.
 
 **Implementation**: Lives in `oneshim-network/src/analysis_client.rs`, reusing the same HTTP client infrastructure as `RemoteLlmProvider`. Can implement both `LlmProvider` and `AnalysisProvider` on the same struct.
 
