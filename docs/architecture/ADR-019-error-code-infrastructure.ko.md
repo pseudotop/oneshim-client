@@ -131,4 +131,10 @@ Code enum(`ConfigCode` 등)은 `#[non_exhaustive]` **부착**:
 - `CoreError::ProcessNotAllowed` + `PolicyCode::ProcessDenied` — `PolicyDenied`와 redundant (필드 시그니처 동일, display text만 상이). automation 전 경로가 `PolicyDenied` emit; `ProcessNotAllowed` construction site 0건.
 - `NetworkCode::Failed` — 연결 레벨 실패용 reserved (docstring 명시) 였으나 wire-up 없음; 모든 non-timeout 네트워크 에러는 `NetworkCode::Generic` 사용. `NetworkCode::Generic`을 canonical fallback으로 유지.
 
-Wire snapshot: 57 → 54 codes. Code enum 개수: 19 → 18. 외부 소비자에게 아직 공개되지 않은 wire contract 이므로 merge 전 전량 삭제. 추후 필요 시 일반적인 wire-immutability 절차(append, don't replace) 적용.
+Wire snapshot: 57 → 54 codes (iter-87). Code enum 개수: 19 → 18 (iter-87). 외부 소비자에게 아직 공개되지 않은 wire contract 이므로 merge 전 전량 삭제. 추후 필요 시 일반적인 wire-immutability 절차(append, don't replace) 적용.
+
+이후 iteration 추가 orphan 정리:
+- **iter-148**: `GuiCode::Generic` / `gui.generic` — emission site 0건; `GuiInteractionError::Internal`은 항상 `GuiCode::InternalError` 사용. Snapshot 54 → 53.
+- **iter-161**: 11개 추가 `*Code::Generic` placeholder variants (audio/config/consent/oauth/permission/policy/provider/secret/service/storage/validation) — 모두 Phase 2 boilerplate이며 Phase 4 완료 이후 emission site 0건. Snapshot 53 → 42. 유지: `auth.generic` (1 site), `internal.generic` (Internal fallback, 수백 개 site), `network.generic` (HTTP status fallback, ~70 site).
+
+Current wire snapshot: **42 codes**.
