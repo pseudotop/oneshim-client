@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -19,7 +19,7 @@ pub(super) struct SyncResult {
 /// Requires `ONESHIM_SYNC_PASSPHRASE` env var, device identity from SQLite, and a valid transport.
 pub(super) async fn build_sync_engine(
     config: &AppConfig,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     sqlite_storage_concrete: &Arc<oneshim_storage::sqlite::SqliteStorage>,
     consent_manager: Option<Arc<ConsentManager>>,
 ) -> SyncResult {
@@ -104,9 +104,7 @@ pub(super) async fn build_sync_engine(
         SyncTransportKind::Lan => {
             #[cfg(feature = "lan-sync")]
             {
-                let config_dir = data_dir.clone();
-                match oneshim_network::sync::lan_tls::load_or_generate_cert(&config_dir, &device_id)
-                {
+                match oneshim_network::sync::lan_tls::load_or_generate_cert(data_dir, &device_id) {
                     Ok((cert_pem, key_pem, fingerprint)) => {
                         // Use block_on to await the async start in sync context
                         match tokio::runtime::Handle::current().block_on(

@@ -478,9 +478,11 @@ mod tests {
     /// from invalid format/combination.
     #[test]
     fn test_validate_missing_tls_domain_name_emits_missing() {
-        let mut config = GrpcConfig::default();
-        config.use_tls = true;
-        config.tls_domain_name = None;
+        let config = GrpcConfig {
+            use_tls: true,
+            tls_domain_name: None,
+            ..GrpcConfig::default()
+        };
         let err = config.validate_transport_security().unwrap_err();
         let core: oneshim_core::error::CoreError = err.into();
         assert_eq!(core.code(), "config.missing");
@@ -488,14 +490,16 @@ mod tests {
 
     #[test]
     fn test_validate_missing_client_cert_emits_missing() {
-        let mut config = GrpcConfig::default();
-        config.use_tls = true;
-        config.mtls_enabled = true;
-        config.tls_domain_name = Some("api.example.com".to_string());
-        // tls_ca_cert_path is optional per required_path for the ca field
-        config.tls_ca_cert_path = Some("/tmp/ca.pem".to_string());
-        config.tls_client_cert_path = None; // Missing
-        config.tls_client_key_path = Some("/tmp/key.pem".to_string());
+        let config = GrpcConfig {
+            use_tls: true,
+            mtls_enabled: true,
+            tls_domain_name: Some("api.example.com".to_string()),
+            // tls_ca_cert_path is optional per required_path for the ca field
+            tls_ca_cert_path: Some("/tmp/ca.pem".to_string()),
+            tls_client_cert_path: None, // Missing
+            tls_client_key_path: Some("/tmp/key.pem".to_string()),
+            ..GrpcConfig::default()
+        };
         let err = config.validate_transport_security().unwrap_err();
         let core: oneshim_core::error::CoreError = err.into();
         assert_eq!(core.code(), "config.missing");
@@ -505,9 +509,11 @@ mod tests {
     /// (the values are present, their combination is illegal).
     #[test]
     fn test_validate_mtls_without_tls_stays_invalid() {
-        let mut config = GrpcConfig::default();
-        config.mtls_enabled = true;
-        config.use_tls = false;
+        let config = GrpcConfig {
+            mtls_enabled: true,
+            use_tls: false,
+            ..GrpcConfig::default()
+        };
         let err = config.validate_transport_security().unwrap_err();
         let core: oneshim_core::error::CoreError = err.into();
         assert_eq!(core.code(), "config.invalid");
