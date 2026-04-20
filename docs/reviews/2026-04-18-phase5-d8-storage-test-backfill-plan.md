@@ -1,5 +1,7 @@
 # Phase 5-D8 Storage Test Backfill Implementation Plan
 
+> **Status: SHIPPED** (all 3 PRs: PR1 +17 tests, PR2 +3 tests, PR3 +7 tests). Plan preserved as execution history. CoreError assertion examples may use pre-[ADR-019](../architecture/ADR-019-error-code-infrastructure.md) tuple-variant syntax; current canonical form is `matches!(err, Err(CoreError::Internal { .. }))` or `err.code() == "internal.generic"`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add comprehensive inline tests to 6 untested `oneshim-storage` modules across 3 PRs in ≤ 16 working days, closing gap D8 from the 2026-04-16 feature analysis.

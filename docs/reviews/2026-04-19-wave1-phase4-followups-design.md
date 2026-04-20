@@ -1,5 +1,7 @@
 # Wave 1 — Phase 4 Deferred Follow-ups Design
 
+> **Status: SHIPPED 2026-04-19** as 3 separate PRs (#447 notarize workflow fix, #448 signature_public_key default cleanup / I-4, #449 boot_count concurrent-process race mitigation). Main at `04caab16` after the wave. Design preserved as execution history.
+
 **Date:** 2026-04-19
 **Scope:** 3 small, independent Phase 4 follow-ups shipped as separate PRs.
 **Items:** (1) Notarize workflow `head_branch` condition fix, (2) `signature_public_key` default cleanup (holistic I-4), (3) `boot_count` concurrent-process race mitigation.

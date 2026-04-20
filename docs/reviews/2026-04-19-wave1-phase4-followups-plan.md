@@ -1,5 +1,7 @@
 # Wave 1 — Phase 4 Deferred Follow-ups Implementation Plan
 
+> **Status: SHIPPED 2026-04-19.** All 3 items landed as PRs #447 (notarize) / #448 (signature_public_key / I-4) / #449 (boot_count race). Plan preserved as execution history.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship three small Phase 4 deferred follow-ups as separate PRs — notarize workflow dispatch-compatibility fix, `signature_public_key` default cleanup (I-4), and `boot_count` concurrent-process race mitigation.

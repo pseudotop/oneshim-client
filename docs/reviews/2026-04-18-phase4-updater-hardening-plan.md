@@ -1,5 +1,7 @@
 # Phase 4 Updater Hardening — Implementation Plan
 
+> **Status: SHIPPED.** All 14 tasks (D9 trusted-keys array + D10 rollout defense + D11 self-healthy probe with rollback) landed. Plan preserved as execution history; for current behavior see the [Unreleased] CHANGELOG entry and `src-tauri/src/updater/{trusted_keys,update_coordinator,health_probe}.rs`.
+
 **Spec**: `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` (Loop 1 EXIT at `1065cb56`)
 **Target version**: v0.4.40-rc.1
 **Bundling**: single PR

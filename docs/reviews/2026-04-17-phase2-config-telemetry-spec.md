@@ -1,5 +1,7 @@
 # Phase 2 — Config Change Bus + Telemetry Exporter Wiring
 
+> **Status: SHIPPED 2026-04-17.** ConfigChangeBus + TelemetryHandle landed and merged to main. Spec preserved as execution history; see CHANGELOG and `docs/PHASE-HISTORY.md` Phase 2 entry for shipped scope.
+
 _Date_: 2026-04-17
 _Scope_: `client-rust` repository. Two cross-domain items from `docs/reviews/2026-04-16-feature-gaps-analysis.md`:
 - **X1** ConfigChangeBus — broadcast runtime config changes to every subscriber

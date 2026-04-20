@@ -1,5 +1,7 @@
 # Phase 4 Updater Hardening Design
 
+> **Status: SHIPPED.** D9 (multi-key Ed25519 trust array) + D10 (defensive rollout handling) + D11 (post-install self-healthy probe with automatic rollback, macOS+Linux; Windows warn-only no-op) are all landed and recorded in the [Unreleased] section of `CHANGELOG.md`. Design preserved as execution history.
+
 **Date:** 2026-04-18
 **Scope:** D9 multi-key signature trust enhancement + D10 staged rollout defensive handling + D11 post-install self-healthy probe with auto-rollback.
 **Bundling:** Single PR.
