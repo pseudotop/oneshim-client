@@ -43,38 +43,6 @@ pub enum NetworkError {
     CircuitOpen,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use oneshim_core::error_codes::ServiceCode;
-
-    #[test]
-    fn circuit_open_maps_to_service_circuit_open() {
-        let net_err = NetworkError::CircuitOpen;
-        let core_err: CoreError = net_err.into();
-        match core_err {
-            CoreError::ServiceUnavailable { code, .. } => {
-                assert_eq!(code, ServiceCode::CircuitOpen);
-            }
-            other => panic!("expected ServiceUnavailable, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn service_unavailable_stays_on_unavailable_code() {
-        // The ServiceUnavailable(msg) variant maps to ServiceCode::Unavailable,
-        // distinct from CircuitOpen. Locks the wire-code distinction.
-        let net_err = NetworkError::ServiceUnavailable("down".into());
-        let core_err: CoreError = net_err.into();
-        match core_err {
-            CoreError::ServiceUnavailable { code, .. } => {
-                assert_eq!(code, ServiceCode::Unavailable);
-            }
-            other => panic!("expected ServiceUnavailable, got {other:?}"),
-        }
-    }
-}
-
 impl From<NetworkError> for CoreError {
     fn from(err: NetworkError) -> Self {
         match err {
@@ -129,6 +97,38 @@ impl From<NetworkError> for CoreError {
                 code: oneshim_core::error_codes::ServiceCode::CircuitOpen,
                 message: "circuit breaker open".into(),
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oneshim_core::error_codes::ServiceCode;
+
+    #[test]
+    fn circuit_open_maps_to_service_circuit_open() {
+        let net_err = NetworkError::CircuitOpen;
+        let core_err: CoreError = net_err.into();
+        match core_err {
+            CoreError::ServiceUnavailable { code, .. } => {
+                assert_eq!(code, ServiceCode::CircuitOpen);
+            }
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn service_unavailable_stays_on_unavailable_code() {
+        // The ServiceUnavailable(msg) variant maps to ServiceCode::Unavailable,
+        // distinct from CircuitOpen. Locks the wire-code distinction.
+        let net_err = NetworkError::ServiceUnavailable("down".into());
+        let core_err: CoreError = net_err.into();
+        match core_err {
+            CoreError::ServiceUnavailable { code, .. } => {
+                assert_eq!(code, ServiceCode::Unavailable);
+            }
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
         }
     }
 }
