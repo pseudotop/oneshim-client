@@ -7,8 +7,6 @@ define_code_enum! {
         InvalidField => "validation.invalid_field",
         /// 함수/메서드 인자 검증 실패.
         InvalidArguments => "validation.invalid_arguments",
-        /// 세분화 미완료.
-        Generic => "validation.generic",
     }
 }
 

@@ -7,8 +7,6 @@ define_code_enum! {
         CaptureFailed => "audio.capture_failed",
         /// 음성→텍스트 변환 실패.
         SttFailed => "audio.stt_failed",
-        /// 세분화 미완료.
-        Generic => "audio.generic",
     }
 }
 

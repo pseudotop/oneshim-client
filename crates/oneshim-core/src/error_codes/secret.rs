@@ -5,8 +5,6 @@ define_code_enum! {
     pub enum SecretCode {
         /// Secret store 접근 실패.
         Failed => "secret.failed",
-        /// 세분화 미완료.
-        Generic => "secret.generic",
     }
 }
 

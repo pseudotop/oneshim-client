@@ -5,8 +5,6 @@ define_code_enum! {
     pub enum StorageCode {
         /// 스토리지 연산 실패.
         Failed => "storage.failed",
-        /// 세분화 미완료.
-        Generic => "storage.generic",
     }
 }
 

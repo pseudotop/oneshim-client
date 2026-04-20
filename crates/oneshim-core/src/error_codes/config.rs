@@ -20,8 +20,6 @@ define_code_enum! {
         OutOfRange => "config.out_of_range",
         /// AWS Bedrock 의도적 미지원 (ADR-019 §5 재도입 체크리스트 참조).
         UnsupportedProviderBedrock => "provider.bedrock.unsupported",
-        /// 세분화 미완료 — Phase 2 일괄 이관 시 기본값. §10-7 lint가 crate별 사용량 감시.
-        Generic => "config.generic",
     }
 }
 

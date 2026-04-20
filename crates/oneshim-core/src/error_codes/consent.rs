@@ -7,8 +7,6 @@ define_code_enum! {
         Required => "consent.required",
         /// 동의 만료 (재-동의 필요).
         Expired => "consent.expired",
-        /// 세분화 미완료.
-        Generic => "consent.generic",
     }
 }
 

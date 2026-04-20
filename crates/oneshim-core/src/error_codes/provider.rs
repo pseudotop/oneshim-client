@@ -7,8 +7,6 @@ define_code_enum! {
         OcrFailed => "provider.ocr_failed",
         /// Analysis 요청 실패.
         AnalysisFailed => "provider.analysis_failed",
-        /// 세분화 미완료.
-        Generic => "provider.generic",
     }
 }
 

@@ -5,8 +5,6 @@ define_code_enum! {
     pub enum ServiceCode {
         /// 서비스 일시 사용 불가.
         Unavailable => "service.unavailable",
-        /// 세분화 미완료.
-        Generic => "service.generic",
     }
 }
 

@@ -7,8 +7,6 @@ define_code_enum! {
         Failed => "oauth.failed",
         /// OAuth 토큰 리프레시 실패.
         RefreshFailed => "oauth.refresh_failed",
-        /// 세분화 미완료.
-        Generic => "oauth.generic",
     }
 }
 

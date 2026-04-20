@@ -7,8 +7,6 @@ define_code_enum! {
         PermissionDenied => "permission.permission_denied",
         /// 개인정보 권한 거부.
         PrivacyDenied => "permission.privacy_denied",
-        /// 세분화 미완료.
-        Generic => "permission.generic",
     }
 }
 
