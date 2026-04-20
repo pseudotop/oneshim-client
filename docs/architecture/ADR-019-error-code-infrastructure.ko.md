@@ -123,7 +123,7 @@ Code enum(`ConfigCode` 등)은 `#[non_exhaustive]` **부착**:
 
 ### Post-merge 테스트 커버리지 확장
 
-초기 ADR과 현재 상태 사이에, 14개 (15개 중)의 디스패처에 걸쳐 시맨틱 HTTP status 매핑을 검증하는 85+ 회귀 테스트가 추가됨. 각 테스트는 특정 status code → CoreError variant 매핑을 검증하고, 대부분의 디스패처는 도메인 fallback assertion도 포함. 정식 패턴과 전체 디스패처 레지스트리는 [`docs/guides/http-status-error-mapping.ko.md`](../guides/http-status-error-mapping.ko.md) 참조. 15번째 디스패처(`auth::refresh`)는 iter-98에서 5개 회귀 테스트(401/429/503/504/500)와 함께 추가.
+초기 ADR과 현재 상태 사이에, **16개 디스패처**에 걸쳐 시맨틱 HTTP status 매핑을 검증하는 85+ 회귀 테스트가 추가됨 (원래 ADR-019 이전 14개; iter-98이 `oneshim-network::auth::refresh` 를 15번째로 추가하며 401/429/503/504/500 5개 회귀 테스트 포함; iter-194가 Follow-up #5 로 `oneshim-network::sync/lan_transport::authenticate_with_peer` 를 6개 테스트와 함께 추가; `oneshim-web::services::ai_model_catalog_web_service` 가 레지스트리의 16번째 항목). 각 테스트는 특정 status code → CoreError variant 매핑을 검증하고, 대부분의 디스패처는 도메인 fallback assertion도 포함. 정식 패턴과 전체 디스패처 레지스트리는 [`docs/guides/http-status-error-mapping.ko.md`](../guides/http-status-error-mapping.ko.md) 참조.
 
 ### Post-merge 고아 wire-code 정리 (pre-merge)
 
