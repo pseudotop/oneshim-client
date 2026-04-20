@@ -28,24 +28,26 @@ oneshim-lint       → tooling binary (로컬 CLI 스타일 실패 처리)
 oneshim-app        → anyhow::Result            ← 최상위(`src-tauri`)에서만 사용
 ```
 
-**패턴**:
+**패턴** (설명용; 현재 `NetworkError`는 13개 variant — 실제 목록은 `crates/oneshim-network/src/error.rs` 참조):
 ```rust
 // 라이브러리 crate — 구체적 에러
 #[derive(Debug, thiserror::Error)]
 pub enum NetworkError {
-    #[error("HTTP 요청 실패: {0}")]
-    Http(#[from] reqwest::Error),
-    #[error("SSE 연결 에러: {0}")]
-    Sse(String),
-    #[error("{0}")]
+    #[error("HTTP 에러: {0}")]
+    Http(String),                                  // timeout/rate-limit 분류는
+                                                   // http_client::map_reqwest_error 담당.
+    #[error("요청 타임아웃 {timeout_ms}ms 초과")]
+    Timeout { timeout_ms: u64 },
+    #[error(transparent)]
     Core(#[from] oneshim_core::error::CoreError),
+    // ... 10개 추가 semantic variant
 }
 
 // 바이너리 crate — anyhow로 통합
 fn main() -> anyhow::Result<()> { ... }
 ```
 
-**근거**: `thiserror`는 호출자가 에러를 패턴 매칭할 수 있어 라이브러리에 적합. `anyhow`는 "그냥 실패했다"를 표현하기 좋아 최종 바이너리에 적합.
+**근거**: `thiserror`는 호출자가 에러를 패턴 매칭할 수 있어 라이브러리에 적합. `anyhow`는 "그냥 실패했다"를 표현하기 좋아 최종 바이너리에 적합. Wire error code 는 [ADR-019](./ADR-019-error-code-infrastructure.ko.md) 에서 다룸 — 각 `CoreError` struct-variant 가 typed `code: XxxCode` 필드를 carries 하고 adapter error 들은 `impl From<AdapterError> for CoreError` 로 매핑.
 
 ### 2. 비동기 Trait 패턴 (Port 인터페이스)
 
