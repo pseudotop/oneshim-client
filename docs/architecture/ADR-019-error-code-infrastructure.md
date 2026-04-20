@@ -124,7 +124,7 @@ All follow-ups below have design docs under `docs/reviews/2026-04-20-adr019-foll
 
 ### Post-merge test coverage additions
 
-Between the initial ADR and the current state, 85+ regression tests were added covering the semantic HTTP status mapping across 14 of 15 dispatchers. Each test verifies a specific status-code → CoreError variant mapping AND (for most dispatchers) a domain-fallback assertion. See [`docs/guides/http-status-error-mapping.md`](../guides/http-status-error-mapping.md) for the canonical pattern and the full dispatcher registry. The 15th dispatcher (`auth::refresh`) was added iter-98 with 5 regression tests (401/429/503/504/500).
+Between the initial ADR and the current state, 85+ regression tests were added covering the semantic HTTP status mapping across **16 dispatchers** (original pre-ADR-019 count was 14; iter-98 added `oneshim-network::auth::refresh` with 5 regression tests covering 401/429/503/504/500; iter-194 added `oneshim-network::sync/lan_transport::authenticate_with_peer` with 6 tests per Follow-up #5; `oneshim-web::services::ai_model_catalog_web_service` is the 16th entry in the registry). Each test verifies a specific status-code → CoreError variant mapping AND (for most dispatchers) a domain-fallback assertion. See [`docs/guides/http-status-error-mapping.md`](../guides/http-status-error-mapping.md) for the canonical pattern and the full dispatcher registry.
 
 ### Post-merge orphan wire-code cleanup (pre-merge)
 

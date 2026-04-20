@@ -98,7 +98,7 @@ This preserves domain context for the "didn't match any known status" bucket.
 
 ## Dispatchers currently following this pattern
 
-15 dispatchers. **Impl** = mapping is implemented. **Tests** = has regression tests covering the mapping (specific-arm + fallback).
+16 dispatchers. **Impl** = mapping is implemented. **Tests** = has regression tests covering the mapping (specific-arm + fallback).
 
 | Crate / module | Impl | Tests |
 |---|---|---|

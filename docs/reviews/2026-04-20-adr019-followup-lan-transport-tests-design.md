@@ -123,12 +123,12 @@ Append a row to the dispatcher registry in `docs/guides/http-status-error-mappin
 | `lan_transport::authenticate_with_peer` | Implemented ✓ | Tested ✓ | 5 tests (401/429/503/504/500) |
 ```
 
-This closes the registry — all 15 dispatchers now have both Impl ✓ and Tests ✓.
+This closes the registry — all 16 dispatchers now have both Impl ✓ and Tests ✓ (iter-255 re-verification: the registry grew to 16 with `oneshim-web::services::ai_model_catalog_web_service`; design-time estimate was "closes at 15" but `grep -cE "^\| \`"` on the registry shows 16 rows).
 
 ## Consequences
 
 ### Positive
-- 15/15 HTTP dispatchers have regression tests; no more "implemented but untested" exceptions.
+- 16/16 HTTP dispatchers have regression tests; no more "implemented but untested" exceptions.
 - Test fixture reusable for any future TLS-only integration tests (LAN sync extensions, internal mTLS flows).
 - Closes the last Known Follow-up that the ADR-019 drift audit deferred as "disproportionate effort".
 
