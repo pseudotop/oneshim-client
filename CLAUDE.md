@@ -223,9 +223,13 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ### oneshim-suggestion (Suggestion Pipeline)
 - `receiver.rs`: SSE → `Suggestion` conversion + queue + notification
 - `queue.rs`: `BTreeSet` priority queue (max 50, Critical > High > Medium > Low)
-- `feedback.rs`: Accept/Reject → HTTP POST
+- `feedback.rs`: Accept/Reject → HTTP POST (+ fires `FeedbackSignalSink` per ADR-017 before network)
+- `feedback_retry.rs`: `FeedbackRetryQueue` — persists failed feedback posts for scheduler-driven retry
+- `deferred.rs`: deferred-suggestion handling (`snooze`, re-surface windows)
 - `presenter.rs`: `SuggestionView` — UI data mapping
 - `history.rs`: FIFO history cache
+- `scorer.rs`: suggestion scoring helpers
+- `error.rs`: `SuggestionError` (ADR-019 typed codes)
 
 ### oneshim-storage (Local Storage)
 - `sqlite/`: `SqliteStorage` (impl StorageService + 10+ other port traits) — WAL mode + PRAGMA optimizations. Directory module per ADR-003; sub-modules: `metrics/`, `edge_intelligence/`, `annotation_storage_impl`, `coaching_storage`, `few_shot_storage_impl`, `focus_storage_impl`, `frames`, `fts_search_impl`, `habit_storage`, `integration_query_impl`, `lan_pin_store`, `override_store_impl`, `preset_storage_impl`, `port_contract_tests`, etc.
@@ -237,13 +241,21 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ### oneshim-monitor (System Monitoring)
 - `system.rs`: `SysInfoMonitor` — CPU/Memory/Disk/Network (sysinfo 0.38)
+- `system_info.rs`: system information wrappers
 - `process.rs`: `ProcessTracker` — active process/window + `get_detailed_processes()`
-- `macos.rs`: macOS specific (`#[cfg(target_os = "macos")]`) — osascript
+- `macos.rs`: macOS specific (`#[cfg(target_os = "macos")]`) — osascript + `circuit_breaker_skips_when_tripped` serialized via `serial_test`
 - `windows.rs`: Windows specific (`#[cfg(target_os = "windows")]`) — Win32 GetForegroundWindow + sysinfo
 - `linux.rs`: Linux specific (`#[cfg(target_os = "linux")]`) — xdotool/xprintidle (X11), Wayland XWayland fallback
 - `activity.rs`: `ActivityTracker` — Idle detection
+- `idle.rs`: cross-platform idle detection helpers
 - `input_activity.rs`: `InputActivityCollector` — Mouse/Keyboard pattern collection (atomic counters)
+- `input_detail.rs`: richer input event details (superpowers-era addition)
+- `keyboard_pattern.rs`: keyboard pattern matching
+- `key_hook/`: low-level key-hook directory module (platform-branched)
+- `clipboard.rs`: clipboard-change tracking
+- `file_access.rs`: file-access telemetry
 - `window_layout.rs`: `WindowLayoutTracker` — window layout change tracking
+- `error.rs`: `MonitorError` (ADR-019 typed codes)
 
 ### oneshim-vision (Edge Image Processing)
 - `capture.rs`: `ScreenCapture` — multi-monitor capture using xcap
@@ -278,7 +290,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `error.rs`: `ApiError` — JSON error responses
 - `frontend/`: React 18.3 + Vite + Tailwind CSS + Recharts + FocusWidget + i18n (en/ko) + Biome lint + Vitest tests + Playwright e2e + Storybook review catalog
 
-### oneshim-automation (Automation Control)
+### oneshim-automation (Automation Control) — 29 source files
 - `controller/`: `AutomationController` — directory module (ADR-003)
   - `mod.rs`: struct + builders + validators + re-exports
   - `types.rs`: `AutomationCommand`, `CommandResult`, `WorkflowResult`, etc.
@@ -289,6 +301,15 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `models.rs`: `AuditLevel`, `ExecutionPolicy`, `PolicyCache`, `ProcessOutput`
   - `token.rs`: token generation, parsing, signature verification
 - `audit.rs`: `AuditLogger` — local VecDeque buffer + batched audit logs transmission, buffer overflow management
+- `action_dispatcher.rs`: maps `AutomationCommand` → action execution
+- `input_driver.rs`: cross-platform input driver (mouse/keyboard synthesis)
+- `intent_planner.rs`, `intent_resolver.rs`, `resolver.rs`: intent parsing + resolution pipeline
+- `local_llm.rs`: local LLM wiring for intent planning
+- `overlay.rs`: overlay driver interface (surfaced via `MagicOverlayDriver` in src-tauri)
+- `gui_interaction/`: GUI V2 session state + nonce replay protection + TTL enforcement (ADR-002 M3)
+- `presets.rs`: preset loading + validation
+- `sandbox/`: per-platform sandbox enforcement (Windows Job Objects, Linux seccomp+Landlock, macOS App Sandbox) — invoked out-of-process via `oneshim-sandbox-worker`
+- `error.rs`: `AutomationError` (ADR-019 typed codes)
 
 ### oneshim-analysis (LLM Analysis Pipeline)
 - `analyzer.rs`: `ContextAnalyzer` — segment summarization via LLM, regime classification
