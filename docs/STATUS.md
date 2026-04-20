@@ -49,7 +49,7 @@ v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **3,455 passed, 0 failed, 21 ignored** (post-Phase-5-D8 baseline. Cumulative growth from prior 2,995: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime work, Phase 4 Updater Hardening +27, Phase 5-D8 PR1 +17, PR2 +3, PR3 +7. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`).
+- `cargo test --workspace`: pass — **3,641 passed, 0 failed, 21 ignored** (post-ADR-019 + drift-audit baseline. Cumulative growth from prior 3,455: ADR-019 Error Code Infrastructure + C5 Bedrock skip + post-merge drift audit iter 87~168 added ~186 tests — 85+ HTTP status-mapping regression tests across 15 dispatchers, ~38 Internal→specific-variant re-route tests, 4 subprocess_kind (iter-149) + 3 LLM envelope-extraction (iter-151) + other targeted regression guards. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`).
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass

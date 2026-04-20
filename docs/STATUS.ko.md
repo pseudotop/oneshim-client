@@ -27,16 +27,16 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## 현재 스냅샷 (2026-04-05)
+## 현재 스냅샷 (2026-04-19)
 
 ### 버전
 
-v0.4.21
+v0.4.39-rc.1 (Phase 5-D8 완료; Phase 4 Updater Hardening 출시)
 
 ### 워크스페이스
 
 - **크레이트**: 14개 (oneshim-audio 포함)
-- **SQLite 스키마**: V25
+- **SQLite 스키마**: V31 (V31은 Phase 3 `regime_manager_state`에서 추가)
 
 ### 워크플로우 상태
 
@@ -49,7 +49,7 @@ v0.4.21
 
 - `cargo check --workspace`: 통과
 - `cargo clippy --workspace --all-targets -- -D warnings`: 통과
-- `cargo test --workspace`: 통과 — **2,995 통과, 0 실패, 20 무시**
+- `cargo test --workspace`: 통과 — **3,641 통과, 0 실패, 21 무시** (ADR-019 + drift-audit 반영 후 baseline. 이전 2,995에서 누적 증가: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime, Phase 4 Updater Hardening +27, Phase 5-D8 PR1/PR2/PR3 +27, ADR-019 + post-merge drift audit iter 87~168 +186 (HTTP status 매핑 회귀 테스트, Internal→specific re-route, subprocess_kind 분기, LLM envelope 추출 등). Phase 2 telemetry 테스트는 `--features telemetry -- --test-threads=1` 로 별도 실행).
 - `cargo fmt --check`: 통과
 - `pnpm lint` (`crates/oneshim-web/frontend`): 통과
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): 통과
@@ -61,13 +61,13 @@ v0.4.21
 
 ### 무시된 테스트 (Ignored Tests)
 
-20개 테스트가 외부 의존성 또는 긴 실행 시간으로 인해 `#[ignore]` 표시됨:
+21개 테스트가 외부 의존성 또는 긴 실행 시간으로 인해 `#[ignore]` 표시됨:
 
 | 크레이트 | 수량 | 사유 |
 |---------|------|------|
-| oneshim-vision | 6 | macOS 접근성 API (라이브 OS 권한 필요) |
+| oneshim-vision | 7 | macOS 접근성 API (라이브 OS 권한 필요) — Phase 4 Updater Hardening 에서 +1 추가 |
 | oneshim-embedding | 3 | Hugging Face 모델 다운로드 |
-| oneshim-storage | 3 | 키체인 연동 (macOS 키체인 접근 필요) |
+| oneshim-storage | 3 | 키체인 연동 (macOS 키체인 접근 필요); 뮤텍스 독립 경로는 Phase 5-D8 PR1 전용 테스트로 커버됨 |
 | oneshim-network | 2 | 런타임 컨텍스트 필요 doc-test 예제 |
 | src-tauri | 5 | GitHub API e2e (2) + 장시간 메모리 프로파일 (3) |
 | oneshim-storage (doc) | 1 | 런타임 컨텍스트 필요 doc-test 예제 |
