@@ -330,7 +330,7 @@ oneshim-client/
 │   └── oneshim-app/        # Crate adapter legado (entrada CLI, modo autónomo)
 └── docs/
     ├── crates/             # Documentación detallada por crate
-    ├── architecture/       # Documentos ADR (ADR-001~ADR-004)
+    ├── architecture/       # Documentos ADR (ADR-001~ADR-019; ver docs/architecture/ADR-*.md)
     └── migration/          # Documentos de migración
 ```
 

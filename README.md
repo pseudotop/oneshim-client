@@ -333,7 +333,7 @@ oneshim-client/
 │   │   ├── main.rs         # Tauri app builder + DI wiring
 │   │   ├── tray.rs         # System tray menu
 │   │   ├── commands/       # Tauri IPC commands (directory module)
-│   │   └── scheduler/      # 9-loop background scheduler
+│   │   └── scheduler/      # 16-loop background scheduler (monitor, metrics, process, sync, heartbeat, aggregation, notification, focus, event_snapshot, oauth_refresh, analysis, cross_device_sync, coaching + conditional: health_check, suggestion_sse, suggestion_maintenance)
 │   └── tauri.conf.json     # Tauri configuration
 ├── crates/
 │   ├── oneshim-core/       # Domain models + port traits + errors + config
@@ -346,11 +346,13 @@ oneshim-client/
 │   ├── oneshim-automation/ # Automation control, policy, audit logging
 │   ├── oneshim-analysis/   # LLM analysis pipeline, regime classification
 │   ├── oneshim-embedding/  # Vector embedding + INT8 quantization
+│   ├── oneshim-audio/      # Audio capture (cpal) + STT (Whisper + cloud)
+│   ├── oneshim-sandbox-worker/ # Out-of-process sandboxed automation action executor
 │   ├── oneshim-api-contracts/ # Shared API type contracts
 │   └── oneshim-lint/       # Workspace lint tool (language-check binary)
 └── docs/
     ├── crates/             # Per-crate detailed documentation
-    ├── architecture/       # ADR documents (ADR-001~ADR-004)
+    ├── architecture/       # ADR documents (ADR-001~ADR-019; see docs/architecture/ADR-*.md)
     └── migration/          # Migration documents
 ```
 
