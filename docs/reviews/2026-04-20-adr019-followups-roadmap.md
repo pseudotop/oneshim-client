@@ -47,7 +47,7 @@ Each follow-up design doc enumerates its own out-of-scope items. Cross-cutting n
 - Each follow-up ships as its own PR (or small PR series per the design doc). Not bundled.
 - Per [`feedback_release_process.md`](../../.claude/.../memory) memory: version bumps (if any) use `./scripts/release.sh`.
 - CHANGELOG entries for each follow-up append under `[Unreleased]` with a link to the parent ADR-019.
-- Each design doc's "Implementation Plan" section should be promoted to a paired plan doc (`*-plan.md`) before execution begins, per the `docs/reviews/` convention.
+- ~~Each design doc's "Implementation Plan" section should be promoted to a paired plan doc (`*-plan.md`) before execution begins, per the `docs/reviews/` convention.~~ **Post-execution note:** none of the four follow-up designs actually got a paired plan doc. Execution shipped directly from each design's risk-ordered list — see §Progress Tracking iter references below. Future similar-scope follow-ups may choose to skip the paired plan when the design's risk order is itself sufficiently concrete.
 
 ## Progress Tracking
 
