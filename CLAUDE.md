@@ -401,11 +401,11 @@ Ports (Arc<dyn T>) created for the Scheduler should be shared with AppState, not
 - [ADR-003: Directory Module Pattern for Large Source Files](docs/architecture/ADR-003-directory-module-pattern.md)
 - [ADR-004: Tauri v2 Migration (iced → Tauri v2 + WebView)](docs/architecture/ADR-004-tauri-v2-migration.md) ([한국어](docs/architecture/ADR-004-tauri-v2-migration.ko.md))
 - [ADR-019: Error Code Infrastructure + AWS Bedrock Intentional Non-Support](docs/architecture/ADR-019-error-code-infrastructure.md) ([한국어](docs/architecture/ADR-019-error-code-infrastructure.ko.md)) — typed `code` field on every struct-variant of `CoreError`/`GuiInteractionError` (`#[from]` variants derive code via `impl code()` per §7); Bedrock deleted from catalog; re-introduction requires §5 8-step checklist
-- [HTTP Status Error Mapping Pattern](docs/guides/http-status-error-mapping.md) ([한국어](docs/guides/http-status-error-mapping.ko.md)) — canonical 401/403/404/408/429/502/503/504 → wire code table applied across 14 HTTP dispatchers; follow this pattern when adding new HTTP call sites
+- [HTTP Status Error Mapping Pattern](docs/guides/http-status-error-mapping.md) ([한국어](docs/guides/http-status-error-mapping.ko.md)) — canonical 401/403/404/408/429/502/503/504 → wire code table applied across 15 HTTP dispatchers (iter-98 `auth::refresh` added after the original 14); follow this pattern when adding new HTTP call sites
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
-- [Server API](docs/migration/04-server-api.md) — 29 REST endpoints + gRPC RPCs
+- [Server API](docs/migration/04-server-api.md) — ~30 REST endpoints + gRPC RPCs (auth×5, sessions×6, messages×3, suggestions×6, context×4, telemetry/sync×2, health×4 per section headers)
 - [Migration Phases](docs/migration/05-migration-phases.md) — Phase 0-36 plans
 - [Edge Vision](docs/migration/legacy/08-edge-vision.md) — Image processing details
 - [gRPC Client Guide](docs/guides/grpc-client.md) — Rust gRPC client usage
