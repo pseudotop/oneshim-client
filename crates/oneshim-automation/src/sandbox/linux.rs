@@ -253,7 +253,10 @@ impl Sandbox for LinuxSandbox {
             child.wait_with_output(),
         )
         .await
-        .map_err(|_| CoreError::ExecutionTimeout { timeout_ms })?
+        .map_err(|_| CoreError::ExecutionTimeout {
+            code: oneshim_core::error_codes::SandboxCode::Timeout,
+            timeout_ms,
+        })?
         .map_err(|e| CoreError::SandboxExecution {
             code: oneshim_core::error_codes::SandboxCode::ExecutionFailed,
             message: format!("wait failed: {e}"),
