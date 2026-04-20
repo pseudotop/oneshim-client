@@ -7,7 +7,7 @@
 **Parent ADR:** [ADR-019](../architecture/ADR-019-error-code-infrastructure.md)
 **Target version:** N/A (ops-side follow-up; independent of client release cadence)
 
-> **Rust-side actually changed:** the design framed this as "no Rust source change." In execution we added **16 scheduler-loop tracing emission sites** that carry `err.code = %e.code()` as a structured tracing field (intelligence 3 / events 4 / monitor 2 / network 6 / sync 1). `tracing-opentelemetry` bridges this into OTel span attributes automatically — ops can consume either channel. CLAUDE.md §Coding Conventions documents the canonical pattern + adapter-error conversion recipe (`let core: CoreError = e.into();`). `CoreError` Display keeps `[code]` embedded so the original Loki regex extraction is preserved as a fallback. Remaining work (Loki pipeline stage config + panel migration + alert-rule audit) lives in the ops infra repo.
+> **Rust-side actually changed:** the design framed this as "no Rust source change." In execution we added **18 scheduler-loop tracing emission sites** that carry `err.code = %e.code()` as a structured tracing field (intelligence 3 / events 4 / monitor 2 / network 7 / sync 2). `tracing-opentelemetry` bridges this into OTel span attributes automatically — ops can consume either channel. CLAUDE.md §Coding Conventions documents the canonical pattern + adapter-error conversion recipe (`let core: CoreError = e.into();`). `CoreError` Display keeps `[code]` embedded so the original Loki regex extraction is preserved as a fallback. Remaining work (Loki pipeline stage config + panel migration + alert-rule audit) lives in the ops infra repo.
 
 ## Context
 
