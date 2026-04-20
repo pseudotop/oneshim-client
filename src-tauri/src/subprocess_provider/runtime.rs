@@ -39,8 +39,13 @@ pub(super) fn invocation_runtime_for_surface(
 }
 
 fn invocation_mode_for_surface(surface_id: &str) -> Result<SubprocessInvocationMode, CoreError> {
-    subprocess_invocation_mode(surface_id).map_err(|msg| CoreError::Internal {
-        code: oneshim_core::error_codes::InternalCode::Generic,
+    // iter-150: every failure path from subprocess_invocation_mode (unknown
+    // surface_id, missing subprocess_transport, invalid invocation_mode
+    // string in the catalog) is a catalog/configuration issue — route to
+    // Config.Invalid (`config.invalid`) rather than sharing Internal.Generic
+    // with unrelated runtime faults.
+    subprocess_invocation_mode(surface_id).map_err(|msg| CoreError::Config {
+        code: oneshim_core::error_codes::ConfigCode::Invalid,
         message: msg,
     })
 }
@@ -89,4 +94,30 @@ pub(crate) fn runtime_ready_for_surface(
 ) -> bool {
     runtime_ready_for_auth_status(surface_id, auth_status, SurfaceCapabilityKind::Llm)
         || runtime_ready_for_auth_status(surface_id, auth_status, SurfaceCapabilityKind::Ocr)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Iter-150 regression guard: catalog lookups that fail (unknown
+    /// `surface_id`, invalid catalog mode string) must emit
+    /// `CoreError::Config` / `config.invalid`, not `Internal.Generic`. Every
+    /// String error surfaced by `subprocess_invocation_mode` is ultimately a
+    /// catalog/configuration fault.
+    #[test]
+    fn unknown_surface_maps_to_config_invalid() {
+        let err = match invocation_runtime_for_surface("provider_surface.__does_not_exist__") {
+            Ok(_) => panic!("unknown surface should fail"),
+            Err(e) => e,
+        };
+        assert_eq!(err.code(), "config.invalid");
+        assert!(matches!(
+            err,
+            CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
+                ..
+            }
+        ));
+    }
 }
