@@ -1,7 +1,6 @@
 audio.capture_failed
 audio.stt_failed
 auth.failed
-auth.generic
 config.invalid
 config.missing
 config.out_of_range

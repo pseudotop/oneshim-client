@@ -174,7 +174,7 @@ mod tests {
             self.current_session()
                 .await?
                 .ok_or_else(|| CoreError::Auth {
-                    code: oneshim_core::error_codes::AuthCode::Generic,
+                    code: oneshim_core::error_codes::AuthCode::Failed,
                     message: "no session".to_string(),
                 })
         }

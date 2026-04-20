@@ -5,8 +5,6 @@ define_code_enum! {
     pub enum AuthCode {
         /// 인증 실패 (잘못된 credential 등).
         Failed => "auth.failed",
-        /// 세분화 미완료.
-        Generic => "auth.generic",
     }
 }
 
