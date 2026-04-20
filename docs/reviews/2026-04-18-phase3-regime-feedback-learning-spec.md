@@ -1,5 +1,7 @@
 # Phase 3 — FeedbackSignalSink + regime_id filter + RegimeManager persistence
 
+> **Status: SHIPPED.** Spec preserved as execution history. CoreError constructor examples below use pre-[ADR-019](../architecture/ADR-019-error-code-infrastructure.md) tuple-variant syntax (`CoreError::Storage(msg)`); post-ADR-019 use struct-variant form `CoreError::Storage { code: StorageCode::Failed, message: msg }`.
+
 _Date_: 2026-04-18
 _Scope_: `client-rust` repository. Three remaining items from `docs/reviews/2026-04-16-feature-gaps-analysis.md` — narrower than the original 4-week projection because C1 retry queue, C2 coaching trigger, and C3b lifecycle tick were verified as already wired on current `main` (see `.claude/phase3-brief.md`).
 
