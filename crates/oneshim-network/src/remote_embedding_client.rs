@@ -73,7 +73,20 @@ impl RemoteEmbeddingProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| CoreError::Network(format!("Embedding API request failed: {e}")))?;
+            .map_err(|e| {
+                // Iter-90: split timeout vs generic per canonical pattern.
+                if e.is_timeout() {
+                    CoreError::RequestTimeout {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
+                        timeout_ms: 0, // sentinel; client-level timeout is in reqwest builder
+                    }
+                } else {
+                    CoreError::Network {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("Embedding API request failed: {e}"),
+                    }
+                }
+            })?;
 
         let status = response.status();
         if !status.is_success() {
@@ -81,15 +94,36 @@ impl RemoteEmbeddingProvider {
                 .text()
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
-            return Err(CoreError::Network(format!(
-                "Embedding API returned {status}: {error_body}"
-            )));
+            let message = format!("Embedding API returned {status}: {error_body}");
+            // Semantic HTTP status mapping per iter-54/55 pattern.
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message,
+                },
+            });
         }
 
-        let parsed: EmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| CoreError::Network(format!("Failed to parse embedding response: {e}")))?;
+        let parsed: EmbeddingResponse = response.json().await.map_err(|e| CoreError::Network {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("Failed to parse embedding response: {e}"),
+        })?;
 
         Ok(parsed.data.into_iter().map(|d| d.embedding).collect())
     }
@@ -100,9 +134,10 @@ impl EmbeddingProvider for RemoteEmbeddingProvider {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, CoreError> {
         let texts = vec![text.to_string()];
         let mut results = self.request_embeddings(&texts).await?;
-        results
-            .pop()
-            .ok_or_else(|| CoreError::Network("Embedding API returned empty data".to_string()))
+        results.pop().ok_or_else(|| CoreError::Network {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: "Embedding API returned empty data".to_string(),
+        })
     }
 
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, CoreError> {
@@ -242,5 +277,80 @@ mod tests {
 
         assert_eq!(provider.model_id(), "text-embedding-3-small");
         assert_eq!(provider.dimensions(), 1536);
+    }
+
+    /// iter-67 regression guards for iter-56a semantic HTTP status mapping.
+    /// Each test asserts the typed CoreError variant for a specific status.
+    async fn run_status_mapping_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!(r#"{{"error": "http {status}"}}"#))
+            .create_async()
+            .await;
+        let provider = RemoteEmbeddingProvider::new(
+            server.url(),
+            "key".to_string(),
+            "model".to_string(),
+            3,
+            30,
+        );
+        provider.embed("test").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn status_403_maps_to_auth() {
+        let err = run_status_mapping_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_408_maps_to_timeout() {
+        let err = run_status_mapping_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_429_maps_to_rate_limit() {
+        let err = run_status_mapping_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_502_maps_to_service_unavailable() {
+        let err = run_status_mapping_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_504_maps_to_timeout() {
+        let err = run_status_mapping_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    /// iter-78: domain fallback. Unmapped statuses stay as CoreError::Network.
+    #[tokio::test]
+    async fn status_500_falls_back_to_network() {
+        let err = run_status_mapping_test(500).await;
+        assert!(
+            matches!(err, CoreError::Network { .. }),
+            "500 should fall back to Network, got: {err:?}"
+        );
     }
 }

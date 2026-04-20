@@ -80,20 +80,27 @@ impl AnnIndex for HnswAdapter {
             let cap = idx.capacity();
             if cap > 0 && size > cap * 80 / 100 {
                 let new_cap = cap * 2;
-                idx.reserve(new_cap)
-                    .map_err(|e| CoreError::Internal(format!("HNSW reserve (grow) failed: {e}")))?;
+                idx.reserve(new_cap).map_err(|e| CoreError::Analysis {
+                    code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                    message: format!("HNSW reserve (grow) failed: {e}"),
+                })?;
                 tracing::debug!(
                     old_cap = cap,
                     new_cap = new_cap,
                     "HNSW index capacity doubled"
                 );
             }
-            idx.add(key, &vec)
-                .map_err(|e| CoreError::Internal(format!("HNSW add failed: {e}")))?;
+            idx.add(key, &vec).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: format!("HNSW add failed: {e}"),
+            })?;
             Ok(())
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("HNSW add task join failed: {e}")))??;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("HNSW add task join failed: {e}"),
+        })??;
         self.cached_size.store(self.index.size(), Ordering::Relaxed);
         self.dirty.store(true, Ordering::Relaxed);
         Ok(())
@@ -103,9 +110,10 @@ impl AnnIndex for HnswAdapter {
         let idx = Arc::clone(&self.index);
         let q = query.to_vec();
         tokio::task::spawn_blocking(move || {
-            let matches = idx
-                .search(&q, k)
-                .map_err(|e| CoreError::Internal(format!("HNSW search failed: {e}")))?;
+            let matches = idx.search(&q, k).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: format!("HNSW search failed: {e}"),
+            })?;
             Ok(matches
                 .keys
                 .into_iter()
@@ -113,18 +121,26 @@ impl AnnIndex for HnswAdapter {
                 .collect::<Vec<_>>())
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("HNSW search task join failed: {e}")))?
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("HNSW search task join failed: {e}"),
+        })?
     }
 
     async fn remove(&self, key: u64) -> Result<(), CoreError> {
         let idx = Arc::clone(&self.index);
         tokio::task::spawn_blocking(move || -> Result<(), CoreError> {
-            idx.remove(key)
-                .map_err(|e| CoreError::Internal(format!("HNSW remove failed: {e}")))?;
+            idx.remove(key).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: format!("HNSW remove failed: {e}"),
+            })?;
             Ok(())
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("HNSW remove task join failed: {e}")))??;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("HNSW remove task join failed: {e}"),
+        })??;
         self.cached_size.store(self.index.size(), Ordering::Relaxed);
         self.dirty.store(true, Ordering::Relaxed);
         Ok(())
@@ -146,17 +162,25 @@ impl AnnIndex for HnswAdapter {
         tokio::task::spawn_blocking(move || -> Result<(), CoreError> {
             // Write to a .tmp sibling, then atomic rename.
             let tmp_path = path.with_extension("usearch.tmp");
-            let tmp_str = tmp_path
-                .to_str()
-                .ok_or_else(|| CoreError::Internal("Non-UTF-8 HNSW data path".into()))?;
-            idx.save(tmp_str)
-                .map_err(|e| CoreError::Internal(format!("HNSW save failed: {e}")))?;
-            std::fs::rename(&tmp_path, &path)
-                .map_err(|e| CoreError::Internal(format!("HNSW atomic rename failed: {e}")))?;
+            let tmp_str = tmp_path.to_str().ok_or_else(|| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: "Non-UTF-8 HNSW data path".into(),
+            })?;
+            idx.save(tmp_str).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: format!("HNSW save failed: {e}"),
+            })?;
+            std::fs::rename(&tmp_path, &path).map_err(|e| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("HNSW atomic rename failed: {e}"),
+            })?;
             Ok(())
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("HNSW save task join failed: {e}")))??;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("HNSW save task join failed: {e}"),
+        })??;
         self.dirty.store(false, Ordering::Relaxed);
         Ok(())
     }
@@ -165,15 +189,21 @@ impl AnnIndex for HnswAdapter {
         let idx = Arc::clone(&self.index);
         let path = self.data_path.clone();
         tokio::task::spawn_blocking(move || -> Result<(), CoreError> {
-            let path_str = path
-                .to_str()
-                .ok_or_else(|| CoreError::Internal("Non-UTF-8 HNSW data path".into()))?;
-            idx.load(path_str)
-                .map_err(|e| CoreError::Internal(format!("HNSW load failed: {e}")))?;
+            let path_str = path.to_str().ok_or_else(|| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: "Non-UTF-8 HNSW data path".into(),
+            })?;
+            idx.load(path_str).map_err(|e| CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: format!("HNSW load failed: {e}"),
+            })?;
             Ok(())
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("HNSW load task join failed: {e}")))??;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("HNSW load task join failed: {e}"),
+        })??;
         self.cached_size.store(self.index.size(), Ordering::Relaxed);
         self.dirty.store(false, Ordering::Relaxed);
         Ok(())

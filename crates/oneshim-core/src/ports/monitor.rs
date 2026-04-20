@@ -13,7 +13,9 @@ use crate::models::system::SystemMetrics;
 /// Collects CPU, memory, disk, and network metrics.
 ///
 /// # Errors
-/// Returns `CoreError::Internal` if the platform API fails to report metrics.
+/// Returns `CoreError::Internal` (wire: `internal.generic`) on mutex lock
+/// poisoning in the sysinfo state; platform API calls themselves are
+/// infallible in the sysinfo crate.
 #[async_trait]
 pub trait SystemMonitor: Send + Sync {
     async fn collect_metrics(&self) -> Result<SystemMetrics, CoreError>;
@@ -22,8 +24,12 @@ pub trait SystemMonitor: Send + Sync {
 /// Active window detection and process enumeration.
 ///
 /// # Errors
-/// Returns `CoreError::Internal` on platform API failure,
-/// `CoreError::PermissionDenied` if accessibility permissions are missing.
+/// - `CoreError::PermissionDenied` (wire: `permission.permission_denied`) when
+///   accessibility permission is missing (macOS) or AT-SPI2 is unavailable
+///   (Linux). Platform check runs before any OS API call.
+/// - `CoreError::Internal` (wire: `internal.generic`) on intra-process failure
+///   (lock poisoning, tokio join error). Platform API errors (rare in practice)
+///   also surface here.
 #[async_trait]
 pub trait ProcessMonitor: Send + Sync {
     async fn get_active_window(&self) -> Result<Option<WindowInfo>, CoreError>;
@@ -40,7 +46,9 @@ pub trait ProcessMonitor: Send + Sync {
 /// Collects composite user activity context (window, mouse, keyboard, idle).
 ///
 /// # Errors
-/// Returns `CoreError::Internal` on platform API failure.
+/// Returns `CoreError::Internal` (wire: `internal.generic`) on intra-process
+/// failure (lock poisoning). Does not surface OS permission errors
+/// separately — missing permissions degrade gracefully to partial context.
 #[async_trait]
 pub trait ActivityMonitor: Send + Sync {
     async fn collect_context(&self) -> Result<UserContext, CoreError>;

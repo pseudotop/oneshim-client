@@ -29,6 +29,7 @@ use tauri::{Emitter, EventTarget};
 use tracing::{error, warn};
 
 use crate::commands::system::{sanitize_frontend_surface, truncate_log_field};
+use crate::ipc_error::IpcError;
 
 // ── Length limits (prevent DoS via huge error payloads) ──
 
@@ -240,23 +241,26 @@ pub async fn report_frontend_error(
     severity: String,
     stack: Option<String>,
     component_stack: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     // Validate route shape — reject log injection and DoS via huge route strings
     if !is_valid_route(&route) {
         // Truncate the route to a small bounded preview BEFORE sanitization,
         // so an attacker passing a 1MB route doesn't cause a 1MB allocation
         // in the error path. Take chars (not bytes) to stay UTF-8 safe.
         let preview: String = route.chars().take(64).collect();
-        return Err(format!(
-            "invalid route: {}",
-            sanitize_frontend_surface(&preview)
+        return Err(IpcError::new(
+            "validation.invalid_arguments",
+            format!("invalid route: {}", sanitize_frontend_surface(&preview)),
         ));
     }
 
     // Validate severity length — prevent log DoS via attacker-controlled
     // severity string (the only string field that previously had no cap).
     if severity.len() > MAX_SEVERITY_LEN {
-        return Err("invalid severity: too long".to_string());
+        return Err(IpcError::new(
+            "validation.invalid_arguments",
+            "invalid severity: too long",
+        ));
     }
 
     // Truncate inputs to bounded sizes
@@ -314,9 +318,9 @@ pub async fn report_frontend_error(
             // but we still truncate + sanitize defensively to match the
             // invalid-route rejection path's hardening.
             let preview: String = other.chars().take(16).collect();
-            return Err(format!(
-                "invalid severity: {}",
-                sanitize_frontend_surface(&preview)
+            return Err(IpcError::new(
+                "validation.invalid_arguments",
+                format!("invalid severity: {}", sanitize_frontend_surface(&preview)),
             ));
         }
     }

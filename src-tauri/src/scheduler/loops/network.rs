@@ -32,12 +32,12 @@ impl Scheduler {
                                         if count > 0 {
                                             debug!("batch: {count}items sent");
                                             if let Err(e) = storage4.mark_unsent_as_sent_before(Utc::now()).await {
-                                                warn!("mark sent failure: {e}");
+                                                warn!(err.code = %e.code(), "mark sent failure: {e}");
                                             }
                                         }
                                     }
                                     Err(e) => {
-                                        warn!("batch failure: {e}");
+                                        warn!(err.code = %e.code(), "batch failure: {e}");
                                     }
                                 }
                             }
@@ -52,15 +52,15 @@ impl Scheduler {
                         }
 
                         if let Err(e) = storage4.enforce_retention().await {
-                            warn!("event policy failure: {e}");
+                            warn!(err.code = %e.code(), "event policy failure: {e}");
                         }
 
                         if let Some(ref fs) = frame_storage4 {
                             if let Err(e) = fs.enforce_retention().await {
-                                warn!("frame policy failure: {e}");
+                                warn!(err.code = %e.code(), "frame policy failure: {e}");
                             }
                             if let Err(e) = fs.enforce_storage_limit().await {
-                                warn!("frame failure: {e}");
+                                warn!(err.code = %e.code(), "frame failure: {e}");
                             }
                         }
                     }
@@ -75,7 +75,7 @@ impl Scheduler {
                                             info!("shutdown flush: {count} events sent");
                                         }
                                         Err(e) => {
-                                            warn!("shutdown flush failed: {e}");
+                                            warn!(err.code = %e.code(), "shutdown flush failed: {e}");
                                             break;
                                         }
                                     }
@@ -121,7 +121,7 @@ impl Scheduler {
                 tokio::select! {
                     _ = interval.tick() => {
                         if let Err(e) = api.send_heartbeat(&sid).await {
-                            warn!("heartbeat failure: {e}");
+                            warn!(err.code = %e.code(), "heartbeat failure: {e}");
                         }
                     }
                     _ = shutdown_rx.changed() => {

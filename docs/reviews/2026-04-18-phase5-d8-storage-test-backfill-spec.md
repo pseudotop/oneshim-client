@@ -1,5 +1,7 @@
 # Phase 5-D8: Storage Test Backfill — Design Spec
 
+> **Status: SHIPPED.** Spec preserved as execution history. CoreError assertion examples below use pre-[ADR-019](../architecture/ADR-019-error-code-infrastructure.md) tuple-variant syntax (`matches!(err, Err(CoreError::Internal(_)))`); post-ADR-019 use struct-variant form `matches!(err, Err(CoreError::Internal { .. }))` or (preferred for wire-code-specific assertions) `err.code() == "internal.generic"`.
+
 **Date**: 2026-04-18
 **Target branch series**: `feat/phase5-d8-storage-tests` (spec) → 3 impl PRs
 **Scope owner**: client-rust

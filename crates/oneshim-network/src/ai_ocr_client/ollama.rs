@@ -53,9 +53,11 @@ fn infer_ollama_vision_support(model: &str) -> bool {
 }
 
 fn parse_ollama_show_supports_ocr(body: &str, model: &str) -> Result<Option<bool>, CoreError> {
-    let parsed: OllamaShowResponse = serde_json::from_str(body).map_err(|error| {
-        CoreError::Network(format!("Failed to parse Ollama model details: {error}"))
-    })?;
+    let parsed: OllamaShowResponse =
+        serde_json::from_str(body).map_err(|error| CoreError::Network {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("Failed to parse Ollama model details: {error}"),
+        })?;
     let mut capabilities = parsed.capabilities;
     if let Some(details) = parsed.details {
         capabilities.extend(details.capabilities);
@@ -92,18 +94,29 @@ pub(super) async fn probe_ollama_model_supports_ocr(
         .send()
         .await
         .map_err(|error| {
-            CoreError::Network(format!("Ollama model capability probe failed: {error}"))
+            // Iter-90: split timeout vs generic per canonical pattern.
+            if error.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("Ollama model capability probe failed: {error}"),
+                }
+            }
         })?;
     let status = response.status();
-    let body = response.text().await.map_err(|error| {
-        CoreError::Network(format!(
-            "Failed to read Ollama model capability probe response: {error}"
-        ))
+    let body = response.text().await.map_err(|error| CoreError::Network {
+        code: oneshim_core::error_codes::NetworkCode::Generic,
+        message: format!("Failed to read Ollama model capability probe response: {error}"),
     })?;
     if !status.is_success() {
-        return Err(CoreError::Network(format!(
-            "Ollama model capability probe failed ({status}): {body}"
-        )));
+        return Err(CoreError::Network {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: format!("Ollama model capability probe failed ({status}): {body}"),
+        });
     }
 
     parse_ollama_show_supports_ocr(&body, model)

@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::{AppState, ConfigRuntimeState};
 /// Dismiss a coaching overlay message with the given action.
 /// If "later", snoozes the profile for 15 minutes.
@@ -10,14 +11,19 @@ pub async fn dismiss_coaching_message(
     message_id: String,
     action: String,
     profile: String,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     use oneshim_core::models::coaching::DismissAction;
 
     let dismiss_action = match action.as_str() {
         "ok" => DismissAction::Ok,
         "later" => DismissAction::Later,
         "timeout" => DismissAction::Timeout,
-        _ => return Err(format!("Invalid dismiss action: {action}")),
+        _ => {
+            return Err(IpcError::new(
+                "validation.invalid_arguments",
+                format!("Invalid dismiss action: {action}"),
+            ));
+        }
     };
 
     if let Some(ref overlay) = state.magic_overlay {
@@ -62,7 +68,7 @@ pub async fn submit_coaching_feedback(
     state: tauri::State<'_, AppState>,
     message_id: String,
     positive: bool,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     if let Some(ref engine) = state.coaching_engine {
         engine.record_feedback(&message_id, positive).await;
     }
@@ -74,14 +80,19 @@ pub async fn submit_coaching_feedback(
 pub async fn set_overlay_mode(
     state: tauri::State<'_, AppState>,
     mode: String,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     use oneshim_core::config::OverlayMode;
 
     let overlay_mode = match mode.as_str() {
         "minimal" => OverlayMode::Minimal,
         "rich" => OverlayMode::Rich,
         "adaptive" => OverlayMode::Adaptive,
-        _ => return Err(format!("Invalid overlay mode: {mode}")),
+        _ => {
+            return Err(IpcError::new(
+                "validation.invalid_arguments",
+                format!("Invalid overlay mode: {mode}"),
+            ));
+        }
     };
 
     if let Some(ref overlay) = state.magic_overlay {
@@ -92,13 +103,19 @@ pub async fn set_overlay_mode(
 
 /// Cycle overlay mode: Minimal → Rich → Adaptive → Minimal.
 #[command]
-pub async fn toggle_overlay_mode(state: tauri::State<'_, AppState>) -> Result<String, String> {
+pub async fn toggle_overlay_mode(state: tauri::State<'_, AppState>) -> Result<String, IpcError> {
     if let Some(ref overlay) = state.magic_overlay {
         overlay.toggle_mode().await;
         let mode = overlay.get_mode().await;
         Ok(format!("{:?}", mode))
     } else {
-        Err("overlay not available".to_string())
+        // Precondition: overlay must be initialized. The frontend should
+        // retry after overlay activation or surface this as "feature
+        // temporarily unavailable".
+        Err(IpcError::new(
+            "service.unavailable",
+            "overlay not available",
+        ))
     }
 }
 
@@ -106,7 +123,7 @@ pub async fn toggle_overlay_mode(state: tauri::State<'_, AppState>) -> Result<St
 #[command]
 pub async fn get_overlay_state(
     state: tauri::State<'_, AppState>,
-) -> Result<OverlayStateResponse, String> {
+) -> Result<OverlayStateResponse, IpcError> {
     use oneshim_core::config::OverlayMode;
 
     let (mode, visible) = if let Some(ref overlay) = state.magic_overlay {
@@ -133,7 +150,7 @@ pub struct OverlayStateResponse {
 pub async fn toggle_overlay_interactive(
     state: tauri::State<'_, AppState>,
     interactive: bool,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     if let Some(ref overlay) = state.magic_overlay {
         overlay.set_interactive(interactive);
     }
@@ -150,7 +167,7 @@ pub async fn toggle_overlay_interactive(
 pub async fn toggle_suggestions_panel(
     state: tauri::State<'_, AppState>,
     open: bool,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     if let Some(ref overlay) = state.magic_overlay {
         overlay.set_panel_mode(open);
     }
@@ -166,7 +183,7 @@ pub async fn toggle_suggestions_panel(
 pub async fn toggle_automation_confirm(
     state: tauri::State<'_, AppState>,
     active: bool,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     if let Some(ref overlay) = state.magic_overlay {
         overlay.set_automation_confirm_mode(active);
     }
@@ -179,18 +196,18 @@ pub async fn get_coaching_history(
     state: tauri::State<'_, AppState>,
     limit: Option<u32>,
     offset: Option<u32>,
-) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, String> {
+) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, IpcError> {
     state
         .storage
         .query_coaching_events(limit.unwrap_or(50), offset.unwrap_or(0))
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
 
 /// Get goal progress for all configured regimes.
 #[command]
 pub async fn get_goal_progress(
     state: tauri::State<'_, AppState>,
-) -> Result<Vec<oneshim_core::models::coaching::GoalProgressView>, String> {
+) -> Result<Vec<oneshim_core::models::coaching::GoalProgressView>, IpcError> {
     if let Some(ref engine) = state.coaching_engine {
         Ok(engine.all_goal_progress().await)
     } else {
@@ -203,11 +220,11 @@ pub async fn get_goal_progress(
 pub async fn get_habit_streaks(
     state: tauri::State<'_, AppState>,
     days: u32,
-) -> Result<Vec<oneshim_core::models::coaching::HabitStreakRow>, String> {
+) -> Result<Vec<oneshim_core::models::coaching::HabitStreakRow>, IpcError> {
     state
         .storage
         .query_habit_streaks(days)
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
 
 /// Update regime goal targets and persist to config.
@@ -216,7 +233,7 @@ pub async fn update_regime_goals(
     state: tauri::State<'_, AppState>,
     config_state: tauri::State<'_, ConfigRuntimeState>,
     goals: std::collections::HashMap<String, u32>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     if let Some(ref engine) = state.coaching_engine {
         engine.update_regime_goals(&goals).await;
     }
@@ -228,7 +245,7 @@ pub async fn update_regime_goals(
             config.coaching.regime_goals = goals.clone();
             Ok(())
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     Ok(())
 }

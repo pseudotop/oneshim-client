@@ -43,19 +43,20 @@ fn apply_auth_headers(
     auth_scheme: ProviderAuthScheme,
     builder: reqwest::RequestBuilder,
     api_key: &str,
-) -> reqwest::RequestBuilder {
+) -> Result<reqwest::RequestBuilder, CoreError> {
     match auth_scheme {
-        ProviderAuthScheme::None => builder,
-        ProviderAuthScheme::XApiKey => builder
+        ProviderAuthScheme::None => Ok(builder),
+        ProviderAuthScheme::XApiKey => Ok(builder
             .header("x-api-key", api_key)
-            .header("anthropic-version", crate::ANTHROPIC_API_VERSION),
-        ProviderAuthScheme::XGoogApiKey => builder.header("x-goog-api-key", api_key),
-        ProviderAuthScheme::Bearer => builder.header("Authorization", format!("Bearer {api_key}")),
-        ProviderAuthScheme::AwsSignatureV4 => {
-            // AWS Signature V4 requires request signing which is not yet implemented for OCR.
-            // Fall back to no-auth; callers should gate on provider type before reaching here.
-            builder
+            .header("anthropic-version", crate::ANTHROPIC_API_VERSION)),
+        ProviderAuthScheme::XGoogApiKey => Ok(builder.header("x-goog-api-key", api_key)),
+        ProviderAuthScheme::Bearer => {
+            Ok(builder.header("Authorization", format!("Bearer {api_key}")))
         }
+        ProviderAuthScheme::AwsSignatureV4 => Err(CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+            message: "AWS Bedrock is intentionally unsupported in this build".into(),
+        }),
     }
 }
 impl RemoteOcrProvider {
@@ -65,7 +66,10 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })
     }
     fn ocr_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
         provider_specs::resolved_auth_scheme(
@@ -73,7 +77,10 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })
     }
     fn ensure_ocr_parameters_supported(&self, parameters: &[&str]) -> Result<(), CoreError> {
         provider_specs::validate_supported_parameters(
@@ -82,7 +89,10 @@ impl RemoteOcrProvider {
             provider_specs::SurfaceCapabilityKind::Ocr,
             parameters,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })
     }
     async fn ensure_runtime_ocr_model_ready(&self, model: &str) -> Result<(), CoreError> {
         if model.trim().is_empty()
@@ -92,7 +102,7 @@ impl RemoteOcrProvider {
         {
             return Ok(());
         }
-        match ollama::probe_ollama_model_supports_ocr(&self.http_client, &self.endpoint, model).await { Ok(Some(true)) | Ok(None) => Ok(()), Ok(Some(false)) => Err(CoreError::Config(format!("Selected Ollama model '{model}' does not advertise image support. Choose a multimodal model such as 'qwen3-vl:8b' or 'gemma3:4b'."))), Err(error) => { warn!(endpoint = %self.endpoint, model = %model, error = %error, "Failed to verify Ollama OCR model capability; proceeding with request."); Ok(()) } }
+        match ollama::probe_ollama_model_supports_ocr(&self.http_client, &self.endpoint, model).await { Ok(Some(true)) | Ok(None) => Ok(()), Ok(Some(false)) => Err(CoreError::Config { code: oneshim_core::error_codes::ConfigCode::Invalid, message: format!("Selected Ollama model '{model}' does not advertise image support. Choose a multimodal model such as 'qwen3-vl:8b' or 'gemma3:4b'.") }), Err(error) => { warn!(endpoint = %self.endpoint, model = %model, error = %error, "Failed to verify Ollama OCR model capability; proceeding with request."); Ok(()) } }
     }
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, crate::error::NetworkError> {
         use crate::error::NetworkError;
@@ -103,9 +113,12 @@ impl RemoteOcrProvider {
         )
         .map_err(NetworkError::Internal)?;
         if !matches!(auth_scheme, ProviderAuthScheme::None) && config.api_key.is_empty() {
-            return Err(NetworkError::Config(
-                "AI OCR API key is not configured. Set it in Settings.".into(),
-            ));
+            // Iter-99: "not configured" is Missing semantics. Route via
+            // NetworkError::Core to emit ConfigCode::Missing wire code.
+            return Err(NetworkError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "AI OCR API key is not configured. Set it in Settings.".into(),
+            }));
         }
         let credential = if matches!(auth_scheme, ProviderAuthScheme::None) {
             CredentialSource::NoAuth
@@ -138,10 +151,12 @@ impl RemoteOcrProvider {
             .is_none()
             && supports_model
         {
-            return Err(NetworkError::Config(
-                "The selected OCR provider surface requires an explicit model selection."
+            // Iter-99 follow-up: required model selection = Missing.
+            return Err(NetworkError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "The selected OCR provider surface requires an explicit model selection."
                     .to_string(),
-            ));
+            }));
         }
         if let Some(model) = resolved_model
             .as_deref()
@@ -252,10 +267,12 @@ impl RemoteOcrProvider {
             .is_none()
             && supports_model
         {
-            return Err(NetworkError::Config(
-                "The selected OCR provider surface requires an explicit model selection."
+            // Iter-99 follow-up: required model selection = Missing.
+            return Err(NetworkError::Core(oneshim_core::error::CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "The selected OCR provider surface requires an explicit model selection."
                     .to_string(),
-            ));
+            }));
         }
         if let Some(model) = resolved_model
             .as_deref()
@@ -371,10 +388,10 @@ impl OcrProvider for RemoteOcrProvider {
                 ])?;
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::Internal(
-                    "Bedrock Converse request shape is not yet supported for OCR extraction"
-                        .to_string(),
-                ));
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
+                });
             }
         }
         let strategy = OcrProviderStrategy::try_from(request_shape)?;
@@ -387,30 +404,74 @@ impl OcrProvider for RemoteOcrProvider {
             .json(&request_body);
         let auth_scheme = self.ocr_auth_scheme()?;
         if matches!(auth_scheme, ProviderAuthScheme::None) {
-            builder = apply_auth_headers(auth_scheme, builder, "");
+            builder = apply_auth_headers(auth_scheme, builder, "")?;
         } else {
             let bearer_token = self.credential.resolve_bearer_token().await?;
-            builder = apply_auth_headers(auth_scheme, builder, &bearer_token);
+            builder = apply_auth_headers(auth_scheme, builder, &bearer_token)?;
         }
         if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("OCR API request failed: {}", e)))?;
+        let response = builder.send().await.map_err(|e| {
+            // Iter-90: split timeout vs generic (canonical pattern).
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("OCR API request failed: {}", e),
+                }
+            }
+        })?;
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("OCR API response read failure: {}", e)))?;
+        let body = response.text().await.map_err(|e| {
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("OCR API response read failure: {}", e),
+                }
+            }
+        })?;
         if !status.is_success() {
             warn!(status = %status, "OCR API error response");
-            return Err(CoreError::OcrError(format!(
+            let message = format!(
                 "OCR API error ({}): {}",
                 status,
                 body.chars().take(200).collect::<String>()
-            )));
+            );
+            // Semantic HTTP status mapping per iter-54/55/56/58 — even OCR
+            // domain errors benefit from differentiating auth/timeout/rate-limit
+            // from generic OCR failures.
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::OcrError {
+                    code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+                    message,
+                },
+            });
         }
         let results = strategy.parse_response(&body)?;
         debug!(count = results.len(), "OCR received");

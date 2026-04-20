@@ -26,8 +26,9 @@ pub async fn get_daily_digest(
     let date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {e}")))?;
 
+    // Iter-96: CoreError → ApiError via semantic From impl (preserves wire code).
     let digest = dashboard_service::get_or_generate_digest(&state, &date_str, date)
-        .map_err(ApiError::Internal)?;
+        .map_err(ApiError::from)?;
 
     Ok(Json(digest))
 }
@@ -42,8 +43,9 @@ pub async fn get_daily_digest_today(
     let date = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d")
         .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {e}")))?;
 
-    let digest = dashboard_service::get_or_generate_digest(&state, &today, date)
-        .map_err(ApiError::Internal)?;
+    // Iter-96: CoreError → ApiError via semantic From impl.
+    let digest =
+        dashboard_service::get_or_generate_digest(&state, &today, date).map_err(ApiError::from)?;
 
     Ok(Json(digest))
 }
@@ -61,8 +63,9 @@ pub async fn export_daily_digest(
     let date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {e}")))?;
 
+    // Iter-96: CoreError → ApiError via semantic From impl (preserves wire code).
     let digest = dashboard_service::get_or_generate_digest(&state, &date_str, date)
-        .map_err(ApiError::Internal)?;
+        .map_err(ApiError::from)?;
 
     let markdown = DigestExporter::to_markdown(&digest);
     let filename = format!("daily-digest-{date_str}.md");

@@ -45,12 +45,13 @@ impl ConfigManager {
     pub fn with_path(config_path: PathBuf) -> Result<Self, CoreError> {
         if let Some(parent) = config_path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    CoreError::Config(format!(
+                fs::create_dir_all(parent).map_err(|e| CoreError::Config {
+                    code: crate::error_codes::ConfigCode::Invalid,
+                    message: format!(
                         "Failed to create config directory: {}: {}",
                         parent.display(),
                         e
-                    ))
+                    ),
                 })?;
                 info!("settings create: {}", parent.display());
             }
@@ -141,7 +142,10 @@ impl ConfigManager {
     {
         let _guard = self.inner.writer_lock.lock();
         let mut new_cfg = (**self.inner.sender.borrow()).clone();
-        updater(&mut new_cfg).map_err(CoreError::Config)?;
+        updater(&mut new_cfg).map_err(|message| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message,
+        })?;
         Self::save_to_file(&self.inner.config_path, &new_cfg)?;
         let snapshot = new_cfg.clone();
         self.inner.sender.send_replace(Arc::new(new_cfg));
@@ -173,8 +177,9 @@ impl ConfigManager {
         #[cfg(target_os = "macos")]
         {
             // macOS: ~/Library/Application Support/oneshim/
-            let home = std::env::var("HOME").map_err(|_| {
-                CoreError::Config("HOME environment variable not found".to_string())
+            let home = std::env::var("HOME").map_err(|_| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Missing,
+                message: "HOME environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(home)
                 .join("Library")
@@ -185,8 +190,9 @@ impl ConfigManager {
         #[cfg(target_os = "windows")]
         {
             // Windows: %APPDATA%\oneshim\
-            let appdata = std::env::var("APPDATA").map_err(|_| {
-                CoreError::Config("APPDATA environment variable not found".to_string())
+            let appdata = std::env::var("APPDATA").map_err(|_| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Missing,
+                message: "APPDATA environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(appdata).join(APP_DIR_NAME))
         }
@@ -194,8 +200,9 @@ impl ConfigManager {
         #[cfg(target_os = "linux")]
         {
             // Linux: ~/.config/oneshim/
-            let home = std::env::var("HOME").map_err(|_| {
-                CoreError::Config("HOME environment variable not found".to_string())
+            let home = std::env::var("HOME").map_err(|_| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Missing,
+                message: "HOME environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(home).join(".config").join(APP_DIR_NAME))
         }
@@ -217,8 +224,9 @@ impl ConfigManager {
         #[cfg(target_os = "windows")]
         {
             // Windows: %LOCALAPPDATA%\oneshim\data\
-            let local_appdata = std::env::var("LOCALAPPDATA").map_err(|_| {
-                CoreError::Config("LOCALAPPDATA environment variable not found".to_string())
+            let local_appdata = std::env::var("LOCALAPPDATA").map_err(|_| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Missing,
+                message: "LOCALAPPDATA environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(local_appdata).join(APP_DIR_NAME).join("data"))
         }
@@ -226,8 +234,9 @@ impl ConfigManager {
         #[cfg(target_os = "linux")]
         {
             // Linux: ~/.local/share/oneshim/
-            let home = std::env::var("HOME").map_err(|_| {
-                CoreError::Config("HOME environment variable not found".to_string())
+            let home = std::env::var("HOME").map_err(|_| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Missing,
+                message: "HOME environment variable not found".to_string(),
             })?;
             Ok(PathBuf::from(home)
                 .join(".local")
@@ -242,20 +251,14 @@ impl ConfigManager {
     }
 
     fn load_from_file(path: &PathBuf) -> Result<AppConfig, CoreError> {
-        let content = fs::read_to_string(path).map_err(|e| {
-            CoreError::Config(format!(
-                "Failed to read config file: {}: {}",
-                path.display(),
-                e
-            ))
+        let content = fs::read_to_string(path).map_err(|e| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!("Failed to read config file: {}: {}", path.display(), e),
         })?;
 
-        let config: AppConfig = serde_json::from_str(&content).map_err(|e| {
-            CoreError::Config(format!(
-                "Failed to parse config file: {}: {}",
-                path.display(),
-                e
-            ))
+        let config: AppConfig = serde_json::from_str(&content).map_err(|e| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!("Failed to parse config file: {}: {}", path.display(), e),
         })?;
 
         debug!("settings file load complete: {}", path.display());
@@ -263,15 +266,14 @@ impl ConfigManager {
     }
 
     fn save_to_file(path: &PathBuf, config: &AppConfig) -> Result<(), CoreError> {
-        let content = serde_json::to_string_pretty(config)
-            .map_err(|e| CoreError::Config(format!("Failed to serialize config: {}", e)))?;
+        let content = serde_json::to_string_pretty(config).map_err(|e| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!("Failed to serialize config: {}", e),
+        })?;
 
-        fs::write(path, content).map_err(|e| {
-            CoreError::Config(format!(
-                "Failed to write config file: {}: {}",
-                path.display(),
-                e
-            ))
+        fs::write(path, content).map_err(|e| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!("Failed to write config file: {}: {}", path.display(), e),
         })?;
 
         Ok(())
@@ -361,7 +363,10 @@ mod tests {
             "reload() should return Err when the config file contains invalid JSON"
         );
         match result.unwrap_err() {
-            CoreError::Config(msg) => {
+            CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: msg,
+            } => {
                 assert!(
                     msg.contains("Failed to parse config file"),
                     "error message should describe the parse failure, got: {msg}"

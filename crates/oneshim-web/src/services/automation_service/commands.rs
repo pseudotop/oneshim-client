@@ -56,7 +56,7 @@ impl AutomationCommandService {
                 config.automation.custom_presets.push(new_preset);
                 Ok(())
             })
-            .map_err(|e| ApiError::Internal(format!("Failed to save preset: {e}")))?;
+            .map_err(ApiError::from)?;
 
         if duplicate {
             return Err(ApiError::Conflict(format!(
@@ -94,7 +94,7 @@ impl AutomationCommandService {
                 }
                 Ok(())
             })
-            .map_err(|e| ApiError::Internal(format!("Failed to update preset: {e}")))?;
+            .map_err(ApiError::from)?;
 
         if !found {
             return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
@@ -113,7 +113,7 @@ impl AutomationCommandService {
                 found = config.automation.custom_presets.len() < before_len;
                 Ok(())
             })
-            .map_err(|e| ApiError::Internal(format!("Failed to delete preset: {e}")))?;
+            .map_err(ApiError::from)?;
 
         if !found {
             return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
@@ -235,13 +235,25 @@ impl AutomationCommandService {
                 result: planned.result,
             }),
             Err(
-                CoreError::PolicyDenied(msg)
-                | CoreError::InvalidArguments(msg)
-                | CoreError::ElementNotFound(msg),
+                CoreError::PolicyDenied { message: msg, .. }
+                | CoreError::InvalidArguments { message: msg, .. },
             ) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::Internal(msg))
-                if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") =>
-            {
+            Err(CoreError::ElementNotFound { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
+            // Iter-104 cascading fix from iter-100: IntentPlanner/IntentExecutor
+            // "not configured" errors switched from Internal.Generic to
+            // Config.Missing. Match both variants so the BadRequest routing
+            // still fires — a previously silent regression where these
+            // config-miss errors would have returned 500 instead of 400.
+            Err(
+                CoreError::Internal {
+                    code: _,
+                    message: msg,
+                }
+                | CoreError::Config {
+                    code: _,
+                    message: msg,
+                },
+            ) if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") => {
                 Err(ApiError::BadRequest(msg))
             }
             Err(e) => Err(ApiError::Internal(format!(
@@ -333,13 +345,27 @@ impl AutomationCommandService {
                     }
                 }
                 Err(
-                    CoreError::PolicyDenied(msg)
-                    | CoreError::InvalidArguments(msg)
-                    | CoreError::ElementNotFound(msg),
+                    CoreError::PolicyDenied { message: msg, .. }
+                    | CoreError::InvalidArguments { message: msg, .. },
                 ) => return Err(ApiError::BadRequest(msg)),
-                Err(CoreError::Internal(msg))
-                    if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") =>
-                {
+                Err(CoreError::ElementNotFound { name: msg, .. }) => {
+                    return Err(ApiError::BadRequest(msg));
+                }
+                // Iter-104 cascading fix from iter-100 (same as line 245-256
+                // above). Post-iter-100, "IntentExecutor/IntentPlanner not
+                // configured" emits Config.Missing, not Internal.Generic.
+                // Accept both variants on the substring guard to keep the
+                // BadRequest routing intact.
+                Err(
+                    CoreError::Internal {
+                        code: _,
+                        message: msg,
+                    }
+                    | CoreError::Config {
+                        code: _,
+                        message: msg,
+                    },
+                ) if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") => {
                     return Err(ApiError::BadRequest(msg));
                 }
                 Err(e) => {

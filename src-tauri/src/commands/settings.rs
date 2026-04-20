@@ -1,8 +1,19 @@
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::ConfigRuntimeState;
 
 use super::deep_merge;
+
+/// Helper: wrap a string-valued validation error into an IpcError with the
+/// canonical validation.invalid_arguments wire code. The helpers below
+/// (`validate_config_bounds`, `reject_forbidden_allowed_subpaths`) return
+/// `Result<(), String>` because they have existing tests that pattern-match
+/// on the message substring; we preserve that interface and wrap only at
+/// the command boundary.
+fn validation_error(msg: impl Into<String>) -> IpcError {
+    IpcError::new("validation.invalid_arguments", msg)
+}
 
 /// WebView에 노출되는 민감 필드를 마스킹하는 키 목록
 #[cfg(test)]
@@ -81,30 +92,32 @@ fn redact_sensitive_fields(config: &mut serde_json::Value) {
 pub async fn update_setting(
     config_json: String,
     state: tauri::State<'_, ConfigRuntimeState>,
-) -> Result<(), String> {
-    let patch: serde_json::Value = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+) -> Result<(), IpcError> {
+    let patch: serde_json::Value =
+        serde_json::from_str(&config_json).map_err(|e| validation_error(e.to_string()))?;
 
-    let patch_obj = patch.as_object().ok_or("expected JSON object")?;
+    let patch_obj = patch
+        .as_object()
+        .ok_or_else(|| validation_error("expected JSON object"))?;
 
     // Allowlist check — see module-level ALLOWED_KEYS
-
     for key in patch_obj.keys() {
         if !ALLOWED_KEYS.contains(&key.as_str()) {
-            return Err(format!(
+            return Err(validation_error(format!(
                 "modifying '{}' from the WebView is not permitted; allowed: {}",
                 key,
                 ALLOWED_KEYS.join(", "),
-            ));
+            )));
         }
     }
 
-    reject_forbidden_allowed_subpaths(&patch)?;
+    reject_forbidden_allowed_subpaths(&patch).map_err(validation_error)?;
 
     // Deep-merge allowed keys into current config.
     // This preserves existing sub-keys that the patch does not mention,
     // preventing silent resets to struct defaults (e.g. privacy.pii_filter_level).
     let current = state.config_manager().get();
-    let mut current_val = serde_json::to_value(&current).map_err(|e| e.to_string())?;
+    let mut current_val = serde_json::to_value(&current).map_err(IpcError::from)?;
 
     if let (Some(base), Some(patch)) = (current_val.as_object_mut(), patch.as_object()) {
         for (k, v) in patch {
@@ -116,14 +129,14 @@ pub async fn update_setting(
     }
 
     let new_config: oneshim_core::config::AppConfig =
-        serde_json::from_value(current_val).map_err(|e| e.to_string())?;
+        serde_json::from_value(current_val).map_err(IpcError::from)?;
 
-    validate_config_bounds(&new_config)?;
+    validate_config_bounds(&new_config).map_err(validation_error)?;
 
     state
         .config_manager()
         .update(new_config)
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
 
 /// Validate numeric config bounds to prevent tight loops or resource exhaustion
@@ -209,7 +222,7 @@ pub async fn get_allowed_setting_keys() -> Vec<String> {
 
 /// 웹 서버 포트 조회 — 프론트엔드 API base URL 결정용
 #[command]
-pub async fn get_web_port(state: tauri::State<'_, ConfigRuntimeState>) -> Result<u16, String> {
+pub async fn get_web_port(state: tauri::State<'_, ConfigRuntimeState>) -> Result<u16, IpcError> {
     Ok(state.web_port())
 }
 

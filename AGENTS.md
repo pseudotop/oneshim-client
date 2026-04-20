@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Repository guardrails for humans and AI agents.
-This project is a DDD + Hexagonal Architecture workspace. Keep boundaries explicit.
+This project is a 15-package Cargo workspace (14 crates under `crates/` + `src-tauri`) following Hexagonal Architecture (Ports & Adapters). Keep boundaries explicit. (The parent ONESHIM project additionally uses DDD on the server side; this `client-rust` workspace is Hexagonal-only.)
 
 ## Scope
 
@@ -9,11 +9,13 @@ These rules apply to the entire repository unless a subdirectory adds stricter g
 
 ## Architecture Summary
 
-1. `oneshim-core` is the domain contract layer.
-2. Adapter crates implement ports from `oneshim-core`.
-3. `oneshim-app` is the composition root and runtime orchestrator.
-4. `oneshim-web` is a delivery layer (HTTP handlers + frontend), not a domain layer.
-5. `oneshim-automation` enforces policy, sandbox, audit, and action execution flows.
+1. `oneshim-core` is the domain contract layer (ports, models, errors). 57 port files / 95 public traits / 38 `CoreError` variants typed per [ADR-019](docs/architecture/ADR-019-error-code-infrastructure.md).
+2. Adapter crates (`oneshim-network`, `oneshim-storage`, `oneshim-monitor`, `oneshim-vision`, `oneshim-suggestion`, `oneshim-automation`, `oneshim-analysis`, `oneshim-embedding`, `oneshim-audio`, `oneshim-web`, `oneshim-api-contracts`) implement ports from `oneshim-core`.
+3. `src-tauri/` (package name `oneshim-app`) is the composition root + runtime orchestrator. The former `crates/oneshim-app/` is DEPRECATED and removed from the workspace.
+4. `oneshim-sandbox-worker` is a standalone binary crate (stdin JSON → stdout JSON under platform sandbox). Spawned out-of-process by `src-tauri` to execute `AutomationAction` with Windows Job Objects / Linux seccomp+Landlock / macOS App Sandbox constraints — isolates the main process from action-side crashes.
+5. `oneshim-lint` is a standalone workspace tool (language-check binary) with no `oneshim-core` dependency.
+6. `oneshim-web` is a delivery layer (HTTP handlers + frontend), not a domain layer.
+7. `oneshim-automation` enforces policy, sandbox, audit, and action execution flows.
 
 See:
 - `docs/architecture/ADR-001-rust-client-architecture-patterns.md`
@@ -42,7 +44,7 @@ See:
 
 Before finalizing a change, verify:
 
-1. Layer boundaries still match Hexagonal/DDD intent.
+1. Layer boundaries still match Hexagonal (Ports & Adapters) intent — this workspace is Hexagonal-only; DDD belongs to the parent-project server side.
 2. New dependencies do not violate crate direction rules.
 3. Policy/privacy/audit paths are preserved for automation and external integrations.
 4. UI changes follow tokenized components and i18n conventions.

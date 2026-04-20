@@ -492,7 +492,10 @@ impl AccessibilityExtractor for MacOsNativeAccessibility {
         // Run synchronous FFI on a blocking thread to avoid stalling tokio
         let result = tokio::task::spawn_blocking(Self::extract_raw)
             .await
-            .map_err(|e| CoreError::Internal(format!("AX blocking task failed: {e}")))?;
+            .map_err(|e| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("AX blocking task failed: {e}"),
+            })?;
 
         match result {
             Some(raw) => {
@@ -516,11 +519,12 @@ impl AccessibilityExtractor for MacOsNativeAccessibility {
         has_full_text_consent: bool,
     ) -> Result<Vec<AccessibilityElement>, CoreError> {
         if !Self::check_permission() {
-            return Err(CoreError::PermissionDenied(
-                "macOS Accessibility permission not granted. \
+            return Err(CoreError::PermissionDenied {
+                code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
+                message: "macOS Accessibility permission not granted. \
                  Enable in System Settings > Privacy & Security > Accessibility."
                     .to_string(),
-            ));
+            });
         }
         if !Self::circuit_allows() {
             return Ok(Vec::new());
@@ -573,7 +577,10 @@ impl AccessibilityExtractor for MacOsNativeAccessibility {
             elements
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("AX tree traversal task failed: {e}")))?;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("AX tree traversal task failed: {e}"),
+        })?;
 
         if result.is_empty() {
             Self::record_failure();

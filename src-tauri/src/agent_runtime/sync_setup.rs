@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -19,7 +19,7 @@ pub(super) struct SyncResult {
 /// Requires `ONESHIM_SYNC_PASSPHRASE` env var, device identity from SQLite, and a valid transport.
 pub(super) async fn build_sync_engine(
     config: &AppConfig,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     sqlite_storage_concrete: &Arc<oneshim_storage::sqlite::SqliteStorage>,
     consent_manager: Option<Arc<ConsentManager>>,
 ) -> SyncResult {
@@ -67,9 +67,11 @@ pub(super) async fn build_sync_engine(
             .map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>),
             None => {
                 warn!("sync transport=file but sync_folder not configured");
-                Err(CoreError::Internal(
-                    "sync_folder required for file transport".into(),
-                ))
+                // Iter-108: required-when = Missing (iter-89/99 pattern).
+                Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Missing,
+                    message: "sync_folder required for file transport".into(),
+                })
             }
         },
         SyncTransportKind::Remote => match &config.sync.remote_endpoint {
@@ -92,17 +94,17 @@ pub(super) async fn build_sync_engine(
             }
             None => {
                 warn!("sync transport=remote but remote_endpoint not configured");
-                Err(CoreError::Internal(
-                    "remote_endpoint required for remote transport".into(),
-                ))
+                // Iter-108: required-when = Missing.
+                Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Missing,
+                    message: "remote_endpoint required for remote transport".into(),
+                })
             }
         },
         SyncTransportKind::Lan => {
             #[cfg(feature = "lan-sync")]
             {
-                let config_dir = data_dir.clone();
-                match oneshim_network::sync::lan_tls::load_or_generate_cert(&config_dir, &device_id)
-                {
+                match oneshim_network::sync::lan_tls::load_or_generate_cert(data_dir, &device_id) {
                     Ok((cert_pem, key_pem, fingerprint)) => {
                         // Use block_on to await the async start in sync context
                         match tokio::runtime::Handle::current().block_on(
@@ -129,7 +131,14 @@ pub(super) async fn build_sync_engine(
             {
                 let _ = data_dir; // suppress unused warning
                 warn!("LAN sync requires 'lan-sync' feature; sync disabled");
-                Err(CoreError::Internal("lan-sync feature not enabled".into()))
+                // Iter-108: feature not compiled = service unavailable in
+                // this build (user can install a different build with the
+                // feature, but this runtime can't serve LAN sync). Wire
+                // code `service.unavailable` matches the semantic.
+                Err(CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "lan-sync feature not enabled in this build".into(),
+                })
             }
         }
     };

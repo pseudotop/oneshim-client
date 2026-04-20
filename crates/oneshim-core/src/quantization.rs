@@ -26,21 +26,30 @@ impl ScalarQuantizer {
     /// Quantize a f32 embedding vector to INT8.
     ///
     /// Edge cases:
-    /// - Zero-length vector: returns `CoreError::Internal`
+    /// - Zero-length vector: returns `CoreError::InvalidArguments`
+    ///   (wire: `validation.invalid_arguments`). Iter-95 corrected this
+    ///   from `Internal` — input-validation failures aren't internal errors.
     /// - Constant vector (all same value): scale=1.0, offset=min, all INT8=0
-    /// - NaN/Inf: rejected via `f32::is_finite()` pre-scan
+    /// - NaN/Inf: rejected via `f32::is_finite()` pre-scan, returns
+    ///   `CoreError::InvalidArguments`
     pub fn quantize(vector: &[f32]) -> Result<QuantizedVector, CoreError> {
+        // Iter-95: input-validation errors use InvalidArguments consistent with
+        // cosine_similarity_int8 below (wire code `validation.invalid_arguments`).
+        // Pre-iter-95 these were `internal.generic`, conflating caller-side
+        // bad input with true internal runtime failures in telemetry.
         if vector.is_empty() {
-            return Err(CoreError::Internal(
-                "cannot quantize zero-length vector".to_string(),
-            ));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "cannot quantize zero-length vector".to_string(),
+            });
         }
 
         // Reject NaN/Inf
         if !vector.iter().all(|v| v.is_finite()) {
-            return Err(CoreError::Internal(
-                "vector contains NaN or Inf values".to_string(),
-            ));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "vector contains NaN or Inf values".to_string(),
+            });
         }
 
         let min = vector.iter().cloned().fold(f32::INFINITY, f32::min);
@@ -82,10 +91,13 @@ impl ScalarQuantizer {
         expected_dim: usize,
     ) -> Result<QuantizedVector, CoreError> {
         if vector.len() != expected_dim {
-            return Err(CoreError::InvalidArguments(format!(
-                "Vector dimension mismatch: expected {expected_dim}, got {}",
-                vector.len()
-            )));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: format!(
+                    "Vector dimension mismatch: expected {expected_dim}, got {}",
+                    vector.len()
+                ),
+            });
         }
         Self::quantize(vector)
     }
@@ -108,16 +120,16 @@ impl ScalarQuantizer {
         b: &QuantizedVector,
     ) -> Result<f32, CoreError> {
         if a.data.is_empty() || b.data.is_empty() {
-            return Err(CoreError::InvalidArguments(
-                "cannot compute cosine similarity on empty vectors".to_string(),
-            ));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "cannot compute cosine similarity on empty vectors".to_string(),
+            });
         }
         if a.data.len() != b.data.len() {
-            return Err(CoreError::InvalidArguments(format!(
-                "Dimension mismatch: {} vs {}",
-                a.data.len(),
-                b.data.len()
-            )));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: format!("Dimension mismatch: {} vs {}", a.data.len(), b.data.len()),
+            });
         }
 
         Ok(Self::cosine_similarity_int8_unchecked(a, b))
@@ -292,5 +304,28 @@ mod tests {
             err_msg.contains("384") && err_msg.contains("100"),
             "error should mention expected and actual dims, got: {err_msg}"
         );
+    }
+
+    /// Iter-95 regression guard: input-validation errors in quantize() must
+    /// emit wire code `validation.invalid_arguments`, not `internal.generic`.
+    /// Pre-iter-95 the zero-length and NaN guards used InternalCode::Generic,
+    /// drifting from the sibling cosine_similarity_int8 which correctly uses
+    /// InvalidArguments.
+    #[test]
+    fn quantize_empty_vector_emits_invalid_arguments_code() {
+        let err = ScalarQuantizer::quantize(&[]).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn quantize_nan_vector_emits_invalid_arguments_code() {
+        let err = ScalarQuantizer::quantize(&[0.5, f32::NAN, 0.3]).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn quantize_inf_vector_emits_invalid_arguments_code() {
+        let err = ScalarQuantizer::quantize(&[0.5, f32::INFINITY, 0.3]).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
     }
 }

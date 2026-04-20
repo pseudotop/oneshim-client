@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use tracing::warn;
 
 use oneshim_api_contracts::dashboard::{RawContentActivity, RawContentActivityBrief};
+use oneshim_core::error::CoreError;
 use oneshim_core::models::daily_digest::{
     self, ContentBrief, DailyDigest, DailyStatistics, DayComparison, TimelineEntry,
 };
@@ -14,27 +15,24 @@ use oneshim_core::models::tiered_memory::WorkType;
 use crate::AppState;
 
 /// Generate or retrieve a cached daily digest for the given date.
+///
+/// Iter-96: return `CoreError` instead of `String` so the typed
+/// `err.code()` survives through to the handler's
+/// `From<CoreError> for ApiError` conversion — the stringified form
+/// lost wire codes at the service boundary, collapsing every storage
+/// failure into `ApiError::Internal`.
 pub fn get_or_generate_digest(
     state: &AppState,
     date_str: &str,
     date: NaiveDate,
-) -> Result<DailyDigest, String> {
+) -> Result<DailyDigest, CoreError> {
     // 1. Check cache
-    if let Some(cached) = state
-        .core
-        .storage
-        .get_daily_digest(date_str)
-        .map_err(|e| format!("Failed to get daily digest: {e}"))?
-    {
+    if let Some(cached) = state.core.storage.get_daily_digest(date_str)? {
         return Ok(cached);
     }
 
     // 2. Generate from segments
-    let segment_records = state
-        .core
-        .storage
-        .get_segments_for_date(date_str)
-        .map_err(|e| format!("Failed to get segments: {e}"))?;
+    let segment_records = state.core.storage.get_segments_for_date(date_str)?;
 
     let digest = build_daily_digest(&segment_records, date, state);
 

@@ -14,12 +14,23 @@
 
 ```
 oneshim-monitor/src/
-├── lib.rs        # 크레이트 루트
-├── system.rs     # SysInfoMonitor - 시스템 메트릭
-├── process.rs    # ProcessTracker - 프로세스/창 추적
-├── activity.rs   # ActivityTracker - 유휴 감지
-├── macos.rs      # macOS 전용 구현
-└── windows.rs    # Windows 전용 구현
+├── lib.rs              # 크레이트 루트
+├── system.rs           # SysInfoMonitor - CPU/메모리/디스크/네트워크 (sysinfo 0.38)
+├── system_info.rs      # 시스템 정보 래퍼
+├── process.rs          # ProcessTracker - 활성 프로세스/창 추적
+├── activity.rs         # ActivityTracker - 유휴 감지
+├── idle.rs             # 크로스 플랫폼 유휴 감지 헬퍼
+├── input_activity.rs   # InputActivityCollector - 마우스/키보드 패턴 (atomic counter)
+├── input_detail.rs     # 세밀한 입력 이벤트 (superpowers-era)
+├── keyboard_pattern.rs # 키보드 패턴 매칭
+├── key_hook/           # 저수준 key-hook 디렉토리 모듈 (플랫폼 분기)
+├── clipboard.rs        # 클립보드 변경 추적
+├── file_access.rs      # 파일 접근 텔레메트리
+├── window_layout.rs    # WindowLayoutTracker - 창 레이아웃 변경
+├── macos.rs            # macOS 전용 (osascript + serial_test로 circuit_breaker_skips_when_tripped 직렬화)
+├── windows.rs          # Windows 전용 (Win32 GetForegroundWindow + sysinfo)
+├── linux.rs            # Linux 전용 (xdotool/xprintidle X11 + Wayland XWayland 폴백)
+└── error.rs            # MonitorError (ADR-019 typed code)
 ```
 
 ## 주요 컴포넌트

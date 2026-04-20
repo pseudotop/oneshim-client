@@ -963,3 +963,88 @@ fn tools_without_schema_receive_default_empty_object_schema() {
     assert_eq!(api_tools[0]["input_schema"]["type"], "object");
     assert_eq!(api_tools[0]["input_schema"]["additionalProperties"], false);
 }
+
+// iter-82 regression guards for iter-60 semantic HTTP status mapping
+// in http_api_session::send_message. Uses the existing test_session
+// helper + mockito, plus a minimal SessionMessage construction.
+#[cfg(test)]
+mod http_status_mapping {
+    use super::*;
+    use oneshim_core::models::ai_session::{MessageRole, SessionMessage};
+    use oneshim_core::ports::conversation_session::ConversationSession;
+
+    async fn run_http_session_status_test(status: u16) -> oneshim_core::error::CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+
+        let session = test_session(
+            "provider_surface.anthropic.direct_api".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            server.url(),
+            CredentialSource::ApiKey("test-key".to_string()),
+            AiProviderType::Anthropic,
+            None,
+            Arc::new(AiSessionConfig::default()),
+            None,
+        );
+
+        let msg = SessionMessage {
+            role: MessageRole::User,
+            content: "hi".to_string(),
+            attachments: vec![],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        match session.send_message(&msg).await {
+            Err(e) => e,
+            Ok(_) => panic!("expected error from HTTP {status}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn status_403_maps_to_auth() {
+        let err = run_http_session_status_test(403).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_429_maps_to_rate_limit() {
+        let err = run_http_session_status_test(429).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_503_maps_to_service_unavailable() {
+        let err = run_http_session_status_test(503).await;
+        assert!(
+            matches!(
+                err,
+                oneshim_core::error::CoreError::ServiceUnavailable { .. }
+            ),
+            "503 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    /// Domain fallback: 500 falls back to Network.
+    #[tokio::test]
+    async fn status_500_falls_back_to_network() {
+        let err = run_http_session_status_test(500).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::Network { .. }),
+            "500 should fall back to Network, got: {err:?}"
+        );
+    }
+}

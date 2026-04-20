@@ -2,9 +2,9 @@
 
 # ADR-002: OS GUI 상호작용 경계와 런타임 분리
 
-**상태**: 제안됨
+**상태**: 채택됨 (Accepted) — 2026-04-20 제안됨 → 채택됨 승격. M3 네이티브 어댑터 구현 완료 (자세한 shipped scope 는 CLAUDE.md "ADR-002 M3 (Native Adapters)" 섹션 참조).
 **날짜**: 2026-02-25
-**범위**: `oneshim-core`, `oneshim-automation`, `oneshim-web`, `oneshim-ui`, `oneshim-app`
+**범위**: `oneshim-core` (`ElementFinder` / `OverlayDriver` / `FocusProbe` / `InputDriver` 포트), `oneshim-automation` (세션 상태 머신, capability/ticket 처리), `oneshim-vision` (R-tree 공간 인덱스, app-specific element-type override, accessibility 어댑터), `oneshim-web` (capability-token 핸들러), `src-tauri` (`MagicOverlayDriver` — ADR-004 Tauri v2 마이그레이션으로 원래 계획된 `oneshim-ui` 네이티브 오버레이 대신 WebView 브릿지 채택)
 
 ---
 
@@ -122,7 +122,7 @@ HMAC 키(고정 환경설정):
 - 운영 추적을 위한 session/candidate marker 표시
 - timeout/cancel/completion 시 즉시 clear
 
-오버레이 구현은 `oneshim-ui`에 두되, 필요 시 전용 어댑터 crate로 분리해도 core port는 유지한다.
+오버레이 구현은 `src-tauri`의 `MagicOverlayDriver`(WebView 브릿지; ADR-004 Tauri v2 마이그레이션으로 원래 계획된 `oneshim-ui` 네이티브 오버레이 대체)에 둔다. port는 유지되며 호출자는 `oneshim-core`의 `OverlayDriver` trait를 사용한다.
 
 ### 10. GUI 세션 전용 SSE 스트림을 사용한다
 
@@ -141,9 +141,9 @@ V2의 기본 이벤트 전달은 전용 세션 SSE를 사용한다.
 |------|-------------------|
 | `oneshim-core` | focus/overlay/session/ticket 포트 및 도메인 계약 |
 | `oneshim-automation` | `GuiInteractionService` 오케스트레이션(`propose -> highlight -> confirm -> execute`) + 정책/프라이버시/감사 + 세션 상태 |
+| `oneshim-vision` | accessibility 어댑터 (macOS AX / Windows UIA / Linux AT-SPI), R-tree 공간 인덱스, `ElementFinder` 구현 |
 | `oneshim-web` | 얇은 전송 핸들러, 검증, 세션 API, SSE 이벤트 발행 |
-| `oneshim-ui` | 네이티브 오버레이 어댑터 구현(또는 향후 전용 오버레이 어댑터 crate 분리 대상) |
-| `oneshim-app` | `OverlayDriver`, `FocusProbe`, `ElementFinder`, `InputDriver` DI 와이어링 |
+| `src-tauri` (pkg `oneshim-app`) | DI 와이어링 + `MagicOverlayDriver` (WebView 오버레이 브릿지; ADR-004 에 따라 원래 계획된 `oneshim-ui` 네이티브 오버레이 대체) — `OverlayDriver`, `FocusProbe`, `ElementFinder`, `InputDriver` 연결 |
 
 의존성 방향은 유지된다. 어댑터 간 통신은 `oneshim-core` port를 통해서만 수행한다.
 

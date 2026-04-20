@@ -2,7 +2,7 @@
 
 # oneshim-web
 
-The local web dashboard crate. Provides a REST API based on Axum 0.7 and a React 18 frontend.
+The local web dashboard crate. Provides a REST API based on Axum 0.8 and a React 18.3 frontend.
 
 ## Features
 
@@ -18,39 +18,31 @@ The local web dashboard crate. Provides a REST API based on Axum 0.7 and a React
 oneshim-web/
 ├── src/
 │   ├── lib.rs          # WebServer + AppState (includes audit_logger)
-│   ├── routes.rs       # Route definitions (canonical HTTP surface source)
+│   ├── routes.rs       # 118 route definitions (368 LoC) — canonical HTTP surface source;
+│   │                   # contract-frozen via docs/contracts/oneshim-web.v1.openapi.yaml
+│   │                   # + docs/contracts/http-interface-manifest.v1.json
 │   ├── error.rs        # ApiError type
-│   ├── embedded.rs     # Static file serving
-│   └── handlers/       # API handlers
-│       ├── metrics.rs
-│       ├── processes.rs
-│       ├── idle.rs
-│       ├── sessions.rs
-│       ├── frames.rs
-│       ├── events.rs
-│       ├── stats.rs
-│       ├── tags.rs
-│       ├── search.rs
-│       ├── reports.rs
-│       ├── timeline.rs
-│       ├── focus.rs
-│       ├── backup.rs
-│       ├── export.rs
-│       ├── settings.rs    # AppSettings DTO + automation/sandbox/AI settings
-│       └── automation/    # Automation API handlers — directory module (ADR-003)
-│           ├── mod.rs     # re-exports + router
-│           ├── helpers.rs # private helper functions
-│           ├── scene.rs   # scene analysis + calibration
-│           └── execution.rs # intent/preset/policy handlers
-└── frontend/           # React frontend
+│   ├── embedded.rs     # Static file serving (rust-embed)
+│   └── handlers/       # 44 API handler files organized as flat + grouped:
+│       # Originally 17 handlers (Phase-1 baseline below). Grew with superpowers
+│       # + Phase-4 features. Domain-grouped subdirectories + flat files:
+│       # ai_models, ai_provider_surfaces, ai_session, annotations, automation,
+│       # automation_gui, backup, bug_report, coaching, daily_digest, dashboard,
+│       # data, digests, events, export, focus, frames, idle, integration,
+│       # metrics, onboarding, playbooks, pomodoro, processes, recalibration,
+│       # reports, search, sessions, settings, stats, stream, suggestions,
+│       # support, tags, timeline, update + automation/ subdirectory
+│       # (mod.rs + helpers.rs + scene.rs + execution.rs).
+└── frontend/           # React 18.3 frontend
     ├── src/
     │   ├── pages/      # Page components (Dashboard, Automation, Settings, etc.)
     │   ├── components/ # UI components
-    │   ├── api/        # API client
+    │   ├── api/        # API client (incl. desktop.ts with IpcError TS type guard per ADR-019)
     │   ├── hooks/      # React hooks
-    │   ├── i18n/       # Internationalization translations (ko/en)
+    │   ├── i18n/       # i18n translations (en/ko) incl. wire-errors.{en,ko}.json (41 codes)
     │   └── styles/     # Design tokens
-    └── e2e/            # Playwright E2E tests
+    ├── e2e/            # Playwright E2E tests
+    └── # Biome (lint), Vitest (unit), Playwright (e2e), Storybook (review catalog)
 ```
 
 ## AppState

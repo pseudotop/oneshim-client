@@ -1,8 +1,21 @@
 # ADR-008: Network Resilience Patterns
 
-**Status**: Proposed
+**Status**: Accepted (promoted from Proposed 2026-04-20; `map_reqwest_error` / `extract_retry_after` / circuit breaker / backoff all shipped and in use across `oneshim-network/src/{http_client,resilience,sync/remote_transport,integration/http_transport/mod,ai_llm_client/request}.rs` + gRPC error mapping)
 **Date**: 2026-03-09
 **Scope**: `oneshim-network` crate, all network-facing adapters
+
+> **Note on CoreError syntax in example snippets**: Examples below use the
+> pre-[ADR-019](./ADR-019-error-code-infrastructure.md) syntax
+> `CoreError::RateLimit { retry_after_secs }`. After ADR-019 these must be
+> written as struct variants with a typed `code` field:
+> ```rust
+> CoreError::RateLimit {
+>     code: oneshim_core::error_codes::NetworkCode::RateLimit,
+>     retry_after_secs,
+> }
+> ```
+> The resilience patterns themselves (retry/backoff/circuit-breaker/retry-after
+> parsing) are unchanged by ADR-019.
 
 ---
 

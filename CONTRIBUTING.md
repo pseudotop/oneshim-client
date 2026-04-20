@@ -317,7 +317,10 @@ mod tests {
             _context: &ContextPayload,
         ) -> Result<(), CoreError> {
             if self.should_fail {
-                Err(CoreError::Network("test failure".to_string()))
+                Err(CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: "test failure".to_string(),
+                })
             } else {
                 Ok(())
             }

@@ -13,10 +13,10 @@ impl FewShotStorage for SqliteStorage {
         &self,
         limit: usize,
     ) -> Result<Vec<SuggestionHistoryEntry>, CoreError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Storage(format!("lock: {e}")))?;
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
+            message: format!("lock: {e}"),
+        })?;
 
         let mut stmt = conn
             .prepare(
@@ -27,7 +27,10 @@ impl FewShotStorage for SqliteStorage {
                  ORDER BY created_at DESC
                  LIMIT ?1",
             )
-            .map_err(|e| CoreError::Storage(format!("prepare: {e}")))?;
+            .map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("prepare: {e}"),
+            })?;
 
         let rows = stmt
             .query_map([limit as i64], |row| {
@@ -47,11 +50,17 @@ impl FewShotStorage for SqliteStorage {
                         .unwrap_or_else(chrono::Utc::now),
                 })
             })
-            .map_err(|e| CoreError::Storage(format!("query: {e}")))?;
+            .map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("query: {e}"),
+            })?;
 
         let mut result = Vec::new();
         for row in rows {
-            result.push(row.map_err(|e| CoreError::Storage(format!("row: {e}")))?);
+            result.push(row.map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("row: {e}"),
+            })?);
         }
         Ok(result)
     }
@@ -68,10 +77,10 @@ impl FewShotStorage for SqliteStorage {
         context_window: &str,
         regime_label: Option<&str>,
     ) -> Result<(), CoreError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Storage(format!("lock: {e}")))?;
+        let conn = self.conn.lock().map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
+            message: format!("lock: {e}"),
+        })?;
 
         conn.execute(
             "UPDATE local_suggestions
@@ -90,7 +99,10 @@ impl FewShotStorage for SqliteStorage {
                 suggestion_id,
             ],
         )
-        .map_err(|e| CoreError::Storage(format!("update: {e}")))?;
+        .map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
+            message: format!("update: {e}"),
+        })?;
 
         Ok(())
     }

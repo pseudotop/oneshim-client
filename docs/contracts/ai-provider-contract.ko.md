@@ -10,9 +10,9 @@
 
 ## 범위
 
-- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client.rs`)
-- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client.rs`)
-- 어댑터 해석/폴백 (`crates/oneshim-app/src/provider_adapters.rs`)
+- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client/` — ADR-003 디렉토리 모듈)
+- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client/` — ADR-003 디렉토리 모듈)
+- 어댑터 해석/폴백 (`src-tauri/src/provider_adapters/` — ADR-004 Tauri v2 마이그레이션으로 `crates/oneshim-app/` 에서 경로 변경된 디렉토리 모듈)
 
 ## 제공자 타입
 
@@ -104,8 +104,17 @@
 
 ## 실패 시맨틱
 
-1. 2xx가 아닌 응답 => 어댑터 오류 (`CoreError::Network` 또는 `CoreError::OcrError`)
-2. 파싱 불일치 => 어댑터 오류 (LLM은 `CoreError::Internal`, OCR은 `CoreError::OcrError`)
+1. 2xx가 아닌 응답 => 어댑터 오류, 시맨틱 HTTP status 매핑 경로
+   (wire code: `auth.failed`, `network.timeout`, `network.rate_limit`,
+   `service.unavailable`, domain-fallback `provider.ocr_failed` /
+   `provider.analysis_failed` / `network.generic`). 상세는
+   [`docs/guides/http-status-error-mapping.ko.md`](../guides/http-status-error-mapping.ko.md) 참조.
+2. 파싱 불일치 => 어댑터 오류.
+   - **LLM**: `CoreError::Analysis { ProviderCode::AnalysisFailed }` (wire:
+     `provider.analysis_failed`). iter-93 drift 수정 이후; 기존 `CoreError::Internal`은
+     provider 이상 동작을 텔레메트리에서 숨겼음.
+   - **OCR**: `CoreError::OcrError { ProviderCode::OcrFailed }` (wire:
+     `provider.ocr_failed`).
 3. `fallback_to_local=true`면 로컬 제공자로 폴백될 수 있습니다.
 4. 폴백 비활성 시 원격 설정/초기화 오류는 fail-closed로 처리해야 합니다.
 

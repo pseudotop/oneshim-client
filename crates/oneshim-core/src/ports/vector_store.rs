@@ -10,6 +10,18 @@ use crate::quantization::QuantizedVector;
 
 /// Port for storing and searching embedding vectors.
 /// Primary adapter: brute-force cosine similarity implementation in oneshim-storage.
+///
+/// # Errors
+/// - `CoreError::Storage` (wire: `storage.failed`) for SQLite-backed
+///   operations in the oneshim-storage adapter (iter-47 mass fix pattern).
+/// - `CoreError::InvalidArguments` (wire: `validation.invalid_arguments`)
+///   for caller-side input violations — empty/NaN vectors, dimension
+///   mismatch (iter-95/106 pattern).
+/// - `CoreError::Internal` (wire: `internal.generic`) for default impls
+///   of optional methods (`store_quantized`, `search_quantized`,
+///   `backfill_quantized`) that an adapter chooses not to override.
+///   Production adapters that do override these emit domain-appropriate
+///   variants instead.
 #[async_trait]
 pub trait VectorStore: Send + Sync {
     // --- Core CRUD ---
@@ -61,9 +73,10 @@ pub trait VectorStore: Send + Sync {
         _metadata: EmbeddingMetadata,
         _skip_float32: bool,
     ) -> Result<(), CoreError> {
-        Err(CoreError::Internal(
-            "store_quantized not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "store_quantized not implemented".into(),
+        })
     }
 
     /// Search using INT8 quantized cosine similarity (faster, approximate).
@@ -75,18 +88,20 @@ pub trait VectorStore: Send + Sync {
         _time_decay_hours: f32,
         _filters: &SearchFilters,
     ) -> Result<Vec<SearchResult>, CoreError> {
-        Err(CoreError::Internal(
-            "search_quantized not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "search_quantized not implemented".into(),
+        })
     }
 
     /// Backfill INT8 quantization for existing float32-only vectors.
     /// Processes rows WHERE vector_int8 IS NULL LIMIT batch_size.
     /// Returns the number of rows backfilled.
     async fn backfill_quantized(&self, _batch_size: usize) -> Result<u64, CoreError> {
-        Err(CoreError::Internal(
-            "backfill_quantized not implemented".into(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "backfill_quantized not implemented".into(),
+        })
     }
 
     /// Count rows that have not yet been quantized to INT8.

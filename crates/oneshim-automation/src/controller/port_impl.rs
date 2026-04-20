@@ -195,10 +195,13 @@ impl AutomationPort for AutomationController {
             if confirmation.nonce != nonce {
                 // Re-insert so a legitimate caller can still respond.
                 map.insert(command_id.to_string(), (confirmation, sender));
-                return Err(CoreError::PermissionDenied(format!(
-                    "confirm automation command '{}': nonce mismatch",
-                    command_id
-                )));
+                return Err(CoreError::PermissionDenied {
+                    code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
+                    message: format!(
+                        "confirm automation command '{}': nonce mismatch",
+                        command_id
+                    ),
+                });
             }
 
             // Send the user's decision through the oneshot channel.
@@ -208,6 +211,7 @@ impl AutomationPort for AutomationController {
             Ok(())
         } else {
             Err(CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "PendingConfirmation".to_string(),
                 id: command_id.to_string(),
             })

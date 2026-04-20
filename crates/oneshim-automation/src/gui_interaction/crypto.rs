@@ -15,8 +15,11 @@ pub(super) fn sign_ticket(
     secret: &[u8],
     ticket: &GuiExecutionTicket,
 ) -> Result<String, GuiInteractionError> {
-    let mut mac = HmacSha256::new_from_slice(secret)
-        .map_err(|e| GuiInteractionError::Internal(format!("hmac key init failed: {e}")))?;
+    let mut mac =
+        HmacSha256::new_from_slice(secret).map_err(|e| GuiInteractionError::Internal {
+            code: oneshim_core::error_codes::GuiCode::InternalError,
+            message: format!("hmac key init failed: {e}"),
+        })?;
     mac.update(ticket_signature_payload(ticket).as_bytes());
     let signature = mac.finalize().into_bytes();
     Ok(encode_hex(signature.as_slice()))
@@ -27,16 +30,24 @@ pub(super) fn verify_ticket(
     secret: &[u8],
     ticket: &GuiExecutionTicket,
 ) -> Result<(), GuiInteractionError> {
-    let signature_bytes = decode_hex(&ticket.signature).ok_or_else(|| {
-        GuiInteractionError::TicketInvalid("ticket signature format is invalid".to_string())
-    })?;
+    let signature_bytes =
+        decode_hex(&ticket.signature).ok_or_else(|| GuiInteractionError::TicketInvalid {
+            code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+            message: "ticket signature format is invalid".to_string(),
+        })?;
 
-    let mut mac = HmacSha256::new_from_slice(secret)
-        .map_err(|e| GuiInteractionError::Internal(format!("hmac key init failed: {e}")))?;
+    let mut mac =
+        HmacSha256::new_from_slice(secret).map_err(|e| GuiInteractionError::Internal {
+            code: oneshim_core::error_codes::GuiCode::InternalError,
+            message: format!("hmac key init failed: {e}"),
+        })?;
     mac.update(ticket_signature_payload(ticket).as_bytes());
 
     mac.verify_slice(&signature_bytes)
-        .map_err(|_| GuiInteractionError::TicketInvalid("ticket signature mismatch".to_string()))
+        .map_err(|_| GuiInteractionError::TicketInvalid {
+            code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+            message: "ticket signature mismatch".to_string(),
+        })
 }
 
 pub(super) fn ticket_signature_payload(ticket: &GuiExecutionTicket) -> String {
@@ -60,8 +71,9 @@ pub(super) fn new_capability_token() -> String {
 }
 
 pub(super) fn hash_actions(actions: &[AutomationAction]) -> Result<String, GuiInteractionError> {
-    let payload = serde_json::to_vec(actions).map_err(|e| {
-        GuiInteractionError::Internal(format!("action hash serialization failed: {e}"))
+    let payload = serde_json::to_vec(actions).map_err(|e| GuiInteractionError::Internal {
+        code: oneshim_core::error_codes::GuiCode::InternalError,
+        message: format!("action hash serialization failed: {e}"),
     })?;
     let digest = Sha256::digest(payload);
     Ok(encode_hex(digest.as_slice()))

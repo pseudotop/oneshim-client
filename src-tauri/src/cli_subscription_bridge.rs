@@ -238,12 +238,13 @@ pub fn materialize_bridge_file(
     context_export_path: &Path,
 ) -> Result<bool, CoreError> {
     if let Some(parent) = plan.file_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            CoreError::Internal(format!(
+        std::fs::create_dir_all(parent).map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!(
                 "브리지 디렉토리 create failure ({}): {}",
                 parent.display(),
                 e
-            ))
+            ),
         })?;
     }
 
@@ -255,12 +256,13 @@ pub fn materialize_bridge_file(
         }
     }
 
-    std::fs::write(&plan.file_path, content).map_err(|e| {
-        CoreError::Internal(format!(
+    std::fs::write(&plan.file_path, content).map_err(|e| CoreError::Internal {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!(
             "브리지 file create failure ({}): {}",
             plan.file_path.display(),
             e
-        ))
+        ),
     })?;
 
     Ok(true)
@@ -335,24 +337,26 @@ fn revoke_bridge_file(plan: &CliBridgePlan) -> Result<BridgeFileRevokeOutcome, C
         return Ok(BridgeFileRevokeOutcome::Skipped);
     }
 
-    let contents = std::fs::read_to_string(&plan.file_path).map_err(|e| {
-        CoreError::Internal(format!(
+    let contents = std::fs::read_to_string(&plan.file_path).map_err(|e| CoreError::Internal {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!(
             "bridge file read failure ({}): {}",
             plan.file_path.display(),
             e
-        ))
+        ),
     })?;
 
     if !is_managed_bridge_content(&contents) {
         return Ok(BridgeFileRevokeOutcome::Skipped);
     }
 
-    std::fs::remove_file(&plan.file_path).map_err(|e| {
-        CoreError::Internal(format!(
+    std::fs::remove_file(&plan.file_path).map_err(|e| CoreError::Internal {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!(
             "bridge file remove failure ({}): {}",
             plan.file_path.display(),
             e
-        ))
+        ),
     })?;
 
     Ok(BridgeFileRevokeOutcome::Removed)

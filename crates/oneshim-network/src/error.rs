@@ -21,21 +21,8 @@ pub enum NetworkError {
     #[error("authentication failed: {0}")]
     Auth(String),
 
-    #[error("OAuth error for {provider}: {message}")]
-    OAuth { provider: String, message: String },
-
-    #[error("OAuth refresh failed for {provider}: [{kind:?}] {message}")]
-    OAuthRefresh {
-        provider: String,
-        kind: oneshim_core::ports::oauth::OAuthErrorKind,
-        message: String,
-    },
-
     #[error("{resource_type} not found: {id}")]
     NotFound { resource_type: String, id: String },
-
-    #[error("serialization error: {0}")]
-    Serialization(String),
 
     #[error("configuration error: {0}")]
     Config(String),
@@ -49,12 +36,6 @@ pub enum NetworkError {
     #[error("policy denied: {0}")]
     PolicyDenied(String),
 
-    #[error("OCR error: {0}")]
-    Ocr(String),
-
-    #[error("secret store error: {0}")]
-    SecretStore(String),
-
     #[error("internal error: {0}")]
     Internal(String),
 
@@ -66,41 +47,56 @@ impl From<NetworkError> for CoreError {
     fn from(err: NetworkError) -> Self {
         match err {
             NetworkError::Core(e) => e,
-            NetworkError::Http(msg) => CoreError::Network(msg),
-            NetworkError::Timeout { timeout_ms } => CoreError::RequestTimeout { timeout_ms },
-            NetworkError::RateLimited { retry_after_secs } => {
-                CoreError::RateLimit { retry_after_secs }
-            }
-            NetworkError::ServiceUnavailable(msg) => CoreError::ServiceUnavailable(msg),
-            NetworkError::Auth(msg) => CoreError::Auth(msg),
-            NetworkError::OAuth { provider, message } => {
-                CoreError::OAuthError { provider, message }
-            }
-            NetworkError::OAuthRefresh {
-                provider,
-                kind,
-                message,
-            } => CoreError::OAuthRefreshError {
-                provider,
-                kind,
+            NetworkError::Http(msg) => CoreError::Network {
+                code: oneshim_core::error_codes::NetworkCode::Generic,
+                message: msg,
+            },
+            NetworkError::Timeout { timeout_ms } => CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
+                timeout_ms,
+            },
+            NetworkError::RateLimited { retry_after_secs } => CoreError::RateLimit {
+                code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                retry_after_secs,
+            },
+            NetworkError::ServiceUnavailable(msg) => CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: msg,
+            },
+            NetworkError::Auth(msg) => CoreError::Auth {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: msg,
+            },
+            NetworkError::NotFound { resource_type, id } => CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type,
+                id,
+            },
+            NetworkError::Config(msg) => CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
+                message: msg,
+            },
+            NetworkError::Validation { field, message } => CoreError::Validation {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
+                field,
                 message,
             },
-            NetworkError::NotFound { resource_type, id } => {
-                CoreError::NotFound { resource_type, id }
-            }
-            NetworkError::Serialization(msg) => {
-                CoreError::Internal(format!("serialization: {msg}"))
-            }
-            NetworkError::Config(msg) => CoreError::Config(msg),
-            NetworkError::Validation { field, message } => CoreError::Validation { field, message },
-            NetworkError::Analysis(msg) => CoreError::Analysis(msg),
-            NetworkError::PolicyDenied(msg) => CoreError::PolicyDenied(msg),
-            NetworkError::Ocr(msg) => CoreError::OcrError(msg),
-            NetworkError::SecretStore(msg) => CoreError::SecretStoreError(msg),
-            NetworkError::Internal(msg) => CoreError::Internal(msg),
-            NetworkError::CircuitOpen => {
-                CoreError::ServiceUnavailable("circuit breaker open".into())
-            }
+            NetworkError::Analysis(msg) => CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: msg,
+            },
+            NetworkError::PolicyDenied(msg) => CoreError::PolicyDenied {
+                code: oneshim_core::error_codes::PolicyCode::Denied,
+                message: msg,
+            },
+            NetworkError::Internal(msg) => CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: msg,
+            },
+            NetworkError::CircuitOpen => CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: "circuit breaker open".into(),
+            },
         }
     }
 }

@@ -75,7 +75,7 @@ async fn create_session_rejects_empty_scene() {
     req.min_confidence = Some(0.99);
 
     let err = service.create_session(req).await.unwrap_err();
-    assert!(matches!(err, GuiInteractionError::BadRequest(_)));
+    assert!(matches!(err, GuiInteractionError::BadRequest { .. }));
 }
 
 #[tokio::test]
@@ -92,7 +92,7 @@ async fn create_session_requires_hmac_secret() {
         .create_session(default_create_request())
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::Unavailable(_)));
+    assert!(matches!(err, GuiInteractionError::Unavailable { .. }));
 }
 
 // ── Get session tests ───────────────────────────────────────────────
@@ -116,7 +116,7 @@ async fn get_session_rejects_invalid_token() {
 
     let (sid, _) = create_test_session(&service).await;
     let err = service.get_session(&sid, "wrong-token").await.unwrap_err();
-    assert!(matches!(err, GuiInteractionError::Unauthorized));
+    assert!(matches!(err, GuiInteractionError::Unauthorized { .. }));
 }
 
 #[tokio::test]
@@ -128,5 +128,5 @@ async fn get_session_rejects_unknown_session() {
         .get_session("nonexistent", "some-token")
         .await
         .unwrap_err();
-    assert!(matches!(err, GuiInteractionError::NotFound(_)));
+    assert!(matches!(err, GuiInteractionError::NotFound { .. }));
 }

@@ -15,12 +15,16 @@ The crate responsible for AI suggestion reception, processing, and feedback.
 
 ```
 oneshim-suggestion/src/
-├── lib.rs        # Crate root
-├── receiver.rs   # SuggestionReceiver - SSE event → suggestion conversion
-├── queue.rs      # PriorityQueue - priority queue
-├── feedback.rs   # FeedbackSender - feedback transmission
-├── presenter.rs  # SuggestionPresenter - UI data conversion
-└── history.rs    # SuggestionHistory - history cache
+├── lib.rs            # Crate root
+├── receiver.rs       # SuggestionReceiver - SSE event → suggestion conversion
+├── queue.rs          # PriorityQueue - BTreeSet priority queue (max 50)
+├── feedback.rs       # FeedbackSender - Accept/Reject HTTP POST (+ fires FeedbackSignalSink per ADR-017)
+├── feedback_retry.rs # FeedbackRetryQueue - persists failed posts for scheduler-driven retry
+├── deferred.rs       # Deferred-suggestion handling (snooze + re-surface windows)
+├── presenter.rs      # SuggestionPresenter - UI data conversion
+├── history.rs        # SuggestionHistory - FIFO history cache
+├── scorer.rs         # Suggestion scoring helpers
+└── error.rs          # SuggestionError (ADR-019 typed codes)
 ```
 
 ## Key Components

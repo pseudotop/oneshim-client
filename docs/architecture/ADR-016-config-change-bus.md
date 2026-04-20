@@ -2,7 +2,7 @@
 
 # ADR-016: Config Change Bus
 
-**Status**: Approved
+**Status**: Accepted
 **Date**: 2026-04-17
 **Scope**: `oneshim-core::config_manager::ConfigManager`, all runtime consumers of `AppConfig`
 

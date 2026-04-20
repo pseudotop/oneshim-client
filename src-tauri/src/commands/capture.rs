@@ -4,6 +4,7 @@ use oneshim_core::ports::vision::CaptureRequest;
 use serde::Serialize;
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::AppState;
 
 // ── A2: Scene Analysis DTOs ──────────────────────────────────────────
@@ -63,12 +64,12 @@ pub struct ManualCaptureResponse {
 #[command]
 pub async fn trigger_manual_capture(
     state: tauri::State<'_, AppState>,
-) -> Result<ManualCaptureResponse, String> {
+) -> Result<ManualCaptureResponse, IpcError> {
     let frame_processor = state
         .capture
         .frame_processor
         .as_ref()
-        .ok_or("Capture not available")?;
+        .ok_or_else(|| IpcError::new("service.unavailable", "Capture not available"))?;
 
     // Get current window context for CaptureRequest
     let (app_name, window_title) = if let Some(ref monitor) = state.capture.activity_monitor {
@@ -94,7 +95,7 @@ pub async fn trigger_manual_capture(
     let frame = frame_processor
         .capture_and_process(&request)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     // Extract image data + OCR text via pattern matching (ImagePayload is an enum).
     // EdgeFrameProcessor encodes with base64::STANDARD — decode with the same engine.
@@ -150,15 +151,14 @@ pub async fn trigger_manual_capture(
 #[command]
 pub async fn analyze_current_scene(
     state: tauri::State<'_, AppState>,
-) -> Result<SceneAnalysisResponse, String> {
+) -> Result<SceneAnalysisResponse, IpcError> {
     // 1. Get current window context
-    let monitor = state
-        .capture
-        .activity_monitor
-        .as_ref()
-        .ok_or("Activity monitor not available")?;
+    let monitor =
+        state.capture.activity_monitor.as_ref().ok_or_else(|| {
+            IpcError::new("service.unavailable", "Activity monitor not available")
+        })?;
 
-    let ctx = monitor.collect_context().await.map_err(|e| e.to_string())?;
+    let ctx = monitor.collect_context().await.map_err(IpcError::from)?;
     let (app_name, window_title) = match ctx.active_window {
         Some(ref w) => (w.app_name.clone(), w.title.clone()),
         None => {

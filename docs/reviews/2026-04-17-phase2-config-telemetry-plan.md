@@ -1,5 +1,7 @@
 # Phase 2 — Config Change Bus + Telemetry Exporter Wiring: Implementation Plan
 
+> **Status: SHIPPED 2026-04-17.** Plan preserved as execution history. CoreError constructor examples below use pre-[ADR-019](../architecture/ADR-019-error-code-infrastructure.md) tuple-variant syntax (`CoreError::Config(msg)`); post-ADR-019 use struct-variant form `CoreError::Config { code: ConfigCode::Invalid, message: msg }`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Land a runtime config-change broadcast bus in `oneshim-core` and a feature-gated OpenTelemetry OTLP exporter wired to it in `src-tauri`.

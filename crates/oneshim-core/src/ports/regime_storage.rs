@@ -4,6 +4,15 @@ use crate::error::CoreError;
 use crate::models::tiered_memory::Regime;
 use async_trait::async_trait;
 
+/// Persist RegimeManager state across process restart.
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for SQLite and JSON
+/// serialization failures (iter-47 mass fix pattern). Note that
+/// `load_all` is NOT strictly read-only — adapters may quarantine a
+/// corrupted payload via a side-effect write to preserve user-curated
+/// state; that quarantine write can itself fail and surface as Storage.
+/// Empty state on first launch is `Ok(Vec::new())`, not an Err.
 #[async_trait]
 pub trait RegimeStoragePort: Send + Sync {
     /// Load all persisted regimes on startup. Empty Vec on first launch.

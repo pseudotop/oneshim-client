@@ -87,9 +87,7 @@ pub fn resolve_ai_provider_adapters(
                 let llm_uses_managed = llm_uses_managed_oauth(config);
                 let oauth = if ocr_uses_managed || llm_uses_managed {
                     Some(oauth_port.ok_or_else(|| {
-                        CoreError::Config(
-                            "ProviderOAuth mode requires an initialized OAuth runtime for managed provider surfaces.".to_string(),
-                        )
+                        CoreError::Config { code: oneshim_core::error_codes::ConfigCode::Invalid, message: "ProviderOAuth mode requires an initialized OAuth runtime for managed provider surfaces.".to_string(), }
                     })?)
                 } else {
                     None
@@ -99,8 +97,9 @@ pub fn resolve_ai_provider_adapters(
                         config,
                         pii_filter_level,
                         external_ocr_privacy_guard.clone(),
-                        oauth.clone().ok_or_else(|| {
-                            CoreError::Config("oauth runtime required for managed OCR mode".into())
+                        oauth.clone().ok_or_else(|| CoreError::Config {
+                            code: oneshim_core::error_codes::ConfigCode::Invalid,
+                            message: "oauth runtime required for managed OCR mode".into(),
                         })?,
                     )?
                 } else {
@@ -114,8 +113,9 @@ pub fn resolve_ai_provider_adapters(
                 let (llm, llm_source, llm_fallback_reason) = if llm_uses_managed {
                     resolve_llm_provider_oauth(
                         config,
-                        oauth.clone().ok_or_else(|| {
-                            CoreError::Config("oauth runtime required for managed LLM mode".into())
+                        oauth.clone().ok_or_else(|| CoreError::Config {
+                            code: oneshim_core::error_codes::ConfigCode::Invalid,
+                            message: "oauth runtime required for managed LLM mode".into(),
                         })?,
                     )?
                 } else {
@@ -132,9 +132,11 @@ pub fn resolve_ai_provider_adapters(
             }
             #[cfg(not(feature = "server"))]
             {
-                Err(CoreError::Config(
-                    "ProviderOAuth mode requires the 'server' feature".to_string(),
-                ))
+                // Iter-109: feature-gate disabled = service unavailable.
+                Err(CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "ProviderOAuth mode requires the 'server' feature".to_string(),
+                })
             }
         }
     }

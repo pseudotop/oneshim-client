@@ -15,12 +15,16 @@ AI 제안 수신, 처리, 피드백을 담당하는 크레이트.
 
 ```
 oneshim-suggestion/src/
-├── lib.rs        # 크레이트 루트
-├── receiver.rs   # SuggestionReceiver - SSE 이벤트 → 제안 변환
-├── queue.rs      # PriorityQueue - 우선순위 큐
-├── feedback.rs   # FeedbackSender - 피드백 전송
-├── presenter.rs  # SuggestionPresenter - UI 데이터 변환
-└── history.rs    # SuggestionHistory - 이력 캐시
+├── lib.rs            # 크레이트 루트
+├── receiver.rs       # SuggestionReceiver - SSE 이벤트 → 제안 변환
+├── queue.rs          # PriorityQueue - BTreeSet 우선순위 큐 (최대 50)
+├── feedback.rs       # FeedbackSender - Accept/Reject HTTP POST (ADR-017에 따라 FeedbackSignalSink 먼저 발화)
+├── feedback_retry.rs # FeedbackRetryQueue - 실패한 POST를 scheduler-driven 재시도용으로 영속화
+├── deferred.rs       # Deferred 제안 처리 (snooze + re-surface 윈도우)
+├── presenter.rs      # SuggestionPresenter - UI 데이터 변환
+├── history.rs        # SuggestionHistory - FIFO 이력 캐시
+├── scorer.rs         # 제안 스코어링 헬퍼
+└── error.rs          # SuggestionError (ADR-019 typed code)
 ```
 
 ## 주요 컴포넌트

@@ -136,7 +136,10 @@ mod tests {
             _context_json: &str,
             _system_prompt: &str,
         ) -> Result<Vec<Suggestion>, CoreError> {
-            Err(CoreError::Analysis("mock failure".into()))
+            Err(CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: "mock failure".into(),
+            })
         }
 
         async fn summarize_text(
@@ -144,7 +147,10 @@ mod tests {
             _context_json: &str,
             _system_prompt: &str,
         ) -> Result<String, CoreError> {
-            Err(CoreError::Analysis("mock failure".into()))
+            Err(CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: "mock failure".into(),
+            })
         }
 
         fn provider_name(&self) -> &str {

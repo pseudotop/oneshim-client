@@ -216,7 +216,10 @@ mod tests {
             &self,
             _message: &SessionMessage,
         ) -> Result<oneshim_core::ports::conversation_session::ResponseStream, CoreError> {
-            Err(CoreError::Internal("not implemented in mock".to_string()))
+            Err(CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: "not implemented in mock".to_string(),
+            })
         }
 
         fn info(&self) -> ConversationSessionInfo {
@@ -264,6 +267,7 @@ mod tests {
                 .remove(session_id)
                 .map(|_| ())
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "session".to_string(),
                     id: session_id.to_string(),
                 })
@@ -279,6 +283,7 @@ mod tests {
         ) -> Result<Arc<dyn ConversationSession>, CoreError> {
             let guard = self.sessions.lock().await;
             let info = guard.get(session_id).ok_or_else(|| CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                 resource_type: "session".to_string(),
                 id: session_id.to_string(),
             })?;

@@ -52,18 +52,20 @@ impl IntegrationInboxCoordinator {
             IntegrationSessionStatus::Connected | IntegrationSessionStatus::Degraded
         ) || session.session_id.is_empty()
         {
-            return Err(CoreError::ServiceUnavailable(
-                "integration session is not ready for inbox refresh".to_string(),
-            ));
+            return Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: "integration session is not ready for inbox refresh".to_string(),
+            });
         }
 
         if !session
             .granted_scopes
             .contains(&IntegrationCapabilityScope::PromptRead)
         {
-            return Err(CoreError::Auth(
-                "integration session is missing required scope: PromptRead".to_string(),
-            ));
+            return Err(CoreError::Auth {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: "integration session is missing required scope: PromptRead".to_string(),
+            });
         }
 
         Ok(())
@@ -156,7 +158,10 @@ impl IntegrationInboxPort for IntegrationInboxCoordinator {
         self.inbox_store.expire_stale().await?;
 
         let session = self.session_port.current_session().await?.ok_or_else(|| {
-            CoreError::ServiceUnavailable("integration session is not connected".to_string())
+            CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: "integration session is not connected".to_string(),
+            }
         })?;
         Self::session_ready_for_inbox(&session)?;
 
@@ -233,7 +238,10 @@ mod tests {
                 .lock()
                 .await
                 .clone()
-                .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))
+                .ok_or_else(|| CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "no session".to_string(),
+                })
         }
 
         async fn current_session(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
@@ -245,7 +253,10 @@ mod tests {
                 .lock()
                 .await
                 .clone()
-                .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))
+                .ok_or_else(|| CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "no session".to_string(),
+                })
         }
 
         async fn store_ack_cursor(
@@ -256,9 +267,13 @@ mod tests {
             let mut guard = self.state.lock().await;
             let state = guard
                 .as_mut()
-                .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))?;
+                .ok_or_else(|| CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "no session".to_string(),
+                })?;
             if state.session_id != session_id {
                 return Err(CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 });
@@ -353,6 +368,7 @@ mod tests {
             let prompt = guard
                 .get_mut(prompt_id)
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_prompt".to_string(),
                     id: prompt_id.to_string(),
                 })?;
@@ -370,6 +386,7 @@ mod tests {
             let prompt = guard
                 .get_mut(prompt_id)
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_prompt".to_string(),
                     id: prompt_id.to_string(),
                 })?;
@@ -420,6 +437,7 @@ mod tests {
             let prompt = prompts
                 .get_mut(prompt_id)
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_prompt".to_string(),
                     id: prompt_id.to_string(),
                 })?;
@@ -569,7 +587,7 @@ mod tests {
             .refresh()
             .await
             .expect_err("refresh should fail");
-        assert!(matches!(err, CoreError::Auth(_)));
+        assert!(matches!(err, CoreError::Auth { .. }));
     }
 
     #[tokio::test]

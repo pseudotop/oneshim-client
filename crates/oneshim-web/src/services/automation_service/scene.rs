@@ -32,7 +32,7 @@ impl AutomationSceneQueryService {
                 .ctx
                 .storage
                 .get_frame_file_path(frame_id)
-                .map_err(|e| ApiError::Internal(format!("frame path query failure: {e}")))?
+                .map_err(ApiError::from)?
                 .ok_or_else(|| ApiError::NotFound(format!("frame {frame_id} has no image")))?;
 
             let image_path = resolve_frame_image_path(&self.ctx, &stored_path)?;
@@ -54,14 +54,26 @@ impl AutomationSceneQueryService {
         match analyze_result {
             Ok(scene) => Ok(scene),
             Err(
-                CoreError::PolicyDenied(msg)
-                | CoreError::InvalidArguments(msg)
-                | CoreError::ElementNotFound(msg),
+                CoreError::PolicyDenied { message: msg, .. }
+                | CoreError::InvalidArguments { message: msg, .. },
             ) => Err(ApiError::BadRequest(msg)),
-            Err(CoreError::Internal(msg))
-                if msg.contains("Scene analyzer")
-                    || msg.contains("scene analysis is not supported")
-                    || msg.contains("direct image scene analysis") =>
+            Err(CoreError::ElementNotFound { name: msg, .. }) => Err(ApiError::BadRequest(msg)),
+            // Iter-101 cascading fix from iter-100: "Scene analyzer is not
+            // configured" now emits CoreError::Config{Missing} (was
+            // Internal.Generic). Add both variants to the match arm so
+            // the BadRequest routing still fires.
+            Err(
+                CoreError::Internal {
+                    code: _,
+                    message: msg,
+                }
+                | CoreError::Config {
+                    code: _,
+                    message: msg,
+                },
+            ) if msg.contains("Scene analyzer")
+                || msg.contains("scene analysis is not supported")
+                || msg.contains("direct image scene analysis") =>
             {
                 Err(ApiError::BadRequest(msg))
             }

@@ -181,3 +181,11 @@ pre-commit:
           exit 0
         fi
         cd "$FRONTEND_DIR" && npx tsc --noEmit
+    wire-error-i18n-coverage:
+      # ADR-019 Follow-up #3 guard: fail fast if a wire code is added to
+      # the Rust snapshot without accompanying en+ko translation entries.
+      # The Vitest test `src/i18n/__tests__/translateError.test.ts` covers
+      # the same parity but requires pnpm installed; this shell script
+      # needs only grep and runs in ~3ms — fast local dev feedback.
+      glob: "{crates/oneshim-core/tests/wire_contract_snapshot.expected.txt,crates/oneshim-web/frontend/src/i18n/wire-errors.*.json}"
+      run: ./scripts/check-wire-error-i18n-coverage.sh

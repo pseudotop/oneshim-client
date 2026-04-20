@@ -6,39 +6,49 @@ use tauri::{command, Emitter};
 
 use oneshim_core::models::audio::TranscriptionResult;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::AudioRuntimeState;
+
+/// Canonical "audio capture not available" error — audio capture adapter missing.
+fn audio_capture_not_available() -> IpcError {
+    IpcError::new("service.unavailable", "audio capture not available")
+}
 
 /// Start microphone capture (Push-to-Talk begin).
 #[command]
-pub async fn start_audio_capture(state: tauri::State<'_, AudioRuntimeState>) -> Result<(), String> {
+pub async fn start_audio_capture(
+    state: tauri::State<'_, AudioRuntimeState>,
+) -> Result<(), IpcError> {
     let capture = state
         .audio()
         .capture
         .as_ref()
-        .ok_or_else(|| "audio capture not available".to_string())?;
-    capture.start().map_err(|e| e.to_string())
+        .ok_or_else(audio_capture_not_available)?;
+    capture.start().map_err(IpcError::from)
 }
 
 /// Stop capture and transcribe the recorded audio.
 #[command]
 pub async fn stop_and_transcribe(
     state: tauri::State<'_, AudioRuntimeState>,
-) -> Result<TranscriptionResult, String> {
+) -> Result<TranscriptionResult, IpcError> {
     let capture = state
         .audio()
         .capture
         .as_ref()
-        .ok_or_else(|| "audio capture not available".to_string())?;
+        .ok_or_else(audio_capture_not_available)?;
 
     let stt = {
         let guard = state.audio().stt_engine.read().await;
-        guard
-            .as_ref()
-            .map(Arc::clone)
-            .ok_or_else(|| "STT engine not available (model may not be loaded)".to_string())?
+        guard.as_ref().map(Arc::clone).ok_or_else(|| {
+            IpcError::new(
+                "service.unavailable",
+                "STT engine not available (model may not be loaded)",
+            )
+        })?
     };
 
-    let buffer = capture.stop().map_err(|e| e.to_string())?;
+    let buffer = capture.stop().map_err(IpcError::from)?;
 
     if buffer.is_empty() {
         return Ok(TranscriptionResult {
@@ -49,7 +59,7 @@ pub async fn stop_and_transcribe(
         });
     }
 
-    stt.transcribe(buffer).await.map_err(|e| e.to_string())
+    stt.transcribe(buffer).await.map_err(IpcError::from)
 }
 
 use std::sync::atomic::Ordering;
@@ -62,7 +72,7 @@ use tracing::debug;
 #[command]
 pub async fn get_audio_status(
     state: tauri::State<'_, AudioRuntimeState>,
-) -> Result<AudioStatus, String> {
+) -> Result<AudioStatus, IpcError> {
     let live_config = state.config_manager().get();
     let audio_cfg = &live_config.audio;
     let model_status = match &state.audio().model_downloader {
@@ -88,10 +98,13 @@ pub async fn download_whisper_model(
     app: tauri::AppHandle,
     state: tauri::State<'_, AudioRuntimeState>,
     model_size: WhisperModelSize,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     // Guard: reject if already downloading
     if state.audio().downloading.swap(true, Ordering::SeqCst) {
-        return Err("a download is already in progress".into());
+        return Err(IpcError::new(
+            "service.unavailable",
+            "a download is already in progress",
+        ));
     }
     // Reset cancel flag
     state.audio().download_cancel.store(false, Ordering::SeqCst);
@@ -100,7 +113,10 @@ pub async fn download_whisper_model(
         Some(dl) => dl.clone(),
         None => {
             state.audio().downloading.store(false, Ordering::SeqCst);
-            return Err("model downloader not available".to_string());
+            return Err(IpcError::new(
+                "service.unavailable",
+                "model downloader not available",
+            ));
         }
     };
     let model_dir = state.audio().model_dir.clone();
@@ -153,7 +169,7 @@ pub async fn download_whisper_model(
 #[command]
 pub async fn cancel_model_download(
     state: tauri::State<'_, AudioRuntimeState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     state.audio().download_cancel.store(true, Ordering::SeqCst);
     Ok(())
 }
@@ -163,14 +179,13 @@ pub async fn cancel_model_download(
 pub async fn delete_whisper_model(
     state: tauri::State<'_, AudioRuntimeState>,
     model_size: WhisperModelSize,
-) -> Result<(), String> {
-    let dl = state
-        .audio()
-        .model_downloader
-        .as_ref()
-        .ok_or_else(|| "model downloader not available".to_string())?;
+) -> Result<(), IpcError> {
+    let dl =
+        state.audio().model_downloader.as_ref().ok_or_else(|| {
+            IpcError::new("service.unavailable", "model downloader not available")
+        })?;
     dl.delete_model(model_size, &state.audio().model_dir)
-        .map_err(|e| e.to_string())
+        .map_err(IpcError::from)
 }
 
 /// Start VAD listening mode — automatically detects speech start/end.
@@ -178,12 +193,12 @@ pub async fn delete_whisper_model(
 pub async fn start_vad_listening(
     app: tauri::AppHandle,
     state: tauri::State<'_, AudioRuntimeState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let capture = state
         .audio()
         .capture
         .as_ref()
-        .ok_or_else(|| "audio capture not available".to_string())?;
+        .ok_or_else(audio_capture_not_available)?;
 
     let live_cfg = state.config_manager().get();
     let config = VadConfig {
@@ -204,7 +219,7 @@ pub async fn start_vad_listening(
 
     capture
         .start_vad(config, on_speech_signal)
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
 
     // Update VAD state to "listening"
     *state.audio().vad_state.lock() = "listening".into();
@@ -311,14 +326,14 @@ pub async fn start_vad_listening(
 pub async fn stop_vad_listening(
     app: tauri::AppHandle,
     state: tauri::State<'_, AudioRuntimeState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let capture = state
         .audio()
         .capture
         .as_ref()
-        .ok_or_else(|| "audio capture not available".to_string())?;
+        .ok_or_else(audio_capture_not_available)?;
 
-    capture.stop_vad().map_err(|e| e.to_string())?;
+    capture.stop_vad().map_err(IpcError::from)?;
     *state.audio().vad_state.lock() = "idle".into();
     if let Err(e) = app.emit("vad-state-changed", serde_json::json!({"state": "idle"})) {
         debug!("emit vad-state-changed failed: {e}");
@@ -328,7 +343,9 @@ pub async fn stop_vad_listening(
 
 /// Reload STT engine with current config — creates Local, Cloud, or Fallback provider.
 #[command]
-pub async fn reload_stt_engine(state: tauri::State<'_, AudioRuntimeState>) -> Result<bool, String> {
+pub async fn reload_stt_engine(
+    state: tauri::State<'_, AudioRuntimeState>,
+) -> Result<bool, IpcError> {
     use oneshim_core::config::SttProviderKind;
 
     let live_config = state.config_manager().get();

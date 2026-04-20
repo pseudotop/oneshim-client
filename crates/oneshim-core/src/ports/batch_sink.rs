@@ -7,6 +7,19 @@ use crate::models::event::Event;
 
 /// 이벤트를 배치로 서버에 전송하는 포트.
 /// `oneshim-network::BatchUploader`가 구현체.
+///
+/// # Errors
+/// - `CoreError::Network` (wire: `network.*`) — connection failure,
+///   DNS error, refused connection (from `ApiClient::upload_batch`).
+/// - `CoreError::RequestTimeout` (wire: `network.timeout`) — flush
+///   exceeding configured upload timeout.
+/// - `CoreError::RateLimit` (wire: `network.rate_limit`) — server 429
+///   surfaced by the inner HTTP client.
+/// - `CoreError::ServiceUnavailable` (wire: `service.unavailable`) —
+///   5xx class responses.
+/// - `enqueue` / `enqueue_many` are infallible by contract; queue
+///   overflow is silently dropped and surfaced via
+///   `take_dropped_since_last()` rather than an error variant.
 #[async_trait]
 pub trait BatchSink: Send + Sync {
     /// 이벤트를 전송 큐에 추가

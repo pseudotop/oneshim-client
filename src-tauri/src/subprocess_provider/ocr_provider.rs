@@ -15,7 +15,7 @@ use super::{
     classify_subprocess_error, default_llm_model_for_surface, default_ocr_model_for_surface,
     invocation_runtime_for_surface, is_gemini_json_flag_error, parse_ocr_output,
     provider_name_for_surface_id, write_subprocess_ocr_image, BoxFuture, DetectedSubprocessCli,
-    DEFAULT_SUBPROCESS_TIMEOUT_SECS, OCR_SCHEMA_JSON,
+    SubprocessKind, DEFAULT_SUBPROCESS_TIMEOUT_SECS, OCR_SCHEMA_JSON,
 };
 use oneshim_api_contracts::provider_specs::subprocess_supports_json_output;
 
@@ -64,8 +64,9 @@ impl SubprocessOcrProvider {
     }
 
     async fn invoke(&self, image: &[u8], image_format: &str) -> Result<Vec<OcrResult>, CoreError> {
-        let temp_dir = tempdir().map_err(|err| {
-            CoreError::Internal(format!("Failed to create subprocess OCR tempdir: {err}"))
+        let temp_dir = tempdir().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to create subprocess OCR tempdir: {err}"),
         })?;
         let image_path = write_subprocess_ocr_image(temp_dir.path(), image, image_format)?;
         let runtime = invocation_runtime_for_surface(&self.surface.surface_id)?;
@@ -81,8 +82,9 @@ impl SubprocessOcrProvider {
     ) -> Result<String, CoreError> {
         let schema_path = workdir.join("ocr.schema.json");
         let output_path = workdir.join("codex-ocr-output.json");
-        std::fs::write(&schema_path, OCR_SCHEMA_JSON).map_err(|err| {
-            CoreError::Internal(format!("Failed to write Codex OCR schema: {err}"))
+        std::fs::write(&schema_path, OCR_SCHEMA_JSON).map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to write Codex OCR schema: {err}"),
         })?;
 
         let prompt = build_codex_ocr_prompt(&self.model);
@@ -109,12 +111,14 @@ impl SubprocessOcrProvider {
             .kill_on_drop(true);
         append_model_flag(&mut child, &self.surface.surface_id, &self.model);
 
-        let mut child = child.spawn().map_err(|err| {
-            CoreError::Internal(format!("Failed to spawn Codex OCR subprocess: {err}"))
+        let mut child = child.spawn().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to spawn Codex OCR subprocess: {err}"),
         })?;
 
-        let mut stdin = child.stdin.take().ok_or_else(|| {
-            CoreError::Internal("Failed to open stdin for Codex OCR subprocess".to_string())
+        let mut stdin = child.stdin.take().ok_or_else(|| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Failed to open stdin for Codex OCR subprocess".to_string(),
         })?;
         stdin
             .write_all(prompt.as_bytes())
@@ -125,12 +129,14 @@ impl SubprocessOcrProvider {
         let output = timeout(self.timeout, child.wait_with_output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)?;
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Ocr,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -169,12 +175,14 @@ impl SubprocessOcrProvider {
         let output = timeout(self.timeout, command.output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)?;
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Ocr,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -199,6 +207,7 @@ impl SubprocessOcrProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Ocr,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -230,6 +239,7 @@ impl SubprocessOcrProvider {
         timeout(self.timeout, command.output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)

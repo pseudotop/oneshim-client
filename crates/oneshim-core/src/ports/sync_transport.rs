@@ -15,6 +15,22 @@ use crate::sync::Hlc;
 ///
 /// The SyncEngine holds an `Arc<dyn SyncTransport>` and uses it for
 /// push/pull without knowing which transport is active.
+///
+/// # Errors
+/// - **RemoteSyncTransport**: HTTP-layer failures follow the canonical
+///   semantic status mapping (`auth.failed` / `network.timeout` /
+///   `network.rate_limit` / `service.unavailable` / `network.generic`).
+///   See `docs/guides/http-status-error-mapping.md`.
+/// - **LanSyncTransport**: peer-authentication failures (challenge/verify
+///   HTTP calls) follow the same mapping. Push/pull are best-effort —
+///   they return `Ok(bool)` or `Ok(Option)` rather than propagating
+///   transient peer failures.
+/// - **FileSyncTransport**: `CoreError::Storage` (wire: `storage.failed`)
+///   for filesystem I/O and `CoreError::Internal` for encryption
+///   failures.
+/// - Sync setup (config wiring in `agent_runtime/sync_setup.rs`):
+///   `Config.Missing` when required config is absent (iter-108),
+///   `ServiceUnavailable` for feature-gated LAN sync (iter-108).
 #[async_trait]
 pub trait SyncTransport: Send + Sync {
     /// Push a local changeset to the transport for other devices to pull.

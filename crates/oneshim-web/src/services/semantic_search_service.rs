@@ -39,15 +39,14 @@ pub(crate) fn resolve_mode(mode: Option<&str>) -> &str {
     }
 }
 
-/// Embed a sanitized query, wrapping provider errors in `CoreError::Internal`.
+/// Embed a sanitized query. Errors from the provider pass through unchanged,
+/// preserving their typed wire code (ADR-019 §1) so callers / telemetry can
+/// distinguish e.g. `provider.analysis_failed` from `config.invalid`.
 async fn embed_query(
     embedding_provider: &Arc<dyn EmbeddingProvider>,
     sanitized: &str,
 ) -> Result<Vec<f32>, CoreError> {
-    embedding_provider
-        .embed(sanitized)
-        .await
-        .map_err(|e| CoreError::Internal(format!("Embedding failed: {e}")))
+    embedding_provider.embed(sanitized).await
 }
 
 /// Build the set of segment IDs that should receive an FTS-boost in hybrid mode.
@@ -128,43 +127,61 @@ fn map_vector_results(
 }
 
 /// Execute a search with mode dispatch and provider availability checks.
+///
+/// Iter-96: return `CoreError` instead of `String` so the typed
+/// `err.code()` survives through to handlers. Provider-unavailable
+/// conditions become `ServiceUnavailable` (wire code
+/// `service.unavailable`); inner search failures preserve their own
+/// wire codes (e.g. `provider.analysis_failed`, `internal.io`).
 pub async fn execute(
     state: &AppState,
     query: &str,
     limit: usize,
     mode: &str,
-) -> Result<Vec<SemanticSearchResult>, String> {
+) -> Result<Vec<SemanticSearchResult>, CoreError> {
     match mode {
         "keyword" => {
             let ts = state.analysis.text_search.as_ref().ok_or_else(|| {
-                "Keyword search is not available (text search provider not configured)".to_string()
+                CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message:
+                        "Keyword search is not available (text search provider not configured)"
+                            .to_string(),
+                }
             })?;
-            keyword_search(ts, state, query, limit)
-                .await
-                .map_err(|e| format!("Keyword search failed: {e}"))
+            keyword_search(ts, state, query, limit).await
         }
         _ => {
             // Prefer adaptive search (IVF/HNSW auto-selection) when available.
             if let Some(ref adaptive) = state.analysis.adaptive_search {
                 let ep = state.analysis.embedding_provider.as_ref().ok_or_else(|| {
-                    "Semantic search is not available (embedding provider not configured)"
-                        .to_string()
+                    CoreError::ServiceUnavailable {
+                        code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                        message:
+                            "Semantic search is not available (embedding provider not configured)"
+                                .to_string(),
+                    }
                 })?;
                 return adaptive_vector_search(adaptive, ep, state, query, limit, mode == "hybrid")
-                    .await
-                    .map_err(|e| format!("Adaptive search failed: {e}"));
+                    .await;
             }
 
             // Fallback: direct brute-force via VectorStore
             let vs = state.analysis.vector_store.as_ref().ok_or_else(|| {
-                "Semantic search is not available (embedding pipeline not configured)".to_string()
+                CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "Semantic search is not available (embedding pipeline not configured)"
+                        .to_string(),
+                }
             })?;
             let ep = state.analysis.embedding_provider.as_ref().ok_or_else(|| {
-                "Semantic search is not available (embedding provider not configured)".to_string()
+                CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "Semantic search is not available (embedding provider not configured)"
+                        .to_string(),
+                }
             })?;
-            vector_search(vs, ep, state, query, limit, mode == "hybrid")
-                .await
-                .map_err(|e| format!("Vector search failed: {e}"))
+            vector_search(vs, ep, state, query, limit, mode == "hybrid").await
         }
     }
 }
@@ -424,8 +441,12 @@ mod tests {
     async fn execute_errors_when_vector_store_missing() {
         let state = build_state();
         let err = execute(&state, "hello", 10, "semantic").await.unwrap_err();
+        // Iter-96: previously asserted on the stringified error; now asserts
+        // on the typed wire code (service.unavailable) so the test protects
+        // against future drift that would silently re-stringify.
+        assert_eq!(err.code(), "service.unavailable");
         assert!(
-            err.to_lowercase().contains("not available"),
+            err.to_string().to_lowercase().contains("not available"),
             "unexpected error: {err}"
         );
     }

@@ -80,10 +80,10 @@ impl ProcessMonitor for ProcessTracker {
     }
 
     async fn get_top_processes(&self, limit: usize) -> Result<Vec<ProcessInfo>, CoreError> {
-        let mut sys = self
-            .sys
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
+        let mut sys = self.sys.lock().map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to acquire system lock: {e}"),
+        })?;
         self.refresh_if_stale(&mut sys);
 
         let mut processes: Vec<ProcessInfo> = sys
@@ -113,10 +113,10 @@ impl ProcessMonitor for ProcessTracker {
         foreground_pid: Option<u32>,
         top_n: usize,
     ) -> Result<Vec<ProcessDetail>, CoreError> {
-        let mut sys = self
-            .sys
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
+        let mut sys = self.sys.lock().map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to acquire system lock: {e}"),
+        })?;
         self.refresh_if_stale(&mut sys);
 
         let now = std::time::SystemTime::now()

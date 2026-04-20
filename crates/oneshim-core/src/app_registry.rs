@@ -29,20 +29,19 @@ impl AppRegistry {
     /// User overrides can add new profiles, modify existing ones (matched
     /// by name_patterns overlap), or disable built-in profiles.
     pub fn load_user_overrides(&mut self, path: &Path) -> Result<(), CoreError> {
-        let content = std::fs::read_to_string(path).map_err(|e| {
-            CoreError::Config(format!(
-                "Failed to read app profiles from {}: {}",
-                path.display(),
-                e
-            ))
+        let content = std::fs::read_to_string(path).map_err(|e| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!("Failed to read app profiles from {}: {}", path.display(), e),
         })?;
-        let overrides: Vec<AppProfile> = serde_json::from_str(&content).map_err(|e| {
-            CoreError::Config(format!(
-                "Failed to parse app profiles from {}: {}",
-                path.display(),
-                e
-            ))
-        })?;
+        let overrides: Vec<AppProfile> =
+            serde_json::from_str(&content).map_err(|e| CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: format!(
+                    "Failed to parse app profiles from {}: {}",
+                    path.display(),
+                    e
+                ),
+            })?;
 
         for override_profile in overrides {
             // Check if any existing profile shares a name_pattern

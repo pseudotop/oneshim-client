@@ -18,10 +18,11 @@ oneshim-core/src/
 ├── config/          # AppConfig 및 설정 섹션 — 디렉토리 모듈 (ADR-003)
 │   ├── mod.rs       # AppConfig 구조체 + Default + 재export
 │   ├── enums.rs     # PiiFilterLevel, Weekday, SandboxProfile, AiAccessMode 등
-│   └── sections.rs  # 20개 설정 섹션 구조체 + Default 구현
+│   └── sections/    # 37개 설정 섹션 구조체 (도메인별 파일로 분리) + Default 구현 (ADR-003 디렉토리 모듈)
 ├── config_manager.rs # JSON 기반 설정 파일 관리 + 플랫폼별 경로
 ├── consent.rs       # ConsentManager, GDPR Article 17/20 준수
-├── error.rs         # CoreError enum (thiserror, 23개 변형)
+├── error.rs         # CoreError enum (thiserror, 38개 변형; ADR-019 typed `code: XxxCode` 필드 포함)
+├── error_codes/     # 18개 typed code enum (ADR-019 `define_code_enum!` 매크로로 생성)
 ├── models/          # 도메인 모델
 │   ├── mod.rs
 │   ├── suggestion.rs   # Suggestion, SuggestionType, Priority
@@ -302,9 +303,7 @@ pub enum CoreError {
 
     // 정책/자동화 에러
     #[error("정책 거부: {0}")] PolicyDenied(String),
-    #[error("프로세스 불허: {0}")] ProcessNotAllowed(String),
     #[error("잘못된 인자: {0}")] InvalidArguments(String),
-    #[error("바이너리 해시 불일치")] BinaryHashMismatch { expected: String, actual: String },
 
     // 동의 에러
     #[error("동의 필요: {0}")] ConsentRequired(String),
@@ -404,7 +403,7 @@ pub enum ExternalDataPolicy {
 ///
 /// URL 문자열 매칭 대신 명시적 enum으로 제공자를 구분한다.
 /// OSS 아키텍처에서 특정 벤더가 특권을 갖지 않도록 설정 파일 주도 방식으로 설계.
-/// `ai_llm_client.rs`와 `ai_ocr_client.rs`가 이 값을 읽어 요청 형식과
+/// `ai_llm_client/`와 `ai_ocr_client/` (ADR-003 디렉토리 모듈)가 이 값을 읽어 요청 형식과
 /// 인증 헤더를 결정하는 벤더 중립적 분기를 수행한다.
 pub enum AiProviderType {
     Anthropic,  // Anthropic Claude API — x-api-key 헤더 + /v1/messages 형식

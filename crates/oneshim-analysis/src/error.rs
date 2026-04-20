@@ -15,24 +15,20 @@ pub enum AnalysisError {
     /// 클러스터링 알고리즘 실패 (GMM, HDBSCAN 등)
     #[error("clustering failed: {0}")]
     Clustering(String),
-
-    /// LLM 서비스 에러
-    #[error("LLM service error: {0}")]
-    LlmService(String),
-
-    /// 기타 내부 에러
-    #[error("internal error: {0}")]
-    Internal(String),
 }
 
 impl From<AnalysisError> for CoreError {
     fn from(err: AnalysisError) -> Self {
         match err {
             AnalysisError::Core(e) => e,
-            AnalysisError::VectorIndex(msg) => CoreError::Internal(msg),
-            AnalysisError::Clustering(msg) => CoreError::Analysis(msg),
-            AnalysisError::LlmService(msg) => CoreError::Analysis(msg),
-            AnalysisError::Internal(msg) => CoreError::Internal(msg),
+            AnalysisError::VectorIndex(msg) => CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: msg,
+            },
+            AnalysisError::Clustering(msg) => CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: msg,
+            },
         }
     }
 }

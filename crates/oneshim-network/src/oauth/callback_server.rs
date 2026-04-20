@@ -114,6 +114,7 @@ pub async fn wait_for_callback(
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
         .await
         .map_err(|e| CoreError::OAuthError {
+            code: oneshim_core::error_codes::OAuthCode::Failed,
             provider: "callback".into(),
             message: format!("port {port} already in use (is Codex CLI running?): {e}"),
         })?;
@@ -142,29 +143,21 @@ pub async fn wait_for_callback(
         result = rx => {
             match result {
                 Ok(Ok(callback)) => Ok(callback),
-                Ok(Err(e)) => Err(CoreError::OAuthError {
-                    provider: "callback".into(),
-                    message: e,
-                }),
-                Err(_) => Err(CoreError::OAuthError {
-                    provider: "callback".into(),
-                    message: "callback channel closed unexpectedly".into(),
-                }),
+                Ok(Err(e)) => Err(CoreError::OAuthError { code: oneshim_core::error_codes::OAuthCode::Failed, provider: "callback".into(),
+                    message: e, }),
+                Err(_) => Err(CoreError::OAuthError { code: oneshim_core::error_codes::OAuthCode::Failed, provider: "callback".into(),
+                    message: "callback channel closed unexpectedly".into(), }),
             }
         }
         _ = cancel_rx => {
             debug!("OAuth callback server cancelled");
-            Err(CoreError::OAuthError {
-                provider: "callback".into(),
-                message: "flow cancelled by user".into(),
-            })
+            Err(CoreError::OAuthError { code: oneshim_core::error_codes::OAuthCode::Failed, provider: "callback".into(),
+                message: "flow cancelled by user".into(), })
         }
         _ = tokio::time::sleep(std::time::Duration::from_secs(300)) => {
             debug!("OAuth callback server timed out after 5 minutes");
-            Err(CoreError::OAuthError {
-                provider: "callback".into(),
-                message: "OAuth flow timed out — no browser callback received within 5 minutes".into(),
-            })
+            Err(CoreError::OAuthError { code: oneshim_core::error_codes::OAuthCode::Failed, provider: "callback".into(),
+                message: "OAuth flow timed out — no browser callback received within 5 minutes".into(), })
         }
     };
 

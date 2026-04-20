@@ -69,15 +69,19 @@ impl IntegrationEgressPort for PolicyAwareIntegrationEgressCoordinator {
                 IntegrationEgressDisposition::Allow => {
                     self.inner.enqueue_message(envelope, payload).await
                 }
-                IntegrationEgressDisposition::Deny => Err(CoreError::PolicyDenied(
-                    decision
+                IntegrationEgressDisposition::Deny => Err(CoreError::PolicyDenied {
+                    code: oneshim_core::error_codes::PolicyCode::Denied,
+                    message: decision
                         .reason
                         .unwrap_or_else(|| "integration egress denied".to_string()),
-                )),
+                }),
                 IntegrationEgressDisposition::RequireUserApproval => {
-                    Err(CoreError::ConsentRequired(decision.reason.unwrap_or_else(
-                        || "integration egress requires user approval".to_string(),
-                    )))
+                    Err(CoreError::ConsentRequired {
+                        code: oneshim_core::error_codes::ConsentCode::Required,
+                        message: decision.reason.unwrap_or_else(|| {
+                            "integration egress requires user approval".to_string()
+                        }),
+                    })
                 }
             }
         } else {
@@ -256,7 +260,7 @@ mod tests {
             .await
             .expect_err("enqueue should fail");
 
-        assert!(matches!(err, CoreError::PolicyDenied(_)));
+        assert!(matches!(err, CoreError::PolicyDenied { .. }));
         assert!(enqueued.lock().await.is_empty());
         assert_eq!(records.lock().await.len(), 1);
     }
@@ -284,7 +288,7 @@ mod tests {
             .await
             .expect_err("enqueue should fail");
 
-        assert!(matches!(err, CoreError::ConsentRequired(_)));
+        assert!(matches!(err, CoreError::ConsentRequired { .. }));
         assert!(enqueued.lock().await.is_empty());
         assert_eq!(records.lock().await.len(), 1);
     }

@@ -68,7 +68,10 @@ mod tests {
             _config: &SandboxConfig,
         ) -> Result<(), CoreError> {
             if self.should_fail {
-                Err(CoreError::Network("mock sandbox failure".to_string()))
+                Err(CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: "mock sandbox failure".to_string(),
+                })
             } else {
                 Ok(())
             }

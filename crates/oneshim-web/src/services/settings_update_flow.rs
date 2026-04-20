@@ -56,7 +56,7 @@ impl SettingsUpdateFlow {
 
         self.config_manager
             .update(next_config.clone())
-            .map_err(|error| ApiError::Internal(format!("Failed to save settings: {error}")))?;
+            .map_err(ApiError::from)?;
 
         emit_policy_change_events(self.audit_logger.clone(), &previous_config, &next_config);
 

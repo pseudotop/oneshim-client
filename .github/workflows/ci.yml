@@ -465,6 +465,25 @@ jobs:
         with:
           key: ci-build-${{ matrix.target }}
 
+      # Tauri externalBin (`oneshim-sandbox-worker`) expects a file named
+      # `src-tauri/oneshim-sandbox-worker-<triple>[.exe]` at build time. CI
+      # builds don't need the real sandbox-worker (Release workflow builds it
+      # properly for shipped binaries); a zero-byte stub is sufficient so
+      # `cargo build -p oneshim-app` doesn't trip on the externalBin
+      # resource-not-found error (see project_main_ci_frontend_artifact_gap
+      # memory — root-cause for main-branch CI reds through iter-224).
+      - name: Create sandbox worker stub for Tauri externalBin
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            touch "src-tauri/oneshim-sandbox-worker-${TARGET}.exe"
+          else
+            touch "src-tauri/oneshim-sandbox-worker-${TARGET}"
+            chmod +x "src-tauri/oneshim-sandbox-worker-${TARGET}"
+          fi
+
       - name: Build release
         shell: bash
         run: ./scripts/cargo-cache.sh build --release --target ${{ matrix.target }}

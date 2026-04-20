@@ -1,7 +1,15 @@
 use serde::Serialize;
 use tauri::command;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::{ConfigRuntimeState, SyncRuntimeState};
+
+/// Canonical "Sync not enabled" error — surfaced when commands require a live
+/// sync engine but the feature is disabled or unwired. service.unavailable
+/// lets the frontend surface this as "feature disabled, enable in settings".
+fn sync_not_enabled() -> IpcError {
+    IpcError::new("service.unavailable", "Sync not enabled")
+}
 
 #[derive(Serialize)]
 pub struct SyncStatusDto {
@@ -32,7 +40,7 @@ pub struct SyncPeerDto {
 pub async fn get_sync_status(
     state: tauri::State<'_, SyncRuntimeState>,
     config_state: tauri::State<'_, ConfigRuntimeState>,
-) -> Result<SyncStatusDto, String> {
+) -> Result<SyncStatusDto, IpcError> {
     // config.sync.enabled is the authoritative master switch regardless of
     // whether the engine is currently wired up.
     let config_enabled = config_state.config_manager().get().sync.enabled;
@@ -77,8 +85,8 @@ pub async fn get_sync_status(
 #[command]
 pub async fn trigger_sync_cycle(
     state: tauri::State<'_, SyncRuntimeState>,
-) -> Result<SyncResultDto, String> {
-    let engine = state.engine().ok_or("Sync not enabled")?;
+) -> Result<SyncResultDto, IpcError> {
+    let engine = state.engine().ok_or_else(sync_not_enabled)?;
 
     match engine.run_cycle().await {
         Ok(Some(result)) => Ok(SyncResultDto {
@@ -87,17 +95,17 @@ pub async fn trigger_sync_cycle(
             tombstoned: result.tombstoned,
         }),
         Ok(None) => Ok(SyncResultDto::default()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(IpcError::from(e)),
     }
 }
 
 #[command]
 pub async fn discover_sync_peers(
     state: tauri::State<'_, SyncRuntimeState>,
-) -> Result<Vec<SyncPeerDto>, String> {
-    let engine = state.engine().ok_or("Sync not enabled")?;
+) -> Result<Vec<SyncPeerDto>, IpcError> {
+    let engine = state.engine().ok_or_else(sync_not_enabled)?;
 
-    let peers = engine.discover_peers().await.map_err(|e| e.to_string())?;
+    let peers = engine.discover_peers().await.map_err(IpcError::from)?;
 
     Ok(peers
         .into_iter()
@@ -118,14 +126,14 @@ pub async fn discover_sync_peers(
 pub fn set_sync_enabled(
     enabled: bool,
     config_state: tauri::State<'_, ConfigRuntimeState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     config_state
         .config_manager()
         .update_with(|config| {
             config.sync.enabled = enabled;
             Ok(())
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(IpcError::from)?;
     tracing::info!(enabled, "sync enabled flag updated");
     Ok(())
 }
@@ -139,10 +147,7 @@ pub fn set_sync_enabled(
 pub async fn forget_peer(
     device_id: String,
     state: tauri::State<'_, SyncRuntimeState>,
-) -> Result<(), String> {
-    let engine = state.engine().ok_or("Sync not enabled")?;
-    engine
-        .forget_peer(&device_id)
-        .await
-        .map_err(|e| e.to_string())
+) -> Result<(), IpcError> {
+    let engine = state.engine().ok_or_else(sync_not_enabled)?;
+    engine.forget_peer(&device_id).await.map_err(IpcError::from)
 }

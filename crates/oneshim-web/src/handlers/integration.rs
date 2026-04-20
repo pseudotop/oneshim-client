@@ -173,7 +173,10 @@ mod tests {
         ) -> Result<IntegrationSessionState, CoreError> {
             self.current_session()
                 .await?
-                .ok_or_else(|| CoreError::Auth("no session".to_string()))
+                .ok_or_else(|| CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message: "no session".to_string(),
+                })
         }
 
         async fn current_session(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
@@ -267,6 +270,7 @@ mod tests {
                 != Some(flow_id)
             {
                 return Err(CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_device_flow".to_string(),
                     id: flow_id.to_string(),
                 });
@@ -287,6 +291,7 @@ mod tests {
                 != Some(flow_id)
             {
                 return Err(CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_device_flow".to_string(),
                     id: flow_id.to_string(),
                 });
@@ -421,6 +426,7 @@ mod tests {
                 .iter_mut()
                 .find(|prompt| prompt.prompt.prompt_id == prompt_id)
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_prompt".to_string(),
                     id: prompt_id.to_string(),
                 })?;
@@ -434,6 +440,7 @@ mod tests {
                 .iter_mut()
                 .find(|prompt| prompt.prompt.prompt_id == prompt_id)
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_prompt".to_string(),
                     id: prompt_id.to_string(),
                 })?;

@@ -29,8 +29,14 @@ pub struct CaptureRequest {
 /// Captures and processes screen frames based on importance level.
 ///
 /// # Errors
-/// Methods return `CoreError::Internal` on capture failure (no display,
-/// permission denied), `CoreError::OcrError` on OCR extraction failure.
+/// Methods return `CoreError::PermissionDenied` (wire:
+/// `permission.permission_denied`) when screen-capture permission is
+/// missing — emitted by the accessibility adapter before the
+/// FrameProcessor is called. `CoreError::Internal` (wire:
+/// `internal.generic`) on intra-process failures such as mutex
+/// poisoning or image-buffer allocation errors.
+/// `CoreError::OcrError` (wire: `provider.ocr_failed`) on OCR extraction
+/// failure.
 #[async_trait]
 pub trait FrameProcessor: Send + Sync {
     async fn capture_and_process(
@@ -41,8 +47,9 @@ pub trait FrameProcessor: Send + Sync {
     /// Capture a lightweight thumbnail for ring buffer use.
     /// Returns raw WebP bytes at low quality. Default returns unsupported error.
     async fn capture_thumbnail(&self) -> Result<Vec<u8>, CoreError> {
-        Err(CoreError::Internal(
-            "thumbnail capture not supported".to_string(),
-        ))
+        Err(CoreError::Internal {
+            code: crate::error_codes::InternalCode::Generic,
+            message: "thumbnail capture not supported".to_string(),
+        })
     }
 }

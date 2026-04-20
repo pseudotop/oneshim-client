@@ -65,10 +65,10 @@ client-rust/
 │   │   ├── main.rs         # Tauri app builder + DI wiring
 │   │   ├── tray.rs         # System tray menu
 │   │   ├── commands/       # Tauri IPC commands (directory module, ADR-003)
-│   │   └── scheduler/      # 9-loop background scheduler
+│   │   └── scheduler/      # 16-loop background scheduler (monitor, metrics, process, sync, heartbeat, aggregation, notification, focus, event_snapshot, oauth_refresh, analysis, cross_device_sync, coaching + conditional: health_check, suggestion_sse, suggestion_maintenance)
 │   └── tauri.conf.json     # Tauri configuration
 ├── docs/
-│   ├── architecture/   # ADR-001~ADR-004
+│   ├── architecture/   # ADR-001~ADR-019 (see docs/architecture/ADR-*.md)
 │   ├── guides/         # Playbooks/runbooks/how-to docs
 │   └── research/       # Exploratory notes
 └── crates/
@@ -85,7 +85,7 @@ client-rust/
     ├── oneshim-lint/       # Workspace lint tool (language-check binary)
     ├── oneshim-api-contracts/ # Shared API type contracts
     ├── oneshim-audio/      # Audio capture and speech-to-text — cpal + whisper-rs
-    └── oneshim-app/        # ⚠️ DEPRECATED — removed from workspace (replaced by src-tauri)
+    └── oneshim-sandbox-worker/ # Out-of-process sandboxed automation action executor (stdin JSON → stdout JSON under platform sandbox)
 ```
 
 ## Core Architecture Rules
@@ -105,6 +105,7 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-embedding   ←  oneshim-core
               ←  oneshim-audio
               ←  oneshim-api-contracts
+              ←  oneshim-sandbox-worker  (standalone binary: stdin JSON → stdout JSON)
               ←  src-tauri           ←  (all, Tauri v2 main binary)
 
 oneshim-lint     (standalone — no oneshim-core dependency)
@@ -144,13 +145,14 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ## Crate Summary
 
 ### oneshim-core (Foundation)
-- `models/`: suggestion, event, frame, context, session, system_metrics, batch
-- `ports/`: ApiClient, SseClient, StorageService, SystemMonitor, ProcessMonitor, ActivityMonitor, CaptureTrigger, FrameProcessor, DesktopNotifier, Compressor
-- `error.rs`: `CoreError` (thiserror) — Network, RequestTimeout, RateLimit, ServiceUnavailable variants
+- `models/`: 34+ domain types — suggestion, event, frame, context, session, system_metrics, batch (original Phase 1 set) plus ai_session, analysis, annotation, app_registry, audio, audit, automation, bug_report, coaching, coaching_template, daily_digest, embedding, focused_element, gui, gui_activity, gui_interaction, regime, and more (superpowers/phase-4/ADR-019 additions)
+- `ports/`: 57 port files declaring 95 traits — ApiClient, SseClient, StorageService, SystemMonitor, ProcessMonitor, ActivityMonitor, CaptureTrigger, FrameProcessor, DesktopNotifier, Compressor (original set) plus AnalysisProvider, AudioCapture, AuditLog, CoachingStorage, ElementFinder, EmbeddingProvider, FeedbackSignalSink, FrameStorage, IntentPlanner, LlmProvider, ModelDownloader, OcrProvider, OverlayDriver, OverrideStore, PiiSanitizer, PresetStorage, and more (see `crates/oneshim-core/src/ports/`). All traits carry `# Errors` docs per iter-174 port-trait doc campaign.
+- `error_codes/`: 18 typed code enums generated via single-source `define_code_enum!` macro per [ADR-019](docs/architecture/ADR-019-error-code-infrastructure.md)
+- `error.rs`: `CoreError` (thiserror) — 38 variants with typed `code: XxxCode` field per struct-variant (ADR-019). Headline variants: Config, Network, RequestTimeout, RateLimit, ServiceUnavailable, Auth, OAuth, Validation, InvalidArguments, NotFound, Storage, Automation, Vision, Analysis, Suggestion, Monitor, Embedding, etc. Wire-format contract locked at **41 codes** in `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` (and enforced by `crates/oneshim-core/tests/wire_contract_snapshot.rs`).
 - `config/`: `AppConfig` + section settings — directory module (ADR-003)
   - `mod.rs`: `AppConfig` struct + `Default` impl + helpers + re-exports
   - `enums.rs`: `PiiFilterLevel`, `Weekday`, `SandboxProfile`, `AiAccessMode`, `AiProviderType`, etc.
-  - `sections.rs`: 20 config section structs (`NotificationConfig`, `TelemetryConfig`, `PrivacyConfig`, `ScheduleConfig`, `FileAccessConfig`, etc.) + `Default` impls
+  - `sections/`: 37 config section structs in per-domain files (`NotificationConfig`, `TelemetryConfig`, `PrivacyConfig`, `ScheduleConfig`, `FileAccessConfig`, `IntegrationConfig`, `SyncConfig`, `SandboxConfig`, etc.) + `Default` impls. Directory module split from the old single `sections.rs` per ADR-003.
 - `consent.rs`: `ConsentManager`, `ConsentPermissions`, `ConsentRecord` — GDPR Article 17/20 compliant
 - `config_manager.rs`: JSON-based config file manager + platform-specific paths
 
@@ -160,6 +162,16 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `sse_client.rs`: `SseStreamClient` — SSE stream + auto-reconnect (exponential backoff 1s→30s)
 - `compression.rs`: `AdaptiveCompressor` — auto selection of gzip/zstd/lz4
 - `batch_uploader.rs`: `BatchUploader` — Lock-free SegQueue + dynamic batch size + retry
+- `circuit_breaker.rs`: per-endpoint circuit breaker + `serial_test` guarded flake-free tests (iter-X fix in ADR-019 audit)
+- `connectivity.rs`: connectivity detection + backoff helpers
+- `resilience.rs`: shared resilience primitives
+- `error.rs`: `NetworkError` enum (13 variants, typed-code per ADR-019)
+- `http_api_session/`: HTTP-based `ApiSession` (stateful chat/tool-calling) — directory module with anthropic.rs, google.rs, openai.rs provider-specific request builders, mod.rs orchestrator, tests.rs
+- `local_llm_session.rs`: local `ApiSession` via subprocess LLM (bridges via `subprocess_provider`)
+- `analysis_client.rs`: analysis provider client
+- `remote_embedding_client.rs`: remote embedding provider (`#[cfg(feature = "embedding-remote")]` or similar)
+- `oauth/`: OAuth 2.0 flow helpers — directory module
+- `proto/`: protobuf-generated types (tonic-build output)
 - `ai_llm_client/`: `RemoteLlmProvider` — directory module (ADR-003)
   - `mod.rs`: `RemoteLlmProvider` struct + `LlmProvider` impl + re-exports
   - `request.rs`: request building helpers per provider type
@@ -197,72 +209,91 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
     - `static_auth.rs`: static token authentication
     - `tests.rs`: unit tests
 - **gRPC Client** (`#[cfg(feature = "grpc")]`):
-  - `grpc/mod.rs`: module exports + `GrpcConfig`
+  - `grpc/mod.rs`: module exports
+  - `grpc/config.rs`: `GrpcConfig` — endpoints, fallback ports, TLS options
   - `grpc/auth_client.rs`: `GrpcAuthClient` — Login, Logout, RefreshToken, ValidateToken
   - `grpc/session_client.rs`: `GrpcSessionClient` — CreateSession, EndSession, Heartbeat
   - `grpc/context_client.rs`: `GrpcContextClient` — UploadBatch, SubscribeSuggestions, SendFeedback, ListSuggestions
+  - `grpc/health_client.rs`: `GrpcHealthClient` — Consumer Contract `ClientHealth.Ping` RPC
   - `grpc/unified_client.rs`: `UnifiedClient` — gRPC + REST unified client, Feature Flag based switching
   - `grpc/api_adapter.rs`: `GrpcApiAdapter` — `impl ApiClient` bridging UnifiedClient + HttpApiClient REST fallback
   - `grpc/sse_adapter.rs`: `GrpcSseAdapter` — `impl SseClient` bridging gRPC streaming to SuggestionReceiver
+  - `grpc/error_mapping.rs`: tonic `Status` → `NetworkError` conversion (maps gRPC codes → typed network variants)
 
 ### oneshim-suggestion (Suggestion Pipeline)
 - `receiver.rs`: SSE → `Suggestion` conversion + queue + notification
 - `queue.rs`: `BTreeSet` priority queue (max 50, Critical > High > Medium > Low)
-- `feedback.rs`: Accept/Reject → HTTP POST
+- `feedback.rs`: Accept/Reject → HTTP POST (+ fires `FeedbackSignalSink` per ADR-017 before network)
+- `feedback_retry.rs`: `FeedbackRetryQueue` — persists failed feedback posts for scheduler-driven retry
+- `deferred.rs`: deferred-suggestion handling (`snooze`, re-surface windows)
 - `presenter.rs`: `SuggestionView` — UI data mapping
 - `history.rs`: FIFO history cache
+- `scorer.rs`: suggestion scoring helpers
+- `error.rs`: `SuggestionError` (ADR-019 typed codes)
 
 ### oneshim-storage (Local Storage)
-- `sqlite.rs`: `SqliteStorage` (impl StorageService) — WAL mode + PRAGMA optimizations
-- `migration.rs`: schema V1-V22 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching, app_meta, session_audit, ai_sessions, type_confidence)
+- `sqlite/`: `SqliteStorage` (impl StorageService + 10+ other port traits) — WAL mode + PRAGMA optimizations. Directory module per ADR-003; sub-modules: `metrics/`, `edge_intelligence/`, `annotation_storage_impl`, `coaching_storage`, `few_shot_storage_impl`, `focus_storage_impl`, `frames`, `fts_search_impl`, `habit_storage`, `integration_query_impl`, `lan_pin_store`, `override_store_impl`, `preset_storage_impl`, `port_contract_tests`, etc.
+- `migration/`: schema V1–V31 as per-version files (`v01_v08.rs`, `v09_v18.rs`, `v19_v21.rs`, `v22_v23.rs`, `v23_v24.rs`, `v25.rs`, `v26.rs`, `v27.rs`, `v28.rs`, `v29.rs`, `v30.rs`, `v31_regime_manager_state.rs`) + `CURRENT_VERSION: u32 = 31` constant. Covers events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching, app_meta, session_audit, ai_sessions, type_confidence, regime_manager_state (v31).
 - `frame_storage.rs`: Frame image file storage + retention policy + buffer pool + parallel I/O
+- `integration_state_store/`, `regime_manager_state_store.rs`, `sync_extractor.rs`, `sync_merger.rs`, `device_identity.rs`, `keychain.rs`, `file_secret_store.rs`, `env_secret_store.rs`, `encryption.rs`, `maintenance.rs`, `process_env_projection.rs`, `file_transport.rs` — various orthogonal storage adapters.
 - Retention Policy: 30 days, 500MB
 - Performance optimization: compound indexes, batch inserts, memory cache, ArrayQueue buffer pool
 
 ### oneshim-monitor (System Monitoring)
 - `system.rs`: `SysInfoMonitor` — CPU/Memory/Disk/Network (sysinfo 0.38)
+- `system_info.rs`: system information wrappers
 - `process.rs`: `ProcessTracker` — active process/window + `get_detailed_processes()`
-- `macos.rs`: macOS specific (`#[cfg(target_os = "macos")]`) — osascript
+- `macos.rs`: macOS specific (`#[cfg(target_os = "macos")]`) — osascript + `circuit_breaker_skips_when_tripped` serialized via `serial_test`
 - `windows.rs`: Windows specific (`#[cfg(target_os = "windows")]`) — Win32 GetForegroundWindow + sysinfo
 - `linux.rs`: Linux specific (`#[cfg(target_os = "linux")]`) — xdotool/xprintidle (X11), Wayland XWayland fallback
 - `activity.rs`: `ActivityTracker` — Idle detection
+- `idle.rs`: cross-platform idle detection helpers
 - `input_activity.rs`: `InputActivityCollector` — Mouse/Keyboard pattern collection (atomic counters)
+- `input_detail.rs`: richer input event details (superpowers-era addition)
+- `keyboard_pattern.rs`: keyboard pattern matching
+- `key_hook/`: low-level key-hook directory module (platform-branched)
+- `clipboard.rs`: clipboard-change tracking
+- `file_access.rs`: file-access telemetry
 - `window_layout.rs`: `WindowLayoutTracker` — window layout change tracking
+- `error.rs`: `MonitorError` (ADR-019 typed codes)
 
-### oneshim-vision (Edge Image Processing)
+### oneshim-vision (Edge Image Processing) — 22 top-level entries
 - `capture.rs`: `ScreenCapture` — multi-monitor capture using xcap
 - `trigger.rs`: `SmartCaptureTrigger` (impl CaptureTrigger) — event classification + importance + throttle, interior mutability (`Mutex<TriggerState>`)
 - `delta.rs`: 16x16 tile comparison → changed region extraction (pointer-based fast pixel access)
 - `encoder.rs`: WebP encoding (Low/Medium/High quality) + stat-based quality prediction
 - `thumbnail.rs`: fast_image_resize + LRU caching (100 entries, FNV-1a hash)
+- `ring_buffer.rs`: bounded frame ring buffer
 - `processor.rs`: `EdgeFrameProcessor` (impl FrameProcessor) — branches by importance, interior mutability (`Mutex<Option<DynamicImage>>` for prev_frame)
   - >= 0.8: Full + OCR
   - >= 0.5: Delta
   - >= 0.3: Thumbnail
   - < 0.3: Metadata only
 - `ocr.rs`: `OcrExtractor` — leptess(Tesseract) OCR (`#[cfg(feature = "ocr")]`), async support
+- `local_ocr_provider.rs`: local OCR provider impl
 - `privacy.rs`: PII filter levels (Off/Basic/Standard/Strict cascaded inheritance), sensitive app auto-detection, phone/API key/IP/email/credit card/SSN/file path masking
+- `privacy_gateway.rs`: centralized privacy gateway wrapping filter + sensitive-app detection
 - `timeline.rs`: In-memory frame timeline + filters
+- `element_finder.rs`: `ElementFinder` impl — combines GUI detection + AX + spatial query (R-tree via `rstar`)
+- `work_classifier.rs`: activity classification from frame features
 - `gui_detector/`: GUI element detection — directory module (ADR-003)
-  - `mod.rs`: `GuiDetector` struct + public API + re-exports
-  - `correlation.rs`: GUI correlation logic
-  - `inference.rs`: element inference
-  - `tests.rs`: unit tests
-- `accessibility/macos/`: macOS accessibility adapter — directory module (ADR-003)
-  - `mod.rs`: re-exports
-  - `extractor.rs`: AX tree element extraction
-  - `observer.rs`: AX notification observer
-  - `tests.rs`: unit tests
+  - correlation, inference, tests
+- `contour_classifier/`: OpenCV-like contour-based classifier — directory module
+- `ml_classifier/`: ML-based classifier (inference pipeline) — directory module
+- `native_detect/`: native platform GUI detection — directory module
+- `native_ocr/`: native platform OCR — directory module
+- `accessibility/`: platform accessibility adapters — `macos/` (AX extractor + observer + tests), `windows/` (UIA CacheRequest), `linux/` (AT-SPI via atspi 0.29)
+- `error.rs`: `VisionError` (ADR-019 typed codes)
 
 ### oneshim-web (Local Web Dashboard)
 - `lib.rs`: `WebServer` — Axum 0.8 HTTP server + graceful shutdown
-- `routes.rs`: REST API route definitions (16+ endpoints)
-- `handlers/`: metrics, processes, idle, sessions, frames, events, stats, tags, focus
+- `routes.rs`: 118 REST route definitions registered via `.route(...)` (368 LoC) — covers metrics, processes, idle, sessions, frames, events, stats, tags, focus, ai_models, ai_provider_surfaces, ai_session, annotations, automation, automation_gui, backup, bug_report, coaching, daily_digest, dashboard, data, digests, export, integration, etc. Contract-frozen via `docs/contracts/oneshim-web.v1.openapi.yaml` + `http-interface-manifest.v1.json`.
+- `handlers/`: 44 handler files across domain-grouped subdirectories + flat files. Originally 9 handlers at Phase-1; grew with superpowers/phase-4 features.
 - `embedded.rs`: static file serving for React frontend using rust-embed
 - `error.rs`: `ApiError` — JSON error responses
-- `frontend/`: React 18 + Vite + Tailwind CSS + Recharts + FocusWidget
+- `frontend/`: React 18.3 + Vite + Tailwind CSS + Recharts + FocusWidget + i18n (en/ko) + Biome lint + Vitest tests + Playwright e2e + Storybook review catalog
 
-### oneshim-automation (Automation Control)
+### oneshim-automation (Automation Control) — 29 source files
 - `controller/`: `AutomationController` — directory module (ADR-003)
   - `mod.rs`: struct + builders + validators + re-exports
   - `types.rs`: `AutomationCommand`, `CommandResult`, `WorkflowResult`, etc.
@@ -273,30 +304,39 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `models.rs`: `AuditLevel`, `ExecutionPolicy`, `PolicyCache`, `ProcessOutput`
   - `token.rs`: token generation, parsing, signature verification
 - `audit.rs`: `AuditLogger` — local VecDeque buffer + batched audit logs transmission, buffer overflow management
+- `action_dispatcher.rs`: maps `AutomationCommand` → action execution
+- `input_driver.rs`: cross-platform input driver (mouse/keyboard synthesis)
+- `intent_planner.rs`, `intent_resolver.rs`, `resolver.rs`: intent parsing + resolution pipeline
+- `local_llm.rs`: local LLM wiring for intent planning
+- `overlay.rs`: overlay driver interface (surfaced via `MagicOverlayDriver` in src-tauri)
+- `gui_interaction/`: GUI V2 session state + nonce replay protection + TTL enforcement (ADR-002 M3)
+- `presets.rs`: preset loading + validation
+- `sandbox/`: per-platform sandbox enforcement (Windows Job Objects, Linux seccomp+Landlock, macOS App Sandbox) — invoked out-of-process via `oneshim-sandbox-worker`
+- `error.rs`: `AutomationError` (ADR-019 typed codes)
 
-### oneshim-analysis (LLM Analysis Pipeline)
-- `analyzer.rs`: `ContextAnalyzer` — segment summarization via LLM, regime classification
-- `embedding_pipeline.rs`: `EmbeddingPipeline` — content activity + LLM summary embedding with optional INT8 quantization
-- `vector_retriever.rs`: `VectorRetriever` — vector similarity search with quantized + adaptive strategy support
-- `regime_classifier.rs`: `RegimeClassifier` — behavioral regime detection and labeling
-- `regime_manager.rs`: `RegimeManager` — regime lifecycle (create, merge, split, mark_seen)
-- `auto_tuner.rs`: `EmaStatsTracker`, `DriftDetector` — exponential moving average baselines and behavioral drift detection
-- `coaching_engine/`: `CoachingEngine` — directory module (ADR-003)
-  - `mod.rs`: `CoachingEngine` struct + public API + re-exports
-  - `guards.rs`: coaching guard conditions and eligibility checks
-  - `triggers.rs`: coaching trigger evaluation and event matching
-- `coaching_template/`: coaching template system — directory module (ADR-003)
-  - `mod.rs`: template registry + public API + re-exports
-  - `templates.rs`: built-in coaching template definitions
-- `adaptive_search.rs`: `AdaptiveSearchCoordinator` — auto strategy selection (brute-force / IVF / IVF+binary)
+### oneshim-analysis (LLM Analysis Pipeline) — 56 source files grouped by theme
+- **Context + segmentation**: `analyzer.rs` (ContextAnalyzer — LLM segment summarization + regime classification), `assembler.rs`, `segment_buffer.rs`, `segment_summarizer.rs`, `llm_segment_summarizer.rs`, `content_tracker.rs`
+- **Regime pipeline**: `regime_classifier.rs`, `regime_detector.rs`, `regime_manager.rs`, `regime_analysis_facade.rs`, `regime_goal_tracker.rs` — behavioral regime lifecycle (create, merge, split, mark_seen) + facade for external consumption
+- **Embeddings + vector search**: `embedding_pipeline.rs` (INT8 quantization), `vector_retriever.rs`, `adaptive_search.rs` (auto strategy: brute-force / IVF / IVF+binary), `hnsw_adapter.rs`, `hybrid_search_service.rs`, `query_expander.rs`, `few_shot_selector.rs`
+- **Clustering**: `kmeans_adapter.rs`, `gmm_detector.rs`, `hdbscan_detector.rs`, `clustering_strategy.rs`
+- **Work classification**: `work_type_classifier.rs`, `llm_work_type_refiner.rs`, `gui_work_type_refiner.rs`, `gui_aggregator.rs`, `terminal_detector.rs`, `title_bar_parser/`, `document_heading.rs`
+- **Tuning + feedback**: `auto_tuner.rs` (EmaStatsTracker + DriftDetector), `adaptive_trigger.rs`, `calibration_buffer.rs`, `feedback_tracker.rs`, `param_resolver.rs`, `constraint_builder.rs`
+- **Digests + insights**: `daily_digest_generator.rs`, `weekly_digest_generator.rs`, `daily_insight_generator.rs`, `digest_exporter.rs`
+- **Coaching** (ADR-003 directory modules):
+  - `coaching_engine/`: `CoachingEngine` struct + guards (eligibility checks) + triggers (event matching)
+  - `coaching_template/`: template registry + built-in coaching templates
+- **Pattern mining**: `pattern_miner/` — directory module
+- **Suggestion filter + misc**: `suggestion_filter.rs`, `prompts.rs`, `fallback_analysis_provider.rs`, `focus_shared.rs`
+- `error.rs`: `AnalysisError` (ADR-019 typed codes)
 
 ### oneshim-embedding (Vector Embedding + Compression)
 - `lib.rs`: `EmbeddingService` — vector embedding generation, INT8 scalar quantization, similarity search
 - Compression: 4x storage reduction via INT8 quantization with configurable float32 retention
 
-### oneshim-api-contracts (Shared API Type Contracts)
-- Shared request/response types between client crates
-- Ensures API contract consistency across the workspace
+### oneshim-api-contracts (Shared API Type Contracts) — 44 domain-grouped files
+- Shared request/response types between `src-tauri` (Tauri commands) + `oneshim-web` (REST handlers) + frontend
+- Ensures API contract consistency across the workspace; contract-frozen via `docs/contracts/oneshim-web.v1.openapi.yaml` + `http-interface-manifest.v1.json`
+- **Per-domain contract files**: `ai_providers`, `ai_session`, `annotations`, `automation`, `automation_gui`, `backup`, `bug_report`, `coaching`, `common`, `dashboard`, `data`, `digests`, `events`, `export`, `focus`, `frames`, `idle`, `integration`, `metrics`, `onboarding`, `playbooks`, `pomodoro`, `processes`, `recalibration`, `reports`, `search`, `sessions`, `settings`, `stats`, `stream`, `suggestions`, `support`, `tags`, `timeline`, `update` — each carries the request/response DTOs for its surface.
 - `provider_specs/`: AI provider specifications — directory module (ADR-003)
   - `mod.rs`: re-exports + public API
   - `enums.rs`: provider type enums
@@ -307,6 +347,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `resolvers.rs`: provider resolution logic
   - `validation.rs`: spec validation rules
   - `tests.rs`: unit tests
+- `error.rs`: shared error/response types
 
 ### oneshim-audio (Audio Capture + STT)
 - `capture.rs`: Cross-platform microphone capture via cpal, auto-resampling to 16kHz mono
@@ -315,12 +356,17 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `cloud_stt.rs`: `CloudSttProvider` — cloud-based STT fallback (`#[cfg(feature = "cloud-stt")]`)
 - `model_downloader.rs`: Whisper model download support (`#[cfg(feature = "download")]`)
 
-### oneshim-app (crates/oneshim-app/) — DEPRECATED
-> **Removed from workspace.** Replaced by `src-tauri/` which is the active binary crate
-> (also named `oneshim-app` as its package). Do not add new code here.
+### oneshim-sandbox-worker (Sandboxed Automation Executor)
+- `main.rs`: Out-of-process action executor. Spawned by the parent `src-tauri` with platform sandbox constraints (Job Object on Windows, seccomp+Landlock on Linux, App Sandbox on macOS) already applied. Reads a `SandboxRequest` JSON from stdin, runs the `AutomationAction` via `oneshim-core` models, writes a `SandboxResponse` JSON to stdout. Keeps the main process isolated from action-side crashes and containment failures. Binary target: `oneshim-sandbox-worker`.
+
+### oneshim-app (formerly crates/oneshim-app/) — REMOVED
+> The `crates/oneshim-app/` directory no longer exists in the workspace.
+> Replaced by `src-tauri/` which is the active main binary crate (its package
+> name is still `oneshim-app` for external build-script compatibility).
 >
 > Legacy modules (scheduler, focus_analyzer, updater, lifecycle, etc.) have been
-> migrated into `src-tauri/src/`.
+> migrated into `src-tauri/src/`. Any reference to `crates/oneshim-app/*` in older
+> docs or commit messages is historical.
 
 ## Key Dependencies
 
@@ -352,7 +398,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - Linting: `cargo clippy` — `dead_code` warnings are allowed only for variants intended for future use
 - Frontend Linting: `pnpm lint` (Biome) — `useExhaustiveDependencies` enabled
 - Testing: Write in `#[cfg(test)] mod tests` at the bottom of each module
-- Logging: `tracing` macros (`debug!`, `info!`, `warn!`, `error!`)
+- Logging: `tracing` macros (`debug!`, `info!`, `warn!`, `error!`). When logging a `CoreError`, include the wire code as a structured field so Loki/Grafana/OTel can group by `err.code` without regex-matching the Display body: `warn!(err.code = %e.code(), "failed: {e}")`. For adapter errors without a `code()` method, convert first: `let core: CoreError = e.into(); warn!(err.code = %core.code(), ...)`.  See ADR-019 Follow-up #2 for the observability rationale.
 - Serialization: `serde` derive — `Serialize, Deserialize` for all models
 
 ## Architecture Guardrails
@@ -394,10 +440,12 @@ Ports (Arc<dyn T>) created for the Scheduler should be shared with AppState, not
 - [ADR-002: OS GUI Interaction Boundary and Runtime Split](docs/architecture/ADR-002-os-gui-interaction-boundary.md)
 - [ADR-003: Directory Module Pattern for Large Source Files](docs/architecture/ADR-003-directory-module-pattern.md)
 - [ADR-004: Tauri v2 Migration (iced → Tauri v2 + WebView)](docs/architecture/ADR-004-tauri-v2-migration.md) ([한국어](docs/architecture/ADR-004-tauri-v2-migration.ko.md))
+- [ADR-019: Error Code Infrastructure + AWS Bedrock Intentional Non-Support](docs/architecture/ADR-019-error-code-infrastructure.md) ([한국어](docs/architecture/ADR-019-error-code-infrastructure.ko.md)) — typed `code` field on every struct-variant of `CoreError`/`GuiInteractionError` (`#[from]` variants derive code via `impl code()` per §7); Bedrock deleted from catalog; re-introduction requires §5 8-step checklist
+- [HTTP Status Error Mapping Pattern](docs/guides/http-status-error-mapping.md) ([한국어](docs/guides/http-status-error-mapping.ko.md)) — canonical 401/403/404/408/429/502/503/504 → wire code table applied across 16 HTTP dispatchers (original 14; iter-98 added `auth::refresh`; iter-194 added `sync/lan_transport::authenticate_with_peer` per Follow-up #5; `oneshim-web::services::ai_model_catalog_web_service` is the 16th); follow this pattern when adding new HTTP call sites
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
-- [Server API](docs/migration/04-server-api.md) — 29 REST endpoints + gRPC RPCs
+- [Server API](docs/migration/04-server-api.md) — ~30 REST endpoints + gRPC RPCs (auth×5, sessions×6, messages×3, suggestions×6, context×4, telemetry/sync×2, health×4 per section headers)
 - [Migration Phases](docs/migration/05-migration-phases.md) — Phase 0-36 plans
 - [Edge Vision](docs/migration/legacy/08-edge-vision.md) — Image processing details
 - [gRPC Client Guide](docs/guides/grpc-client.md) — Rust gRPC client usage

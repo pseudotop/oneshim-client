@@ -19,43 +19,29 @@ pub struct SessionCreateResponse {
 }
 
 #[async_trait]
+/// All methods route HTTP responses through the canonical semantic status
+/// mapping (see `docs/guides/http-status-error-mapping.md`). Common wire codes:
+/// `auth.failed` (401/403), `not_found.resource_missing` (404),
+/// `network.timeout` (408/504 / reqwest timeout), `network.rate_limit` (429),
+/// `service.unavailable` (502/503), `network.generic` (other non-2xx or
+/// connection-level failures).
 pub trait ApiClient: Send + Sync {
     /// Create a server session for the given client.
-    ///
-    /// # Errors
-    /// Returns `CoreError::Network` on connection failure, `CoreError::Auth` on
-    /// authentication failure, `CoreError::ServiceUnavailable` when the server is down.
     async fn create_session(&self, client_id: &str) -> Result<SessionCreateResponse, CoreError>;
 
     /// End an active server session.
-    ///
-    /// # Errors
-    /// Returns `CoreError::Network` on connection failure.
     async fn end_session(&self, session_id: &str) -> Result<(), CoreError>;
 
     /// Upload an event batch to the server.
-    ///
-    /// # Errors
-    /// Returns `CoreError::Network` on connection failure, `CoreError::RateLimit`
-    /// when the server throttles uploads.
     async fn upload_batch(&self, batch: &EventBatch) -> Result<(), CoreError>;
 
     /// Upload context data (frames + metadata) to the server.
-    ///
-    /// # Errors
-    /// Returns `CoreError::Network` on connection failure.
     async fn upload_context(&self, upload: &ContextUpload) -> Result<(), CoreError>;
 
     /// Send suggestion feedback (accept/reject) to the server.
-    ///
-    /// # Errors
-    /// Returns `CoreError::Network` on connection failure.
     async fn send_feedback(&self, feedback: &SuggestionFeedback) -> Result<(), CoreError>;
 
     /// Send a session heartbeat to keep the server session alive.
-    ///
-    /// # Errors
-    /// Returns `CoreError::Network` on connection failure.
     async fn send_heartbeat(&self, session_id: &str) -> Result<(), CoreError>;
 }
 
@@ -78,8 +64,12 @@ pub trait SseClient: Send + Sync {
     /// Connect to the server SSE stream for real-time suggestion delivery.
     ///
     /// # Errors
-    /// Returns `CoreError::Network` on connection failure, `CoreError::Auth`
-    /// on invalid session.
+    /// This method runs a connect/retry loop; transient failures are logged
+    /// and the loop reconnects with exponential backoff. The only `Err`
+    /// returned is `CoreError::Auth` (wire: `auth.failed`) when the session
+    /// token is rejected — re-auth required. All other failure classes
+    /// (transport, 5xx, server restart) are handled internally via
+    /// reconnect.
     async fn connect(
         &self,
         session_id: &str,

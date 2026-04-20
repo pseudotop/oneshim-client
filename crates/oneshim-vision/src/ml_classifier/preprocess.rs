@@ -17,11 +17,17 @@ const TARGET_SIZE: u32 = 64;
 /// 4. Normalize pixel values to [0.0, 1.0]
 pub fn prepare_input(rgba: &[u8], width: u32, height: u32) -> Result<Vec<f32>, CoreError> {
     let img = image::RgbaImage::from_raw(width, height, rgba.to_vec()).ok_or_else(|| {
-        CoreError::Internal(format!(
-            "invalid RGBA image: expected {} bytes, got {}",
-            width * height * 4,
-            rgba.len()
-        ))
+        // Iter-105: caller passed mismatched buffer + dimensions — this is
+        // input validation, not an internal failure. Aligns with iter-95
+        // quantization/binary_quantizer fixes (wire: validation.invalid_arguments).
+        CoreError::InvalidArguments {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: format!(
+                "invalid RGBA image: expected {} bytes, got {}",
+                width * height * 4,
+                rgba.len()
+            ),
+        }
     })?;
 
     let resized = image::imageops::resize(
@@ -76,5 +82,15 @@ mod tests {
         let rgba = vec![0u8; 100]; // too small for claimed dimensions
         let result = prepare_input(&rgba, 32, 32);
         assert!(result.is_err());
+    }
+
+    /// Iter-105 regression guard: buffer-dimension mismatch emits the
+    /// `validation.invalid_arguments` wire code, not `internal.generic`.
+    /// Aligns with iter-95's quantization/binary_quantizer fixes.
+    #[test]
+    fn prepare_input_mismatch_emits_invalid_arguments_code() {
+        let rgba = vec![0u8; 100];
+        let err = prepare_input(&rgba, 32, 32).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
     }
 }

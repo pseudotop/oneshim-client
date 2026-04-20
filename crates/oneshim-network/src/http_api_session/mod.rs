@@ -71,13 +71,11 @@ pub struct HttpApiSessionInit {
 }
 
 #[derive(Debug, Default)]
-#[allow(dead_code)] // Fields read in Task 2-5 (vision, structured output, tool calling)
 struct RequestOptions<'a> {
     response_format: Option<&'a serde_json::Value>,
     tools: Option<&'a [ToolDefinition]>,
 }
 
-#[allow(dead_code)] // Used in Task 5 (tool calling SSE parsing)
 struct PartialToolCall {
     id: String,
     name: String,
@@ -129,7 +127,10 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })?;
 
         match shape {
             ProviderRequestShape::AnthropicMessages
@@ -170,9 +171,14 @@ impl HttpApiSession {
                 options.response_format,
                 options.tools,
             )),
-            _ => Err(CoreError::Internal(format!(
-                "unsupported request shape for HTTP API session: {shape:?}"
-            ))),
+            ProviderRequestShape::BedrockConverse => Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                message: "AWS Bedrock is intentionally unsupported in this build".into(),
+            }),
+            _ => Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
+                message: format!("unsupported request shape for HTTP API session: {shape:?}"),
+            }),
         }
     }
 
@@ -186,7 +192,10 @@ impl HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })?;
 
         let builder = match auth_scheme {
             ProviderAuthScheme::None => builder,
@@ -205,10 +214,10 @@ impl HttpApiSession {
                 builder.header("Authorization", format!("Bearer {}", token))
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                return Err(CoreError::Internal(
-                    "AWS Signature V4 authentication is not yet supported for API sessions"
-                        .to_string(),
-                ));
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
+                });
             }
         };
 
@@ -301,7 +310,10 @@ impl ConversationSession for HttpApiSession {
             Some(&self.surface_id),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)?;
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })?;
 
         let user_msg = prepare_chat_message(message, &shape);
 
@@ -339,7 +351,18 @@ impl ConversationSession for HttpApiSession {
 
         let response = builder.send().await.map_err(|e| {
             *self.state.lock() = SessionState::Failed;
-            CoreError::Network(format!("HTTP API session request failed: {e}"))
+            // Iter-90: split timeout vs generic per canonical pattern.
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("HTTP API session request failed: {e}"),
+                }
+            }
         })?;
 
         let status = response.status();
@@ -349,10 +372,33 @@ impl ConversationSession for HttpApiSession {
                 .await
                 .unwrap_or_else(|_| "failed to read error body".to_string());
             *self.state.lock() = SessionState::Failed;
-            return Err(CoreError::Network(format!(
+            let message = format!(
                 "HTTP API error ({status}): {}",
                 body.chars().take(300).collect::<String>()
-            )));
+            );
+            // Semantic HTTP status mapping per iter-54..59 pattern.
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message,
+                },
+            });
         }
 
         let history = self.history.clone();
@@ -437,7 +483,7 @@ impl ConversationSession for HttpApiSession {
                         if !accumulated.is_empty() {
                             save_assistant_response(&history, &accumulated, max_turns).await;
                         }
-                        Err(CoreError::Network(format!("SSE stream error: {e}")))?;
+                        Err(CoreError::Network { code: oneshim_core::error_codes::NetworkCode::Generic, message: format!("SSE stream error: {e}") })?;
                     }
                 }
             }

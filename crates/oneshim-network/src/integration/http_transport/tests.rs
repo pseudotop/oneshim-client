@@ -62,9 +62,10 @@ impl IntegrationAuthPort for StaticAuthPort {
         _resource_indicator: Option<&str>,
     ) -> Result<oneshim_core::models::integration::IntegrationDeviceAuthorizationFlow, CoreError>
     {
-        Err(CoreError::InvalidArguments(
-            "static auth port does not support device authorization".to_string(),
-        ))
+        Err(CoreError::InvalidArguments {
+            code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
+            message: "static auth port does not support device authorization".to_string(),
+        })
     }
 
     async fn poll_device_authorization(
@@ -421,7 +422,11 @@ async fn connect_rejects_unexpected_granted_scope() {
     bootstrap.assert_async().await;
 
     match err {
-        CoreError::Validation { field, .. } => {
+        CoreError::Validation {
+            code: oneshim_core::error_codes::ValidationCode::InvalidField,
+            field,
+            ..
+        } => {
             assert_eq!(field, "integration.bootstrap.granted_scopes");
         }
         other => panic!("unexpected error: {other}"),
@@ -1069,4 +1074,98 @@ async fn inbox_transport_drains_websocket_prompt_events() {
     );
     assert_eq!(response.prompts[1].prompt_id, "prompt-012-ws");
     assert!(response.ack_cursor.is_none());
+}
+
+// iter-84 regression guards for iter-55a semantic HTTP status mapping
+// in integration/http_transport::check_response. Uses the existing
+// StaticAuthPort + connect_request helpers; bootstrap endpoint returns
+// the test status code and we assert the resulting CoreError variant.
+async fn run_bootstrap_status_test(status: u16) -> CoreError {
+    let mut server = mockito::Server::new_async().await;
+    let _mock = server
+        .mock("POST", "/integration/bootstrap")
+        .with_status(status as usize)
+        .with_body(format!("http {status}"))
+        .create_async()
+        .await;
+
+    let client = HttpsIntegrationTransportClient::new(
+        HttpsIntegrationTransportConfig::new(
+            format!("{}/integration/bootstrap", server.url()),
+            std::time::Duration::from_secs(5),
+        ),
+        Arc::new(StaticAuthPort {
+            context: IntegrationAuthContext {
+                access_token: "access-token".to_string(),
+                scheme: IntegrationAuthScheme::BearerToken,
+                expires_at: None,
+                resource_indicator: None,
+            },
+        }),
+        Arc::new(RecordingProofFactory {
+            returned: None,
+            calls: Arc::new(Mutex::new(Vec::new())),
+        }),
+    )
+    .unwrap();
+
+    client
+        .connect(connect_request(&server.url()))
+        .await
+        .unwrap_err()
+}
+
+#[tokio::test]
+async fn bootstrap_403_maps_to_auth() {
+    let err = run_bootstrap_status_test(403).await;
+    assert!(
+        matches!(err, CoreError::Auth { .. }),
+        "403 → Auth, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_404_maps_to_not_found() {
+    let err = run_bootstrap_status_test(404).await;
+    assert!(
+        matches!(err, CoreError::NotFound { .. }),
+        "404 → NotFound, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_429_maps_to_rate_limit() {
+    let err = run_bootstrap_status_test(429).await;
+    assert!(
+        matches!(err, CoreError::RateLimit { .. }),
+        "429 → RateLimit, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_502_maps_to_service_unavailable() {
+    let err = run_bootstrap_status_test(502).await;
+    assert!(
+        matches!(err, CoreError::ServiceUnavailable { .. }),
+        "502 → ServiceUnavailable, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_504_maps_to_timeout() {
+    let err = run_bootstrap_status_test(504).await;
+    assert!(
+        matches!(err, CoreError::RequestTimeout { .. }),
+        "504 → RequestTimeout, got: {err:?}"
+    );
+}
+
+/// Domain fallback: 500 stays as Network (iter-55a wildcard).
+#[tokio::test]
+async fn bootstrap_500_falls_back_to_network() {
+    let err = run_bootstrap_status_test(500).await;
+    assert!(
+        matches!(err, CoreError::Network { .. }),
+        "500 should fall back to Network, got: {err:?}"
+    );
 }

@@ -42,21 +42,21 @@ impl AiModelCatalogQueryService {
             provider_type,
             requested_surface_id.as_deref(),
         )?;
+        // AWS Bedrock intentionally unsupported per ADR-019 §3. Return early
+        // BEFORE resolving AWS credentials so users without keys see the graceful
+        // "unsupported" notice instead of a generic "no API key" error.
+        if matches!(auth_scheme, ProviderAuthScheme::AwsSignatureV4) {
+            return Ok(ProviderModelsResponse {
+                models: Vec::new(),
+                model_details: Vec::new(),
+                notice: Some("AWS Bedrock is intentionally unsupported in this build.".to_string()),
+            });
+        }
         let api_key = if matches!(auth_scheme, ProviderAuthScheme::None) {
             None
         } else {
             Some(resolve_model_discovery_api_key(request, &self.ctx, provider_type).await?)
         };
-        if matches!(auth_scheme, ProviderAuthScheme::AwsSignatureV4) {
-            return Ok(ProviderModelsResponse {
-                models: Vec::new(),
-                model_details: Vec::new(),
-                notice: Some(
-                    "AWS Signature V4 model discovery is not yet supported for this provider surface."
-                        .to_string(),
-                ),
-            });
-        }
         if let Some(notice) = ai_provider_spec_service::ocr_model_catalog_notice_for_surface(
             provider_type,
             requested_surface_id.as_deref(),
@@ -109,11 +109,24 @@ impl AiModelCatalogQueryService {
             ))
         })?;
         if !status.is_success() {
-            return Err(ApiError::ServiceUnavailable(format!(
+            let message = format!(
                 "Model discovery failed ({}): {}",
                 status,
                 truncate_error(&body)
-            )));
+            );
+            // Semantic ApiError mapping per iter-54..59 pattern (ApiError
+            // variants are web-layer HTTP status equivalents).
+            return Err(match status.as_u16() {
+                400 => ApiError::BadRequest(message),
+                401 => ApiError::Unauthorized(message),
+                403 => ApiError::Forbidden(message),
+                404 => ApiError::NotFound(message),
+                // 408/429/502/503/504 all represent transient or retry-worthy
+                // upstream failures — map to ServiceUnavailable (ApiError has
+                // no dedicated TooManyRequests/Timeout variants).
+                408 | 429 | 502 | 503 | 504 => ApiError::ServiceUnavailable(message),
+                _ => ApiError::Internal(message),
+            });
         }
 
         let mut discovered_models = parse_models(

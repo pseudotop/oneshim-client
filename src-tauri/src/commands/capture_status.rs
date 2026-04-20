@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use tauri::{command, AppHandle, Emitter, Manager, State};
 use tracing::debug;
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::AppState;
 
 // --- Panel position validation (physical pixels) ---
@@ -60,7 +61,7 @@ pub struct ConnectionStatusResponse {
 #[command]
 pub async fn get_capture_status(
     state: State<'_, AppState>,
-) -> Result<CaptureStatusResponse, String> {
+) -> Result<CaptureStatusResponse, IpcError> {
     Ok(CaptureStatusResponse {
         paused: state.capture_paused.load(Ordering::Relaxed),
         indicator_visible: state.indicator_visible.load(Ordering::Relaxed),
@@ -71,7 +72,7 @@ pub async fn get_capture_status(
 pub async fn toggle_capture_pause(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<CaptureStatusResponse, String> {
+) -> Result<CaptureStatusResponse, IpcError> {
     let was_paused = state.capture_paused.fetch_xor(true, Ordering::Relaxed);
     let new_paused = !was_paused;
     let indicator_visible = state.indicator_visible.load(Ordering::Relaxed);
@@ -104,7 +105,7 @@ pub async fn set_indicator_visible(
     app: AppHandle,
     state: State<'_, AppState>,
     visible: bool,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     state.indicator_visible.store(visible, Ordering::Relaxed);
     let paused = state.capture_paused.load(Ordering::Relaxed);
 
@@ -144,7 +145,7 @@ pub async fn set_indicator_visible(
 #[command]
 pub async fn get_connection_status(
     state: State<'_, AppState>,
-) -> Result<ConnectionStatusResponse, String> {
+) -> Result<ConnectionStatusResponse, IpcError> {
     Ok(ConnectionStatusResponse {
         server: state.connection.server_connected.load(Ordering::Relaxed),
         llm: state.connection.llm_connected.load(Ordering::Relaxed),
@@ -153,7 +154,7 @@ pub async fn get_connection_status(
 }
 
 #[command]
-pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
+pub async fn show_main_window(app: AppHandle) -> Result<(), IpcError> {
     if let Some(window) = app.get_webview_window("main") {
         if let Err(e) = window.show() {
             debug!("window show failed: {e}");
@@ -163,12 +164,19 @@ pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
         }
         Ok(())
     } else {
-        Err("main window not found".to_string())
+        // Main window should always be present in a normal run; if it's
+        // missing the app is in an unexpected state. not_found.resource_missing
+        // matches the workspace wire-code convention for "named resource
+        // absent".
+        Err(IpcError::new(
+            "not_found.resource_missing",
+            "main window not found",
+        ))
     }
 }
 
 #[command]
-pub async fn open_devtools(app: AppHandle, label: Option<String>) -> Result<(), String> {
+pub async fn open_devtools(app: AppHandle, label: Option<String>) -> Result<(), IpcError> {
     #[cfg(debug_assertions)]
     {
         let target = label.as_deref().unwrap_or("main");
@@ -184,7 +192,11 @@ pub async fn open_devtools(app: AppHandle, label: Option<String>) -> Result<(), 
 }
 
 #[command]
-pub async fn save_panel_position(state: State<'_, AppState>, x: f64, y: f64) -> Result<(), String> {
+pub async fn save_panel_position(
+    state: State<'_, AppState>,
+    x: f64,
+    y: f64,
+) -> Result<(), IpcError> {
     let pos = format!("{x},{y}");
     state.storage.set_meta("tracking_panel_position", &pos);
     Ok(())
@@ -194,7 +206,7 @@ pub async fn save_panel_position(state: State<'_, AppState>, x: f64, y: f64) -> 
 pub async fn get_panel_position(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, IpcError> {
     let raw = match state.storage.get_meta("tracking_panel_position") {
         Some(v) => v,
         None => return Ok(None),

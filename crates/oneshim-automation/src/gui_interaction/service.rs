@@ -139,9 +139,10 @@ impl GuiInteractionService {
                 min_confidence,
                 "GUI session creation failed — no eligible candidates"
             );
-            return Err(GuiInteractionError::BadRequest(
-                "No eligible GUI candidates found in scene".to_string(),
-            ));
+            return Err(GuiInteractionError::BadRequest {
+                code: oneshim_core::error_codes::GuiCode::BadRequest,
+                message: "No eligible GUI candidates found in scene".to_string(),
+            });
         }
 
         let session_id = Uuid::new_v4().to_string();
@@ -205,7 +206,10 @@ impl GuiInteractionService {
 
         let mut sessions = self.sessions.write().await;
         let Some(stored) = sessions.get_mut(session_id) else {
-            return Err(GuiInteractionError::NotFound(session_id.to_string()));
+            return Err(GuiInteractionError::NotFound {
+                code: oneshim_core::error_codes::GuiCode::NotFound,
+                name: session_id.to_string(),
+            });
         };
 
         if is_expired(&stored.session.expires_at) {
@@ -228,14 +232,18 @@ impl GuiInteractionService {
         let (scene_id, targets, previous_handle_id) = {
             let mut sessions = self.sessions.write().await;
             let Some(stored) = sessions.get_mut(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
 
             if is_expired(&stored.session.expires_at) {
                 stored.session.state = GuiSessionState::Expired;
-                return Err(GuiInteractionError::TicketInvalid(
-                    "Session already expired".to_string(),
-                ));
+                return Err(GuiInteractionError::TicketInvalid {
+                    code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+                    message: "Session already expired".to_string(),
+                });
             }
 
             let candidate_ids: Option<HashSet<String>> = req.candidate_ids.as_ref().map(|ids| {
@@ -270,9 +278,10 @@ impl GuiInteractionService {
                 .collect();
 
             if targets.is_empty() {
-                return Err(GuiInteractionError::BadRequest(
-                    "No highlight targets available".to_string(),
-                ));
+                return Err(GuiInteractionError::BadRequest {
+                    code: oneshim_core::error_codes::GuiCode::BadRequest,
+                    message: "No highlight targets available".to_string(),
+                });
             }
 
             (
@@ -301,7 +310,10 @@ impl GuiInteractionService {
         let updated = {
             let mut sessions = self.sessions.write().await;
             let Some(stored) = sessions.get_mut(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
             stored.overlay_handle_id = Some(handle.handle_id);
             stored.session.state = GuiSessionState::Highlighted;
@@ -332,7 +344,10 @@ impl GuiInteractionService {
         let (session, overlay_handle_id) = {
             let mut sessions = self.sessions.write().await;
             let Some(stored) = sessions.get_mut(session_id) else {
-                return Err(GuiInteractionError::NotFound(session_id.to_string()));
+                return Err(GuiInteractionError::NotFound {
+                    code: oneshim_core::error_codes::GuiCode::NotFound,
+                    name: session_id.to_string(),
+                });
             };
             stored.session.state = GuiSessionState::Cancelled;
             stored.session.updated_at = Utc::now();
@@ -364,11 +379,16 @@ impl GuiInteractionService {
     ) -> Result<(), GuiInteractionError> {
         let sessions = self.sessions.read().await;
         let Some(stored) = sessions.get(session_id) else {
-            return Err(GuiInteractionError::NotFound(session_id.to_string()));
+            return Err(GuiInteractionError::NotFound {
+                code: oneshim_core::error_codes::GuiCode::NotFound,
+                name: session_id.to_string(),
+            });
         };
 
         if stored.capability_token != capability_token.trim() {
-            return Err(GuiInteractionError::Unauthorized);
+            return Err(GuiInteractionError::Unauthorized {
+                code: oneshim_core::error_codes::GuiCode::Unauthorized,
+            });
         }
 
         Ok(())
@@ -438,8 +458,11 @@ impl GuiInteractionService {
     }
 
     pub(super) fn require_hmac_secret(&self) -> Result<&[u8], GuiInteractionError> {
-        self.hmac_secret.as_deref().ok_or_else(|| {
-            GuiInteractionError::Unavailable(format!("{GUI_HMAC_SECRET_ENV} is missing or empty"))
-        })
+        self.hmac_secret
+            .as_deref()
+            .ok_or_else(|| GuiInteractionError::Unavailable {
+                code: oneshim_core::error_codes::GuiCode::Unavailable,
+                message: format!("{GUI_HMAC_SECRET_ENV} is missing or empty"),
+            })
     }
 }

@@ -2,7 +2,7 @@
 
 # ADR-014: Tauri Managed State 경계
 
-**상태**: Approved
+**상태**: Accepted
 **날짜**: 2026-04-02
 **범위**: `src-tauri/`, Tauri managed state, IPC command 경계, composition-root wiring
 

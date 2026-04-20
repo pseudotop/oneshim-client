@@ -23,18 +23,22 @@ pub const INTEGRATION_DPOP_SIGNING_KEY_SECRET_KEY: &str = "dpop_signing_key";
 pub fn validate_secret_segment(raw: &str, field_name: &str) -> Result<String, CoreError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err(CoreError::InvalidArguments(format!(
-            "{field_name} must not be empty"
-        )));
+        return Err(CoreError::InvalidArguments {
+            code: crate::error_codes::ValidationCode::InvalidArguments,
+            message: format!("{field_name} must not be empty"),
+        });
     }
 
     if !trimmed
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
     {
-        return Err(CoreError::InvalidArguments(format!(
-            "{field_name} must contain only ASCII alphanumeric characters, '.', '_' or '-'"
-        )));
+        return Err(CoreError::InvalidArguments {
+            code: crate::error_codes::ValidationCode::InvalidArguments,
+            message: format!(
+                "{field_name} must contain only ASCII alphanumeric characters, '.', '_' or '-'"
+            ),
+        });
     }
 
     Ok(trimmed.to_string())
@@ -94,6 +98,16 @@ pub fn secret_env_var_name(namespace: &str, key: &str) -> String {
 ///
 /// Implementations may use OS keychain (macOS Keychain, Windows Credential
 /// Manager, Linux Secret Service) or an in-memory fallback.
+///
+/// # Errors
+/// - `CoreError::SecretStoreError` (wire: `secret.failed`) for backend
+///   failures: keychain unavailable, read-only env backend, file secret
+///   store I/O. Env-backed store rejects writes as `secret.failed` with
+///   an informative message ("read-only; modify the environment source
+///   instead").
+/// - `CoreError::InvalidArguments` (wire: `validation.invalid_arguments`)
+///   from the `validate_secret_segment` helper when namespace/key
+///   contains non-ASCII-alphanumeric characters or is empty.
 #[async_trait]
 pub trait SecretStore: Send + Sync {
     /// Store a secret value under a namespaced key.
@@ -278,7 +292,7 @@ mod tests {
     #[test]
     fn provider_namespace_rejects_invalid_segments() {
         let err = provider_secret_namespace("openai/codex", "default").unwrap_err();
-        assert!(matches!(err, CoreError::InvalidArguments(_)));
+        assert!(matches!(err, CoreError::InvalidArguments { .. }));
     }
 
     #[test]

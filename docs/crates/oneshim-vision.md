@@ -16,19 +16,32 @@ The crate responsible for edge image processing. Performs screen capture, delta 
 
 ```
 oneshim-vision/src/
-├── lib.rs         # Crate root
-├── capture.rs     # ScreenCapture - screen capture
-├── trigger.rs     # SmartCaptureTrigger - capture decision
-├── delta.rs       # DeltaEncoder - changed region extraction
-├── encoder.rs     # WebpEncoder - image compression
-├── thumbnail.rs   # ThumbnailGenerator - thumbnail generation
-├── processor.rs   # EdgeFrameProcessor - unified processing
-├── ocr.rs         # OcrExtractor - text extraction
-├── local_ocr_provider.rs # Local OCR provider adapter
-├── element_finder.rs # OCR text matching + UiScene builder
-├── privacy.rs     # PII marker detection + title/text sanitization
-├── privacy_gateway.rs # External OCR privacy gate + OCR-region blur
-└── timeline.rs    # FrameTimeline - frame history
+├── lib.rs                  # Crate root
+├── capture.rs              # ScreenCapture - multi-monitor capture via xcap
+├── trigger.rs              # SmartCaptureTrigger - event classification + importance + throttle
+├── delta.rs                # DeltaEncoder - 16×16 tile comparison → changed region extraction
+├── encoder.rs              # WebpEncoder - Low/Medium/High quality + stat-based quality prediction
+├── thumbnail.rs            # ThumbnailGenerator - fast_image_resize + LRU cache (100 entries, FNV-1a)
+├── ring_buffer.rs          # Bounded frame ring buffer
+├── processor.rs            # EdgeFrameProcessor - importance-branched unified processing
+├── ocr.rs                  # OcrExtractor - leptess/Tesseract OCR (#[cfg(feature = "ocr")])
+├── local_ocr_provider.rs   # Local OCR provider adapter
+├── element_finder.rs       # ElementFinder - OCR text matching + UiScene builder + R-tree spatial index (rstar)
+├── work_classifier.rs      # Activity classification from frame features
+├── privacy.rs              # PII filter levels (Off/Basic/Standard/Strict) + sensitive-app auto-detection
+├── privacy_gateway.rs      # Central privacy gateway wrapping filter + OCR-region blur
+├── timeline.rs             # FrameTimeline - in-memory frame history + filters
+├── gui_detector/           # GUI element detection (directory module, ADR-003)
+├── contour_classifier/     # OpenCV-like contour-based classifier (directory module)
+├── ml_classifier/          # ML-based classifier inference pipeline (directory module)
+├── native_detect/          # Native platform GUI detection (directory module)
+├── native_ocr/             # Native platform OCR (directory module)
+├── accessibility/          # Platform accessibility adapters:
+│   ├── macos/              # AX tree extractor + notification observer (directory module)
+│   ├── windows.rs          # Windows UIA CacheRequest
+│   ├── linux.rs            # Linux AT-SPI (atspi 0.29)
+│   └── ffi_macos.rs        # macOS FFI helpers
+└── error.rs                # VisionError (ADR-019 typed codes)
 ```
 
 ## Core Concept: Importance-Based Processing

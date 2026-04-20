@@ -2,7 +2,7 @@
 
 # ADR-018: RegimeManager 영속화
 
-**상태 (Status)**: 승인 (Approved)
+**상태 (Status)**: 채택됨 (Accepted)
 **날짜 (Date)**: 2026-04-18
 **범위 (Scope)**: `oneshim-core::ports::regime_storage`, `oneshim-storage::regime_manager_state_store`, `oneshim-analysis::RegimeManager::hydrate_from`, `src-tauri::main::RunEvent::Exit`
 

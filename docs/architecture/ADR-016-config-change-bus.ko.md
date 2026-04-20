@@ -2,7 +2,7 @@
 
 # ADR-016: 설정 변경 브로드캐스트 버스 (Config Change Bus)
 
-**상태**: Approved
+**상태**: Accepted
 **날짜**: 2026-04-17
 **범위**: `oneshim-core::config_manager::ConfigManager`, 런타임에서 `AppConfig`를 읽는 모든 소비자
 

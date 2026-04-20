@@ -213,15 +213,15 @@ pub(crate) fn read_capability_token(headers: &HeaderMap) -> Result<String, ApiEr
 
 pub(crate) fn map_gui_error(error: GuiInteractionError) -> ApiError {
     match error {
-        GuiInteractionError::Unauthorized => {
+        GuiInteractionError::Unauthorized { .. } => {
             ApiError::Unauthorized("Invalid GUI session token".to_string())
         }
-        GuiInteractionError::NotFound(message) => ApiError::NotFound(message),
-        GuiInteractionError::BadRequest(message) => ApiError::BadRequest(message),
-        GuiInteractionError::Forbidden(message) => ApiError::Forbidden(message),
-        GuiInteractionError::FocusDrift(message) => ApiError::Conflict(message),
-        GuiInteractionError::TicketInvalid(message) => ApiError::Unprocessable(message),
-        GuiInteractionError::Unavailable(message) => ApiError::ServiceUnavailable(message),
-        GuiInteractionError::Internal(message) => ApiError::Internal(message),
+        GuiInteractionError::NotFound { name, .. } => ApiError::NotFound(name),
+        GuiInteractionError::BadRequest { message, .. } => ApiError::BadRequest(message),
+        GuiInteractionError::Forbidden { message, .. } => ApiError::Forbidden(message),
+        GuiInteractionError::FocusDrift { message, .. } => ApiError::Conflict(message),
+        GuiInteractionError::TicketInvalid { message, .. } => ApiError::Unprocessable(message),
+        GuiInteractionError::Unavailable { message, .. } => ApiError::ServiceUnavailable(message),
+        GuiInteractionError::Internal { message, .. } => ApiError::Internal(message),
     }
 }

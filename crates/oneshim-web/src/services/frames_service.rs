@@ -55,7 +55,7 @@ impl FramesQueryService {
                     .ctx
                     .storage
                     .get_tag_ids_for_frames(&frame_ids)
-                    .map_err(|error| ApiError::Internal(error.to_string()))?;
+                    .map_err(ApiError::from)?;
 
                 data.into_iter()
                     .map(|mut frame| {

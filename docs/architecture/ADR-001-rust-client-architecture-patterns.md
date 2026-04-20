@@ -2,7 +2,7 @@
 
 # ADR-001: Rust Client Architecture Patterns
 
-**Status**: Approved
+**Status**: Accepted
 **Date**: 2026-01-28
 **Scope**: Entire client-rust/
 
@@ -27,24 +27,26 @@ oneshim-lint       → tooling binary (local CLI-style failure handling)
 oneshim-app        → anyhow::Result            ← Used only at top level (`src-tauri`)
 ```
 
-**Pattern**:
+**Pattern** (illustrative; current `NetworkError` carries 13 variants — see `crates/oneshim-network/src/error.rs` for the canonical list):
 ```rust
 // Library crate — specific errors
 #[derive(Debug, thiserror::Error)]
 pub enum NetworkError {
-    #[error("HTTP request failed: {0}")]
-    Http(#[from] reqwest::Error),
-    #[error("SSE connection error: {0}")]
-    Sse(String),
-    #[error("{0}")]
+    #[error("HTTP error: {0}")]
+    Http(String),                                  // See http_client::map_reqwest_error
+                                                   // for timeout/rate-limit classification.
+    #[error("request timeout after {timeout_ms}ms")]
+    Timeout { timeout_ms: u64 },
+    #[error(transparent)]
     Core(#[from] oneshim_core::error::CoreError),
+    // ... 10 more semantic variants
 }
 
 // Binary crate — unified with anyhow
 fn main() -> anyhow::Result<()> { ... }
 ```
 
-**Rationale**: `thiserror` allows callers to pattern match on errors, making it suitable for libraries. `anyhow` is good for expressing "something failed" and is suitable for the final binary.
+**Rationale**: `thiserror` allows callers to pattern match on errors, making it suitable for libraries. `anyhow` is good for expressing "something failed" and is suitable for the final binary. Wire error codes are handled by [ADR-019](./ADR-019-error-code-infrastructure.md) — each `CoreError` struct-variant carries a typed `code: XxxCode` field that adapter errors map into via `impl From<AdapterError> for CoreError`.
 
 ### 2. Async Trait Pattern (Port Interfaces)
 

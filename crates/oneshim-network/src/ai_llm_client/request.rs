@@ -103,14 +103,17 @@ impl RemoteLlmProvider {
                 serde_json::json!({ "model": self.model, "max_tokens": 512, "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}] })
             }
             ProviderRequestShape::GoogleVisionAnnotate => {
-                return Err(CoreError::Internal(
-                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
-                ));
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                    message: "LLM transport shape resolved to OCR-only Google Vision Annotate"
+                        .to_string(),
+                });
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::Internal(
-                    "Bedrock Converse request shape is not yet supported for LLM chat".to_string(),
-                ));
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
+                });
             }
         };
         Ok(body)
@@ -144,33 +147,82 @@ impl RemoteLlmProvider {
                 }
             }
             ProviderAuthScheme::AwsSignatureV4 => {
-                return Err(CoreError::Internal(
-                    "AWS Signature V4 authentication is not yet supported for LLM requests"
-                        .to_string(),
-                ));
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
+                });
             }
         }
         let response = builder.send().await.map_err(|e| {
             if let Some(ref flag) = self.last_request_ok {
                 flag.store(false, Ordering::Relaxed);
             }
-            CoreError::Network(format!("LLM API request failed: {}", e))
+            // Iter-90: split timeout vs generic per canonical pattern
+            // (cloud_stt.rs:107, http_client.rs map_reqwest_error).
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0, // sentinel; configured timeout is in request-site logs
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("LLM API request failed: {}", e),
+                }
+            }
         })?;
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
+        let body = response.text().await.map_err(|e| {
+            // Iter-90: body-read timeout is also a timeout; keep the split
+            // consistent with send()-time timeout handling above.
+            if e.is_timeout() {
+                CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                }
+            } else {
+                CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("LLM API response read failure: {}", e),
+                }
+            }
+        })?;
         if !status.is_success() {
             if let Some(ref flag) = self.last_request_ok {
                 flag.store(false, Ordering::Relaxed);
             }
             warn!(status = %status, "LLM API error response");
-            return Err(CoreError::Network(format!(
+            let message = format!(
                 "LLM API error ({}): {}",
                 status,
                 body.chars().take(200).collect::<String>()
-            )));
+            );
+            // Semantic status mapping per iter-55 / iter-56 pattern — give
+            // upstream LLM failures specific wire codes so telemetry can
+            // distinguish timeouts (transient, retryable) from auth (permanent)
+            // from rate-limiting (backoff-based).
+            return Err(match status.as_u16() {
+                401 | 403 => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message,
+                },
+            });
         }
         let action = match self.llm_request_shape()? {
             ProviderRequestShape::AnthropicMessages
@@ -182,15 +234,17 @@ impl RemoteLlmProvider {
             | ProviderRequestShape::OpenAiVisionChatCompletions
             | ProviderRequestShape::OpenAiResponses => parsers::parse_openai_response(&body)?,
             ProviderRequestShape::GoogleVisionAnnotate => {
-                return Err(CoreError::Internal(
-                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
-                ));
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Invalid,
+                    message: "LLM transport shape resolved to OCR-only Google Vision Annotate"
+                        .to_string(),
+                });
             }
             ProviderRequestShape::BedrockConverse => {
-                return Err(CoreError::Internal(
-                    "Bedrock Converse request shape is not yet supported for LLM response parsing"
-                        .to_string(),
-                ));
+                return Err(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    message: "AWS Bedrock is intentionally unsupported in this build".into(),
+                });
             }
         };
         if let Some(ref flag) = self.last_request_ok {

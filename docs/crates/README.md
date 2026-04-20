@@ -1,7 +1,8 @@
 # Crate Implementation Docs
 
-Detailed implementation reference for the ONESHIM Rust client's current 14-package workspace
-(13 packages under `crates/` plus the `src-tauri` binary package).
+Detailed implementation reference for the ONESHIM Rust client's current 15-package workspace
+(14 packages under `crates/` plus the `src-tauri` binary package; `cargo metadata --no-deps`
+is the source of truth).
 
 ## Crate Dependency Graph
 
@@ -33,6 +34,11 @@ Runtime adapter baseline (normal dependencies only)
   ├── oneshim-network    -> oneshim-core + oneshim-api-contracts
   └── oneshim-web        -> oneshim-core + oneshim-api-contracts
 
+Out-of-process isolated executor (spawned by oneshim-app)
+  └── oneshim-sandbox-worker -> oneshim-core
+      (standalone binary; stdin SandboxRequest JSON → stdout SandboxResponse JSON under
+       platform sandbox — Job Object on Windows, seccomp+Landlock on Linux, App Sandbox on macOS)
+
 Tooling package
   └── oneshim-lint (workspace-local lint/test helper, not part of the runtime graph)
 ```
@@ -54,6 +60,7 @@ Tooling package
 | **oneshim-analysis** | `crates/oneshim-analysis` | Analysis pipeline, coaching, regime/tiered-memory logic | Pending dedicated crate doc |
 | **oneshim-embedding** | `crates/oneshim-embedding` | Local embedding provider adapter | Pending dedicated crate doc |
 | **oneshim-lint** | `crates/oneshim-lint` | Workspace-local tooling and language/lint helpers | Pending dedicated crate doc |
+| **oneshim-sandbox-worker** | `crates/oneshim-sandbox-worker` | Out-of-process sandboxed automation action executor (stdin JSON → stdout JSON under platform sandbox) | Pending dedicated crate doc |
 | **oneshim-app** | `src-tauri` | Binary package / composition root / desktop runtime orchestration | [Details](./oneshim-app.md) |
 
 ## Historical Package Docs

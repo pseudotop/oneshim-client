@@ -38,6 +38,13 @@ jobs:
         with:
           key: macos-windowserver-gui-smoke
 
+      - name: Create sandbox worker stub for Tauri externalBin
+        shell: bash
+        run: |
+          TRIPLE=$(rustc -vV | awk '/^host:/ { print $2 }')
+          touch "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+          chmod +x "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+
       - name: Build release binary
         run: ./scripts/cargo-cache.sh build --release -p oneshim-app
 

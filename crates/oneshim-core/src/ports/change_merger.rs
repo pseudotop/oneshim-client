@@ -16,6 +16,14 @@ use crate::models::sync::{ChangeSet, SyncResult};
 /// - LWW tables (regimes, suggestions, embeddings): compare HLC, higher wins.
 /// - Tombstoned rows: propagate soft-delete via is_deleted + deleted_at.
 /// - DeletionEvent changeset: hard-delete all rows from the originating device.
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for SQLite transaction
+/// / constraint / commit failures during the merge (iter-47 mass fix
+/// pattern). Conflict resolution is not an error — LWW skips and
+/// tombstone propagations are recorded in `SyncResult`. A malformed
+/// inbound changeset (e.g., missing required FK) also routes through
+/// Storage because SQLite enforces the integrity constraint.
 #[async_trait]
 pub trait ChangeMerger: Send + Sync {
     /// Apply a remote changeset, resolving conflicts via HLC.

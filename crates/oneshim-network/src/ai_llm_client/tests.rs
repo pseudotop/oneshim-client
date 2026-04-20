@@ -218,6 +218,43 @@ fn parse_openai_response_no_choices() {
     assert!(result.is_err());
 }
 
+/// Iter-151 regression guard: parsers that can't extract text from a
+/// syntactically-valid LLM response envelope must emit
+/// `CoreError::Analysis` / `provider.analysis_failed`, not
+/// `Internal.Generic`. The provider responded; the provider misbehaved;
+/// telemetry should attribute that to the LLM, not our internals.
+#[test]
+fn claude_empty_envelope_maps_to_analysis_failed() {
+    let body = r#"{"content": []}"#;
+    let err = match parsers::parse_claude_response(body) {
+        Ok(_) => panic!("empty claude envelope should fail"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "provider.analysis_failed");
+}
+
+#[test]
+fn openai_empty_envelope_maps_to_analysis_failed() {
+    // No "choices" key, no "output_text", no "output" — the extractor
+    // has no path to any text. This is the envelope-exhaustion case.
+    let body = r#"{}"#;
+    let err = match parsers::parse_openai_response(body) {
+        Ok(_) => panic!("empty openai envelope should fail"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "provider.analysis_failed");
+}
+
+#[test]
+fn google_empty_envelope_maps_to_analysis_failed() {
+    let body = r#"{"candidates": []}"#;
+    let err = match parsers::parse_google_response(body) {
+        Ok(_) => panic!("empty google envelope should fail"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "provider.analysis_failed");
+}
+
 #[test]
 fn build_system_prompt_no_skills() {
     let ctx = SkillContext::default();
@@ -333,4 +370,99 @@ fn local_openai_compatible_llm_requires_explicit_model_selection() {
         .unwrap_err()
         .to_string()
         .contains("requires an explicit model selection"));
+}
+
+// iter-68 regression guards for iter-55b semantic HTTP status mapping
+// in ai_llm_client/request::send_and_parse. Shared helper pattern
+// mirrors iter-67's remote_embedding_client tests.
+#[cfg(test)]
+mod http_status_mapping {
+    use super::*;
+    use oneshim_core::ports::llm_provider::{LlmProvider, ScreenContext};
+
+    async fn run_status_mapping_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!(r#"{{"error": "http {status}"}}"#))
+            .create_async()
+            .await;
+
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Anthropic,
+            surface_id: None,
+            credential: None,
+        };
+        let provider = RemoteLlmProvider::new(&config).expect("provider init");
+        let ctx = ScreenContext {
+            visible_texts: vec!["Save".to_string()],
+            active_app: "App".to_string(),
+            active_window_title: "Window".to_string(),
+            layout_description: None,
+        };
+        provider
+            .interpret_intent(&ctx, "click save")
+            .await
+            .unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn status_403_maps_to_auth() {
+        let err = run_status_mapping_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_408_maps_to_timeout() {
+        let err = run_status_mapping_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_429_maps_to_rate_limit() {
+        let err = run_status_mapping_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_502_maps_to_service_unavailable() {
+        let err = run_status_mapping_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_504_maps_to_timeout() {
+        let err = run_status_mapping_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    /// iter-78: domain fallback. Unmapped statuses stay as CoreError::Network.
+    #[tokio::test]
+    async fn status_500_falls_back_to_network() {
+        let err = run_status_mapping_test(500).await;
+        assert!(
+            matches!(err, CoreError::Network { .. }),
+            "500 should fall back to Network, got: {err:?}"
+        );
+    }
 }

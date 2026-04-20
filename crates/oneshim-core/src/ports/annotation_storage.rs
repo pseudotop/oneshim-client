@@ -5,6 +5,12 @@ use crate::models::annotation::FrameAnnotation;
 ///
 /// Follows the same synchronous pattern as `TagStorage` and `PresetStorage`
 /// since all operations go through the single-connection `Mutex<Connection>`.
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for all SQLite operations
+/// (iter-47 mass fix pattern: query/execute/commit/prepare). Annotation
+/// not found is expressed as `Ok(None)` / `Ok(Vec::new())`, not an Err
+/// variant.
 pub trait AnnotationStorage: Send + Sync {
     /// List all annotations for a given frame.
     fn list_annotations(&self, frame_id: i64) -> Result<Vec<FrameAnnotation>, CoreError>;

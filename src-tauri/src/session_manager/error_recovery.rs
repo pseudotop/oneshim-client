@@ -14,10 +14,12 @@ use super::SessionManagerImpl;
 pub(super) fn is_transient_error(error: &CoreError) -> bool {
     matches!(
         error,
-        CoreError::Network(_)
-            | CoreError::RequestTimeout { .. }
+        CoreError::Network {
+            code: oneshim_core::error_codes::NetworkCode::Generic,
+            message: _
+        } | CoreError::RequestTimeout { .. }
             | CoreError::RateLimit { .. }
-            | CoreError::ServiceUnavailable(_)
+            | CoreError::ServiceUnavailable { .. }
     )
 }
 
@@ -72,11 +74,22 @@ impl SessionManagerImpl {
         let mut sessions = self.sessions.write().await;
         let managed = sessions
             .get_mut(session_id)
-            .ok_or_else(|| CoreError::Internal(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: "session".to_string(),
+                id: session_id.to_string(),
+            })?;
 
         if managed.retry_count >= self.config.max_retries {
             managed.state = SessionState::Failed;
-            return Err(CoreError::Internal("max retries exceeded".into()));
+            // Iter-97: retry exhaustion means the service is effectively
+            // unavailable for this session's adapter. Wire code
+            // `service.unavailable` lets telemetry distinguish "we gave up
+            // after N retries" from "something broke inside oneshim".
+            return Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                message: "max retries exceeded".into(),
+            });
         }
 
         managed.retry_count += 1;

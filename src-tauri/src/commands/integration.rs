@@ -4,40 +4,38 @@ use oneshim_api_contracts::integration::IntegrationDeviceAuthorizationCommandRes
 use oneshim_core::models::integration::default_integration_runtime_scopes;
 use oneshim_core::ports::oauth::{OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus};
 
+use crate::ipc_error::IpcError;
 use crate::runtime_state::{IntegrationAuthState, OAuthCoordinatorState, OAuthState};
 
 fn require_integration_auth(
     state: &IntegrationAuthState,
-) -> Result<std::sync::Arc<dyn oneshim_core::ports::integration::IntegrationAuthPort>, String> {
-    state
-        .0
-        .clone()
-        .ok_or_else(|| "Integration auth is not configured for this runtime".to_string())
+) -> Result<std::sync::Arc<dyn oneshim_core::ports::integration::IntegrationAuthPort>, IpcError> {
+    state.0.clone().ok_or_else(|| {
+        IpcError::new(
+            "service.unavailable",
+            "Integration auth is not configured for this runtime",
+        )
+    })
 }
 
 #[command]
 pub async fn integration_auth_status(
     integration_auth: tauri::State<'_, IntegrationAuthState>,
-) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, String> {
+) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, IpcError> {
     let port = require_integration_auth(&integration_auth)?;
-    port.current_auth_status()
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+    port.current_auth_status().await.map_err(IpcError::from)
 }
 
 #[command]
 pub async fn integration_start_device_authorization(
     integration_auth: tauri::State<'_, IntegrationAuthState>,
-) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+) -> Result<IntegrationDeviceAuthorizationCommandResult, IpcError> {
     let port = require_integration_auth(&integration_auth)?;
     let flow = port
         .start_device_authorization(&default_integration_runtime_scopes(), None)
         .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
-    let auth_status = port
-        .current_auth_status()
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+        .map_err(IpcError::from)?;
+    let auth_status = port.current_auth_status().await.map_err(IpcError::from)?;
     Ok(IntegrationDeviceAuthorizationCommandResult {
         auth_status,
         flow: Some(flow),
@@ -48,12 +46,12 @@ pub async fn integration_start_device_authorization(
 pub async fn integration_poll_device_authorization(
     flow_id: String,
     integration_auth: tauri::State<'_, IntegrationAuthState>,
-) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+) -> Result<IntegrationDeviceAuthorizationCommandResult, IpcError> {
     let port = require_integration_auth(&integration_auth)?;
     let auth_status = port
         .poll_device_authorization(&flow_id)
         .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+        .map_err(IpcError::from)?;
     Ok(IntegrationDeviceAuthorizationCommandResult {
         flow: auth_status.pending_flow.clone(),
         auth_status,
@@ -64,25 +62,20 @@ pub async fn integration_poll_device_authorization(
 pub async fn integration_cancel_device_authorization(
     flow_id: String,
     integration_auth: tauri::State<'_, IntegrationAuthState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let port = require_integration_auth(&integration_auth)?;
     port.cancel_device_authorization(&flow_id)
         .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+        .map_err(IpcError::from)
 }
 
 #[command]
 pub async fn integration_reset_auth_state(
     integration_auth: tauri::State<'_, IntegrationAuthState>,
-) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+) -> Result<IntegrationDeviceAuthorizationCommandResult, IpcError> {
     let port = require_integration_auth(&integration_auth)?;
-    port.reset_auth_state()
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
-    let auth_status = port
-        .current_auth_status()
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    port.reset_auth_state().await.map_err(IpcError::from)?;
+    let auth_status = port.current_auth_status().await.map_err(IpcError::from)?;
     Ok(IntegrationDeviceAuthorizationCommandResult {
         flow: auth_status.pending_flow.clone(),
         auth_status,
@@ -93,9 +86,12 @@ pub async fn integration_reset_auth_state(
 
 fn require_oauth(
     state: &OAuthState,
-) -> Result<std::sync::Arc<dyn oneshim_core::ports::oauth::OAuthPort>, String> {
+) -> Result<std::sync::Arc<dyn oneshim_core::ports::oauth::OAuthPort>, IpcError> {
     state.0.clone().ok_or_else(|| {
-        "OAuth is not available (OS keychain unavailable or feature disabled)".into()
+        IpcError::new(
+            "service.unavailable",
+            "OAuth is not available (OS keychain unavailable or feature disabled)",
+        )
     })
 }
 
@@ -104,11 +100,9 @@ fn require_oauth(
 pub async fn oauth_start_flow(
     provider_id: String,
     oauth: tauri::State<'_, OAuthState>,
-) -> Result<OAuthFlowHandle, String> {
+) -> Result<OAuthFlowHandle, IpcError> {
     let port = require_oauth(&oauth)?;
-    port.start_flow(&provider_id)
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+    port.start_flow(&provider_id).await.map_err(IpcError::from)
 }
 
 /// OAuth 플로우 상태 조회 — 프론트엔드 폴링용
@@ -120,12 +114,9 @@ pub async fn oauth_flow_status(
     flow_id: String,
     oauth: tauri::State<'_, OAuthState>,
     coordinator: tauri::State<'_, OAuthCoordinatorState>,
-) -> Result<OAuthFlowStatus, String> {
+) -> Result<OAuthFlowStatus, IpcError> {
     let port = require_oauth(&oauth)?;
-    let status = port
-        .flow_status(&flow_id)
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    let status = port.flow_status(&flow_id).await.map_err(IpcError::from)?;
 
     // Reset coordinator backoff after successful re-authentication so the
     // background refresh loop resumes normal operation immediately.
@@ -145,11 +136,9 @@ pub async fn oauth_flow_status(
 pub async fn oauth_cancel_flow(
     flow_id: String,
     oauth: tauri::State<'_, OAuthState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let port = require_oauth(&oauth)?;
-    port.cancel_flow(&flow_id)
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+    port.cancel_flow(&flow_id).await.map_err(IpcError::from)
 }
 
 /// OAuth 연결 해제 — stored credentials 삭제
@@ -157,11 +146,9 @@ pub async fn oauth_cancel_flow(
 pub async fn oauth_revoke(
     provider_id: String,
     oauth: tauri::State<'_, OAuthState>,
-) -> Result<(), String> {
+) -> Result<(), IpcError> {
     let port = require_oauth(&oauth)?;
-    port.revoke(&provider_id)
-        .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+    port.revoke(&provider_id).await.map_err(IpcError::from)
 }
 
 /// OAuth 연결 상태 조회
@@ -169,9 +156,9 @@ pub async fn oauth_revoke(
 pub async fn oauth_connection_status(
     provider_id: String,
     oauth: tauri::State<'_, OAuthState>,
-) -> Result<OAuthConnectionStatus, String> {
+) -> Result<OAuthConnectionStatus, IpcError> {
     let port = require_oauth(&oauth)?;
     port.connection_status(&provider_id)
         .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+        .map_err(IpcError::from)
 }

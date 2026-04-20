@@ -53,22 +53,32 @@ impl AudioCapture {
     /// Start capturing audio from the default input device (PTT mode).
     pub fn start(&self) -> Result<(), CoreError> {
         if self.vad_active.load(Ordering::SeqCst) {
-            return Err(CoreError::AudioCapture(
-                "cannot start PTT while VAD is active".into(),
-            ));
+            return Err(CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: "cannot start PTT while VAD is active".into(),
+            });
         }
         if self.capturing.load(Ordering::SeqCst) {
-            return Err(CoreError::AudioCapture("already capturing".into()));
+            return Err(CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: "already capturing".into(),
+            });
         }
 
         let host = cpal::default_host();
         let device = host
             .default_input_device()
-            .ok_or_else(|| CoreError::AudioCapture("no input device available".into()))?;
+            .ok_or_else(|| CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: "no input device available".into(),
+            })?;
 
         let config = device
             .default_input_config()
-            .map_err(|e| CoreError::AudioCapture(format!("input config error: {e}")))?;
+            .map_err(|e| CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: format!("input config error: {e}"),
+            })?;
 
         let native_rate = config.sample_rate();
         let channels = config.channels() as usize;
@@ -148,16 +158,21 @@ impl AudioCapture {
                 )
             }
             format => {
-                return Err(CoreError::AudioCapture(format!(
-                    "unsupported sample format: {format:?}"
-                )));
+                return Err(CoreError::AudioCapture {
+                    code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                    message: format!("unsupported sample format: {format:?}"),
+                });
             }
         }
-        .map_err(|e| CoreError::AudioCapture(format!("build stream: {e}")))?;
+        .map_err(|e| CoreError::AudioCapture {
+            code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+            message: format!("build stream: {e}"),
+        })?;
 
-        stream
-            .play()
-            .map_err(|e| CoreError::AudioCapture(format!("play stream: {e}")))?;
+        stream.play().map_err(|e| CoreError::AudioCapture {
+            code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+            message: format!("play stream: {e}"),
+        })?;
 
         // Set capturing = true only AFTER stream.play() succeeds.
         // If build_input_stream or play() fails above, capturing stays false
@@ -211,22 +226,32 @@ impl AudioCapture {
         on_speech_signal: Arc<dyn Fn() + Send + Sync>,
     ) -> Result<(), CoreError> {
         if self.capturing.load(Ordering::SeqCst) {
-            return Err(CoreError::AudioCapture(
-                "cannot start VAD while PTT is active".into(),
-            ));
+            return Err(CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: "cannot start VAD while PTT is active".into(),
+            });
         }
         if self.vad_active.load(Ordering::SeqCst) {
-            return Err(CoreError::AudioCapture("VAD already active".into()));
+            return Err(CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: "VAD already active".into(),
+            });
         }
 
         let host = cpal::default_host();
         let device = host
             .default_input_device()
-            .ok_or_else(|| CoreError::AudioCapture("no input device available".into()))?;
+            .ok_or_else(|| CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: "no input device available".into(),
+            })?;
 
         let stream_config = device
             .default_input_config()
-            .map_err(|e| CoreError::AudioCapture(format!("input config error: {e}")))?;
+            .map_err(|e| CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: format!("input config error: {e}"),
+            })?;
 
         let native_rate = stream_config.sample_rate();
         let channels = stream_config.channels() as usize;
@@ -351,16 +376,21 @@ impl AudioCapture {
                 )
             }
             format => {
-                return Err(CoreError::AudioCapture(format!(
-                    "unsupported sample format: {format:?}"
-                )));
+                return Err(CoreError::AudioCapture {
+                    code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                    message: format!("unsupported sample format: {format:?}"),
+                });
             }
         }
-        .map_err(|e| CoreError::AudioCapture(format!("build stream: {e}")))?;
+        .map_err(|e| CoreError::AudioCapture {
+            code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+            message: format!("build stream: {e}"),
+        })?;
 
-        stream
-            .play()
-            .map_err(|e| CoreError::AudioCapture(format!("play stream: {e}")))?;
+        stream.play().map_err(|e| CoreError::AudioCapture {
+            code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+            message: format!("play stream: {e}"),
+        })?;
 
         self.vad_active.store(true, Ordering::SeqCst);
         *self.stream.lock() = Some(stream);
@@ -468,7 +498,10 @@ fn resample(input: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>, Cor
         chunk_size,
         1, // mono
     )
-    .map_err(|e| CoreError::AudioCapture(format!("resampler init: {e}")))?;
+    .map_err(|e| CoreError::AudioCapture {
+        code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+        message: format!("resampler init: {e}"),
+    })?;
 
     let mut output = Vec::with_capacity(
         (input.len() as f64 * to_rate as f64 / from_rate as f64) as usize + chunk_size,
@@ -480,7 +513,10 @@ fn resample(input: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>, Cor
         let chunk = &input[pos..pos + chunk_size];
         let resampled = resampler
             .process(&[chunk], None)
-            .map_err(|e| CoreError::AudioCapture(format!("resample: {e}")))?;
+            .map_err(|e| CoreError::AudioCapture {
+                code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                message: format!("resample: {e}"),
+            })?;
         output.extend_from_slice(&resampled[0]);
         pos += chunk_size;
     }
@@ -490,9 +526,13 @@ fn resample(input: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>, Cor
         let mut last_chunk = vec![0.0f32; chunk_size];
         let remaining = input.len() - pos;
         last_chunk[..remaining].copy_from_slice(&input[pos..]);
-        let resampled = resampler
-            .process(&[last_chunk], None)
-            .map_err(|e| CoreError::AudioCapture(format!("resample tail: {e}")))?;
+        let resampled =
+            resampler
+                .process(&[last_chunk], None)
+                .map_err(|e| CoreError::AudioCapture {
+                    code: oneshim_core::error_codes::AudioCode::CaptureFailed,
+                    message: format!("resample tail: {e}"),
+                })?;
         let expected = (remaining as f64 * to_rate as f64 / from_rate as f64).ceil() as usize;
         let take = expected.min(resampled[0].len());
         output.extend_from_slice(&resampled[0][..take]);

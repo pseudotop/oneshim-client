@@ -102,20 +102,31 @@ impl IvfIndex {
         vectors: &[(i64, QuantizedVector)],
         config: &IvfBuildConfig,
     ) -> Result<IvfIndex, CoreError> {
+        // Iter-106: input-validation errors emit `validation.invalid_arguments`
+        // consistent with iter-95/105 (quantization, binary_quantizer,
+        // ml_classifier::preprocess). Caller-supplied bad input should not
+        // be conflated with internal runtime failures in telemetry.
         if vectors.is_empty() {
-            return Err(CoreError::Internal(
-                "cannot build IVF index from empty vector set".to_string(),
-            ));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "cannot build IVF index from empty vector set".to_string(),
+            });
         }
         if config.n_clusters < 1 {
-            return Err(CoreError::Internal("n_clusters must be >= 1".to_string()));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "n_clusters must be >= 1".to_string(),
+            });
         }
         if vectors.len() < config.n_clusters {
-            return Err(CoreError::Internal(format!(
-                "cannot create {} clusters from {} vectors",
-                config.n_clusters,
-                vectors.len()
-            )));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: format!(
+                    "cannot create {} clusters from {} vectors",
+                    config.n_clusters,
+                    vectors.len()
+                ),
+            });
         }
 
         let dims = vectors[0].1.data.len();
@@ -291,11 +302,14 @@ impl IvfIndex {
         // Pre-validate dimensions once before the hot loop.
         if let Some(first) = self.centroids.first() {
             if first.vector.data.len() != query.data.len() {
-                return Err(CoreError::InvalidArguments(format!(
-                    "Dimension mismatch: centroid {} vs query {}",
-                    first.vector.data.len(),
-                    query.data.len()
-                )));
+                return Err(CoreError::InvalidArguments {
+                    code: crate::error_codes::ValidationCode::InvalidArguments,
+                    message: format!(
+                        "Dimension mismatch: centroid {} vs query {}",
+                        first.vector.data.len(),
+                        query.data.len()
+                    ),
+                });
             }
         }
 
@@ -323,11 +337,14 @@ impl IvfIndex {
         // Pre-validate dimensions once before the hot loop.
         if let Some(first) = self.centroids.first() {
             if first.vector.data.len() != vector.data.len() {
-                return Err(CoreError::InvalidArguments(format!(
-                    "Dimension mismatch: centroid {} vs query {}",
-                    first.vector.data.len(),
-                    vector.data.len()
-                )));
+                return Err(CoreError::InvalidArguments {
+                    code: crate::error_codes::ValidationCode::InvalidArguments,
+                    message: format!(
+                        "Dimension mismatch: centroid {} vs query {}",
+                        first.vector.data.len(),
+                        vector.data.len()
+                    ),
+                });
             }
         }
 

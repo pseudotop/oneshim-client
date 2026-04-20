@@ -66,10 +66,10 @@ impl GuardedOcrProvider {
 
         let invalid_ratio = invalid as f64 / total as f64;
         if invalid_ratio > self.ocr_validation.max_invalid_ratio {
-            return Err(CoreError::OcrError(format!(
+            return Err(CoreError::OcrError { code: oneshim_core::error_codes::ProviderCode::OcrFailed, message: format!(
                 "OCR calibration validation failure: invalid_ratio={invalid_ratio:.2}, max_invalid_ratio={:.2}",
                 self.ocr_validation.max_invalid_ratio
-            )));
+            ) });
         }
 
         Ok(filtered)

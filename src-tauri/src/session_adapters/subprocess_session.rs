@@ -28,6 +28,7 @@ use crate::session_adapters::prompt_payload::{
 };
 use crate::subprocess_provider::{
     append_model_flag, append_oneshot_flags, classify_subprocess_error, DetectedSubprocessCli,
+    SubprocessKind,
 };
 use tracing::debug;
 
@@ -102,16 +103,26 @@ impl GenericSubprocessSession {
         {
             self.run_gemini(prompt).await
         } else {
-            Err(CoreError::Internal(format!(
-                "subprocess conversation sessions are not implemented for surface '{}'",
-                self.surface.surface_id
-            )))
+            // Iter-94: reachable only if caller configured a surface that has
+            // no conversation-session implementation on this code path. That's
+            // a configuration mismatch (invalid surface for this operation),
+            // not an internal error — wire code `config.invalid` lets
+            // telemetry/i18n surface "pick a different provider" rather than
+            // "something broke inside oneshim".
+            Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Invalid,
+                message: format!(
+                    "subprocess conversation sessions are not implemented for surface '{}'",
+                    self.surface.surface_id
+                ),
+            })
         }
     }
 
     async fn run_codex(&self, prompt: &str) -> Result<String, CoreError> {
-        let temp_dir = tempdir().map_err(|err| {
-            CoreError::Internal(format!("Failed to create Codex session tempdir: {err}"))
+        let temp_dir = tempdir().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to create Codex session tempdir: {err}"),
         })?;
 
         let mut child = Command::new(&self.surface.executable_path);
@@ -127,12 +138,14 @@ impl GenericSubprocessSession {
         append_oneshot_flags(&mut child, &self.surface.surface_id);
         append_model_flag(&mut child, &self.surface.surface_id, &self.model);
 
-        let mut child = child.spawn().map_err(|err| {
-            CoreError::Internal(format!("Failed to spawn Codex session subprocess: {err}"))
+        let mut child = child.spawn().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to spawn Codex session subprocess: {err}"),
         })?;
 
-        let mut stdin = child.stdin.take().ok_or_else(|| {
-            CoreError::Internal("Failed to open stdin for Codex session subprocess".to_string())
+        let mut stdin = child.stdin.take().ok_or_else(|| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Failed to open stdin for Codex session subprocess".to_string(),
         })?;
         stdin
             .write_all(prompt.as_bytes())
@@ -143,12 +156,14 @@ impl GenericSubprocessSession {
         let output = timeout(self.timeout, child.wait_with_output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)?;
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -158,8 +173,9 @@ impl GenericSubprocessSession {
     }
 
     async fn run_gemini(&self, prompt: &str) -> Result<String, CoreError> {
-        let temp_dir = tempdir().map_err(|err| {
-            CoreError::Internal(format!("Failed to create Gemini session tempdir: {err}"))
+        let temp_dir = tempdir().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to create Gemini session tempdir: {err}"),
         })?;
 
         let mut command = Command::new(&self.surface.executable_path);
@@ -176,12 +192,14 @@ impl GenericSubprocessSession {
         let output = timeout(self.timeout, command.output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)?;
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -213,8 +231,9 @@ impl GenericSubprocessSession {
         self.turn_count.fetch_add(1, Ordering::Relaxed);
         *self.last_active.lock() = Instant::now();
 
-        let temp_dir = tempdir().map_err(|err| {
-            CoreError::Internal(format!("Failed to create Codex session tempdir: {err}"))
+        let temp_dir = tempdir().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to create Codex session tempdir: {err}"),
         })?;
         let response_schema = extract_native_response_schema(message.response_format.as_ref());
 
@@ -236,26 +255,26 @@ impl GenericSubprocessSession {
             let schema_path = temp_dir.path().join("output-schema.json");
             std::fs::write(
                 &schema_path,
-                serde_json::to_vec_pretty(schema).map_err(|err| {
-                    CoreError::Internal(format!(
-                        "Failed to serialize Codex output schema for session: {err}"
-                    ))
+                serde_json::to_vec_pretty(schema).map_err(|err| CoreError::Internal {
+                    code: oneshim_core::error_codes::InternalCode::Generic,
+                    message: format!("Failed to serialize Codex output schema for session: {err}"),
                 })?,
             )
-            .map_err(|err| {
-                CoreError::Internal(format!(
-                    "Failed to write Codex output schema for session: {err}"
-                ))
+            .map_err(|err| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to write Codex output schema for session: {err}"),
             })?;
             child.arg("--output-schema").arg(schema_path);
         }
 
-        let mut child = child.spawn().map_err(|err| {
-            CoreError::Internal(format!("Failed to spawn Codex session subprocess: {err}"))
+        let mut child = child.spawn().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to spawn Codex session subprocess: {err}"),
         })?;
 
-        let mut stdin = child.stdin.take().ok_or_else(|| {
-            CoreError::Internal("Failed to open stdin for Codex session subprocess".to_string())
+        let mut stdin = child.stdin.take().ok_or_else(|| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Failed to open stdin for Codex session subprocess".to_string(),
         })?;
         stdin
             .write_all(prompt.as_bytes())
@@ -263,11 +282,13 @@ impl GenericSubprocessSession {
             .map_err(CoreError::Io)?;
         drop(stdin);
 
-        let stdout = child.stdout.take().ok_or_else(|| {
-            CoreError::Internal("Failed to capture Codex session stdout".to_string())
+        let stdout = child.stdout.take().ok_or_else(|| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Failed to capture Codex session stdout".to_string(),
         })?;
-        let mut stderr = child.stderr.take().ok_or_else(|| {
-            CoreError::Internal("Failed to capture Codex session stderr".to_string())
+        let mut stderr = child.stderr.take().ok_or_else(|| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Failed to capture Codex session stderr".to_string(),
         })?;
 
         let history = self.history.clone();
@@ -354,7 +375,8 @@ impl GenericSubprocessSession {
             let stderr_output = stderr_task.await.unwrap_or_default();
 
             if !status.success() {
-                let classified = classify_subprocess_error(&surface_id, &stderr_output);
+                let classified =
+                    classify_subprocess_error(SubprocessKind::Llm, &surface_id, &stderr_output);
                 yield OutboundMessage::Error {
                     code: "subprocess_error".to_string(),
                     message: classified.to_string(),
@@ -426,10 +448,14 @@ impl ConversationSession for GenericSubprocessSession {
 
         let stream: ResponseStream = Box::pin(try_stream! {
             if output.is_empty() {
-                Err(CoreError::Internal(format!(
+                // Iter-106: subprocess CLI returning empty output is a
+                // provider (Analysis) failure, consistent with iter-93's
+                // subprocess parser fix (parse_interpreted_action_output
+                // empty case). Wire code `provider.analysis_failed`.
+                Err(CoreError::Analysis { code: oneshim_core::error_codes::ProviderCode::AnalysisFailed, message: format!(
                     "{} CLI returned an empty session response",
                     provider_name
-                )))?;
+                ) })?;
             }
 
             {

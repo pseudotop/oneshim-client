@@ -477,7 +477,11 @@ async fn execute_intent_no_executor_returns_internal_error() {
     let result = controller.execute_intent(&cmd).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(matches!(err, crate::error::AutomationError::Internal(_)));
+    // Iter-100: "IntentExecutor not configured" now emits config.missing
+    // (was internal.generic). The test still catches the regression
+    // that iter-100 fixed — just at the wire-code level now.
+    let core: oneshim_core::error::CoreError = err.into();
+    assert_eq!(core.code(), "config.missing");
 }
 
 #[tokio::test]
@@ -580,10 +584,15 @@ async fn execute_intent_hint_requires_planner() {
         .execute_intent_hint("hint-1", "sess-1", "save 버튼 클릭")
         .await;
     assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        crate::error::AutomationError::Internal(msg) if msg.contains("IntentPlanner")
-    ));
+    // Iter-100: "IntentPlanner is not configured" now routes via
+    // AutomationError::Core(Config{Missing}) → wire config.missing.
+    let err = result.unwrap_err();
+    let core: oneshim_core::error::CoreError = err.into();
+    assert_eq!(core.code(), "config.missing");
+    assert!(
+        core.to_string().contains("IntentPlanner"),
+        "err should mention IntentPlanner, got: {core}"
+    );
 }
 
 #[tokio::test]
@@ -663,7 +672,8 @@ async fn analyze_scene_requires_scene_finder() {
     controller.set_enabled(true);
 
     let err = controller.analyze_scene(None, None).await.unwrap_err();
-    assert!(matches!(err, CoreError::Internal(_)));
+    // Iter-100: "Scene analyzer is not configured" now emits config.missing.
+    assert_eq!(err.code(), "config.missing");
 }
 
 #[tokio::test]
@@ -875,7 +885,7 @@ async fn execute_intent_internal_timeout_reports_effective_limit() {
     assert!(!result.success);
     assert_eq!(
         result.error.as_deref(),
-        Some("Execution timeout exceeded: 10ms")
+        Some("Execution timeout [sandbox.timeout] exceeded: 10ms")
     );
 }
 

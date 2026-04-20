@@ -29,10 +29,10 @@ impl TryFrom<ProviderRequestShape> for OcrProviderStrategy {
             | ProviderRequestShape::OpenAiResponses => Ok(Self::OpenAi),
             ProviderRequestShape::GoogleGenerateContent
             | ProviderRequestShape::GoogleVisionAnnotate => Ok(Self::Google),
-            ProviderRequestShape::BedrockConverse => Err(CoreError::Internal(
-                "Bedrock Converse request shape is not yet supported for OCR strategy selection"
-                    .to_string(),
-            )),
+            ProviderRequestShape::BedrockConverse => Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                message: "AWS Bedrock is intentionally unsupported in this build".into(),
+            }),
         }
     }
 }

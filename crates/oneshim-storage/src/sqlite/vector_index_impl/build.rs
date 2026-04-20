@@ -60,9 +60,17 @@ impl VectorIndex for SqliteVectorIndex {
             .await?;
 
         if vectors.is_empty() {
-            return Err(CoreError::Internal(
-                "no vectors available for IVF index build".to_string(),
-            ));
+            // Iter-106: storage query returned no vectors — this is a
+            // NotFound condition (the resource required to build the index
+            // doesn't exist yet), not an internal runtime failure. Wire code
+            // `not_found.resource_missing` so telemetry can distinguish
+            // "user hasn't accumulated enough data" from "build pipeline
+            // crashed".
+            return Err(CoreError::NotFound {
+                code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                resource_type: "embedding_vectors".to_string(),
+                id: "ivf_index_build".to_string(),
+            });
         }
 
         let actual_clusters = n_clusters.min(vectors.len());
@@ -254,8 +262,11 @@ impl VectorIndex for SqliteVectorIndex {
         let count = codes.len() as u64;
 
         // Store thresholds as JSON
-        let thresholds_json = serde_json::to_string(&thresholds)
-            .map_err(|e| CoreError::Internal(format!("Failed to serialize thresholds: {e}")))?;
+        let thresholds_json =
+            serde_json::to_string(&thresholds).map_err(|e| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("Failed to serialize thresholds: {e}"),
+            })?;
 
         // Persist to SQLite in chunks
         self.with_conn(move |conn| {

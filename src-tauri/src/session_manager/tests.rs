@@ -81,10 +81,18 @@ async fn create_subprocess_session_uses_detected_surface() {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].session_id, session.session_id());
     } else {
+        // Iter-94: error type refactored from Internal to NotFound. The
+        // `subprocess_cli_surface` resource-type identifier and the
+        // `not_found.resource_missing` wire code are the stable contract
+        // for this detection-miss scenario going forward.
         let err_msg = expect_err_msg(result);
         assert!(
-            err_msg.contains("no supported subprocess CLI surface detected"),
-            "unexpected error: {err_msg}",
+            err_msg.contains("subprocess_cli_surface"),
+            "expected `subprocess_cli_surface` in err: {err_msg}",
+        );
+        assert!(
+            err_msg.contains("not_found.resource_missing"),
+            "expected wire code in err: {err_msg}",
         );
     }
 }
@@ -166,8 +174,18 @@ async fn create_session_enforces_max_concurrent_limit() {
 
     let _s1 = mgr.create_session(make_config()).await.expect("session 1");
     let _s2 = mgr.create_session(make_config()).await.expect("session 2");
-    let err_msg = expect_err_msg(mgr.create_session(make_config()).await);
-    assert!(err_msg.contains("max concurrent sessions"));
+    // Iter-97: capacity limit emits CoreError::ServiceUnavailable with wire
+    // code `service.unavailable` (was Internal.Generic pre-iter-97).
+    let result = mgr.create_session(make_config()).await;
+    let err = match result {
+        Ok(_) => panic!("third session should fail when at capacity"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "service.unavailable");
+    assert!(
+        err.to_string().contains("max concurrent sessions"),
+        "err should reference capacity limit, got: {err}"
+    );
 }
 
 #[tokio::test]
@@ -430,10 +448,17 @@ async fn recover_session_fails_after_max_retries() {
     let _ = mgr.recover_session(&id).await.expect("recovery 2");
 
     // Third attempt should fail.
-    let err_msg = expect_err_msg(mgr.recover_session(&id).await);
+    // Iter-97: retry exhaustion emits CoreError::ServiceUnavailable with wire
+    // code `service.unavailable` (was Internal.Generic pre-iter-97).
+    let result = mgr.recover_session(&id).await;
+    let err = match result {
+        Ok(_) => panic!("third recover should fail after exhausting retries"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "service.unavailable");
     assert!(
-        err_msg.contains("max retries exceeded"),
-        "unexpected error: {err_msg}",
+        err.to_string().contains("max retries exceeded"),
+        "err should reference retry exhaustion, got: {err}"
     );
 
     // Session state should be Failed.
@@ -459,7 +484,10 @@ async fn report_failure_transient_auto_recovers() {
     let session = mgr.create_session(config).await.expect("create session");
     let id = session.session_id().to_string();
 
-    let err = CoreError::Network("connection reset".into());
+    let err = CoreError::Network {
+        code: oneshim_core::error_codes::NetworkCode::Generic,
+        message: "connection reset".into(),
+    };
     let result = mgr.report_failure(&id, &err).await;
     assert_eq!(result, SessionState::Active);
 
@@ -482,7 +510,10 @@ async fn report_failure_permanent_sets_failed() {
     let session = mgr.create_session(config).await.expect("create session");
     let id = session.session_id().to_string();
 
-    let err = CoreError::Auth("invalid API key".into());
+    let err = CoreError::Auth {
+        code: oneshim_core::error_codes::AuthCode::Failed,
+        message: "invalid API key".into(),
+    };
     let result = mgr.report_failure(&id, &err).await;
     assert_eq!(result, SessionState::Failed);
 
@@ -515,7 +546,10 @@ async fn report_failure_exhausts_retries() {
     let session = mgr.create_session(session_config).await.expect("create");
     let id = session.session_id().to_string();
 
-    let err = CoreError::Network("timeout".into());
+    let err = CoreError::Network {
+        code: oneshim_core::error_codes::NetworkCode::Generic,
+        message: "timeout".into(),
+    };
     // First 3 should auto-recover.
     for i in 1..=3 {
         let result = mgr.report_failure(&id, &err).await;
@@ -529,7 +563,10 @@ async fn report_failure_exhausts_retries() {
 #[tokio::test]
 async fn report_failure_nonexistent_session() {
     let mgr = test_manager();
-    let err = CoreError::Network("test".into());
+    let err = CoreError::Network {
+        code: oneshim_core::error_codes::NetworkCode::Generic,
+        message: "test".into(),
+    };
     let result = mgr.report_failure("no-such-id", &err).await;
     assert_eq!(result, SessionState::Terminated);
 }
@@ -624,5 +661,37 @@ async fn emit_state_change_no_panic_without_handle() {
         SessionState::Active,
         SessionState::Failed,
         "test",
+    );
+}
+
+/// Iter-94 regression guard: requesting a subprocess surface that isn't
+/// installed must produce a NotFound error with wire code
+/// `not_found.resource_missing` and resource_type `subprocess_cli_surface`.
+/// Pre-iter-94 this was CoreError::Internal with `internal.generic`, which
+/// conflated missing-CLI scenarios with genuine runtime failures in
+/// telemetry.
+#[tokio::test]
+async fn missing_subprocess_cli_surface_maps_to_not_found() {
+    let mgr = test_manager();
+    let config = SessionConfig {
+        transport: SessionTransport::Subprocess,
+        surface_id: Some("provider_surface.definitely_not_real".to_string()),
+        model: None,
+        system_prompt: None,
+        tools_enabled: false,
+    };
+    let result = mgr.create_session(config).await;
+    let err = match result {
+        Ok(_) => panic!("unknown surface id must error"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "not_found.resource_missing");
+    assert!(
+        err.to_string().contains("subprocess_cli_surface"),
+        "err should reference the resource_type, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("definitely_not_real"),
+        "err should carry the requested surface id, got: {err}"
     );
 }

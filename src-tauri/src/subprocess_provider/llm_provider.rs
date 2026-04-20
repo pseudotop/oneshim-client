@@ -16,7 +16,7 @@ use super::{
     append_model_flag, append_oneshot_flags, build_intent_prompt, classify_subprocess_error,
     default_llm_model_for_surface, invocation_runtime_for_surface, is_gemini_json_flag_error,
     parse_interpreted_action_output, provider_name_for_surface_id, BoxFuture,
-    DetectedSubprocessCli, ACTION_SCHEMA_JSON, DEFAULT_SUBPROCESS_TIMEOUT_SECS,
+    DetectedSubprocessCli, SubprocessKind, ACTION_SCHEMA_JSON, DEFAULT_SUBPROCESS_TIMEOUT_SECS,
 };
 use oneshim_api_contracts::provider_specs::subprocess_supports_json_output;
 
@@ -73,13 +73,15 @@ impl SubprocessLlmProvider {
     }
 
     pub(super) async fn run_codex(&self, prompt: &str) -> Result<String, CoreError> {
-        let temp_dir = tempdir().map_err(|err| {
-            CoreError::Internal(format!("Failed to create Codex subprocess tempdir: {err}"))
+        let temp_dir = tempdir().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to create Codex subprocess tempdir: {err}"),
         })?;
         let schema_path = temp_dir.path().join("action.schema.json");
         let output_path = temp_dir.path().join("codex-output.json");
-        std::fs::write(&schema_path, ACTION_SCHEMA_JSON).map_err(|err| {
-            CoreError::Internal(format!("Failed to write Codex output schema: {err}"))
+        std::fs::write(&schema_path, ACTION_SCHEMA_JSON).map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to write Codex output schema: {err}"),
         })?;
 
         let mut child = Command::new(&self.surface.executable_path);
@@ -103,12 +105,14 @@ impl SubprocessLlmProvider {
             .kill_on_drop(true);
         append_model_flag(&mut child, &self.surface.surface_id, &self.model);
 
-        let mut child = child.spawn().map_err(|err| {
-            CoreError::Internal(format!("Failed to spawn Codex CLI subprocess: {err}"))
+        let mut child = child.spawn().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to spawn Codex CLI subprocess: {err}"),
         })?;
 
-        let mut stdin = child.stdin.take().ok_or_else(|| {
-            CoreError::Internal("Failed to open stdin for Codex CLI subprocess".to_string())
+        let mut stdin = child.stdin.take().ok_or_else(|| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "Failed to open stdin for Codex CLI subprocess".to_string(),
         })?;
         stdin
             .write_all(prompt.as_bytes())
@@ -119,12 +123,14 @@ impl SubprocessLlmProvider {
         let output = timeout(self.timeout, child.wait_with_output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)?;
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -140,8 +146,9 @@ impl SubprocessLlmProvider {
     }
 
     pub(super) async fn run_claude(&self, prompt: &str) -> Result<String, CoreError> {
-        let temp_dir = tempdir().map_err(|err| {
-            CoreError::Internal(format!("Failed to create Claude subprocess tempdir: {err}"))
+        let temp_dir = tempdir().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to create Claude subprocess tempdir: {err}"),
         })?;
 
         let mut command = Command::new(&self.surface.executable_path);
@@ -162,12 +169,14 @@ impl SubprocessLlmProvider {
         let output = timeout(self.timeout, command.output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)?;
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -177,8 +186,9 @@ impl SubprocessLlmProvider {
     }
 
     pub(super) async fn run_gemini(&self, prompt: &str) -> Result<String, CoreError> {
-        let temp_dir = tempdir().map_err(|err| {
-            CoreError::Internal(format!("Failed to create Gemini subprocess tempdir: {err}"))
+        let temp_dir = tempdir().map_err(|err| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Failed to create Gemini subprocess tempdir: {err}"),
         })?;
 
         let output = match self.run_gemini_command(temp_dir.path(), prompt, true).await {
@@ -192,6 +202,7 @@ impl SubprocessLlmProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
+                SubprocessKind::Llm,
                 &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
@@ -223,6 +234,7 @@ impl SubprocessLlmProvider {
         timeout(self.timeout, command.output())
             .await
             .map_err(|_| CoreError::RequestTimeout {
+                code: oneshim_core::error_codes::NetworkCode::Timeout,
                 timeout_ms: self.timeout.as_millis() as u64,
             })?
             .map_err(CoreError::Io)

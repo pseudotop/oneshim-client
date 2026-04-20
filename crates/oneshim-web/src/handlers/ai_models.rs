@@ -66,4 +66,85 @@ mod tests {
             other => panic!("unexpected error: {other:?}"),
         }
     }
+
+    // iter-83 regression guards for iter-60 ApiError-form HTTP status mapping
+    // in ai_model_catalog_web_service::discover_provider_models. The service
+    // ultimately calls the user-provided endpoint for model discovery, so a
+    // mockito server pointed at an OpenAI-style base URL suffices.
+    async fn run_model_catalog_status_test(status: u16) -> ApiError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+
+        let request = ProviderModelsRequest {
+            provider_type: "openai".to_string(),
+            api_key: "sk-test".to_string(),
+            endpoint: Some(server.url()),
+            surface: Some("llm_api".to_string()),
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            use_saved_secret: false,
+        };
+
+        discover_provider_models(State(test_context()), Json(request))
+            .await
+            .expect_err("expected error response from mock server")
+    }
+
+    #[tokio::test]
+    async fn catalog_401_maps_to_unauthorized() {
+        let err = run_model_catalog_status_test(401).await;
+        assert!(
+            matches!(err, ApiError::Unauthorized(_)),
+            "401 → Unauthorized, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn catalog_403_maps_to_forbidden() {
+        let err = run_model_catalog_status_test(403).await;
+        assert!(
+            matches!(err, ApiError::Forbidden(_)),
+            "403 → Forbidden, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn catalog_404_maps_to_not_found() {
+        let err = run_model_catalog_status_test(404).await;
+        assert!(
+            matches!(err, ApiError::NotFound(_)),
+            "404 → NotFound, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn catalog_429_maps_to_service_unavailable() {
+        let err = run_model_catalog_status_test(429).await;
+        assert!(
+            matches!(err, ApiError::ServiceUnavailable(_)),
+            "429 → ServiceUnavailable (ApiError has no TooManyRequests variant), got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn catalog_503_maps_to_service_unavailable() {
+        let err = run_model_catalog_status_test(503).await;
+        assert!(
+            matches!(err, ApiError::ServiceUnavailable(_)),
+            "503 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn catalog_500_falls_back_to_internal() {
+        let err = run_model_catalog_status_test(500).await;
+        assert!(
+            matches!(err, ApiError::Internal(_)),
+            "500 should fall back to Internal, got: {err:?}"
+        );
+    }
 }

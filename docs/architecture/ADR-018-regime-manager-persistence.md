@@ -2,7 +2,7 @@
 
 # ADR-018: RegimeManager Persistence
 
-**Status**: Approved
+**Status**: Accepted
 **Date**: 2026-04-18
 **Scope**: `oneshim-core::ports::regime_storage`, `oneshim-storage::regime_manager_state_store`, `oneshim-analysis::RegimeManager::hydrate_from`, `src-tauri::main::RunEvent::Exit`
 

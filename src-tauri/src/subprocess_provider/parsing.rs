@@ -102,18 +102,25 @@ pub(super) fn write_subprocess_ocr_image(
         _ => "bin",
     };
     let path = workdir.join(format!("ocr-input.{extension}"));
-    std::fs::write(&path, image).map_err(|err| {
-        CoreError::Internal(format!("Failed to write subprocess OCR image input: {err}"))
+    std::fs::write(&path, image).map_err(|err| CoreError::Internal {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("Failed to write subprocess OCR image input: {err}"),
     })?;
     Ok(path)
 }
 
 pub(super) fn parse_ocr_output(raw: &str) -> Result<Vec<OcrResult>, CoreError> {
     let normalized = raw.trim();
+    // Iter-93: both the empty-response and unparseable-output paths are OCR
+    // provider failures — route through CoreError::OcrError so the wire code
+    // is `provider.ocr_failed`, not the generic `internal.generic` fallback.
+    // Telemetry and retry logic can then distinguish "our parse layer broke"
+    // from "the OCR subprocess misbehaved" (this branch).
     if normalized.is_empty() {
-        return Err(CoreError::Internal(
-            "Subprocess CLI returned an empty OCR response.".to_string(),
-        ));
+        return Err(CoreError::OcrError {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message: "Subprocess CLI returned an empty OCR response.".to_string(),
+        });
     }
 
     if let Ok(envelope) = serde_json::from_str::<SubprocessOcrEnvelope>(normalized) {
@@ -132,10 +139,13 @@ pub(super) fn parse_ocr_output(raw: &str) -> Result<Vec<OcrResult>, CoreError> {
         }
     }
 
-    Err(CoreError::Internal(format!(
-        "Subprocess CLI returned non-JSON OCR output: {}",
-        truncate_for_error(normalized)
-    )))
+    Err(CoreError::OcrError {
+        code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+        message: format!(
+            "Subprocess CLI returned non-JSON OCR output: {}",
+            truncate_for_error(normalized)
+        ),
+    })
 }
 
 fn parse_ocr_value(value: &serde_json::Value) -> Option<Vec<OcrResult>> {
@@ -184,10 +194,15 @@ fn normalize_ocr_results(results: Vec<OcrResult>) -> Vec<OcrResult> {
 
 pub(super) fn parse_interpreted_action_output(raw: &str) -> Result<InterpretedAction, CoreError> {
     let normalized = raw.trim();
+    // Iter-93: LLM subprocess returning empty / non-JSON intent output is a
+    // provider failure (LLM misbehaved), not an internal-code failure. Route
+    // through CoreError::Analysis so wire code is `provider.analysis_failed`
+    // consistent with the AnalysisClient and RemoteLlmProvider surfaces.
     if normalized.is_empty() {
-        return Err(CoreError::Internal(
-            "Subprocess CLI returned an empty response.".to_string(),
-        ));
+        return Err(CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message: "Subprocess CLI returned an empty response.".to_string(),
+        });
     }
 
     if let Ok(action) = serde_json::from_str::<InterpretedAction>(normalized) {
@@ -206,10 +221,13 @@ pub(super) fn parse_interpreted_action_output(raw: &str) -> Result<InterpretedAc
         }
     }
 
-    Err(CoreError::Internal(format!(
-        "Subprocess CLI returned non-JSON intent output: {}",
-        truncate_for_error(normalized)
-    )))
+    Err(CoreError::Analysis {
+        code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+        message: format!(
+            "Subprocess CLI returned non-JSON intent output: {}",
+            truncate_for_error(normalized)
+        ),
+    })
 }
 
 fn parse_interpreted_action_value(value: &serde_json::Value) -> Option<InterpretedAction> {
@@ -257,7 +275,25 @@ pub(super) fn truncate_for_error(value: &str) -> String {
     format!("{truncated}...")
 }
 
-pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreError {
+/// Subprocess role hint used by `classify_subprocess_error` to pick a
+/// provider-specific wire code for the generic "CLI invocation failed"
+/// fallthrough (iter-149). Auth-keyword stderr still routes to
+/// `CoreError::Auth` regardless of kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubprocessKind {
+    /// LLM intent-planning subprocess — fallthrough → `CoreError::Analysis`
+    /// (`provider.analysis_failed`).
+    Llm,
+    /// OCR extraction subprocess — fallthrough → `CoreError::OcrError`
+    /// (`provider.ocr_failed`).
+    Ocr,
+}
+
+pub(crate) fn classify_subprocess_error(
+    kind: SubprocessKind,
+    surface_id: &str,
+    stderr: &str,
+) -> CoreError {
     let normalized = stderr.trim();
     let lowered = normalized.to_ascii_lowercase();
     let cli_id =
@@ -267,23 +303,58 @@ pub(crate) fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreE
         || lowered.contains("sign in")
         || lowered.contains("not authenticated")
     {
-        return CoreError::Auth(format!(
-            "{} CLI authentication is required: {}",
-            cli_id,
-            truncate_for_error(normalized)
-        ));
+        return CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: format!(
+                "{} CLI authentication is required: {}",
+                cli_id,
+                truncate_for_error(normalized)
+            ),
+        };
     }
 
-    CoreError::Internal(format!(
+    let message = format!(
         "{} CLI invocation failed: {}",
         cli_id,
         truncate_for_error(normalized)
-    ))
+    );
+    match kind {
+        SubprocessKind::Llm => CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message,
+        },
+        SubprocessKind::Ocr => CoreError::OcrError {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message,
+        },
+    }
 }
 
 pub(super) fn is_gemini_json_flag_error(error: &CoreError) -> bool {
+    // Iter-93: expanded to include CoreError::Analysis and CoreError::OcrError
+    // so flag-error detection keeps working after subprocess parser errors
+    // were re-routed from Internal to the domain-specific variants.
     let message = match error {
-        CoreError::Internal(value) | CoreError::Config(value) | CoreError::Auth(value) => value,
+        CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: value,
+        }
+        | CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: value,
+        }
+        | CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: value,
+        }
+        | CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message: value,
+        }
+        | CoreError::OcrError {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message: value,
+        } => value,
         _ => return false,
     };
     let lowered = message.to_ascii_lowercase();
@@ -461,5 +532,107 @@ mod tests {
         assert!(prompt.contains("click save"));
         assert!(prompt.contains("\"active_app\": \"Editor\""));
         assert!(prompt.contains("\"action_type\""));
+    }
+
+    /// Iter-93 regression guard: empty OCR output from the subprocess is an
+    /// OCR provider failure (wire code `provider.ocr_failed`), not an
+    /// internal-generic failure. Pre-iter-93 this was labelled
+    /// `internal.generic`, hiding OCR provider misbehaviour in telemetry.
+    #[test]
+    fn empty_ocr_output_maps_to_ocr_error() {
+        let err = parse_ocr_output("").unwrap_err();
+        assert_eq!(err.code(), "provider.ocr_failed");
+    }
+
+    /// Iter-93 regression guard: non-JSON OCR output is also an OCR provider
+    /// failure — the subprocess misbehaved by returning unparseable text.
+    #[test]
+    fn non_json_ocr_output_maps_to_ocr_error() {
+        let err = parse_ocr_output("this is definitely not json").unwrap_err();
+        assert_eq!(err.code(), "provider.ocr_failed");
+    }
+
+    /// Iter-93 regression guard: empty LLM intent output is an analysis
+    /// provider failure (wire code `provider.analysis_failed`), consistent
+    /// with AnalysisClient / RemoteLlmProvider surfaces.
+    #[test]
+    fn empty_intent_output_maps_to_analysis_error() {
+        let err = parse_interpreted_action_output("").unwrap_err();
+        assert_eq!(err.code(), "provider.analysis_failed");
+    }
+
+    /// Iter-93 regression guard: non-JSON LLM intent output is also an
+    /// analysis provider failure.
+    #[test]
+    fn non_json_intent_output_maps_to_analysis_error() {
+        let err = parse_interpreted_action_output("not-json-at-all").unwrap_err();
+        assert_eq!(err.code(), "provider.analysis_failed");
+    }
+
+    /// Iter-93 regression guard: is_gemini_json_flag_error must still
+    /// recognise the flag-error message when it arrives via the newly-
+    /// routed CoreError::Analysis / CoreError::OcrError variants (not just
+    /// Internal). Without this, the subprocess retry path for Gemini would
+    /// stop triggering after the iter-93 re-routing.
+    #[test]
+    fn gemini_flag_error_detected_in_analysis_variant() {
+        let err = CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message: "unknown option --output-format".into(),
+        };
+        assert!(is_gemini_json_flag_error(&err));
+    }
+
+    #[test]
+    fn gemini_flag_error_detected_in_ocr_variant() {
+        let err = CoreError::OcrError {
+            code: oneshim_core::error_codes::ProviderCode::OcrFailed,
+            message: "unrecognized option: --output-format".into(),
+        };
+        assert!(is_gemini_json_flag_error(&err));
+    }
+
+    /// Iter-149 regression guard: LLM subprocess non-zero exit without auth
+    /// keyword should surface as `CoreError::Analysis`
+    /// (`provider.analysis_failed`), not `Internal.Generic`. The subprocess IS
+    /// the LLM provider — its exit failure is a provider failure.
+    #[test]
+    fn llm_subprocess_generic_exit_maps_to_analysis() {
+        let err =
+            classify_subprocess_error(SubprocessKind::Llm, "codex_llm", "segfault: core dumped");
+        assert_eq!(err.code(), "provider.analysis_failed");
+    }
+
+    /// Iter-149 regression guard: OCR subprocess non-zero exit without auth
+    /// keyword should surface as `CoreError::OcrError`
+    /// (`provider.ocr_failed`), not `Internal.Generic`.
+    #[test]
+    fn ocr_subprocess_generic_exit_maps_to_ocr_error() {
+        let err = classify_subprocess_error(SubprocessKind::Ocr, "gemini_ocr", "model not found");
+        assert_eq!(err.code(), "provider.ocr_failed");
+    }
+
+    /// Iter-149: auth-keyword stderr still routes to CoreError::Auth
+    /// regardless of SubprocessKind. Verified for both Llm and Ocr kinds so
+    /// a refactor that accidentally stops checking auth keywords in one
+    /// branch fails the test.
+    #[test]
+    fn auth_keyword_wins_over_kind_for_llm() {
+        let err = classify_subprocess_error(
+            SubprocessKind::Llm,
+            "codex_llm",
+            "please sign in to continue",
+        );
+        assert_eq!(err.code(), "auth.failed");
+    }
+
+    #[test]
+    fn auth_keyword_wins_over_kind_for_ocr() {
+        let err = classify_subprocess_error(
+            SubprocessKind::Ocr,
+            "gemini_ocr",
+            "not authenticated: run gcloud auth login",
+        );
+        assert_eq!(err.code(), "auth.failed");
     }
 }

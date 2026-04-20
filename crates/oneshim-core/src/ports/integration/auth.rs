@@ -1,4 +1,23 @@
 //! Integration authentication ports.
+//!
+//! # Errors (all methods)
+//! - `CoreError::Auth` (wire: `auth.failed`) — token rejection by the
+//!   authorization server, expired refresh token, device-flow denial
+//!   (user declined), unknown / expired `flow_id` on poll/cancel.
+//! - `CoreError::RequestTimeout` (wire: `network.timeout`) — OIDC
+//!   device-code polling exceeding authorization-server timeout.
+//! - `CoreError::RateLimit` (wire: `network.rate_limit`) — 429 from
+//!   the authorization server's token/device endpoint.
+//! - `CoreError::Network` (wire: `network.generic`) — pre-response
+//!   transport failures (DNS, refused connection) against the OIDC
+//!   endpoint.
+//! - `CoreError::Config` with `ConfigCode::Missing` (wire:
+//!   `config.missing`) — auth profile not configured, required claims
+//!   (client_id, token endpoint) absent.
+//! - `CoreError::Storage` (wire: `storage.failed`) — auth-material
+//!   persistence failure during `reset_auth_state`.
+//! - `current_auth_status` does NOT surface "unauthenticated" as Err —
+//!   it returns `IntegrationAuthStatus::Unauthenticated` instead.
 
 use async_trait::async_trait;
 

@@ -66,16 +66,28 @@ Recommended sequencing: Critical → Cross-domain A/B (config/telemetry) → Deg
 - **Work required**: Add a default arm returning `Err(UpdaterError::UnsupportedPlatform { os, arch })` + graceful degradation (skip update, log warning).
 - **Effort**: ~0.5 day.
 
-### C5. AWS Signature V4 missing in 3 AI client paths
+### C5. AWS Signature V4 missing in 3 AI client paths — **RESOLVED 2026-04-19 (intentional non-support)**
 
-- **Files**:
-  - `crates/oneshim-network/src/ai_ocr_client/mod.rs:55` — "AWS Signature V4 requires request signing which is not yet implemented for OCR"
-  - `crates/oneshim-network/src/ai_llm_client/request.rs:148` — similar marker (per audit)
-  - `crates/oneshim-network/src/http_api_session/mod.rs:209` — similar marker
-- **Impact**: AWS Bedrock (LLM), AWS Textract (OCR), AWS API Gateway with IAM (session) all unusable.
-- **Decision needed first**: is AWS Bedrock a supported provider? If not, document as "intentionally unsupported" and remove the markers. If yes, implement SigV4.
-- **Work required if implementing**: ~1.5 weeks (SigV4 is non-trivial, canonical request construction + HMAC chaining).
-- **Work required if documenting**: ~0.5 day.
+**Resolution**: "intentionally unsupported" path chosen via [ADR-019](../architecture/ADR-019-error-code-infrastructure.md) §3. AWS Bedrock is no longer advertised. Shipped on branch `feature/error-code-phase1`:
+
+- Catalog: `specs/providers/provider-surface-catalog.json` no longer has `bedrock` vendor or `provider_surface.bedrock.direct_api` surface.
+- 8 match arms in `oneshim-network` + 2 defense-in-depth guards (`analysis_client::analyze`, `ai_model_catalog_web_service::list_models`) return `CoreError::Config { code: ConfigCode::UnsupportedProviderBedrock, message: "AWS Bedrock is intentionally unsupported in this build" }`. Arm count bumped during post-merge drift audit: `http_api_session::build_request_body` now has an explicit `BedrockConverse` arm (previously collapsed into a generic `InternalCode::Generic` wildcard).
+- OCR `apply_auth_headers` signature: infallible → `Result<_, CoreError>` — closes silent no-auth fallthrough security bug on `AwsSignatureV4` auth scheme.
+- Frontend `ProviderWizard.tsx` removed Amazon Bedrock card.
+- Regression guard: `feature_capabilities::bedrock_surface_removed_per_adr_019` test asserts absence.
+- Re-introduction gated by ADR-019 §5 8-step checklist (SigV4 signing impl, credential loader, UI fields, catalog re-entry, live smoke test).
+
+Enum variants `AiProviderType::Bedrock`, `ProviderAuthScheme::AwsSignatureV4`, `ProviderRequestShape::BedrockConverse` retained as runtime-unreachable for minimal-churn future re-introduction.
+
+**Original analysis** (preserved):
+
+- **Files** (original markers, all retrofitted during ADR-019 Phase 3):
+  - `crates/oneshim-network/src/ai_ocr_client/mod.rs` — OCR auth arm
+  - `crates/oneshim-network/src/ai_llm_client/request.rs` — LLM request/auth/response arms
+  - `crates/oneshim-network/src/http_api_session/mod.rs` — Session auth arm
+- **Impact** (pre-resolution): AWS Bedrock (LLM), AWS Textract (OCR), AWS API Gateway with IAM (session) all unusable.
+- **Decision** (resolved): "intentionally unsupported" chosen — current user base has no AWS Bedrock / Textract requirement; avoids 1.5 weeks of SigV4 engineering.
+- **Work required if documenting** (as forecast): ~0.5 day. Actual shipped size: 24 commits across Phase 1-4 of the broader error-code infrastructure that ADR-019 bundled with C5.
 
 ---
 

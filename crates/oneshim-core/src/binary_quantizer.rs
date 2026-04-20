@@ -47,25 +47,38 @@ impl BinaryQuantizer {
         vectors: &[Vec<f32>],
         dimensions: usize,
     ) -> Result<QuantileThresholds, CoreError> {
+        // Iter-95: align with quantization.rs::cosine_similarity_int8 — input
+        // validation emits CoreError::InvalidArguments with wire code
+        // `validation.invalid_arguments`, not Internal.Generic. Previously
+        // all four guards below emitted `internal.generic`, conflating caller
+        // bad-input with runtime failures.
         if vectors.is_empty() {
-            return Err(CoreError::Internal(
-                "cannot compute thresholds on empty vector set".to_string(),
-            ));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "cannot compute thresholds on empty vector set".to_string(),
+            });
         }
         if vectors.len() < 2 {
-            return Err(CoreError::Internal(
-                "cannot compute quantile thresholds with fewer than 2 vectors".to_string(),
-            ));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "cannot compute quantile thresholds with fewer than 2 vectors".to_string(),
+            });
         }
         if dimensions == 0 {
-            return Err(CoreError::Internal("dimensions must be > 0".to_string()));
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: "dimensions must be > 0".to_string(),
+            });
         }
         for (i, v) in vectors.iter().enumerate() {
             if v.len() != dimensions {
-                return Err(CoreError::Internal(format!(
-                    "vector {i} has {} dimensions, expected {dimensions}",
-                    v.len()
-                )));
+                return Err(CoreError::InvalidArguments {
+                    code: crate::error_codes::ValidationCode::InvalidArguments,
+                    message: format!(
+                        "vector {i} has {} dimensions, expected {dimensions}",
+                        v.len()
+                    ),
+                });
             }
         }
 
@@ -125,11 +138,15 @@ impl BinaryQuantizer {
         thresholds: &QuantileThresholds,
     ) -> Result<BinaryCode, CoreError> {
         if vector.len() != thresholds.dimensions {
-            return Err(CoreError::Internal(format!(
-                "vector length {} does not match threshold dimensions {}",
-                vector.len(),
-                thresholds.dimensions
-            )));
+            // Iter-95: dimension mismatch is caller-side input validation.
+            return Err(CoreError::InvalidArguments {
+                code: crate::error_codes::ValidationCode::InvalidArguments,
+                message: format!(
+                    "vector length {} does not match threshold dimensions {}",
+                    vector.len(),
+                    thresholds.dimensions
+                ),
+            });
         }
 
         let num_bytes = (thresholds.dimensions * 2).div_ceil(8);
@@ -360,5 +377,49 @@ mod tests {
             dist_ab <= dist_ac,
             "close vectors should have smaller Hamming distance: ab={dist_ab}, ac={dist_ac}"
         );
+    }
+
+    /// Iter-95 regression guards: input-validation errors across both
+    /// compute_thresholds and encode must emit `validation.invalid_arguments`.
+    /// Pre-iter-95 all five guards emitted `internal.generic`, making caller
+    /// bad-input and runtime failures indistinguishable in telemetry.
+    #[test]
+    fn compute_thresholds_empty_vectors_emits_invalid_arguments_code() {
+        let err = BinaryQuantizer::compute_thresholds(&[], 4).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn compute_thresholds_single_vector_emits_invalid_arguments_code() {
+        let err = BinaryQuantizer::compute_thresholds(&[vec![0.1, 0.2, 0.3]], 3).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn compute_thresholds_zero_dimensions_emits_invalid_arguments_code() {
+        let err = BinaryQuantizer::compute_thresholds(&[vec![], vec![]], 0).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn compute_thresholds_dimension_mismatch_emits_invalid_arguments_code() {
+        let err = BinaryQuantizer::compute_thresholds(
+            &[vec![0.1, 0.2, 0.3], vec![0.4, 0.5]], // 2nd has wrong len
+            3,
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
+    }
+
+    #[test]
+    fn encode_dimension_mismatch_emits_invalid_arguments_code() {
+        let thresholds = QuantileThresholds {
+            dimensions: 3,
+            q25: vec![0.25, 0.25, 0.25],
+            q50: vec![0.50, 0.50, 0.50],
+            q75: vec![0.75, 0.75, 0.75],
+        };
+        let err = BinaryQuantizer::encode(&[0.1, 0.2], &thresholds).unwrap_err();
+        assert_eq!(err.code(), "validation.invalid_arguments");
     }
 }

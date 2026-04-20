@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { buildBugReportIssueUrl, buildMailtoUrl, createBugReport, formatBundleForClipboard } from '../api/bug-report'
 import type { BugReportBundle } from '../api/contracts'
 import { addToast } from '../hooks/useToast'
+import { translateError, type WireErrorLocale } from '../i18n/translateError'
 import { motion, typography } from '../styles/tokens'
 import { IS_TAURI } from '../utils/platform'
 import { Alert, Button, Card, CardTitle, Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from './ui'
@@ -20,7 +21,7 @@ interface BugReportWizardProps {
 type WizardStep = 'generate' | 'review' | 'share'
 
 export default function BugReportWizard({ open, onClose }: BugReportWizardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const [step, setStep] = useState<WizardStep>('generate')
   const [piiLevel, setPiiLevel] = useState<string>('standard')
@@ -110,12 +111,18 @@ export default function BugReportWizard({ open, onClose }: BugReportWizardProps)
         addToast('success', t('settings.bugReportExported'), 4000)
       }
       // null means user cancelled the save dialog — no toast needed
-    } catch {
-      addToast('error', t('settings.bugReportExportFailed'), 5000)
+    } catch (error) {
+      // ADR-019 Follow-up #3: use translateError so typed IpcError codes
+      // (validation.invalid_arguments, internal.generic, internal.io) get
+      // localized specific messages instead of a generic "export failed" toast.
+      const locale = (i18n.language?.startsWith('ko') ? 'ko' : 'en') as WireErrorLocale
+      const detail = translateError(error, locale)
+      const message = detail ? `${t('settings.bugReportExportFailed')}: ${detail}` : t('settings.bugReportExportFailed')
+      addToast('error', message, 5000)
     } finally {
       setExporting(false)
     }
-  }, [bundle, t])
+  }, [bundle, t, i18n])
 
   const handleEmailSupport = useCallback(() => {
     if (!bundle) return

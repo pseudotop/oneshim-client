@@ -83,9 +83,10 @@ impl ChangeMerger for SqliteSyncMerger {
         let local_device_id = self.local_device_id.clone();
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = conn
-                .lock()
-                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            let mut guard = conn.lock().map_err(|e| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("SQLite lock poisoned: {e}"),
+            })?;
 
             // Handle GDPR deletion event
             if changes.kind == ChangeSetKind::DeletionEvent {
@@ -109,9 +110,10 @@ impl ChangeMerger for SqliteSyncMerger {
             let mut result = SyncResult::default();
 
             // All merge operations run inside a single transaction
-            let tx = guard
-                .transaction()
-                .map_err(|e| CoreError::Internal(format!("begin transaction: {e}")))?;
+            let tx = guard.transaction().map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("begin transaction: {e}"),
+            })?;
 
             // --- Append-only tables ---
             for row in &changes.segments {
@@ -154,10 +156,15 @@ impl ChangeMerger for SqliteSyncMerger {
                     changes.watermark.counter,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("update sync_peers: {e}")))?;
+            .map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("update sync_peers: {e}"),
+            })?;
 
-            tx.commit()
-                .map_err(|e| CoreError::Internal(format!("commit transaction: {e}")))?;
+            tx.commit().map_err(|e| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("commit transaction: {e}"),
+            })?;
 
             result.new_watermark = changes.watermark;
 
@@ -172,7 +179,10 @@ impl ChangeMerger for SqliteSyncMerger {
             Ok(result)
         })
         .await
-        .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("spawn_blocking join error: {e}"),
+        })?
     }
 }
 

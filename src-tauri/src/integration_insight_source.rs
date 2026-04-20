@@ -32,8 +32,9 @@ impl LocalSuggestionIntegrationSource {
         after_cursor
             .map(|cursor| {
                 cursor.parse::<i64>().map_err(|err| CoreError::Validation {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.checkpoint_cursor".to_string(),
-                    message: format!("invalid local suggestion checkpoint: {err}"),
+                    message: format!("invalid local suggestion checkpoint: {err }"),
                 })
             })
             .transpose()
@@ -46,8 +47,9 @@ impl LocalSuggestionIntegrationSource {
         NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S")
             .map(|parsed| parsed.and_utc())
             .map_err(|err| CoreError::Validation {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field: "local_suggestions.created_at".to_string(),
-                message: format!("invalid suggestion timestamp: {err}"),
+                message: format!("invalid suggestion timestamp: {err }"),
             })
     }
 

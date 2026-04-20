@@ -1,5 +1,7 @@
 # Error Strategy ADR-001 §1 Compliance — Implementation Plan
 
+> **Status: COMPLETED (with post-merge cleanup)** — Plan was executed per ADR-001 §1. Subsequent ADR-019 drift-audit iterations 164–165 removed dead variants that had zero production construction sites under YAGNI precedent (iter-87/148/161/163). The variant names below (`NetworkError::Serialization`, `NetworkError::OAuth*`, `NetworkError::Ocr`, `NetworkError::SecretStore`, `AutomationError::Config`/`Io`/`PrivacyDenied`/`SandboxUnsupported`/`ServiceUnavailable`, `VisionError::PermissionDenied`/`ElementNotFound`, `AnalysisError::Internal`/`LlmService`, `SuggestionError::Internal`) no longer exist in the current source tree. See ADR-019 §Post-merge orphan wire-code cleanup for the rationale and audit-methodology lessons.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give all 8 non-compliant library crates their own `thiserror` error enums with bidirectional `CoreError` conversion.

@@ -22,6 +22,7 @@ impl IntegrationEgressTransportClient for HttpsIntegrationEgressTransportClient 
                 .get(session_id)
                 .await
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
@@ -47,6 +48,7 @@ impl IntegrationEgressTransportClient for HttpsIntegrationEgressTransportClient 
         let url = binding
             .send_events_url
             .ok_or_else(|| CoreError::Validation {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field: "integration.session.send_events_url".to_string(),
                 message: "active integration session does not have an outbound event URL."
                     .to_string(),

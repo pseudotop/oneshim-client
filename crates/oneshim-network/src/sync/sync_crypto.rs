@@ -19,7 +19,10 @@ pub fn derive_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CoreError> 
     let mut key = [0u8; 32];
     Argon2::default()
         .hash_password_into(passphrase.as_bytes(), salt, &mut key)
-        .map_err(|e| CoreError::Internal(format!("Argon2 KDF failed: {e}")))?;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("Argon2 KDF failed: {e}"),
+        })?;
     Ok(key)
 }
 
@@ -31,8 +34,10 @@ pub fn encrypt(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, CoreError>
     OsRng.fill_bytes(&mut salt);
 
     let key = derive_key(passphrase, &salt)?;
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| CoreError::Internal(format!("AES init: {e}")))?;
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| CoreError::Internal {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("AES init: {e}"),
+    })?;
 
     let mut nonce_bytes = [0u8; NONCE_SIZE];
     OsRng.fill_bytes(&mut nonce_bytes);
@@ -40,7 +45,10 @@ pub fn encrypt(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, CoreError>
 
     let ciphertext = cipher
         .encrypt(nonce, plaintext)
-        .map_err(|e| CoreError::Internal(format!("AES encrypt: {e}")))?;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("AES encrypt: {e}"),
+        })?;
 
     let mut output = Vec::with_capacity(SALT_SIZE + NONCE_SIZE + ciphertext.len());
     output.extend_from_slice(&salt);
@@ -52,20 +60,28 @@ pub fn encrypt(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, CoreError>
 /// Decrypt: parse salt || nonce || ciphertext.
 pub fn decrypt(passphrase: &str, data: &[u8]) -> Result<Vec<u8>, CoreError> {
     if data.len() < SALT_SIZE + NONCE_SIZE + 1 {
-        return Err(CoreError::Internal("encrypted data too short".to_string()));
+        return Err(CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: "encrypted data too short".to_string(),
+        });
     }
     let salt = &data[..SALT_SIZE];
     let nonce_bytes = &data[SALT_SIZE..SALT_SIZE + NONCE_SIZE];
     let ciphertext = &data[SALT_SIZE + NONCE_SIZE..];
 
     let key = derive_key(passphrase, salt)?;
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| CoreError::Internal(format!("AES init: {e}")))?;
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| CoreError::Internal {
+        code: oneshim_core::error_codes::InternalCode::Generic,
+        message: format!("AES init: {e}"),
+    })?;
     let nonce = Nonce::from_slice(nonce_bytes);
 
     cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|e| CoreError::Internal(format!("AES decrypt failed (wrong passphrase?): {e}")))
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("AES decrypt failed (wrong passphrase?): {e}"),
+        })
 }
 
 #[cfg(test)]

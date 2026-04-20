@@ -16,9 +16,13 @@ pub async fn semantic_search(
     debug!("GET /api/semantic-search q={} mode={}", params.q, mode);
 
     let limit = params.limit.unwrap_or(10).min(50);
+    // Iter-96: CoreError → ApiError via semantic From impl (preserves wire
+    // codes). Previously the service stringified errors and the handler
+    // collapsed every failure to ApiError::ServiceUnavailable, which sent
+    // 503 even for client-side validation errors.
     let results = semantic_search_service::execute(&state, &params.q, limit, mode)
         .await
-        .map_err(ApiError::ServiceUnavailable)?;
+        .map_err(ApiError::from)?;
 
     Ok(Json(results))
 }

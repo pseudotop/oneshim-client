@@ -23,8 +23,9 @@ pub async fn get_dashboard_day(
     let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {e}")))?;
 
+    // Iter-96: CoreError → ApiError via semantic From impl (preserves wire code).
     let digest = dashboard_service::get_or_generate_digest(&state, &date_str, date)
-        .map_err(ApiError::Internal)?;
+        .map_err(ApiError::from)?;
 
     Ok(Json(digest))
 }

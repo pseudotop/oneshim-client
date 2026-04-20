@@ -1,5 +1,7 @@
 # Phase 3 — FeedbackSignalSink + regime_id filter + RegimeManager persistence: Implementation Plan
 
+> **Status: SHIPPED.** Plan preserved as execution history. CoreError constructor examples below use pre-[ADR-019](../architecture/ADR-019-error-code-infrastructure.md) tuple-variant syntax (`CoreError::Internal(msg)`, `CoreError::Storage(msg)`); post-ADR-019 use struct-variant form with a typed `code: XxxCode` field.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Wire user-feedback into CoachingEngine/RegimeClassifier, make `regime_id` vector filter actually filter, and persist RegimeManager state across restart.

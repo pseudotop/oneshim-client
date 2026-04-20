@@ -14,6 +14,26 @@ use crate::provider_surface::{provider_surface_uses_no_auth, provider_vendor_id_
 // --- Type definitions ---
 
 /// Source of authentication credentials for AI provider requests.
+///
+/// # Errors
+/// Resolution methods on this enum emit (verified against
+/// `CredentialSource::from_api_key_endpoint_for_profile` + `resolve_bearer_token`):
+/// - `CoreError::Config` with `ConfigCode::Invalid` (wire:
+///   `config.invalid`) — secret store not initialized when the backend
+///   requires one. The condition is a broken-config semantic ("your
+///   credential backend declares it needs a secret store, but one isn't
+///   wired") rather than a Missing-field semantic.
+/// - `CoreError::Config` with `ConfigCode::Missing` (wire:
+///   `config.missing`) — `profile_id` required for env-backed
+///   credentials but not supplied (iter-99); or the terminal fallback
+///   "AI provider API key is not configured in a supported secret
+///   backend" path (no matching credential binding at all).
+/// - `CoreError::OAuthError` (wire: `oauth.failed`) when managed-OAuth
+///   token lookup fails (provider not registered, token expired beyond
+///   refresh window).
+/// - `CoreError::Auth` (wire: `auth.failed`) when the resolved secret
+///   entry is absent from the backend at resolve time
+///   (`StoredSecret::retrieve` returns `Ok(None)`).
 #[derive(Clone)]
 pub enum CredentialSource {
     /// No credential is required for this transport surface.
@@ -68,11 +88,12 @@ impl CredentialSource {
 
         if let Some(binding) = endpoint.credential.as_ref() {
             if binding.auth_mode == CredentialAuthMode::ApiKey {
-                let secret_store = secret_store.ok_or_else(|| {
-                    CoreError::Config(format!(
+                let secret_store = secret_store.ok_or_else(|| CoreError::Config {
+                    code: crate::error_codes::ConfigCode::Invalid,
+                    message: format!(
                         "provider credential backend {:?} requires an initialized secret store",
                         binding.backend_kind
-                    ))
+                    ),
                 })?;
 
                 if let Some(secret_ref) = binding.secret_ref.as_ref() {
@@ -84,11 +105,11 @@ impl CredentialSource {
                 }
 
                 if binding.backend_kind == CredentialBackendKind::Env {
-                    let profile_id = profile_id.ok_or_else(|| {
-                        CoreError::Config(
+                    let profile_id = profile_id.ok_or_else(|| CoreError::Config {
+                        code: crate::error_codes::ConfigCode::Missing,
+                        message:
                             "profile_id is required to resolve env-backed provider credentials"
                                 .to_string(),
-                        )
                     })?;
                     let (namespace, key) = provider_api_key_secret_ref(
                         provider_vendor_id_or_default(endpoint.provider_type),
@@ -103,10 +124,11 @@ impl CredentialSource {
             }
         }
 
-        Err(CoreError::Config(
-            "AI provider API key is not configured in a supported secret backend. Save it through Settings or configure an environment-backed credential source."
+        Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: "AI provider API key is not configured in a supported secret backend. Save it through Settings or configure an environment-backed credential source."
                 .to_string(),
-        ))
+        })
     }
 
     /// Resolve to a bearer token string at request time.
@@ -125,6 +147,7 @@ impl CredentialSource {
                 .get_access_token(provider_id)
                 .await?
                 .ok_or_else(|| CoreError::OAuthError {
+                    code: crate::error_codes::OAuthCode::Failed,
                     provider: provider_id.clone(),
                     message: "not authenticated — please connect via OAuth".into(),
                 }),
@@ -137,9 +160,10 @@ impl CredentialSource {
                     return Ok(secret);
                 }
 
-                Err(CoreError::Auth(format!(
-                    "credential backend entry not found for {namespace}.{key}"
-                )))
+                Err(CoreError::Auth {
+                    code: crate::error_codes::AuthCode::Failed,
+                    message: format!("credential backend entry not found for {namespace}.{key}"),
+                })
             }
         }
     }
@@ -309,7 +333,7 @@ mod tests {
 
         let source = CredentialSource::from_api_key_endpoint(&endpoint, Some(store)).unwrap();
         let err = source.resolve_bearer_token().await.unwrap_err();
-        assert!(matches!(err, CoreError::Auth(_)));
+        assert!(matches!(err, CoreError::Auth { .. }));
     }
 
     #[test]
@@ -325,7 +349,7 @@ mod tests {
         };
 
         let err = CredentialSource::from_api_key_endpoint(&endpoint, None).unwrap_err();
-        assert!(matches!(err, CoreError::Config(_)));
+        assert!(matches!(err, CoreError::Config { .. }));
     }
 
     #[test]
@@ -349,7 +373,7 @@ mod tests {
         };
 
         let err = CredentialSource::from_api_key_endpoint(&endpoint, None).unwrap_err();
-        assert!(matches!(err, CoreError::Config(_)));
+        assert!(matches!(err, CoreError::Config { .. }));
     }
 
     #[tokio::test]

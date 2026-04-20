@@ -88,9 +88,13 @@ impl RemoteLlmProvider {
         )
         .map_err(NetworkError::Internal)?;
         if !matches!(auth_scheme, ProviderAuthScheme::None) && config.api_key.is_empty() {
-            return Err(NetworkError::Config(
-                "AI LLM API key is not configured. Set it in Settings.".into(),
-            ));
+            // Iter-99: "not configured" is Missing semantics, not Invalid.
+            // Route via NetworkError::Core wrapper to emit the correct
+            // ConfigCode::Missing wire code (config.missing).
+            return Err(NetworkError::Core(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::Missing,
+                message: "AI LLM API key is not configured. Set it in Settings.".into(),
+            }));
         }
         let credential = if matches!(auth_scheme, ProviderAuthScheme::None) {
             CredentialSource::NoAuth
@@ -127,10 +131,13 @@ impl RemoteLlmProvider {
                 }
             })
             .ok_or_else(|| {
-                NetworkError::Config(
-                    "The selected LLM provider surface requires an explicit model selection."
-                        .to_string(),
-                )
+                // Iter-99: "requires an explicit model" is Missing semantics.
+                NetworkError::Core(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Missing,
+                    message:
+                        "The selected LLM provider surface requires an explicit model selection."
+                            .to_string(),
+                })
             })?;
         if !supports_model {
             return Err(NetworkError::Config(
@@ -228,10 +235,13 @@ impl RemoteLlmProvider {
                 }
             })
             .ok_or_else(|| {
-                NetworkError::Config(
-                    "The selected LLM provider surface requires an explicit model selection."
-                        .to_string(),
-                )
+                // Iter-99: "requires an explicit model" is Missing semantics.
+                NetworkError::Core(CoreError::Config {
+                    code: oneshim_core::error_codes::ConfigCode::Missing,
+                    message:
+                        "The selected LLM provider surface requires an explicit model selection."
+                            .to_string(),
+                })
             })?;
         if !supports_model {
             return Err(NetworkError::Config(
@@ -288,7 +298,10 @@ impl RemoteLlmProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })
     }
     fn uses_responses_api(&self) -> bool {
         matches!(
@@ -302,7 +315,10 @@ impl RemoteLlmProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Llm,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })
     }
     fn ensure_llm_parameters_supported(&self, parameters: &[&str]) -> Result<(), CoreError> {
         provider_specs::validate_supported_parameters(
@@ -311,7 +327,10 @@ impl RemoteLlmProvider {
             provider_specs::SurfaceCapabilityKind::Llm,
             parameters,
         )
-        .map_err(CoreError::Internal)
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
+            message: msg,
+        })
     }
 }
 #[async_trait]

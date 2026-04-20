@@ -15,6 +15,7 @@ pub mod config;
 pub mod config_manager;
 pub mod consent;
 pub mod error;
+pub mod error_codes;
 pub mod ivf_index;
 pub mod models;
 pub mod ports;

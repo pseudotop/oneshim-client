@@ -22,14 +22,26 @@ use crate::resilience::{scale_duration, RetryBackoffGate, RetryBackoffPolicy};
 /// to honour server-specified retry-after delays.
 fn core_to_network_error(e: &CoreError) -> NetworkError {
     match e {
-        CoreError::RateLimit { retry_after_secs } => NetworkError::RateLimited {
+        CoreError::RateLimit {
+            code: oneshim_core::error_codes::NetworkCode::RateLimit,
+            retry_after_secs,
+        } => NetworkError::RateLimited {
             retry_after_secs: *retry_after_secs,
         },
-        CoreError::RequestTimeout { timeout_ms } => NetworkError::Timeout {
+        CoreError::RequestTimeout {
+            code: oneshim_core::error_codes::NetworkCode::Timeout,
+            timeout_ms,
+        } => NetworkError::Timeout {
             timeout_ms: *timeout_ms,
         },
-        CoreError::ServiceUnavailable(msg) => NetworkError::ServiceUnavailable(msg.clone()),
-        CoreError::Auth(msg) => NetworkError::Auth(msg.clone()),
+        CoreError::ServiceUnavailable {
+            code: oneshim_core::error_codes::ServiceCode::Unavailable,
+            message: msg,
+        } => NetworkError::ServiceUnavailable(msg.clone()),
+        CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: msg,
+        } => NetworkError::Auth(msg.clone()),
         other => NetworkError::Http(other.to_string()),
     }
 }
@@ -374,9 +386,15 @@ mod tests {
 
         async fn heartbeat(&self, _session_id: &str) -> Result<IntegrationSessionState, CoreError> {
             *self.heartbeat_calls.lock().await += 1;
-            let session = self.current.lock().await.clone().ok_or_else(|| {
-                CoreError::ServiceUnavailable("integration session missing".to_string())
-            })?;
+            let session =
+                self.current
+                    .lock()
+                    .await
+                    .clone()
+                    .ok_or_else(|| CoreError::ServiceUnavailable {
+                        code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                        message: "integration session missing".to_string(),
+                    })?;
             Ok(session)
         }
 
@@ -385,9 +403,12 @@ mod tests {
             _session_id: &str,
             _cursor: IntegrationAckCursor,
         ) -> Result<IntegrationSessionState, CoreError> {
-            self.current_session().await?.ok_or_else(|| {
-                CoreError::ServiceUnavailable("integration session missing".to_string())
-            })
+            self.current_session()
+                .await?
+                .ok_or_else(|| CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message: "integration session missing".to_string(),
+                })
         }
 
         async fn disconnect(&self, _session_id: &str) -> Result<(), CoreError> {

@@ -16,22 +16,57 @@ The network adapter crate responsible for HTTP/SSE/WebSocket/gRPC communication.
 
 ```
 oneshim-network/src/
-├── lib.rs            # Crate root
-├── auth.rs           # TokenManager - JWT authentication
-├── http_client.rs    # HttpApiClient - REST API
-├── sse_client.rs     # SseStreamClient - SSE reception
-├── compression.rs    # AdaptiveCompressor
-├── batch_uploader.rs # BatchUploader - batch transmission
-├── ai_llm_client.rs  # RemoteLlmProvider — AI LLM intent interpretation
-├── ai_ocr_client.rs  # RemoteOcrProvider — AI OCR element extraction
-├── grpc/             # gRPC client (#[cfg(feature = "grpc")])
-│   ├── mod.rs            # Module exports + GrpcConfig
-│   ├── auth_client.rs    # GrpcAuthClient
-│   ├── session_client.rs # GrpcSessionClient
-│   ├── context_client.rs # GrpcContextClient
-│   └── unified_client.rs # UnifiedClient (gRPC + REST unified)
-└── proto/            # tonic/prost generated code
-    └── oneshim/v1/
+├── lib.rs                  # Crate root
+├── auth.rs                 # TokenManager - JWT authentication
+├── http_client.rs          # HttpApiClient - REST API
+├── sse_client.rs           # SseStreamClient - SSE reception
+├── compression.rs          # AdaptiveCompressor
+├── batch_uploader.rs       # BatchUploader - batch transmission
+├── circuit_breaker.rs      # per-endpoint circuit breaker (serial_test guarded)
+├── connectivity.rs         # connectivity detection + backoff
+├── resilience.rs           # shared resilience primitives
+├── error.rs                # NetworkError enum (13 variants, typed-code per ADR-019)
+├── ai_llm_client/          # RemoteLlmProvider — directory module (ADR-003)
+│   ├── mod.rs              # RemoteLlmProvider struct + LlmProvider impl
+│   ├── request.rs          # request building per provider type
+│   ├── parsers.rs          # response parsing + extraction
+│   └── tests.rs            # unit tests
+├── ai_ocr_client/          # RemoteOcrProvider — directory module (ADR-003)
+│   ├── mod.rs              # RemoteOcrProvider struct + OcrProvider impl
+│   ├── ollama.rs           # Ollama-specific handling
+│   ├── parsers.rs          # element extraction + JSON parsing
+│   ├── strategy.rs         # provider strategy selection
+│   └── tests.rs            # unit tests
+├── http_api_session/       # HTTP-based stateful ApiSession (chat + tool-calling)
+│   ├── mod.rs              # orchestrator
+│   ├── anthropic.rs, google.rs, openai.rs  # provider-specific request/response builders
+│   ├── content.rs          # content block types
+│   └── tests.rs            # unit tests
+├── local_llm_session.rs    # local ApiSession via subprocess LLM
+├── analysis_client.rs      # analysis provider client
+├── remote_embedding_client.rs # remote embedding provider
+├── sync/                   # Cross-device sync
+│   ├── lan_server/         # LAN peer discovery server (directory module)
+│   └── lan_transport/      # LAN transport client (directory module)
+├── integration/            # External integration transports
+│   ├── http_transport/     # HTTP remote transport (directory module)
+│   ├── auth/               # Integration auth (OIDC device flow, etc.)
+│   ├── live_channel.rs     # WebSocket transport (active — replaced deleted ws_client.rs)
+│   └── session_coordinator.rs # session transport kind switching
+├── oauth/                  # OAuth 2.0 flow helpers (directory module)
+├── grpc/                   # gRPC client (#[cfg(feature = "grpc")])
+│   ├── mod.rs              # module exports
+│   ├── config.rs           # GrpcConfig (endpoints, fallback ports, TLS)
+│   ├── auth_client.rs      # GrpcAuthClient
+│   ├── session_client.rs   # GrpcSessionClient
+│   ├── context_client.rs   # GrpcContextClient
+│   ├── health_client.rs    # GrpcHealthClient (Consumer Contract ClientHealth.Ping)
+│   ├── unified_client.rs   # UnifiedClient (gRPC + REST unified with auto-switching)
+│   ├── api_adapter.rs      # GrpcApiAdapter (impl ApiClient bridging + REST fallback)
+│   ├── sse_adapter.rs      # GrpcSseAdapter (impl SseClient bridging gRPC streaming)
+│   └── error_mapping.rs    # tonic Status → NetworkError conversion
+└── proto/                  # tonic/prost generated code
+    └── oneshim/v1/, oneshim/client/v1/
 ```
 
 ## Key Components
@@ -177,7 +212,7 @@ pub enum AiProviderType {
 }
 ```
 
-#### RemoteLlmProvider (ai_llm_client.rs)
+#### RemoteLlmProvider (ai_llm_client/)
 
 `LlmProvider` port implementation — sends sanitized text to an external LLM API to interpret UI automation intents.
 Does not send images; only PII-filtered text is transmitted through the Privacy Gateway.
@@ -207,7 +242,7 @@ impl LlmProvider for RemoteLlmProvider {
 - `AiProviderType::OpenAi` / `Generic` → `POST /v1/chat/completions`, `Bearer` token, parses `choices[0].message.content`
 - `AiProviderType::Google` → parses `candidates[0].content.parts[0].text`
 
-#### RemoteOcrProvider (ai_ocr_client.rs)
+#### RemoteOcrProvider (ai_ocr_client/)
 
 `OcrProvider` port implementation — sends screenshots (Base64) to an external AI Vision API to extract text and bounding boxes.
 PII blurring through the Privacy Gateway and user consent verification are required before sending images.

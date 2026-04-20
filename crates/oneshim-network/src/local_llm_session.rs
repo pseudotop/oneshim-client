@@ -459,16 +459,41 @@ impl ConversationSession for LocalLlmSession {
             .await
             .map_err(|e| {
                 *self.state.lock() = SessionState::Failed;
-                CoreError::Network(format!("Ollama request failed: {e}"))
+                // Iter-90: Ollama is local, timeouts are rare but possible when
+                // a large model is still loading. Keep the canonical split so
+                // Grafana/logs can distinguish slow-model-load from true failure.
+                if e.is_timeout() {
+                    CoreError::RequestTimeout {
+                        code: oneshim_core::error_codes::NetworkCode::Timeout,
+                        timeout_ms: 0,
+                    }
+                } else {
+                    CoreError::Network {
+                        code: oneshim_core::error_codes::NetworkCode::Generic,
+                        message: format!("Ollama request failed: {e}"),
+                    }
+                }
             })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
             *self.state.lock() = SessionState::Failed;
-            return Err(CoreError::Network(format!(
-                "Ollama API error {status}: {body_text}"
-            )));
+            // Ollama runs locally, so timeouts/gateway errors are rare. 404
+            // most commonly means "model not pulled" — distinguish it so the
+            // frontend can hint at `ollama pull <model>` rather than generic
+            // "network error". (iter-55c)
+            return Err(match status.as_u16() {
+                404 => CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
+                    resource_type: "ollama_model".to_string(),
+                    id: format!("{body_text} (hint: try `ollama pull <model>`)"),
+                },
+                _ => CoreError::Network {
+                    code: oneshim_core::error_codes::NetworkCode::Generic,
+                    message: format!("Ollama API error {status}: {body_text}"),
+                },
+            });
         }
 
         // Stream NDJSON lines from the response body.
@@ -490,7 +515,21 @@ impl ConversationSession for LocalLlmSession {
 
             while let Some(chunk_result) = byte_stream.next().await {
                 let bytes = chunk_result
-                    .map_err(|e| CoreError::Network(format!("stream read error: {e}")))?;
+                    .map_err(|e| {
+                        // Iter-90: stream-read timeout gets the dedicated wire
+                        // code; keep consistent with send()-time handling above.
+                        if e.is_timeout() {
+                            CoreError::RequestTimeout {
+                                code: oneshim_core::error_codes::NetworkCode::Timeout,
+                                timeout_ms: 0,
+                            }
+                        } else {
+                            CoreError::Network {
+                                code: oneshim_core::error_codes::NetworkCode::Generic,
+                                message: format!("stream read error: {e}"),
+                            }
+                        }
+                    })?;
                 let text = String::from_utf8_lossy(&bytes);
                 line_buffer.push_str(&text);
 
@@ -998,5 +1037,103 @@ mod tests {
         };
         assert_eq!(usage.input_tokens, 45);
         assert_eq!(usage.output_tokens, 123);
+    }
+
+    /// iter-73 regression guard for iter-55c Ollama 404 semantic mapping.
+    /// Ollama returns 404 when a model isn't pulled; we surface this as
+    /// CoreError::NotFound with resource_type="ollama_model" so frontend
+    /// can suggest `ollama pull <model>` rather than "network error".
+    #[tokio::test]
+    async fn ollama_404_maps_to_not_found_with_model_hint() {
+        use oneshim_core::models::ai_session::SessionMessage;
+        use oneshim_core::ports::conversation_session::ConversationSession;
+
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/api/chat")
+            .with_status(404)
+            .with_body("model 'llama3' not found — try `ollama pull llama3`")
+            .create_async()
+            .await;
+
+        let session = LocalLlmSession::new(
+            "test-session".to_string(),
+            "llama3".to_string(),
+            server.url(),
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "hello".to_string(),
+            attachments: vec![],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let result = session.send_message(&message).await;
+        match result {
+            Err(CoreError::NotFound {
+                resource_type, id, ..
+            }) => {
+                assert_eq!(
+                    resource_type, "ollama_model",
+                    "resource_type should be ollama_model"
+                );
+                assert!(
+                    id.contains("ollama pull") || id.contains("not found"),
+                    "id should carry the pull hint, got: {id}"
+                );
+            }
+            Err(other) => panic!("expected CoreError::NotFound, got: {other:?}"),
+            Ok(_) => panic!("expected error, got Ok"),
+        }
+    }
+
+    /// iter-76 regression guard: non-404 HTTP errors from Ollama fall back
+    /// to CoreError::Network (not NotFound), so the "model not pulled" UX
+    /// only triggers for the specific 404 case.
+    #[tokio::test]
+    async fn ollama_500_maps_to_network_generic() {
+        use oneshim_core::models::ai_session::SessionMessage;
+        use oneshim_core::ports::conversation_session::ConversationSession;
+
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/api/chat")
+            .with_status(500)
+            .with_body("Internal Server Error")
+            .create_async()
+            .await;
+
+        let session = LocalLlmSession::new(
+            "test-session".to_string(),
+            "llama3".to_string(),
+            server.url(),
+            None,
+            Arc::new(AiSessionConfig::default()),
+        );
+
+        let message = SessionMessage {
+            role: MessageRole::User,
+            content: "hello".to_string(),
+            attachments: vec![],
+            tools: None,
+            context: None,
+            response_format: None,
+        };
+
+        let result = session.send_message(&message).await;
+        match result {
+            Err(CoreError::Network { .. }) => {
+                // Expected: 500 (non-404) falls back to Network/Generic
+            }
+            Err(other) => {
+                panic!("500 should map to CoreError::Network (not domain-specific), got: {other:?}")
+            }
+            Ok(_) => panic!("expected error, got Ok"),
+        }
     }
 }

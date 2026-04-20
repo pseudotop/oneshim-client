@@ -299,3 +299,209 @@ fn remote_ocr_provider_info() {
     assert_eq!(results.len(), 2);
     assert!((results[0].confidence - 0.8).abs() < f64::EPSILON);
 }
+
+/// ADR-019 §3 core security-fix regression guard: `apply_auth_headers`
+/// must return a typed error on `AwsSignatureV4`, not silently fall
+/// through (original pre-ADR-019 behavior). This is the foundational
+/// contract that changed the function's signature from infallible to
+/// `Result<_, CoreError>`. A regression that reverted the signature or
+/// removed the error would silently send unauthenticated requests to
+/// Bedrock endpoints — a real security bug.
+#[test]
+fn apply_auth_headers_rejects_aws_sigv4() {
+    let client = reqwest::Client::new();
+    let builder = client.get("https://bedrock-runtime.us-east-1.amazonaws.com");
+    let result = apply_auth_headers(ProviderAuthScheme::AwsSignatureV4, builder, "irrelevant");
+    match result {
+        Err(CoreError::Config { code, message }) => {
+            assert_eq!(
+                code,
+                oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                "expected UnsupportedProviderBedrock code, got {code:?}"
+            );
+            assert!(
+                message.contains("Bedrock"),
+                "expected Bedrock-mentioning message, got {message:?}"
+            );
+        }
+        Ok(_) => panic!(
+            "apply_auth_headers(AwsSignatureV4, ..) returned Ok — SILENT NO-AUTH FALLTHROUGH REGRESSION"
+        ),
+        Err(other) => panic!(
+            "expected CoreError::Config {{ UnsupportedProviderBedrock, .. }}, got {other:?}"
+        ),
+    }
+}
+
+/// Positive control: non-AwsSignatureV4 schemes must still succeed after
+/// the signature change, so we don't accidentally regress valid auth paths.
+#[test]
+fn apply_auth_headers_succeeds_for_supported_schemes() {
+    let client = reqwest::Client::new();
+    for scheme in [
+        ProviderAuthScheme::None,
+        ProviderAuthScheme::Bearer,
+        ProviderAuthScheme::XApiKey,
+        ProviderAuthScheme::XGoogApiKey,
+    ] {
+        let builder = client.get("https://api.example.com");
+        let result = apply_auth_headers(scheme, builder, "test-key");
+        assert!(
+            result.is_ok(),
+            "apply_auth_headers({scheme:?}, ..) unexpectedly failed: {:?}",
+            result.err()
+        );
+    }
+}
+
+/// ADR-019 §3 regression guard: OcrProviderStrategy::try_from must reject
+/// BedrockConverse shape at the strategy-dispatch boundary. Unlike the
+/// other OCR paths that fail on catalog lookup (Bedrock absent), this one
+/// takes the shape as direct input, so it's the only defense if someone
+/// constructs the shape manually (e.g., unit-test fixture, re-introduction
+/// without SigV4 work).
+#[test]
+fn ocr_strategy_try_from_rejects_bedrock_converse() {
+    let result = OcrProviderStrategy::try_from(ProviderRequestShape::BedrockConverse);
+    match result {
+        Err(CoreError::Config { code, message }) => {
+            assert_eq!(
+                code,
+                oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                "expected UnsupportedProviderBedrock code, got {code:?}"
+            );
+            assert!(
+                message.contains("Bedrock"),
+                "expected Bedrock-mentioning message, got {message:?}"
+            );
+        }
+        Ok(strategy) => panic!(
+            "expected Err for BedrockConverse but got Ok({strategy:?}) — a regression would enable OCR dispatch to an unsupported provider"
+        ),
+        Err(other) => panic!(
+            "expected CoreError::Config {{ UnsupportedProviderBedrock, .. }}, got {other:?}"
+        ),
+    }
+}
+
+/// Positive control: every non-Bedrock shape must round-trip to a
+/// valid strategy variant, so the dispatch table stays exhaustive after
+/// the BedrockConverse Err arm.
+#[test]
+fn ocr_strategy_try_from_accepts_supported_shapes() {
+    for shape in [
+        ProviderRequestShape::AnthropicMessages,
+        ProviderRequestShape::AnthropicVisionMessages,
+        ProviderRequestShape::OpenAiChatCompletions,
+        ProviderRequestShape::OpenAiVisionChatCompletions,
+        ProviderRequestShape::OpenAiResponses,
+        ProviderRequestShape::GoogleGenerateContent,
+        ProviderRequestShape::GoogleVisionAnnotate,
+    ] {
+        let result = OcrProviderStrategy::try_from(shape);
+        assert!(
+            result.is_ok(),
+            "OcrProviderStrategy::try_from({shape:?}) unexpectedly failed: {:?}",
+            result.err()
+        );
+    }
+}
+
+// iter-69 regression guards for iter-59a semantic HTTP status mapping
+// in ai_ocr_client::extract_elements. Shared helper pattern matches
+// iter-67/68.
+#[cfg(test)]
+mod http_status_mapping {
+    use super::*;
+    use oneshim_core::ports::ocr_provider::OcrProvider;
+
+    async fn run_status_mapping_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!(r#"{{"error": "http {status}"}}"#))
+            .create_async()
+            .await;
+
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Anthropic,
+            surface_id: None,
+            credential: None,
+        };
+        let provider = RemoteOcrProvider::new(&config).expect("provider init");
+        // Minimal valid PNG (1x1 transparent pixel) for request body.
+        let tiny_png = vec![
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+        provider
+            .extract_elements(&tiny_png, "png")
+            .await
+            .unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn status_403_maps_to_auth() {
+        let err = run_status_mapping_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_408_maps_to_timeout() {
+        let err = run_status_mapping_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_429_maps_to_rate_limit() {
+        let err = run_status_mapping_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_502_maps_to_service_unavailable() {
+        let err = run_status_mapping_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_504_maps_to_timeout() {
+        let err = run_status_mapping_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    /// iter-77: domain fallback regression guard. OCR-specific errors
+    /// (500, 418, etc.) should fall back to CoreError::OcrError, not to
+    /// Network::Generic. Complements iter-72's cloud_stt fallback test.
+    #[tokio::test]
+    async fn status_500_falls_back_to_ocr_error() {
+        let err = run_status_mapping_test(500).await;
+        assert!(
+            matches!(err, CoreError::OcrError { .. }),
+            "500 should fall back to CoreError::OcrError (domain-specific), got: {err:?}"
+        );
+    }
+}

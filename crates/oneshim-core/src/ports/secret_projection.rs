@@ -124,6 +124,24 @@ pub enum SecretProjectionResult {
 }
 
 /// Compatibility projection port.
+///
+/// # Errors
+/// - `CoreError::NotFound` (wire: `resource.not_found`,
+///   `resource_type = "secret"`) — requested secret (`namespace` +
+///   `key`) does not exist in the backing SecretStore.
+/// - `CoreError::Config` with `ConfigCode::Invalid` (wire:
+///   `config.invalid`) — namespace/key/consumer_id segment fails
+///   `validate_secret_segment` (empty, non-alphanumeric, reserved char).
+/// - `CoreError::Io` (wire: `internal.io`) — temp-file / bridge-file
+///   creation or write failure; permission denied on projection
+///   target directory.
+/// - `CoreError::Internal` (wire: `internal.generic`) — unsupported
+///   projection target for the requested purpose, platform-specific
+///   keychain/credential-store failures propagated from the
+///   underlying SecretStore.
+/// - `revoke_projection` for an unknown `consumer_id` is treated as a
+///   no-op (`Ok(())`) by the current adapter rather than a distinct
+///   NotFound.
 #[async_trait]
 pub trait SecretProjectionPort: Send + Sync {
     async fn project(

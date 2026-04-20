@@ -45,49 +45,72 @@ fn token_header_trims_whitespace() {
 
 #[test]
 fn maps_unauthorized_to_401() {
-    let err = map_gui_error(GuiInteractionError::Unauthorized);
+    let err = map_gui_error(GuiInteractionError::Unauthorized {
+        code: oneshim_core::error_codes::GuiCode::Unauthorized,
+    });
     assert!(matches!(err, ApiError::Unauthorized(_)));
 }
 
 #[test]
 fn maps_not_found_to_404() {
-    let err = map_gui_error(GuiInteractionError::NotFound("s1".to_string()));
+    let err = map_gui_error(GuiInteractionError::NotFound {
+        code: oneshim_core::error_codes::GuiCode::NotFound,
+        name: "s1".to_string(),
+    });
     assert!(matches!(err, ApiError::NotFound(_)));
 }
 
 #[test]
 fn maps_bad_request_to_400() {
-    let err = map_gui_error(GuiInteractionError::BadRequest("bad".to_string()));
+    let err = map_gui_error(GuiInteractionError::BadRequest {
+        code: oneshim_core::error_codes::GuiCode::BadRequest,
+        message: "bad".to_string(),
+    });
     assert!(matches!(err, ApiError::BadRequest(_)));
 }
 
 #[test]
 fn maps_forbidden_to_403() {
-    let err = map_gui_error(GuiInteractionError::Forbidden("denied".to_string()));
+    let err = map_gui_error(GuiInteractionError::Forbidden {
+        code: oneshim_core::error_codes::GuiCode::Forbidden,
+        message: "denied".to_string(),
+    });
     assert!(matches!(err, ApiError::Forbidden(_)));
 }
 
 #[test]
 fn maps_focus_drift_to_409_conflict() {
-    let err = map_gui_error(GuiInteractionError::FocusDrift("drift".to_string()));
+    let err = map_gui_error(GuiInteractionError::FocusDrift {
+        code: oneshim_core::error_codes::GuiCode::FocusDrift,
+        message: "drift".to_string(),
+    });
     assert!(matches!(err, ApiError::Conflict(_)));
 }
 
 #[test]
 fn maps_ticket_invalid_to_422() {
-    let err = map_gui_error(GuiInteractionError::TicketInvalid("expired".to_string()));
+    let err = map_gui_error(GuiInteractionError::TicketInvalid {
+        code: oneshim_core::error_codes::GuiCode::TicketInvalid,
+        message: "expired".to_string(),
+    });
     assert!(matches!(err, ApiError::Unprocessable(_)));
 }
 
 #[test]
 fn maps_unavailable_to_503() {
-    let err = map_gui_error(GuiInteractionError::Unavailable("down".to_string()));
+    let err = map_gui_error(GuiInteractionError::Unavailable {
+        code: oneshim_core::error_codes::GuiCode::Unavailable,
+        message: "down".to_string(),
+    });
     assert!(matches!(err, ApiError::ServiceUnavailable(_)));
 }
 
 #[test]
 fn maps_internal_to_500() {
-    let err = map_gui_error(GuiInteractionError::Internal("crash".to_string()));
+    let err = map_gui_error(GuiInteractionError::Internal {
+        code: oneshim_core::error_codes::GuiCode::InternalError,
+        message: "crash".to_string(),
+    });
     assert!(matches!(err, ApiError::Internal(_)));
 }
 

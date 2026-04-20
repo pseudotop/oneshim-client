@@ -87,16 +87,19 @@ impl OcrValidationConfig {
         }
 
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
-            return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.min_confidence` must be within 0.0..=1.0.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::OutOfRange,
+                message: "`ai_provider.ocr_validation.min_confidence` must be within 0.0..=1.0."
+                    .to_string(),
+            });
         }
 
         if !self.max_invalid_ratio.is_finite() || !(0.0..=1.0).contains(&self.max_invalid_ratio) {
-            return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.max_invalid_ratio` must be within 0.0..=1.0."
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::OutOfRange,
+                message: "`ai_provider.ocr_validation.max_invalid_ratio` must be within 0.0..=1.0."
                     .to_string(),
-            ));
+            });
         }
 
         Ok(())
@@ -143,9 +146,10 @@ impl SceneActionOverrideConfig {
 
         let reason = self.reason.as_deref().map(str::trim).unwrap_or_default();
         if reason.is_empty() {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.reason` is required.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Missing,
+                message: "`ai_provider.scene_action_override.reason` is required.".to_string(),
+            });
         }
 
         let approved_by = self
@@ -154,21 +158,23 @@ impl SceneActionOverrideConfig {
             .map(str::trim)
             .unwrap_or_default();
         if approved_by.is_empty() {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.approved_by` is required.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Missing,
+                message: "`ai_provider.scene_action_override.approved_by` is required.".to_string(),
+            });
         }
 
-        let expires_at = self.expires_at.ok_or_else(|| {
-            CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` is required.".to_string(),
-            )
+        let expires_at = self.expires_at.ok_or_else(|| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: "`ai_provider.scene_action_override.expires_at` is required.".to_string(),
         })?;
 
         if expires_at <= Utc::now() {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` must be in the future.".to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::Invalid,
+                message: "`ai_provider.scene_action_override.expires_at` must be in the future."
+                    .to_string(),
+            });
         }
 
         Ok(())
@@ -215,30 +221,29 @@ impl Default for SceneIntelligenceConfig {
 impl SceneIntelligenceConfig {
     pub fn validate(&self) -> Result<(), CoreError> {
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.min_confidence` must be within 0.0..=1.0."
-                    .to_string(),
-            ));
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::OutOfRange,
+                message:
+                    "`ai_provider.scene_intelligence.min_confidence` must be within 0.0..=1.0."
+                        .to_string(),
+            });
         }
         if self.max_elements == 0 || self.max_elements > 1000 {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.max_elements` must be within 1..=1000."
+            return Err(CoreError::Config {
+                code: crate::error_codes::ConfigCode::OutOfRange,
+                message: "`ai_provider.scene_intelligence.max_elements` must be within 1..=1000."
                     .to_string(),
-            ));
+            });
         }
         if self.calibration_min_elements == 0 || self.calibration_min_elements > 1000 {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_elements` must be within 1..=1000."
-                    .to_string(),
-            ));
+            return Err(CoreError::Config { code: crate::error_codes::ConfigCode::OutOfRange, message: "`ai_provider.scene_intelligence.calibration_min_elements` must be within 1..=1000."
+                    .to_string() });
         }
         if !self.calibration_min_avg_confidence.is_finite()
             || !(0.0..=1.0).contains(&self.calibration_min_avg_confidence)
         {
-            return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_avg_confidence` must be within 0.0..=1.0."
-                    .to_string(),
-            ));
+            return Err(CoreError::Config { code: crate::error_codes::ConfigCode::OutOfRange, message: "`ai_provider.scene_intelligence.calibration_min_avg_confidence` must be within 0.0..=1.0."
+                    .to_string() });
         }
         Ok(())
     }
@@ -280,4 +285,100 @@ fn default_scene_calibration_min_elements() -> usize {
 
 fn default_scene_calibration_min_avg_confidence() -> f64 {
     0.55
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression guard: range-check validation errors emit the
+    /// `config.out_of_range` wire code, not `config.invalid`. Pre-iter-89
+    /// these were incorrectly labelled Invalid, conflating range violations
+    /// with format/unsupported-value violations in Grafana group-by.
+    #[test]
+    fn ocr_min_confidence_out_of_range_emits_out_of_range_code() {
+        let cfg = OcrValidationConfig {
+            enabled: true,
+            min_confidence: 1.5, // out of 0.0..=1.0
+            max_invalid_ratio: 0.5,
+        };
+        let err = cfg.validate().expect_err("expected range-check error");
+        assert_eq!(err.code(), "config.out_of_range");
+    }
+
+    #[test]
+    fn ocr_max_invalid_ratio_out_of_range_emits_out_of_range_code() {
+        let cfg = OcrValidationConfig {
+            enabled: true,
+            min_confidence: 0.5,
+            max_invalid_ratio: 2.0, // out of 0.0..=1.0
+        };
+        let err = cfg.validate().expect_err("expected range-check error");
+        assert_eq!(err.code(), "config.out_of_range");
+    }
+
+    #[test]
+    fn scene_max_elements_out_of_range_emits_out_of_range_code() {
+        let cfg = SceneIntelligenceConfig {
+            max_elements: 5000, // out of 1..=1000
+            ..SceneIntelligenceConfig::default()
+        };
+        let err = cfg.validate().expect_err("expected range-check error");
+        assert_eq!(err.code(), "config.out_of_range");
+    }
+
+    /// Regression guard: required-field-absent validation errors emit the
+    /// `config.missing` wire code, not `config.invalid`. Pre-iter-89 these
+    /// were incorrectly labelled Invalid across ai.rs, helpers.rs, and
+    /// config_manager.rs env-var lookups.
+    #[test]
+    fn scene_action_override_missing_reason_emits_missing_code() {
+        let cfg = SceneActionOverrideConfig {
+            enabled: true,
+            reason: None,
+            approved_by: Some("alice@example.com".to_string()),
+            expires_at: Some(Utc::now() + chrono::Duration::hours(1)),
+        };
+        let err = cfg.validate().expect_err("expected missing-field error");
+        assert_eq!(err.code(), "config.missing");
+    }
+
+    #[test]
+    fn scene_action_override_missing_approved_by_emits_missing_code() {
+        let cfg = SceneActionOverrideConfig {
+            enabled: true,
+            reason: Some("maintenance override".to_string()),
+            approved_by: None,
+            expires_at: Some(Utc::now() + chrono::Duration::hours(1)),
+        };
+        let err = cfg.validate().expect_err("expected missing-field error");
+        assert_eq!(err.code(), "config.missing");
+    }
+
+    #[test]
+    fn scene_action_override_missing_expires_at_emits_missing_code() {
+        let cfg = SceneActionOverrideConfig {
+            enabled: true,
+            reason: Some("maintenance override".to_string()),
+            approved_by: Some("alice@example.com".to_string()),
+            expires_at: None,
+        };
+        let err = cfg.validate().expect_err("expected missing-field error");
+        assert_eq!(err.code(), "config.missing");
+    }
+
+    /// Regression guard: expires_at in the PAST is semantically Invalid
+    /// (value present but illegal), distinct from the Missing cases above.
+    /// Keeps both codes exercised so future drift doesn't collapse them.
+    #[test]
+    fn scene_action_override_expired_time_emits_invalid_code() {
+        let cfg = SceneActionOverrideConfig {
+            enabled: true,
+            reason: Some("maintenance override".to_string()),
+            approved_by: Some("alice@example.com".to_string()),
+            expires_at: Some(Utc::now() - chrono::Duration::hours(1)),
+        };
+        let err = cfg.validate().expect_err("expected invalid-value error");
+        assert_eq!(err.code(), "config.invalid");
+    }
 }

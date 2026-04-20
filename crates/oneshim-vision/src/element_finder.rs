@@ -234,9 +234,11 @@ impl ElementFinder for OcrElementFinder {
         region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
         let image_guard = self.last_image.read().await;
-        let (image_data, image_format) = image_guard.as_ref().ok_or_else(|| {
-            CoreError::Internal("OCR finder: captured image is missing".to_string())
-        })?;
+        let (image_data, image_format) =
+            image_guard.as_ref().ok_or_else(|| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: "OCR finder: captured image is missing".to_string(),
+            })?;
 
         debug!(
             provider = self.ocr_provider.provider_name(),
@@ -327,10 +329,13 @@ impl ElementFinder for ChainedElementFinder {
                 }
             }
         }
-        Err(CoreError::ElementNotFound(format!(
-            "No element found in all finders (text={:?}, role={:?})",
-            text, role
-        )))
+        Err(CoreError::ElementNotFound {
+            code: oneshim_core::error_codes::UiCode::ElementMissing,
+            name: format!(
+                "No element found in all finders (text={:?}, role={:?})",
+                text, role
+            ),
+        })
     }
 
     async fn analyze_scene(
@@ -355,8 +360,9 @@ impl ElementFinder for ChainedElementFinder {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound("No finder supports scene analysis".to_string())
+        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFound {
+            code: oneshim_core::error_codes::UiCode::ElementMissing,
+            name: "No finder supports scene analysis".to_string(),
         }))
     }
 
@@ -392,8 +398,9 @@ impl ElementFinder for ChainedElementFinder {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound("No finder supports image scene analysis".to_string())
+        Err(last_err.unwrap_or_else(|| CoreError::ElementNotFound {
+            code: oneshim_core::error_codes::UiCode::ElementMissing,
+            name: "No finder supports image scene analysis".to_string(),
         }))
     }
 
@@ -665,7 +672,10 @@ mod tests {
             _role: Option<&str>,
             _region: Option<&ElementBounds>,
         ) -> Result<Vec<UiElement>, CoreError> {
-            Err(CoreError::Internal("Search failed".to_string()))
+            Err(CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: "Search failed".to_string(),
+            })
         }
         fn name(&self) -> &str {
             "failing"

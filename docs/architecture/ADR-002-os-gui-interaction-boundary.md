@@ -2,9 +2,9 @@
 
 # ADR-002: OS GUI Interaction Boundary and Runtime Split
 
-**Status**: Proposed
+**Status**: Accepted (promoted from Proposed 2026-04-20; M3 native-adapter implementation complete — see CLAUDE.md "ADR-002 M3 (Native Adapters)" section for shipped scope)
 **Date**: 2026-02-25
-**Scope**: `oneshim-core`, `oneshim-automation`, `oneshim-web`, `oneshim-ui`, `oneshim-app`
+**Scope**: `oneshim-core` (`ElementFinder` / `OverlayDriver` / `FocusProbe` / `InputDriver` ports), `oneshim-automation` (session state machine, capability/ticket handling), `oneshim-vision` (R-tree spatial index, app-specific element type overrides, accessibility adapters), `oneshim-web` (capability-token handler), `src-tauri` (`MagicOverlayDriver` — the WebView bridge that replaced the originally-planned `oneshim-ui` native overlay after ADR-004's Tauri v2 migration)
 
 ---
 
@@ -122,7 +122,7 @@ Overlay implementation requirements:
 - Includes session/candidate marker for operator traceability
 - Cleared on timeout, cancel, or completion
 
-Overlay capability may live in `oneshim-ui` or move to a dedicated adapter crate without changing core ports.
+Overlay capability ships in `src-tauri` as `MagicOverlayDriver` (WebView bridge; replaces the originally-planned native `oneshim-ui` overlay after ADR-004 Tauri v2 migration). Ports remain unchanged — callers depend on `OverlayDriver` trait from `oneshim-core`.
 
 ### 10. Use a dedicated GUI session SSE stream
 
@@ -141,9 +141,9 @@ Existing `GET /api/stream` may publish coarse operational summaries, but it is n
 |------|-------------------------------|
 | `oneshim-core` | Focus/overlay/session/ticket ports and domain contracts |
 | `oneshim-automation` | `GuiInteractionService` orchestration (`propose -> highlight -> confirm -> execute`) + policy/privacy/audit + session state |
+| `oneshim-vision` | Accessibility adapters (macOS AX / Windows UIA / Linux AT-SPI), R-tree spatial index, `ElementFinder` implementations |
 | `oneshim-web` | Thin transport handlers, validation, session APIs, SSE event publication |
-| `oneshim-ui` | Native overlay adapter implementation (or extraction target for dedicated overlay adapter crate) |
-| `oneshim-app` | Composition root wiring for `OverlayDriver`, `FocusProbe`, `ElementFinder`, `InputDriver` |
+| `src-tauri` (pkg `oneshim-app`) | Composition root wiring + `MagicOverlayDriver` (WebView overlay bridge, replaces the originally-planned `oneshim-ui` native overlay per ADR-004) for `OverlayDriver`, `FocusProbe`, `ElementFinder`, `InputDriver` |
 
 Dependency direction remains unchanged: adapters communicate through `oneshim-core` ports.
 

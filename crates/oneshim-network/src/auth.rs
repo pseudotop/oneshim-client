@@ -121,18 +121,43 @@ impl TokenManager {
             .json(&body)
             .send()
             .await
-            .map_err(|e| CoreError::Auth(format!("login request failure: {e}")))?;
+            .map_err(|e| CoreError::Auth {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!("login request failure: {e}"),
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(CoreError::Auth(format!("login failure ({status}): {text}")));
+            let message = format!("login failure ({status}): {text}");
+            // Semantic status mapping per iter-54..60. For login specifically,
+            // 401/403 are definitive auth failures, but 429/503/504 indicate
+            // transient auth-service issues that frontend should surface
+            // differently (e.g., "try again shortly" vs "credentials wrong").
+            return Err(match status.as_u16() {
+                408 | 504 => CoreError::RequestTimeout {
+                    code: oneshim_core::error_codes::NetworkCode::Timeout,
+                    timeout_ms: 0,
+                },
+                429 => CoreError::RateLimit {
+                    code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                    retry_after_secs: 60,
+                },
+                502 | 503 => CoreError::ServiceUnavailable {
+                    code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                    message,
+                },
+                _ => CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message,
+                },
+            });
         }
 
-        let token_resp: TokenResponse = resp
-            .json()
-            .await
-            .map_err(|e| CoreError::Auth(format!("Token parsing failed: {e}")))?;
+        let token_resp: TokenResponse = resp.json().await.map_err(|e| CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: format!("Token parsing failed: {e}"),
+        })?;
 
         let expires_at = Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
 
@@ -157,14 +182,21 @@ impl TokenManager {
             state.clone()
         };
 
-        let current = current.ok_or_else(|| CoreError::Auth("Not authenticated".to_string()))?;
-        let refresh_token = current
-            .refresh_token
-            .ok_or_else(|| CoreError::Auth("Refresh token is missing".to_string()))?;
+        let current = current.ok_or_else(|| CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: "Not authenticated".to_string(),
+        })?;
+        let refresh_token = current.refresh_token.ok_or_else(|| CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: "Refresh token is missing".to_string(),
+        })?;
 
         let url = format!("{}/api/v1/auth/tokens/refresh", self.base_url);
 
-        let mut last_err = CoreError::Auth("token refresh failed".to_string());
+        let mut last_err = CoreError::Auth {
+            code: oneshim_core::error_codes::AuthCode::Failed,
+            message: "token refresh failed".to_string(),
+        };
 
         for attempt in 0..=MAX_RETRIES {
             let body = serde_json::json!({
@@ -178,9 +210,11 @@ impl TokenManager {
                     let status = resp.status();
 
                     if status.is_success() {
-                        let token_resp: TokenResponse = resp.json().await.map_err(|e| {
-                            CoreError::Auth(format!("refresh Token parsing failed: {e}"))
-                        })?;
+                        let token_resp: TokenResponse =
+                            resp.json().await.map_err(|e| CoreError::Auth {
+                                code: oneshim_core::error_codes::AuthCode::Failed,
+                                message: format!("refresh Token parsing failed: {e}"),
+                            })?;
 
                         let expires_at =
                             Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
@@ -213,15 +247,55 @@ impl TokenManager {
                     let is_retryable = status.is_server_error() || status.as_u16() == 429;
 
                     let text = resp.text().await.unwrap_or_default();
-                    last_err = CoreError::Auth(format!("token refresh failure ({status}): {text}"));
+                    let message = format!("token refresh failure ({status}): {text}");
+                    // Iter-98: apply canonical HTTP status mapping consistent
+                    // with login() (lines 137-154). Previously all non-2xx
+                    // statuses mapped to CoreError::Auth, conflating
+                    // transient service issues (5xx, 429) with genuine
+                    // auth failures (401/403). Aligning with the canonical
+                    // pattern from docs/guides/http-status-error-mapping.md
+                    // lets telemetry distinguish "auth provider is down"
+                    // from "credentials rejected".
+                    last_err = match status.as_u16() {
+                        408 | 504 => CoreError::RequestTimeout {
+                            code: oneshim_core::error_codes::NetworkCode::Timeout,
+                            timeout_ms: 0,
+                        },
+                        429 => CoreError::RateLimit {
+                            code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                            retry_after_secs: 60,
+                        },
+                        502 | 503 => CoreError::ServiceUnavailable {
+                            code: oneshim_core::error_codes::ServiceCode::Unavailable,
+                            message,
+                        },
+                        _ => CoreError::Auth {
+                            code: oneshim_core::error_codes::AuthCode::Failed,
+                            message,
+                        },
+                    };
 
                     if !is_retryable {
                         return Err(last_err);
                     }
                 }
                 Err(e) => {
-                    // Network errors are retryable
-                    last_err = CoreError::Auth(format!("token refresh request failure: {e}"));
+                    // Iter-98: reqwest transport failure (pre-HTTP-status)
+                    // — split timeout vs connection error per canonical
+                    // pattern (same as cloud_stt.rs:107 / http_client.rs).
+                    // Previously all transport errors were mis-labelled
+                    // as `auth.failed`.
+                    last_err = if e.is_timeout() {
+                        CoreError::RequestTimeout {
+                            code: oneshim_core::error_codes::NetworkCode::Timeout,
+                            timeout_ms: 0,
+                        }
+                    } else {
+                        CoreError::Network {
+                            code: oneshim_core::error_codes::NetworkCode::Generic,
+                            message: format!("token refresh request failure: {e}"),
+                        }
+                    };
                 }
             }
 
@@ -245,14 +319,22 @@ impl TokenManager {
             let state = self.state.read().await;
             match &*state {
                 Some(s) => Utc::now() + Duration::minutes(5) >= s.expires_at,
-                None => return Err(CoreError::Auth("Not authenticated".to_string())),
+                None => {
+                    return Err(CoreError::Auth {
+                        code: oneshim_core::error_codes::AuthCode::Failed,
+                        message: "Not authenticated".to_string(),
+                    })
+                }
             }
         };
 
         if needs_refresh {
             self.refresh().await.map_err(|e| {
                 warn!("token refresh failure: {e}");
-                CoreError::Auth(format!("Automatic token refresh failed: {e}"))
+                CoreError::Auth {
+                    code: oneshim_core::error_codes::AuthCode::Failed,
+                    message: format!("Automatic token refresh failed: {e}"),
+                }
             })?;
         }
 
@@ -260,7 +342,10 @@ impl TokenManager {
         state
             .as_ref()
             .map(|s| s.access_token.clone())
-            .ok_or_else(|| CoreError::Auth("Not authenticated".to_string()))
+            .ok_or_else(|| CoreError::Auth {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: "Not authenticated".to_string(),
+            })
     }
 
     pub async fn verify(&self) -> Result<bool, CoreError> {
@@ -273,7 +358,10 @@ impl TokenManager {
             .bearer_auth(&token)
             .send()
             .await
-            .map_err(|e| CoreError::Auth(format!("token validation request failure: {e}")))?;
+            .map_err(|e| CoreError::Auth {
+                code: oneshim_core::error_codes::AuthCode::Failed,
+                message: format!("token validation request failure: {e}"),
+            })?;
 
         Ok(resp.status().is_success())
     }
@@ -575,5 +663,130 @@ mod tests {
         let err = format!("{}", result.unwrap_err());
         assert!(err.contains("token refresh failure"));
         mock.assert_async().await;
+    }
+
+    // iter-70 regression guards for iter-61a semantic HTTP status mapping
+    // in auth.rs::login. Shared helper pattern matches iter-67..69.
+    async fn run_login_status_test(status: u16) -> oneshim_core::error::CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/api/v1/auth/tokens")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+        let tm = TokenManager::new(&server.url());
+        tm.login("u@test.com", "p").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn login_429_maps_to_rate_limit() {
+        let err = run_login_status_test(429).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_503_maps_to_service_unavailable() {
+        let err = run_login_status_test(503).await;
+        assert!(
+            matches!(
+                err,
+                oneshim_core::error::CoreError::ServiceUnavailable { .. }
+            ),
+            "503 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_504_maps_to_timeout() {
+        let err = run_login_status_test(504).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_401_stays_as_auth() {
+        // Sanity check: 401 (the "normal" login failure) still maps to
+        // CoreError::Auth so iter-61a didn't regress the common case.
+        let err = run_login_status_test(401).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::Auth { .. }),
+            "401 → Auth, got: {err:?}"
+        );
+    }
+
+    /// iter-79: domain-fallback guard for login. 500 (not in specific arms)
+    /// falls back to CoreError::Auth/Failed — the login-endpoint-appropriate
+    /// wildcard. Catches regressions that broaden the transient-class arms
+    /// (429/502/503/504) into the 5xx space.
+    #[tokio::test]
+    async fn login_500_falls_back_to_auth() {
+        let err = run_login_status_test(500).await;
+        assert!(
+            matches!(err, oneshim_core::error::CoreError::Auth { .. }),
+            "500 should fall back to Auth (domain-appropriate for login endpoint), got: {err:?}"
+        );
+    }
+
+    // iter-98 regression guards: refresh() must apply canonical HTTP status
+    // mapping, not blanket-label every error as CoreError::Auth. The 503
+    // path in particular exercised the retry loop — prior to iter-98 all
+    // 4 retry attempts emitted CoreError::Auth, masking the transient
+    // service-unavailability signal.
+    async fn run_refresh_status_test(status: u16) -> oneshim_core::error::CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/api/v1/auth/tokens/refresh")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .expect_at_least(1)
+            .create_async()
+            .await;
+        let tm = TokenManager::new(&server.url());
+        {
+            let mut state = tm.state.write().await;
+            *state = Some(TokenState {
+                access_token: "old_jwt".to_string(),
+                refresh_token: Some("ref_tok".to_string()),
+                expires_at: Utc::now() + Duration::hours(1),
+            });
+        }
+        tm.refresh().await.unwrap_err()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_503_maps_to_service_unavailable() {
+        let err = run_refresh_status_test(503).await;
+        assert_eq!(err.code(), "service.unavailable");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_429_maps_to_rate_limit() {
+        let err = run_refresh_status_test(429).await;
+        assert_eq!(err.code(), "network.rate_limit");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_504_maps_to_timeout() {
+        let err = run_refresh_status_test(504).await;
+        assert_eq!(err.code(), "network.timeout");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_401_maps_to_auth() {
+        let err = run_refresh_status_test(401).await;
+        assert_eq!(err.code(), "auth.failed");
+    }
+
+    /// Domain-fallback: 500 falls back to Auth (refresh is auth-domain).
+    #[tokio::test(start_paused = true)]
+    async fn refresh_500_falls_back_to_auth() {
+        let err = run_refresh_status_test(500).await;
+        assert_eq!(err.code(), "auth.failed");
     }
 }

@@ -33,6 +33,21 @@ pub struct SkillContext {
     pub active_skill_body: Option<String>,
 }
 
+/// LLM provider port — interprets user intent from screen context.
+///
+/// # Errors
+/// - `CoreError::Analysis` (wire: `provider.analysis_failed`) for LLM-side
+///   failures: empty response, non-parseable intent output, malformed JSON.
+/// - HTTP-layer failures follow the canonical semantic status mapping:
+///   `CoreError::Auth` (401/403), `CoreError::RequestTimeout` (408/504),
+///   `CoreError::RateLimit` (429), `CoreError::ServiceUnavailable` (502/503).
+///   See `docs/guides/http-status-error-mapping.md`.
+/// - `CoreError::Config` with `ConfigCode::UnsupportedProviderBedrock`
+///   (wire: `provider.bedrock.unsupported`) when an adapter resolves an
+///   AWS Bedrock provider — AWS SigV4 is intentionally unsupported per
+///   ADR-019 §3 (re-introduction requires the §5 8-step checklist).
+/// - `CoreError::Network` (wire: `network.generic`) for pre-response
+///   transport failures (DNS, connection refused).
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn interpret_intent(

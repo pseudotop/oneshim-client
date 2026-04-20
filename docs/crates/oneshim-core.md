@@ -18,10 +18,11 @@ oneshim-core/src/
 ├── config/          # AppConfig and configuration sections — directory module (ADR-003)
 │   ├── mod.rs       # AppConfig struct + Default + re-exports
 │   ├── enums.rs     # PiiFilterLevel, Weekday, SandboxProfile, AiAccessMode, etc.
-│   └── sections.rs  # 20 config section structs + Default impls
+│   └── sections/    # 37 config section structs across per-domain files + Default impls (directory module per ADR-003)
 ├── config_manager.rs # JSON-based config file management + platform-specific paths
 ├── consent.rs       # ConsentManager, GDPR Article 17/20 compliance
-├── error.rs         # CoreError enum (thiserror, 23 variants)
+├── error.rs         # CoreError enum (thiserror, 38 variants; typed `code: XxxCode` fields per ADR-019)
+├── error_codes/     # 18 typed code enums generated via `define_code_enum!` macro (ADR-019)
 ├── models/          # Domain models
 │   ├── mod.rs
 │   ├── suggestion.rs   # Suggestion, SuggestionType, Priority
@@ -302,9 +303,7 @@ pub enum CoreError {
 
     // Policy/automation errors
     #[error("Policy denied: {0}")] PolicyDenied(String),
-    #[error("Process not allowed: {0}")] ProcessNotAllowed(String),
     #[error("Invalid arguments: {0}")] InvalidArguments(String),
-    #[error("Binary hash mismatch")] BinaryHashMismatch { expected: String, actual: String },
 
     // Consent errors
     #[error("Consent required: {0}")] ConsentRequired(String),
@@ -405,7 +404,7 @@ pub enum ExternalDataPolicy {
 /// Distinguishes providers via explicit enum instead of URL string matching.
 /// Designed with a config-file-driven approach so no specific vendor holds
 /// privileges in the OSS architecture.
-/// `ai_llm_client.rs` and `ai_ocr_client.rs` read this value to perform
+/// `ai_llm_client/` and `ai_ocr_client/` (directory modules per ADR-003) read this value to perform
 /// vendor-neutral branching that determines request format and auth headers.
 pub enum AiProviderType {
     Anthropic,  // Anthropic Claude API — x-api-key header + /v1/messages format

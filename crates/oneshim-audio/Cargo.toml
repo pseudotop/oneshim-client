@@ -31,3 +31,5 @@ futures-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+mockito = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

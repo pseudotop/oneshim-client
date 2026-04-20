@@ -15,9 +15,10 @@ impl LocalSuggestionQueryPort for SqliteStorage {
     ) -> Result<Vec<LocalSuggestionRecord>, CoreError> {
         let storage = self.conn.clone();
         tokio::task::spawn_blocking(move || {
-            let guard = storage
-                .lock()
-                .map_err(|err| CoreError::Internal(format!("SQLite lock poisoned: {err}")))?;
+            let guard = storage.lock().map_err(|err| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("SQLite lock poisoned: {err}"),
+            })?;
 
             let sql = if after_id.is_some() {
                 "SELECT id, suggestion_type, payload, created_at, shown_at, dismissed_at, acted_at
@@ -32,9 +33,10 @@ impl LocalSuggestionQueryPort for SqliteStorage {
                  LIMIT ?1"
             };
 
-            let mut stmt = guard
-                .prepare(sql)
-                .map_err(|err| CoreError::Internal(format!("Failed to prepare query: {err}")))?;
+            let mut stmt = guard.prepare(sql).map_err(|err| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("Failed to prepare query: {err}"),
+            })?;
 
             let rows = if let Some(after_id) = after_id {
                 stmt.query_map(
@@ -44,18 +46,25 @@ impl LocalSuggestionQueryPort for SqliteStorage {
             } else {
                 stmt.query_map(rusqlite::params![limit as i64], map_local_suggestion_row)
             }
-            .map_err(|err| CoreError::Internal(format!("Failed to execute query: {err}")))?;
+            .map_err(|err| CoreError::Storage {
+                code: oneshim_core::error_codes::StorageCode::Failed,
+                message: format!("Failed to execute query: {err}"),
+            })?;
 
             let mut records = Vec::new();
             for row in rows {
-                records.push(
-                    row.map_err(|err| CoreError::Internal(format!("Failed to read row: {err}")))?,
-                );
+                records.push(row.map_err(|err| CoreError::Storage {
+                    code: oneshim_core::error_codes::StorageCode::Failed,
+                    message: format!("Failed to read row: {err}"),
+                })?);
             }
             Ok(records)
         })
         .await
-        .map_err(|err| CoreError::Internal(format!("spawn_blocking join error: {err}")))?
+        .map_err(|err| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
+            message: format!("spawn_blocking join error: {err}"),
+        })?
     }
 }
 

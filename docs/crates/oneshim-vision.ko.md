@@ -16,19 +16,32 @@ Edge 이미지 처리를 담당하는 크레이트. 스크린 캡처, 델타 인
 
 ```
 oneshim-vision/src/
-├── lib.rs         # 크레이트 루트
-├── capture.rs     # ScreenCapture - 화면 캡처
-├── trigger.rs     # SmartCaptureTrigger - 캡처 결정
-├── delta.rs       # DeltaEncoder - 변경 영역 추출
-├── encoder.rs     # WebpEncoder - 이미지 압축
-├── thumbnail.rs   # ThumbnailGenerator - 썸네일 생성
-├── processor.rs   # EdgeFrameProcessor - 통합 처리
-├── ocr.rs         # OcrExtractor - 텍스트 추출
-├── local_ocr_provider.rs # 로컬 OCR 제공자 어댑터
-├── element_finder.rs # OCR 텍스트 매칭 + UiScene 구성
-├── privacy.rs     # PII 마커 감지 + 제목/텍스트 세정
-├── privacy_gateway.rs # 외부 OCR 프라이버시 게이트 + OCR 영역 블러
-└── timeline.rs    # FrameTimeline - 프레임 이력
+├── lib.rs                  # 크레이트 루트
+├── capture.rs              # ScreenCapture - xcap 기반 멀티모니터 캡처
+├── trigger.rs              # SmartCaptureTrigger - 이벤트 분류 + 중요도 + 쓰로틀
+├── delta.rs                # DeltaEncoder - 16×16 tile 비교 → 변경 영역 추출
+├── encoder.rs              # WebpEncoder - Low/Medium/High 품질 + 통계 기반 품질 예측
+├── thumbnail.rs            # ThumbnailGenerator - fast_image_resize + LRU 캐시 (100 entry, FNV-1a)
+├── ring_buffer.rs          # 프레임 ring buffer (경계 있음)
+├── processor.rs            # EdgeFrameProcessor - 중요도 기반 분기 통합 처리
+├── ocr.rs                  # OcrExtractor - leptess/Tesseract OCR (#[cfg(feature = "ocr")])
+├── local_ocr_provider.rs   # 로컬 OCR 제공자 어댑터
+├── element_finder.rs       # ElementFinder - OCR 텍스트 매칭 + UiScene 구성 + R-tree 공간 인덱스(rstar)
+├── work_classifier.rs      # 프레임 특성 기반 활동 분류
+├── privacy.rs              # PII 필터 레벨 (Off/Basic/Standard/Strict) + 민감 앱 자동 감지
+├── privacy_gateway.rs      # 중앙 프라이버시 게이트웨이 (필터 + OCR 영역 블러 래핑)
+├── timeline.rs             # FrameTimeline - 인메모리 프레임 이력 + 필터
+├── gui_detector/           # GUI 요소 감지 (디렉토리 모듈, ADR-003)
+├── contour_classifier/     # OpenCV-like contour 기반 분류기 (디렉토리 모듈)
+├── ml_classifier/          # ML 기반 분류기 추론 파이프라인 (디렉토리 모듈)
+├── native_detect/          # 네이티브 플랫폼 GUI 감지 (디렉토리 모듈)
+├── native_ocr/             # 네이티브 플랫폼 OCR (디렉토리 모듈)
+├── accessibility/          # 플랫폼 접근성 어댑터:
+│   ├── macos/              # AX tree extractor + notification observer (디렉토리 모듈)
+│   ├── windows.rs          # Windows UIA CacheRequest
+│   ├── linux.rs            # Linux AT-SPI (atspi 0.29)
+│   └── ffi_macos.rs        # macOS FFI 헬퍼
+└── error.rs                # VisionError (ADR-019 typed code)
 ```
 
 ## 핵심 개념: 중요도 기반 처리

@@ -67,7 +67,7 @@ async fn vs_store_empty_vector_returns_invalid_args() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
-        matches!(err, CoreError::InvalidArguments(_)),
+        matches!(err, CoreError::InvalidArguments { .. }),
         "expected InvalidArguments, got: {err}"
     );
 }
@@ -123,7 +123,7 @@ async fn vs_store_quantized_empty_int8_rejected() {
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
-        CoreError::InvalidArguments(_)
+        CoreError::InvalidArguments { .. }
     ));
 }
 
@@ -140,7 +140,7 @@ async fn vs_store_quantized_dimension_mismatch_rejected() {
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
-        CoreError::InvalidArguments(_)
+        CoreError::InvalidArguments { .. }
     ));
 }
 

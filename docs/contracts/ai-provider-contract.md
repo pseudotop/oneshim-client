@@ -10,9 +10,9 @@ This document defines the versioned request/response contract expected by the re
 
 ## Scope
 
-- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client.rs`)
-- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client.rs`)
-- Adapter resolution and fallback (`crates/oneshim-app/src/provider_adapters.rs`)
+- `RemoteLlmProvider` (`crates/oneshim-network/src/ai_llm_client/` — directory module per ADR-003)
+- `RemoteOcrProvider` (`crates/oneshim-network/src/ai_ocr_client/` — directory module per ADR-003)
+- Adapter resolution and fallback (`src-tauri/src/provider_adapters/` — directory module; path changed from `crates/oneshim-app/` per ADR-004 Tauri v2 migration)
 
 ## Provider Types
 
@@ -104,10 +104,21 @@ Provider-specific parsing path:
 
 ## Failure semantics
 
-1. Non-2xx response => adapter error (`CoreError::Network` or `CoreError::OcrError`).
-2. Parse mismatch => adapter error (`CoreError::Internal` for LLM, `CoreError::OcrError` for OCR).
-3. When fallback is enabled (`fallback_to_local=true`), adapter resolution MAY switch to local providers.
-4. When fallback is disabled, invalid remote config or adapter init errors MUST fail closed.
+1. Non-2xx response => adapter error, routed through semantic HTTP status mapping
+   (wire codes: `auth.failed`, `network.timeout`, `network.rate_limit`,
+   `service.unavailable`, domain-fallback `provider.ocr_failed` /
+   `provider.analysis_failed` / `network.generic`). See
+   [`docs/guides/http-status-error-mapping.md`](../guides/http-status-error-mapping.md).
+2. Parse mismatch => adapter error.
+   - **LLM**: `CoreError::Analysis { ProviderCode::AnalysisFailed }` (wire:
+     `provider.analysis_failed`). Post iter-93 drift fix; previously was
+     `CoreError::Internal` which hid provider misbehaviour in telemetry.
+   - **OCR**: `CoreError::OcrError { ProviderCode::OcrFailed }` (wire:
+     `provider.ocr_failed`).
+3. When fallback is enabled (`fallback_to_local=true`), adapter resolution
+   MAY switch to local providers.
+4. When fallback is disabled, invalid remote config or adapter init errors
+   MUST fail closed.
 
 ## Runtime fallback visibility
 

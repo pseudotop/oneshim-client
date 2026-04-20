@@ -65,6 +65,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
             .session
             .clone()
             .ok_or_else(|| CoreError::Validation {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field: "integration.bootstrap.session".to_string(),
                 message: "bootstrap response did not include a session binding.".to_string(),
             })?;
@@ -97,6 +98,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                 .channel_url
                 .clone()
                 .ok_or_else(|| CoreError::Validation {
+                    code: oneshim_core::error_codes::ValidationCode::InvalidField,
                     field: "integration.bootstrap.session.channel_url".to_string(),
                     message: "websocket session transport requires a channel URL.".to_string(),
                 })?;
@@ -140,6 +142,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                 .get(session_id)
                 .await
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
@@ -155,6 +158,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
         }
 
         let url = binding.heartbeat_url.ok_or_else(|| CoreError::Validation {
+            code: oneshim_core::error_codes::ValidationCode::InvalidField,
             field: "integration.session.heartbeat_url".to_string(),
             message: "active integration session does not have a heartbeat URL.".to_string(),
         })?;
@@ -180,6 +184,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                 .get(session_id)
                 .await
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
@@ -200,6 +205,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
         let url = binding
             .disconnect_url
             .ok_or_else(|| CoreError::Validation {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field: "integration.session.disconnect_url".to_string(),
                 message: "active integration session does not have a disconnect URL.".to_string(),
             })?;

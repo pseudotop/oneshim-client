@@ -27,7 +27,7 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## Current Snapshot (2026-04-19)
+## Current Snapshot (2026-04-20)
 
 ### Version
 
@@ -35,21 +35,21 @@ v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 
 ### Workspace
 
-- **Crates**: 14 (including oneshim-audio)
+- **Packages**: 15 per `cargo metadata --no-deps` (14 crates under `crates/` including `oneshim-sandbox-worker` + `src-tauri`; planned `oneshim-ui` and former `crates/oneshim-app/` removed by ADR-004 Tauri migration)
 - **SQLite schema**: V31 (V31 added by Phase 3 for `regime_manager_state`)
 
-### Workflow Status
+### Workflow Status (as of 2026-04-20 spot-check)
 
-- Latest `main` CI run: failure (`CI`) — [Run 23740715704](https://github.com/pseudotop/oneshim-client/actions/runs/23740715704) (2026-03-30). Root cause: `oneshim-embedding` constructor coverage depended on a live Hugging Face download and failed on HTTP 504.
-- Latest successful full CI run: success (`CI`, PR #263) — [Run 23740036667](https://github.com/pseudotop/oneshim-client/actions/runs/23740036667) (2026-03-30).
-- Latest RC release run: success (`Release`, tag `v0.4.11-rc.2`) — [Run 23740840957](https://github.com/pseudotop/oneshim-client/actions/runs/23740840957) (2026-03-30).
-- Latest successful stable recovery run: success (`Release`, workflow_dispatch for `v0.4.10`) — [Run 23732221718](https://github.com/pseudotop/oneshim-client/actions/runs/23732221718) (2026-03-30).
+- **Latest `main` CI run** (`fix(updater): per-PID boot_count markers ...`): failure — [Run 24623392589](https://github.com/pseudotop/oneshim-client/actions/runs/24623392589) (2026-04-19). Root cause (identified iter-225 post-investigation): cross-platform `Build` matrix jobs fail on `resource path oneshim-sandbox-worker-<triple> doesn't exist` because the Tauri externalBin declaration in `src-tauri/tauri.conf.json` needs a stub file at build time; the `Build` job was missing the stub-touch step that `check` + `test` jobs already had. The initial `[ARTIFACT-DL][ERROR]` in the log was a red herring (continue-on-error: true + fallback stub handle it). **Fixed on `feature/error-code-phase1`** (iter-225 ci.yml Build + iter-226 release-smoke.yml + build-smoke.yml + macos-windowserver-gui-smoke.yml — 4 total workflows). Main-CI should go green once ADR-019 PR merges.
+- **Latest PR-context CI success**: success — [Run 24622597161](https://github.com/pseudotop/oneshim-client/actions/runs/24622597161) (2026-04-19, branch `fix/updater-boot-count-per-pid-markers`). PR CI runs pass reliably — the artifact gap is main-push-only.
+- **Latest Release RC**: success (`Release`, `v0.4.38-rc.4`) — [Run 24570428239](https://github.com/pseudotop/oneshim-client/actions/runs/24570428239) (2026-04-17). Preceded by v0.4.38-rc.3 failure for different root cause.
+- **Most recent stable tag**: v0.4.37 (2026-04-12). Current branch targets v0.4.39-rc.1 → stable via `promote-stable.sh` after ADR-019 PR lands.
 
 ### Local Verification Baseline
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **3,455 passed, 0 failed, 21 ignored** (post-Phase-5-D8 baseline. Cumulative growth from prior 2,995: Phase 2 +11 default + 11 telemetry-only, Phase 3 regime work, Phase 4 Updater Hardening +27, Phase 5-D8 PR1 +17, PR2 +3, PR3 +7. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`).
+- `cargo test --workspace`: pass — **3,651 passed, 0 failed, 21 ignored** (post-ADR-019 + drift-audit + Follow-up baseline. Cumulative growth from prior 3,455: ADR-019 Error Code Infrastructure + C5 Bedrock skip + post-merge drift audit iter 87~214 added ~196 tests — 85+ HTTP status-mapping regression tests across 16 dispatchers, ~38 Internal→specific-variant re-route tests, 4 subprocess_kind (iter-149) + 3 LLM envelope-extraction (iter-151) + 10 `IpcError` contract tests (iter-196 Follow-up #1) + other targeted regression guards. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`. **Not counted in 3,651**: 6 `map_challenge_status_to_error` tests (iter-195 Follow-up #5) are feature-gated behind `lan-sync` — run `cargo test -p oneshim-network --features lan-sync --lib sync::lan_transport::auth` to include them.)
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass

@@ -330,7 +330,7 @@ oneshim-client/
 │   └── oneshim-app/        # 旧版 adapter crate（CLI 入口，独立模式）
 └── docs/
     ├── crates/             # 各 crate 详细文档
-    ├── architecture/       # ADR 文档（ADR-001~ADR-004）
+    ├── architecture/       # ADR 文档（ADR-001~ADR-019；参见 docs/architecture/ADR-*.md）
     └── migration/          # 迁移文档
 ```
 

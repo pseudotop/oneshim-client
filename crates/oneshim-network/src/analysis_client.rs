@@ -197,6 +197,15 @@ impl AnalysisProvider for AnalysisClient {
             "Calling analysis LLM API"
         );
 
+        // ADR-019 §3: Bedrock is intentionally unsupported. Reject before attempting
+        // to build/send a request with incompatible format + auth.
+        if matches!(self.provider_type, AiProviderType::Bedrock) {
+            return Err(CoreError::Config {
+                code: oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                message: "AWS Bedrock is intentionally unsupported in this build".into(),
+            });
+        }
+
         let body = self.build_request_body(context_json, system_prompt);
 
         let mut builder = self
@@ -219,24 +228,48 @@ impl AnalysisProvider for AnalysisClient {
             }
         }
 
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| NetworkError::Analysis(format!("Analysis API request failed: {}", e)))?;
+        let response = builder.send().await.map_err(|e| {
+            // Iter-90: route timeouts through NetworkError::Timeout so wire
+            // code is network.timeout, not provider.analysis_failed.
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Analysis API request failed: {}", e))
+            }
+        })?;
 
         let status = response.status();
         let response_text = response.text().await.map_err(|e| {
-            NetworkError::Analysis(format!("Failed to read analysis response: {}", e))
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Failed to read analysis response: {}", e))
+            }
         })?;
 
         if !status.is_success() {
             warn!(status = %status, "Analysis API error response");
-            return Err(NetworkError::Analysis(format!(
+            let message = format!(
                 "Analysis API error ({}): {}",
                 status,
                 response_text.chars().take(200).collect::<String>()
-            ))
-            .into());
+            );
+            // Semantic HTTP status mapping per iter-54..59 pattern via
+            // NetworkError's existing typed variants.
+            let net_err = match status.as_u16() {
+                401 | 403 => NetworkError::Auth(message),
+                408 | 504 => NetworkError::Timeout { timeout_ms: 0 },
+                429 => NetworkError::RateLimited {
+                    retry_after_secs: 60,
+                },
+                502 | 503 => NetworkError::ServiceUnavailable(message),
+                _ => NetworkError::Analysis(message),
+            };
+            return Err(net_err.into());
         }
 
         let response_json: serde_json::Value = serde_json::from_str(&response_text)
@@ -292,24 +325,47 @@ impl AnalysisProvider for AnalysisClient {
             }
         }
 
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| NetworkError::Analysis(format!("Summarize API request failed: {}", e)))?;
+        let response = builder.send().await.map_err(|e| {
+            // Iter-90: route timeouts through NetworkError::Timeout so wire
+            // code is network.timeout, not provider.analysis_failed.
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Summarize API request failed: {}", e))
+            }
+        })?;
 
         let status = response.status();
         let response_text = response.text().await.map_err(|e| {
-            NetworkError::Analysis(format!("Failed to read summary response: {}", e))
+            if e.is_timeout() {
+                NetworkError::Timeout {
+                    timeout_ms: self.timeout_secs * 1000,
+                }
+            } else {
+                NetworkError::Analysis(format!("Failed to read summary response: {}", e))
+            }
         })?;
 
         if !status.is_success() {
             warn!(status = %status, "Summarize API error response");
-            return Err(NetworkError::Analysis(format!(
+            let message = format!(
                 "Summarize API error ({}): {}",
                 status,
                 response_text.chars().take(200).collect::<String>()
-            ))
-            .into());
+            );
+            // Semantic HTTP status mapping per iter-54..59.
+            let net_err = match status.as_u16() {
+                401 | 403 => NetworkError::Auth(message),
+                408 | 504 => NetworkError::Timeout { timeout_ms: 0 },
+                429 => NetworkError::RateLimited {
+                    retry_after_secs: 60,
+                },
+                502 | 503 => NetworkError::ServiceUnavailable(message),
+                _ => NetworkError::Analysis(message),
+            };
+            return Err(net_err.into());
         }
 
         let response_json: serde_json::Value = serde_json::from_str(&response_text)
@@ -527,5 +583,177 @@ mod tests {
         let client = AnalysisClient::new(&config);
         let body = serde_json::json!({"choices": []});
         assert!(client.extract_text(&body).is_err());
+    }
+
+    /// ADR-019 §3 regression guard: `analyze()` must reject Bedrock before
+    /// attempting the HTTP call. A regression that removes the guard would
+    /// silently send OpenAI-format payloads to whatever endpoint the user
+    /// configured, rather than returning the typed UnsupportedProviderBedrock
+    /// code that telemetry/i18n depend on.
+    #[tokio::test]
+    async fn analyze_rejects_bedrock_provider() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://bedrock-runtime.us-east-1.amazonaws.com".to_string(),
+            api_key: String::new(),
+            model: Some("anthropic.claude-3-5-sonnet".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Bedrock,
+            surface_id: None,
+            credential: None,
+        };
+        let client = AnalysisClient::new(&config);
+        let result = client.analyze("{}", "you are a test").await;
+        match result {
+            Err(CoreError::Config { code, message }) => {
+                assert_eq!(
+                    code,
+                    oneshim_core::error_codes::ConfigCode::UnsupportedProviderBedrock,
+                    "expected UnsupportedProviderBedrock code, got {code:?}"
+                );
+                assert!(
+                    message.contains("Bedrock"),
+                    "expected Bedrock-mentioning message, got {message:?}"
+                );
+            }
+            other => panic!(
+                "expected CoreError::Config {{ UnsupportedProviderBedrock, .. }}, got {other:?}"
+            ),
+        }
+    }
+
+    // iter-71 regression guards for iter-59b semantic HTTP status mapping
+    // in analysis_client.rs::analyze. Shared helper pattern matches
+    // iter-67..70.
+    async fn run_analyze_status_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
+        };
+        let client = AnalysisClient::new(&config);
+        client.analyze("{}", "sys").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn analyze_403_maps_to_auth() {
+        let err = run_analyze_status_test(403).await;
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 → Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_408_maps_to_timeout() {
+        let err = run_analyze_status_test(408).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_429_maps_to_rate_limit() {
+        let err = run_analyze_status_test(429).await;
+        assert!(
+            matches!(err, CoreError::RateLimit { .. }),
+            "429 → RateLimit, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_502_maps_to_service_unavailable() {
+        let err = run_analyze_status_test(502).await;
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 → ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn analyze_504_maps_to_timeout() {
+        let err = run_analyze_status_test(504).await;
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 → RequestTimeout, got: {err:?}"
+        );
+    }
+
+    // iter-74: regression guards for summarize_text sibling of analyze.
+    // iter-59b applied the same semantic HTTP status mapping to both.
+    async fn run_summarize_status_test(status: u16) -> CoreError {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(status as usize)
+            .with_body(format!("http {status}"))
+            .create_async()
+            .await;
+        let config = ExternalApiEndpoint {
+            endpoint: server.url(),
+            api_key: "test-key".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
+        };
+        let client = AnalysisClient::new(&config);
+        client.summarize_text("{}", "sys").await.unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn summarize_403_maps_to_auth() {
+        let err = run_summarize_status_test(403).await;
+        assert!(matches!(err, CoreError::Auth { .. }));
+    }
+
+    #[tokio::test]
+    async fn summarize_429_maps_to_rate_limit() {
+        let err = run_summarize_status_test(429).await;
+        assert!(matches!(err, CoreError::RateLimit { .. }));
+    }
+
+    #[tokio::test]
+    async fn summarize_503_maps_to_service_unavailable() {
+        let err = run_summarize_status_test(503).await;
+        assert!(matches!(err, CoreError::ServiceUnavailable { .. }));
+    }
+
+    /// iter-77: domain fallback regression guard. analyze() falls back to
+    /// CoreError::Analysis (via NetworkError::Analysis) for unmapped
+    /// status codes, not to Network::Generic. Mirrors cloud_stt / OCR
+    /// fallback tests (iter-72, iter-77).
+    #[tokio::test]
+    async fn analyze_500_falls_back_to_analysis_error() {
+        let err = run_analyze_status_test(500).await;
+        assert!(
+            matches!(err, CoreError::Analysis { .. }),
+            "500 should fall back to CoreError::Analysis (domain-specific), got: {err:?}"
+        );
+    }
+
+    /// iter-79: matching fallback guard for summarize_text (iter-74 sibling).
+    /// Same mapping as analyze, but dispatched from a different method —
+    /// test separately so a regression in summarize's error flow is caught
+    /// even if analyze's tests still pass.
+    #[tokio::test]
+    async fn summarize_500_falls_back_to_analysis_error() {
+        let err = run_summarize_status_test(500).await;
+        assert!(
+            matches!(err, CoreError::Analysis { .. }),
+            "500 should fall back to CoreError::Analysis, got: {err:?}"
+        );
     }
 }

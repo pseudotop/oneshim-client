@@ -1,4 +1,23 @@
 //! Integration session management ports.
+//!
+//! # Errors (all traits in this module)
+//! - `CoreError::Auth` (wire: `auth.failed`) — session auth token
+//!   rejection (401/403), missing/expired credentials surfaced through
+//!   the transport layer.
+//! - `CoreError::RequestTimeout` (wire: `network.timeout`) — connect,
+//!   heartbeat, or ack-cursor store exceeding transport timeout.
+//! - `CoreError::Network` (wire: `network.generic`) — pre-response
+//!   transport failures (DNS, refused connection) that don't match the
+//!   timeout/rate-limit specific variants.
+//! - `CoreError::ServiceUnavailable` (wire: `service.unavailable`) —
+//!   502/503 from the integration backend, or running with the
+//!   feature flag disabled.
+//! - `CoreError::Storage` (wire: `storage.failed`) — persisted
+//!   session-state write/read failures in `IntegrationSessionStorePort`.
+//! - `IntegrationSessionStorePort::load` returns `Ok(None)` on first
+//!   launch (no persisted state), not Err.
+//! - `IntegrationRuntimeTelemetryPort::snapshot` returns sentinel
+//!   zeros for loops that have never run rather than Err.
 
 use async_trait::async_trait;
 

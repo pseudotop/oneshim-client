@@ -5,6 +5,18 @@ use async_trait::async_trait;
 use crate::error::CoreError;
 use crate::models::ai_session::{MessageRecord, SessionRecord, SessionState};
 
+/// Persist AI conversation sessions and per-turn messages.
+///
+/// # Errors
+/// `CoreError::Storage` (wire: `storage.failed`) for all SQLite operations
+/// (iter-47 mass fix pattern: execute/query/transaction). The current
+/// `SqliteStorage` adapter returns `Ok(())` for rowcount=0 during
+/// `update_session_state` / `terminate_session` / `update_session_usage`
+/// / `delete_session` / `update_session_title` — unknown `session_id`
+/// does NOT surface NotFound. `purge_expired` returns the number of
+/// rows deleted (0 when empty). `next_seq` returns 0 when the session
+/// has no messages yet. `save_session` with a duplicate `session_id`
+/// surfaces Storage via SQLite's UNIQUE constraint violation.
 #[async_trait]
 pub trait SessionStoragePort: Send + Sync {
     /// Persist a new session record.

@@ -55,12 +55,14 @@ pub async fn exchange_code(
         .send()
         .await
         .map_err(|e| CoreError::OAuthError {
+            code: oneshim_core::error_codes::OAuthCode::Failed,
             provider: config.provider_id.clone(),
             message: format!("token exchange request failed: {e}"),
         })?;
 
     let status = resp.status();
     let body = resp.text().await.map_err(|e| CoreError::OAuthError {
+        code: oneshim_core::error_codes::OAuthCode::Failed,
         provider: config.provider_id.clone(),
         message: format!("failed to read token response: {e}"),
     })?;
@@ -73,11 +75,13 @@ pub async fn exchange_code(
                 err.error, desc, status
             );
             return Err(CoreError::OAuthError {
+                code: oneshim_core::error_codes::OAuthCode::Failed,
                 provider: config.provider_id.clone(),
                 message: format!("{}: {desc}", err.error),
             });
         }
         return Err(CoreError::OAuthError {
+            code: oneshim_core::error_codes::OAuthCode::Failed,
             provider: config.provider_id.clone(),
             message: format!("token exchange returned {status}"),
         });
@@ -85,6 +89,7 @@ pub async fn exchange_code(
 
     let result: TokenExchangeResult =
         serde_json::from_str(&body).map_err(|e| CoreError::OAuthError {
+            code: oneshim_core::error_codes::OAuthCode::Failed,
             provider: config.provider_id.clone(),
             message: format!("failed to parse token response: {e}"),
         })?;
@@ -149,6 +154,7 @@ pub async fn refresh_token(
                 OAuthErrorKind::Unknown(e.to_string())
             };
             CoreError::OAuthRefreshError {
+                code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
                 provider: config.provider_id.clone(),
                 kind,
                 message: format!("token refresh request failed: {e}"),
@@ -160,6 +166,7 @@ pub async fn refresh_token(
         .text()
         .await
         .map_err(|e| CoreError::OAuthRefreshError {
+            code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
             provider: config.provider_id.clone(),
             kind: OAuthErrorKind::NetworkError,
             message: format!("failed to read refresh response: {e}"),
@@ -176,6 +183,7 @@ pub async fn refresh_token(
             config.provider_id, kind
         );
         return Err(CoreError::OAuthRefreshError {
+            code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
             provider: config.provider_id.clone(),
             kind,
             message: format!("refresh failed (HTTP {status}): {desc}"),
@@ -183,6 +191,7 @@ pub async fn refresh_token(
     }
 
     serde_json::from_str(&body).map_err(|e| CoreError::OAuthRefreshError {
+        code: oneshim_core::error_codes::OAuthCode::RefreshFailed,
         provider: config.provider_id.clone(),
         kind: OAuthErrorKind::Unknown("parse_error".into()),
         message: format!("failed to parse refresh response: {e}"),

@@ -190,15 +190,23 @@ impl HttpApiClient {
         });
 
         match status_code {
-            401 => Err(NetworkError::Auth(format!("Authentication failed: {text}"))),
+            401 | 403 => Err(NetworkError::Auth(format!("Authentication failed: {text}"))),
             404 => Err(NetworkError::NotFound {
                 resource_type: "API".to_string(),
                 id: text,
             }),
+            // 408 Request Timeout and 504 Gateway Timeout are both timeout-class
+            // failures — map to NetworkError::Timeout so is_retryable returns true
+            // and telemetry emits `network.timeout`. (iter-54)
+            408 | 504 => Err(NetworkError::Timeout {
+                timeout_ms: 0, // sentinel: server returned timeout, we don't know the server's timeout budget
+            }),
             429 => Err(NetworkError::RateLimited {
                 retry_after_secs: retry_after,
             }),
-            503 => Err(NetworkError::ServiceUnavailable(text)),
+            // 502 Bad Gateway is a transient upstream failure — retryable just
+            // like 503 Service Unavailable. (iter-54)
+            502 | 503 => Err(NetworkError::ServiceUnavailable(text)),
             _ => Err(NetworkError::Internal(format!(
                 "API error ({status}): {text}"
             ))),
@@ -634,7 +642,13 @@ mod tests {
         let result = client.upload_context(&upload).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, CoreError::RateLimit { .. }));
+        assert!(matches!(
+            err,
+            CoreError::RateLimit {
+                code: oneshim_core::error_codes::NetworkCode::RateLimit,
+                ..
+            }
+        ));
         mock.assert_async().await;
     }
 
@@ -655,7 +669,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            matches!(err, CoreError::ServiceUnavailable(_)),
+            matches!(err, CoreError::ServiceUnavailable { .. }),
             "err: {err:?}"
         );
         mock.assert_async().await;
@@ -675,5 +689,88 @@ mod tests {
         let result = client.send_heartbeat("sess_test").await;
         assert!(result.is_ok());
         mock.assert_async().await;
+    }
+
+    /// iter-54 regression guards: HTTP status codes added to check_response
+    /// with semantic mappings. Each asserts the error variant matches the
+    /// contract documented in the match block.
+    #[tokio::test]
+    async fn forbidden_403_maps_to_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let (client, _login_mock) = setup_authed_client(&mut server).await;
+        let client = client.with_max_retries(0);
+
+        let _mock = server
+            .mock("POST", "/user_context/sessions/sess_test/heartbeat")
+            .with_status(403)
+            .with_body("Forbidden")
+            .create_async()
+            .await;
+
+        let err = client.send_heartbeat("sess_test").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::Auth { .. }),
+            "403 must map to CoreError::Auth, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn request_timeout_408_maps_to_timeout() {
+        let mut server = mockito::Server::new_async().await;
+        let (client, _login_mock) = setup_authed_client(&mut server).await;
+        let client = client.with_max_retries(0);
+
+        let _mock = server
+            .mock("POST", "/user_context/sessions/sess_test/heartbeat")
+            .with_status(408)
+            .with_body("Request Timeout")
+            .create_async()
+            .await;
+
+        let err = client.send_heartbeat("sess_test").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "408 must map to CoreError::RequestTimeout, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn bad_gateway_502_maps_to_service_unavailable() {
+        let mut server = mockito::Server::new_async().await;
+        let (client, _login_mock) = setup_authed_client(&mut server).await;
+        let client = client.with_max_retries(0);
+
+        let _mock = server
+            .mock("POST", "/user_context/sessions/sess_test/heartbeat")
+            .with_status(502)
+            .with_body("Bad Gateway")
+            .create_async()
+            .await;
+
+        let err = client.send_heartbeat("sess_test").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::ServiceUnavailable { .. }),
+            "502 must map to CoreError::ServiceUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn gateway_timeout_504_maps_to_timeout() {
+        let mut server = mockito::Server::new_async().await;
+        let (client, _login_mock) = setup_authed_client(&mut server).await;
+        let client = client.with_max_retries(0);
+
+        let _mock = server
+            .mock("POST", "/user_context/sessions/sess_test/heartbeat")
+            .with_status(504)
+            .with_body("Gateway Timeout")
+            .create_async()
+            .await;
+
+        let err = client.send_heartbeat("sess_test").await.unwrap_err();
+        assert!(
+            matches!(err, CoreError::RequestTimeout { .. }),
+            "504 must map to CoreError::RequestTimeout, got: {err:?}"
+        );
     }
 }

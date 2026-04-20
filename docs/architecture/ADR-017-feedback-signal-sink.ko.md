@@ -2,7 +2,7 @@
 
 # ADR-017: FeedbackSignalSink
 
-**상태 (Status)**: 승인 (Approved)
+**상태 (Status)**: 채택됨 (Accepted)
 **날짜 (Date)**: 2026-04-18
 **범위 (Scope)**: `oneshim-core::ports::feedback_signal_sink`, `oneshim-suggestion::FeedbackSender`, `oneshim-analysis::CoachingEngine/RegimeClassifier`, `src-tauri::feedback_sink::CompositeFeedbackSink`
 

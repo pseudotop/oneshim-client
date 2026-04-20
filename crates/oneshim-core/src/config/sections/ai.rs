@@ -202,22 +202,23 @@ fn validate_remote_endpoint(
     endpoint: Option<&ExternalApiEndpoint>,
     field_name: &str,
 ) -> Result<(), CoreError> {
-    let endpoint = endpoint.ok_or_else(|| {
-        CoreError::Config(format!(
-            "`{field_name}` is required when a remote provider is selected."
-        ))
+    let endpoint = endpoint.ok_or_else(|| CoreError::Config {
+        code: crate::error_codes::ConfigCode::Missing,
+        message: format!("`{field_name}` is required when a remote provider is selected."),
     })?;
 
     let endpoint_url = endpoint.endpoint.trim();
     if endpoint_url.is_empty() {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` must not be empty."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: format!("`{field_name}.endpoint` must not be empty."),
+        });
     }
     if !(endpoint_url.starts_with("http://") || endpoint_url.starts_with("https://")) {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` must be an http:// or https:// URL."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!("`{field_name}.endpoint` must be an http:// or https:// URL."),
+        });
     }
 
     let has_api_key_binding = endpoint.credential.as_ref().is_some_and(|binding| {
@@ -231,15 +232,19 @@ fn validate_remote_endpoint(
         .unwrap_or(true);
 
     if requires_plaintext_api_key && endpoint.api_key.trim().is_empty() && !has_api_key_binding {
-        return Err(CoreError::Config(format!(
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: format!(
             "`{field_name}.api_key` must not be empty unless a credential binding is configured."
-        )));
+        ),
+        });
     }
 
     if endpoint.timeout_secs == 0 {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.timeout_secs` must be >= 1."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::OutOfRange,
+            message: format!("`{field_name}.timeout_secs` must be >= 1."),
+        });
     }
 
     if let Some(model) = endpoint
@@ -256,7 +261,10 @@ fn validate_remote_endpoint(
         if let crate::ai_model_lifecycle_policy::ModelLifecycleDecision::Block { message, .. } =
             decision
         {
-            return Err(CoreError::PolicyDenied(message));
+            return Err(CoreError::PolicyDenied {
+                code: crate::error_codes::PolicyCode::Denied,
+                message,
+            });
         }
     }
 
@@ -269,10 +277,9 @@ fn validate_non_http_surface_endpoint(
     expected_transport: ProviderSurfaceTransport,
     capability_check: fn(&str) -> bool,
 ) -> Result<(), CoreError> {
-    let endpoint = endpoint.ok_or_else(|| {
-        CoreError::Config(format!(
-            "`{field_name}` is required when a managed provider surface is selected."
-        ))
+    let endpoint = endpoint.ok_or_else(|| CoreError::Config {
+        code: crate::error_codes::ConfigCode::Missing,
+        message: format!("`{field_name}` is required when a managed provider surface is selected."),
     })?;
 
     let surface_id = endpoint
@@ -280,34 +287,41 @@ fn validate_non_http_surface_endpoint(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            CoreError::Config(format!(
+        .ok_or_else(|| CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: format!(
                 "`{field_name}.surface_id` is required for managed provider surfaces."
-            ))
+            ),
         })?;
 
-    let spec = provider_surface_spec(surface_id).ok_or_else(|| {
-        CoreError::Config(format!(
-            "`{field_name}.surface_id` references an unknown provider surface."
-        ))
+    let spec = provider_surface_spec(surface_id).ok_or_else(|| CoreError::Config {
+        code: crate::error_codes::ConfigCode::Invalid,
+        message: format!("`{field_name}.surface_id` references an unknown provider surface."),
     })?;
 
     if spec.provider_type != endpoint.provider_type {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.surface_id` must match `{field_name}.provider_type`."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!("`{field_name}.surface_id` must match `{field_name}.provider_type`."),
+        });
     }
 
     if spec.transport != expected_transport {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.surface_id` is incompatible with the selected access mode."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!(
+                "`{field_name}.surface_id` is incompatible with the selected access mode."
+            ),
+        });
     }
 
     if !capability_check(surface_id) {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.surface_id` does not support this endpoint capability."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Invalid,
+            message: format!(
+                "`{field_name}.surface_id` does not support this endpoint capability."
+            ),
+        });
     }
 
     Ok(())
@@ -320,9 +334,10 @@ fn validate_subprocess_or_remote_endpoint(
     capability_check: fn(&str) -> bool,
 ) -> Result<(), CoreError> {
     let Some(endpoint) = endpoint else {
-        return Err(CoreError::Config(format!(
-            "`{field_name}` is required when a remote provider is selected."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: format!("`{field_name}` is required when a remote provider is selected."),
+        });
     };
 
     if let Some(surface_id) = endpoint
@@ -353,9 +368,10 @@ fn validate_managed_or_remote_endpoint(
     capability_check: fn(&str) -> bool,
 ) -> Result<(), CoreError> {
     let Some(endpoint) = endpoint else {
-        return Err(CoreError::Config(format!(
-            "`{field_name}` is required when a remote provider is selected."
-        )));
+        return Err(CoreError::Config {
+            code: crate::error_codes::ConfigCode::Missing,
+            message: format!("`{field_name}` is required when a remote provider is selected."),
+        });
     };
 
     if let Some(surface_id) = endpoint

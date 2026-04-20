@@ -4,8 +4,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::InterpretedAction;
 
 pub(super) fn parse_claude_response(body: &str) -> Result<InterpretedAction, CoreError> {
-    let response: Value = serde_json::from_str(body)
-        .map_err(|e| CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e)))?;
+    let response: Value = serde_json::from_str(body).map_err(CoreError::from)?;
 
     let text = response
         .get("content")
@@ -13,24 +12,27 @@ pub(super) fn parse_claude_response(body: &str) -> Result<InterpretedAction, Cor
         .and_then(|arr| arr.first())
         .and_then(|block| block.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or_else(|| CoreError::Internal("No text found in LLM response".to_string()))?;
+        .ok_or_else(|| CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message: "No text found in LLM response".to_string(),
+        })?;
 
     parse_action_json(text)
 }
 
 pub(super) fn parse_openai_response(body: &str) -> Result<InterpretedAction, CoreError> {
-    let response: Value = serde_json::from_str(body)
-        .map_err(|e| CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e)))?;
+    let response: Value = serde_json::from_str(body).map_err(CoreError::from)?;
 
-    let text = extract_openai_text(&response)
-        .ok_or_else(|| CoreError::Internal("No text found in OpenAI response".to_string()))?;
+    let text = extract_openai_text(&response).ok_or_else(|| CoreError::Analysis {
+        code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+        message: "No text found in OpenAI response".to_string(),
+    })?;
 
     parse_action_json(&text)
 }
 
 pub(super) fn parse_google_response(body: &str) -> Result<InterpretedAction, CoreError> {
-    let response: Value = serde_json::from_str(body)
-        .map_err(|e| CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e)))?;
+    let response: Value = serde_json::from_str(body).map_err(CoreError::from)?;
 
     let text = response
         .get("candidates")
@@ -42,7 +44,10 @@ pub(super) fn parse_google_response(body: &str) -> Result<InterpretedAction, Cor
         .and_then(|parts| parts.first())
         .and_then(|part| part.get("text"))
         .and_then(|t| t.as_str())
-        .ok_or_else(|| CoreError::Internal("No text found in Google response".to_string()))?;
+        .ok_or_else(|| CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message: "No text found in Google response".to_string(),
+        })?;
 
     parse_action_json(text)
 }
@@ -58,12 +63,13 @@ fn parse_action_json(text: &str) -> Result<InterpretedAction, CoreError> {
         text
     };
 
-    serde_json::from_str(json_str).map_err(|e| {
-        CoreError::Internal(format!(
-            "Failed to parse InterpretedAction from LLM response: {} (raw: {})",
-            e,
+    serde_json::from_str(json_str).map_err(|_e| CoreError::Validation {
+        code: oneshim_core::error_codes::ValidationCode::InvalidField,
+        field: "llm_response.action".to_string(),
+        message: format!(
+            "Failed to parse InterpretedAction from LLM response (raw: {})",
             json_str.chars().take(200).collect::<String>()
-        ))
+        ),
     })
 }
 

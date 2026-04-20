@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust feature flags, tonic/prost (gRPC), async-trait
 
-**Design Doc:** `docs/plans/2026-02-26-consumer-contract-api-design.md`
+**Design Doc:** `docs/plan/2026-02-26-consumer-contract-api-design.md`
 
 ---
 

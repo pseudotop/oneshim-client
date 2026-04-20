@@ -22,6 +22,25 @@ use crate::models::ui_scene::UiScene;
 /// 이 trait은 `oneshim-automation::AutomationController`의 퍼블릭 API를
 /// 추상화합니다. oneshim-web이 oneshim-automation에 직접 의존하지 않고
 /// 이 포트를 통해 자동화 기능에 접근합니다. (ADR-001 §7)
+///
+/// # Errors
+/// - `CoreError::PolicyDenied` (wire: `policy.denied`) when PolicyClient
+///   blocks the command. `UserDenied`/`PolicyBlocked` both collapse
+///   here (iter-88 dedup).
+/// - `CoreError::Config` with `ConfigCode::Missing` (wire: `config.missing`)
+///   when required dependencies aren't wired (IntentExecutor/
+///   IntentPlanner/Scene analyzer — iter-100).
+/// - `CoreError::SandboxInit` (wire: `sandbox.init_failed`) for sandbox
+///   setup failures (seccomp, Landlock, Job Object — iter-88 re-routed
+///   from SandboxExecution). `CoreError::SandboxExecution` for
+///   runtime sandbox enforcement.
+/// - `CoreError::ElementNotFound` (wire: `ui.element_missing`) for click
+///   targets; `CoreError::InvalidArguments` (wire:
+///   `validation.invalid_arguments`) for bad hotkey/input specs.
+/// - `GuiInteractionError` on the GUI-interaction subset of this port;
+///   see `crates/oneshim-automation/src/gui_interaction/helpers.rs`'s
+///   `map_core_error` for the CoreError→GuiInteractionError mapping
+///   (iter-91 expanded to 6 semantic routes).
 #[async_trait]
 pub trait AutomationPort: Send + Sync {
     // ── Core automation ──

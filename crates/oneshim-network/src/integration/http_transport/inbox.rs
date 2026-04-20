@@ -39,6 +39,7 @@ impl IntegrationInboxTransportClient for HttpsIntegrationInboxTransportClient {
                 .get(session_id)
                 .await
                 .ok_or_else(|| CoreError::NotFound {
+                    code: oneshim_core::error_codes::NotFoundCode::ResourceMissing,
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
@@ -52,6 +53,7 @@ impl IntegrationInboxTransportClient for HttpsIntegrationInboxTransportClient {
         let url = binding
             .receive_prompts_url
             .ok_or_else(|| CoreError::Validation {
+                code: oneshim_core::error_codes::ValidationCode::InvalidField,
                 field: "integration.session.receive_prompts_url".to_string(),
                 message: "active integration session does not have a prompt receive URL."
                     .to_string(),

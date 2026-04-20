@@ -138,7 +138,10 @@ impl AnalysisProvider for NoOpAnalysisProvider {
         _context_json: &str,
         _system_prompt: &str,
     ) -> Result<String, CoreError> {
-        Err(CoreError::Analysis("No LLM provider configured".into()))
+        Err(CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message: "No LLM provider configured".into(),
+        })
     }
 
     fn provider_name(&self) -> &str {
@@ -204,7 +207,10 @@ mod tests {
             _context_json: &str,
             _system_prompt: &str,
         ) -> Result<Vec<Suggestion>, CoreError> {
-            Err(CoreError::Analysis("provider failure".into()))
+            Err(CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: "provider failure".into(),
+            })
         }
 
         async fn summarize_text(
@@ -212,7 +218,10 @@ mod tests {
             _context_json: &str,
             _system_prompt: &str,
         ) -> Result<String, CoreError> {
-            Err(CoreError::Analysis("provider failure".into()))
+            Err(CoreError::Analysis {
+                code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+                message: "provider failure".into(),
+            })
         }
 
         fn provider_name(&self) -> &str {
@@ -248,7 +257,7 @@ mod tests {
         let provider =
             FallbackAnalysisProvider::new(Arc::new(FailProvider), Arc::new(FailProvider));
         let err = provider.analyze("{}", "").await.unwrap_err();
-        assert!(matches!(err, CoreError::Analysis(_)));
+        assert!(matches!(err, CoreError::Analysis { .. }));
         assert!(!provider.is_primary_healthy());
     }
 
@@ -287,8 +296,12 @@ mod tests {
     async fn noop_summarize_returns_error() {
         let provider = NoOpAnalysisProvider;
         let err = provider.summarize_text("{}", "").await.unwrap_err();
-        assert!(matches!(err, CoreError::Analysis(_)));
-        if let CoreError::Analysis(msg) = err {
+        assert!(matches!(err, CoreError::Analysis { .. }));
+        if let CoreError::Analysis {
+            code: oneshim_core::error_codes::ProviderCode::AnalysisFailed,
+            message: msg,
+        } = err
+        {
             assert!(msg.contains("No LLM provider configured"));
         }
     }

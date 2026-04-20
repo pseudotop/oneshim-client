@@ -14,12 +14,23 @@ The crate for system and user activity monitoring.
 
 ```
 oneshim-monitor/src/
-├── lib.rs        # Crate root
-├── system.rs     # SysInfoMonitor - system metrics
-├── process.rs    # ProcessTracker - process/window tracking
-├── activity.rs   # ActivityTracker - idle detection
-├── macos.rs      # macOS-specific implementation
-└── windows.rs    # Windows-specific implementation
+├── lib.rs              # Crate root
+├── system.rs           # SysInfoMonitor - CPU/Memory/Disk/Network (sysinfo 0.38)
+├── system_info.rs      # System information wrappers
+├── process.rs          # ProcessTracker - active process/window tracking
+├── activity.rs         # ActivityTracker - idle detection
+├── idle.rs             # Cross-platform idle detection helpers
+├── input_activity.rs   # InputActivityCollector - mouse/keyboard pattern (atomic counters)
+├── input_detail.rs     # Richer input event details (superpowers-era)
+├── keyboard_pattern.rs # Keyboard pattern matching
+├── key_hook/           # Low-level key-hook directory module (platform-branched)
+├── clipboard.rs        # Clipboard-change tracking
+├── file_access.rs      # File-access telemetry
+├── window_layout.rs    # WindowLayoutTracker - window layout changes
+├── macos.rs            # macOS-specific (osascript + circuit_breaker_skips_when_tripped with serial_test)
+├── windows.rs          # Windows-specific (Win32 GetForegroundWindow + sysinfo)
+├── linux.rs            # Linux-specific (xdotool/xprintidle X11 + Wayland XWayland fallback)
+└── error.rs            # MonitorError (ADR-019 typed codes)
 ```
 
 ## Key Components

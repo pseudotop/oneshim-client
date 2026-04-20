@@ -86,8 +86,10 @@ impl LanDiscovery {
             return Ok(());
         }
 
-        let daemon = ServiceDaemon::new()
-            .map_err(|e| CoreError::Internal(format!("failed to create mDNS daemon: {e}")))?;
+        let daemon = ServiceDaemon::new().map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("failed to create mDNS daemon: {e}"),
+        })?;
 
         // -- Register our service --
         self.register_service(&daemon)?;
@@ -95,7 +97,10 @@ impl LanDiscovery {
         // -- Start browsing --
         let receiver = daemon
             .browse(SERVICE_TYPE)
-            .map_err(|e| CoreError::Internal(format!("failed to start mDNS browse: {e}")))?;
+            .map_err(|e| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("failed to start mDNS browse: {e}"),
+            })?;
 
         let peers = Arc::clone(&self.peers);
         let local_device_id = self.device_id.clone();
@@ -139,13 +144,19 @@ impl LanDiscovery {
             self.port,
             &properties[..],
         )
-        .map_err(|e| CoreError::Internal(format!("failed to create service info: {e}")))?;
+        .map_err(|e| CoreError::Internal {
+            code: oneshim_core::error_codes::InternalCode::Generic,
+            message: format!("failed to create service info: {e}"),
+        })?;
 
         let fullname = service_info.get_fullname().to_string();
 
         daemon
             .register(service_info)
-            .map_err(|e| CoreError::Internal(format!("failed to register mDNS service: {e}")))?;
+            .map_err(|e| CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: format!("failed to register mDNS service: {e}"),
+            })?;
 
         debug!(
             fullname = %fullname,

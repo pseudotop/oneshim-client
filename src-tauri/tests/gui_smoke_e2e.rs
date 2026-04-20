@@ -84,10 +84,16 @@ impl ElementFinder for E2eFinder {
 
     async fn analyze_scene(&self, _: Option<&str>, _: Option<&str>) -> Result<UiScene, CoreError> {
         if self.fail_permission.load(Ordering::Relaxed) {
-            return Err(CoreError::PermissionDenied("Accessibility denied".into()));
+            return Err(CoreError::PermissionDenied {
+                code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
+                message: "Accessibility denied".into(),
+            });
         }
         if self.should_fail.load(Ordering::Relaxed) {
-            return Err(CoreError::Internal("No display".into()));
+            return Err(CoreError::Internal {
+                code: oneshim_core::error_codes::InternalCode::Generic,
+                message: "No display".into(),
+            });
         }
         Ok(Self::scene())
     }
@@ -296,9 +302,13 @@ async fn e2e_permission_denied() {
     let h = harness();
     h.finder.fail_permission.store(true, Ordering::Relaxed);
     let err = h.svc.create_session(req()).await.unwrap_err();
+    // Iter-91: PermissionDenied is a denial variant — maps to Forbidden with
+    // wire code `gui.forbidden`. Pre-iter-91 this erroneously fell through to
+    // Internal (`gui.internal_error`), losing the denial semantic for
+    // frontend i18n. The new assertion validates the corrected mapping.
     assert!(
-        matches!(err, GuiInteractionError::Internal(_)),
-        "got: {err:?}"
+        matches!(err, GuiInteractionError::Forbidden { .. }),
+        "expected Forbidden for permission denial; got: {err:?}"
     );
 }
 
@@ -313,7 +323,7 @@ async fn e2e_focus_drift_on_execute() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::FocusDrift(_)),
+        matches!(err, GuiInteractionError::FocusDrift { .. }),
         "got: {err:?}"
     );
 }
@@ -329,7 +339,7 @@ async fn e2e_expired_ticket() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::TicketInvalid(_)),
+        matches!(err, GuiInteractionError::TicketInvalid { .. }),
         "got: {err:?}"
     );
 }
@@ -344,7 +354,7 @@ async fn e2e_headless_no_display() {
     h.finder.should_fail.store(true, Ordering::Relaxed);
     let err = h.svc.create_session(req()).await.unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::Internal(_)),
+        matches!(err, GuiInteractionError::Internal { .. }),
         "got: {err:?}"
     );
 }
@@ -357,7 +367,7 @@ async fn e2e_missing_hmac_secret() {
     let svc = GuiInteractionService::new(f, p, o, None);
     let err = svc.create_session(req()).await.unwrap_err();
     assert!(
-        matches!(err, GuiInteractionError::Unavailable(_)),
+        matches!(err, GuiInteractionError::Unavailable { .. }),
         "got: {err:?}"
     );
 }

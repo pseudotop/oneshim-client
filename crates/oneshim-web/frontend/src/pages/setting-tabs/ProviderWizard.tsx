@@ -1,5 +1,4 @@
 import anthropicSvg from '@lobehub/icons-static-svg/icons/anthropic.svg?raw'
-import bedrockSvg from '@lobehub/icons-static-svg/icons/bedrock-color.svg?raw'
 import copilotSvg from '@lobehub/icons-static-svg/icons/copilot-color.svg?raw'
 import deepseekSvg from '@lobehub/icons-static-svg/icons/deepseek-color.svg?raw'
 import googleSvg from '@lobehub/icons-static-svg/icons/google-brand-color.svg?raw'
@@ -19,7 +18,6 @@ import { cn } from '../../utils/cn'
 
 const toDataUri = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`
 const anthropicIcon = toDataUri(anthropicSvg)
-const bedrockIcon = toDataUri(bedrockSvg)
 const copilotIcon = toDataUri(copilotSvg)
 const deepseekIcon = toDataUri(deepseekSvg)
 const googleIcon = toDataUri(googleSvg)
@@ -155,19 +153,8 @@ const PROVIDERS: ProviderDef[] = [
     defaultModel: 'gpt-5.4',
     comingSoon: true,
   },
-  {
-    id: 'bedrock',
-    name: 'Amazon Bedrock',
-    icon: bedrockIcon,
-    tier: 'cloud',
-    tierLabel: 'settings.ai.tierAws',
-    apiKeyEnv: 'AWS_ACCESS_KEY_ID',
-    docsUrl: 'https://console.aws.amazon.com/bedrock',
-    placeholder: 'AKIA...',
-    surfaceId: 'provider_surface.bedrock.direct_api',
-    defaultModel: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-    comingSoon: true,
-  },
+  // Amazon Bedrock removed per ADR-019 — AWS SigV4 unimplemented; re-introduction
+  // requires the 8-step checklist in docs/architecture/ADR-019-error-code-infrastructure.md §5.
   {
     id: 'openrouter',
     name: 'OpenRouter',

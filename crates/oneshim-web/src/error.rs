@@ -55,38 +55,40 @@ impl IntoResponse for ApiError {
 
 impl From<oneshim_core::error::CoreError> for ApiError {
     fn from(err: oneshim_core::error::CoreError) -> Self {
+        use oneshim_core::error::CoreError;
         match err {
-            oneshim_core::error::CoreError::Validation { field, message } => {
+            CoreError::Validation { field, message, .. } => {
                 ApiError::BadRequest(format!("{field}: {message}"))
             }
-            oneshim_core::error::CoreError::Auth(message)
-            | oneshim_core::error::CoreError::ConsentRequired(message)
-            | oneshim_core::error::CoreError::OAuthError { message, .. }
-            | oneshim_core::error::CoreError::OAuthRefreshError { message, .. } => {
-                ApiError::Unauthorized(message)
+            CoreError::Auth { message, .. }
+            | CoreError::ConsentRequired { message, .. }
+            | CoreError::OAuthError { message, .. }
+            | CoreError::OAuthRefreshError { message, .. } => ApiError::Unauthorized(message),
+            CoreError::ConsentExpired { .. } => {
+                ApiError::Unauthorized("consent expired".to_string())
             }
-            oneshim_core::error::CoreError::NotFound { resource_type, id } => {
-                ApiError::NotFound(format!("{resource_type}: {id}"))
-            }
-            oneshim_core::error::CoreError::ServiceUnavailable(message)
-            | oneshim_core::error::CoreError::SandboxUnsupported(message) => {
+            CoreError::NotFound {
+                resource_type, id, ..
+            } => ApiError::NotFound(format!("{resource_type}: {id}")),
+            CoreError::ServiceUnavailable { message, .. }
+            | CoreError::SandboxUnsupported { message, .. } => {
                 ApiError::ServiceUnavailable(message)
             }
-            oneshim_core::error::CoreError::PolicyDenied(message)
-            | oneshim_core::error::CoreError::PrivacyDenied(message)
-            | oneshim_core::error::CoreError::ProcessNotAllowed(message) => {
-                ApiError::Forbidden(message)
+            rate_or_timeout @ (CoreError::RateLimit { .. } | CoreError::RequestTimeout { .. }) => {
+                ApiError::ServiceUnavailable(rate_or_timeout.to_string())
             }
-            oneshim_core::error::CoreError::InvalidArguments(message)
-            | oneshim_core::error::CoreError::Config(message)
-            | oneshim_core::error::CoreError::Network(message)
-            | oneshim_core::error::CoreError::OcrError(message)
-            | oneshim_core::error::CoreError::SecretStoreError(message)
-            | oneshim_core::error::CoreError::ElementNotFound(message)
-            | oneshim_core::error::CoreError::SandboxInit(message)
-            | oneshim_core::error::CoreError::SandboxExecution(message) => {
-                ApiError::BadRequest(message)
-            }
+            CoreError::PolicyDenied { message, .. }
+            | CoreError::PrivacyDenied { message, .. }
+            | CoreError::PermissionDenied { message, .. } => ApiError::Forbidden(message),
+            CoreError::InvalidArguments { message, .. }
+            | CoreError::Config { message, .. }
+            | CoreError::Network { message, .. }
+            | CoreError::OcrError { message, .. }
+            | CoreError::SecretStoreError { message, .. }
+            | CoreError::SandboxInit { message, .. }
+            | CoreError::SandboxExecution { message, .. } => ApiError::BadRequest(message),
+            CoreError::ElementNotFound { name, .. } => ApiError::BadRequest(name),
+
             other => ApiError::Internal(other.to_string()),
         }
     }
@@ -100,5 +102,66 @@ mod tests {
     fn error_display() {
         let err = ApiError::NotFound("session".to_string());
         assert!(err.to_string().contains("session"));
+    }
+
+    /// Regression guard: CoreError::PermissionDenied must map to HTTP 403
+    /// Forbidden (not 500 Internal). Was dropping into the wildcard arm
+    /// before iter-40 drift audit; caught by noting sibling semantic-
+    /// denial variants (PolicyDenied, PrivacyDenied)
+    /// already mapped to Forbidden.
+    #[test]
+    fn permission_denied_maps_to_forbidden() {
+        let core = oneshim_core::error::CoreError::PermissionDenied {
+            code: oneshim_core::error_codes::PermissionCode::PermissionDenied,
+            message: "macOS Accessibility denied".to_string(),
+        };
+        let api: ApiError = core.into();
+        assert!(
+            matches!(api, ApiError::Forbidden(_)),
+            "PermissionDenied must map to 403 Forbidden, got: {api:?}"
+        );
+    }
+
+    /// Regression guard: CoreError::ConsentExpired must map to HTTP 401
+    /// Unauthorized (not 500 Internal). Parallel to sibling ConsentRequired
+    /// already mapped to 401 — both represent consent-state issues the
+    /// client should re-prompt for, not server-side bugs. Caught by iter-41.
+    #[test]
+    fn consent_expired_maps_to_unauthorized() {
+        let core = oneshim_core::error::CoreError::ConsentExpired {
+            code: oneshim_core::error_codes::ConsentCode::Expired,
+        };
+        let api: ApiError = core.into();
+        assert!(
+            matches!(api, ApiError::Unauthorized(_)),
+            "ConsentExpired must map to 401 Unauthorized, got: {api:?}"
+        );
+    }
+
+    /// Regression guard: transient-unavailability variants (RateLimit,
+    /// RequestTimeout) must map to HTTP 503 ServiceUnavailable (not 500
+    /// Internal). These represent upstream-service issues the client
+    /// should retry, not server-side bugs. Caught by iter-41 drift audit.
+    #[test]
+    fn rate_limit_and_timeout_map_to_service_unavailable() {
+        let rate = oneshim_core::error::CoreError::RateLimit {
+            code: oneshim_core::error_codes::NetworkCode::RateLimit,
+            retry_after_secs: 30,
+        };
+        let api: ApiError = rate.into();
+        assert!(
+            matches!(api, ApiError::ServiceUnavailable(_)),
+            "RateLimit must map to 503 ServiceUnavailable, got: {api:?}"
+        );
+
+        let timeout = oneshim_core::error::CoreError::RequestTimeout {
+            code: oneshim_core::error_codes::NetworkCode::Timeout,
+            timeout_ms: 5000,
+        };
+        let api: ApiError = timeout.into();
+        assert!(
+            matches!(api, ApiError::ServiceUnavailable(_)),
+            "RequestTimeout must map to 503 ServiceUnavailable, got: {api:?}"
+        );
     }
 }

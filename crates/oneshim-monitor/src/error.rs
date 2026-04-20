@@ -1,4 +1,5 @@
 use oneshim_core::error::CoreError;
+use oneshim_core::error_codes::InternalCode;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,7 +14,10 @@ impl From<MonitorError> for CoreError {
     fn from(err: MonitorError) -> Self {
         match err {
             MonitorError::Core(e) => e,
-            MonitorError::Internal(msg) => CoreError::Internal(msg),
+            MonitorError::Internal(msg) => CoreError::Internal {
+                code: InternalCode::Generic,
+                message: msg,
+            },
         }
     }
 }

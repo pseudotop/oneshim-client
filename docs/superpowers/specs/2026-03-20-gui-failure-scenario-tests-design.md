@@ -1,7 +1,7 @@
 # GUI V2 Failure Scenario Tests — Design Spec
 
 > Created: 2026-03-20
-> Status: Proposed
+> Status: ✅ SHIPPED — 13 failure scenario tests landed under ADR-002 M3 (see `client-rust/CLAUDE.md` §Current Status).
 > Scope: oneshim-automation (service tests), oneshim-web (handler tests)
 > Prerequisite: ADR-002 GUI V2 M0-M2 tests complete
 
