@@ -358,7 +358,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - Linting: `cargo clippy` — `dead_code` warnings are allowed only for variants intended for future use
 - Frontend Linting: `pnpm lint` (Biome) — `useExhaustiveDependencies` enabled
 - Testing: Write in `#[cfg(test)] mod tests` at the bottom of each module
-- Logging: `tracing` macros (`debug!`, `info!`, `warn!`, `error!`)
+- Logging: `tracing` macros (`debug!`, `info!`, `warn!`, `error!`). When logging a `CoreError`, include the wire code as a structured field so Loki/Grafana/OTel can group by `err.code` without regex-matching the Display body: `warn!(err.code = %e.code(), "failed: {e}")`. For adapter errors without a `code()` method, convert first: `let core: CoreError = e.into(); warn!(err.code = %core.code(), ...)`.  See ADR-019 Follow-up #2 for the observability rationale.
 - Serialization: `serde` derive — `Serialize, Deserialize` for all models
 
 ## Architecture Guardrails

@@ -178,7 +178,7 @@ impl Scheduler {
 
                                     let win_event = Event::Window(layout_event);
                                     if let Err(e) = storage1.save_event(&win_event).await {
-                                        warn!("window event save failure: {e}");
+                                        warn!(err.code = %e.code(), "window event save failure: {e}");
                                     }
                                     if let Some(ref sink) = uploader1 {
                                         if let Some(upload_event) = egress1.prepare_event_for_upload(win_event) {
@@ -295,7 +295,7 @@ impl Scheduler {
 
                                 let ctx_event = Event::Context(event);
                                 if let Err(e) = storage1.save_event(&ctx_event).await {
-                                    warn!("event save failure: {e}");
+                                    warn!(err.code = %e.code(), "event save failure: {e}");
                                 }
 
                                 if let Err(e) = sqlite1.increment_session_counters(&session1, 1, 0, 0).await {

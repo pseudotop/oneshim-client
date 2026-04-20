@@ -69,7 +69,7 @@ impl Scheduler {
 
                                 let event = Event::Process(snapshot_event);
                                 if let Err(e) = storage9.save_event(&event).await {
-                                    warn!("event save failure: {e}");
+                                    warn!(err.code = %e.code(), "event save failure: {e}");
                                 }
 
                                 if let Some(ref sink) = uploader9 {
@@ -94,7 +94,7 @@ impl Scheduler {
                         {
                             let event = Event::Input(input_event);
                             if let Err(e) = storage9.save_event(&event).await {
-                                warn!("event save failure: {e}");
+                                warn!(err.code = %e.code(), "event save failure: {e}");
                             }
 
                             if let Some(ref sink) = uploader9 {
@@ -117,7 +117,7 @@ impl Scheduler {
                             );
                             let event = Event::Clipboard(clip_event);
                             if let Err(e) = storage9.save_event(&event).await {
-                                warn!("clipboard event save failure: {e}");
+                                warn!(err.code = %e.code(), "clipboard event save failure: {e}");
                             }
                         }
 
@@ -134,7 +134,7 @@ impl Scheduler {
                             );
                             let event = Event::FileAccess(file_event);
                             if let Err(e) = storage9.save_event(&event).await {
-                                warn!("file access event save failure: {e}");
+                                warn!(err.code = %e.code(), "file access event save failure: {e}");
                             }
                         }
                     }

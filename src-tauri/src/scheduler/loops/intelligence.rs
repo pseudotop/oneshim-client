@@ -68,7 +68,7 @@ impl Scheduler {
                             }
                             Ok(false) => { /* proceed with local analysis */ }
                             Err(e) => {
-                                warn!("server coexistence check failed: {e}");
+                                warn!(err.code = %e.code(), "server coexistence check failed: {e}");
                                 // Proceed anyway — fail-open
                             }
                         }
@@ -98,12 +98,16 @@ impl Scheduler {
                                         suggestion.content
                                     );
                                     if let Err(e) = storage_ref.save_suggestion(suggestion).await {
-                                        warn!("suggestion save failure: {e}");
+                                        warn!(err.code = %e.code(), "suggestion save failure: {e}");
                                     }
                                 }
                             }
                             Err(e) => {
-                                warn!("analysis failure: {e}");
+                                // AnalysisError doesn't expose code() directly; convert
+                                // through the existing From<AnalysisError> for CoreError
+                                // to surface the wire code to telemetry.
+                                let core: oneshim_core::error::CoreError = e.into();
+                                warn!(err.code = %core.code(), "analysis failure: {core}");
                             }
                         }
                     }
