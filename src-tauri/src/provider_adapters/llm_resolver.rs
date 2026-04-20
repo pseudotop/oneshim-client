@@ -142,7 +142,10 @@ pub(super) fn resolve_llm_provider(
                             secret_store,
                         )?;
                         Ok(Arc::new(RemoteLlmProvider::new_with_credential(
-                            endpoint, credential,
+                            endpoint,
+                            credential,
+                            // D7: per-adapter registry; iter-011 will consolidate.
+                            oneshim_network::CircuitBreakerRegistry::new(),
                         )?) as Arc<dyn LlmProvider>)
                     },
                     || Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,
@@ -186,7 +189,12 @@ pub(super) fn resolve_llm_provider_oauth(
         api_base_url,
     };
 
-    let provider = RemoteLlmProvider::new_with_credential(&endpoint, credential)?;
+    let provider = RemoteLlmProvider::new_with_credential(
+        &endpoint,
+        credential,
+        // D7: per-adapter registry; iter-011 will consolidate.
+        oneshim_network::CircuitBreakerRegistry::new(),
+    )?;
     debug!(
         model = %provider.provider_name(),
         "LLM provider resolved with OAuth credential"

@@ -41,7 +41,9 @@ async fn ai_provider_live_smoke() {
 
 async fn run_llm_smoke() {
     let endpoint = build_endpoint(SmokeTarget::Llm);
-    let provider = RemoteLlmProvider::new(&endpoint).expect("LLM provider setup failed");
+    let provider =
+        RemoteLlmProvider::new(&endpoint, oneshim_network::CircuitBreakerRegistry::new())
+            .expect("LLM provider setup failed");
 
     let screen_context = ScreenContext {
         visible_texts: vec![
