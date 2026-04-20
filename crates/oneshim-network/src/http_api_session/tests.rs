@@ -21,6 +21,7 @@ fn test_session(
         system_prompt,
         config,
         default_tools,
+        breaker_registry: crate::CircuitBreakerRegistry::new(),
     })
 }
 
@@ -1045,6 +1046,136 @@ mod http_status_mapping {
         assert!(
             matches!(err, oneshim_core::error::CoreError::Network { .. }),
             "500 should fall back to Network, got: {err:?}"
+        );
+    }
+
+    // ── D7 Circuit breaker behavior ───────────────────────────────────────
+
+    fn fast_breaker_registry(server_url: &str) -> Arc<crate::CircuitBreakerRegistry> {
+        let registry = crate::CircuitBreakerRegistry::new();
+        let key = crate::resilience::endpoint_authority(server_url).unwrap();
+        let _ = registry.get_with_config(
+            &key,
+            crate::circuit_breaker::CircuitBreakerConfig {
+                failure_threshold: 3,
+                initial_cooldown: std::time::Duration::from_millis(50),
+                max_cooldown: std::time::Duration::from_millis(200),
+                half_open_probes: 1,
+            },
+        );
+        registry
+    }
+
+    fn breaker_test_session(
+        server_url: String,
+        registry: Arc<crate::CircuitBreakerRegistry>,
+    ) -> HttpApiSession {
+        HttpApiSession::new(HttpApiSessionInit {
+            surface_id: "provider_surface.anthropic.direct_api".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            endpoint: server_url,
+            credential: CredentialSource::ApiKey("test-key".to_string()),
+            provider_type: AiProviderType::Anthropic,
+            system_prompt: None,
+            config: Arc::new(AiSessionConfig::default()),
+            default_tools: None,
+            breaker_registry: registry,
+        })
+    }
+
+    fn test_user_message() -> SessionMessage {
+        SessionMessage {
+            role: MessageRole::User,
+            content: "hi".to_string(),
+            attachments: vec![],
+            tools: None,
+            context: None,
+            response_format: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_open_fast_fails_http_session() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(503)
+            .with_body("down")
+            .expect_at_most(3)
+            .create_async()
+            .await;
+
+        let registry = fast_breaker_registry(&server.url());
+        let session = breaker_test_session(server.url(), registry);
+        for _ in 0..3 {
+            let _ = session.send_message(&test_user_message()).await;
+        }
+        let result = session.send_message(&test_user_message()).await;
+        // ResponseStream doesn't implement Debug, so we discriminate via Result::err().
+        let err = result
+            .err()
+            .expect("expected CircuitOpen error after trip; got Ok stream");
+        match err {
+            CoreError::ServiceUnavailable { code, .. } => {
+                assert_eq!(code, oneshim_core::error_codes::ServiceCode::CircuitOpen);
+            }
+            other => panic!("expected CircuitOpen, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_half_open_failure_doubles_cooldown_http_session() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(503)
+            .with_body("down")
+            .create_async()
+            .await;
+
+        let registry = fast_breaker_registry(&server.url());
+        let session = breaker_test_session(server.url(), registry.clone());
+        for _ in 0..3 {
+            let _ = session.send_message(&test_user_message()).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(70)).await;
+        let _ = session.send_message(&test_user_message()).await;
+
+        let key = crate::resilience::endpoint_authority(&server.url()).unwrap();
+        let breaker = registry.get(&key);
+        assert_eq!(
+            breaker.stats().current_cooldown,
+            std::time::Duration::from_millis(100)
+        );
+    }
+
+    /// D7 spec O2 three-tier semantics: an initial 2xx response records success
+    /// on the breaker even if the stream body is malformed / empty. The breaker
+    /// signal is "server acknowledged the request", not "downstream LLM finished".
+    #[tokio::test]
+    async fn breaker_initial_2xx_records_success_regardless_of_stream_shape() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(200)
+            .with_body("malformed-non-sse-body")
+            .create_async()
+            .await;
+
+        let registry = fast_breaker_registry(&server.url());
+        let session = breaker_test_session(server.url(), registry.clone());
+        // Call may fail later (stream parsing), but the initial 200 should
+        // record success. Drain the result.
+        let _ = session.send_message(&test_user_message()).await;
+
+        let key = crate::resilience::endpoint_authority(&server.url()).unwrap();
+        let breaker = registry.get(&key);
+        assert!(
+            matches!(
+                breaker.check(),
+                crate::circuit_breaker::CircuitState::Closed
+            ),
+            "initial 200 should leave breaker Closed even with unreadable stream body"
         );
     }
 }

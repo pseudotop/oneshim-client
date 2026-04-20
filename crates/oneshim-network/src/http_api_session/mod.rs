@@ -57,6 +57,11 @@ pub struct HttpApiSession {
     last_active: parking_lot::Mutex<Instant>,
     http_client: reqwest::Client,
     config: Arc<AiSessionConfig>,
+    /// D7: per-endpoint circuit breaker. Three-tier semantics for streaming
+    /// per spec O2: initial HTTP status is the breaker signal; mid-stream
+    /// disconnects are not recorded (matches BatchUploader's
+    /// "server-acknowledged" = success pattern).
+    breaker: Arc<crate::circuit_breaker::CircuitBreaker>,
 }
 
 pub struct HttpApiSessionInit {
@@ -68,6 +73,10 @@ pub struct HttpApiSessionInit {
     pub system_prompt: Option<String>,
     pub config: Arc<AiSessionConfig>,
     pub default_tools: Option<Vec<ToolDefinition>>,
+    /// D7: Shared per-endpoint circuit breaker registry (resolved by
+    /// constructor using `endpoint`). Allows a single workspace registry
+    /// to feed multiple session instances.
+    pub breaker_registry: Arc<crate::circuit_breaker::CircuitBreakerRegistry>,
 }
 
 #[derive(Debug, Default)]
@@ -97,6 +106,11 @@ impl HttpApiSession {
             });
         }
 
+        // D7: resolve per-endpoint breaker.
+        let breaker_key = crate::resilience::endpoint_authority(&init.endpoint)
+            .unwrap_or_else(|_| format!("malformed::{}", init.endpoint));
+        let breaker = init.breaker_registry.get(&breaker_key);
+
         Self {
             session_id,
             surface_id: init.surface_id,
@@ -112,6 +126,7 @@ impl HttpApiSession {
             created_at: Utc::now(),
             last_active: parking_lot::Mutex::new(Instant::now()),
             http_client,
+            breaker,
             config: init.config,
         }
     }
@@ -305,6 +320,19 @@ async fn save_assistant_response(
 #[async_trait]
 impl ConversationSession for HttpApiSession {
     async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError> {
+        // D7: pre-flight breaker check. If the endpoint is persistently
+        // failing, fast-fail before doing any message history mutation or
+        // request assembly.
+        if matches!(
+            self.breaker.check(),
+            crate::circuit_breaker::CircuitState::Open { .. }
+        ) {
+            return Err(CoreError::ServiceUnavailable {
+                code: oneshim_core::error_codes::ServiceCode::CircuitOpen,
+                message: format!("circuit open for {}", self.endpoint),
+            });
+        }
+
         let shape = provider_specs::resolved_request_shape(
             self.provider_type,
             Some(&self.surface_id),
@@ -349,7 +377,22 @@ impl ConversationSession for HttpApiSession {
             *self.state.lock() = SessionState::Failed;
         })?;
 
-        let response = builder.send().await.map_err(|e| {
+        let send_result = builder.send().await;
+        // D7 three-tier semantics (spec O2): classify based on initial HTTP
+        // status ONLY. Mid-stream disconnects in the returned stream do NOT
+        // affect breaker state (indistinguishable from client-side cancel).
+        let signal = match &send_result {
+            Ok(resp) => {
+                crate::resilience::classify_for_breaker(Some(resp.status().as_u16()), false)
+            }
+            Err(_) => crate::resilience::classify_for_breaker(None, true),
+        };
+        match signal {
+            crate::resilience::BreakerSignal::Success => self.breaker.record_success(),
+            crate::resilience::BreakerSignal::Failure => self.breaker.record_failure(),
+            crate::resilience::BreakerSignal::Neutral => {}
+        }
+        let response = send_result.map_err(|e| {
             *self.state.lock() = SessionState::Failed;
             // Iter-90: split timeout vs generic per canonical pattern.
             if e.is_timeout() {
