@@ -5,12 +5,8 @@ use thiserror::Error;
 pub enum AutomationError {
     #[error(transparent)]
     Core(#[from] CoreError),
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
     #[error("policy denied: {0}")]
     PolicyDenied(String),
-    #[error("sandbox not supported: {0}")]
-    SandboxUnsupported(String),
     #[error("sandbox init failed: {0}")]
     SandboxInit(String),
     #[error("sandbox execution failed: {0}")]
@@ -21,12 +17,6 @@ pub enum AutomationError {
     ExecutionTimeout { timeout_ms: u64 },
     #[error("element not found: {0}")]
     ElementNotFound(String),
-    #[error("configuration error: {0}")]
-    Config(String),
-    #[error("service unavailable: {0}")]
-    ServiceUnavailable(String),
-    #[error("privacy denied: {0}")]
-    PrivacyDenied(String),
     #[error("invalid arguments: {0}")]
     InvalidArguments(String),
     #[error("internal error: {0}")]
@@ -43,13 +33,8 @@ impl From<AutomationError> for CoreError {
     fn from(err: AutomationError) -> Self {
         match err {
             AutomationError::Core(e) => e,
-            AutomationError::Io(e) => CoreError::Io(e),
             AutomationError::PolicyDenied(msg) => CoreError::PolicyDenied {
                 code: oneshim_core::error_codes::PolicyCode::Denied,
-                message: msg,
-            },
-            AutomationError::SandboxUnsupported(msg) => CoreError::SandboxUnsupported {
-                code: oneshim_core::error_codes::SandboxCode::UnsupportedPlatform,
                 message: msg,
             },
             AutomationError::SandboxInit(msg) => CoreError::SandboxInit {
@@ -76,18 +61,6 @@ impl From<AutomationError> for CoreError {
             AutomationError::ElementNotFound(msg) => CoreError::ElementNotFound {
                 code: oneshim_core::error_codes::UiCode::ElementMissing,
                 name: msg,
-            },
-            AutomationError::Config(msg) => CoreError::Config {
-                code: oneshim_core::error_codes::ConfigCode::Invalid,
-                message: msg,
-            },
-            AutomationError::ServiceUnavailable(msg) => CoreError::ServiceUnavailable {
-                code: oneshim_core::error_codes::ServiceCode::Unavailable,
-                message: msg,
-            },
-            AutomationError::PrivacyDenied(msg) => CoreError::PrivacyDenied {
-                code: oneshim_core::error_codes::PermissionCode::PrivacyDenied,
-                message: msg,
             },
             AutomationError::InvalidArguments(msg) => CoreError::InvalidArguments {
                 code: oneshim_core::error_codes::ValidationCode::InvalidArguments,
