@@ -66,8 +66,8 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: msg,
         })
     }
@@ -77,8 +77,8 @@ impl RemoteOcrProvider {
             self.surface_id.as_deref(),
             ProviderTransportKind::Ocr,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: msg,
         })
     }
@@ -89,8 +89,8 @@ impl RemoteOcrProvider {
             provider_specs::SurfaceCapabilityKind::Ocr,
             parameters,
         )
-        .map_err(|msg| CoreError::Internal {
-            code: oneshim_core::error_codes::InternalCode::Generic,
+        .map_err(|msg| CoreError::Config {
+            code: oneshim_core::error_codes::ConfigCode::Invalid,
             message: msg,
         })
     }
