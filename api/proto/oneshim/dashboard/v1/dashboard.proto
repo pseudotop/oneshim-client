@@ -19,6 +19,10 @@ service DashboardService {
   // grpc.health.v1.Health/Check when you want readiness semantics beyond
   // "process is alive" — e.g., "storage accessible, scheduler running".
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // D13-v2a: per-domain read RPCs. First entry point — aggregated session
+  // statistics. Mirrors REST `GET /api/sessions/stats` shape.
+  rpc GetSessionStats(GetSessionStatsRequest) returns (SessionStatsResponse);
 }
 
 message GetAgentInfoRequest {}
@@ -46,4 +50,27 @@ message HealthCheckResponse {
   Status status = 1;
   // Optional human-readable reason when status != SERVING.
   string message = 2;
+}
+
+// D13-v2a: GetSessionStats. Aggregated over the most recent `limit` sessions
+// returned by `WebStorage::list_session_stats`. When `limit == 0`, the server
+// uses 1000 as the default sample size.
+message GetSessionStatsRequest {
+  uint32 limit = 1;
+}
+
+message SessionStatsResponse {
+  // Number of sessions aggregated.
+  uint32 total_sessions = 1;
+  // Count of sessions whose `ended_at` is set.
+  uint32 ended_sessions = 2;
+  // Average completed-session duration in seconds. 0 when no sessions are
+  // yet ended.
+  double avg_duration_secs = 3;
+  // Total events across the aggregated sessions.
+  uint64 total_events = 4;
+  // Total frames across the aggregated sessions.
+  uint64 total_frames = 5;
+  // Total idle seconds across the aggregated sessions.
+  uint64 total_idle_secs = 6;
 }
