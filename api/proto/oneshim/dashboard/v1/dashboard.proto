@@ -1,0 +1,49 @@
+// D13: Dashboard gRPC service — exposed by oneshim-web for external CLI/integration tools.
+//
+// Unlike `oneshim.client.v1.*` which is the CONSUMER contract (client-rust talks to server),
+// this service is what oneshim-web SERVES to external clients on the local dashboard port.
+//
+// Per the D13 design spec (docs/superpowers/specs/2026-04-21-d13-grpc-web-exposure-design.md),
+// v1 ships with a minimal RPC set (GetAgentInfo + HealthCheck). Future PRs expand per-domain
+// (frames, events, sessions) to reach REST-parity.
+
+syntax = "proto3";
+
+package oneshim.dashboard.v1;
+
+service DashboardService {
+  // Basic agent identity + uptime. Mirrors the REST /api/agent/info endpoint.
+  rpc GetAgentInfo(GetAgentInfoRequest) returns (AgentInfoResponse);
+
+  // Dashboard-specific health check. Use this instead of the standard
+  // grpc.health.v1.Health/Check when you want readiness semantics beyond
+  // "process is alive" — e.g., "storage accessible, scheduler running".
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message GetAgentInfoRequest {}
+
+message AgentInfoResponse {
+  // Cargo package version, e.g. "0.4.39-rc.1".
+  string version = 1;
+  // "release" or "debug" based on the build profile.
+  string build_profile = 2;
+  // Seconds since the agent process started.
+  int64 uptime_secs = 3;
+  // OS family: "macos", "windows", "linux".
+  string platform = 4;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  enum Status {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+
+  Status status = 1;
+  // Optional human-readable reason when status != SERVING.
+  string message = 2;
+}
