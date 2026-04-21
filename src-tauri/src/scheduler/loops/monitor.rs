@@ -55,6 +55,7 @@ impl Scheduler {
         let overlay_ref = self.magic_overlay.clone();
         let coaching_storage_ref = self.coaching_storage.clone();
         let coaching_analysis_provider = self.analysis_provider.clone();
+        let coaching_pii_sanitizer = super::coaching_helper::build_pii_sanitizer();
         let capture_paused = self.capture_paused.clone();
         let overlay_driver_ref = self.overlay_driver.clone();
         let detection_active = self.detection_active.clone();
@@ -455,6 +456,8 @@ impl Scheduler {
                                         prev_app: prev_app.as_deref(),
                                         drift_detected,
                                         poll_secs: poll.as_secs(),
+                                        pii_sanitizer: &coaching_pii_sanitizer,
+                                        pii_level: super::coaching_helper::resolve_pii_level(&config_manager1),
                                     };
                                     super::coaching_helper::evaluate_and_deliver(&ctx, &mut coaching_tick_state).await;
                                 }
