@@ -2,8 +2,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use lru::LruCache;
+use oneshim_core::config::PiiFilterLevel;
 use oneshim_core::models::tiered_memory::WorkType;
 use oneshim_core::ports::analysis_provider::AnalysisProvider;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+use oneshim_core::sanitized;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use tracing::{debug, warn};
@@ -48,6 +51,13 @@ struct ClassificationResponse {
 pub struct LlmWorkTypeRefiner {
     provider: Arc<dyn AnalysisProvider>,
     cache: Arc<Mutex<LruCache<CacheKey, CachedResult>>>,
+    /// D5 iter-16 migration: sanitizer for `CoreError::Display` output when
+    /// LLM-call failures are logged. The error message can carry up to 200
+    /// chars of LLM response body (set at `AnalysisClient` exit), which may
+    /// echo user-context PII from the prompt. Optional — sites without a
+    /// configured sanitizer fall back to raw Display.
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pii_level: PiiFilterLevel,
 }
 
 impl LlmWorkTypeRefiner {
@@ -57,7 +67,22 @@ impl LlmWorkTypeRefiner {
             cache: Arc::new(Mutex::new(LruCache::new(
                 std::num::NonZeroUsize::new(CACHE_CAPACITY).expect("nonzero"),
             ))),
+            pii_sanitizer: None,
+            pii_level: PiiFilterLevel::Standard,
         }
+    }
+
+    /// D5 iter-16: attach a PII sanitizer applied to tracing output of
+    /// LLM-error messages via `SanitizedDisplay`.
+    #[must_use]
+    pub fn with_pii_sanitizer(
+        mut self,
+        sanitizer: Arc<dyn PiiSanitizer>,
+        level: PiiFilterLevel,
+    ) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self.pii_level = level;
+        self
     }
 
     /// Refine the rule-based WorkType using LLM.
@@ -100,6 +125,8 @@ impl LlmWorkTypeRefiner {
         let provider = self.provider.clone();
         let cache = self.cache.clone();
         let key_clone = key.clone();
+        let pii_sanitizer = self.pii_sanitizer.clone();
+        let pii_level = self.pii_level;
         let context = build_context(
             app_name,
             window_title,
@@ -130,7 +157,20 @@ impl LlmWorkTypeRefiner {
                     }
                 }
                 Err(e) => {
-                    debug!("LLM classification request failed: {e}");
+                    // D5 iter-16: LLM error body can include user-context PII
+                    // echoed by the provider (up to 200 chars of response text
+                    // per `AnalysisClient` error message). Route Display through
+                    // `SanitizedDisplay` when a sanitizer is attached.
+                    match &pii_sanitizer {
+                        Some(san) => debug!(
+                            err.code = %e.code(),
+                            "LLM classification request failed: {}",
+                            sanitized(&e, &**san, pii_level),
+                        ),
+                        None => {
+                            debug!(err.code = %e.code(), "LLM classification request failed: {e}")
+                        }
+                    }
                 }
             }
         });
@@ -249,5 +289,35 @@ mod tests {
         let ctx = build_context("Chrome", "Google", None, None, 0.0, WorkType::Browsing);
         assert!(!ctx.contains("Focused role"));
         assert!(!ctx.contains("OCR sample"));
+    }
+
+    // D5 iter-16: verify `with_pii_sanitizer` builder wires fields without
+    // regressing the base `new` constructor. The runtime sanitize call
+    // happens inside a `tokio::spawn` that's exercised end-to-end — this
+    // asserts the builder plumbing itself.
+    #[test]
+    fn with_pii_sanitizer_sets_fields() {
+        use crate::fallback_analysis_provider::NoOpAnalysisProvider;
+        use oneshim_core::config::PiiFilterLevel;
+
+        struct MockSanitizer;
+        impl PiiSanitizer for MockSanitizer {
+            fn sanitize_text(&self, text: &str, _: PiiFilterLevel) -> String {
+                text.to_string()
+            }
+        }
+
+        let refiner = LlmWorkTypeRefiner::new(Arc::new(NoOpAnalysisProvider))
+            .with_pii_sanitizer(Arc::new(MockSanitizer), PiiFilterLevel::Strict);
+        assert!(refiner.pii_sanitizer.is_some());
+        assert_eq!(refiner.pii_level, PiiFilterLevel::Strict);
+    }
+
+    #[test]
+    fn default_new_has_no_sanitizer() {
+        use crate::fallback_analysis_provider::NoOpAnalysisProvider;
+        let refiner = LlmWorkTypeRefiner::new(Arc::new(NoOpAnalysisProvider));
+        assert!(refiner.pii_sanitizer.is_none());
+        assert_eq!(refiner.pii_level, PiiFilterLevel::Standard);
     }
 }

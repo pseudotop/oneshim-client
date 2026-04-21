@@ -78,7 +78,16 @@ pub(super) fn build_analysis_pipeline(
                             as Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>
                     });
                     info!("LLM WorkType refiner enabled");
-                    Arc::new(oneshim_analysis::LlmWorkTypeRefiner::new(provider))
+                    // D5 iter-16: route refiner LLM-error tracing through
+                    // `SanitizedDisplay`. LLM error bodies can echo
+                    // user-context PII from the prompt.
+                    let pii_level = config.privacy.pii_filter_level;
+                    let sanitizer: Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer> =
+                        Arc::new(oneshim_vision::privacy::VisionPiiSanitizer);
+                    Arc::new(
+                        oneshim_analysis::LlmWorkTypeRefiner::new(provider)
+                            .with_pii_sanitizer(sanitizer, pii_level),
+                    )
                 })
             } else {
                 None
