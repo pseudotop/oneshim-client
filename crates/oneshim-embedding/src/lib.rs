@@ -4,6 +4,9 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap
 )]
+// P2 PR-A nursery-hardening.
+#![deny(clippy::significant_drop_tightening)]
+#![cfg_attr(test, allow(clippy::significant_drop_tightening))]
 
 //! Local embedding provider — fastembed-rs (ONNX Runtime) wrapper.
 //!
@@ -81,6 +84,12 @@ mod fastembed_impl {
         ///
         /// Uses the same model name that was passed to `new()`. On success the
         /// internal model is swapped and `model_version` is incremented.
+        ///
+        /// P2 PR-A: model name + model locks are held across fastembed
+        /// initialization (downloads ONNX weights, can take seconds). This
+        /// is intentional — concurrent reloads must serialize or we risk
+        /// one reload overwriting another mid-init.
+        #[allow(clippy::significant_drop_tightening)]
         pub fn reload(&self) -> Result<u64, EmbeddingError> {
             let raw_name = self
                 .model_name_raw
@@ -107,6 +116,10 @@ mod fastembed_impl {
 
     #[async_trait]
     impl EmbeddingProvider for LocalEmbeddingProvider {
+        // P2 PR-A: fastembed model lock is held across the embedding inference
+        // call. This is the expected pattern — fastembed is not thread-safe
+        // so concurrent embed calls must serialize through the lock.
+        #[allow(clippy::significant_drop_tightening)]
         async fn embed(&self, text: &str) -> Result<Vec<f32>, CoreError> {
             let model = Arc::clone(&self.model);
             let text = text.to_owned();

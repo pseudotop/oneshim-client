@@ -94,23 +94,29 @@ impl OcrElementFinder {
             .collect()
     }
 
+    // P2 PR-A: `#[allow]` — the block below already tightens the guard scope
+    // relative to what clippy's suggestion (`merge-with-single-usage`) would
+    // produce (that suggestion generates invalid Rust for this pattern, since
+    // the guard must outlive the Option::ok_or_else chain).
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn analyze_scene(
         &self,
         app_name: Option<&str>,
         screen_id: Option<&str>,
     ) -> Result<UiScene, VisionError> {
-        let image_guard = self.last_image.read().await;
-        let (image_data, image_format) = image_guard.as_ref().ok_or_else(|| {
-            VisionError::Internal("OCR finder: captured image is missing".to_string())
-        })?;
+        // P2 PR-A: extract + drop the read guard before the async OCR call.
+        // Holding the guard across `analyze_scene_from_image_data` would
+        // block concurrent `set_image` writers for the duration of OCR.
+        let (image_data, image_format) = {
+            let image_guard = self.last_image.read().await;
+            let (data, format) = image_guard.as_ref().ok_or_else(|| {
+                VisionError::Internal("OCR finder: captured image is missing".to_string())
+            })?;
+            (data.clone(), format.to_string())
+        };
 
-        self.analyze_scene_from_image_data(
-            image_data.clone(),
-            image_format.to_string(),
-            app_name,
-            screen_id,
-        )
-        .await
+        self.analyze_scene_from_image_data(image_data, image_format, app_name, screen_id)
+            .await
     }
 
     async fn analyze_scene_from_image_data(
@@ -227,18 +233,23 @@ impl OcrElementFinder {
 
 #[async_trait]
 impl ElementFinder for OcrElementFinder {
+    // P2 PR-A: same rationale as `analyze_scene` above.
+    #[allow(clippy::significant_drop_tightening)]
     async fn find_element(
         &self,
         text: Option<&str>,
         role: Option<&str>,
         region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
-        let image_guard = self.last_image.read().await;
-        let (image_data, image_format) =
-            image_guard.as_ref().ok_or_else(|| CoreError::Internal {
+        // P2 PR-A: extract + drop the read guard before the async OCR call.
+        let (image_data, image_format) = {
+            let image_guard = self.last_image.read().await;
+            let (data, format) = image_guard.as_ref().ok_or_else(|| CoreError::Internal {
                 code: oneshim_core::error_codes::InternalCode::Generic,
                 message: "OCR finder: captured image is missing".to_string(),
             })?;
+            (data.clone(), format.to_string())
+        };
 
         debug!(
             provider = self.ocr_provider.provider_name(),
@@ -249,7 +260,7 @@ impl ElementFinder for OcrElementFinder {
 
         let ocr_results = self
             .ocr_provider
-            .extract_elements(image_data, image_format)
+            .extract_elements(&image_data, &image_format)
             .await?;
 
         let mut elements = Self::ocr_to_elements(&ocr_results, text, role, region);
