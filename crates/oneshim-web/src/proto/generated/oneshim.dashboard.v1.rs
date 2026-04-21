@@ -98,6 +98,111 @@ pub struct SessionStatsResponse {
     #[prost(uint64, tag = "6")]
     pub total_idle_secs: u64,
 }
+/// D13-v2a: GetRecentFrames. Returns frame metadata (no image bytes) for
+/// recent captures. Image bytes are served separately via the existing REST
+/// file handler to keep gRPC responses bounded.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetRecentFramesRequest {
+    /// Max frames to return. 0 → default 50. Hard-capped at 500.
+    #[prost(uint32, tag = "1")]
+    pub limit: u32,
+    /// Hours to look back. 0 → default 1. Hard-capped at 168 (7 days).
+    #[prost(uint32, tag = "2")]
+    pub since_hours: u32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RecentFramesResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub frames: ::prost::alloc::vec::Vec<recent_frames_response::FrameMetadata>,
+}
+/// Nested message and enum types in `RecentFramesResponse`.
+pub mod recent_frames_response {
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct FrameMetadata {
+        #[prost(int64, tag = "1")]
+        pub frame_id: i64,
+        /// RFC 3339
+        #[prost(string, tag = "2")]
+        pub captured_at: ::prost::alloc::string::String,
+        #[prost(string, tag = "3")]
+        pub trigger_type: ::prost::alloc::string::String,
+        #[prost(string, tag = "4")]
+        pub app_name: ::prost::alloc::string::String,
+        #[prost(string, tag = "5")]
+        pub window_title: ::prost::alloc::string::String,
+        #[prost(float, tag = "6")]
+        pub importance: f32,
+        #[prost(uint32, tag = "7")]
+        pub resolution_w: u32,
+        /// File path is intentionally omitted — dashboard clients fetch image
+        /// bytes over REST; exposing the path here would leak FS layout.
+        #[prost(uint32, tag = "8")]
+        pub resolution_h: u32,
+    }
+}
+/// D13-v2a: GetProductivityMetrics. Hourly CPU/memory rollups within an
+/// inclusive \[from, now\] window.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetProductivityMetricsRequest {
+    /// Hours to look back from now. 0 → default 24. Hard-capped at 168.
+    #[prost(uint32, tag = "1")]
+    pub since_hours: u32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProductivityMetricsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub buckets: ::prost::alloc::vec::Vec<productivity_metrics_response::HourlyMetrics>,
+}
+/// Nested message and enum types in `ProductivityMetricsResponse`.
+pub mod productivity_metrics_response {
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct HourlyMetrics {
+        /// RFC 3339 hour-start
+        #[prost(string, tag = "1")]
+        pub hour: ::prost::alloc::string::String,
+        #[prost(double, tag = "2")]
+        pub cpu_avg: f64,
+        #[prost(double, tag = "3")]
+        pub cpu_max: f64,
+        #[prost(uint64, tag = "4")]
+        pub memory_avg: u64,
+        #[prost(uint64, tag = "5")]
+        pub memory_max: u64,
+        #[prost(uint64, tag = "6")]
+        pub sample_count: u64,
+    }
+}
+/// D13-v2a: GetFocusStats. Focus aggregates over the last N days.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetFocusStatsRequest {
+    /// Days to look back. 0 → default 7. Hard-capped at 90.
+    #[prost(uint32, tag = "1")]
+    pub days: u32,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct FocusStatsResponse {
+    /// Number of daily buckets returned.
+    #[prost(uint32, tag = "1")]
+    pub bucket_count: u32,
+    /// Sum of `total_active_secs` across returned buckets.
+    #[prost(uint64, tag = "2")]
+    pub total_active_secs: u64,
+    /// Sum of `deep_work_secs` across returned buckets.
+    #[prost(uint64, tag = "3")]
+    pub total_deep_work_secs: u64,
+    /// Sum of `communication_secs` across returned buckets.
+    #[prost(uint64, tag = "4")]
+    pub total_communication_secs: u64,
+    /// Sum of `interruption_count` across returned buckets.
+    #[prost(uint32, tag = "5")]
+    pub total_interruptions: u32,
+    /// Average `focus_score` across returned buckets. 0 when no data.
+    #[prost(float, tag = "6")]
+    pub avg_focus_score: f32,
+    /// Max `max_focus_duration_secs` across returned buckets.
+    #[prost(uint64, tag = "7")]
+    pub longest_focus_secs: u64,
+}
 /// Generated client implementations.
 pub mod dashboard_service_client {
     #![allow(
@@ -251,8 +356,8 @@ pub mod dashboard_service_client {
                 );
             self.inner.unary(req, path, codec).await
         }
-        /// D13-v2a: per-domain read RPCs. First entry point — aggregated session
-        /// statistics. Mirrors REST `GET /api/sessions/stats` shape.
+        /// D13-v2a: per-domain read RPCs.
+        /// Aggregated session statistics. Mirrors REST `GET /api/sessions/stats`.
         pub async fn get_session_stats(
             &mut self,
             request: impl tonic::IntoRequest<super::GetSessionStatsRequest>,
@@ -278,6 +383,97 @@ pub mod dashboard_service_client {
                     GrpcMethod::new(
                         "oneshim.dashboard.v1.DashboardService",
                         "GetSessionStats",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Recent frame metadata. Mirrors REST `GET /api/frames?limit=N`.
+        pub async fn get_recent_frames(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetRecentFramesRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RecentFramesResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/oneshim.dashboard.v1.DashboardService/GetRecentFrames",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "oneshim.dashboard.v1.DashboardService",
+                        "GetRecentFrames",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Hourly productivity metric rollups. Mirrors REST
+        /// `GET /api/metrics/hourly?from=...`.
+        pub async fn get_productivity_metrics(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetProductivityMetricsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ProductivityMetricsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/oneshim.dashboard.v1.DashboardService/GetProductivityMetrics",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "oneshim.dashboard.v1.DashboardService",
+                        "GetProductivityMetrics",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Focus aggregates over the last N days. Mirrors REST `GET /api/focus/stats`.
+        pub async fn get_focus_stats(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetFocusStatsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::FocusStatsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/oneshim.dashboard.v1.DashboardService/GetFocusStats",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "oneshim.dashboard.v1.DashboardService",
+                        "GetFocusStats",
                     ),
                 );
             self.inner.unary(req, path, codec).await
@@ -315,13 +511,38 @@ pub mod dashboard_service_server {
             tonic::Response<super::HealthCheckResponse>,
             tonic::Status,
         >;
-        /// D13-v2a: per-domain read RPCs. First entry point — aggregated session
-        /// statistics. Mirrors REST `GET /api/sessions/stats` shape.
+        /// D13-v2a: per-domain read RPCs.
+        /// Aggregated session statistics. Mirrors REST `GET /api/sessions/stats`.
         async fn get_session_stats(
             &self,
             request: tonic::Request<super::GetSessionStatsRequest>,
         ) -> std::result::Result<
             tonic::Response<super::SessionStatsResponse>,
+            tonic::Status,
+        >;
+        /// Recent frame metadata. Mirrors REST `GET /api/frames?limit=N`.
+        async fn get_recent_frames(
+            &self,
+            request: tonic::Request<super::GetRecentFramesRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RecentFramesResponse>,
+            tonic::Status,
+        >;
+        /// Hourly productivity metric rollups. Mirrors REST
+        /// `GET /api/metrics/hourly?from=...`.
+        async fn get_productivity_metrics(
+            &self,
+            request: tonic::Request<super::GetProductivityMetricsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ProductivityMetricsResponse>,
+            tonic::Status,
+        >;
+        /// Focus aggregates over the last N days. Mirrors REST `GET /api/focus/stats`.
+        async fn get_focus_stats(
+            &self,
+            request: tonic::Request<super::GetFocusStatsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::FocusStatsResponse>,
             tonic::Status,
         >;
     }
@@ -523,6 +744,147 @@ pub mod dashboard_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = GetSessionStatsSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/oneshim.dashboard.v1.DashboardService/GetRecentFrames" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetRecentFramesSvc<T: DashboardService>(pub Arc<T>);
+                    impl<
+                        T: DashboardService,
+                    > tonic::server::UnaryService<super::GetRecentFramesRequest>
+                    for GetRecentFramesSvc<T> {
+                        type Response = super::RecentFramesResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetRecentFramesRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as DashboardService>::get_recent_frames(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetRecentFramesSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/oneshim.dashboard.v1.DashboardService/GetProductivityMetrics" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetProductivityMetricsSvc<T: DashboardService>(pub Arc<T>);
+                    impl<
+                        T: DashboardService,
+                    > tonic::server::UnaryService<super::GetProductivityMetricsRequest>
+                    for GetProductivityMetricsSvc<T> {
+                        type Response = super::ProductivityMetricsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetProductivityMetricsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as DashboardService>::get_productivity_metrics(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetProductivityMetricsSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/oneshim.dashboard.v1.DashboardService/GetFocusStats" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetFocusStatsSvc<T: DashboardService>(pub Arc<T>);
+                    impl<
+                        T: DashboardService,
+                    > tonic::server::UnaryService<super::GetFocusStatsRequest>
+                    for GetFocusStatsSvc<T> {
+                        type Response = super::FocusStatsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetFocusStatsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as DashboardService>::get_focus_stats(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetFocusStatsSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
