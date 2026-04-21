@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
+use oneshim_core::config::PiiFilterLevel;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
     InsightPacket, IntegrationAckCursor, IntegrationEgressDisposition, IntegrationEnvelope,
@@ -11,11 +12,17 @@ use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationEgressDecision, IntegrationEgressPolicyPort,
     IntegrationEgressPort,
 };
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 
 pub struct PolicyAwareIntegrationEgressCoordinator {
     inner: Arc<dyn IntegrationEgressPort>,
     policy: Arc<dyn IntegrationEgressPolicyPort>,
     audit: Arc<dyn IntegrationAuditPort>,
+    /// D5 iter-12: sanitize InsightPacket.summary + derived_tags before
+    /// egress to external integration backend (ERP/MES/CRM). Enterprise
+    /// integrations are HIGH-risk for PII leaks.
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pii_level: PiiFilterLevel,
 }
 
 impl PolicyAwareIntegrationEgressCoordinator {
@@ -28,6 +35,38 @@ impl PolicyAwareIntegrationEgressCoordinator {
             inner,
             policy,
             audit,
+            pii_sanitizer: None,
+            pii_level: PiiFilterLevel::Strict,
+        }
+    }
+
+    /// D5 iter-12: attach PII sanitizer. Default Strict (enterprise egress).
+    pub fn with_pii_sanitizer(
+        mut self,
+        sanitizer: Arc<dyn PiiSanitizer>,
+        level: PiiFilterLevel,
+    ) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self.pii_level = level;
+        self
+    }
+
+    /// D5 iter-12: produce a sanitized copy of an InsightPacket.
+    fn sanitize_packet(&self, packet: &InsightPacket) -> InsightPacket {
+        let Some(s) = &self.pii_sanitizer else {
+            return packet.clone();
+        };
+        InsightPacket {
+            packet_id: packet.packet_id.clone(),
+            summary: s.sanitize_text(&packet.summary, self.pii_level),
+            derived_tags: packet
+                .derived_tags
+                .iter()
+                .map(|t| s.sanitize_text(t, self.pii_level))
+                .collect(),
+            source_window: packet.source_window.clone(),
+            privacy_classification: packet.privacy_classification.clone(),
+            audit_reference_id: packet.audit_reference_id.clone(),
         }
     }
 
@@ -67,7 +106,12 @@ impl IntegrationEgressPort for PolicyAwareIntegrationEgressCoordinator {
 
             match decision.disposition {
                 IntegrationEgressDisposition::Allow => {
-                    self.inner.enqueue_message(envelope, payload).await
+                    // D5 iter-12: sanitize packet before egress to external backend.
+                    let sanitized_payload =
+                        IntegrationOutboundPayload::Insight(self.sanitize_packet(packet));
+                    self.inner
+                        .enqueue_message(envelope, sanitized_payload)
+                        .await
                 }
                 IntegrationEgressDisposition::Deny => Err(CoreError::PolicyDenied {
                     code: oneshim_core::error_codes::PolicyCode::Denied,
