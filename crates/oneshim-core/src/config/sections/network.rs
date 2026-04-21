@@ -198,8 +198,10 @@ mod tests {
 
     #[test]
     fn web_config_grpc_port_roundtrips_via_serde() {
-        let mut cfg = WebConfig::default();
-        cfg.grpc_port = 55555;
+        let cfg = WebConfig {
+            grpc_port: 55555,
+            ..WebConfig::default()
+        };
         let json = serde_json::to_string(&cfg).unwrap();
         let parsed: WebConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.grpc_port, 55555);
