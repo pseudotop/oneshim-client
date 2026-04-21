@@ -58,6 +58,8 @@ tonic = { workspace = true, optional = true }
 tonic-health = { workspace = true, optional = true }
 tonic-prost = { workspace = true, optional = true }
 prost = { workspace = true, optional = true }
+# prost-types needed for google.protobuf.Timestamp in v2b generated code.
+prost-types = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 
 [features]
@@ -69,6 +71,7 @@ grpc-dashboard = [
   "dep:tonic-health",
   "dep:tonic-prost",
   "dep:prost",
+  "dep:prost-types",
   "dep:async-trait",
 ]
 

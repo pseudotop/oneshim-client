@@ -11,6 +11,8 @@ syntax = "proto3";
 
 package oneshim.dashboard.v1;
 
+import "google/protobuf/timestamp.proto";
+
 service DashboardService {
   // Basic agent identity + uptime. Mirrors the REST /api/agent/info endpoint.
   rpc GetAgentInfo(GetAgentInfoRequest) returns (AgentInfoResponse);
@@ -30,6 +32,14 @@ service DashboardService {
   rpc GetProductivityMetrics(GetProductivityMetricsRequest) returns (ProductivityMetricsResponse);
   // Focus aggregates over the last N days. Mirrors REST `GET /api/focus/stats`.
   rpc GetFocusStats(GetFocusStatsRequest) returns (FocusStatsResponse);
+
+  // V2b: server-streaming. Realtime (interval_secs=0) or interval-aggregated
+  // MetricBuckets. See docs/reviews/2026-04-21-d13-v2b-streaming-design.md §1.
+  rpc SubscribeMetrics(SubscribeMetricsRequest) returns (stream SubscribeMetricsResponse);
+
+  // V2b: server-streaming. Frame/Idle/AiRuntimeStatus DashboardEvents with
+  // server-enforced per-type rate limits. See §1 + §2.
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream SubscribeEventsResponse);
 }
 
 message GetAgentInfoRequest {}
@@ -116,16 +126,115 @@ message GetProductivityMetricsRequest {
   uint32 since_hours = 1;
 }
 
-message ProductivityMetricsResponse {
-  repeated HourlyMetrics buckets = 1;
+// v2b: shared by v2a unary response and v2b streaming. Wire format number
+// preserved for the repeated field; start field type flips from string to
+// Timestamp (wire-breaking for that specific field — acceptable pre-v2c
+// since the dashboard gRPC is localhost-only; see v3 cleanup tracker).
+message MetricBucket {
+  google.protobuf.Timestamp start = 1;
+  double cpu_avg_pct = 2;
+  double memory_avg_mb = 3;
+  uint32 active_keystrokes = 4;
+  uint32 active_mouse_clicks = 5;
+}
 
-  message HourlyMetrics {
-    string hour = 1;  // RFC 3339 hour-start
-    double cpu_avg = 2;
-    double cpu_max = 3;
-    uint64 memory_avg = 4;
-    uint64 memory_max = 5;
-    uint64 sample_count = 6;
+message ProductivityMetricsResponse {
+  repeated MetricBucket buckets = 1;
+}
+
+// ── V2b: SubscribeMetrics ──────────────────────────────────────────
+message SubscribeMetricsRequest {
+  // 0 = realtime (DB query on every event_tx::Metrics tick).
+  // N>0 = emit an aggregated bucket every N seconds.
+  // Server clamps to [250ms floor, 60s ceiling] and applies load-based
+  // enforcement per design §3.
+  uint32 interval_secs = 1;
+
+  // When false, client asks server to skip enforcement. Only honored when
+  // trusted (loopback or matching integration_auth_token). See §4 auth gate.
+  bool respect_server_hints = 2;
+}
+
+message SubscribeMetricsResponse {
+  oneof payload {
+    MetricBucket data = 1;
+    ServerLoadHint hint = 2;
+  }
+}
+
+// ── V2b: SubscribeEvents ───────────────────────────────────────────
+message SubscribeEventsRequest {
+  // "frame" | "idle" | "ai_runtime_status". Empty = all three.
+  // Unknown types are silently ignored (forward-compat).
+  repeated string event_types = 1;
+  bool respect_server_hints = 2;
+}
+
+message SubscribeEventsResponse {
+  oneof payload {
+    DashboardEvent event = 1;
+    ServerLoadHint hint = 2;
+    DroppedEventsSignal dropped = 3;
+  }
+}
+
+message DashboardEvent {
+  google.protobuf.Timestamp occurred_at = 1;
+  oneof payload {
+    FrameEvent frame = 2;
+    IdleEvent idle = 3;
+    AiRuntimeStatusEvent ai_runtime_status = 4;
+  }
+}
+
+message FrameEvent {
+  int64 frame_id = 1;
+  string app_name = 2;
+  string window_title = 3;
+  float importance = 4;
+  string trigger_type = 5;
+}
+
+message IdleEvent {
+  bool is_idle = 1;
+  uint64 idle_secs = 2;
+}
+
+message AiRuntimeStatusEvent {
+  string ocr_source = 1;
+  string llm_source = 2;
+  string ocr_fallback_reason = 3;  // empty when no fallback
+  string llm_fallback_reason = 4;
+}
+
+// ── V2b: shared hint/signal ────────────────────────────────────────
+message ServerLoadHint {
+  enum Level {
+    LOAD_LEVEL_UNSPECIFIED = 0;
+    LOAD_LEVEL_LOW = 1;
+    LOAD_LEVEL_MEDIUM = 2;
+    LOAD_LEVEL_HIGH = 3;
+    LOAD_LEVEL_CRITICAL = 4;
+  }
+  Level load_level = 1;
+  float cpu_pct = 2;
+  float memory_pct = 3;
+  uint32 suggested_interval_secs = 4;        // 0 = no suggestion
+  uint32 suggested_event_rate_limit = 5;     // 0 = no suggestion
+  string reason = 6;
+  google.protobuf.Timestamp emitted_at = 7;
+}
+
+message DroppedEventsSignal {
+  uint64 dropped_count = 1;
+  google.protobuf.Timestamp since = 2;
+  google.protobuf.Timestamp until = 3;
+  string reason = 4;  // "rate_limit" | "channel_lag"
+  repeated TypeCount by_type = 5;
+
+  message TypeCount {
+    string event_type = 1;
+    uint64 count = 2;
   }
 }
 

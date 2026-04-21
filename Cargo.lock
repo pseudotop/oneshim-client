@@ -5683,6 +5683,7 @@ dependencies = [
  "oneshim-storage",
  "parking_lot",
  "prost 0.14.3",
+ "prost-types",
  "rand 0.10.1",
  "reqwest 0.13.2",
  "rust-embed",
