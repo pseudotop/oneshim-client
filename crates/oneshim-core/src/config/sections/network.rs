@@ -100,6 +100,11 @@ pub struct WebConfig {
     pub allow_external: bool,
     #[serde(default)]
     pub integration_auth_token: Option<String>,
+    /// D13-v2: dedicated port for the gRPC Dashboard server. 0 means "use
+    /// the default (10091)". Overridden by the `ONESHIM_DASHBOARD_GRPC_PORT`
+    /// env var for ops/CI overrides.
+    #[serde(default = "default_grpc_dashboard_port")]
+    pub grpc_port: u16,
 }
 
 impl Default for WebConfig {
@@ -109,6 +114,7 @@ impl Default for WebConfig {
             port: default_web_port(),
             allow_external: false,
             integration_auth_token: None,
+            grpc_port: default_grpc_dashboard_port(),
         }
     }
 }
@@ -159,4 +165,51 @@ fn default_web_enabled() -> bool {
 
 fn default_web_port() -> u16 {
     DEFAULT_WEB_PORT
+}
+
+/// D13-v2: default gRPC Dashboard port.
+///
+/// Must match `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT`. Both live at
+/// 10091 — one port offset from the REST server (10090). Keeping the two in
+/// sync is enforced by a unit test (see the bottom of this file) so a drift
+/// is caught at build time.
+pub const DEFAULT_GRPC_DASHBOARD_PORT: u16 = 10091;
+
+fn default_grpc_dashboard_port() -> u16 {
+    DEFAULT_GRPC_DASHBOARD_PORT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_grpc_dashboard_port_is_10091() {
+        // D13-v2 port contract: must stay in sync with
+        // `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT`.
+        assert_eq!(DEFAULT_GRPC_DASHBOARD_PORT, 10091);
+    }
+
+    #[test]
+    fn web_config_default_wires_grpc_port() {
+        let cfg = WebConfig::default();
+        assert_eq!(cfg.grpc_port, DEFAULT_GRPC_DASHBOARD_PORT);
+    }
+
+    #[test]
+    fn web_config_grpc_port_roundtrips_via_serde() {
+        let mut cfg = WebConfig::default();
+        cfg.grpc_port = 55555;
+        let json = serde_json::to_string(&cfg).unwrap();
+        let parsed: WebConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.grpc_port, 55555);
+    }
+
+    #[test]
+    fn web_config_grpc_port_defaults_when_absent_from_json() {
+        // Partial JSON (no grpc_port field) — should default to 10091.
+        let json = r#"{"enabled":true,"port":10090,"allow_external":false}"#;
+        let parsed: WebConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.grpc_port, DEFAULT_GRPC_DASHBOARD_PORT);
+    }
 }

@@ -770,16 +770,25 @@ impl AppRuntimeLaunchBuilder {
             let web_server_runtime = builder.build_and_spawn();
 
             // D13: spawn gRPC dashboard server alongside Axum REST, when the
-            // `grpc-dashboard` feature is compiled in. Default port 10091;
-            // can be overridden by ONESHIM_DASHBOARD_GRPC_PORT env var. If
-            // the bind fails (port in use, etc.), the server task logs a
+            // `grpc-dashboard` feature is compiled in. Port resolution
+            // priority (highest first):
+            //   1. ONESHIM_DASHBOARD_GRPC_PORT env var (ops/CI override)
+            //   2. `config.web.grpc_port` (user config)
+            //   3. `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT` (10091)
+            // If the bind fails (port in use, etc.), the server task logs a
             // warn and exits — REST continues normally.
             #[cfg(feature = "grpc-dashboard")]
             {
                 let grpc_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
+                    .unwrap_or_else(|| {
+                        if config.web.grpc_port == 0 {
+                            oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT
+                        } else {
+                            config.web.grpc_port
+                        }
+                    });
                 handle.spawn(async move {
                     oneshim_web::grpc::serve_optional(grpc_port).await;
                 });
