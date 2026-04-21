@@ -4,11 +4,13 @@ mod triggers;
 pub mod tunable_params;
 
 use chrono::{DateTime, Timelike, Utc};
-use oneshim_core::config::CoachingConfig;
+use oneshim_core::config::{CoachingConfig, PiiFilterLevel};
 use oneshim_core::models::coaching::{
     trigger_type_name, CoachingMessage, CoachingProfile, GoalProgressView, TriggerType,
 };
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::debug;
@@ -69,6 +71,13 @@ pub struct CoachingEngine {
 
     /// Human-readable label of the current regime (set during evaluate).
     pub(super) current_regime_label: RwLock<Option<String>>,
+
+    /// D5 iter-8: optional PII sanitizer. When set, `template_text` is
+    /// sanitized after variable substitution so any regime_label / app_name
+    /// that slipped through capture-time sanitization is caught at the
+    /// coaching boundary before display/persistence.
+    pub(super) pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pub(super) pii_level: PiiFilterLevel,
 }
 
 impl CoachingEngine {
@@ -96,7 +105,20 @@ impl CoachingEngine {
             last_features: RwLock::new(None),
             messages_shown_today: RwLock::new(0),
             current_regime_label: RwLock::new(None),
+            pii_sanitizer: None,
+            pii_level: PiiFilterLevel::Standard,
         }
+    }
+
+    /// D5 iter-8: attach a PII sanitizer for template_text sanitization.
+    pub fn with_pii_sanitizer(
+        mut self,
+        sanitizer: Arc<dyn PiiSanitizer>,
+        level: PiiFilterLevel,
+    ) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self.pii_level = level;
+        self
     }
 
     /// Main entry point: evaluate whether a coaching message should be shown.
@@ -234,9 +256,18 @@ impl CoachingEngine {
             .await;
 
         // 8. Select template (locale-aware, falls back to "en")
-        let template_text =
+        let raw_template_text =
             self.templates
                 .select(&profile, &trigger, &config.tone, &config.locale, &variables);
+        // D5 iter-8: sanitize template_text after variable substitution.
+        // Coaching templates interpolate regime_label, app_name, and other
+        // runtime values that may contain PII if capture-time sanitization
+        // missed them. Apply at the coaching boundary as defense-in-depth.
+        let template_text = self
+            .pii_sanitizer
+            .as_ref()
+            .map(|s| s.sanitize_text(&raw_template_text, self.pii_level))
+            .unwrap_or(raw_template_text);
 
         // 9. Record alert timestamp + increment daily counter
         self.record_alert(&profile).await;
