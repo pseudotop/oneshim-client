@@ -269,6 +269,27 @@ pub async fn report_frontend_error(
     let component_stack =
         component_stack.map(|s| truncate_log_field(s.trim().to_string(), MAX_STACK_LEN));
 
+    // D5 iter-13: sanitize frontend-provided strings before logging. The
+    // frontend may pass user input verbatim in error_message (e.g., a JS
+    // error from a form validator that echoes the user's email). src-tauri
+    // binary crate can use oneshim-vision directly.
+    let error_message = oneshim_vision::privacy::sanitize_title_with_level(
+        &error_message,
+        oneshim_core::config::PiiFilterLevel::Standard,
+    );
+    let stack = stack.map(|s| {
+        oneshim_vision::privacy::sanitize_title_with_level(
+            &s,
+            oneshim_core::config::PiiFilterLevel::Standard,
+        )
+    });
+    let component_stack = component_stack.map(|s| {
+        oneshim_vision::privacy::sanitize_title_with_level(
+            &s,
+            oneshim_core::config::PiiFilterLevel::Standard,
+        )
+    });
+
     // Apply per-route logging cooldown only for non-critical severities.
     // Critical bypasses the cooldown AND should not reset the bucket so a
     // subsequent warning/error within 10s is not silently suppressed.
