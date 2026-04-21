@@ -84,6 +84,10 @@ custom-protocol = ["tauri/custom-protocol"]
 analysis = ["dep:oneshim-network"]
 server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
+# D13: Enable the local dashboard gRPC server (tonic-based, runs alongside
+# Axum REST on a separate port). Opt-in so default builds pay zero tonic
+# dep cost.
+grpc-dashboard = ["oneshim-web/grpc-dashboard"]
 audio = ["dep:oneshim-audio"]
 stt = ["audio", "oneshim-audio/whisper"]
 cloud-stt = ["audio", "oneshim-audio/cloud-stt"]

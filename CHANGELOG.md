@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **D13 gRPC dashboard server (v1)** (spec: `docs/superpowers/specs/2026-04-21-d13-grpc-web-exposure-design.md`). `oneshim-web` gains an optional gRPC server exposing `DashboardService` for external CLI/integration tools.
+  - **Proto**: `api/proto/oneshim/dashboard/v1/dashboard.proto` defines `DashboardService` with `GetAgentInfo` + `HealthCheck` RPCs. Placement under `oneshim/dashboard/v1/` parallels the existing consumer contract under `oneshim/client/v1/`.
+  - **Implementation**: `crates/oneshim-web/src/grpc/` hosts `DashboardServiceImpl`. Runs via `tonic::transport::Server` on localhost port 10091 (configurable via `ONESHIM_DASHBOARD_GRPC_PORT` env var). REST continues on 10090 unchanged.
+  - **Feature-gated**: new `grpc-dashboard` Cargo feature in both `oneshim-web` and `src-tauri`. Default builds compile without tonic, paying zero dep cost.
+  - **Health**: registers the standard `grpc.health.v1.Health` service via `tonic-health` for external liveness probes (`grpc_health_probe -addr=localhost:10091`).
+  - **v1 scope**: minimal RPC surface proving the infrastructure end-to-end. Future PRs expand per-domain (frames/events/sessions) toward REST parity.
+  - **Deferred to v2**: streaming RPCs, auth (localhost-only v1), TLS, gRPC-web proxy, config field `web.grpc_port` (currently env-var only).
+
 ### Security
 
 - **🔥 D5 PII filter audit — CRITICAL clipboard fix + 10 gap closures** (spec: [`docs/superpowers/specs/2026-04-20-d5-pii-filter-audit-design.md`](docs/superpowers/specs/2026-04-20-d5-pii-filter-audit-design.md), audit matrix: [`docs/reviews/2026-04-20-d5-pii-audit-matrix.md`](docs/reviews/2026-04-20-d5-pii-audit-matrix.md)).
