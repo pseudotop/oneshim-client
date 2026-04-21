@@ -31,9 +31,14 @@ impl Scheduler {
             .as_ref()
             .map(|cm| cm.get().privacy.pii_filter_level)
             .unwrap_or(oneshim_core::config::PiiFilterLevel::Standard);
-        let clipboard_monitor = Arc::new(oneshim_monitor::clipboard::ClipboardMonitor::new(
-            clipboard_pii_level,
-        ));
+        // D5 iter-2: inject VisionPiiSanitizer via PiiSanitizer port so the
+        // clipboard preview's sanitize-before-truncate fix takes effect.
+        let clipboard_sanitizer: Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer> =
+            Arc::new(oneshim_vision::privacy::VisionPiiSanitizer);
+        let clipboard_monitor = Arc::new(
+            oneshim_monitor::clipboard::ClipboardMonitor::new(clipboard_pii_level)
+                .with_pii_sanitizer(clipboard_sanitizer),
+        );
 
         // File access watcher — polls monitored directories for changes each input tick.
         let file_access_config = self
