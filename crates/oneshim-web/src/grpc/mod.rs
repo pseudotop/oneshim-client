@@ -9,9 +9,11 @@
 //! clippy's `duplicated_attributes` lint).
 
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
+use tokio_stream::Stream;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tracing::{info, warn};
@@ -25,6 +27,8 @@ use crate::proto::dashboard::v1::{
     GetAgentInfoRequest, GetFocusStatsRequest, GetProductivityMetricsRequest,
     GetRecentFramesRequest, GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse,
     ProductivityMetricsResponse, RecentFramesResponse, SessionStatsResponse,
+    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeMetricsRequest,
+    SubscribeMetricsResponse,
 };
 use crate::storage_port::WebStorage;
 
@@ -64,6 +68,11 @@ impl DashboardServiceImpl {
 
 #[tonic::async_trait]
 impl DashboardService for DashboardServiceImpl {
+    type SubscribeMetricsStream =
+        Pin<Box<dyn Stream<Item = Result<SubscribeMetricsResponse, Status>> + Send>>;
+    type SubscribeEventsStream =
+        Pin<Box<dyn Stream<Item = Result<SubscribeEventsResponse, Status>> + Send>>;
+
     async fn get_agent_info(
         &self,
         _req: Request<GetAgentInfoRequest>,
@@ -283,6 +292,22 @@ impl DashboardService for DashboardServiceImpl {
             avg_focus_score,
             longest_focus_secs,
         }))
+    }
+
+    async fn subscribe_metrics(
+        &self,
+        _req: Request<SubscribeMetricsRequest>,
+    ) -> Result<Response<Self::SubscribeMetricsStream>, Status> {
+        Err(Status::unimplemented(
+            "SubscribeMetrics stub lands in PR-B2",
+        ))
+    }
+
+    async fn subscribe_events(
+        &self,
+        _req: Request<SubscribeEventsRequest>,
+    ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
+        Err(Status::unimplemented("SubscribeEvents stub lands in PR-B3"))
     }
 }
 
