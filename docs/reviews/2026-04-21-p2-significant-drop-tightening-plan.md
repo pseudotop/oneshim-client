@@ -254,26 +254,54 @@ Expected: all 4 tests pass (`session_to_response_running`, `session_to_response_
 
 ## Task 3 — Add `#![deny]` to crate roots
 
-### Step 3.1 — Add deny to `oneshim-storage/src/lib.rs`
+### Step 3.1 — Add deny to `oneshim-web/src/lib.rs` ONLY
 
-Place after existing `#![allow(...)]` attributes (similar to PR-B's pattern).
+**Amendment 2026-04-21 (mid-Loop 3)**: original plan called for deny on both `oneshim-web` and `oneshim-storage`. `oneshim-storage` has 126 other sites not yet triaged, so its deny is deferred to a follow-up PR. Apply deny to `oneshim-web` only here.
+
+Place after existing `#![allow(...)]` attributes (similar to PR-B's pattern):
 
 ```rust
-// P2 nursery-hardening (PR-A): mutex guards must not be held across I/O
-// unless intentionally kept for atomicity — see
+// P2 PR-A nursery-hardening: mutex guards must not be held across I/O or
+// long-running work unless intentionally kept for atomicity (use
+// function-level #[allow] with reason). See
 // docs/reviews/2026-04-21-p2-significant-drop-tightening-spec.md.
+// Test code is exempt — mock implementations use intentionally-simple lock
+// patterns for clarity over performance.
 #![deny(clippy::significant_drop_tightening)]
+#![cfg_attr(test, allow(clippy::significant_drop_tightening))]
 ```
 
-### Step 3.2 — Add deny to `oneshim-web/src/lib.rs`
+The `cfg_attr(test, allow(...))` handles the 6 sites in `#[cfg(test)] mod tests { impl MockFoo for ... { ... } }` blocks that are intentionally kept simple.
 
-Same attribute, same comment structure.
-
-### Step 3.3 — Full workspace clippy gate
+### Step 3.2 — Workspace clippy gate
 
 Run: `cargo clippy --workspace --all-targets -- -D warnings`
 
-Expected: clean (exit 0).
+Expected: clean (exit 0). Remaining 199 non-test sites in other crates do NOT fail CI because they're in crates without the `#![deny]`.
+
+### Step 3.3 — Verify `oneshim-web` under `-D warnings`
+
+Run: `cargo clippy -p oneshim-web --all-targets -- -D warnings`
+
+Expected: clean. This is the test-gated version of Step 3.2 to catch test-only sites.
+
+### Follow-up PR roadmap
+
+Per-crate sites remaining after this PR:
+
+| Crate | Remaining sites | Priority |
+|-------|-----------------|----------|
+| `oneshim-storage` | 126 (1 impl-level allow already added) | High (most sites) |
+| `oneshim-automation` | 27 | Medium |
+| `oneshim-network` | 18 | Medium |
+| `oneshim-analysis` | 17 | Medium |
+| `oneshim-monitor` | 7 | Low |
+| `oneshim-vision` | 3 | Low |
+| `oneshim-embedding` | 3 | Low |
+| `oneshim-suggestion` | 1 | Low |
+| `oneshim-audio` | 1 | Low |
+
+Each follow-up PR should apply the same Cat A / Cat B methodology from this PR's spec.
 
 ---
 
