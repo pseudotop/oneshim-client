@@ -79,7 +79,7 @@ pub enum ContainerType {
     Citrix,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContainerInfo {
     pub container_app: String,
     pub container_type: ContainerType,

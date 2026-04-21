@@ -20,7 +20,7 @@ const MAX_CONSECUTIVE_FAILURES: u8 = 3;
 const REFRESH_THRESHOLD_SECS: i64 = 300;
 
 /// Outcome of a `check_and_refresh` call.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefreshOutcome {
     /// Token is still fresh — no refresh was attempted.
     NotNeeded,

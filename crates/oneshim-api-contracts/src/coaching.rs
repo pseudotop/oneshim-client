@@ -68,7 +68,7 @@ impl From<GoalProgressView> for GoalProgressResponse {
 }
 
 /// Response DTO for GET /api/coaching/stats/today — aggregated coaching stats for the current day.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoachingStatsTodayResponse {
     pub nudges_count: u32,
     pub current_regime: Option<String>,
@@ -89,7 +89,7 @@ pub struct HabitStreakQuery {
 }
 
 /// Response DTO for a single habit streak row.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HabitStreakResponse {
     pub regime_label: String,
     pub date: String,

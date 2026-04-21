@@ -16,6 +16,9 @@
     clippy::option_if_let_else,
     clippy::redundant_pub_crate
 )]
+// P2 nursery-hardening (PR-B): all PartialEq derives also derive Eq when
+// possible. Float-carrying types use site-level #[allow] with reason.
+#![deny(clippy::derive_partial_eq_without_eq)]
 
 //! # oneshim-core
 

@@ -24,6 +24,8 @@
 // positive rate here outweighs its diagnostic value.
 // See docs/reviews/2026-04-21-p2-significant-drop-tightening-spec.md §Category B.
 #![allow(clippy::significant_drop_tightening)]
+// P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
+#![deny(clippy::derive_partial_eq_without_eq)]
 
 //! # oneshim-network
 //! ## Feature Flags

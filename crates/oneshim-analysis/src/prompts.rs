@@ -29,7 +29,7 @@ pub struct FewShotExample {
 }
 
 /// Outcome label for a few-shot example.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FewShotOutcome {
     Accepted,
     Rejected,

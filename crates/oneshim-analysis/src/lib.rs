@@ -3,6 +3,8 @@
 //! LLM analysis pipeline — segment summarization, behavioral regime
 //! classification, vector RAG retrieval, and proactive coaching engine.
 
+// P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
+#![deny(clippy::derive_partial_eq_without_eq)]
 // Cast safety: statistical values, scores, durations — precision loss acceptable.
 #![allow(
     clippy::cast_precision_loss,

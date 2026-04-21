@@ -24,7 +24,7 @@ use thiserror::Error;
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Whether the matched release asset is a full binary or a delta patch.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateAssetType {
     FullBinary,
     DeltaPatch { from_version: String },

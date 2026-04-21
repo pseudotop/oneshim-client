@@ -5,7 +5,7 @@ use oneshim_core::ports::vision::CaptureTrigger;
 use std::sync::Mutex;
 use tracing::{debug, error};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TriggerType {
     WindowChange,
     ErrorDetected,

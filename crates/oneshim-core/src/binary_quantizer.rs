@@ -25,7 +25,7 @@ pub struct QuantileThresholds {
 
 /// 2-bit binary code packed into bytes. For 384 dims = 96 bytes.
 /// Each dimension occupies 2 bits: 00, 01, 10, 11 mapped to 4 quantile levels.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BinaryCode {
     pub data: Vec<u8>,
 }

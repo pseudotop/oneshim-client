@@ -3,6 +3,8 @@
 //! Shared request/response type contracts between client crates.
 //! Ensures API contract consistency across the workspace.
 
+// P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
+#![deny(clippy::derive_partial_eq_without_eq)]
 #![allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,

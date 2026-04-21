@@ -33,7 +33,7 @@ pub enum RollbackReason {
 /// Metadata describing a completed post-install rollback. Populated on
 /// `UpdateStatus` when the phase transitions to `UpdatePhase::RolledBack`.
 /// All timestamp fields are RFC3339 UTC strings.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RollbackInfo {
     pub from_version: String,
     /// RFC3339 UTC `published_at` of the rolled-from release (if known).
@@ -48,7 +48,7 @@ pub struct RollbackInfo {
     pub rolled_back_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct PendingUpdateInfo {
     pub current_version: String,
     pub latest_version: String,

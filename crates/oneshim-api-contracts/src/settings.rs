@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StorageStats {
     pub db_size_bytes: u64,
     pub frames_size_bytes: u64,
@@ -60,7 +60,7 @@ pub struct AppSettings {
     pub sync: SyncSettings,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NotificationSettings {
     pub enabled: bool,
     pub idle_notification: bool,
@@ -96,7 +96,7 @@ impl Default for UpdateSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TelemetrySettings {
     pub enabled: bool,
     pub crash_reports: bool,
@@ -121,7 +121,7 @@ impl Default for MonitorControlSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PrivacySettings {
     pub excluded_apps: Vec<String>,
     pub excluded_app_patterns: Vec<String>,
