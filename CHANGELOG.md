@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **🔥 D5 PII filter audit — CRITICAL clipboard fix + 10 gap closures** (spec: [`docs/superpowers/specs/2026-04-20-d5-pii-filter-audit-design.md`](docs/superpowers/specs/2026-04-20-d5-pii-filter-audit-design.md), audit matrix: [`docs/reviews/2026-04-20-d5-pii-audit-matrix.md`](docs/reviews/2026-04-20-d5-pii-audit-matrix.md)).
+  - **🔥 Critical fix** (iter-2): `ClipboardEvent.preview` logic inversion bug. Prior code gated preview generation on `pii_filter_level != Off` but only truncated without sanitizing. Effect: first 50 chars of any clipboard content (passwords, credit cards, addresses) leaked raw into SQLite + server upload. Fix applies PII sanitizer via injected `PiiSanitizer` port before truncation.
+  - **PII sanitization contract** (iter-1): [`docs/guides/pii-sanitization-contract.md`](docs/guides/pii-sanitization-contract.md) + Korean companion. Defines the "every text value crossing persistence/transmission boundary MUST be sanitized" rule; distinguishes adapter-crate (port-injected) from src-tauri (direct) usage patterns; codifies exemption process.
+  - **44-path audit matrix** (iter-1): 11-round deep review inventory covering OCR, accessibility, LLM responses, clipboard, coaching, daily insights, file access, integration egress, chat history, Tauri commands, and more.
+  - **10 closed gaps** (iters 3-13): OCR→SQLite (iter-3), audio STT transcripts Whisper + Cloud (iter-4), Suggestion.content/reasoning from LLM (iter-5), audit log details at Strict (iter-6), coaching template_text at engine boundary (iter-8), DailyInsight narrative + highlights post-LLM (iter-9), FileAccessEvent.relative_path (iter-11), integration InsightPacket.summary + derived_tags (iter-12), frontend error payloads (iter-13).
+  - **Hexagonal arch compliance**: adapter crates (`oneshim-monitor`, `oneshim-audio`, `oneshim-network`, `oneshim-automation`, `oneshim-analysis`) use injected `Arc<dyn PiiSanitizer>` via `with_pii_sanitizer` builder — no direct `oneshim-vision` dep.
+  - **Deferred to follow-up**: CoreError::Display body + tracing macro sanitization (iter-16, 20+ sites across workspace); export handler belt-and-suspenders (iter-15); Event contract-lock test (iter-14). Audit matrix lists each with rationale.
+
 ### Added
 
 - **D7 Circuit breaker broadening** (spec: [`docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md`](docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md)). Extends the existing `BatchUploader`-only circuit breaker to 5 additional adapters so a persistently unreachable AI endpoint fast-fails in microseconds instead of blocking every scheduler tick behind a 30–60 s timeout wall.
