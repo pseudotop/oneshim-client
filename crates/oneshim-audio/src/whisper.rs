@@ -12,9 +12,10 @@ use parking_lot::Mutex;
 use tracing::{debug, info};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-use oneshim_core::config::SttLanguage;
+use oneshim_core::config::{PiiFilterLevel, SttLanguage};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::audio::{AudioBuffer, TranscriptionResult};
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use oneshim_core::ports::stt_provider::SttProvider;
 
 pub struct WhisperSttProvider {
@@ -22,6 +23,10 @@ pub struct WhisperSttProvider {
     ctx: Arc<Mutex<WhisperContext>>,
     language: SttLanguage,
     transcribing: AtomicBool,
+    /// D5 iter-4: injected PII sanitizer (`oneshim-vision::VisionPiiSanitizer`
+    /// at DI time). None = test fixtures without DI wiring — falls back to raw.
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pii_level: PiiFilterLevel,
 }
 
 impl WhisperSttProvider {
@@ -53,7 +58,20 @@ impl WhisperSttProvider {
             ctx: Arc::new(Mutex::new(ctx)),
             language,
             transcribing: AtomicBool::new(false),
+            pii_sanitizer: None,
+            pii_level: PiiFilterLevel::Standard,
         })
+    }
+
+    /// D5 iter-4: attach a `PiiSanitizer` implementation for transcript sanitization.
+    pub fn with_pii_sanitizer(
+        mut self,
+        sanitizer: Arc<dyn PiiSanitizer>,
+        level: PiiFilterLevel,
+    ) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self.pii_level = level;
+        self
     }
 }
 
@@ -91,6 +109,9 @@ impl SttProvider for WhisperSttProvider {
 
         // Clone the Arc so the closure is 'static — no unsafe required.
         let ctx = self.ctx.clone();
+        // D5 iter-4: capture sanitizer for post-transcribe sanitization.
+        let sanitizer = self.pii_sanitizer.clone();
+        let pii_level = self.pii_level;
 
         tokio::task::spawn_blocking(move || {
             let start = Instant::now();
@@ -129,13 +150,19 @@ impl SttProvider for WhisperSttProvider {
                     message: format!("get segments: {e}"),
                 })?;
 
-            let text: String = (0..n_segments)
+            let raw_text: String = (0..n_segments)
                 .filter_map(|i| state.full_get_segment_text(i).ok())
                 .collect::<Vec<_>>()
                 .join(" ")
                 .split_whitespace()
                 .collect::<Vec<_>>()
                 .join(" ");
+
+            // D5 iter-4: sanitize transcript at provider boundary.
+            let text = sanitizer
+                .as_ref()
+                .map(|s| s.sanitize_text(&raw_text, pii_level))
+                .unwrap_or(raw_text);
 
             let detected_lang = state
                 .full_lang_id()

@@ -2,15 +2,17 @@
 //!
 //! Gated behind `#[cfg(feature = "cloud-stt")]`.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use reqwest::multipart;
 use tracing::debug;
 
-use oneshim_core::config::SttLanguage;
+use oneshim_core::config::{PiiFilterLevel, SttLanguage};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::audio::{AudioBuffer, TranscriptionResult};
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use oneshim_core::ports::stt_provider::SttProvider;
 
 pub struct CloudSttProvider {
@@ -19,6 +21,9 @@ pub struct CloudSttProvider {
     endpoint: String,
     language: SttLanguage,
     timeout_secs: u32,
+    /// D5 iter-4: injected PII sanitizer for transcript sanitization.
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pii_level: PiiFilterLevel,
 }
 
 impl CloudSttProvider {
@@ -49,7 +54,20 @@ impl CloudSttProvider {
             endpoint,
             language,
             timeout_secs,
+            pii_sanitizer: None,
+            pii_level: PiiFilterLevel::Standard,
         })
+    }
+
+    /// D5 iter-4: attach a `PiiSanitizer` for transcript sanitization.
+    pub fn with_pii_sanitizer(
+        mut self,
+        sanitizer: Arc<dyn PiiSanitizer>,
+        level: PiiFilterLevel,
+    ) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self.pii_level = level;
+        self
     }
 }
 
@@ -165,8 +183,15 @@ impl SttProvider for CloudSttProvider {
             processing_secs, "cloud STT complete"
         );
 
+        // D5 iter-4: sanitize transcript at provider boundary.
+        let text = self
+            .pii_sanitizer
+            .as_ref()
+            .map(|s| s.sanitize_text(&result.text, self.pii_level))
+            .unwrap_or(result.text);
+
         Ok(TranscriptionResult {
-            text: result.text,
+            text,
             language: None,
             duration_secs,
             processing_secs,
