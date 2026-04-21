@@ -20,9 +20,16 @@ service DashboardService {
   // "process is alive" — e.g., "storage accessible, scheduler running".
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
 
-  // D13-v2a: per-domain read RPCs. First entry point — aggregated session
-  // statistics. Mirrors REST `GET /api/sessions/stats` shape.
+  // D13-v2a: per-domain read RPCs.
+  // Aggregated session statistics. Mirrors REST `GET /api/sessions/stats`.
   rpc GetSessionStats(GetSessionStatsRequest) returns (SessionStatsResponse);
+  // Recent frame metadata. Mirrors REST `GET /api/frames?limit=N`.
+  rpc GetRecentFrames(GetRecentFramesRequest) returns (RecentFramesResponse);
+  // Hourly productivity metric rollups. Mirrors REST
+  // `GET /api/metrics/hourly?from=...`.
+  rpc GetProductivityMetrics(GetProductivityMetricsRequest) returns (ProductivityMetricsResponse);
+  // Focus aggregates over the last N days. Mirrors REST `GET /api/focus/stats`.
+  rpc GetFocusStats(GetFocusStatsRequest) returns (FocusStatsResponse);
 }
 
 message GetAgentInfoRequest {}
@@ -73,4 +80,74 @@ message SessionStatsResponse {
   uint64 total_frames = 5;
   // Total idle seconds across the aggregated sessions.
   uint64 total_idle_secs = 6;
+}
+
+// D13-v2a: GetRecentFrames. Returns frame metadata (no image bytes) for
+// recent captures. Image bytes are served separately via the existing REST
+// file handler to keep gRPC responses bounded.
+message GetRecentFramesRequest {
+  // Max frames to return. 0 → default 50. Hard-capped at 500.
+  uint32 limit = 1;
+  // Hours to look back. 0 → default 1. Hard-capped at 168 (7 days).
+  uint32 since_hours = 2;
+}
+
+message RecentFramesResponse {
+  repeated FrameMetadata frames = 1;
+
+  message FrameMetadata {
+    int64 frame_id = 1;
+    string captured_at = 2;  // RFC 3339
+    string trigger_type = 3;
+    string app_name = 4;
+    string window_title = 5;
+    float importance = 6;
+    uint32 resolution_w = 7;
+    uint32 resolution_h = 8;
+    // File path is intentionally omitted — dashboard clients fetch image
+    // bytes over REST; exposing the path here would leak FS layout.
+  }
+}
+
+// D13-v2a: GetProductivityMetrics. Hourly CPU/memory rollups within an
+// inclusive [from, now] window.
+message GetProductivityMetricsRequest {
+  // Hours to look back from now. 0 → default 24. Hard-capped at 168.
+  uint32 since_hours = 1;
+}
+
+message ProductivityMetricsResponse {
+  repeated HourlyMetrics buckets = 1;
+
+  message HourlyMetrics {
+    string hour = 1;  // RFC 3339 hour-start
+    double cpu_avg = 2;
+    double cpu_max = 3;
+    uint64 memory_avg = 4;
+    uint64 memory_max = 5;
+    uint64 sample_count = 6;
+  }
+}
+
+// D13-v2a: GetFocusStats. Focus aggregates over the last N days.
+message GetFocusStatsRequest {
+  // Days to look back. 0 → default 7. Hard-capped at 90.
+  uint32 days = 1;
+}
+
+message FocusStatsResponse {
+  // Number of daily buckets returned.
+  uint32 bucket_count = 1;
+  // Sum of `total_active_secs` across returned buckets.
+  uint64 total_active_secs = 2;
+  // Sum of `deep_work_secs` across returned buckets.
+  uint64 total_deep_work_secs = 3;
+  // Sum of `communication_secs` across returned buckets.
+  uint64 total_communication_secs = 4;
+  // Sum of `interruption_count` across returned buckets.
+  uint32 total_interruptions = 5;
+  // Average `focus_score` across returned buckets. 0 when no data.
+  float avg_focus_score = 6;
+  // Max `max_focus_duration_secs` across returned buckets.
+  uint64 longest_focus_secs = 7;
 }

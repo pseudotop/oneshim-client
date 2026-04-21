@@ -19,8 +19,10 @@ use crate::proto::dashboard::v1::dashboard_service_server::{
 };
 use crate::proto::dashboard::v1::health_check_response::Status as HealthStatus;
 use crate::proto::dashboard::v1::{
-    AgentInfoResponse, GetAgentInfoRequest, GetSessionStatsRequest, HealthCheckRequest,
-    HealthCheckResponse, SessionStatsResponse,
+    productivity_metrics_response, recent_frames_response, AgentInfoResponse, FocusStatsResponse,
+    GetAgentInfoRequest, GetFocusStatsRequest, GetProductivityMetricsRequest,
+    GetRecentFramesRequest, GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse,
+    ProductivityMetricsResponse, RecentFramesResponse, SessionStatsResponse,
 };
 use crate::storage_port::WebStorage;
 
@@ -29,6 +31,20 @@ pub const DEFAULT_GRPC_DASHBOARD_PORT: u16 = 10091;
 
 /// Default sample size when `GetSessionStatsRequest::limit == 0`.
 const DEFAULT_SESSION_STATS_LIMIT: usize = 1000;
+
+/// Default + hard cap for GetRecentFrames.
+const DEFAULT_RECENT_FRAMES_LIMIT: u32 = 50;
+const MAX_RECENT_FRAMES_LIMIT: u32 = 500;
+const DEFAULT_RECENT_FRAMES_SINCE_HOURS: u32 = 1;
+const MAX_RECENT_FRAMES_SINCE_HOURS: u32 = 168; // 7 days
+
+/// Default + hard cap for GetProductivityMetrics.
+const DEFAULT_METRICS_SINCE_HOURS: u32 = 24;
+const MAX_METRICS_SINCE_HOURS: u32 = 168;
+
+/// Default + hard cap for GetFocusStats.
+const DEFAULT_FOCUS_DAYS: u32 = 7;
+const MAX_FOCUS_DAYS: u32 = 90;
 
 pub struct DashboardServiceImpl {
     started_at: Instant,
@@ -139,6 +155,131 @@ impl DashboardService for DashboardServiceImpl {
             total_events,
             total_frames,
             total_idle_secs,
+        }))
+    }
+
+    async fn get_recent_frames(
+        &self,
+        req: Request<GetRecentFramesRequest>,
+    ) -> Result<Response<RecentFramesResponse>, Status> {
+        let req = req.into_inner();
+        let limit = match req.limit {
+            0 => DEFAULT_RECENT_FRAMES_LIMIT,
+            n => n.min(MAX_RECENT_FRAMES_LIMIT),
+        };
+        let since_hours = match req.since_hours {
+            0 => DEFAULT_RECENT_FRAMES_SINCE_HOURS,
+            n => n.min(MAX_RECENT_FRAMES_SINCE_HOURS),
+        };
+
+        let to = chrono::Utc::now();
+        let from = to - chrono::Duration::hours(i64::from(since_hours));
+
+        let storage = self.storage.clone();
+        let limit_usize = limit as usize;
+        let records =
+            tokio::task::spawn_blocking(move || storage.get_frames(from, to, limit_usize))
+                .await
+                .map_err(|e| Status::internal(format!("spawn_blocking join: {e}")))?
+                .map_err(|e| Status::internal(format!("get_frames: {e}")))?;
+
+        let frames = records
+            .into_iter()
+            .map(|r| recent_frames_response::FrameMetadata {
+                frame_id: r.id,
+                captured_at: r.timestamp,
+                trigger_type: r.trigger_type,
+                app_name: r.app_name,
+                window_title: r.window_title,
+                importance: r.importance,
+                resolution_w: r.resolution_w,
+                resolution_h: r.resolution_h,
+            })
+            .collect();
+
+        Ok(Response::new(RecentFramesResponse { frames }))
+    }
+
+    async fn get_productivity_metrics(
+        &self,
+        req: Request<GetProductivityMetricsRequest>,
+    ) -> Result<Response<ProductivityMetricsResponse>, Status> {
+        let since_hours = match req.into_inner().since_hours {
+            0 => DEFAULT_METRICS_SINCE_HOURS,
+            n => n.min(MAX_METRICS_SINCE_HOURS),
+        };
+        let from =
+            (chrono::Utc::now() - chrono::Duration::hours(i64::from(since_hours))).to_rfc3339();
+
+        let storage = self.storage.clone();
+        let records = tokio::task::spawn_blocking(move || storage.list_hourly_metrics_since(&from))
+            .await
+            .map_err(|e| Status::internal(format!("spawn_blocking join: {e}")))?
+            .map_err(|e| Status::internal(format!("list_hourly_metrics_since: {e}")))?;
+
+        let buckets = records
+            .into_iter()
+            .map(|r| productivity_metrics_response::HourlyMetrics {
+                hour: r.hour,
+                cpu_avg: r.cpu_avg,
+                cpu_max: r.cpu_max,
+                memory_avg: r.memory_avg,
+                memory_max: r.memory_max,
+                sample_count: r.sample_count,
+            })
+            .collect();
+
+        Ok(Response::new(ProductivityMetricsResponse { buckets }))
+    }
+
+    async fn get_focus_stats(
+        &self,
+        req: Request<GetFocusStatsRequest>,
+    ) -> Result<Response<FocusStatsResponse>, Status> {
+        let days = match req.into_inner().days {
+            0 => DEFAULT_FOCUS_DAYS,
+            n => n.min(MAX_FOCUS_DAYS),
+        };
+
+        let storage = self.storage.clone();
+        let days_usize = days as usize;
+        let records =
+            tokio::task::spawn_blocking(move || storage.get_recent_focus_metrics(days_usize))
+                .await
+                .map_err(|e| Status::internal(format!("spawn_blocking join: {e}")))?
+                .map_err(|e| Status::internal(format!("get_recent_focus_metrics: {e}")))?;
+
+        let bucket_count = records.len() as u32;
+        let mut total_active_secs: u64 = 0;
+        let mut total_deep_work_secs: u64 = 0;
+        let mut total_communication_secs: u64 = 0;
+        let mut total_interruptions: u32 = 0;
+        let mut focus_score_sum: f32 = 0.0;
+        let mut longest_focus_secs: u64 = 0;
+        for (_date, m) in &records {
+            total_active_secs += m.total_active_secs;
+            total_deep_work_secs += m.deep_work_secs;
+            total_communication_secs += m.communication_secs;
+            total_interruptions = total_interruptions.saturating_add(m.interruption_count);
+            focus_score_sum += m.focus_score;
+            if m.max_focus_duration_secs > longest_focus_secs {
+                longest_focus_secs = m.max_focus_duration_secs;
+            }
+        }
+        let avg_focus_score = if bucket_count > 0 {
+            focus_score_sum / bucket_count as f32
+        } else {
+            0.0
+        };
+
+        Ok(Response::new(FocusStatsResponse {
+            bucket_count,
+            total_active_secs,
+            total_deep_work_secs,
+            total_communication_secs,
+            total_interruptions,
+            avg_focus_score,
+            longest_focus_secs,
         }))
     }
 }
