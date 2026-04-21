@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use oneshim_core::models::activity::SessionStats;
+use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::storage::MetricsStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::proto::dashboard::v1::dashboard_service_client::DashboardServiceClient;
@@ -382,6 +383,83 @@ async fn grpc_dashboard_get_focus_stats_empty_db() {
     assert_eq!(response.total_interruptions, 0);
     assert_eq!(response.avg_focus_score, 0.0);
     assert_eq!(response.longest_focus_secs, 0);
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+/// Seed 3 daily focus buckets, verify GetFocusStats aggregates each dimension
+/// (sum, average, max). Mirrors the seeded-aggregation pattern used for
+/// GetSessionStats so the focus-side math doesn't drift silently.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn grpc_dashboard_get_focus_stats_aggregates_seeded_days() {
+    let port = pick_free_port();
+
+    let storage = SqliteStorage::open_in_memory(30).expect("open in-memory SqliteStorage");
+
+    // Three distinct dates so update_focus_metrics writes each row independently.
+    // Aggregate expectations (computed in-line below) lock each response field
+    // to the handler's reduction rule.
+    let seeds: &[(&str, u64, u64, u64, u32, u64, f32)] = &[
+        // (date,  total_active, deep_work, communication, interruptions, longest_focus, score)
+        ("2026-04-20", 3_600, 2_400, 600, 2, 1_800, 0.80),
+        ("2026-04-19", 1_800, 1_200, 300, 1, 2_700, 0.60),
+        ("2026-04-18", 900, 600, 150, 4, 900, 0.40),
+    ];
+
+    for (date, active, deep, comm, interruptions, longest, score) in seeds {
+        // Must materialize the row first — update_focus_metrics is UPDATE, not UPSERT.
+        let _ = storage
+            .get_or_create_focus_metrics(date)
+            .expect("seed focus_metrics row");
+
+        let metrics = FocusMetrics {
+            period_start: Utc::now(),
+            period_end: Utc::now(),
+            total_active_secs: *active,
+            deep_work_secs: *deep,
+            communication_secs: *comm,
+            context_switches: 0,
+            interruption_count: *interruptions,
+            avg_focus_duration_secs: 0,
+            max_focus_duration_secs: *longest,
+            focus_score: *score,
+        };
+        storage
+            .update_focus_metrics(date, &metrics)
+            .expect("update seeded focus_metrics");
+    }
+
+    let storage: Arc<dyn WebStorage> = Arc::new(storage);
+
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    wait_for_server_ready(port, Duration::from_secs(5)).await;
+
+    let endpoint = format!("http://127.0.0.1:{port}");
+    let mut client = DashboardServiceClient::connect(endpoint)
+        .await
+        .expect("connect to dashboard gRPC server");
+
+    // days=0 → server default (7). All 3 seeded dates fall within the window.
+    let response = client
+        .get_focus_stats(GetFocusStatsRequest { days: 0 })
+        .await
+        .expect("GetFocusStats RPC succeeds")
+        .into_inner();
+
+    assert_eq!(response.bucket_count, 3);
+    assert_eq!(response.total_active_secs, 3_600 + 1_800 + 900);
+    assert_eq!(response.total_deep_work_secs, 2_400 + 1_200 + 600);
+    assert_eq!(response.total_communication_secs, 600 + 300 + 150);
+    assert_eq!(response.total_interruptions, 2 + 1 + 4);
+    // avg_focus_score = (0.80 + 0.60 + 0.40) / 3 = 0.60. Tolerance for f32 rounding.
+    assert!(
+        (response.avg_focus_score - 0.60).abs() < 1e-5,
+        "avg_focus_score: expected ~0.60, got {}",
+        response.avg_focus_score
+    );
+    // longest_focus_secs = max(1_800, 2_700, 900) = 2_700.
+    assert_eq!(response.longest_focus_secs, 2_700);
 
     server_task.abort();
     let _ = server_task.await;
