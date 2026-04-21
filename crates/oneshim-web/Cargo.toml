@@ -53,6 +53,25 @@ futures = { workspace = true }
 rust-embed = { workspace = true }
 mime_guess = { workspace = true }
 
+# D13: gRPC dashboard server (feature-gated — see [features] section).
+tonic = { workspace = true, optional = true }
+tonic-health = { workspace = true, optional = true }
+tonic-prost = { workspace = true, optional = true }
+prost = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+
+[features]
+default = []
+# D13: Enable gRPC dashboard server on a separate port (10091 by default).
+# When disabled, the crate has zero gRPC-related code + zero tonic dep cost.
+grpc-dashboard = [
+  "dep:tonic",
+  "dep:tonic-health",
+  "dep:tonic-prost",
+  "dep:prost",
+  "dep:async-trait",
+]
+
 
 [dev-dependencies]
 oneshim-automation = { workspace = true }

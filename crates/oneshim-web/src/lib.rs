@@ -34,7 +34,11 @@
 pub mod app_state;
 pub mod embedded;
 pub mod error;
+#[cfg(feature = "grpc-dashboard")]
+pub mod grpc;
 pub mod handlers;
+#[cfg(feature = "grpc-dashboard")]
+pub mod proto;
 pub mod routes;
 pub mod runtime_bindings;
 pub mod services;

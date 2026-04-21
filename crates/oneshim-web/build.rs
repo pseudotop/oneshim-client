@@ -6,6 +6,9 @@ fn main() {
     println!("cargo:rerun-if-changed=frontend/index.html");
     println!("cargo:rerun-if-changed=frontend/package.json");
     println!("cargo:rerun-if-changed=frontend/dist");
+    // D13: dashboard proto watch. Generated code is committed to
+    // src/proto/generated/; regenerate via scripts/regenerate-dashboard-protos.sh.
+    println!("cargo:rerun-if-changed=../../api/proto/oneshim/dashboard/v1/dashboard.proto");
 
     let dist_path = Path::new("frontend/dist");
     let index_path = dist_path.join("index.html");
