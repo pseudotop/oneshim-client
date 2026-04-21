@@ -11,9 +11,9 @@ use oneshim_core::models::storage_records::{
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::{
-    ActivityStatsStorage, BackupStorage, CoachingQueryStorage, DashboardStreamingStorage,
-    DigestStorage, EventQueryStorage, FocusQueryStorage, FrameQueryStorage, GuiInteractionStorage,
-    SegmentQueryStorage, StorageMaintenanceStorage, SuggestionQueryStorage, TagStorage,
+    ActivityStatsStorage, BackupStorage, CoachingQueryStorage, DigestStorage, EventQueryStorage,
+    FocusQueryStorage, FrameQueryStorage, GuiInteractionStorage, SegmentQueryStorage,
+    StorageMaintenanceStorage, SuggestionQueryStorage, TagStorage,
 };
 
 use super::SqliteStorage;
@@ -935,27 +935,6 @@ impl oneshim_core::ports::web_storage::HabitStorage for SqliteStorage {
         days: u32,
     ) -> Result<Vec<oneshim_core::models::coaching::HabitStreakRow>, CoreError> {
         self.query_habit_streaks(days).map_err(Into::into)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// DashboardStreamingStorage — stub impl (real impl added in B1-3)
-// ---------------------------------------------------------------------------
-
-impl DashboardStreamingStorage for SqliteStorage {
-    fn aggregate_metrics_window(
-        &self,
-        _from: DateTime<Utc>,
-        _to: DateTime<Utc>,
-    ) -> Result<oneshim_core::models::dashboard_streaming::MetricBucketRecord, CoreError> {
-        todo!("B1-3: implement aggregate_metrics_window")
-    }
-
-    fn fetch_dashboard_event_source(
-        &self,
-        _signal: &oneshim_core::models::dashboard_streaming::DashboardEventSignal,
-    ) -> Result<oneshim_core::models::dashboard_streaming::DashboardEventRecord, CoreError> {
-        todo!("B1-3: implement fetch_dashboard_event_source")
     }
 }
 
