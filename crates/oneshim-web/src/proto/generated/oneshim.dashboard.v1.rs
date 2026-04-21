@@ -148,28 +148,225 @@ pub struct GetProductivityMetricsRequest {
     #[prost(uint32, tag = "1")]
     pub since_hours: u32,
 }
+/// v2b: shared by v2a unary response and v2b streaming. Wire format number
+/// preserved for the repeated field; start field type flips from string to
+/// Timestamp (wire-breaking for that specific field — acceptable pre-v2c
+/// since the dashboard gRPC is localhost-only; see v3 cleanup tracker).
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct MetricBucket {
+    #[prost(message, optional, tag = "1")]
+    pub start: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(double, tag = "2")]
+    pub cpu_avg_pct: f64,
+    #[prost(double, tag = "3")]
+    pub memory_avg_mb: f64,
+    #[prost(uint32, tag = "4")]
+    pub active_keystrokes: u32,
+    #[prost(uint32, tag = "5")]
+    pub active_mouse_clicks: u32,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProductivityMetricsResponse {
     #[prost(message, repeated, tag = "1")]
-    pub buckets: ::prost::alloc::vec::Vec<productivity_metrics_response::HourlyMetrics>,
+    pub buckets: ::prost::alloc::vec::Vec<MetricBucket>,
 }
-/// Nested message and enum types in `ProductivityMetricsResponse`.
-pub mod productivity_metrics_response {
-    #[derive(Clone, PartialEq, ::prost::Message)]
-    pub struct HourlyMetrics {
-        /// RFC 3339 hour-start
+/// ── V2b: SubscribeMetrics ──────────────────────────────────────────
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubscribeMetricsRequest {
+    /// 0 = realtime (DB query on every event_tx::Metrics tick).
+    /// N>0 = emit an aggregated bucket every N seconds.
+    /// Server clamps to \[250ms floor, 60s ceiling\] and applies load-based
+    /// enforcement per design §3.
+    #[prost(uint32, tag = "1")]
+    pub interval_secs: u32,
+    /// When false, client asks server to skip enforcement. Only honored when
+    /// trusted (loopback or matching integration_auth_token). See §4 auth gate.
+    #[prost(bool, tag = "2")]
+    pub respect_server_hints: bool,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeMetricsResponse {
+    #[prost(oneof = "subscribe_metrics_response::Payload", tags = "1, 2")]
+    pub payload: ::core::option::Option<subscribe_metrics_response::Payload>,
+}
+/// Nested message and enum types in `SubscribeMetricsResponse`.
+pub mod subscribe_metrics_response {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag = "1")]
+        Data(super::MetricBucket),
+        #[prost(message, tag = "2")]
+        Hint(super::ServerLoadHint),
+    }
+}
+/// ── V2b: SubscribeEvents ───────────────────────────────────────────
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubscribeEventsRequest {
+    /// "frame" | "idle" | "ai_runtime_status". Empty = all three.
+    /// Unknown types are silently ignored (forward-compat).
+    #[prost(string, repeated, tag = "1")]
+    pub event_types: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag = "2")]
+    pub respect_server_hints: bool,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeEventsResponse {
+    #[prost(oneof = "subscribe_events_response::Payload", tags = "1, 2, 3")]
+    pub payload: ::core::option::Option<subscribe_events_response::Payload>,
+}
+/// Nested message and enum types in `SubscribeEventsResponse`.
+pub mod subscribe_events_response {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag = "1")]
+        Event(super::DashboardEvent),
+        #[prost(message, tag = "2")]
+        Hint(super::ServerLoadHint),
+        #[prost(message, tag = "3")]
+        Dropped(super::DroppedEventsSignal),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DashboardEvent {
+    #[prost(message, optional, tag = "1")]
+    pub occurred_at: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(oneof = "dashboard_event::Payload", tags = "2, 3, 4")]
+    pub payload: ::core::option::Option<dashboard_event::Payload>,
+}
+/// Nested message and enum types in `DashboardEvent`.
+pub mod dashboard_event {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag = "2")]
+        Frame(super::FrameEvent),
+        #[prost(message, tag = "3")]
+        Idle(super::IdleEvent),
+        #[prost(message, tag = "4")]
+        AiRuntimeStatus(super::AiRuntimeStatusEvent),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FrameEvent {
+    #[prost(int64, tag = "1")]
+    pub frame_id: i64,
+    #[prost(string, tag = "2")]
+    pub app_name: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub window_title: ::prost::alloc::string::String,
+    #[prost(float, tag = "4")]
+    pub importance: f32,
+    #[prost(string, tag = "5")]
+    pub trigger_type: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct IdleEvent {
+    #[prost(bool, tag = "1")]
+    pub is_idle: bool,
+    #[prost(uint64, tag = "2")]
+    pub idle_secs: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AiRuntimeStatusEvent {
+    #[prost(string, tag = "1")]
+    pub ocr_source: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub llm_source: ::prost::alloc::string::String,
+    /// empty when no fallback
+    #[prost(string, tag = "3")]
+    pub ocr_fallback_reason: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub llm_fallback_reason: ::prost::alloc::string::String,
+}
+/// ── V2b: shared hint/signal ────────────────────────────────────────
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ServerLoadHint {
+    #[prost(enumeration = "server_load_hint::Level", tag = "1")]
+    pub load_level: i32,
+    #[prost(float, tag = "2")]
+    pub cpu_pct: f32,
+    #[prost(float, tag = "3")]
+    pub memory_pct: f32,
+    /// 0 = no suggestion
+    #[prost(uint32, tag = "4")]
+    pub suggested_interval_secs: u32,
+    /// 0 = no suggestion
+    #[prost(uint32, tag = "5")]
+    pub suggested_event_rate_limit: u32,
+    #[prost(string, tag = "6")]
+    pub reason: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "7")]
+    pub emitted_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Nested message and enum types in `ServerLoadHint`.
+pub mod server_load_hint {
+    #[derive(
+        Clone,
+        Copy,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        PartialOrd,
+        Ord,
+        ::prost::Enumeration
+    )]
+    #[repr(i32)]
+    pub enum Level {
+        LoadLevelUnspecified = 0,
+        LoadLevelLow = 1,
+        LoadLevelMedium = 2,
+        LoadLevelHigh = 3,
+        LoadLevelCritical = 4,
+    }
+    impl Level {
+        /// String value of the enum field names used in the ProtoBuf definition.
+        ///
+        /// The values are not transformed in any way and thus are considered stable
+        /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+        pub fn as_str_name(&self) -> &'static str {
+            match self {
+                Self::LoadLevelUnspecified => "LOAD_LEVEL_UNSPECIFIED",
+                Self::LoadLevelLow => "LOAD_LEVEL_LOW",
+                Self::LoadLevelMedium => "LOAD_LEVEL_MEDIUM",
+                Self::LoadLevelHigh => "LOAD_LEVEL_HIGH",
+                Self::LoadLevelCritical => "LOAD_LEVEL_CRITICAL",
+            }
+        }
+        /// Creates an enum from field names used in the ProtoBuf definition.
+        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+            match value {
+                "LOAD_LEVEL_UNSPECIFIED" => Some(Self::LoadLevelUnspecified),
+                "LOAD_LEVEL_LOW" => Some(Self::LoadLevelLow),
+                "LOAD_LEVEL_MEDIUM" => Some(Self::LoadLevelMedium),
+                "LOAD_LEVEL_HIGH" => Some(Self::LoadLevelHigh),
+                "LOAD_LEVEL_CRITICAL" => Some(Self::LoadLevelCritical),
+                _ => None,
+            }
+        }
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DroppedEventsSignal {
+    #[prost(uint64, tag = "1")]
+    pub dropped_count: u64,
+    #[prost(message, optional, tag = "2")]
+    pub since: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(message, optional, tag = "3")]
+    pub until: ::core::option::Option<::prost_types::Timestamp>,
+    /// "rate_limit" | "channel_lag"
+    #[prost(string, tag = "4")]
+    pub reason: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "5")]
+    pub by_type: ::prost::alloc::vec::Vec<dropped_events_signal::TypeCount>,
+}
+/// Nested message and enum types in `DroppedEventsSignal`.
+pub mod dropped_events_signal {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+    pub struct TypeCount {
         #[prost(string, tag = "1")]
-        pub hour: ::prost::alloc::string::String,
-        #[prost(double, tag = "2")]
-        pub cpu_avg: f64,
-        #[prost(double, tag = "3")]
-        pub cpu_max: f64,
-        #[prost(uint64, tag = "4")]
-        pub memory_avg: u64,
-        #[prost(uint64, tag = "5")]
-        pub memory_max: u64,
-        #[prost(uint64, tag = "6")]
-        pub sample_count: u64,
+        pub event_type: ::prost::alloc::string::String,
+        #[prost(uint64, tag = "2")]
+        pub count: u64,
     }
 }
 /// D13-v2a: GetFocusStats. Focus aggregates over the last N days.
@@ -478,6 +675,68 @@ pub mod dashboard_service_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        /// V2b: server-streaming. Realtime (interval_secs=0) or interval-aggregated
+        /// MetricBuckets. See docs/reviews/2026-04-21-d13-v2b-streaming-design.md §1.
+        pub async fn subscribe_metrics(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SubscribeMetricsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::SubscribeMetricsResponse>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/oneshim.dashboard.v1.DashboardService/SubscribeMetrics",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "oneshim.dashboard.v1.DashboardService",
+                        "SubscribeMetrics",
+                    ),
+                );
+            self.inner.server_streaming(req, path, codec).await
+        }
+        /// V2b: server-streaming. Frame/Idle/AiRuntimeStatus DashboardEvents with
+        /// server-enforced per-type rate limits. See §1 + §2.
+        pub async fn subscribe_events(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SubscribeEventsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::SubscribeEventsResponse>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/oneshim.dashboard.v1.DashboardService/SubscribeEvents",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "oneshim.dashboard.v1.DashboardService",
+                        "SubscribeEvents",
+                    ),
+                );
+            self.inner.server_streaming(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -543,6 +802,39 @@ pub mod dashboard_service_server {
             request: tonic::Request<super::GetFocusStatsRequest>,
         ) -> std::result::Result<
             tonic::Response<super::FocusStatsResponse>,
+            tonic::Status,
+        >;
+        /// Server streaming response type for the SubscribeMetrics method.
+        type SubscribeMetricsStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<
+                    super::SubscribeMetricsResponse,
+                    tonic::Status,
+                >,
+            >
+            + std::marker::Send
+            + 'static;
+        /// V2b: server-streaming. Realtime (interval_secs=0) or interval-aggregated
+        /// MetricBuckets. See docs/reviews/2026-04-21-d13-v2b-streaming-design.md §1.
+        async fn subscribe_metrics(
+            &self,
+            request: tonic::Request<super::SubscribeMetricsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<Self::SubscribeMetricsStream>,
+            tonic::Status,
+        >;
+        /// Server streaming response type for the SubscribeEvents method.
+        type SubscribeEventsStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<super::SubscribeEventsResponse, tonic::Status>,
+            >
+            + std::marker::Send
+            + 'static;
+        /// V2b: server-streaming. Frame/Idle/AiRuntimeStatus DashboardEvents with
+        /// server-enforced per-type rate limits. See §1 + §2.
+        async fn subscribe_events(
+            &self,
+            request: tonic::Request<super::SubscribeEventsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<Self::SubscribeEventsStream>,
             tonic::Status,
         >;
     }
@@ -896,6 +1188,102 @@ pub mod dashboard_service_server {
                                 max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/oneshim.dashboard.v1.DashboardService/SubscribeMetrics" => {
+                    #[allow(non_camel_case_types)]
+                    struct SubscribeMetricsSvc<T: DashboardService>(pub Arc<T>);
+                    impl<
+                        T: DashboardService,
+                    > tonic::server::ServerStreamingService<
+                        super::SubscribeMetricsRequest,
+                    > for SubscribeMetricsSvc<T> {
+                        type Response = super::SubscribeMetricsResponse;
+                        type ResponseStream = T::SubscribeMetricsStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SubscribeMetricsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as DashboardService>::subscribe_metrics(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SubscribeMetricsSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.server_streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/oneshim.dashboard.v1.DashboardService/SubscribeEvents" => {
+                    #[allow(non_camel_case_types)]
+                    struct SubscribeEventsSvc<T: DashboardService>(pub Arc<T>);
+                    impl<
+                        T: DashboardService,
+                    > tonic::server::ServerStreamingService<
+                        super::SubscribeEventsRequest,
+                    > for SubscribeEventsSvc<T> {
+                        type Response = super::SubscribeEventsResponse;
+                        type ResponseStream = T::SubscribeEventsStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SubscribeEventsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as DashboardService>::subscribe_events(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SubscribeEventsSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.server_streaming(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)
