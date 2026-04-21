@@ -45,7 +45,7 @@
 | 24 | `KeyboardPatternTracker` | R7 | 📋 Defer | — | `oneshim-monitor::keyboard_pattern.rs` | Statistical-only; low risk |
 | 25 | gRPC `UploadBatchRequest` serialization | R7 | ✅ Transitive | — | `oneshim-network::grpc/context_client.rs` | Covered IF Event sanitization is universal (Path 2 contract) |
 | 26 | OAuth `redirect_uri` / state | R7 | ✅ Not a PII path | — | `oneshim-network::oauth/*` | Opaque tokens/URLs |
-| 27 | `ChatMessage` history (AI session) | R7 | ❌ Gap | 10 | `oneshim-network::http_api_session::mod.rs` + `ai_sessions` table | Chat history persists to SQLite + potentially syncs |
+| 27 | `ChatMessage` history (AI session) | R7 | 🛡 Exempt (iter-10) | 10 | `oneshim-network::http_api_session::mod.rs` + `ai_sessions` table | Iter-10 decision: LLM needs raw chat history to generate coherent follow-ups (sanitizing the history corrupts conversation context). Treated as user-authored exemption per contract §Exemptions rule 2. Sanitization must happen at EXPORT/SYNC layer (iter-15 export handler belt-and-suspenders covers this). |
 | 28 | `FileAccessEvent.relative_path` / `extension` | R8 | ❌ Gap | 11 | `oneshim-monitor::file_access.rs:86` | Filename can contain PII ("Resume_JohnDoe.pdf"); `UserPath` marker exists but not applied |
 | 29 | Integration transport egress (ERP/MES/CRM) | R8 | ❌ Gap | 12 | `oneshim-network::integration/policy_egress.rs::enqueue_insight` | High risk — enterprise integration target; zero sanitization |
 | 30 | `ProcessEnvSecretProjection` | R8 | 🛡 Exempt | — | `oneshim-storage::process_env_projection.rs` | Secret-handling infrastructure (opposite direction from leak) |
