@@ -23,9 +23,9 @@ use crate::proto::dashboard::v1::dashboard_service_server::{
 };
 use crate::proto::dashboard::v1::health_check_response::Status as HealthStatus;
 use crate::proto::dashboard::v1::{
-    productivity_metrics_response, recent_frames_response, AgentInfoResponse, FocusStatsResponse,
-    GetAgentInfoRequest, GetFocusStatsRequest, GetProductivityMetricsRequest,
-    GetRecentFramesRequest, GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse,
+    recent_frames_response, AgentInfoResponse, FocusStatsResponse, GetAgentInfoRequest,
+    GetFocusStatsRequest, GetProductivityMetricsRequest, GetRecentFramesRequest,
+    GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse, MetricBucket,
     ProductivityMetricsResponse, RecentFramesResponse, SessionStatsResponse,
     SubscribeEventsRequest, SubscribeEventsResponse, SubscribeMetricsRequest,
     SubscribeMetricsResponse,
@@ -51,6 +51,17 @@ const MAX_METRICS_SINCE_HOURS: u32 = 168;
 /// Default + hard cap for GetFocusStats.
 const DEFAULT_FOCUS_DAYS: u32 = 7;
 const MAX_FOCUS_DAYS: u32 = 90;
+
+/// Convert a `chrono::DateTime<Utc>` to the generated
+/// `prost_types::Timestamp` used on the wire for v2a + v2b fields.
+/// `pub(super)` so sibling grpc sub-modules (PR-B2 subscribe_metrics,
+/// PR-B3 subscribe_events) can reuse it.
+pub(super) fn to_proto_ts(dt: chrono::DateTime<chrono::Utc>) -> prost_types::Timestamp {
+    prost_types::Timestamp {
+        seconds: dt.timestamp(),
+        nanos: dt.timestamp_subsec_nanos() as i32,
+    }
+}
 
 pub struct DashboardServiceImpl {
     started_at: Instant,
@@ -230,13 +241,24 @@ impl DashboardService for DashboardServiceImpl {
 
         let buckets = records
             .into_iter()
-            .map(|r| productivity_metrics_response::HourlyMetrics {
-                hour: r.hour,
-                cpu_avg: r.cpu_avg,
-                cpu_max: r.cpu_max,
-                memory_avg: r.memory_avg,
-                memory_max: r.memory_max,
-                sample_count: r.sample_count,
+            .map(|r| {
+                // Parse the RFC3339 hour key ("YYYY-MM-DDTHH:00:00Z") produced
+                // by the SQLite metrics aggregation. On parse failure, fall back
+                // to None so the bucket is still emitted with an absent start
+                // rather than being silently dropped.
+                let start = chrono::DateTime::parse_from_rfc3339(&r.hour)
+                    .ok()
+                    .map(|dt| to_proto_ts(dt.with_timezone(&chrono::Utc)));
+                MetricBucket {
+                    start,
+                    cpu_avg_pct: r.cpu_avg,
+                    // HourlyMetricsRecord stores bytes; convert to MB for the wire field.
+                    memory_avg_mb: r.memory_avg as f64 / 1_048_576.0,
+                    // Keystroke/click counters are not tracked in the hourly
+                    // metrics table (v2a); they land in v2b streaming buckets.
+                    active_keystrokes: 0,
+                    active_mouse_clicks: 0,
+                }
             })
             .collect();
 
