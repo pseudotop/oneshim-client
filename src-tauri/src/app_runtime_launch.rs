@@ -774,14 +774,19 @@ impl AppRuntimeLaunchBuilder {
             // can be overridden by ONESHIM_DASHBOARD_GRPC_PORT env var. If
             // the bind fails (port in use, etc.), the server task logs a
             // warn and exits — REST continues normally.
+            //
+            // D13-v2a: pass sqlite_storage so per-domain RPCs can read
+            // aggregated data (starting with GetSessionStats).
             #[cfg(feature = "grpc-dashboard")]
             {
                 let grpc_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
+                let grpc_storage = sqlite_storage.clone()
+                    as std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>;
                 handle.spawn(async move {
-                    oneshim_web::grpc::serve_optional(grpc_port).await;
+                    oneshim_web::grpc::serve_optional(grpc_port, grpc_storage).await;
                 });
             }
 

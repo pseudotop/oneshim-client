@@ -68,6 +68,36 @@ pub mod health_check_response {
         }
     }
 }
+/// D13-v2a: GetSessionStats. Aggregated over the most recent `limit` sessions
+/// returned by `WebStorage::list_session_stats`. When `limit == 0`, the server
+/// uses 1000 as the default sample size.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetSessionStatsRequest {
+    #[prost(uint32, tag = "1")]
+    pub limit: u32,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct SessionStatsResponse {
+    /// Number of sessions aggregated.
+    #[prost(uint32, tag = "1")]
+    pub total_sessions: u32,
+    /// Count of sessions whose `ended_at` is set.
+    #[prost(uint32, tag = "2")]
+    pub ended_sessions: u32,
+    /// Average completed-session duration in seconds. 0 when no sessions are
+    /// yet ended.
+    #[prost(double, tag = "3")]
+    pub avg_duration_secs: f64,
+    /// Total events across the aggregated sessions.
+    #[prost(uint64, tag = "4")]
+    pub total_events: u64,
+    /// Total frames across the aggregated sessions.
+    #[prost(uint64, tag = "5")]
+    pub total_frames: u64,
+    /// Total idle seconds across the aggregated sessions.
+    #[prost(uint64, tag = "6")]
+    pub total_idle_secs: u64,
+}
 /// Generated client implementations.
 pub mod dashboard_service_client {
     #![allow(
@@ -221,6 +251,37 @@ pub mod dashboard_service_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        /// D13-v2a: per-domain read RPCs. First entry point — aggregated session
+        /// statistics. Mirrors REST `GET /api/sessions/stats` shape.
+        pub async fn get_session_stats(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetSessionStatsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SessionStatsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/oneshim.dashboard.v1.DashboardService/GetSessionStats",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "oneshim.dashboard.v1.DashboardService",
+                        "GetSessionStats",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -252,6 +313,15 @@ pub mod dashboard_service_server {
             request: tonic::Request<super::HealthCheckRequest>,
         ) -> std::result::Result<
             tonic::Response<super::HealthCheckResponse>,
+            tonic::Status,
+        >;
+        /// D13-v2a: per-domain read RPCs. First entry point — aggregated session
+        /// statistics. Mirrors REST `GET /api/sessions/stats` shape.
+        async fn get_session_stats(
+            &self,
+            request: tonic::Request<super::GetSessionStatsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SessionStatsResponse>,
             tonic::Status,
         >;
     }
@@ -407,6 +477,52 @@ pub mod dashboard_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = HealthCheckSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/oneshim.dashboard.v1.DashboardService/GetSessionStats" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetSessionStatsSvc<T: DashboardService>(pub Arc<T>);
+                    impl<
+                        T: DashboardService,
+                    > tonic::server::UnaryService<super::GetSessionStatsRequest>
+                    for GetSessionStatsSvc<T> {
+                        type Response = super::SessionStatsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetSessionStatsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as DashboardService>::get_session_stats(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetSessionStatsSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

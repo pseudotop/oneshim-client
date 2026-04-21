@@ -1,21 +1,29 @@
-//! D13-v2 integration test: end-to-end gRPC dashboard server ↔ client.
+//! D13-v2 integration tests: end-to-end gRPC dashboard server ↔ client.
 //!
 //! Spawns `serve_optional()` on an ephemeral port, connects a tonic client,
-//! exercises both RPCs (`GetAgentInfo`, `HealthCheck`), and the standard
-//! `grpc.health.v1` health service. Verifies the wire protocol + service
-//! registration in one go.
+//! exercises each RPC, and verifies the wire protocol + service
+//! registration + port wiring end-to-end.
 //!
 //! Feature-gated by `grpc-dashboard` — the entire file compiles away when
-//! the feature is off (matches the production gating in `oneshim-web::grpc`).
+//! the feature is off (matches the production gating in
+//! `oneshim-web::grpc`).
 
 #![cfg(feature = "grpc-dashboard")]
 
 use std::net::TcpListener;
+use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::{Duration as ChronoDuration, Utc};
+use oneshim_core::models::activity::SessionStats;
+use oneshim_core::ports::storage::MetricsStorage;
+use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::proto::dashboard::v1::dashboard_service_client::DashboardServiceClient;
 use oneshim_web::proto::dashboard::v1::health_check_response::Status as HealthStatus;
-use oneshim_web::proto::dashboard::v1::{GetAgentInfoRequest, HealthCheckRequest};
+use oneshim_web::proto::dashboard::v1::{
+    GetAgentInfoRequest, GetSessionStatsRequest, HealthCheckRequest,
+};
+use oneshim_web::storage_port::WebStorage;
 
 /// Pick a free ephemeral port by binding + immediately dropping a listener.
 /// Tiny race window between drop + server bind, acceptable for test use.
@@ -38,22 +46,28 @@ async fn wait_for_server_ready(port: u16, timeout: Duration) {
         }
         if tokio::time::Instant::now() >= deadline {
             panic!(
-                "gRPC dashboard server did not accept connections on port {} within {:?}",
-                port, timeout
+                "gRPC dashboard server did not accept connections on port {port} within {timeout:?}"
             );
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn grpc_dashboard_serves_get_agent_info_end_to_end() {
-    let port = pick_free_port();
+/// Build an in-memory SqliteStorage behind the `WebStorage` trait.
+async fn in_memory_storage() -> Arc<dyn WebStorage> {
+    let storage = SqliteStorage::open_in_memory(30).expect("open in-memory SqliteStorage");
+    Arc::new(storage) as Arc<dyn WebStorage>
+}
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port));
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn grpc_dashboard_get_agent_info_end_to_end() {
+    let port = pick_free_port();
+    let storage = in_memory_storage().await;
+
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
-    let endpoint = format!("http://127.0.0.1:{}", port);
+    let endpoint = format!("http://127.0.0.1:{port}");
     let mut client = DashboardServiceClient::connect(endpoint)
         .await
         .expect("connect to dashboard gRPC server");
@@ -92,13 +106,14 @@ async fn grpc_dashboard_serves_get_agent_info_end_to_end() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn grpc_dashboard_serves_health_check_end_to_end() {
+async fn grpc_dashboard_health_check_end_to_end() {
     let port = pick_free_port();
+    let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
-    let endpoint = format!("http://127.0.0.1:{}", port);
+    let endpoint = format!("http://127.0.0.1:{port}");
     let mut client = DashboardServiceClient::connect(endpoint)
         .await
         .expect("connect to dashboard gRPC server");
@@ -122,11 +137,12 @@ async fn grpc_dashboard_serves_health_check_end_to_end() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_dashboard_survives_multiple_sequential_calls() {
     let port = pick_free_port();
+    let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
-    let endpoint = format!("http://127.0.0.1:{}", port);
+    let endpoint = format!("http://127.0.0.1:{port}");
     let mut client = DashboardServiceClient::connect(endpoint)
         .await
         .expect("connect to dashboard gRPC server");
@@ -141,6 +157,109 @@ async fn grpc_dashboard_survives_multiple_sequential_calls() {
             .into_inner();
         assert!(!info.version.is_empty());
     }
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn grpc_dashboard_get_session_stats_empty_db() {
+    let port = pick_free_port();
+    let storage = in_memory_storage().await;
+
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    wait_for_server_ready(port, Duration::from_secs(5)).await;
+
+    let endpoint = format!("http://127.0.0.1:{port}");
+    let mut client = DashboardServiceClient::connect(endpoint)
+        .await
+        .expect("connect to dashboard gRPC server");
+
+    let response = client
+        .get_session_stats(GetSessionStatsRequest { limit: 0 })
+        .await
+        .expect("GetSessionStats RPC succeeds")
+        .into_inner();
+
+    // Empty DB: all counters zero, avg duration 0.
+    assert_eq!(response.total_sessions, 0);
+    assert_eq!(response.ended_sessions, 0);
+    assert_eq!(response.avg_duration_secs, 0.0);
+    assert_eq!(response.total_events, 0);
+    assert_eq!(response.total_frames, 0);
+    assert_eq!(response.total_idle_secs, 0);
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn grpc_dashboard_get_session_stats_aggregates_seeded_sessions() {
+    let port = pick_free_port();
+
+    // Seed: 3 sessions, 2 ended. Aggregate expectations below.
+    let storage = SqliteStorage::open_in_memory(30).expect("open in-memory SqliteStorage");
+
+    // Session 1 — ended, duration 120s
+    let now = Utc::now();
+    let s1 = SessionStats {
+        session_id: "s1".into(),
+        started_at: now - ChronoDuration::seconds(300),
+        ended_at: Some(now - ChronoDuration::seconds(180)),
+        total_events: 10,
+        total_frames: 5,
+        total_idle_secs: 20,
+    };
+    // Session 2 — ended, duration 60s
+    let s2 = SessionStats {
+        session_id: "s2".into(),
+        started_at: now - ChronoDuration::seconds(200),
+        ended_at: Some(now - ChronoDuration::seconds(140)),
+        total_events: 7,
+        total_frames: 3,
+        total_idle_secs: 10,
+    };
+    // Session 3 — still running
+    let s3 = SessionStats {
+        session_id: "s3".into(),
+        started_at: now - ChronoDuration::seconds(30),
+        ended_at: None,
+        total_events: 2,
+        total_frames: 1,
+        total_idle_secs: 0,
+    };
+
+    storage.upsert_session(&s1).await.unwrap();
+    storage.upsert_session(&s2).await.unwrap();
+    storage.upsert_session(&s3).await.unwrap();
+
+    let storage: Arc<dyn WebStorage> = Arc::new(storage);
+
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    wait_for_server_ready(port, Duration::from_secs(5)).await;
+
+    let endpoint = format!("http://127.0.0.1:{port}");
+    let mut client = DashboardServiceClient::connect(endpoint)
+        .await
+        .expect("connect to dashboard gRPC server");
+
+    let response = client
+        .get_session_stats(GetSessionStatsRequest { limit: 10 })
+        .await
+        .expect("GetSessionStats RPC succeeds")
+        .into_inner();
+
+    assert_eq!(response.total_sessions, 3);
+    assert_eq!(response.ended_sessions, 2);
+    // (120s + 60s) / 2 = 90s. Allow ±1s slack for chrono rounding.
+    assert!(
+        (response.avg_duration_secs - 90.0).abs() < 2.0,
+        "avg_duration_secs: expected ~90, got {}",
+        response.avg_duration_secs
+    );
+    assert_eq!(response.total_events, 10 + 7 + 2);
+    assert_eq!(response.total_frames, 5 + 3 + 1);
+    assert_eq!(response.total_idle_secs, 20 + 10);
 
     server_task.abort();
     let _ = server_task.await;
