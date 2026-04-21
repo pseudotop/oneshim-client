@@ -5,7 +5,7 @@
 //! content labels in the analysis pipeline.
 
 /// Result of document heading extraction.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentHeadingInfo {
     /// Extracted heading text (trimmed, max 100 chars).
     pub heading: String,

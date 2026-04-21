@@ -16,7 +16,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BackupMetadata {
     pub version: String,
     pub created_at: String,
@@ -24,7 +24,7 @@ pub struct BackupMetadata {
     pub includes: BackupIncludes,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BackupIncludes {
     pub settings: bool,
     pub tags: bool,
@@ -32,7 +32,7 @@ pub struct BackupIncludes {
     pub frames: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TagBackup {
     pub id: i64,
     pub name: String,
@@ -47,7 +47,7 @@ pub struct FrameTagBackup {
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SettingsBackup {
     pub capture_enabled: bool,
     pub capture_interval_secs: u64,

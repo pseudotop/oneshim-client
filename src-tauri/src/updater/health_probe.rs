@@ -72,7 +72,7 @@ pub(crate) struct InstallPending {
 }
 
 /// Outcome of a startup probe check.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartupAction {
     /// Proceed with normal startup.
     Normal,

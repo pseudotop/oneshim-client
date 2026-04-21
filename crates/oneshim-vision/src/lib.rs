@@ -17,6 +17,8 @@
 // P2 PR-A nursery-hardening.
 #![deny(clippy::significant_drop_tightening)]
 #![cfg_attr(test, allow(clippy::significant_drop_tightening))]
+// P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
+#![deny(clippy::derive_partial_eq_without_eq)]
 
 //! # oneshim-vision
 

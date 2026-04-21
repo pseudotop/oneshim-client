@@ -8,7 +8,7 @@ use super::gui_interaction::GuiElementType;
 /// Produced by `GuiActivityAggregator` from a stream of `GuiInteractionEvent`s.
 /// Designed to be attached to `ContentActivity` for enriching LLM context
 /// (e.g., "edited auth.rs: 15 min coding, 3 saves, 2 test runs").
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuiActivitySummary {
     /// Application name (e.g., "Visual Studio Code").
     pub app_name: String,

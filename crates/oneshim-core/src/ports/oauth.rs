@@ -16,7 +16,7 @@ pub struct OAuthFlowHandle {
 }
 
 /// Status of a pending or completed OAuth flow.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "status")]
 pub enum OAuthFlowStatus {
     Pending,

@@ -7,6 +7,8 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap
 )]
+// P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
+#![deny(clippy::derive_partial_eq_without_eq)]
 
 //! ONESHIM Desktop Agent — Tauri v2 진입점
 //!
