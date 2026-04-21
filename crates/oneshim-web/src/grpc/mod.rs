@@ -3,8 +3,10 @@
 //!
 //! Feature-gated via `grpc-dashboard` — when disabled, this module and its
 //! dependencies (tonic, tonic-health, etc.) compile away entirely.
-
-#![cfg(feature = "grpc-dashboard")]
+//!
+//! The `#[cfg(feature = "grpc-dashboard")]` gate lives on `pub mod grpc;` in
+//! `lib.rs`. A matching inner-attribute here would be redundant (and trips
+//! clippy's `duplicated_attributes` lint).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
