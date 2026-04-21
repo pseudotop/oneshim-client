@@ -28,7 +28,7 @@
 | 7 | Web dashboard responses | R1 | ✅ Covered | — | `src-tauri/src/web_server_runtime.rs:384` | `VisionPiiSanitizer` wired via `with_pii_sanitizer` |
 | 8 | Audit log entries | R1 | ❌ Gap | 6 | `oneshim-automation::audit.rs::AuditLogger::record` | Apply `PiiFilterLevel::Strict` unconditionally per O3 |
 | 9 | Sync payloads (cross-device) | R1 | 🛡 Exempt | — | `oneshim-storage::sync_extractor.rs` | E2E encrypted; receiver is user-owned device |
-| 10 | `CoreError::Display` body + tracing user-text fields | R1 | 📋 Defer (iter-16) | 16 | `oneshim-core/src/error.rs::impl Display for CoreError` + various `tracing::*` sites | Iter-16 decision: requires replacing `thiserror`-derived `Display` on 38 `CoreError` variants with manual `impl Display` that sanitizes `{message}` fragments via `PiiSanitizer`. Dedicated design round required (macro + DI + fallback behavior when no sanitizer is present). Deferred to D5-iter16 standalone PR. Mitigation: iter-13 (report_frontend_error) + iter-6 (audit log) cover highest-risk user-text-to-logs paths. |
+| 10 | `CoreError::Display` body + tracing user-text fields | R1 | 🟡 Partial (iter-16 wrapper) | 16 | `oneshim-core/src/sanitized_display.rs` (new) + `oneshim-core/src/error.rs::impl Display for CoreError` (unchanged) | Iter-16 implementation: added `SanitizedDisplay<T: Display>` wrapper + `sanitized(&err, sanitizer, level)` helper in `oneshim-core`. Addition-only: `thiserror`-derived `Display` impls on 38 `CoreError` variants are intentionally preserved (full detail remains available for internal use / debugging). Log/tracing sites opt in by wrapping errors at the formatting boundary: `warn!(err.code = %e.code(), "task failed: {}", sanitized(&e, &*san, level))`. Site-by-site migration of existing `tracing::*` sites is deferred to follow-up PRs (see Path 22). Mitigation for unmigrated sites: iter-13 (report_frontend_error) + iter-6 (audit log) already cover the highest-risk user-text-to-logs paths. |
 | 11 | `CoachingMessage.template_text` / `personalized_message` | R5 | ❌ Gap | 8 | `oneshim-analysis::coaching_engine/*` + `crates/oneshim-core/src/models/coaching.rs` | LLM/template can embed user context |
 | 12 | `BugReport` user-composed | R5 | 🛡 Exempt | — | `oneshim-core/src/models/bug_report.rs` + `src-tauri/src/commands/bug_report.rs` | User intentionally authors; downstream uploader responsible |
 | 13 | `DailyInsight.narrative` + `DigestHighlight.text` | R5 | ❌ Gap | 9 | `oneshim-analysis::daily_digest_generator.rs` | LLM-generated narrative quotes activity context |
@@ -40,7 +40,7 @@
 | 19 | `ActivityPattern` mined descriptions | R6 | ✅ Transitive | — | `oneshim-analysis::pattern_miner/*` | Derived from events; safe IF Path 2 test locks |
 | 20 | FTS search queries | R6 | 📋 Defer | — | `oneshim-storage::sqlite/fts_search_impl` | User-typed query; may contain PII — defer to frontend audit |
 | 21 | Tauri IPC command inputs (broad audit) | R6 | 📋 Defer | — | `src-tauri/src/commands/*` | Too broad; defer to v2 |
-| 22 | `tracing::info!/warn!/error!` fields | R6 | Linked | 16 | various | Handled together with Path 10 iter-16 |
+| 22 | `tracing::info!/warn!/error!` fields | R6 | 🟡 Tool available (iter-16) | 16 | various | `SanitizedDisplay` wrapper landed in iter-16 (see Path 10). Site-by-site migration of existing tracing call-sites is deferred to follow-up PRs — each site needs a PiiSanitizer plumbed in scope + a judgment on whether the formatted error carries user text. Canonical pattern: `warn!("task failed: {}", sanitized(&err, &*san, level))`. |
 | 23 | `KeystrokeEvent.key_code` | R7 | ✅ Covered (iter-17 no-op) | 17 | `oneshim-monitor::input_detail.rs:163-167` | Iter-17 verification: `push_keystroke` already calls `sanitize_key_name(key_name, self.config.pii_filter_level)` at construction. Existing sanitization preserves single-key identifiers ("a", "Shift") and masks multi-char paste events. No code change. |
 | 24 | `KeyboardPatternTracker` | R7 | 📋 Defer | — | `oneshim-monitor::keyboard_pattern.rs` | Statistical-only; low risk |
 | 25 | gRPC `UploadBatchRequest` serialization | R7 | ✅ Transitive | — | `oneshim-network::grpc/context_client.rs` | Covered IF Event sanitization is universal (Path 2 contract) |
@@ -93,7 +93,7 @@ Each ❌ Gap, 🔥 Critical, ⚠️ Drift fix has a corresponding iter in the [D
 - iter-13: Path 32
 - iter-14: Path 2 (regression lock)
 - iter-15: Path 18 (defense-in-depth)
-- iter-16: Paths 10 + 22 (error Display + tracing)
+- iter-16: Paths 10 + 22 (error Display + tracing) — `SanitizedDisplay<T>` wrapper shipped in `oneshim-core`; tracing-site migration deferred to follow-up PRs
 - iter-17: Path 23 (KeystrokeEvent verify)
 - iter-18: Docs + PR open
 
