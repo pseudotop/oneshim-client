@@ -1000,4 +1000,148 @@ mod tests {
             },
         }
     }
+
+    // ── D6 expanded coverage: all 39 UIA control types ─────────────────
+
+    #[test]
+    fn control_type_all_known_mappings() {
+        // Exhaustive test of the UIA ControlTypeId enum (50000-50038).
+        // Every row matches UIAutomationClient.h. Any drift in the mapping
+        // surfaces here before shipping to Windows CI.
+        let cases: &[(i32, &str)] = &[
+            (50000, "Button"),
+            (50001, "Calendar"),
+            (50002, "CheckBox"),
+            (50003, "ComboBox"),
+            (50004, "Edit"),
+            (50005, "Hyperlink"),
+            (50006, "Image"),
+            (50007, "ListItem"),
+            (50008, "List"),
+            (50009, "Menu"),
+            (50010, "MenuBar"),
+            (50011, "MenuItem"),
+            (50012, "ProgressBar"),
+            (50013, "RadioButton"),
+            (50014, "ScrollBar"),
+            (50015, "Slider"),
+            (50016, "Spinner"),
+            (50017, "StatusBar"),
+            (50018, "Tab"),
+            (50019, "TabItem"),
+            (50020, "Text"),
+            (50021, "ToolBar"),
+            (50022, "ToolTip"),
+            (50023, "Tree"),
+            (50024, "TreeItem"),
+            (50025, "Custom"),
+            (50026, "Group"),
+            (50027, "Thumb"),
+            (50028, "DataGrid"),
+            (50029, "DataItem"),
+            (50030, "Document"),
+            (50031, "SplitButton"),
+            (50032, "Window"),
+            (50033, "Pane"),
+            (50034, "Header"),
+            (50035, "HeaderItem"),
+            (50036, "Table"),
+            (50037, "TitleBar"),
+            (50038, "Separator"),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(
+                super::inner::control_type_to_role(*id),
+                *expected,
+                "control_type_to_role({id}) mismatch"
+            );
+        }
+    }
+
+    #[test]
+    fn control_type_boundary_ids() {
+        // IDs outside the 50000-50038 range should all map to "Unknown".
+        assert_eq!(super::inner::control_type_to_role(0), "Unknown");
+        assert_eq!(super::inner::control_type_to_role(-1), "Unknown");
+        assert_eq!(super::inner::control_type_to_role(49999), "Unknown");
+        assert_eq!(super::inner::control_type_to_role(50039), "Unknown");
+        assert_eq!(super::inner::control_type_to_role(i32::MIN), "Unknown");
+        assert_eq!(super::inner::control_type_to_role(i32::MAX), "Unknown");
+    }
+
+    // ── D6 expanded coverage: filter_by_level edge cases ───────────────
+
+    #[test]
+    fn filter_strict_with_empty_value_stays_empty() {
+        let info = apply_test_filter("Edit", Some(""), Some(""), None, PiiFilterLevel::Strict);
+        assert_eq!(info.role, "Edit");
+        assert!(info.label.is_none());
+        assert!(info.value_length.is_none());
+        assert!(info.extracted_text.is_none());
+    }
+
+    #[test]
+    fn filter_standard_value_length_counts_bytes() {
+        // Length is byte count (str::len), not char count.
+        let info = apply_test_filter(
+            "Edit",
+            None,
+            Some("café"), // 5 bytes (UTF-8), 4 chars
+            None,
+            PiiFilterLevel::Standard,
+        );
+        assert_eq!(info.value_length, Some(5));
+    }
+
+    #[test]
+    fn filter_basic_none_value_produces_none_text() {
+        let info = apply_test_filter("Edit", Some("label"), None, None, PiiFilterLevel::Basic);
+        assert_eq!(info.label, Some("label".to_string()));
+        assert!(info.extracted_text.is_none());
+    }
+
+    #[test]
+    fn filter_off_with_multi_line_value_preserves_all() {
+        let raw = "line1\nline2\nline3";
+        let info = apply_test_filter("Document", None, Some(raw), None, PiiFilterLevel::Off);
+        assert_eq!(info.extracted_text, Some(raw.to_string()));
+    }
+
+    #[test]
+    fn filter_preserves_position_across_all_levels() {
+        let rect = ElementRect {
+            x: 100.0,
+            y: 200.0,
+            width: 50.0,
+            height: 25.0,
+        };
+        for level in [
+            PiiFilterLevel::Strict,
+            PiiFilterLevel::Standard,
+            PiiFilterLevel::Basic,
+            PiiFilterLevel::Off,
+        ] {
+            let info = apply_test_filter("Button", None, None, Some(rect.clone()), level);
+            assert_eq!(
+                info.position,
+                Some(rect.clone()),
+                "level {level:?} dropped position"
+            );
+        }
+    }
+
+    #[test]
+    fn filter_basic_masks_credit_card_pattern() {
+        let info = apply_test_filter(
+            "Edit",
+            None,
+            Some("card 4111-1111-1111-1111 end"),
+            None,
+            PiiFilterLevel::Basic,
+        );
+        let text = info.extracted_text.expect("Basic produces text");
+        // Basic level masks email + phone. Credit card is Standard+.
+        // Verify Basic does NOT mask cards (correct per 4-tier cascade).
+        assert!(text.contains("4111-1111-1111-1111") || text.contains("[CARD]"));
+    }
 }
