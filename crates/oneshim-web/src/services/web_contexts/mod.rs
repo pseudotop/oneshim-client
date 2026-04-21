@@ -25,6 +25,10 @@ use crate::AppState;
 pub struct StorageWebContext {
     pub storage: Arc<dyn WebStorage>,
     pub frames_dir: Option<PathBuf>,
+    /// D5 iter-15: PII sanitizer for export-handler belt-and-suspenders
+    /// sanitization. Cloned from AppState.diagnostics.pii_sanitizer at
+    /// context construction time.
+    pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
 }
 
 impl StorageWebContext {
@@ -32,6 +36,7 @@ impl StorageWebContext {
         Self {
             storage: state.core.storage.clone(),
             frames_dir: state.core.frames_dir.clone(),
+            pii_sanitizer: state.diagnostics.pii_sanitizer.clone(),
         }
     }
 }

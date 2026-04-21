@@ -45,7 +45,7 @@ impl ExportQueryService {
             .list_event_exports(&from.to_rfc3339(), &to.to_rfc3339())
             .map_err(|error| ApiError::Internal(error.to_string()))?
             .into_iter()
-            .map(assemble_event_export_record)
+            .map(|row| assemble_event_export_record(row, &self.ctx.pii_sanitizer))
             .collect();
 
         export_response(&records, &params.format, "events")
@@ -59,7 +59,7 @@ impl ExportQueryService {
             .list_frame_exports(&from.to_rfc3339(), &to.to_rfc3339())
             .map_err(|error| ApiError::Internal(error.to_string()))?
             .into_iter()
-            .map(assemble_frame_export_record)
+            .map(|row| assemble_frame_export_record(row, &self.ctx.pii_sanitizer))
             .collect();
 
         export_response(&records, &params.format, "frames")
