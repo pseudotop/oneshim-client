@@ -265,13 +265,9 @@ impl Scheduler {
                                             }
                                         }
 
-                                        let (ocr_hint, regions, frame_rgba) = handle_frame_capture(
-                                            &capture_req,
-                                            &processor,
-                                            &frame_storage1,
-                                            &sqlite1,
-                                            &session1,
-                                        ).await;
+                                        // D5 iter-3: pii_level for OCR sanitization at storage boundary.
+                                        let capture_pii = config_manager1.as_ref().map(|cm| cm.get().privacy.pii_filter_level).unwrap_or_default();
+                                        let (ocr_hint, regions, frame_rgba) = handle_frame_capture(&capture_req, &processor, &frame_storage1, &sqlite1, &session1, capture_pii).await;
                                         focus_ocr_hint = ocr_hint;
                                         if !regions.is_empty() {
                                             last_ocr_regions = regions;
