@@ -1,4 +1,5 @@
-use oneshim_core::config::FileAccessConfig;
+use oneshim_core::config::{FileAccessConfig, PiiFilterLevel};
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -11,6 +12,12 @@ pub use oneshim_core::models::event::{FileAccessEvent, FileEventType};
 pub struct FileAccessFilter {
     config: FileAccessConfig,
     events_this_minute: Arc<AtomicU32>,
+    /// D5 iter-11: sanitize file paths before FileAccessEvent construction.
+    /// Filenames can contain PII (`Resume_JohnDoe.pdf`, `2024_TaxReturn.xlsx`).
+    /// The `/Users/<name>/` prefix is stripped by `to_relative_path`, but the
+    /// filename itself is not sanitized. Apply at event boundary.
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pii_level: PiiFilterLevel,
 }
 
 impl FileAccessFilter {
@@ -18,7 +25,20 @@ impl FileAccessFilter {
         Self {
             config,
             events_this_minute: Arc::new(AtomicU32::new(0)),
+            pii_sanitizer: None,
+            pii_level: PiiFilterLevel::Standard,
         }
+    }
+
+    /// D5 iter-11: attach PII sanitizer for path sanitization.
+    pub fn with_pii_sanitizer(
+        mut self,
+        sanitizer: Arc<dyn PiiSanitizer>,
+        level: PiiFilterLevel,
+    ) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self.pii_level = level;
+        self
     }
 
     pub fn should_collect(&self, path: &Path) -> bool {
@@ -83,14 +103,25 @@ impl FileAccessFilter {
 
         self.record_event();
 
+        // D5 iter-11: sanitize path and extension before emitting event.
+        let raw_path = self.to_relative_path(absolute_path);
+        let relative_path = match &self.pii_sanitizer {
+            Some(s) => {
+                let raw_str = raw_path.to_string_lossy();
+                PathBuf::from(s.sanitize_text(&raw_str, self.pii_level))
+            }
+            None => raw_path,
+        };
+        let extension = absolute_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_string());
+
         Some(FileAccessEvent {
             timestamp: chrono::Utc::now(),
-            relative_path: self.to_relative_path(absolute_path),
+            relative_path,
             event_type,
-            extension: absolute_path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_string()),
+            extension,
         })
     }
 }
