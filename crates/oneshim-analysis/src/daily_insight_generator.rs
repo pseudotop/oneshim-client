@@ -57,7 +57,16 @@ impl DailyInsightGenerator {
         {
             Ok(response) => {
                 debug!(response_len = response.len(), "LLM daily insight response");
-                match Self::parse_insight_response(&response) {
+                // D5 iter-9: parse THEN sanitize narrative + highlight texts.
+                // LLM response may echo back user context (app names, activity
+                // descriptions) that slipped through input sanitization.
+                match Self::parse_insight_response(&response).map(|mut insight| {
+                    insight.narrative = (self.pii_filter)(&insight.narrative);
+                    for highlight in &mut insight.highlights {
+                        highlight.text = (self.pii_filter)(&highlight.text);
+                    }
+                    insight
+                }) {
                     Some(insight) => Some(insight),
                     None => {
                         warn!("Failed to parse LLM response, using fallback narrative");
