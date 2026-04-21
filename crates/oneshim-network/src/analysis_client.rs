@@ -1,8 +1,9 @@
 use async_trait::async_trait;
-use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
+use oneshim_core::config::{AiProviderType, ExternalApiEndpoint, PiiFilterLevel};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::{Priority, Suggestion, SuggestionSource, SuggestionType};
 use oneshim_core::ports::analysis_provider::AnalysisProvider;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use serde::Deserialize;
 use std::sync::Arc;
 use tracing::{debug, warn};
@@ -25,6 +26,11 @@ pub struct AnalysisClient {
     provider_type: AiProviderType,
     timeout_secs: u64,
     breaker: Arc<CircuitBreaker>,
+    /// D5 iter-5: sanitize LLM-returned suggestion text before it leaves this
+    /// client. LLMs can echo back user-context PII (e.g., "your email
+    /// user@example.com..."). Apply at the candidate_to_suggestion exit.
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    pii_level: PiiFilterLevel,
 }
 
 /// Private struct for parsing LLM suggestion candidates from JSON.
@@ -70,7 +76,28 @@ impl AnalysisClient {
             provider_type: config.provider_type,
             timeout_secs: config.timeout_secs,
             breaker,
+            pii_sanitizer: None,
+            pii_level: PiiFilterLevel::Standard,
         }
+    }
+
+    /// D5 iter-5: attach a PII sanitizer for suggestion-text sanitization.
+    pub fn with_pii_sanitizer(
+        mut self,
+        sanitizer: Arc<dyn PiiSanitizer>,
+        level: PiiFilterLevel,
+    ) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self.pii_level = level;
+        self
+    }
+
+    /// D5 iter-5: helper to sanitize a text fragment via the injected port.
+    fn sanitize(&self, text: &str) -> String {
+        self.pii_sanitizer
+            .as_ref()
+            .map(|s| s.sanitize_text(text, self.pii_level))
+            .unwrap_or_else(|| text.to_string())
     }
 
     /// D7 helper: returns Err if breaker is Open, allowing the caller to
@@ -194,6 +221,10 @@ impl AnalysisClient {
     }
 
     /// Convert a parsed candidate into a domain `Suggestion`.
+    /// Stateless associated fn — kept associated so existing tests can call
+    /// `AnalysisClient::candidate_to_suggestion(c)` without constructing an instance.
+    /// D5 iter-5: sanitization happens in the caller (`candidate_to_suggestion_sanitized`)
+    /// because the sanitizer is instance state.
     fn candidate_to_suggestion(candidate: SuggestionCandidate) -> Suggestion {
         let suggestion_type = match candidate.suggestion_type.as_str() {
             "ProductivityTip" => SuggestionType::ProductivityTip,
@@ -224,6 +255,15 @@ impl AnalysisClient {
             source: SuggestionSource::LlmLocal,
             reasoning: candidate.reasoning,
         }
+    }
+
+    /// D5 iter-5: sanitized variant. Apply `PiiSanitizer` to `content` and
+    /// `reasoning` fields before returning the Suggestion.
+    fn candidate_to_suggestion_sanitized(&self, candidate: SuggestionCandidate) -> Suggestion {
+        let mut s = Self::candidate_to_suggestion(candidate);
+        s.content = self.sanitize(&s.content);
+        s.reasoning = s.reasoning.map(|r| self.sanitize(&r));
+        s
     }
 }
 
@@ -336,7 +376,7 @@ impl AnalysisProvider for AnalysisClient {
 
         let suggestions: Vec<Suggestion> = candidates
             .into_iter()
-            .map(Self::candidate_to_suggestion)
+            .map(|c| self.candidate_to_suggestion_sanitized(c))
             .collect();
 
         Ok(suggestions)
