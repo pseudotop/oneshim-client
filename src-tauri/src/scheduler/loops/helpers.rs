@@ -125,6 +125,7 @@ pub(super) async fn handle_frame_capture(
     frame_storage: &Option<Arc<dyn FrameStoragePort>>,
     sqlite: &Arc<dyn SchedulerStorage>,
     session_id: &str,
+    pii_filter_level: oneshim_core::config::PiiFilterLevel,
 ) -> FrameCaptureResult {
     match processor.capture_and_process(capture_req).await {
         Ok(frame) => {
@@ -169,10 +170,18 @@ pub(super) async fn handle_frame_capture(
                 (None, None)
             };
 
+            // D5 iter-3: sanitize OCR text before SQLite persist per PII contract.
+            // Raw OCR output from external provider may contain user PII (email
+            // addresses, phone numbers, card numbers) visible in the captured
+            // screenshot. Sanitize at the write boundary before frames.ocr_text
+            // persists.
+            let sanitized_ocr = ocr_text.as_deref().map(|raw| {
+                oneshim_vision::privacy::sanitize_title_with_level(raw, pii_filter_level)
+            });
             if let Err(e) = sqlite.save_frame_metadata_with_bounds(
                 &frame.metadata,
                 file_path.as_deref(),
-                ocr_text.as_deref(),
+                sanitized_ocr.as_deref(),
                 capture_req.window_bounds.as_ref(),
             ) {
                 warn!("frame data save failure: {e}");
