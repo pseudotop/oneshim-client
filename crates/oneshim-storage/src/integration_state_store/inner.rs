@@ -19,6 +19,15 @@ pub(super) struct FileIntegrationStateInner {
     registry: parking_lot::Mutex<FileIntegrationStateRegistry>,
 }
 
+// P2 PR-A Category B: all write methods in this impl intentionally hold the
+// `registry` mutex across `save_registry` (disk I/O: `create_dir_all` +
+// atomic `write` + `rename`). The lock is the atomicity guard for "mutate
+// in-memory state + write file to disk" — tightening it would allow
+// in-memory state and on-disk state to diverge under concurrent writers.
+// parking_lot::Mutex keeps contention cost low (I/O window is tens of ms).
+// See `docs/reviews/2026-04-21-p2-significant-drop-tightening-spec.md`
+// §Category B for the full rationale.
+#[allow(clippy::significant_drop_tightening)]
 impl FileIntegrationStateInner {
     pub(super) fn new(
         registry_path: PathBuf,

@@ -7,21 +7,31 @@
 
 ## Scope correction from parent plan
 
-Parent plan estimated **277 hits** workspace-wide based on an earlier pattern-matching grep. **Actual audit shows only 5 hits** across 2 files:
+**Amended 2026-04-21 (mid-Loop 3)**: Initial audit reported 5 hits across 2 files. That count was wrong — it only surfaced sites in crates built by `cargo clippy` without target expansion. Correct workspace-wide count is **204 non-test sites across 9 crates**:
 
-| File | Sites | Category |
-|------|-------|----------|
-| `crates/oneshim-web/src/handlers/pomodoro.rs` | 4 | Mutex guard held across pure in-memory ops |
-| `crates/oneshim-storage/src/integration_state_store/inner.rs` | 1 | Lock held across disk I/O (intentional atomicity guard) |
-| **Total** | **5** | |
+| Crate | Sites | This PR |
+|-------|-------|---------|
+| `oneshim-storage` | 127 | Partial (1 impl-level #[allow], Cat B) |
+| `oneshim-automation` | 27 | Deferred |
+| `oneshim-network` | 18 | Deferred |
+| `oneshim-analysis` | 17 | Deferred |
+| `oneshim-monitor` | 7 | Deferred |
+| `oneshim-web` | **4** | **In scope (Cat A)** |
+| `oneshim-vision` | 3 | Deferred |
+| `oneshim-embedding` | 3 | Deferred |
+| `oneshim-suggestion` | 1 | Deferred |
+| `oneshim-audio` | 1 | Deferred |
+| **Total** | **204** (+ 47 in test code = 251) | **5 addressed in this PR, 199 deferred** |
 
-The earlier "277" came from `grep -c "warning:"` which counted ALL clippy warnings during the lint run — including unrelated lints, multi-line warning bodies, and tail summary lines. Actual site count (one warning per unique location) is 5.
+**Narrowed scope**: this PR targets `oneshim-web` only (the 4 pomodoro sites) plus one impl-level `#[allow]` in `oneshim-storage::integration_state_store::FileIntegrationStateInner` (Category B — the only site clippy flagged there).
 
-Scope is therefore dramatically smaller than anticipated. PR can land in ~1 day (was estimated at ~2).
+`#![deny(clippy::significant_drop_tightening)]` is added ONLY to `oneshim-web` — it cannot be added to `oneshim-storage` in this PR because 126 other sites in that crate are not yet triaged.
+
+Remaining 199 sites become follow-up PRs, one per crate, matching the per-crate rollout pattern from [PR #466](2026-04-21-p2-nursery-lint-plan.md).
 
 ## Goal
 
-Drive `cargo clippy --workspace -- -W clippy::significant_drop_tightening` to **0 warnings** and add `#![deny(clippy::significant_drop_tightening)]` at the two affected crate roots (`oneshim-web`, `oneshim-storage`) to lock the contract.
+Drive `cargo clippy -p oneshim-web --lib -- -W clippy::significant_drop_tightening` to **0 warnings** and add `#![deny(clippy::significant_drop_tightening)]` at `oneshim-web/src/lib.rs`. The `oneshim-storage` crate gets one Category B `#[allow]` with rationale but no crate-level `#![deny]` yet.
 
 ## Categorization: Fix vs. Allow
 
