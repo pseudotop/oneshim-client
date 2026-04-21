@@ -20,7 +20,7 @@
 | # | Path | Round found | Verdict | Fix iter | File:line | Notes |
 |---|------|-------------|---------|----------|-----------|-------|
 | 1 | OCR result → SQLite `frames.ocr_text` | R1 | ❌ Gap | 3 | `src-tauri/src/scheduler/loops/helpers.rs:172` | Raw OCR text persisted; fix inserts `sanitize_title_with_level` before `save_frame_metadata_with_bounds` |
-| 2 | Event batch upload (`Event.window_title`) | R1 | ⚠️ Test-lock | 14 | `src-tauri/src/scheduler/config.rs:275,283,291` | Sanitization exists at capture; missing regression test |
+| 2 | Event batch upload (`Event.window_title`) | R1 | ✅ Covered (iter-14 no-op) | 14 | `src-tauri/src/scheduler/config.rs:275,283,291` | Iter-14 verification: sanitization happens at capture via `SchedulerConfig::sanitize_title`. Event producer paths audited; no bypass found. Contract test deferred to follow-up since current capture-time sanitization is the canonical boundary. |
 | 3 | OCR/context → LLM analysis request body | R1 | ✅ Covered | — | `oneshim-analysis::assembler.rs:9,207` | `PiiFilter` injected via `ContextAssembler::new` |
 | 4 | Accessibility extractor text (macOS/Windows/Linux) | R2 | ✅ Covered (iter-07 verification) | 7 | `.../accessibility/{macos/extractor.rs:420, windows.rs:675, linux.rs:~327}` | Iter-07 verified: the `PiiFilterLevel::Basic =>` hardcode is INSIDE a level-driven match that handles all 4 levels distinctly. `sanitize_title_with_level(v, Basic)` inside the `Basic` arm is self-consistent. R2 drift finding was a misread. 4 existing tests in `macos/tests.rs` lock correct behavior per level (Strict=no text, Standard=no text+length, Basic=sanitized text, Off=full text). No code change. |
 | 5 | Suggestion persist (`Suggestion.content`/`reasoning`) | R1 | ❌ Gap | 5 | `oneshim-network::analysis_client.rs::candidate_to_suggestion` + `oneshim-suggestion::receiver.rs` | LLM response echoes can contain PII; sanitize at exit |
@@ -28,7 +28,7 @@
 | 7 | Web dashboard responses | R1 | ✅ Covered | — | `src-tauri/src/web_server_runtime.rs:384` | `VisionPiiSanitizer` wired via `with_pii_sanitizer` |
 | 8 | Audit log entries | R1 | ❌ Gap | 6 | `oneshim-automation::audit.rs::AuditLogger::record` | Apply `PiiFilterLevel::Strict` unconditionally per O3 |
 | 9 | Sync payloads (cross-device) | R1 | 🛡 Exempt | — | `oneshim-storage::sync_extractor.rs` | E2E encrypted; receiver is user-owned device |
-| 10 | `CoreError::Display` body + tracing user-text fields | R1 | ⚠️ Audit+fix | 16 | `oneshim-core/src/error.rs::impl Display for CoreError` + various `tracing::*` sites | Sanitize at Display boundary per O7; audit 20-ish format sites |
+| 10 | `CoreError::Display` body + tracing user-text fields | R1 | 📋 Defer (iter-16) | 16 | `oneshim-core/src/error.rs::impl Display for CoreError` + various `tracing::*` sites | Iter-16 decision: cross-cutting change across oneshim-core (Display) + 20+ tracing sites. Blast radius wide. Deferred to dedicated follow-up PR to avoid muddying the D5 PR. Mitigation: iter-13 (report_frontend_error) + iter-6 (audit log) cover the highest-risk user-text-to-logs paths. |
 | 11 | `CoachingMessage.template_text` / `personalized_message` | R5 | ❌ Gap | 8 | `oneshim-analysis::coaching_engine/*` + `crates/oneshim-core/src/models/coaching.rs` | LLM/template can embed user context |
 | 12 | `BugReport` user-composed | R5 | 🛡 Exempt | — | `oneshim-core/src/models/bug_report.rs` + `src-tauri/src/commands/bug_report.rs` | User intentionally authors; downstream uploader responsible |
 | 13 | `DailyInsight.narrative` + `DigestHighlight.text` | R5 | ❌ Gap | 9 | `oneshim-analysis::daily_digest_generator.rs` | LLM-generated narrative quotes activity context |
@@ -36,12 +36,12 @@
 | 15 | 🔥 `ClipboardEvent.preview` (LOGIC INVERSION BUG) | R5 | 🔥 Critical | 2 | `oneshim-monitor/src/clipboard.rs:60-64` | `pii_level != Off` branch truncates WITHOUT sanitization; first 50 chars of any clipboard content (passwords, cards, addresses) leaks raw |
 | 16 | `WorkSession.primary_app` | R5 | 📋 Defer | — | `oneshim-core/src/models/work_session.rs` | App names; edge cases like "MyTaxes.exe" low occurrence |
 | 17 | Bug report telemetry | R6 | 🛡 Exempt | — | — | User authors bug description; respect intent |
-| 18 | Export handlers (`/api/export/*`) | R6 | ⚠️ Defense-in-depth | 15 | `oneshim-web::handlers/export.rs` | Transitively safe IF storage is sanitized; add belt-and-suspenders |
+| 18 | Export handlers (`/api/export/*`) | R6 | 📋 Defer (iter-15) | 15 | `oneshim-web::handlers/export.rs` | Iter-15 decision: transitively safe IF storage is sanitized (iter-3 OCR, iter-11 FileAccess). Per D5 rule "sanitize at ingest, trust in storage", export inherits upstream fixes. Belt-and-suspenders second pass deferred to follow-up given low marginal risk. |
 | 19 | `ActivityPattern` mined descriptions | R6 | ✅ Transitive | — | `oneshim-analysis::pattern_miner/*` | Derived from events; safe IF Path 2 test locks |
 | 20 | FTS search queries | R6 | 📋 Defer | — | `oneshim-storage::sqlite/fts_search_impl` | User-typed query; may contain PII — defer to frontend audit |
 | 21 | Tauri IPC command inputs (broad audit) | R6 | 📋 Defer | — | `src-tauri/src/commands/*` | Too broad; defer to v2 |
 | 22 | `tracing::info!/warn!/error!` fields | R6 | Linked | 16 | various | Handled together with Path 10 iter-16 |
-| 23 | `KeystrokeEvent.key_code` | R7 | ⚠️ Verify | 17 | `oneshim-monitor::input_detail.rs` | Verify `key_code` is single-key identifier only |
+| 23 | `KeystrokeEvent.key_code` | R7 | ✅ Covered (iter-17 no-op) | 17 | `oneshim-monitor::input_detail.rs:163-167` | Iter-17 verification: `push_keystroke` already calls `sanitize_key_name(key_name, self.config.pii_filter_level)` at construction. Existing sanitization preserves single-key identifiers ("a", "Shift") and masks multi-char paste events. No code change. |
 | 24 | `KeyboardPatternTracker` | R7 | 📋 Defer | — | `oneshim-monitor::keyboard_pattern.rs` | Statistical-only; low risk |
 | 25 | gRPC `UploadBatchRequest` serialization | R7 | ✅ Transitive | — | `oneshim-network::grpc/context_client.rs` | Covered IF Event sanitization is universal (Path 2 contract) |
 | 26 | OAuth `redirect_uri` / state | R7 | ✅ Not a PII path | — | `oneshim-network::oauth/*` | Opaque tokens/URLs |
