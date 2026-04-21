@@ -30,6 +30,12 @@ impl Default for SysInfoMonitor {
 
 #[async_trait]
 impl SystemMonitor for SysInfoMonitor {
+    // P2 PR-A: 3 separate sysinfo locks (sys, disks, networks) are held
+    // across quick metric extraction. Each is a fast read, and sysinfo's
+    // iterators borrow from the owned Sys instances, requiring the lock to
+    // outlive iteration. Tightening would require substantial refactoring
+    // of sysinfo usage.
+    #[allow(clippy::significant_drop_tightening)]
     async fn collect_metrics(&self) -> Result<SystemMetrics, CoreError> {
         {
             let mut sys = self.sys.lock().map_err(|e| CoreError::Internal {

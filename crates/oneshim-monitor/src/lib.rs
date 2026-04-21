@@ -14,6 +14,9 @@
     clippy::option_if_let_else,
     clippy::redundant_pub_crate
 )]
+// P2 PR-A nursery-hardening.
+#![deny(clippy::significant_drop_tightening)]
+#![cfg_attr(test, allow(clippy::significant_drop_tightening))]
 
 //! # oneshim-monitor
 
