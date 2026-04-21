@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 use super::super::config::PlatformEgressPolicy;
+use super::super::gui_pipeline::gui_feedback_pii_level;
 use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
 use super::coaching_helper::{CoachingEvalContext, CoachingTickState};
@@ -55,6 +56,9 @@ impl Scheduler {
         let overlay_ref = self.magic_overlay.clone();
         let coaching_storage_ref = self.coaching_storage.clone();
         let coaching_analysis_provider = self.analysis_provider.clone();
+        let gui_feedback_pii_san: Option<
+            Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>,
+        > = Some(Arc::new(oneshim_vision::privacy::VisionPiiSanitizer));
         let capture_paused = self.capture_paused.clone();
         let overlay_driver_ref = self.overlay_driver.clone();
         let detection_active = self.detection_active.clone();
@@ -418,7 +422,7 @@ impl Scheduler {
                                         if gui_state.feedback_tick_counter >= 30 && !gui_state.uncertain_queue.is_empty() {
                                             gui_state.feedback_tick_counter = 0;
                                             if let Some(ref p) = coaching_analysis_provider {
-                                                super::super::gui_pipeline::process_gui_feedback(gui_state, p.as_ref()).await;
+                                                super::super::gui_pipeline::process_gui_feedback(gui_state, p.as_ref(), gui_feedback_pii_san.as_ref(), gui_feedback_pii_level(&config_manager1)).await;
                                             }
                                         }
                                     }
