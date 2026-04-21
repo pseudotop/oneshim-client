@@ -1,4 +1,6 @@
 use chrono::Utc;
+use oneshim_core::config::PiiFilterLevel;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -25,6 +27,11 @@ pub struct AuditLogger {
     max_buffer_size: usize,
     batch_size: usize,
     persistence: Option<Arc<dyn AuditPersistence>>,
+    /// D5 iter-6: Audit log details may include command stdout/stderr which
+    /// can contain API keys, tokens, or other sensitive output. Apply the
+    /// strictest PII filtering unconditionally at the record boundary (not
+    /// user-configurable — audit log is a security control, not a feature).
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
 }
 
 impl AuditLogger {
@@ -34,6 +41,7 @@ impl AuditLogger {
             max_buffer_size,
             batch_size,
             persistence: None,
+            pii_sanitizer: None,
         }
     }
 
@@ -44,6 +52,24 @@ impl AuditLogger {
     pub fn with_persistence(mut self, cb: Arc<dyn AuditPersistence>) -> Self {
         self.persistence = Some(cb);
         self
+    }
+
+    /// D5 iter-6: attach a PII sanitizer. Audit log applies
+    /// `PiiFilterLevel::Strict` unconditionally (not user-configurable per
+    /// O3 in the D5 design spec) — audit trails are a security control.
+    pub fn with_pii_sanitizer(mut self, sanitizer: Arc<dyn PiiSanitizer>) -> Self {
+        self.pii_sanitizer = Some(sanitizer);
+        self
+    }
+
+    /// D5 iter-6: sanitize a details string for audit storage.
+    fn sanitize_details(&self, details: Option<String>) -> Option<String> {
+        details.map(|raw| {
+            self.pii_sanitizer
+                .as_ref()
+                .map(|s| s.sanitize_text(&raw, PiiFilterLevel::Strict))
+                .unwrap_or(raw)
+        })
     }
 
     pub fn log_start(&mut self, command_id: &str, session_id: &str, action_type: &str) {
@@ -233,7 +259,7 @@ impl AuditLogger {
             command_id: command_id.to_string(),
             action_type: action_type.to_string(),
             status,
-            details,
+            details: self.sanitize_details(details),
             execution_time_ms: None,
         };
 
@@ -250,9 +276,11 @@ impl AuditLogger {
         session_id: &str,
         action_type: &str,
         status: AuditStatus,
-        details: Option<String>,
+        raw_details: Option<String>,
         execution_time_ms: Option<u64>,
     ) {
+        // D5 iter-6: sanitize details at record boundary.
+        let details = self.sanitize_details(raw_details);
         if self.buffer.len() >= self.max_buffer_size {
             self.buffer.pop_front();
             tracing::warn!("audit buffer full: dropping oldest entry");
