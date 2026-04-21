@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Tests**: 8 unit tests in `sanitized_display::tests` — Off-passthrough, each non-Off level, `CoreError` integration (wire code preserved, message sanitized), `format!` macro, `dyn Error`, constructor equivalence.
   - **Scope**: addition-only. Existing `tracing::*` call-sites in `oneshim-network`, scheduler loops, and elsewhere remain unchanged; site-by-site migration happens in follow-up PRs on a per-adapter basis.
 
+- **D5 iter-16 — SanitizedDisplay migration rollout across LLM-error tracing sites** (audit matrix Path 22 follow-up). All 3 high-PII-risk `CoreError::Display` tracing sites migrated; low-risk infrastructure sites documented-skipped.
+  - **Migrated** (3 adapters, 3 PRs):
+    - `oneshim-analysis::LlmWorkTypeRefiner` — LLM work-type classification error logging (PR #458).
+    - `src-tauri/src/scheduler/loops/coaching_helper.rs` — LLM coaching personalization error logging (PR #459).
+    - `src-tauri/src/scheduler/gui_pipeline.rs` — GUI-feedback LLM call error logging (PR #460).
+  - **Pattern applied**: add optional `pii_sanitizer: Option<Arc<dyn PiiSanitizer>>` + `pii_level: PiiFilterLevel` to the adapter (or context struct); wrap the error Display via `sanitized(&e, &*san, level)` at the tracing site; fallback to raw Display when no sanitizer is attached. Matches the D5 iter-5 `AnalysisClient::with_pii_sanitizer` precedent.
+  - **Intentionally skipped** (documented rationale): `src-tauri/src/scheduler/loops/network.rs:{35,40,55,60,63,78,124}` — 7 sites log `CoreError::Storage` (SQLite driver error text) or `NetworkError::*` (HTTP status, transport messages). These error bodies do not carry user text, so migration adds maintenance cost without privacy benefit. Audit matrix Path 22 documents the skip decision.
+  - **Audit matrix update**: Path 10 status promoted `Partial` → `Covered`; Path 22 status promoted `Tool available` → `In-progress (iter-16 migrations)` with full migration + skip rationale tabulated.
+
 ### Added
 
 - **D7 Circuit breaker broadening** (spec: [`docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md`](docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md)). Extends the existing `BatchUploader`-only circuit breaker to 5 additional adapters so a persistently unreachable AI endpoint fast-fails in microseconds instead of blocking every scheduler tick behind a 30–60 s timeout wall.
