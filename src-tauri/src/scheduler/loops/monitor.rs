@@ -105,6 +105,7 @@ impl Scheduler {
                             &input_collector,
                             prev_idle_secs,
                             focus_mode.is_active(),
+                            &event_tx_mon,  // reuse clone added by B3-1
                         ).await;
 
                         match act_mon.collect_context().await {

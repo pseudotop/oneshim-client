@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use chrono::Utc;
-use oneshim_api_contracts::stream::{FrameUpdate, RealtimeEvent};
+use oneshim_api_contracts::stream::{FrameUpdate, IdleUpdate, RealtimeEvent};
 use oneshim_core::models::activity::IdleState;
 use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::frame::{ImagePayload, OcrRegion};
@@ -232,17 +232,29 @@ pub(super) async fn handle_idle_tick(
     input_collector: &InputActivityCollector,
     prev_idle_secs: u64,
     focus_mode_active: bool,
+    event_tx: &Option<broadcast::Sender<RealtimeEvent>>,
 ) -> u64 {
     let idle_info = idle_tracker.check_idle().await;
     let prev_state = idle_tracker.previous_state();
 
     if prev_state == IdleState::Active && idle_info.state == IdleState::Idle {
+        // Storage FIRST (spec §U2 I2 ordering). Log-and-continue on failure.
         match sqlite.start_idle_period(Utc::now()).await {
             Ok(id) => {
                 idle_tracker.set_idle_period_id(Some(id));
                 debug!("idle period started: id={}", id);
             }
             Err(e) => warn!("idle period started record failure: {e}"),
+        }
+        // Emit AFTER storage (success or failure — subscribers observe the edge).
+        if let Some(tx) = event_tx.as_ref() {
+            let ev = RealtimeEvent::Idle(IdleUpdate {
+                is_idle: true,
+                idle_secs: idle_info.idle_secs,
+            });
+            if let Err(e) = tx.send(ev) {
+                debug!("idle event channel send failed (Active→Idle): {e}");
+            }
         }
     } else if prev_state == IdleState::Idle && idle_info.state == IdleState::Active {
         if let Some(id) = idle_tracker.idle_period_id() {
@@ -254,9 +266,19 @@ pub(super) async fn handle_idle_tick(
         if let Some(ref notif) = notif {
             notif.reset_session().await;
         }
+        // Emit AFTER storage + notif-reset.
+        if let Some(tx) = event_tx.as_ref() {
+            let ev = RealtimeEvent::Idle(IdleUpdate {
+                is_idle: false,
+                idle_secs: idle_info.idle_secs,
+            });
+            if let Err(e) = tx.send(ev) {
+                debug!("idle event channel send failed (Idle→Active): {e}");
+            }
+        }
     }
 
-    // A4: Suppress idle notification in focus mode
+    // A4: Suppress idle notification in focus mode (UNCHANGED)
     if !focus_mode_active {
         if let Some(ref notif) = notif {
             notif.check_idle(idle_info.idle_secs).await;
