@@ -29,8 +29,9 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Instant;
 
-use oneshim_api_contracts::stream::RealtimeEvent;
+use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use oneshim_core::ports::monitor::SystemMonitor;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use tokio::sync::broadcast;
 use tokio_stream::Stream;
 use tonic::transport::Server;
@@ -99,6 +100,11 @@ pub struct DashboardServiceImpl {
     active_streams: Arc<AtomicUsize>,
     #[allow(dead_code)] // read in B2-9 handler
     max_concurrent_streams: usize,
+    // v2b B3-0 additions (read in B3-6 SubscribeEvents handler):
+    #[allow(dead_code)] // read in B3-6 SubscribeEvents handler
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    #[allow(dead_code)] // read in B3-6 SubscribeEvents handler
+    ai_runtime_status_snapshot: Option<AiRuntimeStatus>,
 }
 
 impl DashboardServiceImpl {
@@ -115,6 +121,8 @@ impl DashboardServiceImpl {
             streaming_enabled: cfg.streaming_enabled,
             active_streams: Arc::new(AtomicUsize::new(0)),
             max_concurrent_streams: cfg.max_concurrent_streams,
+            pii_sanitizer: cfg.pii_sanitizer.clone(),
+            ai_runtime_status_snapshot: cfg.ai_runtime_status_snapshot.clone(),
         }
     }
 
@@ -124,6 +132,22 @@ impl DashboardServiceImpl {
     pub fn active_stream_count(&self) -> usize {
         self.active_streams
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+// B3-0: redact `pii_sanitizer` and `ai_runtime_status_snapshot` — emit
+// boolean-only presence flags so logs never leak PII or AI status details.
+impl std::fmt::Debug for DashboardServiceImpl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DashboardServiceImpl")
+            .field("streaming_enabled", &self.streaming_enabled)
+            .field("max_concurrent_streams", &self.max_concurrent_streams)
+            .field("pii_sanitizer_present", &self.pii_sanitizer.is_some())
+            .field(
+                "ai_runtime_status_present",
+                &self.ai_runtime_status_snapshot.is_some(),
+            )
+            .finish_non_exhaustive()
     }
 }
 

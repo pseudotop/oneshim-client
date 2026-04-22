@@ -7,8 +7,9 @@
 
 use std::sync::Arc;
 
-use oneshim_api_contracts::stream::RealtimeEvent;
+use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use oneshim_core::ports::monitor::SystemMonitor;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use tokio::sync::broadcast;
 
 use crate::storage_port::WebStorage;
@@ -23,6 +24,14 @@ pub struct GrpcSpawnConfig {
     /// Forward-compat trust signal; under v2b's loopback-only bind the
     /// token branch of `honor_opt_out` is unreachable (see spec §4.3).
     pub integration_auth_token: Option<String>,
+    /// PII sanitisation port; applied to AiRuntimeStatus.*_fallback_reason
+    /// before snapshot emission on SubscribeEvents. `None` → pass-through
+    /// (acceptable for test builds; prod wiring always sets Some).
+    pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    /// AiRuntimeStatus snapshot captured at server build-time. Emitted
+    /// exactly once per SubscribeEvents subscription (§A A2). `None` →
+    /// sentinel "unknown" emission (§A C2).
+    pub ai_runtime_status_snapshot: Option<AiRuntimeStatus>,
     pub load_policy: Arc<LoadPolicy>,
     /// When false, SubscribeMetrics / SubscribeEvents return
     /// `Status::unavailable("streaming disabled")`. Unary v1/v2a RPCs unaffected.
@@ -32,6 +41,7 @@ pub struct GrpcSpawnConfig {
 }
 
 // IMP-16: redact `integration_auth_token` so config dumps never leak the value.
+// B3-0: also redact `pii_sanitizer` and `ai_runtime_status_snapshot` (boolean-only).
 impl std::fmt::Debug for GrpcSpawnConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GrpcSpawnConfig")
@@ -42,6 +52,11 @@ impl std::fmt::Debug for GrpcSpawnConfig {
                     "[REDACTED; present={}]",
                     self.integration_auth_token.is_some()
                 ),
+            )
+            .field("pii_sanitizer_present", &self.pii_sanitizer.is_some())
+            .field(
+                "ai_runtime_status_present",
+                &self.ai_runtime_status_snapshot.is_some(),
             )
             .field("streaming_enabled", &self.streaming_enabled)
             .field("max_concurrent_streams", &self.max_concurrent_streams)
@@ -67,6 +82,8 @@ mod tests {
             system_monitor: MockSystemMonitor::new(30.0, 4096, 16384),
             event_tx,
             integration_auth_token: Some("super-secret-token-xyz".to_string()),
+            pii_sanitizer: None,
+            ai_runtime_status_snapshot: None,
             load_policy: Arc::new(LoadPolicy::new(LoadThresholds::default())),
             streaming_enabled: true,
             max_concurrent_streams: 50,

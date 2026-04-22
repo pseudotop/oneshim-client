@@ -39,6 +39,12 @@ use crate::services::runtime_log_provider::TauriRuntimeLogProvider;
 
 pub(crate) struct WebServerLaunchResult {
     pub(crate) automation_controller: Option<Arc<AutomationController>>,
+    /// Snapshot captured from automation_build.ai_runtime_status at
+    /// server build time. Consumed by DashboardServiceImpl for
+    /// SubscribeEvents snapshot-on-subscribe emission (spec §A A2).
+    /// Read in app_runtime_launch.rs within `#[cfg(feature = "grpc-dashboard")]`.
+    #[allow(dead_code)]
+    pub(crate) ai_runtime_status: Option<AiRuntimeStatus>,
 }
 
 pub(crate) struct WebServerLaunchContext<'a> {
@@ -347,6 +353,9 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         };
 
         let ai_runtime_status = automation_build.ai_runtime_status.clone();
+        // Retain a second clone for WebServerLaunchResult so the caller can
+        // pass the snapshot to GrpcSpawnConfig (SubscribeEvents §A A2).
+        let ai_runtime_status_for_result = ai_runtime_status.clone();
         let automation_controller = automation_build.controller;
         let automation_controller_for_state = automation_controller.clone();
         let gui_audit_logger = web_audit_logger.clone();
@@ -405,6 +414,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
 
         WebServerLaunchResult {
             automation_controller: automation_controller_for_state,
+            ai_runtime_status: ai_runtime_status_for_result,
         }
     }
 }
