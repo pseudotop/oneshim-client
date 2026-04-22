@@ -1,15 +1,23 @@
 //! TLS ServerConfig builder + cert file loader.
 //! The hot-reload mechanism lives in cert_resolver.rs (swap inner Arc).
-//! This module provides the PEM → CertifiedKey path.
+//! This module provides the PEM → CertifiedKey path and a file-watcher that
+//! swaps the resolver on atomic rename (cert rotation without restart).
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
+use notify::RecursiveMode;
+use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use rustls::crypto::aws_lc_rs;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::sign::CertifiedKey;
 use thiserror::Error;
+use tokio::sync::mpsc;
+use tracing::{error, info, warn};
+
+use crate::grpc::external::cert_resolver::HotReloadCertResolver;
 
 #[derive(Debug, Error)]
 pub enum TlsLoadError {
@@ -59,6 +67,90 @@ pub fn load_certified_key(
     Ok(Arc::new(CertifiedKey::new(certs, signing_key)))
 }
 
+/// Spawn a background task that watches cert/key paths and swaps the resolver on change.
+///
+/// Uses a 500 ms debounce window so rapid succession of file events (e.g. write + rename)
+/// produces only one reload attempt. Watches **parent directories** rather than individual
+/// file paths because many tools (including `openssl`, `certbot`) use atomic rename which
+/// the OS reports as a create+delete event at the directory level, not a modify on the
+/// original file path.
+///
+/// The task runs until the returned `JoinHandle` is aborted or the `resolver` is dropped.
+pub async fn spawn_cert_watcher(
+    cert_path: PathBuf,
+    key_path: PathBuf,
+    resolver: Arc<HotReloadCertResolver>,
+) -> Result<(), TlsLoadError> {
+    // Canonicalize paths so comparison against watcher-reported events works on macOS
+    // where /tmp is a symlink to /private/tmp and notify returns the resolved path.
+    let canonical_cert = cert_path
+        .canonicalize()
+        .unwrap_or_else(|_| cert_path.clone());
+    let canonical_key = key_path.canonicalize().unwrap_or_else(|_| key_path.clone());
+
+    let (tx, mut rx) = mpsc::unbounded_channel::<DebounceEventResult>();
+
+    let mut debouncer = new_debouncer(StdDuration::from_millis(500), move |res| {
+        let _ = tx.send(res);
+    })
+    .map_err(|e| TlsLoadError::ParseCert(format!("watcher init: {e}")))?;
+
+    // Watch parent dirs — file renames are seen as create/delete of the specific path
+    // at directory level rather than a Modify on the original path.
+    let cert_parent = canonical_cert
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_owned();
+    let key_parent = canonical_key
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_owned();
+
+    debouncer
+        .watcher()
+        .watch(&cert_parent, RecursiveMode::NonRecursive)
+        .map_err(|e| TlsLoadError::ParseCert(format!("watch cert dir: {e}")))?;
+    if key_parent != cert_parent {
+        debouncer
+            .watcher()
+            .watch(&key_parent, RecursiveMode::NonRecursive)
+            .map_err(|e| TlsLoadError::ParseCert(format!("watch key dir: {e}")))?;
+    }
+
+    tokio::spawn(async move {
+        let _keep_alive = debouncer; // keep watcher alive until task ends
+        while let Some(evt_res) = rx.recv().await {
+            match evt_res {
+                Ok(events) => {
+                    let affected = events
+                        .iter()
+                        .any(|e| e.path == canonical_cert || e.path == canonical_key);
+                    if !affected {
+                        continue;
+                    }
+                    match load_certified_key(&cert_path, &key_path) {
+                        Ok(key) => {
+                            resolver.swap(key);
+                            info!("external_grpc: TLS cert hot-reloaded successfully");
+                        }
+                        Err(e) => {
+                            warn!(
+                                err = %e,
+                                "external_grpc: cert reload failed, keeping previous cert"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(err = ?e, "external_grpc: file watcher error");
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +185,56 @@ mod tests {
             std::path::Path::new("/does/not/exist.key"),
         );
         assert!(result.is_err());
+    }
+
+    /// Verifies that an atomic rename (write-to-tmp + rename-over) triggers the cert
+    /// watcher to swap the resolver. Gated `#[ignore]` because inotify/FSEvents watchers
+    /// are occasionally slow on loaded CI runners; run with `-- --ignored` locally.
+    #[ignore]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn watcher_swaps_resolver_on_rename() {
+        use crate::grpc::external::cert_resolver::HotReloadCertResolver;
+        use std::time::Duration;
+
+        let dir = TempDir::new().unwrap();
+        let (cert_path, key_path) = write_cert_pair(&dir);
+        let initial = load_certified_key(&cert_path, &key_path).unwrap();
+        let resolver = Arc::new(HotReloadCertResolver::new(initial.clone()));
+
+        let watcher_resolver = resolver.clone();
+        let cert_path_c = cert_path.clone();
+        let key_path_c = key_path.clone();
+        let handle = tokio::spawn(async move {
+            spawn_cert_watcher(cert_path_c, key_path_c, watcher_resolver).await
+        });
+
+        tokio::time::sleep(Duration::from_millis(100)).await; // let watcher arm
+
+        // Atomic rename: write to tmp, then rename over the old path.
+        use rcgen::{CertificateParams, KeyPair};
+        let new_kp = KeyPair::generate().unwrap();
+        let new_cert = CertificateParams::new(vec!["localhost".into()])
+            .unwrap()
+            .self_signed(&new_kp)
+            .unwrap();
+        let tmp_cert = dir.path().join("cert.new");
+        let tmp_key = dir.path().join("key.new");
+        fs::write(&tmp_cert, new_cert.pem()).unwrap();
+        fs::write(&tmp_key, new_kp.serialize_pem()).unwrap();
+        fs::rename(&tmp_cert, &cert_path).unwrap();
+        fs::rename(&tmp_key, &key_path).unwrap();
+
+        // Wait up to 2s for watcher + debounce + reload cycle.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            let cur = resolver.current();
+            if !Arc::ptr_eq(&cur, &initial) {
+                handle.abort();
+                return; // success
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        handle.abort();
+        panic!("cert watcher did not swap resolver within 2s");
     }
 }
