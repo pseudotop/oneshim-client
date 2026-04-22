@@ -16,7 +16,10 @@ Final spec: `docs/reviews/2026-04-22-d13-v2b-pr-b2-spec.md` @ commit `abc16ca7`
 
 ### Phase 2 entry
 
-Substep: **2.1 — draft plan doc `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md`**
+Substep: **2.2 — plan draft complete; dispatch iter-1 plan reviewers**
+
+Plan doc: `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md`
+13 tasks (B2-0..B2-12), ~1685 LoC total est, full dependency chain + rollback + spec-traceability matrix.
 
 Next iteration: draft plan derived from spec §4 components + §7 testing + §8 acceptance. Task structure (12 tasks):
 
