@@ -61,12 +61,38 @@ async fn in_memory_storage() -> Arc<dyn WebStorage> {
     Arc::new(storage) as Arc<dyn WebStorage>
 }
 
+/// Build a `GrpcSpawnConfig` with sensible test defaults (deterministic
+/// `MockSystemMonitor`, 16-slot broadcast, no auth token, default
+/// `LoadThresholds`, streaming enabled, cap 50). Callers that need to
+/// override fields can destructure and rebuild.
+fn test_spawn_config(
+    port: u16,
+    storage: Arc<dyn WebStorage>,
+) -> oneshim_web::grpc::GrpcSpawnConfig {
+    use oneshim_core::config::LoadThresholds;
+    use oneshim_web::grpc::{test_support::mock_system_monitor::MockSystemMonitor, LoadPolicy};
+
+    let (event_tx, _) = tokio::sync::broadcast::channel(16);
+    oneshim_web::grpc::GrpcSpawnConfig {
+        port,
+        storage,
+        system_monitor: MockSystemMonitor::new(30.0, 4096, 16384),
+        event_tx,
+        integration_auth_token: None,
+        load_policy: Arc::new(LoadPolicy::new(LoadThresholds::default())),
+        streaming_enabled: true,
+        max_concurrent_streams: 50,
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_dashboard_get_agent_info_end_to_end() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -112,7 +138,9 @@ async fn grpc_dashboard_health_check_end_to_end() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -141,7 +169,9 @@ async fn grpc_dashboard_survives_multiple_sequential_calls() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -169,7 +199,9 @@ async fn grpc_dashboard_get_session_stats_empty_db() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -237,7 +269,9 @@ async fn grpc_dashboard_get_session_stats_aggregates_seeded_sessions() {
 
     let storage: Arc<dyn WebStorage> = Arc::new(storage);
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -272,7 +306,9 @@ async fn grpc_dashboard_get_recent_frames_empty_db() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -303,7 +339,9 @@ async fn grpc_dashboard_get_recent_frames_clamps_limit() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -333,7 +371,9 @@ async fn grpc_dashboard_get_productivity_metrics_empty_db() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -361,7 +401,9 @@ async fn grpc_dashboard_get_focus_stats_empty_db() {
     let port = pick_free_port();
     let storage = in_memory_storage().await;
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -432,7 +474,9 @@ async fn grpc_dashboard_get_focus_stats_aggregates_seeded_days() {
 
     let storage: Arc<dyn WebStorage> = Arc::new(storage);
 
-    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(port, storage));
+    let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(test_spawn_config(
+        port, storage,
+    )));
     wait_for_server_ready(port, Duration::from_secs(5)).await;
 
     let endpoint = format!("http://127.0.0.1:{port}");

@@ -775,8 +775,8 @@ impl AppRuntimeLaunchBuilder {
             // the bind fails (port in use, etc.), the server task logs a
             // warn and exits — REST continues normally.
             //
-            // D13-v2a: pass sqlite_storage so per-domain RPCs can read
-            // aggregated data (starting with GetSessionStats).
+            // D13-v2b: pass a GrpcSpawnConfig so streaming RPCs receive
+            // SystemMonitor + event_tx + auth token + load_policy + kill switch + cap.
             #[cfg(feature = "grpc-dashboard")]
             {
                 let grpc_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
@@ -785,8 +785,27 @@ impl AppRuntimeLaunchBuilder {
                     .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
                 let grpc_storage = sqlite_storage.clone()
                     as std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>;
+                // Fresh SysInfoMonitor — cheap, sysinfo-backed, independent of
+                // agent_runtime's instance. Each call does a fresh poll, no
+                // internal cache to share.
+                let grpc_monitor =
+                    std::sync::Arc::new(oneshim_monitor::system::SysInfoMonitor::new())
+                        as std::sync::Arc<dyn oneshim_core::ports::monitor::SystemMonitor>;
+                let thresholds = config.web.grpc_load_thresholds.clone().unwrap_or_default();
+                let load_policy =
+                    std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(thresholds));
+                let cfg = oneshim_web::grpc::GrpcSpawnConfig {
+                    port: grpc_port,
+                    storage: grpc_storage,
+                    system_monitor: grpc_monitor,
+                    event_tx: event_tx.clone(),
+                    integration_auth_token: config.web.integration_auth_token.clone(),
+                    load_policy,
+                    streaming_enabled: config.web.grpc_streaming_enabled,
+                    max_concurrent_streams: config.web.grpc_max_concurrent_streams,
+                };
                 handle.spawn(async move {
-                    oneshim_web::grpc::serve_optional(grpc_port, grpc_storage).await;
+                    oneshim_web::grpc::serve_optional(cfg).await;
                 });
             }
 
