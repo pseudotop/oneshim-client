@@ -794,16 +794,16 @@ impl AppRuntimeLaunchBuilder {
                 let thresholds = config.web.grpc_load_thresholds.clone().unwrap_or_default();
                 let load_policy =
                     std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(thresholds));
+                let grpc_pii_sanitizer =
+                    std::sync::Arc::new(oneshim_vision::privacy::VisionPiiSanitizer)
+                        as std::sync::Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>;
                 let cfg = oneshim_web::grpc::GrpcSpawnConfig {
                     port: grpc_port,
                     storage: grpc_storage,
                     system_monitor: grpc_monitor,
                     event_tx: event_tx.clone(),
                     integration_auth_token: config.web.integration_auth_token.clone(),
-                    pii_sanitizer: Some(std::sync::Arc::new(
-                        oneshim_vision::privacy::VisionPiiSanitizer,
-                    )
-                        as std::sync::Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>),
+                    pii_sanitizer: Some(grpc_pii_sanitizer),
                     ai_runtime_status_snapshot: web_server_runtime.ai_runtime_status.clone(),
                     load_policy,
                     streaming_enabled: config.web.grpc_streaming_enabled,
