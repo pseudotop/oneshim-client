@@ -253,7 +253,7 @@ pub(super) async fn handle_idle_tick(
                 idle_secs: idle_info.idle_secs,
             });
             if let Err(e) = tx.send(ev) {
-                debug!("idle event channel send failed (Active→Idle): {e}");
+                debug!("idle event channel send failed (active->idle): {e}");
             }
         }
     } else if prev_state == IdleState::Idle && idle_info.state == IdleState::Active {
@@ -266,14 +266,16 @@ pub(super) async fn handle_idle_tick(
         if let Some(ref notif) = notif {
             notif.reset_session().await;
         }
-        // Emit AFTER storage + notif-reset.
+        // Emit AFTER storage + notif-reset (success or failure — subscribers observe the edge).
+        // idle_period_id may be None on cold-start (user was idle before process
+        // started); emission proceeds regardless so subscribers observe the resume.
         if let Some(tx) = event_tx.as_ref() {
             let ev = RealtimeEvent::Idle(IdleUpdate {
                 is_idle: false,
                 idle_secs: idle_info.idle_secs,
             });
             if let Err(e) = tx.send(ev) {
-                debug!("idle event channel send failed (Idle→Active): {e}");
+                debug!("idle event channel send failed (idle->active): {e}");
             }
         }
     }
