@@ -89,6 +89,11 @@ pub async fn subscribe_events(
         respect_server_hints,
     } = req.into_inner();
 
+    // Opt-out signal is computed for parity with subscribe_metrics but not
+    // consumed here: SubscribeEvents applies per-type rate limiting
+    // unconditionally, regardless of the client's respect_server_hints flag.
+    // The call retains its side effect (warn log on downgrade scenarios) for
+    // consistency across dashboard RPCs.
     let _enforcement_on = honor_opt_out(
         respect_server_hints,
         remote_addr,
@@ -202,7 +207,13 @@ pub async fn subscribe_events(
                     // Periodic ServerLoadHint.
                     let metrics = match system_monitor.collect_metrics().await {
                         Ok(m) => m,
-                        Err(_) => continue,
+                        Err(e) => {
+                            warn!(
+                                err.code = %e.code(),
+                                "subscribe_events collect_metrics failed, skipping hint tick"
+                            );
+                            continue;
+                        }
                     };
                     let level = load_policy.classify(&metrics);
                     let is_warmup = load_policy.is_in_warmup();
