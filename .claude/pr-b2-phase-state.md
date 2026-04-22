@@ -6,7 +6,19 @@
 
 ## Current phase: 1 (Spec)
 
-Substep: **1.1 — initial draft written, pending deep review**
+Substep: **1.3 — Iter-1 converged with findings; Spec rev 2 applied; iter-2 dispatch next**
+
+### Iter-1 review results (2026-04-22)
+
+5 reviewers completed. Aggregate: **15 Critical + 31 Important + 24 Minor**. Saved at `.claude/pr-b2-review/iter1/00-aggregate-findings.md`.
+
+Spec revision 2 written (applies all 15 CRIT + 31 IMP fixes). 10 decision gates D1-D10 resolved. Commit: _pending_.
+
+### Iter-2 plan
+
+Dispatch same 5 dimensions again, but with the revised spec + iter-1 aggregate findings as reference. Goal: return zero Critical + zero Important.
+
+Convergence criterion: **two consecutive rounds with zero Crit + zero Important**. Iter-2 is round 1 of potentially two.
 
 ## Phase checklist
 
