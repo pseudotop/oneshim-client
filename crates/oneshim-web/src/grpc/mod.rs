@@ -15,6 +15,7 @@ mod load_policy;
 mod rate_limiter;
 mod spawn_config;
 mod stream_counter;
+mod subscribe_events;
 mod subscribe_metrics;
 pub use auth_gate::{honor_opt_out, validate_authority};
 pub use drop_accumulator::{DropAccumulator, DROP_EMIT_INTERVAL};
@@ -28,7 +29,6 @@ pub use stream_counter::StreamCounterGuard;
 pub mod test_support;
 
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Instant;
@@ -37,7 +37,6 @@ use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use oneshim_core::ports::monitor::SystemMonitor;
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use tokio::sync::broadcast;
-use tokio_stream::Stream;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tracing::{info, warn};
@@ -51,7 +50,7 @@ use crate::proto::dashboard::v1::{
     GetFocusStatsRequest, GetProductivityMetricsRequest, GetRecentFramesRequest,
     GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse, MetricBucket,
     ProductivityMetricsResponse, RecentFramesResponse, SessionStatsResponse,
-    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeMetricsRequest,
+    SubscribeEventsRequest, SubscribeMetricsRequest,
 };
 use crate::storage_port::WebStorage;
 
@@ -104,10 +103,8 @@ pub struct DashboardServiceImpl {
     active_streams: Arc<AtomicUsize>,
     #[allow(dead_code)] // read in B2-9 handler
     max_concurrent_streams: usize,
-    // v2b B3-0 additions (read in B3-6 SubscribeEvents handler):
-    #[allow(dead_code)] // read in B3-6 SubscribeEvents handler
+    // v2b B3-0 additions (used by B3-6 SubscribeEvents handler):
     pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
-    #[allow(dead_code)] // read in B3-6 SubscribeEvents handler
     ai_runtime_status_snapshot: Option<AiRuntimeStatus>,
 }
 
@@ -158,8 +155,7 @@ impl std::fmt::Debug for DashboardServiceImpl {
 #[tonic::async_trait]
 impl DashboardService for DashboardServiceImpl {
     type SubscribeMetricsStream = subscribe_metrics::SubscribeMetricsStream;
-    type SubscribeEventsStream =
-        Pin<Box<dyn Stream<Item = Result<SubscribeEventsResponse, Status>> + Send>>;
+    type SubscribeEventsStream = subscribe_events::SubscribeEventsStream;
 
     async fn get_agent_info(
         &self,
@@ -413,9 +409,21 @@ impl DashboardService for DashboardServiceImpl {
 
     async fn subscribe_events(
         &self,
-        _req: Request<SubscribeEventsRequest>,
+        req: Request<SubscribeEventsRequest>,
     ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
-        Err(Status::unimplemented("SubscribeEvents stub lands in PR-B3"))
+        subscribe_events::subscribe_events(
+            req,
+            self.system_monitor.clone(),
+            self.event_tx.clone(),
+            self.integration_auth_token.clone(),
+            self.load_policy.clone(),
+            self.streaming_enabled,
+            self.active_streams.clone(),
+            self.max_concurrent_streams,
+            self.pii_sanitizer.clone(),
+            self.ai_runtime_status_snapshot.clone(),
+        )
+        .await
     }
 }
 
