@@ -64,5 +64,7 @@ mod tests {
         });
         let j = serde_json::to_string(&e).unwrap();
         assert!(j.contains("\"trigger_type\":\"timer\""));
+        let v: serde_json::Value = serde_json::from_str(&j).unwrap();
+        assert_eq!(v["data"]["trigger_type"], "timer");
     }
 }

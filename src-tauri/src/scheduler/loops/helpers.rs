@@ -200,7 +200,7 @@ pub(super) async fn handle_frame_capture(
                             trigger_type: frame.metadata.trigger_type.clone(),
                         };
                         if let Err(e) = tx.send(RealtimeEvent::Frame(update)) {
-                            tracing::debug!("frame event channel send failed: {e}");
+                            debug!("frame event channel send failed: {e}");
                         }
                     }
                 }
