@@ -8,7 +8,9 @@
 //! `lib.rs`. A matching inner-attribute here would be redundant (and trips
 //! clippy's `duplicated_attributes` lint).
 
+mod hint_emitter;
 mod load_policy;
+pub use hint_emitter::{HintEmitter, HEARTBEAT};
 pub use load_policy::{LoadLevel, LoadPolicy, INTERVAL_CEILING, INTERVAL_FLOOR, WARMUP};
 
 use std::net::SocketAddr;
