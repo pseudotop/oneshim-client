@@ -148,9 +148,75 @@ pub enum JwtAlgorithm {
     Es256,
 }
 
+/// Validation error kinds returned by `ExternalGrpcConfig::validate`.
+#[derive(Debug, thiserror::Error)]
+pub enum ExternalGrpcConfigError {
+    #[error("external_grpc: enabled but auth_mode not set")]
+    MissingAuthMode,
+    #[error("external_grpc: enabled but tls_cert_path not set")]
+    MissingTlsCertPath,
+    #[error("external_grpc: enabled but tls_key_path not set")]
+    MissingTlsKeyPath,
+    #[error("external_grpc: port must be non-zero")]
+    InvalidPort,
+    #[error("external_grpc: auth_mode includes JWT but jwt_public_key_path not set")]
+    MissingJwtPubKey,
+    #[error("external_grpc: auth_mode includes JWT but jwt_algorithm not set")]
+    MissingJwtAlgorithm,
+    #[error("external_grpc: auth_mode includes JWT but jwt_expected_issuer not set")]
+    MissingJwtIssuer,
+    #[error("external_grpc: auth_mode includes JWT but jwt_expected_audience not set")]
+    MissingJwtAudience,
+    #[error("external_grpc: auth_mode includes mTLS but mtls_ca_path not set")]
+    MissingMtlsCa,
+}
+
+impl ExternalGrpcConfig {
+    /// Validates that the configuration is internally consistent.
+    /// Called at startup before any attempt to spawn the external server.
+    /// File-presence checks are done later (at spawn time) because config
+    /// validation runs on every process start and file I/O is expensive.
+    pub fn validate(&self) -> Result<(), ExternalGrpcConfigError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        if self.port == 0 {
+            return Err(ExternalGrpcConfigError::InvalidPort);
+        }
+        if self.tls_cert_path.is_none() {
+            return Err(ExternalGrpcConfigError::MissingTlsCertPath);
+        }
+        if self.tls_key_path.is_none() {
+            return Err(ExternalGrpcConfigError::MissingTlsKeyPath);
+        }
+        let mode = self
+            .auth_mode
+            .ok_or(ExternalGrpcConfigError::MissingAuthMode)?;
+        if mode.includes_jwt() {
+            if self.jwt_public_key_path.is_none() {
+                return Err(ExternalGrpcConfigError::MissingJwtPubKey);
+            }
+            if self.jwt_algorithm.is_none() {
+                return Err(ExternalGrpcConfigError::MissingJwtAlgorithm);
+            }
+            if self.jwt_expected_issuer.is_none() {
+                return Err(ExternalGrpcConfigError::MissingJwtIssuer);
+            }
+            if self.jwt_expected_audience.is_none() {
+                return Err(ExternalGrpcConfigError::MissingJwtAudience);
+            }
+        }
+        if mode.includes_mtls() && self.mtls_ca_path.is_none() {
+            return Err(ExternalGrpcConfigError::MissingMtlsCa);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn auth_mode_serde_jwt_only() {
@@ -206,5 +272,61 @@ mod tests {
             serde_json::to_string(&JwtAlgorithm::Es256).unwrap(),
             "\"ES256\""
         );
+    }
+
+    fn cfg_enabled_jwt() -> ExternalGrpcConfig {
+        ExternalGrpcConfig {
+            enabled: true,
+            tls_cert_path: Some(PathBuf::from("/nonexistent/cert.pem")),
+            tls_key_path: Some(PathBuf::from("/nonexistent/key.pem")),
+            auth_mode: Some(AuthMode::Jwt),
+            jwt_algorithm: Some(JwtAlgorithm::Rs256),
+            jwt_public_key_path: Some(PathBuf::from("/nonexistent/jwt.pub")),
+            jwt_expected_issuer: Some("central".into()),
+            jwt_expected_audience: Some("agent-1".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn validate_disabled_always_ok() {
+        let cfg = ExternalGrpcConfig::default();
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_jwt_mode_missing_pubkey_errors() {
+        let mut cfg = cfg_enabled_jwt();
+        cfg.jwt_public_key_path = None;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_jwt_mode_missing_issuer_errors() {
+        let mut cfg = cfg_enabled_jwt();
+        cfg.jwt_expected_issuer = None;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_mtls_mode_missing_ca_errors() {
+        let mut cfg = cfg_enabled_jwt();
+        cfg.auth_mode = Some(AuthMode::Mtls);
+        cfg.mtls_ca_path = None;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_port_zero_errors() {
+        let mut cfg = cfg_enabled_jwt();
+        cfg.port = 0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_enabled_without_auth_mode_errors() {
+        let mut cfg = cfg_enabled_jwt();
+        cfg.auth_mode = None;
+        assert!(cfg.validate().is_err());
     }
 }

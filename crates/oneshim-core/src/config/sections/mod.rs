@@ -10,7 +10,7 @@
 //   storage       — 스토리지/무결성/알림/업데이트/텔레메트리 설정
 
 pub mod external_grpc;
-pub use external_grpc::{AuthMode, ExternalGrpcConfig, JwtAlgorithm};
+pub use external_grpc::{AuthMode, ExternalGrpcConfig, ExternalGrpcConfigError, JwtAlgorithm};
 
 mod ai;
 mod ai_session;
