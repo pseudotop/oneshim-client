@@ -8,11 +8,30 @@
 //! `lib.rs`. A matching inner-attribute here would be redundant (and trips
 //! clippy's `duplicated_attributes` lint).
 
+mod auth_gate;
+mod hint_emitter;
+mod load_policy;
+mod spawn_config;
+mod stream_counter;
+mod subscribe_metrics;
+pub use auth_gate::{honor_opt_out, validate_authority};
+pub use hint_emitter::{HintEmitter, HEARTBEAT};
+pub use load_policy::{LoadLevel, LoadPolicy, INTERVAL_CEILING, INTERVAL_FLOOR, WARMUP};
+pub use spawn_config::GrpcSpawnConfig;
+pub use stream_counter::StreamCounterGuard;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Instant;
 
+use oneshim_api_contracts::stream::RealtimeEvent;
+use oneshim_core::ports::monitor::SystemMonitor;
+use tokio::sync::broadcast;
 use tokio_stream::Stream;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
@@ -28,7 +47,6 @@ use crate::proto::dashboard::v1::{
     GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse, MetricBucket,
     ProductivityMetricsResponse, RecentFramesResponse, SessionStatsResponse,
     SubscribeEventsRequest, SubscribeEventsResponse, SubscribeMetricsRequest,
-    SubscribeMetricsResponse,
 };
 use crate::storage_port::WebStorage;
 
@@ -66,21 +84,52 @@ pub(super) fn to_proto_ts(dt: chrono::DateTime<chrono::Utc>) -> prost_types::Tim
 pub struct DashboardServiceImpl {
     started_at: Instant,
     storage: Arc<dyn WebStorage>,
+    // v2b additions (all plumbed for subscribe_metrics handler in B2-9):
+    #[allow(dead_code)] // read in B2-9 handler
+    system_monitor: Arc<dyn SystemMonitor>,
+    #[allow(dead_code)] // read in B2-9 handler
+    event_tx: broadcast::Sender<RealtimeEvent>,
+    #[allow(dead_code)] // read in B2-9 handler
+    integration_auth_token: Option<String>,
+    #[allow(dead_code)] // read in B2-9 handler
+    load_policy: Arc<LoadPolicy>,
+    #[allow(dead_code)] // read in B2-9 handler
+    streaming_enabled: bool,
+    #[allow(dead_code)] // read in B2-9 handler
+    active_streams: Arc<AtomicUsize>,
+    #[allow(dead_code)] // read in B2-9 handler
+    max_concurrent_streams: usize,
 }
 
 impl DashboardServiceImpl {
-    pub fn new(storage: Arc<dyn WebStorage>) -> Self {
+    /// Construct from a `GrpcSpawnConfig`. `started_at` is set to `Instant::now()`
+    /// and `active_streams` to 0.
+    pub fn from_spawn_config(cfg: &GrpcSpawnConfig) -> Self {
         Self {
             started_at: Instant::now(),
-            storage,
+            storage: cfg.storage.clone(),
+            system_monitor: cfg.system_monitor.clone(),
+            event_tx: cfg.event_tx.clone(),
+            integration_auth_token: cfg.integration_auth_token.clone(),
+            load_policy: cfg.load_policy.clone(),
+            streaming_enabled: cfg.streaming_enabled,
+            active_streams: Arc::new(AtomicUsize::new(0)),
+            max_concurrent_streams: cfg.max_concurrent_streams,
         }
+    }
+
+    /// Test-only: active concurrent-stream count. Gated so the release binary
+    /// does not expose it (IMP-V2-D invariant).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn active_stream_count(&self) -> usize {
+        self.active_streams
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
 #[tonic::async_trait]
 impl DashboardService for DashboardServiceImpl {
-    type SubscribeMetricsStream =
-        Pin<Box<dyn Stream<Item = Result<SubscribeMetricsResponse, Status>> + Send>>;
+    type SubscribeMetricsStream = subscribe_metrics::SubscribeMetricsStream;
     type SubscribeEventsStream =
         Pin<Box<dyn Stream<Item = Result<SubscribeEventsResponse, Status>> + Send>>;
 
@@ -318,11 +367,20 @@ impl DashboardService for DashboardServiceImpl {
 
     async fn subscribe_metrics(
         &self,
-        _req: Request<SubscribeMetricsRequest>,
+        req: Request<SubscribeMetricsRequest>,
     ) -> Result<Response<Self::SubscribeMetricsStream>, Status> {
-        Err(Status::unimplemented(
-            "SubscribeMetrics stub lands in PR-B2",
-        ))
+        subscribe_metrics::subscribe_metrics(
+            req,
+            self.storage.clone(),
+            self.system_monitor.clone(),
+            self.event_tx.clone(),
+            self.integration_auth_token.clone(),
+            self.load_policy.clone(),
+            self.streaming_enabled,
+            self.active_streams.clone(),
+            self.max_concurrent_streams,
+        )
+        .await
     }
 
     async fn subscribe_events(
@@ -333,23 +391,23 @@ impl DashboardService for DashboardServiceImpl {
     }
 }
 
-/// Spawn the gRPC dashboard server on the given port. The server runs until
-/// shutdown (error or task cancellation). If `port == 0` the default
+/// Spawn the gRPC dashboard server. The server runs until shutdown (error or
+/// task cancellation). If `cfg.port == 0` the default
 /// `DEFAULT_GRPC_DASHBOARD_PORT` is used.
 ///
-/// D13-v2a: takes an `Arc<dyn WebStorage>` so per-domain RPCs (starting
-/// with `GetSessionStats`) can read aggregated data.
-pub async fn serve(port: u16, storage: Arc<dyn WebStorage>) -> Result<(), tonic::transport::Error> {
-    let port = if port == 0 {
+/// D13-v2b: takes a `GrpcSpawnConfig` struct so v2b streaming RPCs can receive
+/// SystemMonitor / event_tx / auth token / load_policy / kill switch / stream cap.
+pub async fn serve(cfg: GrpcSpawnConfig) -> Result<(), tonic::transport::Error> {
+    let port = if cfg.port == 0 {
         DEFAULT_GRPC_DASHBOARD_PORT
     } else {
-        port
+        cfg.port
     };
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();
 
-    info!(%addr, "starting gRPC dashboard server (D13)");
+    info!(%addr, "starting gRPC dashboard server (D13-v2b)");
 
-    let service = DashboardServiceImpl::new(storage);
+    let service = DashboardServiceImpl::from_spawn_config(&cfg);
 
     // Register the standard grpc.health.v1 health service for external
     // liveness checks (`grpc_health_probe -addr=localhost:10091`).
@@ -367,8 +425,8 @@ pub async fn serve(port: u16, storage: Arc<dyn WebStorage>) -> Result<(), tonic:
 
 /// Non-fatal wrapper: logs failures instead of panicking. Use when the gRPC
 /// server is optional (user can still use REST).
-pub async fn serve_optional(port: u16, storage: Arc<dyn WebStorage>) {
-    if let Err(e) = serve(port, storage).await {
+pub async fn serve_optional(cfg: GrpcSpawnConfig) {
+    if let Err(e) = serve(cfg).await {
         warn!(error = %e, "gRPC dashboard server terminated with error");
     }
 }

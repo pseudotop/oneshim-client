@@ -100,6 +100,18 @@ pub struct WebConfig {
     pub allow_external: bool,
     #[serde(default)]
     pub integration_auth_token: Option<String>,
+    /// D13-v2b: gRPC dashboard streaming LoadPolicy thresholds. None = defaults.
+    #[serde(default)]
+    pub grpc_load_thresholds: Option<LoadThresholds>,
+    /// D13-v2b: runtime kill switch for SubscribeMetrics / SubscribeEvents.
+    /// false → RPCs return `Status::unavailable("streaming disabled")`. v2a RPCs unaffected.
+    #[serde(default = "default_true")]
+    pub grpc_streaming_enabled: bool,
+    /// D13-v2b: maximum concurrent streaming subscribers (global across both RPCs).
+    /// Prevents DoS via subscription flood. Exceeded requests get
+    /// `Status::resource_exhausted`.
+    #[serde(default = "default_max_concurrent_streams")]
+    pub grpc_max_concurrent_streams: usize,
 }
 
 impl Default for WebConfig {
@@ -109,6 +121,40 @@ impl Default for WebConfig {
             port: default_web_port(),
             allow_external: false,
             integration_auth_token: None,
+            grpc_load_thresholds: None,
+            grpc_streaming_enabled: true,
+            grpc_max_concurrent_streams: default_max_concurrent_streams(),
+        }
+    }
+}
+
+// ── LoadThresholds (D13-v2b) ───────────────────────────────────────
+
+/// Thresholds for `oneshim-web::grpc::LoadPolicy` CPU%/memory-GiB classification.
+///
+/// Validation: `cpu_low_pct < cpu_medium_pct < cpu_high_pct <= 100.0`. Enforced
+/// at `LoadPolicy::new` construction. Invalid combinations caught at startup, not
+/// here at deserialization — malformed configs should produce a runtime panic
+/// rather than silently fall through to defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadThresholds {
+    #[serde(default = "default_min_free_mem_gb")]
+    pub min_free_mem_gb: f32,
+    #[serde(default = "default_cpu_low_pct")]
+    pub cpu_low_pct: f32,
+    #[serde(default = "default_cpu_medium_pct")]
+    pub cpu_medium_pct: f32,
+    #[serde(default = "default_cpu_high_pct")]
+    pub cpu_high_pct: f32,
+}
+
+impl Default for LoadThresholds {
+    fn default() -> Self {
+        Self {
+            min_free_mem_gb: default_min_free_mem_gb(),
+            cpu_low_pct: default_cpu_low_pct(),
+            cpu_medium_pct: default_cpu_medium_pct(),
+            cpu_high_pct: default_cpu_high_pct(),
         }
     }
 }
@@ -159,4 +205,69 @@ fn default_web_enabled() -> bool {
 
 fn default_web_port() -> u16 {
     DEFAULT_WEB_PORT
+}
+
+// ── LoadThresholds defaults (D13-v2b) ──────────────────────────────
+
+fn default_min_free_mem_gb() -> f32 {
+    2.0
+}
+
+fn default_cpu_low_pct() -> f32 {
+    50.0
+}
+
+fn default_cpu_medium_pct() -> f32 {
+    70.0
+}
+
+fn default_cpu_high_pct() -> f32 {
+    90.0
+}
+
+fn default_max_concurrent_streams() -> usize {
+    50
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_thresholds_default_values() {
+        let t = LoadThresholds::default();
+        assert_eq!(t.min_free_mem_gb, 2.0);
+        assert_eq!(t.cpu_low_pct, 50.0);
+        assert_eq!(t.cpu_medium_pct, 70.0);
+        assert_eq!(t.cpu_high_pct, 90.0);
+    }
+
+    #[test]
+    fn web_config_default_enables_streaming() {
+        let cfg = WebConfig::default();
+        assert!(cfg.grpc_streaming_enabled);
+        assert!(cfg.grpc_load_thresholds.is_none());
+    }
+
+    #[test]
+    fn web_config_default_max_concurrent_streams_50() {
+        let cfg = WebConfig::default();
+        assert_eq!(cfg.grpc_max_concurrent_streams, 50);
+    }
+
+    #[test]
+    fn web_config_deserializes_partial_json_with_thresholds() {
+        let json = r#"{
+            "enabled": true,
+            "port": 10090,
+            "allow_external": false,
+            "grpc_load_thresholds": { "cpu_low_pct": 30.0 }
+        }"#;
+        let cfg: WebConfig = serde_json::from_str(json).expect("parse");
+        let t = cfg.grpc_load_thresholds.expect("thresholds set");
+        assert_eq!(t.cpu_low_pct, 30.0);
+        // Other fields fall back to defaults
+        assert_eq!(t.cpu_medium_pct, 70.0);
+        assert_eq!(t.min_free_mem_gb, 2.0);
+    }
 }

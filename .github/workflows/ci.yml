@@ -366,6 +366,12 @@ jobs:
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test --workspace --features grpc
 
+      # D13-v2b PR-B2: execute the SubscribeMetrics handler tests.
+      # test-support enables MockSystemMonitor + active_stream_count accessor.
+      - name: Run tests (grpc-dashboard + test-support)
+        if: env.RUN_HEAVY_TESTS == 'true'
+        run: ./scripts/cargo-cache.sh test -p oneshim-web --no-default-features --features grpc-dashboard,test-support
+
       - name: Run tests (lan-sync features)
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test -p oneshim-network --features lan-sync
