@@ -2,6 +2,7 @@
 //! Feature-gated: compile iff `grpc-dashboard-external` enabled.
 
 pub mod cert_resolver;
+pub mod conn_info;
 pub mod ip_ban;
 pub mod jwt_verifier;
 pub mod metrics;
