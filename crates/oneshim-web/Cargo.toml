@@ -66,6 +66,17 @@ async-stream = { workspace = true, optional = true }
 # D13-v2b: constant-time token compare in auth_gate (RFC 7235 + timing side-channel).
 subtle = { workspace = true, optional = true }
 
+# D13-v2c: External gRPC binding optional deps (enabled via grpc-dashboard-external feature).
+arc-swap = { workspace = true, optional = true }
+jsonwebtoken = { workspace = true, optional = true }
+lru = { workspace = true, optional = true }
+notify = { workspace = true, optional = true }
+notify-debouncer-mini = { workspace = true, optional = true }
+rcgen = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+ulid = { workspace = true, optional = true }
+x509-parser = { workspace = true, optional = true }
+
 [features]
 default = []
 # D13: Enable gRPC dashboard server on a separate port (10091 by default).
@@ -81,6 +92,23 @@ grpc-dashboard = [
   "dep:subtle",
 ]
 
+# D13-v2c: External gRPC binding with TLS + JWT/mTLS auth + hot-reload.
+# Requires grpc-dashboard (inherits existing loopback server deps).
+grpc-dashboard-external = [
+  "grpc-dashboard",
+  "dep:rustls",
+  "dep:jsonwebtoken",
+  "dep:notify",
+  "dep:notify-debouncer-mini",
+  "dep:x509-parser",
+  "dep:arc-swap",
+  "dep:ulid",
+  "dep:lru",
+]
+
+# D13-v2c: Tools feature adds rcgen for the generate-external-cert subcommand.
+external-grpc-tools = ["grpc-dashboard-external", "dep:rcgen"]
+
 # D13-v2b PR-B2: test-only helpers (MockSystemMonitor, DashboardServiceImpl
 # introspection accessors). INVARIANT: MUST NEVER be enabled by default or
 # transitively via `grpc-dashboard`. Strictly opt-in for in-tree tests + any
@@ -95,3 +123,7 @@ tokio-test = { workspace = true }
 tempfile = { workspace = true }
 async-trait = { workspace = true }
 mockito = { workspace = true }
+# D13-v2c: test fixtures (cert generation, JWT minting, lifetime-cap tests).
+rcgen = { workspace = true }
+time = { workspace = true }
+base64 = { workspace = true }
