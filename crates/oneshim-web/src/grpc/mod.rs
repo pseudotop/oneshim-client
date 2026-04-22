@@ -9,14 +9,19 @@
 //! clippy's `duplicated_attributes` lint).
 
 mod auth_gate;
+mod drop_accumulator;
 mod hint_emitter;
 mod load_policy;
+mod rate_limiter;
 mod spawn_config;
 mod stream_counter;
+mod subscribe_events;
 mod subscribe_metrics;
 pub use auth_gate::{honor_opt_out, validate_authority};
+pub use drop_accumulator::{DropAccumulator, DROP_EMIT_INTERVAL};
 pub use hint_emitter::{HintEmitter, HEARTBEAT};
 pub use load_policy::{LoadLevel, LoadPolicy, INTERVAL_CEILING, INTERVAL_FLOOR, WARMUP};
+pub use rate_limiter::{EventRateLimiter, BURST_CAPACITY, DEFAULT_TOKENS_PER_SEC};
 pub use spawn_config::GrpcSpawnConfig;
 pub use stream_counter::StreamCounterGuard;
 
@@ -24,15 +29,14 @@ pub use stream_counter::StreamCounterGuard;
 pub mod test_support;
 
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use oneshim_api_contracts::stream::RealtimeEvent;
+use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use oneshim_core::ports::monitor::SystemMonitor;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use tokio::sync::broadcast;
-use tokio_stream::Stream;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tracing::{info, warn};
@@ -46,7 +50,7 @@ use crate::proto::dashboard::v1::{
     GetFocusStatsRequest, GetProductivityMetricsRequest, GetRecentFramesRequest,
     GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse, MetricBucket,
     ProductivityMetricsResponse, RecentFramesResponse, SessionStatsResponse,
-    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeMetricsRequest,
+    SubscribeEventsRequest, SubscribeMetricsRequest,
 };
 use crate::storage_port::WebStorage;
 
@@ -84,21 +88,17 @@ pub(super) fn to_proto_ts(dt: chrono::DateTime<chrono::Utc>) -> prost_types::Tim
 pub struct DashboardServiceImpl {
     started_at: Instant,
     storage: Arc<dyn WebStorage>,
-    // v2b additions (all plumbed for subscribe_metrics handler in B2-9):
-    #[allow(dead_code)] // read in B2-9 handler
+    // v2b additions (shared by subscribe_metrics + subscribe_events handlers):
     system_monitor: Arc<dyn SystemMonitor>,
-    #[allow(dead_code)] // read in B2-9 handler
     event_tx: broadcast::Sender<RealtimeEvent>,
-    #[allow(dead_code)] // read in B2-9 handler
     integration_auth_token: Option<String>,
-    #[allow(dead_code)] // read in B2-9 handler
     load_policy: Arc<LoadPolicy>,
-    #[allow(dead_code)] // read in B2-9 handler
     streaming_enabled: bool,
-    #[allow(dead_code)] // read in B2-9 handler
     active_streams: Arc<AtomicUsize>,
-    #[allow(dead_code)] // read in B2-9 handler
     max_concurrent_streams: usize,
+    // v2b B3-0 additions (used by B3-6 SubscribeEvents handler):
+    pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    ai_runtime_status_snapshot: Option<AiRuntimeStatus>,
 }
 
 impl DashboardServiceImpl {
@@ -115,6 +115,8 @@ impl DashboardServiceImpl {
             streaming_enabled: cfg.streaming_enabled,
             active_streams: Arc::new(AtomicUsize::new(0)),
             max_concurrent_streams: cfg.max_concurrent_streams,
+            pii_sanitizer: cfg.pii_sanitizer.clone(),
+            ai_runtime_status_snapshot: cfg.ai_runtime_status_snapshot.clone(),
         }
     }
 
@@ -127,11 +129,26 @@ impl DashboardServiceImpl {
     }
 }
 
+// B3-0: redact `pii_sanitizer` and `ai_runtime_status_snapshot` — emit
+// boolean-only presence flags so logs never leak PII or AI status details.
+impl std::fmt::Debug for DashboardServiceImpl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DashboardServiceImpl")
+            .field("streaming_enabled", &self.streaming_enabled)
+            .field("max_concurrent_streams", &self.max_concurrent_streams)
+            .field("pii_sanitizer_present", &self.pii_sanitizer.is_some())
+            .field(
+                "ai_runtime_status_present",
+                &self.ai_runtime_status_snapshot.is_some(),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
 #[tonic::async_trait]
 impl DashboardService for DashboardServiceImpl {
     type SubscribeMetricsStream = subscribe_metrics::SubscribeMetricsStream;
-    type SubscribeEventsStream =
-        Pin<Box<dyn Stream<Item = Result<SubscribeEventsResponse, Status>> + Send>>;
+    type SubscribeEventsStream = subscribe_events::SubscribeEventsStream;
 
     async fn get_agent_info(
         &self,
@@ -385,9 +402,21 @@ impl DashboardService for DashboardServiceImpl {
 
     async fn subscribe_events(
         &self,
-        _req: Request<SubscribeEventsRequest>,
+        req: Request<SubscribeEventsRequest>,
     ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
-        Err(Status::unimplemented("SubscribeEvents stub lands in PR-B3"))
+        subscribe_events::subscribe_events(
+            req,
+            self.system_monitor.clone(),
+            self.event_tx.clone(),
+            self.integration_auth_token.clone(),
+            self.load_policy.clone(),
+            self.streaming_enabled,
+            self.active_streams.clone(),
+            self.max_concurrent_streams,
+            self.pii_sanitizer.clone(),
+            self.ai_runtime_status_snapshot.clone(),
+        )
+        .await
     }
 }
 
@@ -417,6 +446,13 @@ pub async fn serve(cfg: GrpcSpawnConfig) -> Result<(), tonic::transport::Error> 
         .await;
 
     Server::builder()
+        // tonic 0.14 defaults both keepalive knobs to None. Explicitly enable
+        // HTTP/2 PING frames so snapshot-only SubscribeEvents streams (e.g.
+        // event_types=["ai_runtime_status"]) survive NAT / LB idle timeouts.
+        // 30s interval / 10s ack timeout aligned with common LB budgets
+        // (AWS ELB 350s, GCP 600s, Cloudflare 100s).
+        .http2_keepalive_interval(Some(Duration::from_secs(30)))
+        .http2_keepalive_timeout(Some(Duration::from_secs(10)))
         .add_service(DashboardServiceServer::new(service))
         .add_service(health_service)
         .serve(addr)

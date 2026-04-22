@@ -59,6 +59,7 @@ impl Scheduler {
         let overlay_driver_ref = self.overlay_driver.clone();
         let detection_active = self.detection_active.clone();
         let scene_finder_ref = self.scene_finder.clone();
+        let event_tx_mon = self.event_tx.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
@@ -104,6 +105,7 @@ impl Scheduler {
                             &input_collector,
                             prev_idle_secs,
                             focus_mode.is_active(),
+                            &event_tx_mon,  // reuse clone added by B3-1
                         ).await;
 
                         match act_mon.collect_context().await {
@@ -267,7 +269,7 @@ impl Scheduler {
 
                                         // D5 iter-3: pii_level for OCR sanitization at storage boundary.
                                         let capture_pii = config_manager1.as_ref().map(|cm| cm.get().privacy.pii_filter_level).unwrap_or_default();
-                                        let (ocr_hint, regions, frame_rgba) = handle_frame_capture(&capture_req, &processor, &frame_storage1, &sqlite1, &session1, capture_pii).await;
+                                        let (ocr_hint, regions, frame_rgba) = handle_frame_capture(&capture_req, &processor, &frame_storage1, &sqlite1, &session1, capture_pii, &event_tx_mon).await;
                                         focus_ocr_hint = ocr_hint;
                                         if !regions.is_empty() {
                                             last_ocr_regions = regions;
