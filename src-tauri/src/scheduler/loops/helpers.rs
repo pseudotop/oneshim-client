@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use chrono::Utc;
+use oneshim_api_contracts::stream::{FrameUpdate, RealtimeEvent};
 use oneshim_core::models::activity::IdleState;
 use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::frame::{ImagePayload, OcrRegion};
@@ -12,6 +13,7 @@ use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::vision::{CaptureRequest, FrameProcessor};
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
+use tokio::sync::broadcast;
 
 use super::super::config::{base64_decode, SchedulerStorage};
 use crate::magic_overlay::MagicOverlayHandle;
@@ -126,6 +128,7 @@ pub(super) async fn handle_frame_capture(
     sqlite: &Arc<dyn SchedulerStorage>,
     session_id: &str,
     pii_filter_level: oneshim_core::config::PiiFilterLevel,
+    event_tx: &Option<broadcast::Sender<RealtimeEvent>>,
 ) -> FrameCaptureResult {
     match processor.capture_and_process(capture_req).await {
         Ok(frame) => {
@@ -178,13 +181,30 @@ pub(super) async fn handle_frame_capture(
             let sanitized_ocr = ocr_text.as_deref().map(|raw| {
                 oneshim_vision::privacy::sanitize_title_with_level(raw, pii_filter_level)
             });
-            if let Err(e) = sqlite.save_frame_metadata_with_bounds(
+            match sqlite.save_frame_metadata_with_bounds(
                 &frame.metadata,
                 file_path.as_deref(),
                 sanitized_ocr.as_deref(),
                 capture_req.window_bounds.as_ref(),
             ) {
-                warn!("frame data save failure: {e}");
+                Ok(frame_id) => {
+                    // Emit FrameUpdate after successful DB insert. Fields sourced from
+                    // in-memory frame.metadata — no DB round-trip needed (spec §B).
+                    if let Some(tx) = event_tx.as_ref() {
+                        let update = FrameUpdate {
+                            id: frame_id,
+                            timestamp: frame.metadata.timestamp.to_rfc3339(),
+                            app_name: frame.metadata.app_name.clone(),
+                            window_title: frame.metadata.window_title.clone(),
+                            importance: frame.metadata.importance,
+                            trigger_type: frame.metadata.trigger_type.clone(),
+                        };
+                        if let Err(e) = tx.send(RealtimeEvent::Frame(update)) {
+                            tracing::debug!("frame event channel send failed: {e}");
+                        }
+                    }
+                }
+                Err(e) => warn!("frame data save failure: {e}"),
             }
 
             if let Err(e) = sqlite.increment_session_counters(session_id, 0, 1, 0).await {

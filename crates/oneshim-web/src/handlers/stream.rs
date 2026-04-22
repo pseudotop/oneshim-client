@@ -96,6 +96,7 @@ mod tests {
             app_name: "Terminal".to_string(),
             window_title: "zsh".to_string(),
             importance: 0.7,
+            trigger_type: "active_change".to_string(),
         });
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"frame\""));
