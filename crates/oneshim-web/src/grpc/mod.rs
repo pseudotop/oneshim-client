@@ -31,7 +31,7 @@ pub mod test_support;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use oneshim_core::ports::monitor::SystemMonitor;
@@ -453,6 +453,13 @@ pub async fn serve(cfg: GrpcSpawnConfig) -> Result<(), tonic::transport::Error> 
         .await;
 
     Server::builder()
+        // tonic 0.14 defaults both keepalive knobs to None. Explicitly enable
+        // HTTP/2 PING frames so snapshot-only SubscribeEvents streams (e.g.
+        // event_types=["ai_runtime_status"]) survive NAT / LB idle timeouts.
+        // 30s interval / 10s ack timeout aligned with common LB budgets
+        // (AWS ELB 350s, GCP 600s, Cloudflare 100s).
+        .http2_keepalive_interval(Some(Duration::from_secs(30)))
+        .http2_keepalive_timeout(Some(Duration::from_secs(10)))
         .add_service(DashboardServiceServer::new(service))
         .add_service(health_service)
         .serve(addr)
