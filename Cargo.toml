@@ -94,6 +94,9 @@ whisper-rs = "0.16"
 async-trait = "0.1"
 async-stream = "0.3"
 
+# 상수 시간 비교 (D13-v2b auth_gate token compare, RFC 7235)
+subtle = "2.5"
+
 # 로깅
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

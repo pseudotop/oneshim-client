@@ -61,6 +61,10 @@ prost = { workspace = true, optional = true }
 # prost-types needed for google.protobuf.Timestamp in v2b generated code.
 prost-types = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
+# D13-v2b: server-streaming generators (SubscribeMetrics realtime path).
+async-stream = { workspace = true, optional = true }
+# D13-v2b: constant-time token compare in auth_gate (RFC 7235 + timing side-channel).
+subtle = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -73,7 +77,15 @@ grpc-dashboard = [
   "dep:prost",
   "dep:prost-types",
   "dep:async-trait",
+  "dep:async-stream",
+  "dep:subtle",
 ]
+
+# D13-v2b PR-B2: test-only helpers (MockSystemMonitor, DashboardServiceImpl
+# introspection accessors). INVARIANT: MUST NEVER be enabled by default or
+# transitively via `grpc-dashboard`. Strictly opt-in for in-tree tests + any
+# future downstream test harness that reuses the mock.
+test-support = []
 
 
 [dev-dependencies]
