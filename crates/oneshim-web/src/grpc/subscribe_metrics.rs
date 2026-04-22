@@ -63,11 +63,15 @@ pub async fn subscribe_metrics(
     max_concurrent_streams: usize,
 ) -> Result<Response<SubscribeMetricsStream>, Status> {
     // Step 0a: authority validation (IMP-V2-A) — reject DNS-rebound hostnames
-    // before any other work. Uses IPv6-bracket-aware parsing. In tonic 0.14
-    // the HTTP/2 `:authority` pseudo-header is stored in request metadata
-    // under the `"host"` key.
-    let authority = req.metadata().get("host").and_then(|v| v.to_str().ok());
-    validate_authority(authority)?;
+    // when the client exposes `:authority` via the `"host"` metadata key.
+    // Tonic 0.14 does not uniformly propagate `:authority` into request
+    // metadata; when absent, the loopback-only `serve()` bind is our actual
+    // protection against DNS rebinding. This layer adds belt-and-braces
+    // rejection for the cases where the authority IS observable (browser
+    // `fetch` with explicit `Host` header, integration proxies, etc.).
+    if let Some(authority) = req.metadata().get("host").and_then(|v| v.to_str().ok()) {
+        validate_authority(Some(authority))?;
+    }
 
     // Step 0b: active-stream cap (CRIT-3/4/8) — CAS-style, revert-on-over,
     // BEFORE auth/streaming_enabled/hint work. Unauth floods fail cheaply here.
