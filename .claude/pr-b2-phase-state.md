@@ -15,25 +15,37 @@ Final plan: `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md` @ commit `3bb62d7f`
 
 ### Phase 3 entry
 
-Substep: **3.5 — B2-0/1/2/3 done; B2-4 HintEmitter next**
+Substep: **3.9 — B2-0..B2-8 done; B2-9 subscribe_metrics handler next**
 
 ### B2 progress
 
 | Task | Status | Commit | Notes |
 |---|---|---|---|
-| B2-0 | ✅ verified | no commit | remote_addr=Some(127.0.0.1:…) — no layer needed |
+| B2-0 | ✅ verified | no commit | remote_addr=Some(127.0.0.1:…) |
 | B2-1 | ✅ done | `5e2954e9` | async-stream + subtle + test-support features |
-| B2-2 | ✅ done | `6bcb6a56` | WebConfig: LoadThresholds, streaming_enabled, max_concurrent_streams + 4 tests |
+| B2-2 | ✅ done | `6bcb6a56` | WebConfig LoadThresholds/streaming_enabled/max_concurrent_streams + 4 tests |
 | B2-3 | ✅ done | `2ea8b3b7` | LoadPolicy + 9 tests |
-| B2-4 | pending | — | HintEmitter (+force_emit_degraded) + 5 tests |
-| B2-5 | pending | — | auth_gate (honor_opt_out + validate_authority) + 11 tests |
-| B2-6 | pending | — | StreamCounterGuard + 4 tests |
-| B2-7 | pending | — | GrpcSpawnConfig + MockSystemMonitor + Debug redact test |
-| B2-8 | pending | — | serve/serve_optional migration + 10 v2a tests updated |
-| B2-9 | pending | — | subscribe_metrics handler |
+| B2-4 | ✅ done | `d574f569` | HintEmitter + force_emit_degraded + 6 tests |
+| B2-5 | ✅ done | `3ab0abe6` | auth_gate (honor_opt_out + validate_authority) + 13 tests |
+| B2-6 | ✅ done | `726ed8ce` | StreamCounterGuard + 4 tests |
+| B2-7 | ✅ done | (B2-7 commit) | GrpcSpawnConfig + MockSystemMonitor + Debug redact test |
+| B2-8 | ✅ done | `785ccf9f` | serve migration + 10 v2a tests pass + app_runtime_launch wired |
+| B2-9 | pending | — | subscribe_metrics handler impl (~250 LoC) |
 | B2-10 | pending | — | 7-8 integration tests |
 | B2-11 | pending | — | CI grep script + grpc-dashboard CI steps |
 | B2-12 | pending | — | Acceptance + PR open |
+
+### Test count so far
+
+- network config: 4 pass (oneshim-core)
+- LoadPolicy: 9 pass
+- HintEmitter: 6 pass
+- auth_gate: 13 pass (11 honor_opt_out + 2 authority OR 10+3)
+- StreamCounterGuard: 4 pass
+- GrpcSpawnConfig debug redact: 1 pass
+- v2a integration: 10 pass (now via GrpcSpawnConfig)
+
+**Total passing: 47 tests across B2-1..B2-8.**
 
 ### B2-0 result (retained for reference)
 
