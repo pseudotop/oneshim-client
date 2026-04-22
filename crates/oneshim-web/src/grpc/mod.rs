@@ -11,9 +11,11 @@
 mod auth_gate;
 mod hint_emitter;
 mod load_policy;
+mod stream_counter;
 pub use auth_gate::{honor_opt_out, validate_authority};
 pub use hint_emitter::{HintEmitter, HEARTBEAT};
 pub use load_policy::{LoadLevel, LoadPolicy, INTERVAL_CEILING, INTERVAL_FLOOR, WARMUP};
+pub use stream_counter::StreamCounterGuard;
 
 use std::net::SocketAddr;
 use std::pin::Pin;
