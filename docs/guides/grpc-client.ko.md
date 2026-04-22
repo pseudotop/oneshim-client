@@ -567,11 +567,20 @@ message SubscribeEventsRequest {
     구독 시점에 정확히 한 번 발행. 서버에 구성된 상태가 없으면
     `ocr_source == "unknown"`.
 - `Hint(ServerLoadHint)` — 스로틀 적용 (30s 하트비트 + 레벨 전환 시).
-- `Dropped(DroppedEventsSignal)` — 속도 제한기가 이벤트를 거부할 때 ~1s
-  주기로 발행. `reason = "rate_limit"` (PR-B3 MVP). 채널 지연(channel-lag)
-  드롭은 현재 `by_type[].event_type = "channel_lag"`으로 태그되며, 신호
-  수준의 `reason`은 여전히 `"rate_limit"`으로 유지됩니다. 이유별 신호
-  분리는 v2c에서 구현될 예정입니다.
+- `Dropped(DroppedEventsSignal)` — reason별 드롭 신호 (v2c+)
+
+  서버는 요청된 속도로 이벤트를 전달할 수 없을 때 `DroppedEventsSignal`을 발행합니다. 각 신호의 `reason` 필드는 드롭이 발생한 *이유*를 나타냅니다. 서로 다른 이유의 드롭이 같은 틱에 겹치면 **틱당 여러 신호**를 볼 수 있습니다.
+
+  | `reason`       | 발생 조건                                                   | `by_type[].event_type` | 비고                                                        |
+  | -------------- | ----------------------------------------------------------- | ---------------------- | ----------------------------------------------------------- |
+  | `rate_limit`   | 서버 사이드 rate limiter가 Frame/Idle 이벤트 거부             | `frame` 또는 `idle`    | 이벤트 타입별 breakdown 정확                                 |
+  | `channel_lag`  | Broadcast 채널 오버플로 (`Lagged(n)`)                        | `unknown`              | 드롭 탐지 시점에 이벤트 타입 알 수 없음; `Lagged(n)`마다 `n`개 드롭 기록 (실제 누락 이벤트 수 반영) |
+
+  Throttle: 각 reason은 초당 최대 1회 emit. 구독자는 `dropped_count`를 해당 `(reason, since, until)` 구간의 총계로 해석해야 합니다. 드롭 탐지 시점에 특정 이벤트 타입을 복원할 수 없는 경우 OTel 관례에 따라 `event_type = "unknown"`을 사용합니다.
+
+  **순서**: 같은 틱에 복수 signal이 emit될 때 핸들러 로컬 순서는 rate_limit → channel_lag. proto contract가 아니므로 클라이언트는 순서에 의존하지 않아야 합니다.
+
+  **필터 상호작용**: 드롭 신호는 `SubscribeEventsRequest`의 `event_types` 필터와 무관하게 전달됩니다. `event_types=["frame"]`으로 구독한 클라이언트도 `by_type[].event_type = "unknown"`을 포함한 `channel_lag` 드롭 신호를 받습니다 — channel-lag는 이벤트 스트림과 out-of-band에서 탐지되기 때문입니다.
 
 ### 스냅샷 전용 구독
 

@@ -110,7 +110,8 @@ pub async fn subscribe_events(
     // Step 3: per-stream state
     let mut rx = event_tx.subscribe();
     let mut rate_limiter = EventRateLimiter::new();
-    let mut drop_accum = DropAccumulator::new();
+    let mut rate_limit_drops = DropAccumulator::new("rate_limit");
+    let mut channel_lag_drops = DropAccumulator::new("channel_lag");
     let mut hint_emitter = HintEmitter::new();
 
     // Step 4: build output stream
@@ -162,7 +163,7 @@ pub async fn subscribe_events(
                                     payload: Some(EventsPayload::Event(dash)),
                                 });
                             } else {
-                                drop_accum.record_drop(EVENT_FRAME);
+                                rate_limit_drops.record_drop(EVENT_FRAME);
                             }
                         }
                         Ok(RealtimeEvent::Idle(idle)) => {
@@ -179,7 +180,7 @@ pub async fn subscribe_events(
                                     payload: Some(EventsPayload::Event(dash)),
                                 });
                             } else {
-                                drop_accum.record_drop(EVENT_IDLE);
+                                rate_limit_drops.record_drop(EVENT_IDLE);
                             }
                         }
                         // Metrics: not exposed on SubscribeEvents. Skip silently.
@@ -189,7 +190,13 @@ pub async fn subscribe_events(
                         // Ping: transport-layer liveness. Not surfaced.
                         Ok(RealtimeEvent::Ping) => continue,
                         Err(RecvError::Lagged(n)) => {
-                            drop_accum.record_drop("channel_lag");
+                            // broadcast::RecvError::Lagged does not carry the dropped
+                            // event's type; use "unknown" per OTel convention.
+                            // Record `n` drops to reflect actual missed events (v2c
+                            // upgrade from the PR-B3 MVP 1-per-Lagged undercounting).
+                            for _ in 0..n {
+                                channel_lag_drops.record_drop("unknown");
+                            }
                             warn!(lagged_by = n, "subscribe_events broadcast lagged");
                             continue;
                         }
@@ -197,8 +204,21 @@ pub async fn subscribe_events(
                     }
                 }
                 _ = tick.tick() => {
-                    // Emit accumulated drops signal (throttled).
-                    if let Some(signal) = drop_accum.maybe_emit() {
+                    // Emit accumulated drop signals (throttled per-reason). Each
+                    // accumulator keeps its own throttle cadence; a single tick can
+                    // yield 0, 1, or 2 drop signals. Ordering is handler-local
+                    // (rate_limit first, then channel_lag) — not a proto contract;
+                    // clients must not depend on it.
+                    //
+                    // Note: `tokio::time::interval(1s)` fires its first tick at
+                    // t=0 — both `maybe_emit()` calls will return None on that
+                    // initial tick since no drops have accumulated yet. Benign.
+                    if let Some(signal) = rate_limit_drops.maybe_emit() {
+                        yield Ok(SubscribeEventsResponse {
+                            payload: Some(EventsPayload::Dropped(signal)),
+                        });
+                    }
+                    if let Some(signal) = channel_lag_drops.maybe_emit() {
                         yield Ok(SubscribeEventsResponse {
                             payload: Some(EventsPayload::Dropped(signal)),
                         });
