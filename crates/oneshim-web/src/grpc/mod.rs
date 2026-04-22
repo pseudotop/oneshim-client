@@ -8,8 +8,10 @@
 //! `lib.rs`. A matching inner-attribute here would be redundant (and trips
 //! clippy's `duplicated_attributes` lint).
 
+mod auth_gate;
 mod hint_emitter;
 mod load_policy;
+pub use auth_gate::{honor_opt_out, validate_authority};
 pub use hint_emitter::{HintEmitter, HEARTBEAT};
 pub use load_policy::{LoadLevel, LoadPolicy, INTERVAL_CEILING, INTERVAL_FLOOR, WARMUP};
 
