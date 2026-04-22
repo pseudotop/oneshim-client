@@ -543,6 +543,59 @@ let response = client.upload_batch(request).await?;
 NO_EMOJI=1 cargo run -p oneshim-app --features grpc
 ```
 
+## V2b: SubscribeEvents
+
+`SubscribeEvents` is a server-streaming RPC that yields
+`DashboardEvent`s for Frame / Idle / AiRuntimeStatus types, plus
+`ServerLoadHint` and `DroppedEventsSignal` out-of-band messages.
+
+### Request
+
+```proto
+message SubscribeEventsRequest {
+  repeated string event_types = 1;  // "frame" | "idle" | "ai_runtime_status"
+  bool respect_server_hints = 2;
+}
+```
+
+- `event_types` empty → subscribe to all three.
+- Unknown types silently ignored (forward-compat).
+
+### Response semantics
+
+- `Event(DashboardEvent)` — payload variant:
+  - `Frame(FrameEvent)` — pass-through from scheduler capture path.
+  - `Idle(IdleEvent)` — edge-triggered; one emission per Active↔Idle edge.
+  - `AiRuntimeStatus(AiRuntimeStatusEvent)` — **snapshot-on-subscribe**.
+    Exactly ONE emission at subscription time. `ocr_source == "unknown"`
+    when the server has no status configured.
+- `Hint(ServerLoadHint)` — throttled (30s heartbeat + level transitions).
+- `Dropped(DroppedEventsSignal)` — ~1s cadence when rate limiter rejected
+  events. `reason = "rate_limit" | "channel_lag"`.
+
+### Snapshot-only subscriptions
+
+`event_types: ["ai_runtime_status"]` alone receives one snapshot then
+waits. The stream stays open — HTTP/2 PING keepalives (30s interval,
+10s timeout) prevent NAT/LB idle timeouts. Client may `cancel()` at
+will.
+
+### IdleTracker cold-start edge behavior (U7)
+
+A fresh `IdleTracker` starts with `previous_state = Active`. If the
+user is already idle at the moment of server startup, the first
+scheduler tick detects an `Active → Idle` edge and emits an Idle event
+with `is_idle: true`. This is correct from the subscriber perspective
+(the subscribed snapshot of reality is "they are idle") but may differ
+from intuitive "transition occurred at startup" semantics. Dashboards
+should treat the first IdleEvent as an authoritative state assertion
+rather than a true transition log.
+
+### Rate limiting
+
+Per-stream, per-event-type token bucket: 20-burst, 10 tokens/sec refill.
+Exceeded events are dropped and counted in `DroppedEventsSignal.by_type`.
+
 ## References
 
 - Proto definitions — `api/proto/oneshim/v1/` (see server repository)
@@ -553,4 +606,4 @@ NO_EMOJI=1 cargo run -p oneshim-app --features grpc
 
 ---
 
-_Last updated: 2026-02-04_
+_Last updated: 2026-04-22_
