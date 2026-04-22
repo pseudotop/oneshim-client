@@ -570,11 +570,32 @@ message SubscribeEventsRequest {
     Exactly ONE emission at subscription time. `ocr_source == "unknown"`
     when the server has no status configured.
 - `Hint(ServerLoadHint)` — throttled (30s heartbeat + level transitions).
-- `Dropped(DroppedEventsSignal)` — ~1s cadence when rate limiter rejected
-  events. `reason = "rate_limit"` (PR-B3 MVP). Channel-lag drops currently
-  appear under `by_type[].event_type = "channel_lag"` while the signal-level
-  `reason` remains `"rate_limit"`. Per-reason signal splitting is planned
-  for v2c.
+- `Dropped(DroppedEventsSignal)` — per-reason drop signals (v2c+)
+
+  The server emits a `DroppedEventsSignal` when it cannot deliver events at
+  the requested cadence. Each signal carries a `reason` field identifying
+  *why* the drop occurred; subscribers may see **multiple signals per tick**
+  if drops from different reasons coincide.
+
+  | `reason`       | Trigger                                              | `by_type[].event_type` | Notes                                                                 |
+  | -------------- | ---------------------------------------------------- | ---------------------- | --------------------------------------------------------------------- |
+  | `rate_limit`   | Server-side rate limiter rejected a Frame/Idle event | `frame` or `idle`      | Per-event-type breakdown; accurate                                    |
+  | `channel_lag`  | Broadcast channel overflow (`Lagged(n)`)             | `unknown`              | Event type unknown at detection site; 1 drop recorded per Lagged event (PR-B3 MVP; N-per-Lagged planned) |
+
+  Throttle: each reason emits at most once per second. Subscribers should
+  treat `dropped_count` as the total for that `(reason, since, until)` window.
+  OTel convention is used for `event_type = "unknown"` when the specific
+  dropped event's type is not recoverable from the drop detection site.
+
+  **Ordering**: when multiple signals emit on the same tick, the handler's
+  local ordering is rate_limit first, then channel_lag. This is NOT a proto
+  contract — clients must not depend on it.
+
+  **Filter interaction**: drop signals are delivered regardless of the
+  `event_types` filter requested in `SubscribeEventsRequest`. A subscriber
+  with `event_types=["frame"]` will still receive `channel_lag` drop signals
+  whose `by_type[].event_type = "unknown"`, because channel-lag is detected
+  out-of-band from the event stream.
 
 ### Snapshot-only subscriptions
 
