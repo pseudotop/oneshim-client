@@ -991,25 +991,34 @@ mod subscribe_events_tests {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
-        let resp = tokio::time::timeout(Duration::from_secs(3), stream.message())
-            .await
-            .expect("within 3s")
-            .expect("not errored")
-            .expect("not ended");
+        // Loop until a Frame event arrives or the deadline expires.  On loaded
+        // CI runners the HintEmitter's 1s warmup tick can race ahead of the
+        // Frame emission, so we skip Hint / Dropped payloads and keep polling.
+        // Matches the `first_frame` helper pattern used by test #6 (310144c7).
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let msg = tokio::time::timeout(remaining, stream.message())
+                .await
+                .expect("within 3s")
+                .expect("not errored")
+                .expect("not ended");
 
-        match resp.payload.expect("payload") {
-            EventsPayload::Event(de) => {
-                assert!(de.occurred_at.is_some(), "occurred_at must be set");
-                match de.payload.expect("de.payload") {
-                    DashboardPayload::Frame(frame) => {
-                        assert_eq!(frame.frame_id, 99);
-                        assert_eq!(frame.trigger_type, "timer");
-                        assert_eq!(frame.app_name, "TestApp");
+            match msg.payload.expect("payload") {
+                EventsPayload::Event(de) => {
+                    assert!(de.occurred_at.is_some(), "occurred_at must be set");
+                    match de.payload.expect("de.payload") {
+                        DashboardPayload::Frame(frame) => {
+                            assert_eq!(frame.frame_id, 99);
+                            assert_eq!(frame.trigger_type, "timer");
+                            assert_eq!(frame.app_name, "TestApp");
+                            break;
+                        }
+                        other => panic!("expected FrameEvent, got {other:?}"),
                     }
-                    other => panic!("expected FrameEvent, got {other:?}"),
                 }
+                EventsPayload::Hint(_) | EventsPayload::Dropped(_) => continue,
             }
-            other => panic!("expected Event payload, got {other:?}"),
         }
 
         server_task.abort();
