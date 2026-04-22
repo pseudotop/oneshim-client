@@ -568,7 +568,10 @@ message SubscribeEventsRequest {
     `ocr_source == "unknown"`.
 - `Hint(ServerLoadHint)` — 스로틀 적용 (30s 하트비트 + 레벨 전환 시).
 - `Dropped(DroppedEventsSignal)` — 속도 제한기가 이벤트를 거부할 때 ~1s
-  주기로 발행. `reason = "rate_limit" | "channel_lag"`.
+  주기로 발행. `reason = "rate_limit"` (PR-B3 MVP). 채널 지연(channel-lag)
+  드롭은 현재 `by_type[].event_type = "channel_lag"`으로 태그되며, 신호
+  수준의 `reason`은 여전히 `"rate_limit"`으로 유지됩니다. 이유별 신호
+  분리는 v2c에서 구현될 예정입니다.
 
 ### 스냅샷 전용 구독
 

@@ -571,7 +571,10 @@ message SubscribeEventsRequest {
     when the server has no status configured.
 - `Hint(ServerLoadHint)` — throttled (30s heartbeat + level transitions).
 - `Dropped(DroppedEventsSignal)` — ~1s cadence when rate limiter rejected
-  events. `reason = "rate_limit" | "channel_lag"`.
+  events. `reason = "rate_limit"` (PR-B3 MVP). Channel-lag drops currently
+  appear under `by_type[].event_type = "channel_lag"` while the signal-level
+  `reason` remains `"rate_limit"`. Per-reason signal splitting is planned
+  for v2c.
 
 ### Snapshot-only subscriptions
 

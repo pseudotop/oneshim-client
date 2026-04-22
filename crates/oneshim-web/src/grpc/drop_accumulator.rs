@@ -6,7 +6,14 @@
 //! - Emission interval: 1 second (configurable via const).
 //! - Counts are per event_type String (Frame/Idle/AiRuntimeStatus).
 //! - `since` timestamp rolls forward on each emission.
-//! - Reason codes: "rate_limit" | "channel_lag" (spec proto §DroppedEventsSignal).
+//!
+//! Reason code: "rate_limit" (MVP, all drops aggregate here).
+//!
+//! The proto `DroppedEventsSignal.reason` takes a single string. In PR-B3
+//! this accumulator always emits `reason = "rate_limit"`. Channel-lag
+//! drops (from `broadcast::RecvError::Lagged`) are currently tagged via
+//! `by_type[].event_type = "channel_lag"` while the signal-level `reason`
+//! remains `"rate_limit"`. v2c will emit a separate signal per reason.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

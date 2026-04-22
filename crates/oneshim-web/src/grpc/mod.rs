@@ -88,20 +88,13 @@ pub(super) fn to_proto_ts(dt: chrono::DateTime<chrono::Utc>) -> prost_types::Tim
 pub struct DashboardServiceImpl {
     started_at: Instant,
     storage: Arc<dyn WebStorage>,
-    // v2b additions (all plumbed for subscribe_metrics handler in B2-9):
-    #[allow(dead_code)] // read in B2-9 handler
+    // v2b additions (shared by subscribe_metrics + subscribe_events handlers):
     system_monitor: Arc<dyn SystemMonitor>,
-    #[allow(dead_code)] // read in B2-9 handler
     event_tx: broadcast::Sender<RealtimeEvent>,
-    #[allow(dead_code)] // read in B2-9 handler
     integration_auth_token: Option<String>,
-    #[allow(dead_code)] // read in B2-9 handler
     load_policy: Arc<LoadPolicy>,
-    #[allow(dead_code)] // read in B2-9 handler
     streaming_enabled: bool,
-    #[allow(dead_code)] // read in B2-9 handler
     active_streams: Arc<AtomicUsize>,
-    #[allow(dead_code)] // read in B2-9 handler
     max_concurrent_streams: usize,
     // v2b B3-0 additions (used by B3-6 SubscribeEvents handler):
     pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
