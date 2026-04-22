@@ -13,6 +13,7 @@ mod hint_emitter;
 mod load_policy;
 mod spawn_config;
 mod stream_counter;
+mod subscribe_metrics;
 pub use auth_gate::{honor_opt_out, validate_authority};
 pub use hint_emitter::{HintEmitter, HEARTBEAT};
 pub use load_policy::{LoadLevel, LoadPolicy, INTERVAL_CEILING, INTERVAL_FLOOR, WARMUP};
@@ -46,7 +47,6 @@ use crate::proto::dashboard::v1::{
     GetSessionStatsRequest, HealthCheckRequest, HealthCheckResponse, MetricBucket,
     ProductivityMetricsResponse, RecentFramesResponse, SessionStatsResponse,
     SubscribeEventsRequest, SubscribeEventsResponse, SubscribeMetricsRequest,
-    SubscribeMetricsResponse,
 };
 use crate::storage_port::WebStorage;
 
@@ -129,8 +129,7 @@ impl DashboardServiceImpl {
 
 #[tonic::async_trait]
 impl DashboardService for DashboardServiceImpl {
-    type SubscribeMetricsStream =
-        Pin<Box<dyn Stream<Item = Result<SubscribeMetricsResponse, Status>> + Send>>;
+    type SubscribeMetricsStream = subscribe_metrics::SubscribeMetricsStream;
     type SubscribeEventsStream =
         Pin<Box<dyn Stream<Item = Result<SubscribeEventsResponse, Status>> + Send>>;
 
@@ -368,11 +367,20 @@ impl DashboardService for DashboardServiceImpl {
 
     async fn subscribe_metrics(
         &self,
-        _req: Request<SubscribeMetricsRequest>,
+        req: Request<SubscribeMetricsRequest>,
     ) -> Result<Response<Self::SubscribeMetricsStream>, Status> {
-        Err(Status::unimplemented(
-            "SubscribeMetrics stub lands in PR-B2",
-        ))
+        subscribe_metrics::subscribe_metrics(
+            req,
+            self.storage.clone(),
+            self.system_monitor.clone(),
+            self.event_tx.clone(),
+            self.integration_auth_token.clone(),
+            self.load_policy.clone(),
+            self.streaming_enabled,
+            self.active_streams.clone(),
+            self.max_concurrent_streams,
+        )
+        .await
     }
 
     async fn subscribe_events(
