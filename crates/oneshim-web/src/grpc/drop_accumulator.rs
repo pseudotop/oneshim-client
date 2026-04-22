@@ -19,6 +19,11 @@ use crate::proto::dashboard::v1::{dropped_events_signal::TypeCount, DroppedEvent
 /// keep accumulating.
 pub const DROP_EMIT_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Maximum distinct event_type keys tracked. Realistic set is 4
+/// (frame, idle, ai_runtime_status, channel_lag per proto). Cap prevents
+/// unbounded HashMap growth if a caller bug passes arbitrary strings.
+const MAX_DROP_TYPES: usize = 8;
+
 pub struct DropAccumulator {
     counts_by_type: HashMap<String, u64>,
     since: DateTime<Utc>,
@@ -37,15 +42,25 @@ impl DropAccumulator {
     }
 
     pub fn record_drop(&mut self, event_type: &str) {
-        *self
-            .counts_by_type
-            .entry(event_type.to_string())
-            .or_insert(0) += 1;
+        if let Some(existing) = self.counts_by_type.get_mut(event_type) {
+            *existing += 1;
+            return;
+        }
+        // Key is new: check cap before inserting.
+        if self.counts_by_type.len() < MAX_DROP_TYPES {
+            self.counts_by_type.insert(event_type.to_string(), 1);
+        } else {
+            // At cap — fold into "other" sentinel so counts aren't lost.
+            *self.counts_by_type.entry("other".to_string()).or_insert(0) += 1;
+        }
     }
 
     /// Emit a DroppedEventsSignal iff (a) there are accumulated drops AND
     /// (b) the throttle interval has elapsed. Caller wraps the returned
     /// signal into SubscribeEventsResponse::Payload::Dropped.
+    ///
+    /// On emission, `counts_by_type` is cleared and `since` rolls forward
+    /// to the previous `until`. No mutation when returning None.
     pub fn maybe_emit(&mut self) -> Option<DroppedEventsSignal> {
         if self.counts_by_type.is_empty() {
             return None;
@@ -93,7 +108,7 @@ impl Default for DropAccumulator {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl DropAccumulator {
     /// Test-only: set last_emit_at to a past Instant to make the throttle
     /// interval test deterministic without sleeping.
@@ -157,5 +172,20 @@ mod tests {
         assert_eq!(first_until_micros, second_since_micros);
         assert_eq!(second.dropped_count, 1);
         assert_eq!(second.by_type[0].event_type, "idle");
+    }
+
+    #[test]
+    fn record_drop_saturates_at_max_types() {
+        let mut acc = DropAccumulator::new();
+        // Fill to cap with distinct types.
+        for i in 0..MAX_DROP_TYPES {
+            acc.record_drop(&format!("type_{i}"));
+        }
+        assert_eq!(acc.counts_by_type.len(), MAX_DROP_TYPES);
+        // Exceed cap with a new key — should fold into "other".
+        acc.record_drop("overflow_type");
+        assert_eq!(acc.counts_by_type.len(), MAX_DROP_TYPES + 1); // +1 for "other"
+        assert_eq!(acc.counts_by_type.get("other"), Some(&1));
+        assert!(!acc.counts_by_type.contains_key("overflow_type"));
     }
 }
