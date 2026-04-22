@@ -4,9 +4,50 @@
 **Branch**: `feature/d13-v2b-pr-b2-subscribe-metrics` off `origin/main` @ `529ec547`
 **Ralph-loop completion promise**: `__RALPH_LOOP_PR_B2_ALL_PHASES_CONVERGED_2026_04_22__`
 
-## Current phase: 1 (Spec)
+## Current phase: 2 (Plan) — Phase 1 DONE ✅
 
-Substep: **1.5 — All 5 iter-2 reviewers back; rev 3 applied; iter-3 dispatch next**
+### Phase 1 summary
+
+- Iter-1: 15 Critical + 31 Important + 24 Minor → rev 2 applied all fixes (commit `41252400`)
+- Iter-2: 1 Critical + 8 Important + 4 Minor → rev 3 applied all fixes (commit `abc16ca7`)
+- Iter-3: **CONVERGED** — zero Crit + zero Important across all 5 dimensions (verdict at `.claude/pr-b2-review/iter3/00-verdict.md`)
+
+Final spec: `docs/reviews/2026-04-22-d13-v2b-pr-b2-spec.md` @ commit `abc16ca7`
+
+### Phase 2 entry
+
+Substep: **2.1 — draft plan doc `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md`**
+
+Next iteration: draft plan derived from spec §4 components + §7 testing + §8 acceptance. Task structure (12 tasks):
+
+- **B2-0**: `remote_addr()` smoke test + `TcpConnectInfo` layer if needed (CRIT-7 gate — blocks everything)
+- **B2-1**: `async-stream` + `subtle` dep additions (Cargo.toml workspace + oneshim-web)
+- **B2-2**: Config fields `LoadThresholds` + `grpc_load_thresholds` + `grpc_streaming_enabled` + `grpc_max_concurrent_streams` + 4 unit tests
+- **B2-3**: `LoadPolicy` component + 9 unit tests
+- **B2-4**: `HintEmitter` (with `force_emit_degraded`) + 5 unit tests
+- **B2-5**: `auth_gate` (`honor_opt_out` + `validate_authority`) + 8+3 unit tests
+- **B2-6**: `StreamCounterGuard` + 4 unit tests
+- **B2-7**: `GrpcSpawnConfig` + `test_support/mock_system_monitor.rs` + `test-support = []` feature + `Debug` redaction test
+- **B2-8**: `serve`/`serve_optional` → takes `GrpcSpawnConfig` + v2a 10 integration tests updated in-PR
+- **B2-9**: `subscribe_metrics` handler impl (realtime + interval branches)
+- **B2-10**: 7-8 SubscribeMetrics integration tests
+- **B2-11**: `scripts/ci/grep-no-instrument-on-sensitive-fns.sh` + code-review checklist note
+- **B2-12**: Final acceptance runs + PR open
+
+Plan review dimensions (iter-1 plan review):
+- Dim P1: Task sequencing & dependencies (does B2-N truly depend on B2-(N-1)?)
+- Dim P2: Per-task completeness (file paths, commands, assertions, rollback)
+- Dim P3: Stale-assumption verification pass per PR-B1 lesson
+- Dim P4: Cross-consumer audit (config defaults, test-support feature isolation)
+- Dim P5: Spec-to-plan traceability (does plan cover 100% of spec §4-§8 requirements?)
+
+Plan convergence criterion: same as spec — zero Critical + zero Important.
+
+Plan-phase opening tasks (Must Verify Before Task Dispatch):
+1. `grpc-dashboard` feature flag deps in `oneshim-web/Cargo.toml` (plan-phase NIT-R3-B)
+2. `tonic::Request::remote_addr()` behavior smoke test (spec §10 row 18/19)
+3. `app_runtime_launch.rs` grpc spawn call site — exact variable chain
+4. `integration_auth_token` config field wiring to `app_runtime_launch.rs`
 
 ### Iter-1 review results (2026-04-22)
 
