@@ -7,13 +7,15 @@
 //! - Counts are per event_type String (Frame/Idle/AiRuntimeStatus).
 //! - `since` timestamp rolls forward on each emission.
 //!
-//! Reason code: "rate_limit" (MVP, all drops aggregate here).
+//! Reason code: supplied at construction (`DropAccumulator::new(reason)`).
 //!
-//! The proto `DroppedEventsSignal.reason` takes a single string. In PR-B3
-//! this accumulator always emits `reason = "rate_limit"`. Channel-lag
-//! drops (from `broadcast::RecvError::Lagged`) are currently tagged via
-//! `by_type[].event_type = "channel_lag"` while the signal-level `reason`
-//! remains `"rate_limit"`. v2c will emit a separate signal per reason.
+//! D13-v2c splits per-reason accumulation — handlers use one instance per
+//! reason (e.g., `rate_limit`, `channel_lag`), each with independent
+//! throttle/emit state. The proto `DroppedEventsSignal.reason` echoes the
+//! construction-time value verbatim. `by_type[].event_type` remains the
+//! per-event-type bucket; for reasons where the dropped event's type is
+//! unknown (e.g., `broadcast::RecvError::Lagged`), callers should record
+//! drops under the `"unknown"` sentinel (OTel convention).
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -43,12 +45,12 @@ pub struct DropAccumulator {
 }
 
 impl DropAccumulator {
-    pub fn new() -> Self {
+    pub fn new(reason: &'static str) -> Self {
         Self {
             counts_by_type: HashMap::new(),
             since: Utc::now(),
             last_emit_at: None,
-            reason: "rate_limit",
+            reason,
         }
     }
 
@@ -114,8 +116,11 @@ impl DropAccumulator {
 }
 
 impl Default for DropAccumulator {
+    /// Default reason is `"rate_limit"` — matches the PR-B3 MVP behavior for
+    /// backward compat with any future callers that don't specify a reason.
+    /// Prefer the explicit `new(reason)` for new callers.
     fn default() -> Self {
-        Self::new()
+        Self::new("rate_limit")
     }
 }
 
@@ -135,13 +140,13 @@ mod tests {
 
     #[test]
     fn fresh_accumulator_maybe_emit_returns_none() {
-        let mut acc = DropAccumulator::new();
+        let mut acc = DropAccumulator::new("rate_limit");
         assert!(acc.maybe_emit().is_none(), "no drops recorded → None");
     }
 
     #[test]
     fn single_drop_emits_on_first_call() {
-        let mut acc = DropAccumulator::new();
+        let mut acc = DropAccumulator::new("rate_limit");
         acc.record_drop("frame");
         let sig = acc.maybe_emit().expect("first emission should fire");
         assert_eq!(sig.dropped_count, 1);
@@ -155,7 +160,7 @@ mod tests {
 
     #[test]
     fn throttle_blocks_rapid_emit() {
-        let mut acc = DropAccumulator::new();
+        let mut acc = DropAccumulator::new("rate_limit");
         acc.record_drop("frame");
         assert!(acc.maybe_emit().is_some(), "first emit");
         acc.record_drop("frame");
@@ -167,7 +172,7 @@ mod tests {
 
     #[test]
     fn throttle_permits_emit_after_interval() {
-        let mut acc = DropAccumulator::new();
+        let mut acc = DropAccumulator::new("rate_limit");
         acc.record_drop("frame");
         let first = acc.maybe_emit().expect("first emission");
         let first_until_micros = first.until.as_ref().map(|t| (t.seconds, t.nanos));
@@ -188,7 +193,7 @@ mod tests {
 
     #[test]
     fn record_drop_saturates_at_max_types() {
-        let mut acc = DropAccumulator::new();
+        let mut acc = DropAccumulator::new("rate_limit");
         // Fill to cap with distinct types.
         for i in 0..MAX_DROP_TYPES {
             acc.record_drop(&format!("type_{i}"));
