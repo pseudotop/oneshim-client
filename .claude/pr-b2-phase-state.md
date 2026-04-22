@@ -16,10 +16,51 @@ Final spec: `docs/reviews/2026-04-22-d13-v2b-pr-b2-spec.md` @ commit `abc16ca7`
 
 ### Phase 2 entry
 
-Substep: **2.2 — plan draft complete; dispatch iter-1 plan reviewers**
+Substep: **2.4 — plan iter-1 reviewers: P1/P2/P3 in; P4 still running. Applying P1/P2/P3 fixes now.**
 
-Plan doc: `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md`
-13 tasks (B2-0..B2-12), ~1685 LoC total est, full dependency chain + rollback + spec-traceability matrix.
+Plan doc: `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md` (commit `b135d272`)
+
+### Iter-1 plan review results
+
+| # | Dim | Verdict | Counts | Top findings |
+|---|---|---|---|---|
+| P1 | Sequencing & completeness | NOT CONVERGED | 2C / 3I / 2Minor | `is_local_loopback` pub(super); `active_streams` accessor; B2-7 test-support scope; B2-0 rollback blocker; B2-8 granularity |
+| P2 | Stale audit | STALE | 2 stale / 15 | **`integration_auth_token` NOT in app_runtime_launch.rs** — lives in `services/settings_service/mod.rs:14`; CI uses `--features grpc` umbrella, not `grpc-dashboard` |
+| P3 | Spec traceability | FULL COVERAGE | 2 minor gaps | Same as P1 C1/C2 (pub(super) + field init) |
+| P4 | Cross-cutting | _pending_ | — | — |
+
+### Consolidated findings to apply in rev 2 (this iter)
+
+**Critical**:
+- **CRIT-P-1**: B2-5 must export `pub(super) fn is_local_loopback` (P1 C1 + P3 gap 1)
+- **CRIT-P-2**: B2-10 test #7 — pick direct accessor on DashboardServiceImpl OR indirect cap+1 probe; if direct, B2-8 adds `pub(crate) fn active_stream_count() -> usize` (P1 C2 + P3 gap 2)
+- **CRIT-P-3**: `integration_auth_token` wiring path WRONG — not in `app_runtime_launch.rs`. Lives in `services/settings_service/mod.rs:14`. B2-8 must thread token from WebServerRuntime config, not from `core_resources` (P2 #15)
+
+**Important**:
+- **IMP-P-1**: CI feature flag naming — plan references `grpc-dashboard` (crate feature); CI uses `--features grpc` (workspace umbrella). B2-11 grep script + acceptance commands must target both or verify alias. Check workspace `Cargo.toml` for `grpc = ["oneshim-web/grpc-dashboard", ...]` (P2 #13)
+- **IMP-P-2**: B2-7 scope inconsistency — `test-support = []` is owned by B2-1; remove dup from B2-7 title/scope (P1 I1)
+- **IMP-P-3**: B2-0 rollback note must identify downstream blocker — B2-10 test #6 `honors_opt_out_on_localhost` fails if `remote_addr() == None` (P1 I2)
+- **IMP-P-4**: B2-8 commit granularity — add "atomic refactor" justification OR split into B2-8a (sig change) + B2-8b (test/caller updates) (P1 I3)
+- **IMP-P-5**: `MetricBucketRecord` path — plan uses bare name; actual full path is `crate::models::dashboard_streaming::MetricBucketRecord`. B2-9 handler + B2-3 use sites must disambiguate (P2 nit)
+
+**Minor**:
+- M1: B2-0 idempotency note (same commit contains revert OR layer addition)
+- M2: B2-8 rollback wording "fully revert, not partial"
+
+### P1 findings to apply (after aggregating all 4)
+
+**Critical**:
+- **C1**: `is_local_loopback` must be `pub(super)` in B2-5 file structure (B2-9 handler imports it)
+- **C2**: B2-10 test #7 needs explicit strategy: direct `active_stream_count()` accessor on DashboardServiceImpl (add in B2-8) OR indirect "cap+1 probe" approach
+
+**Important**:
+- **I1**: B2-7 scope inconsistency — `test-support = []` is owned by B2-1; remove from B2-7 title
+- **I2**: B2-0 rollback note must identify downstream blocker (B2-10 test #6 `honors_opt_out_on_localhost` fails if remote_addr returns None)
+- **I3**: B2-8 commit granularity — add "atomic refactor" justification note OR split into B2-8a/B2-8b
+
+**Minor**: M1 B2-0 idempotency; M2 B2-8 "fully revert, not partial" rollback language
+
+Waiting on P2, P3, P4 before applying fixes (avoid double-edit).
 
 Next iteration: draft plan derived from spec §4 components + §7 testing + §8 acceptance. Task structure (12 tasks):
 
