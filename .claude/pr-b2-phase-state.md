@@ -4,7 +4,49 @@
 **Branch**: `feature/d13-v2b-pr-b2-subscribe-metrics` off `origin/main` @ `529ec547`
 **Ralph-loop completion promise**: `__RALPH_LOOP_PR_B2_ALL_PHASES_CONVERGED_2026_04_22__`
 
-## Current phase: 2 (Plan) — Phase 1 DONE ✅
+## Current phase: 3 (Impl) — Phase 1+2 DONE ✅✅
+
+### Phase 2 summary
+
+- Iter-1: 4 Critical + 6 Important + 2 Minor from 4 parallel reviewers → rev 2 (commit `3bb62d7f`)
+- Iter-2: **CONVERGED** — zero new Critical/Important; all 11 findings verified applied (verdict at `.claude/pr-b2-plan-review/iter2/00-verdict.md`)
+
+Final plan: `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md` @ commit `3bb62d7f`
+
+### Phase 3 entry
+
+Substep: **3.1 — Phase 3 entry; next iteration dispatches B2-0 (remote_addr smoke test)**
+
+Ready for subagent-driven-development execution of B2-0..B2-12 per plan.
+
+### Phase 3 execution pattern
+
+For each task B2-N:
+1. Pre-dispatch: verify relevant Gate (V1..V8) if applicable
+2. Impl subagent: implements per plan (writes code + tests)
+3. Spec-conformance reviewer: verifies code matches spec + plan
+4. Code-quality reviewer: clippy, fmt, patterns, clarity
+5. Commit when all 3 agree
+6. Proceed to B2-(N+1)
+
+### Phase 3 open items (carry forward from spec/plan phases)
+
+- Plan nit MIN-N1: `AtomicUsize`/`Arc` imports in pseudocode — implementer adds during B2-8 real impl
+- Spec NIT-R3-A: `force_emit_degraded` Option<> return type — final impl may drop Option wrapper (always Some)
+- Spec NIT-R3-C: internal API mismatch in HintEmitter build_hint reason_tag — tighten during B2-4 impl
+
+### Phase 3 convergence criterion
+
+- All B2-0..B2-12 complete
+- `cargo check --workspace` clean across macOS + CI Linux/Windows
+- 4 config tests + 30 unit tests + 18 integration tests green
+- `--no-default-features --features grpc-dashboard` smoke build clean
+- `scripts/ci/grep-no-instrument-on-sensitive-fns.sh` exits 0
+- `cargo clippy --workspace -- -D warnings` clean (1.95 patterns audited)
+- `cargo fmt --check` clean
+- PR opened and CI green
+- Emit completion promise `__RALPH_LOOP_PR_B2_ALL_PHASES_CONVERGED_2026_04_22__`
+- `rm .claude/ralph-loop.local.md` at features worktree
 
 ### Phase 1 summary
 
@@ -16,7 +58,7 @@ Final spec: `docs/reviews/2026-04-22-d13-v2b-pr-b2-spec.md` @ commit `abc16ca7`
 
 ### Phase 2 entry
 
-Substep: **2.4 — plan iter-1 reviewers: P1/P2/P3 in; P4 still running. Applying P1/P2/P3 fixes now.**
+Substep: **2.5 — plan rev 2 committed (`3bb62d7f`); iter-2 convergence reviewer dispatched (single consolidated pass); awaiting notification.**
 
 Plan doc: `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md` (commit `b135d272`)
 
