@@ -98,10 +98,26 @@ impl Default for EventRateLimiter {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+impl EventRateLimiter {
+    /// Test-only: shift `last_refill` of a specific bucket to a past Instant
+    /// so tests can assert refill behavior without sleeping.
+    pub(super) fn set_last_refill_for_test(&mut self, event_type: &str, t: Instant) {
+        if let Some(bucket) = self.buckets.get_mut(event_type) {
+            bucket.last_refill = t;
+        }
+    }
+
+    /// Test-only: count of distinct buckets (lets tests assert the
+    /// MAX_BUCKETS cap without reaching into the private field).
+    pub(super) fn bucket_count_for_test(&self) -> usize {
+        self.buckets.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
     use std::time::Duration;
 
     #[test]
@@ -126,14 +142,17 @@ mod tests {
 
     #[test]
     fn refills_over_time() {
-        let mut rl = EventRateLimiter::with_rate(5, 50); // 5-burst, 50 tokens/sec
+        let mut rl = EventRateLimiter::with_rate(5, 50);
+        // Burn the initial 5-token burst.
         for _ in 0..5 {
             assert!(rl.try_admit("frame"));
         }
-        assert!(!rl.try_admit("frame"), "burst empty");
-        // Sleep 150ms — at 50 tokens/sec that's 7.5 tokens refilled.
-        thread::sleep(Duration::from_millis(150));
-        assert!(rl.try_admit("frame"), "refill should permit");
+        assert!(!rl.try_admit("frame"), "burst exhausted");
+        // Simulate 150ms elapsed by pushing last_refill backward.
+        // At 50 tokens/sec, 150ms refills 7.5 tokens — well above the 1.0 threshold.
+        let past = Instant::now() - Duration::from_millis(150);
+        rl.set_last_refill_for_test("frame", past);
+        assert!(rl.try_admit("frame"), "refill should permit after interval");
     }
 
     #[test]
@@ -168,6 +187,6 @@ mod tests {
         // Overflow: new type beyond MAX_BUCKETS should still admit (unmetered).
         assert!(rl.try_admit("overflow_type"));
         // Bucket count should NOT have grown.
-        assert!(rl.buckets.len() <= MAX_BUCKETS);
+        assert!(rl.bucket_count_for_test() <= MAX_BUCKETS);
     }
 }
