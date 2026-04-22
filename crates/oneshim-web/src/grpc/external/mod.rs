@@ -4,4 +4,5 @@
 pub mod cert_resolver;
 pub mod jwt_verifier;
 pub mod metrics;
+pub mod mtls_verifier;
 pub mod tls_config;
