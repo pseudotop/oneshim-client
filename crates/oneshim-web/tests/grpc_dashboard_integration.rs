@@ -1247,6 +1247,98 @@ mod subscribe_events_tests {
         let _ = server_task.await;
     }
 
+    // ── Test #13 ──────────────────────────────────────────────────────────
+
+    /// Broadcast-channel overflow (`broadcast::RecvError::Lagged`) surfaces as a
+    /// `DroppedEventsSignal` with `reason = "channel_lag"` — distinct from the
+    /// `reason = "rate_limit"` signal. Event-type breakdown uses the `"unknown"`
+    /// sentinel because the broadcast lag error does not carry the dropped
+    /// event's type (OTel `error.type = "unknown"` convention).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn subscribe_events_emits_channel_lag_drop_signal() {
+        let port = pick_free_port();
+        let storage = in_memory_storage().await;
+        // Small broadcast capacity so that a rapid burst before the handler's
+        // first `recv()` forces `RecvError::Lagged`. Burst > capacity by ≥2×.
+        let (event_tx, _) = tokio::sync::broadcast::channel(4);
+        let cfg = explicit_cfg(port, storage, event_tx.clone(), 30.0, 4096, 16384);
+        let server_task = tokio::spawn(oneshim_web::grpc::serve_optional(cfg));
+        wait_for_server_ready(port, Duration::from_secs(5)).await;
+
+        let endpoint = format!("http://127.0.0.1:{port}");
+        let mut client = DashboardServiceClient::connect(endpoint).await.unwrap();
+        let mut stream = client
+            .subscribe_events(SubscribeEventsRequest {
+                event_types: vec!["frame".to_string()],
+                respect_server_hints: true,
+            })
+            .await
+            .expect("subscribe ok")
+            .into_inner();
+
+        // Reduce race between `.subscribe()` returning on client side and the
+        // server handler reaching the `select!` loop where `rx.recv()` is first
+        // polled. Without this delay, a fast handler could drain the burst
+        // linearly and never see `Lagged` because the ring never overflows from
+        // the consumer's POV. 100ms is empirical; raise if CI flakes.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Fire enough events in a tight loop to overflow the broadcast ring
+        // multiple times over. With capacity=4 and 64 sends, the handler's
+        // first several recv() calls should see at least one `Lagged(n)`.
+        for i in 0..64 {
+            let _ = event_tx.send(RealtimeEvent::Frame(FrameUpdate {
+                id: i as i64,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                app_name: "LagApp".to_string(),
+                window_title: "t".to_string(),
+                importance: 0.5,
+                trigger_type: "timer".to_string(),
+            }));
+        }
+
+        // Drain the stream until we see a DroppedEventsSignal with reason
+        // "channel_lag". Bound the wait to 5s (tick is 1s; give 3-4 ticks).
+        let mut channel_lag_signal: Option<oneshim_web::proto::dashboard::v1::DroppedEventsSignal> =
+            None;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, stream.message()).await {
+                Ok(Ok(Some(msg))) => match msg.payload {
+                    Some(EventsPayload::Dropped(sig)) if sig.reason == "channel_lag" => {
+                        channel_lag_signal = Some(sig);
+                        break;
+                    }
+                    // Ignore other payloads (Frame events, rate_limit drop signals, hints).
+                    _ => {}
+                },
+                _ => break,
+            }
+        }
+
+        let sig = channel_lag_signal.expect(
+            "DroppedEventsSignal with reason=channel_lag must be emitted after broadcast overflow",
+        );
+        assert_eq!(sig.reason, "channel_lag");
+        assert!(
+            sig.dropped_count >= 1,
+            "dropped_count must be ≥ 1, got {}",
+            sig.dropped_count
+        );
+        assert!(
+            sig.by_type.iter().any(|tc| tc.event_type == "unknown"),
+            "by_type must contain an \"unknown\" entry (OTel convention): {:?}",
+            sig.by_type
+        );
+
+        server_task.abort();
+        let _ = server_task.await;
+    }
+
     // ── Test #5 ──────────────────────────────────────────────────────────
 
     /// High-CPU system monitor drives a High/Critical ServerLoadHint on the
