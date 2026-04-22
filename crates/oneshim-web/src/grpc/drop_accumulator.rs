@@ -26,9 +26,13 @@ use crate::proto::dashboard::v1::{dropped_events_signal::TypeCount, DroppedEvent
 /// keep accumulating.
 pub const DROP_EMIT_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Maximum distinct event_type keys tracked. Realistic set is 4
-/// (frame, idle, ai_runtime_status, channel_lag per proto). Cap prevents
-/// unbounded HashMap growth if a caller bug passes arbitrary strings.
+/// Cap on distinct event_type keys tracked. Realistic keys are
+/// `frame`, `idle`, `ai_runtime_status` (proto event types) plus
+/// `channel_lag` as a mechanism-label injected when
+/// `broadcast::RecvError::Lagged` fires — not a proto event type.
+/// Overflow folds to the `"other"` sentinel, so the effective max
+/// bucket count is `MAX_DROP_TYPES + 1`. Cap prevents unbounded
+/// HashMap growth if a caller bug passes arbitrary strings.
 const MAX_DROP_TYPES: usize = 8;
 
 pub struct DropAccumulator {
