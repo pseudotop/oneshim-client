@@ -2,3 +2,4 @@
 //! Feature-gated: compile iff `grpc-dashboard-external` enabled.
 
 pub mod cert_resolver;
+pub mod tls_config;
