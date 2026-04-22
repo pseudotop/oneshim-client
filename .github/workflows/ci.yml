@@ -211,6 +211,9 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: ./scripts/verify-commit-message-hygiene.sh "$PR_BASE_SHA" "$HEAD_SHA"
 
+      - name: CI grep heuristic for #[instrument] on sensitive fns
+        run: bash scripts/ci/grep-no-instrument-on-sensitive-fns.sh
+
       - name: Create frontend dist stub for Tauri generate_context!()
         run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
 
@@ -228,6 +231,9 @@ jobs:
       - name: Run clippy (grpc features)
         run: ./scripts/cargo-cache.sh clippy --workspace --all-targets --features grpc -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
+      - name: Run clippy (grpc-dashboard + test-support)
+        run: ./scripts/cargo-cache.sh clippy -p oneshim-web --no-default-features --features grpc-dashboard,test-support --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
       - name: Run clippy (lan-sync features)
         run: ./scripts/cargo-cache.sh clippy -p oneshim-network --all-targets --features lan-sync -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
@@ -236,6 +242,13 @@ jobs:
 
       - name: Run clippy (telemetry feature)
         run: ./scripts/cargo-cache.sh clippy -p oneshim-app --all-targets --features telemetry -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
+      # D13-v2b PR-B2 follow-up: enforce CRIT-12 invariant that `test-support`
+      # is never transitively enabled via `grpc-dashboard`. If this smoke build
+      # ever fails because a production code path references a test-support
+      # gated symbol, the feature leak must be fixed before release.
+      - name: Smoke build (grpc-dashboard, no test-support)
+        run: ./scripts/cargo-cache.sh build -p oneshim-web --no-default-features --features grpc-dashboard
 
   perf-gates:
     name: Performance Gates
