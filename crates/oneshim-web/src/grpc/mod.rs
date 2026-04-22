@@ -28,6 +28,9 @@ pub use stream_counter::StreamCounterGuard;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
+#[cfg(feature = "grpc-dashboard-external")]
+pub mod external;
+
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
