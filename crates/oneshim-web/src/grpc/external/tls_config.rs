@@ -151,6 +151,29 @@ pub async fn spawn_cert_watcher(
     Ok(())
 }
 
+/// Spawn a daily background task that logs a warning when the cert expires within 7 days
+/// and records the remaining seconds into the metrics gauge.
+pub fn spawn_expiry_monitor(
+    resolver: Arc<HotReloadCertResolver>,
+    metrics: Arc<crate::grpc::external::metrics::ExternalMetrics>,
+) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(StdDuration::from_secs(24 * 3600));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            if let Some(days) = resolver.days_until_expiry() {
+                metrics
+                    .tls_cert_expiry_seconds
+                    .store(days * 24 * 3600, std::sync::atomic::Ordering::Relaxed);
+                if days < 7 {
+                    tracing::warn!(days, "external_grpc: TLS cert expiry within 7 days");
+                }
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

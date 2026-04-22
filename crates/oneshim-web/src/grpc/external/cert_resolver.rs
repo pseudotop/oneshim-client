@@ -7,6 +7,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use rustls::server::{ClientHello, ResolvesServerCert};
 use rustls::sign::CertifiedKey;
+use x509_parser::prelude::*;
 
 #[derive(Debug)]
 pub struct HotReloadCertResolver {
@@ -32,6 +33,22 @@ impl HotReloadCertResolver {
 impl ResolvesServerCert for HotReloadCertResolver {
     fn resolve(&self, _client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
         Some(self.current.load_full())
+    }
+}
+
+impl HotReloadCertResolver {
+    /// Returns days until the current leaf cert's `notAfter` field, or `0` if already expired.
+    /// Returns `None` if the cert chain is empty or the DER cannot be parsed.
+    pub fn days_until_expiry(&self) -> Option<i64> {
+        let certified = self.current();
+        let leaf = certified.cert.first()?;
+        let (_, cert) = X509Certificate::from_der(leaf.as_ref()).ok()?;
+        let not_after = cert.validity().not_after.timestamp();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64;
+        Some((not_after - now).max(0) / (24 * 3600))
     }
 }
 
@@ -73,5 +90,19 @@ mod tests {
         let resolved = resolver.current();
         assert!(Arc::ptr_eq(&resolved, &key2));
         assert!(!Arc::ptr_eq(&resolved, &key1));
+    }
+
+    #[test]
+    fn days_until_expiry_returns_value() {
+        // rcgen 0.14 CertificateParams::default() sets not_after = year 4096 (~2070 years out).
+        // We check that the returned value is positive (not expired) and plausible.
+        let key = fixture_certified_key();
+        let resolver = HotReloadCertResolver::new(key);
+        let days = resolver.days_until_expiry().unwrap();
+        // year 4096 is ~755_000–756_000 days from 2026.
+        assert!(
+            days > 700_000 && days < 760_000,
+            "expected ~2070 years from rcgen default, got {days} days"
+        );
     }
 }
