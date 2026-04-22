@@ -521,7 +521,6 @@ async fn grpc_dashboard_get_focus_stats_aggregates_seeded_days() {
 // come BEFORE `pause()`.
 
 use oneshim_api_contracts::stream::{MetricsUpdate, RealtimeEvent};
-use std::sync::atomic::Ordering;
 
 /// Test #1 — First yield is a `Hint`, reason starts with `"warmup"` (within 30s).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -896,10 +895,6 @@ async fn grpc_dashboard_subscribe_metrics_honors_opt_out_on_localhost() {
     let _ = server_task.await;
 }
 
-// Suppress unused warning on `Ordering` when only tests above use it.
-#[allow(dead_code)]
-const _: Ordering = Ordering::Relaxed;
-
 // ── B3-7: FailingStorage test harness ────────────────────────────────────
 // Included at the top level so it is visible to all test sub-modules below.
 // The `#[path]` attribute points to the companion support file.
@@ -1234,8 +1229,8 @@ mod subscribe_events_tests {
         assert!(
             sig.by_type
                 .iter()
-                .any(|tc| tc.event_type == "frame" && tc.count >= 1),
-            "by_type must contain frame entry: {:?}",
+                .any(|tc| tc.event_type == "frame" && tc.count >= excess as u64),
+            "by_type must contain frame entry with count >= {excess}: {:?}",
             sig.by_type
         );
 
@@ -1391,8 +1386,9 @@ mod subscribe_events_tests {
                                 }
                             }
                         }
+                        // Non-frame message (e.g. ServerLoadHint on 1s tick) — continue polling
                     }
-                    _ => return false,
+                    Err(_) | Ok(Ok(None)) | Ok(Err(_)) => return false,
                 }
             }
         }

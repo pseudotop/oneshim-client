@@ -10,6 +10,10 @@
 //! - `start_idle_period` — returns `CoreError::Storage` when `fail_start_idle`
 //!   is set (simulates DB write failure without killing the whole server).
 
+// The delegation methods all use `.map_err(Into::into)` for consistency even
+// when the error type is already `CoreError`. This is intentional boilerplate.
+#![allow(clippy::useless_conversion)]
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -45,7 +49,7 @@ use oneshim_storage::sqlite::SqliteStorage;
 /// All other methods delegate to the inner `SqliteStorage`.
 pub struct FailingStorage {
     inner: Arc<SqliteStorage>,
-    pub fail_start_idle: bool,
+    pub(crate) fail_start_idle: bool,
 }
 
 impl FailingStorage {

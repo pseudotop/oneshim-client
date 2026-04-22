@@ -99,6 +99,7 @@ impl Default for EventRateLimiter {
 }
 
 #[cfg(any(test, feature = "test-support"))]
+#[allow(dead_code)]
 impl EventRateLimiter {
     /// Test-only: shift `last_refill` of a specific bucket to a past Instant
     /// so tests can assert refill behavior without sleeping.

@@ -109,6 +109,7 @@ impl Default for DropAccumulator {
 }
 
 #[cfg(any(test, feature = "test-support"))]
+#[allow(dead_code)]
 impl DropAccumulator {
     /// Test-only: set last_emit_at to a past Instant to make the throttle
     /// interval test deterministic without sleeping.
