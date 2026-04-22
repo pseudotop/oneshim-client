@@ -15,9 +15,40 @@ Final plan: `docs/reviews/2026-04-22-d13-v2b-pr-b2-plan.md` @ commit `3bb62d7f`
 
 ### Phase 3 entry
 
-Substep: **3.1 — Phase 3 entry; next iteration dispatches B2-0 (remote_addr smoke test)**
+Substep: **3.5 — B2-0/1/2/3 done; B2-4 HintEmitter next**
 
-Ready for subagent-driven-development execution of B2-0..B2-12 per plan.
+### B2 progress
+
+| Task | Status | Commit | Notes |
+|---|---|---|---|
+| B2-0 | ✅ verified | no commit | remote_addr=Some(127.0.0.1:…) — no layer needed |
+| B2-1 | ✅ done | `5e2954e9` | async-stream + subtle + test-support features |
+| B2-2 | ✅ done | `6bcb6a56` | WebConfig: LoadThresholds, streaming_enabled, max_concurrent_streams + 4 tests |
+| B2-3 | ✅ done | `2ea8b3b7` | LoadPolicy + 9 tests |
+| B2-4 | pending | — | HintEmitter (+force_emit_degraded) + 5 tests |
+| B2-5 | pending | — | auth_gate (honor_opt_out + validate_authority) + 11 tests |
+| B2-6 | pending | — | StreamCounterGuard + 4 tests |
+| B2-7 | pending | — | GrpcSpawnConfig + MockSystemMonitor + Debug redact test |
+| B2-8 | pending | — | serve/serve_optional migration + 10 v2a tests updated |
+| B2-9 | pending | — | subscribe_metrics handler |
+| B2-10 | pending | — | 7-8 integration tests |
+| B2-11 | pending | — | CI grep script + grpc-dashboard CI steps |
+| B2-12 | pending | — | Acceptance + PR open |
+
+### B2-0 result (retained for reference)
+
+Smoke probe confirmed `tonic::Request::remote_addr()` returns `Some(127.0.0.1:<port>)` under default `Server::builder().add_service(...).serve(addr)` wiring. No `TcpConnectInfo` tower layer needed. Spec §10 rows 18/19 **CONTINGENCY RESOLVED**.
+
+### Commit hygiene note
+
+cargo-fmt hook occasionally reformats generated code (long signatures, multi-line expressions). Workflow: write code → `cargo fmt -p <crate>` → re-add → commit. Don't fight rustfmt line-by-line.
+
+### Next iteration entry point
+
+1. Read state file (this doc)
+2. Start at B2-4: create `crates/oneshim-web/src/grpc/hint_emitter.rs` per plan §"Task B2-4"
+3. `LoadThresholds` imported via `oneshim_core::config::LoadThresholds` (NOT via `sections::network::`)
+4. `Level::LoadLevel{Low|Medium|High|Critical}` for proto enum values (prost camelCase from SCREAMING_SNAKE)
 
 ### Phase 3 execution pattern
 
