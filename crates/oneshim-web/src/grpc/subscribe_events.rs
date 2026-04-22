@@ -192,10 +192,11 @@ pub async fn subscribe_events(
                         Err(RecvError::Lagged(n)) => {
                             // broadcast::RecvError::Lagged does not carry the dropped
                             // event's type; use "unknown" per OTel convention.
-                            // (Note: this records ONE drop per Lagged(n), preserving the
-                            // PR-B3 MVP counting semantics. An N-per-Lagged upgrade is a
-                            // separate task — out of scope for v2c reason-split.)
-                            channel_lag_drops.record_drop("unknown");
+                            // Record `n` drops to reflect actual missed events (v2c
+                            // upgrade from the PR-B3 MVP 1-per-Lagged undercounting).
+                            for _ in 0..n {
+                                channel_lag_drops.record_drop("unknown");
+                            }
                             warn!(lagged_by = n, "subscribe_events broadcast lagged");
                             continue;
                         }

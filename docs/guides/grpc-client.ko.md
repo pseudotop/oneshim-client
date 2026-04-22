@@ -574,7 +574,7 @@ message SubscribeEventsRequest {
   | `reason`       | 발생 조건                                                   | `by_type[].event_type` | 비고                                                        |
   | -------------- | ----------------------------------------------------------- | ---------------------- | ----------------------------------------------------------- |
   | `rate_limit`   | 서버 사이드 rate limiter가 Frame/Idle 이벤트 거부             | `frame` 또는 `idle`    | 이벤트 타입별 breakdown 정확                                 |
-  | `channel_lag`  | Broadcast 채널 오버플로 (`Lagged(n)`)                        | `unknown`              | 드롭 탐지 시점에 이벤트 타입 알 수 없음; Lagged 이벤트당 1개 드롭 기록 (PR-B3 MVP; N-per-Lagged 예정) |
+  | `channel_lag`  | Broadcast 채널 오버플로 (`Lagged(n)`)                        | `unknown`              | 드롭 탐지 시점에 이벤트 타입 알 수 없음; `Lagged(n)`마다 `n`개 드롭 기록 (실제 누락 이벤트 수 반영) |
 
   Throttle: 각 reason은 초당 최대 1회 emit. 구독자는 `dropped_count`를 해당 `(reason, since, until)` 구간의 총계로 해석해야 합니다. 드롭 탐지 시점에 특정 이벤트 타입을 복원할 수 없는 경우 OTel 관례에 따라 `event_type = "unknown"`을 사용합니다.
 

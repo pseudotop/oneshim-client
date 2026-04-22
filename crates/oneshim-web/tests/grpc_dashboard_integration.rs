@@ -1324,9 +1324,13 @@ mod subscribe_events_tests {
             "DroppedEventsSignal with reason=channel_lag must be emitted after broadcast overflow",
         );
         assert_eq!(sig.reason, "channel_lag");
+        // N-per-Lagged: one RecvError::Lagged(n) contributes n to dropped_count.
+        // With broadcast capacity=4 and 64 sends, the first Lagged fires with
+        // n ≥ 4 in the worst case, so >= 2 is a conservative flake-safe bound
+        // that proves N-per-Lagged semantics (vs the old 1-per-Lagged MVP).
         assert!(
-            sig.dropped_count >= 1,
-            "dropped_count must be ≥ 1, got {}",
+            sig.dropped_count >= 2,
+            "dropped_count must be ≥ 2 under N-per-Lagged, got {}",
             sig.dropped_count
         );
         assert!(

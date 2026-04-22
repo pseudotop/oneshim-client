@@ -580,7 +580,7 @@ message SubscribeEventsRequest {
   | `reason`       | Trigger                                              | `by_type[].event_type` | Notes                                                                 |
   | -------------- | ---------------------------------------------------- | ---------------------- | --------------------------------------------------------------------- |
   | `rate_limit`   | Server-side rate limiter rejected a Frame/Idle event | `frame` or `idle`      | Per-event-type breakdown; accurate                                    |
-  | `channel_lag`  | Broadcast channel overflow (`Lagged(n)`)             | `unknown`              | Event type unknown at detection site; 1 drop recorded per Lagged event (PR-B3 MVP; N-per-Lagged planned) |
+  | `channel_lag`  | Broadcast channel overflow (`Lagged(n)`)             | `unknown`              | Event type unknown at detection site; `n` drops recorded per `Lagged(n)` (accurate missed-event count) |
 
   Throttle: each reason emits at most once per second. Subscribers should
   treat `dropped_count` as the total for that `(reason, since, until)` window.
