@@ -57,6 +57,17 @@ pub enum AuthType {
     JwtAndMtls,
 }
 
+impl AuthType {
+    /// Stable string label used in metrics + audit `auth_type` fields.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AuthType::Jwt => "jwt",
+            AuthType::Mtls => "mtls",
+            AuthType::JwtAndMtls => "jwt+mtls",
+        }
+    }
+}
+
 /// Wraps a TLS stream + PeerInfo; implements Connected so tonic's
 /// ConnectInfoLayer exposes PeerInfo in every request's extensions.
 ///

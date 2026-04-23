@@ -3,6 +3,7 @@
 
 pub mod accept_loop;
 pub mod audit_bridge;
+pub(crate) mod audit_layer;
 pub mod auth_layer;
 pub mod cert_resolver;
 pub mod conn_info;
