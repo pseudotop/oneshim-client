@@ -90,6 +90,11 @@ sudo ufw reload
 
 간단하고 자동 HTTPS:
 
+> ⚠️ **보안 주의**: `tls_insecure_skip_verify`는 Caddy와 에이전트 사이의 인증서 검증을 비활성화합니다.
+> Caddy와 에이전트가 같은 호스트에 있는 경우(예: localhost 사이드카)에만 안전합니다.
+> 크로스 호스트 배포의 경우 이 플래그를 제거하고 에이전트의 인증서를 Caddy에 제공하세요
+> (`server.crt`를 Caddy 트러스트 스토어에 복사하거나 `transport http { tls_trusted_ca_certs server.crt }` 사용).
+
 ```caddy
 oneshim.example.com:443 {
     reverse_proxy localhost:10092 {
@@ -103,7 +108,8 @@ oneshim.example.com:443 {
 
 ### Nginx(스트림 모듈)
 
-TCP 패스스루(L7 검사 없음):
+> ⚠️ **주의**: Nginx `stream`은 TCP 패스스루입니다 — L7 기능(HTTP 수준 라우팅,
+> 인증 헤더, 리라이트 규칙)이 동작하지 않습니다. 에이전트가 TLS + gRPC를 직접 종료합니다.
 
 ```nginx
 stream {
@@ -121,10 +127,18 @@ stream {
 
 ### Cloudflare Tunnel
 
-공개 IP가 필요하지 않습니다. Cloudflare가 인증 및 암호화를 처리합니다:
+공개 IP가 필요하지 않습니다. Cloudflare가 인증 및 암호화를 처리합니다.
 
-```bash
-cloudflared tunnel --url https://localhost:10092 --name oneshim-agent
+영구 터널 설정(`~/.cloudflared/config.yml`):
+```yaml
+tunnel: <your-tunnel-uuid>
+credentials-file: /path/to/<uuid>.json
+ingress:
+  - hostname: oneshim.example.com
+    service: https://localhost:10092
+    originRequest:
+      noTLSVerify: true  # 프로덕션에서는 적절한 인증서와 함께 이 옵션 제거
+  - service: http_status:404
 ```
 
 그런 다음 DNS CNAME을 만들거나 Cloudflare의 라우팅 규칙을 사용하여 `oneshim.example.com`을 터널로 지정합니다.

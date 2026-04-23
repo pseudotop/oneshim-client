@@ -35,6 +35,8 @@ pub enum JwtVerifyError {
     Decode(String),
     #[error("iat too old: {iat_age_secs}s > {MAX_IAT_AGE_SECS}s")]
     IatTooOld { iat_age_secs: u64 },
+    #[error("iat in the future: drift {drift_secs}s > leeway {CLOCK_SKEW_LEEWAY_SECS}s")]
+    IatInFuture { drift_secs: u64 },
     #[error("system time before epoch (check system clock)")]
     SystemTimeBeforeEpoch,
     #[error("public key parse failed: {0}")]
@@ -99,6 +101,15 @@ impl JwtVerifier {
         if data.claims.iat + MAX_IAT_AGE_SECS < now {
             return Err(JwtVerifyError::IatTooOld {
                 iat_age_secs: now.saturating_sub(data.claims.iat),
+            });
+        }
+        // Custom check: reject iat in the future beyond clock-skew leeway.
+        // jsonwebtoken does not enforce forward-skew on iat; this closes the
+        // clock-skew attack window (attacker minting tokens with a future iat
+        // to extend the effective token lifetime silently).
+        if data.claims.iat > now + CLOCK_SKEW_LEEWAY_SECS {
+            return Err(JwtVerifyError::IatInFuture {
+                drift_secs: data.claims.iat.saturating_sub(now),
             });
         }
         Ok(data.claims)
@@ -282,18 +293,18 @@ MwIDAQAB
     fn verify_rejects_future_iat_beyond_leeway() {
         let (priv_pem, pub_pem) = rsa_keypair_pem();
         let enc = EncodingKey::from_rsa_pem(&priv_pem).unwrap();
-        // iat in the future beyond 60s leeway — jsonwebtoken validate_nbf doesn't cover iat, so
-        // this test verifies that the total validation chain still passes through (our impl does
-        // NOT actively reject future iat; the spec's "clock skew attack rejected if > 5min drift"
-        // is actually about nbf. Document this.
-        // This test therefore asserts the CURRENT behavior: future-iat tokens are ACCEPTED unless
-        // jsonwebtoken's validator rejects them. We document but do not enforce future-iat rejection.
+        // iat = now + 300s (5 min future) with 60s leeway → drift 300 > 60 → must reject.
+        // This closes the clock-skew attack window: an attacker cannot mint tokens with a
+        // future iat to silently extend effective token lifetime.
         let claims = base_claims(now() + 300, now() + 3600);
         let token = encode(&Header::new(Algorithm::RS256), &claims, &enc).unwrap();
         let verifier =
             JwtVerifier::new(JwtAlgorithm::Rs256, &pub_pem, "central-auth", "agent-1").unwrap();
-        // Accepted under the current impl — document in spec that future-iat is benign.
-        assert!(verifier.verify(&token).is_ok());
+        let err = verifier.verify(&token).unwrap_err();
+        match err {
+            JwtVerifyError::IatInFuture { .. } => {}
+            other => panic!("expected IatInFuture, got {other:?}"),
+        }
     }
 
     #[test]

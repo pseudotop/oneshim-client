@@ -94,7 +94,7 @@ where
             let peer = match peer {
                 Some(p) => p,
                 None => {
-                    return Ok(status_response(Status::internal("missing peer info")));
+                    return Ok(status_response(Status::unauthenticated("unauthenticated")));
                 }
             };
 
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_peer_info_returns_internal_error() {
+    async fn missing_peer_info_returns_unauthenticated() {
         let layer = AuthLayer {
             auth_mode: AuthMode::Jwt,
             jwt_verifier: None,
@@ -405,12 +405,12 @@ mod tests {
         // Request with NO PeerInfo extension inserted.
         let req = Request::builder().uri("/").body(vec![]).unwrap();
         let resp: Response<Vec<u8>> = svc.ready().await.unwrap().call(req).await.unwrap();
-        // tonic grpc-status "13" = INTERNAL
+        // tonic grpc-status "16" = UNAUTHENTICATED (uniform auth error path, no oracle via status code)
         let grpc_status = resp
             .headers()
             .get("grpc-status")
             .map(|v| v.to_str().unwrap().to_string());
-        assert_eq!(grpc_status.as_deref(), Some("13"), "INTERNAL = 13");
+        assert_eq!(grpc_status.as_deref(), Some("16"), "UNAUTHENTICATED = 16");
     }
 
     #[tokio::test]

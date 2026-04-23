@@ -90,6 +90,11 @@ External gRPC traffic is typically exposed through a reverse proxy for domain ro
 
 Simple and automatic HTTPS:
 
+> ⚠️ **Security note**: `tls_insecure_skip_verify` disables certificate verification between
+> Caddy and the agent. Safe only when Caddy and the agent are on the same host (e.g., Caddy
+> as a sidecar on localhost). For cross-host deployments, remove the flag and provide Caddy
+> with the agent's cert (copy `server.crt` to Caddy's trust store OR use `transport http { tls_trusted_ca_certs server.crt }`).
+
 ```caddy
 oneshim.example.com:443 {
     reverse_proxy localhost:10092 {
@@ -103,7 +108,8 @@ oneshim.example.com:443 {
 
 ### Nginx (Stream Module)
 
-TCP pass-through (no L7 inspection):
+> ⚠️ **Note**: Nginx `stream` is TCP pass-through — no L7 features (HTTP-level routing,
+> auth headers, rewrite rules) work. The agent terminates TLS + gRPC directly.
 
 ```nginx
 stream {
@@ -121,10 +127,18 @@ stream {
 
 ### Cloudflare Tunnel
 
-No public IP required; Cloudflare handles authentication and encryption:
+No public IP required; Cloudflare handles authentication and encryption.
 
-```bash
-cloudflared tunnel --url https://localhost:10092 --name oneshim-agent
+Persistent tunnel config (`~/.cloudflared/config.yml`):
+```yaml
+tunnel: <your-tunnel-uuid>
+credentials-file: /path/to/<uuid>.json
+ingress:
+  - hostname: oneshim.example.com
+    service: https://localhost:10092
+    originRequest:
+      noTLSVerify: true  # remove for production with proper certs
+  - service: http_status:404
 ```
 
 Then create a DNS CNAME or use Cloudflare's routing rules to point `oneshim.example.com` to the tunnel.
