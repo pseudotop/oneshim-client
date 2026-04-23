@@ -966,7 +966,10 @@ async fn external_grpc_request_id_header_returned() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Lower-priority tests (10 — marked #[ignore], run with `-- --ignored`)
+// Advanced scenario tests — JWT+mTLS matrix + hot-reload + IP ban e2e + etc.
+// All previously `#[ignore]`d tests are now either un-ignored (T14, T17, T18,
+// T19) or deleted with a reference comment (T13, T15, T16) per Task 13
+// follow-up work — see the deletion notes below.
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Test 11: JWT+mTLS — JWT-only (no client cert) → TLS handshake fails.
