@@ -23,6 +23,11 @@ use super::audit_bridge::AuditBridge;
 use super::conn_info::{AuthContext, PeerInfo};
 use super::metrics::ExternalMetrics;
 
+// counting_stream lives one level up (crate::grpc::counting_stream) so that
+// the loopback subscribe_metrics / subscribe_events handlers can also wrap
+// their outbound streams without depending on the feature-gated `external`
+// submodule.
+
 #[derive(Clone)]
 pub(crate) struct AuditLayer {
     pub bridge: Arc<AuditBridge>,

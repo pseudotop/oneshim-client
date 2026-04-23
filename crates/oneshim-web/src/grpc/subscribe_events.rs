@@ -84,6 +84,14 @@ pub async fn subscribe_events(
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .map(String::from);
+    // D13 Task 13: extract the CountingStream counter that `AuditLayer` inserted
+    // into request extensions. For callers not wrapped in AuditLayer (loopback,
+    // unit tests), fall back to a throwaway counter.
+    let msg_counter: std::sync::Arc<std::sync::atomic::AtomicU64> = req
+        .extensions()
+        .get::<std::sync::Arc<std::sync::atomic::AtomicU64>>()
+        .cloned()
+        .unwrap_or_else(|| std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)));
     let SubscribeEventsRequest {
         event_types,
         respect_server_hints,
@@ -255,7 +263,11 @@ pub async fn subscribe_events(
         }
     };
 
-    Ok(Response::new(Box::pin(stream) as SubscribeEventsStream))
+    // Wrap the outbound stream in CountingStream so AuditLayer records the
+    // terminal `response_message_count` correctly. For non-Audit-wrapped
+    // call paths, `msg_counter` is a throwaway.
+    let counted = super::counting_stream::CountingStream::new(Box::pin(stream), msg_counter);
+    Ok(Response::new(Box::pin(counted) as SubscribeEventsStream))
 }
 
 /// Build the proto AiRuntimeStatusEvent, applying PII sanitisation when configured.

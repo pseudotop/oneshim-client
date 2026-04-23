@@ -9,6 +9,7 @@
 //! clippy's `duplicated_attributes` lint).
 
 mod auth_gate;
+pub(crate) mod counting_stream;
 mod drop_accumulator;
 mod hint_emitter;
 mod load_policy;

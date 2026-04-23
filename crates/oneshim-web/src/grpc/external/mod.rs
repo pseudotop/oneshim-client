@@ -7,7 +7,6 @@ pub(crate) mod audit_layer;
 pub mod auth_layer;
 pub mod cert_resolver;
 pub mod conn_info;
-pub(crate) mod counting_stream;
 pub mod ip_ban;
 pub mod jwt_verifier;
 pub mod metrics;
