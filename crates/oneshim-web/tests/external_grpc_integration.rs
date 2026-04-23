@@ -761,12 +761,18 @@ async fn external_grpc_short_lived_cert_rejection() {
     assert!(result.is_err(), "72h cert should be rejected (cap is 48h)");
     let status = result.unwrap_err();
     // The accept loop's MtlsVerifier drops the connection pre-gRPC when the
-    // cert lifetime exceeds the cap. The client sees a transport-level error
-    // (Connection reset → Code::Unknown, or Unauthenticated from the auth layer).
+    // cert lifetime exceeds the cap. The client sees a transport-level error.
+    // Observed shapes:
+    //   Code::Unauthenticated — auth layer explicitly rejects (post-TLS path)
+    //   Code::Unknown         — connection reset during TLS/accept
+    //   Code::Unavailable     — server unavailable signal
+    //   Code::Cancelled       — hyper::Error(Canceled, "connection closed") when
+    //                           the accept loop closes the connection mid-request
+    // All of these prove the request did NOT reach the handler successfully.
     assert!(
         matches!(
             status.code(),
-            Code::Unauthenticated | Code::Unavailable | Code::Unknown
+            Code::Unauthenticated | Code::Unavailable | Code::Unknown | Code::Cancelled
         ),
         "expected transport/auth rejection for over-cap cert, got {:?}",
         status
