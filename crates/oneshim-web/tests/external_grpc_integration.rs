@@ -899,24 +899,230 @@ async fn external_grpc_request_id_header_returned() {
 // Lower-priority tests (10 — marked #[ignore], run with `-- --ignored`)
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// Test 11: JWT+mTLS — JWT-only (no client cert) → TLS fails (requires cert).
-/// TODO: Implement — server requires client cert when auth_mode includes mTLS.
-#[ignore = "TODO: implement mTLS + no-client-cert rejection scenario"]
+/// Test 11: JWT+mTLS — JWT-only (no client cert) → TLS handshake fails.
+///
+/// `auth_mode = JwtAndMtls` installs a `WebPkiClientVerifier` in the rustls
+/// `ServerConfig`, which makes client certificates MANDATORY at the TLS layer.
+/// A client that presents no client identity gets a rustls handshake error
+/// before any gRPC frame is exchanged.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_jwt_plus_mtls_jwt_only() {
-    // JWT+mTLS mode — rustls ServerConfig with WebPkiClientVerifier should
-    // reject connections with no client cert at TLS level.
-    unimplemented!("TODO: verify TLS-level rejection when client cert absent in jwt+mtls mode");
+    let jwt_kp = test_jwt_keypair();
+    let ca = test_ca_and_client_cert(24);
+
+    // Build a JWT+mTLS server (CA_A as trusted CA for client certs).
+    let (cert_path, key_path) = test_cert_pair();
+    let certified_key = load_certified_key(&cert_path, &key_path).expect("load cert");
+    let cert_resolver = Arc::new(HotReloadCertResolver::new(certified_key));
+    let (event_tx, _) = tokio::sync::broadcast::channel(16);
+    let pub_key_bytes = std::fs::read(&jwt_kp.pub_pem_path).expect("read pub");
+    let jwt_verifier = Arc::new(
+        JwtVerifier::new(
+            JwtAlgorithm::Es256,
+            &pub_key_bytes,
+            "test-issuer",
+            "test-audience",
+        )
+        .expect("verifier"),
+    );
+    let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("mtls verifier"));
+    let cfg = ExternalGrpcSpawnConfig {
+        bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+        config: ExternalGrpcConfig {
+            enabled: true,
+            auth_mode: Some(AuthMode::JwtAndMtls),
+            mtls_ca_path: Some(ca.ca_pem_path.clone()),
+            max_connections: 64,
+            max_concurrent_streams: 16,
+            ..Default::default()
+        },
+        storage: in_memory_storage(),
+        system_monitor: MockSystemMonitor::new(20.0, 2048, 8192),
+        event_tx,
+        audit_port: Arc::new(NoopAudit) as Arc<dyn AuditLogPort>,
+        cert_resolver,
+        jwt_verifier: Some(jwt_verifier),
+        mtls_verifier: Some(mtls_verifier),
+        ip_ban: Arc::new(IpBan::new()),
+        metrics: Arc::new(ExternalMetrics::new()),
+    };
+    let (handle, port) = spawn_server(cfg).await;
+
+    // Mint a valid JWT (not used if TLS fails first, but present for completeness).
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-1",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let server_cert_pem = server_cert_pem();
+    let ca_cert = tonic::transport::Certificate::from_pem(&server_cert_pem);
+
+    // Build a TLS channel WITHOUT a client identity — no client cert presented.
+    // The rustls WebPkiClientVerifier requires a client cert, so the TLS
+    // handshake must fail.
+    let tls = tonic::transport::ClientTlsConfig::new()
+        .domain_name("localhost")
+        .ca_certificate(ca_cert);
+    let connect_result =
+        tonic::transport::Endpoint::from_shared(format!("https://127.0.0.1:{port}"))
+            .expect("valid endpoint")
+            .tls_config(tls)
+            .expect("tls config")
+            .connect_timeout(Duration::from_secs(3))
+            .connect()
+            .await;
+
+    match connect_result {
+        Err(_) => {
+            // TLS handshake failed eagerly at connect time — expected.
+        }
+        Ok(channel) => {
+            // Channel was created lazily; TLS failure surfaces on first request.
+            let mut req = tonic::Request::new(GetAgentInfoRequest {});
+            req.metadata_mut().insert(
+                "authorization",
+                format!("Bearer {token}").parse().expect("valid header"),
+            );
+            let result = DashboardServiceClient::new(channel)
+                .get_agent_info(req)
+                .await;
+            assert!(
+                result.is_err(),
+                "no-client-cert TLS should be rejected by WebPkiClientVerifier; got Ok"
+            );
+            let status = result.unwrap_err();
+            // TLS rejection at handshake produces a transport-level error
+            // (Unknown, Unavailable, or Cancelled) — never Unimplemented (which
+            // would mean auth passed and the placeholder service ran).
+            assert_ne!(
+                status.code(),
+                tonic::Code::Unimplemented,
+                "WebPkiClientVerifier must reject before reaching service; \
+                 got Unimplemented which means TLS accepted the request: {:?}",
+                status
+            );
+        }
+    }
+
+    handle.abort();
+    let _ = handle.await;
 }
 
-/// Test 12: JWT+mTLS — invalid client cert (wrong CA) + valid JWT → mTLS layer rejects.
-/// TODO: Implement — uses a cert signed by a different CA than the one in mtls_ca_path.
-#[ignore = "TODO: implement wrong-CA client cert rejection"]
+/// Test 12: JWT+mTLS — client cert signed by wrong CA + valid JWT → TLS rejection.
+///
+/// The server trusts CA_A. The client presents a cert signed by CA_B (a
+/// completely independent CA). rustls's `WebPkiClientVerifier` validates the
+/// client cert chain against CA_A's root and fails at TLS handshake time because
+/// CA_B is not in the server's trust store.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_jwt_plus_mtls_cert_invalid_jwt_valid() {
-    // Build a client cert with a different CA (not trusted by server).
-    // The TLS or mTLS verifier should reject it before JWT check.
-    unimplemented!("TODO: cross-CA mTLS rejection test");
+    let jwt_kp = test_jwt_keypair();
+    // CA_A: trusted by server.
+    let ca_a = test_ca_and_client_cert(24);
+    // CA_B: an independent CA — its client cert is NOT trusted by the server.
+    let ca_b = test_ca_and_client_cert(24);
+
+    // Build a JWT+mTLS server that trusts CA_A only.
+    let (cert_path, key_path) = test_cert_pair();
+    let certified_key = load_certified_key(&cert_path, &key_path).expect("load cert");
+    let cert_resolver = Arc::new(HotReloadCertResolver::new(certified_key));
+    let (event_tx, _) = tokio::sync::broadcast::channel(16);
+    let pub_key_bytes = std::fs::read(&jwt_kp.pub_pem_path).expect("read pub");
+    let jwt_verifier = Arc::new(
+        JwtVerifier::new(
+            JwtAlgorithm::Es256,
+            &pub_key_bytes,
+            "test-issuer",
+            "test-audience",
+        )
+        .expect("verifier"),
+    );
+    let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("mtls verifier"));
+    let cfg = ExternalGrpcSpawnConfig {
+        bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+        config: ExternalGrpcConfig {
+            enabled: true,
+            auth_mode: Some(AuthMode::JwtAndMtls),
+            mtls_ca_path: Some(ca_a.ca_pem_path.clone()), // server trusts CA_A only
+            max_connections: 64,
+            max_concurrent_streams: 16,
+            ..Default::default()
+        },
+        storage: in_memory_storage(),
+        system_monitor: MockSystemMonitor::new(20.0, 2048, 8192),
+        event_tx,
+        audit_port: Arc::new(NoopAudit) as Arc<dyn AuditLogPort>,
+        cert_resolver,
+        jwt_verifier: Some(jwt_verifier),
+        mtls_verifier: Some(mtls_verifier),
+        ip_ban: Arc::new(IpBan::new()),
+        metrics: Arc::new(ExternalMetrics::new()),
+    };
+    let (handle, port) = spawn_server(cfg).await;
+
+    // Mint a valid JWT.
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-1",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let server_cert_pem = server_cert_pem();
+    let ca_cert = tonic::transport::Certificate::from_pem(&server_cert_pem);
+
+    // Client presents CA_B's client cert — not trusted by server (trusts CA_A).
+    let client_cert_pem = std::fs::read(&ca_b.client_cert_pem_path).expect("read CA_B client cert");
+    let client_key_pem = std::fs::read(&ca_b.client_key_pem_path).expect("read CA_B client key");
+    let identity = tonic::transport::Identity::from_pem(client_cert_pem, client_key_pem);
+
+    let tls = tonic::transport::ClientTlsConfig::new()
+        .domain_name("localhost")
+        .ca_certificate(ca_cert)
+        .identity(identity); // present CA_B-signed cert to CA_A-trusting server
+    let connect_result =
+        tonic::transport::Endpoint::from_shared(format!("https://127.0.0.1:{port}"))
+            .expect("valid endpoint")
+            .tls_config(tls)
+            .expect("tls config")
+            .connect_timeout(Duration::from_secs(3))
+            .connect()
+            .await;
+
+    match connect_result {
+        Err(_) => {
+            // TLS handshake failed eagerly at connect time — expected.
+        }
+        Ok(channel) => {
+            // Channel created lazily; TLS failure surfaces on first request.
+            let mut req = tonic::Request::new(GetAgentInfoRequest {});
+            req.metadata_mut().insert(
+                "authorization",
+                format!("Bearer {token}").parse().expect("valid header"),
+            );
+            let result = DashboardServiceClient::new(channel)
+                .get_agent_info(req)
+                .await;
+            assert!(
+                result.is_err(),
+                "wrong-CA client cert must be rejected by WebPkiClientVerifier; got Ok"
+            );
+            let status = result.unwrap_err();
+            // A CA-chain failure at TLS level never produces Unimplemented.
+            assert_ne!(
+                status.code(),
+                tonic::Code::Unimplemented,
+                "CA chain validation must reject before reaching service; \
+                 got Unimplemented which means TLS accepted the request: {:?}",
+                status
+            );
+        }
+    }
+
+    handle.abort();
+    let _ = handle.await;
 }
 
 /// Test 13: IPv6 /64 ban — ban from ::1 affects same /64 prefix.
@@ -990,12 +1196,9 @@ async fn external_grpc_shutdown_drains_streams() {
     unimplemented!("TODO: graceful shutdown drain test");
 }
 
-/// Test 20: Missing cert file → external server not spawned, loopback unaffected.
-/// TODO: Implement — tls_cert_path points to nonexistent file.
-#[ignore = "TODO: missing cert file → external server spawn failure test"]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn external_grpc_fails_fast_on_missing_cert() {
-    // tls_cert_path → nonexistent file → serve_external returns ServeExternalError::Tls.
-    // The loopback server should be unaffected (runs independently).
-    unimplemented!("TODO: missing cert file → ServeExternalError::Tls verification");
-}
+// Test 20 (external_grpc_fails_fast_on_missing_cert) is covered at unit level by
+// `tls_config::tests::load_fails_on_missing_cert`, which directly asserts that
+// `load_certified_key("/does/not/exist.pem", "/does/not/exist.key")` returns
+// `Err(TlsLoadError::Read { .. })`. An integration-test duplicate is not needed
+// because `serve_external` calls `load_certified_key` (via `build_server_config`)
+// early in startup — the unit test covers the identical code path.
