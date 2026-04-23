@@ -16,12 +16,12 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 /// Created when a connection is successfully handed to tonic; ensures that
 /// `active_conns` is decremented even if tonic drops the stream mid-flight
 /// without going through a normal shutdown path.
-pub struct ActiveConnGuard {
+pub(crate) struct ActiveConnGuard {
     counter: Arc<AtomicUsize>,
 }
 
 impl ActiveConnGuard {
-    pub fn new(counter: Arc<AtomicUsize>) -> Self {
+    pub(crate) fn new(counter: Arc<AtomicUsize>) -> Self {
         Self { counter }
     }
 }
@@ -62,7 +62,7 @@ pub enum AuthType {
 ///
 /// Optionally holds an `ActiveConnGuard` to decrement `active_conns` when
 /// the stream is dropped (RAII — no manual decrement needed on success path).
-pub struct PeerAwareStream<S> {
+pub(crate) struct PeerAwareStream<S> {
     inner: S,
     peer_info: PeerInfo,
     _active_conns_guard: Option<ActiveConnGuard>,
@@ -76,9 +76,8 @@ impl<S> PeerAwareStream<S> {
             _active_conns_guard: guard,
         }
     }
-    pub fn peer_info(&self) -> &PeerInfo {
-        &self.peer_info
-    }
+    // peer_info() getter omitted — tonic's ConnectInfoLayer reads PeerInfo via
+    // the `Connected` trait impl below; no direct accessor is needed.
 }
 
 impl<S: AsyncRead + Unpin> AsyncRead for PeerAwareStream<S> {

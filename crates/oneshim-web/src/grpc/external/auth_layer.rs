@@ -22,7 +22,7 @@ use super::metrics::ExternalMetrics;
 use super::mtls_verifier::MtlsVerifier;
 
 #[derive(Clone)]
-pub struct AuthLayer {
+pub(crate) struct AuthLayer {
     pub auth_mode: AuthMode,
     pub jwt_verifier: Option<Arc<JwtVerifier>>,
     pub mtls_verifier: Option<Arc<MtlsVerifier>>,
@@ -47,7 +47,7 @@ impl<S: Clone> Layer<S> for AuthLayer {
 }
 
 #[derive(Clone)]
-pub struct AuthService<S> {
+pub(crate) struct AuthService<S> {
     inner: S,
     auth_mode: AuthMode,
     jwt_verifier: Option<Arc<JwtVerifier>>,

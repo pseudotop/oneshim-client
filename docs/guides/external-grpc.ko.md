@@ -8,7 +8,9 @@
 
 ### 인증서 생성
 
-`generate-external-cert` 서브커맨드를 사용하여 TLS 및 JWT 서명 인증서를 생성합니다. 이 기능은 `external-grpc-tools` 기능 플래그가 필요합니다:
+> ⚠️ **Task 13 follow-up**: `generate-external-cert` CLI 서브커맨드는 아직 Tauri 커맨드로 배선되지 않았습니다. `generate_external_cert_assets()` 함수 자체는 존재하고 유닛 테스트됐지만 CLI entry point는 미구현입니다. **당분간은 openssl/rcgen으로 수동 생성하거나 빌드 트리에 짧은 Rust 바이너리를 만들어 함수를 호출하세요.** CLI 배선은 Task 13 follow-up PR에서 full `DashboardServiceImpl`과 함께 랜딩 예정.
+
+계획된 사용법 (배선 완료 후):
 
 ```bash
 cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert \
@@ -157,6 +159,13 @@ ingress:
 - [ ] **리버스 프록시 로깅이 활성화됩니다** 및 예상치 못한 패턴 모니터링(예: 포트 스캔, 무작위 인증 시도).
 
 ## 감사
+
+> ⚠️ **Task 13 follow-up — 부분 감사 추적**: 현재 `AuthLayer`는 인증된 모든 요청에 `AuditStatus::Started` 엔트리를, 인증 실패에 `AuditStatus::Failed` + `failure_reason`을 기록합니다. **RPC 핸들러 반환 후 `Completed` 엔트리는 기록되지 않습니다** — 현재 핸들러가 `Unimplemented` 플레이스홀더이므로 기록할 비즈니스-레벨 결과가 없습니다. Task 13이 full `DashboardServiceImpl` 배선과 완료 훅을 함께 landing 예정.
+>
+> Task 13 이전:
+> - `entries_by_status(AuditStatus::Completed, ...)` → 외부 gRPC 엔트리 미반환.
+> - `action_type_prefix("external_grpc", N)` → 요청 시작 + 실패만 조회됨.
+> - 성공 vs 인증 실패 구분은 JSON `details.result` 필드(`"ok"` vs `"auth_failed"`) 또는 `AuditStatus`(`Started` vs `Failed`)로 필터링.
 
 모든 외부 gRPC 요청은 다음 세부 정보로 에이전트의 로컬 감사 데이터베이스에 기록됩니다:
 

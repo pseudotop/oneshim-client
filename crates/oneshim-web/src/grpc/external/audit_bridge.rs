@@ -13,19 +13,19 @@ use super::conn_info::{AuthContext, AuthType};
 
 /// External gRPC audit detail (serialized into AuditEntry.details as JSON).
 #[derive(Debug, Serialize)]
-pub struct ExternalGrpcAuditDetails<'a> {
-    pub transport: &'static str, // always "external"
-    pub remote_addr: String,
-    pub auth_type: &'static str,
-    pub operation: &'a str,
-    pub result: &'static str,
-    pub request_size_bytes: Option<u64>,
-    pub response_size_bytes: Option<u64>,
-    pub failure_reason: Option<&'a str>,
-    pub jti: Option<&'a str>,
+pub(crate) struct ExternalGrpcAuditDetails<'a> {
+    pub(crate) transport: &'static str, // always "external"
+    pub(crate) remote_addr: String,
+    pub(crate) auth_type: &'static str,
+    pub(crate) operation: &'a str,
+    pub(crate) result: &'static str,
+    pub(crate) request_size_bytes: Option<u64>,
+    pub(crate) response_size_bytes: Option<u64>,
+    pub(crate) failure_reason: Option<&'a str>,
+    pub(crate) jti: Option<&'a str>,
 }
 
-pub struct AuditBridge {
+pub(crate) struct AuditBridge {
     port: Arc<dyn AuditLogPort>,
 }
 
