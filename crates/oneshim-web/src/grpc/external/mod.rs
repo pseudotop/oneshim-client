@@ -184,16 +184,18 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
     // The concurrency_limit_per_connection and timeout settings ARE applied.
     // max_concurrent_streams from config (default from ExternalGrpcConfig::default).
     //
-    // Layer ordering (tonic 0.14 / tower 0.5): each `.layer()` wraps the
-    // previously-built service — the LAST one added becomes the OUTERMOST
-    // (runs first on the request path). To get `auth → audit → handler`,
-    // `audit_layer` is added FIRST (innermost), `auth_layer` SECOND (outermost).
+    // Layer ordering (tonic 0.14 / tower 0.5): empirically, `Server::builder`
+    // applies layers FIFO from the request perspective — the FIRST `.layer()`
+    // call becomes the OUTERMOST and runs first on ingress. Verified at
+    // runtime via an AuditLayer debug print: with `auth` first and `audit`
+    // second, AuditLayer saw AuthContext=Some (auth had already run).
+    // Ordering below gives request flow: `auth → audit → handler`.
     let concurrency = cfg_arc.config.max_concurrent_streams;
     tonic::transport::Server::builder()
         .concurrency_limit_per_connection(concurrency)
         .timeout(Duration::from_secs(60))
-        .layer(audit_layer) // innermost — runs AFTER auth on request ingress
         .layer(auth_layer) // outermost — runs FIRST on request ingress
+        .layer(audit_layer) // innermost — runs AFTER auth
         .add_service(DashboardServiceServer::new(service_impl).max_decoding_message_size(1_048_576))
         .serve_with_incoming_shutdown(stream, shutdown_signal)
         .await
