@@ -8,13 +8,8 @@ External gRPC binding lets the desktop agent accept connections from outside the
 
 ### Certificate Generation
 
-> ⚠️ **Task 13 follow-up**: the `generate-external-cert` CLI subcommand is not yet wired
-> as a Tauri command. The underlying `generate_external_cert_assets()` function exists and
-> is unit-tested, but there is no CLI entry point yet. **For now, generate certs manually
-> using openssl/rcgen, OR call the function from a short Rust binary in your build tree.**
-> CLI wiring lands in the Task 13 follow-up PR alongside the full `DashboardServiceImpl`.
-
-Planned usage (once wired):
+Use the `generate-external-cert` CLI (argv-dispatched from the Tauri main binary)
+to produce a complete TLS + JWT key bundle:
 
 ```bash
 cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert \
@@ -164,18 +159,17 @@ Use this checklist to validate your external gRPC deployment:
 
 ## Auditing
 
-> ⚠️ **Task 13 follow-up — partial audit trail**: the current `AuthLayer` records an audit
-> entry with `AuditStatus::Started` on every authenticated request AND on every auth failure
-> (`AuditStatus::Failed` + `failure_reason`). **There is NO corresponding `Completed` entry
-> after the RPC handler returns** — the handler is currently the `Unimplemented` placeholder,
-> so no business-level result exists to record. Task 13 wires the full `DashboardServiceImpl`
-> and a completion hook.
->
-> Until Task 13 lands:
-> - `entries_by_status(AuditStatus::Completed, ...)` will NOT show external-gRPC entries.
-> - Query by `action_type_prefix("external_grpc", N)` shows request STARTS + FAILURES only.
-> - Distinguish success vs auth-failure by filtering the JSON `details.result` field
->   (`"ok"` vs `"auth_failed"`) or by `AuditStatus` (`Started` vs `Failed`).
+Every external gRPC request produces a Started + Completed pair in the agent's
+local audit database. `AuthLayer` writes Started on auth success and Failed on
+rejection (per-reason: `invalid_jwt`, `missing_token`, `fingerprint_mismatch`,
+`missing_cert`); `AuditLayer` (inner of `AuthLayer`) writes Completed after the
+handler returns. Query surfaces:
+
+- `entries_by_status(AuditStatus::Completed, N)` — successful RPCs.
+- `entries_by_status(AuditStatus::Failed, N)` — auth rejections.
+- `entries_by_action_prefix("external_grpc_", N)` — all external rows
+  (`external_grpc_started`, `external_grpc_completed`, `external_grpc_failed`,
+  `external_grpc_denied`, `external_grpc_timeout`).
 
 All external gRPC requests are logged to the agent's local audit database with the following details:
 
@@ -227,7 +221,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 3. Check certificate expiry: `openssl x509 -enddate -noout -in server.crt`.
 
 **Fix:**
-- Regenerate the cert pair: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0` (see the [Task 13 follow-up note](#certificate-generation) above — CLI is not yet wired; generate manually for now).
+- Regenerate the cert pair: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0`
 - Update the config paths and restart the agent.
 - For development with self-signed certs, clients must allow `tls_insecure_skip_verify` (equivalent to curl `-k`).
 
@@ -269,7 +263,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 **Diagnosis:**
 The agent checks certificate expiry at startup and logs warnings if the cert expires within 7 days.
 
-**Fix** (once the CLI ships — see [Task 13 follow-up note](#certificate-generation) above):
+**Fix:**
 - Regenerate the cert immediately:
   ```bash
   cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert \

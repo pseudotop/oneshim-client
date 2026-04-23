@@ -8,9 +8,8 @@
 
 ### 인증서 생성
 
-> ⚠️ **Task 13 follow-up**: `generate-external-cert` CLI 서브커맨드는 아직 Tauri 커맨드로 배선되지 않았습니다. `generate_external_cert_assets()` 함수 자체는 존재하고 유닛 테스트됐지만 CLI entry point는 미구현입니다. **당분간은 openssl/rcgen으로 수동 생성하거나 빌드 트리에 짧은 Rust 바이너리를 만들어 함수를 호출하세요.** CLI 배선은 Task 13 follow-up PR에서 full `DashboardServiceImpl`과 함께 랜딩 예정.
-
-계획된 사용법 (배선 완료 후):
+`generate-external-cert` CLI (Tauri 메인 바이너리에서 argv 기반 dispatch)를 사용하여
+TLS + JWT 키 번들을 일괄 생성합니다:
 
 ```bash
 cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert \
@@ -160,12 +159,17 @@ ingress:
 
 ## 감사
 
-> ⚠️ **Task 13 follow-up — 부분 감사 추적**: 현재 `AuthLayer`는 인증된 모든 요청에 `AuditStatus::Started` 엔트리를, 인증 실패에 `AuditStatus::Failed` + `failure_reason`을 기록합니다. **RPC 핸들러 반환 후 `Completed` 엔트리는 기록되지 않습니다** — 현재 핸들러가 `Unimplemented` 플레이스홀더이므로 기록할 비즈니스-레벨 결과가 없습니다. Task 13이 full `DashboardServiceImpl` 배선과 완료 훅을 함께 landing 예정.
->
-> Task 13 이전:
-> - `entries_by_status(AuditStatus::Completed, ...)` → 외부 gRPC 엔트리 미반환.
-> - `action_type_prefix("external_grpc", N)` → 요청 시작 + 실패만 조회됨.
-> - 성공 vs 인증 실패 구분은 JSON `details.result` 필드(`"ok"` vs `"auth_failed"`) 또는 `AuditStatus`(`Started` vs `Failed`)로 필터링.
+모든 외부 gRPC 요청은 에이전트의 로컬 감사 DB에 Started + Completed 페어로 기록됩니다.
+인증 성공 시 `AuthLayer`가 Started를, 인증 거부 시 Failed를 기록합니다 (사유별 —
+`invalid_jwt`, `missing_token`, `fingerprint_mismatch`, `missing_cert`).
+`AuditLayer` (`AuthLayer`의 안쪽 레이어)는 핸들러 반환 후 Completed를 기록합니다.
+쿼리 표면:
+
+- `entries_by_status(AuditStatus::Completed, N)` — 성공한 RPC.
+- `entries_by_status(AuditStatus::Failed, N)` — 인증 거부.
+- `entries_by_action_prefix("external_grpc_", N)` — 모든 외부 행
+  (`external_grpc_started`, `external_grpc_completed`, `external_grpc_failed`,
+  `external_grpc_denied`, `external_grpc_timeout`).
 
 모든 외부 gRPC 요청은 다음 세부 정보로 에이전트의 로컬 감사 데이터베이스에 기록됩니다:
 
@@ -217,7 +221,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 3. 인증서 만료 확인: `openssl x509 -enddate -noout -in server.crt`.
 
 **해결:**
-- 인증서 쌍 재생성: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0` (위 [Task 13 follow-up 참고사항](#인증서-생성) 참조 — CLI 미배선, 당분간 수동 생성).
+- 인증서 쌍 재생성: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0`
 - 설정 경로를 업데이트하고 에이전트를 다시 시작합니다.
 - 개발 중 자체 서명 인증서의 경우 클라이언트는 `tls_insecure_skip_verify`를 허용해야 합니다(curl `-k`와 동등).
 
@@ -259,7 +263,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 **진단:**
 에이전트는 시작 시 인증서 만료를 확인하고 인증서가 7일 이내에 만료되면 경고를 기록합니다.
 
-**해결** (CLI 배선 완료 후 — 위 [Task 13 follow-up 참고사항](#인증서-생성) 참조):
+**해결:**
 - 인증서를 즉시 재생성합니다:
   ```bash
   cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert \

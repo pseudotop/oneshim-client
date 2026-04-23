@@ -23,6 +23,11 @@ pub(crate) struct ExternalGrpcAuditDetails<'a> {
     pub(crate) response_size_bytes: Option<u64>,
     pub(crate) failure_reason: Option<&'a str>,
     pub(crate) jti: Option<&'a str>,
+    /// Count of stream messages yielded by the handler (streaming RPCs only).
+    /// `None` for unary RPCs + Started/Failed (AuthLayer) paths. Populated by
+    /// `CountingStream` via request extensions (spec §2.4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) response_message_count: Option<u64>,
 }
 
 pub(crate) struct AuditBridge {
@@ -66,6 +71,7 @@ impl AuditBridge {
             response_size_bytes: response_size,
             failure_reason,
             jti: ctx.jti.as_deref(),
+            response_message_count: None,
         };
         let details_json =
             serde_json::to_string(&details).unwrap_or_else(|e| format!("{{\"err\":\"{e}\"}}"));
@@ -89,6 +95,71 @@ impl AuditBridge {
             .await;
         // Also emit a plain log_event so that the AuditLogger's action_type-prefix
         // query surface returns results for callers using `entries_by_action_prefix`.
+        self.port
+            .log_event(action_type, &ctx.client_id, &details_json)
+            .await;
+        ctx.command_id.clone()
+    }
+
+    /// Record a completion audit entry. Complements `record(Started/Failed)`.
+    /// Status mapping per Task 13 spec §2.2:
+    /// - Ok → `AuditStatus::Completed`
+    /// - PermissionDenied → `AuditStatus::Denied`
+    /// - Cancelled/DeadlineExceeded → `AuditStatus::Timeout`
+    /// - Other error → `AuditStatus::Failed` (+ failure_reason = status message)
+    /// - Panic → `AuditStatus::Failed` (+ failure_reason = "handler_panic")
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_completion(
+        &self,
+        ctx: &AuthContext,
+        remote_addr: String,
+        operation: &str,
+        status: AuditStatus,
+        duration: Duration,
+        response_message_count: Option<u64>,
+        failure_reason: Option<&str>,
+    ) -> String {
+        let result = match status {
+            AuditStatus::Completed => "ok",
+            AuditStatus::Denied => "denied",
+            AuditStatus::Timeout => "timeout",
+            AuditStatus::Failed => "error",
+            AuditStatus::Started => "ok", // not expected here but kept exhaustive
+        };
+        let details = ExternalGrpcAuditDetails {
+            transport: "external",
+            remote_addr,
+            auth_type: match ctx.auth_type {
+                AuthType::Jwt => "jwt",
+                AuthType::Mtls => "mtls",
+                AuthType::JwtAndMtls => "jwt+mtls",
+            },
+            operation,
+            result,
+            request_size_bytes: None,
+            response_size_bytes: None,
+            failure_reason,
+            jti: ctx.jti.as_deref(),
+            response_message_count,
+        };
+        let details_json =
+            serde_json::to_string(&details).unwrap_or_else(|e| format!("{{\"err\":\"{e}\"}}"));
+        let action_type = match status {
+            AuditStatus::Completed => "external_grpc_completed",
+            AuditStatus::Failed => "external_grpc_failed",
+            AuditStatus::Denied => "external_grpc_denied",
+            AuditStatus::Timeout => "external_grpc_timeout",
+            AuditStatus::Started => "external_grpc_started",
+        };
+        self.port
+            .log_complete_with_time(
+                AuditLevel::Full,
+                &ctx.command_id,
+                &ctx.client_id,
+                &details_json,
+                duration.as_millis() as u64,
+            )
+            .await;
         self.port
             .log_event(action_type, &ctx.client_id, &details_json)
             .await;
@@ -289,5 +360,121 @@ mod tests {
             .await;
         let entries = mock.entries.lock().unwrap();
         assert_eq!(entries[0].command_id, cid);
+    }
+
+    // ── record_completion status-mapping tests (Task 13 §2.2) ────────────
+
+    #[tokio::test]
+    async fn record_completion_maps_completed_to_ok() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        bridge
+            .record_completion(
+                &ctx,
+                "127.0.0.1:5000".into(),
+                "/svc/op",
+                AuditStatus::Completed,
+                Duration::from_millis(12),
+                Some(5),
+                None,
+            )
+            .await;
+        let entries = mock.entries.lock().unwrap();
+        assert_eq!(entries.len(), 1);
+        let d: serde_json::Value =
+            serde_json::from_str(entries[0].details.as_ref().unwrap()).unwrap();
+        assert_eq!(d["result"], "ok");
+        assert_eq!(d["response_message_count"], 5);
+    }
+
+    #[tokio::test]
+    async fn record_completion_maps_denied() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        bridge
+            .record_completion(
+                &ctx,
+                "127.0.0.1:5000".into(),
+                "/svc/op",
+                AuditStatus::Denied,
+                Duration::from_millis(3),
+                None,
+                Some("not authorized"),
+            )
+            .await;
+        let entries = mock.entries.lock().unwrap();
+        let d: serde_json::Value =
+            serde_json::from_str(entries[0].details.as_ref().unwrap()).unwrap();
+        assert_eq!(d["result"], "denied");
+        assert_eq!(d["failure_reason"], "not authorized");
+    }
+
+    #[tokio::test]
+    async fn record_completion_maps_timeout() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        bridge
+            .record_completion(
+                &ctx,
+                "127.0.0.1:5000".into(),
+                "/svc/op",
+                AuditStatus::Timeout,
+                Duration::from_millis(60_000),
+                None,
+                Some("deadline_exceeded"),
+            )
+            .await;
+        let entries = mock.entries.lock().unwrap();
+        let d: serde_json::Value =
+            serde_json::from_str(entries[0].details.as_ref().unwrap()).unwrap();
+        assert_eq!(d["result"], "timeout");
+    }
+
+    #[tokio::test]
+    async fn record_completion_maps_failed() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        bridge
+            .record_completion(
+                &ctx,
+                "127.0.0.1:5000".into(),
+                "/svc/op",
+                AuditStatus::Failed,
+                Duration::from_millis(15),
+                None,
+                Some("internal"),
+            )
+            .await;
+        let entries = mock.entries.lock().unwrap();
+        let d: serde_json::Value =
+            serde_json::from_str(entries[0].details.as_ref().unwrap()).unwrap();
+        assert_eq!(d["result"], "error");
+    }
+
+    #[tokio::test]
+    async fn record_completion_count_absent_when_none() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        bridge
+            .record_completion(
+                &ctx,
+                "127.0.0.1:5000".into(),
+                "/svc/op",
+                AuditStatus::Completed,
+                Duration::from_millis(1),
+                None,
+                None,
+            )
+            .await;
+        let entries = mock.entries.lock().unwrap();
+        let d: serde_json::Value =
+            serde_json::from_str(entries[0].details.as_ref().unwrap()).unwrap();
+        // skip_serializing_if None → absent key
+        assert!(d.get("response_message_count").is_none());
     }
 }

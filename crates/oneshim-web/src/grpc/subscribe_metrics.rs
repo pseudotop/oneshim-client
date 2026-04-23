@@ -91,6 +91,15 @@ pub async fn subscribe_metrics(
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .map(String::from);
+    // D13 Task 13: extract the CountingStream counter that `AuditLayer` inserted
+    // into request extensions. For callers not wrapped in AuditLayer (loopback,
+    // unit tests), fall back to a throwaway counter so the wrap below has a
+    // consistent return type.
+    let msg_counter: std::sync::Arc<std::sync::atomic::AtomicU64> = req
+        .extensions()
+        .get::<std::sync::Arc<std::sync::atomic::AtomicU64>>()
+        .cloned()
+        .unwrap_or_else(|| std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)));
     let SubscribeMetricsRequest {
         interval_secs,
         respect_server_hints,
@@ -298,5 +307,9 @@ pub async fn subscribe_metrics(
         }
     };
 
-    Ok(Response::new(Box::pin(out)))
+    // Wrap the outbound stream in CountingStream so AuditLayer records the
+    // terminal `response_message_count` correctly. For non-Audit-wrapped
+    // call paths (loopback / unit tests), `msg_counter` is a throwaway.
+    let counted = super::counting_stream::CountingStream::new(Box::pin(out), msg_counter);
+    Ok(Response::new(Box::pin(counted)))
 }

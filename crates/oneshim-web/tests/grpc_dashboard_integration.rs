@@ -1760,21 +1760,32 @@ mod subscribe_events_tests {
             tokio::time::sleep(Duration::from_millis(40)).await;
         }
 
-        let resp = tokio::time::timeout(Duration::from_secs(3), stream.message())
-            .await
-            .expect("within 3s")
-            .expect("not errored")
-            .expect("not ended");
-
-        match resp.payload.expect("payload") {
-            EventsPayload::Event(de) => match de.payload.expect("de.payload") {
-                DashboardPayload::Idle(idle) => {
-                    assert!(idle.is_idle);
-                    assert_eq!(idle.idle_secs, 100);
+        // Skip any initial warmup Hint / Dropped frames — the handler emits a
+        // ServerLoadHint immediately at subscribe time (spec §4.1) before any
+        // realtime Event arrives. The test cares about the Idle event
+        // actually being delivered; iterate until we see an Event payload.
+        let idle = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let msg = stream
+                    .message()
+                    .await
+                    .expect("not errored")
+                    .expect("not ended");
+                match msg.payload.expect("payload") {
+                    EventsPayload::Event(de) => return de,
+                    _ => continue, // Hint / Dropped — keep waiting for the Event
                 }
-                other => panic!("expected IdleEvent, got {other:?}"),
-            },
-            other => panic!("expected Event payload, got {other:?}"),
+            }
+        })
+        .await
+        .expect("within 3s");
+
+        match idle.payload.expect("de.payload") {
+            DashboardPayload::Idle(idle) => {
+                assert!(idle.is_idle);
+                assert_eq!(idle.idle_secs, 100);
+            }
+            other => panic!("expected IdleEvent, got {other:?}"),
         }
 
         server_task.abort();

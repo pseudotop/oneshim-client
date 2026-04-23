@@ -254,33 +254,11 @@ where
                 command_id: Ulid::new().to_string(),
             };
 
-            // Record successful auth dispatch.
-            let auth_type_str = match auth_type {
-                AuthType::Jwt => "jwt",
-                AuthType::Mtls => "mtls",
-                AuthType::JwtAndMtls => "jwt+mtls",
-            };
-            metrics.request_bump("external", auth_type_str, "ok");
-            {
-                let bridge = audit_bridge.clone();
-                let ctx_clone = ctx.clone();
-                let remote = peer.remote_addr.to_string();
-                tokio::spawn(async move {
-                    bridge
-                        .record(
-                            &ctx_clone,
-                            remote,
-                            "external_grpc",
-                            "ok",
-                            AuditStatus::Started,
-                            Duration::ZERO,
-                            None,
-                            None,
-                            None,
-                        )
-                        .await;
-                });
-            }
+            // AuditLayer now owns Started + Completed recording (Task 13 spec §2.2).
+            // AuthLayer still records `Failed` on auth rejection (the 4 spawn
+            // blocks above); the success path simply forwards to the inner
+            // service after inserting AuthContext.
+            metrics.request_bump("external", auth_type.as_str(), "ok");
 
             req.extensions_mut().insert(ctx);
             inner.call(req).await

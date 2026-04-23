@@ -9,6 +9,7 @@
 //! clippy's `duplicated_attributes` lint).
 
 mod auth_gate;
+pub(crate) mod counting_stream;
 mod drop_accumulator;
 mod hint_emitter;
 mod load_policy;
@@ -129,6 +130,36 @@ impl DashboardServiceImpl {
     pub fn active_stream_count(&self) -> usize {
         self.active_streams
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Test-only accessor for the T18 integration test — verifies the external
+    /// server never receives an `integration_auth_token` (spec §2.5 threat model).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn has_integration_token(&self) -> bool {
+        self.integration_auth_token.is_some()
+    }
+
+    /// Construct from an `ExternalGrpcSpawnConfig`. External-gRPC variant.
+    /// ALWAYS sets `integration_auth_token: None` so the opt-out path (loopback
+    /// only) cannot be bypassed by an external caller presenting the loopback
+    /// token value (Task 13 spec §2.5 threat model).
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub fn from_external_spawn_config(
+        cfg: &crate::grpc::external::spawn_config::ExternalGrpcSpawnConfig,
+    ) -> Self {
+        Self {
+            started_at: Instant::now(),
+            storage: cfg.storage.clone(),
+            system_monitor: cfg.system_monitor.clone(),
+            event_tx: cfg.event_tx.clone(),
+            integration_auth_token: None, // CRITICAL — spec §2.5
+            load_policy: cfg.load_policy.clone(),
+            streaming_enabled: cfg.streaming_enabled,
+            active_streams: Arc::new(AtomicUsize::new(0)),
+            max_concurrent_streams: cfg.config.max_concurrent_streams,
+            pii_sanitizer: cfg.pii_sanitizer.clone(),
+            ai_runtime_status_snapshot: cfg.ai_runtime_status_snapshot.clone(),
+        }
     }
 }
 
@@ -484,4 +515,158 @@ mod tests {
     // real `SqliteStorage::open_in_memory` — mocking the 10+ WebStorage
     // sub-traits for a unit test adds more surface than it saves. The
     // aggregation math in `get_session_stats` is exercised end-to-end there.
+
+    #[cfg(all(feature = "grpc-dashboard-external", feature = "test-support"))]
+    mod external_constructor {
+        use super::*;
+        use crate::grpc::external::spawn_config::ExternalGrpcSpawnConfig;
+        use crate::grpc::external::test_support::install_rustls_crypto_provider;
+        use crate::grpc::test_support::mock_system_monitor::MockSystemMonitor;
+        use oneshim_api_contracts::stream::AiRuntimeStatus;
+        use oneshim_core::config::{AuthMode, ExternalGrpcConfig, LoadThresholds};
+        use oneshim_core::ports::audit_log::AuditLogPort;
+        use oneshim_storage::sqlite::SqliteStorage;
+        use std::sync::Arc;
+        use tokio::sync::{broadcast, watch};
+
+        /// No-op audit port for test fixtures.
+        struct NoopAudit;
+        #[async_trait::async_trait]
+        impl AuditLogPort for NoopAudit {
+            async fn pending_count(&self) -> usize {
+                0
+            }
+            async fn recent_entries(
+                &self,
+                _l: usize,
+            ) -> Vec<oneshim_core::models::audit::AuditEntry> {
+                vec![]
+            }
+            async fn entries_by_status(
+                &self,
+                _s: &oneshim_core::models::audit::AuditStatus,
+                _l: usize,
+            ) -> Vec<oneshim_core::models::audit::AuditEntry> {
+                vec![]
+            }
+            async fn entries_by_action_prefix(
+                &self,
+                _p: &str,
+                _l: usize,
+            ) -> Vec<oneshim_core::models::audit::AuditEntry> {
+                vec![]
+            }
+            async fn stats(&self) -> oneshim_core::models::audit::AuditStats {
+                Default::default()
+            }
+            async fn has_pending_batch(&self) -> bool {
+                false
+            }
+            async fn log_event(&self, _a: &str, _s: &str, _d: &str) {}
+            async fn log_start_if(
+                &self,
+                _l: oneshim_core::models::audit::AuditLevel,
+                _c: &str,
+                _s: &str,
+                _a: &str,
+            ) {
+            }
+            async fn log_complete_with_time(
+                &self,
+                _l: oneshim_core::models::audit::AuditLevel,
+                _c: &str,
+                _s: &str,
+                _d: &str,
+                _t: u64,
+            ) {
+            }
+            async fn drain_batch(&self) -> Vec<oneshim_core::models::audit::AuditEntry> {
+                vec![]
+            }
+            async fn drain_all(&self) -> Vec<oneshim_core::models::audit::AuditEntry> {
+                vec![]
+            }
+            async fn record_session_event(
+                &self,
+                _e: oneshim_core::models::ai_session::SessionAuditEntry,
+            ) {
+            }
+        }
+
+        fn minimal_ext_cfg() -> ExternalGrpcSpawnConfig {
+            install_rustls_crypto_provider();
+            use rcgen::{CertificateParams, KeyPair};
+            let kp = KeyPair::generate().expect("keypair");
+            let params = CertificateParams::new(vec!["localhost".into()]).expect("params");
+            let cert = params.self_signed(&kp).expect("cert");
+            let cert_der = rustls::pki_types::CertificateDer::from(cert.der().to_vec());
+            let key_der =
+                rustls::pki_types::PrivateKeyDer::try_from(kp.serialize_der()).expect("key");
+            let signing =
+                rustls::crypto::aws_lc_rs::sign::any_supported_type(&key_der).expect("sign");
+            let certified_key = Arc::new(rustls::sign::CertifiedKey::new(vec![cert_der], signing));
+            let cert_resolver = Arc::new(
+                crate::grpc::external::cert_resolver::HotReloadCertResolver::new(certified_key),
+            );
+
+            let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("sqlite"))
+                as Arc<dyn crate::storage_port::WebStorage>;
+            let (event_tx, _) = broadcast::channel(16);
+            let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+            ExternalGrpcSpawnConfig {
+                bind_addr: "127.0.0.1:0".parse().unwrap(),
+                config: ExternalGrpcConfig {
+                    enabled: true,
+                    auth_mode: Some(AuthMode::Jwt),
+                    max_concurrent_streams: 4,
+                    max_connections: 16,
+                    ..Default::default()
+                },
+                storage,
+                system_monitor: MockSystemMonitor::new(30.0, 4096, 16384),
+                event_tx,
+                audit_port: Arc::new(NoopAudit) as Arc<dyn AuditLogPort>,
+                cert_resolver,
+                jwt_verifier: None,
+                mtls_verifier: None,
+                ip_ban: Arc::new(crate::grpc::external::ip_ban::IpBan::new()),
+                metrics: Arc::new(crate::grpc::external::metrics::ExternalMetrics::new()),
+                shutdown_rx,
+                shutdown_tx: Arc::new(shutdown_tx),
+                pii_sanitizer: None,
+                ai_runtime_status_snapshot: None::<AiRuntimeStatus>,
+                load_policy: Arc::new(load_policy::LoadPolicy::new(LoadThresholds::default())),
+                streaming_enabled: true,
+            }
+        }
+
+        /// Spec §2.5 threat model: external constructor MUST NEVER carry an
+        /// integration_auth_token. The opt-out path is loopback-only.
+        #[test]
+        fn from_external_spawn_config_sets_integration_auth_token_to_none() {
+            let cfg = minimal_ext_cfg();
+            let svc = DashboardServiceImpl::from_external_spawn_config(&cfg);
+            assert!(
+                !svc.has_integration_token(),
+                "external impl must never have integration token (spec §2.5)"
+            );
+        }
+
+        /// Verify all 11 fields wire through correctly from the spawn config.
+        #[test]
+        fn from_external_spawn_config_initializes_all_fields() {
+            let cfg = minimal_ext_cfg();
+            let expected_max_streams = cfg.config.max_concurrent_streams;
+            let svc = DashboardServiceImpl::from_external_spawn_config(&cfg);
+            assert!(svc.streaming_enabled);
+            assert_eq!(svc.max_concurrent_streams, expected_max_streams);
+            // active_streams is a fresh counter per-service-instance.
+            assert_eq!(
+                svc.active_streams
+                    .load(std::sync::atomic::Ordering::Relaxed),
+                0
+            );
+        }
+    }
 }

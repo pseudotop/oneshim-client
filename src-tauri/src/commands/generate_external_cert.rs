@@ -12,7 +12,6 @@
 /// If the crate is ever compiled with the `rcgen/aws_lc_rs` feature, the fallback logic here
 /// will succeed with RSA 2048 and print "Keys generated: RSA-2048".
 #[cfg(feature = "external-grpc-tools")]
-#[allow(dead_code)] // TODO(Task 13 follow-up): wire as a CLI subcommand via Tauri CommandHandler OR standalone binary target. For now, the functions are exercised by #[cfg(test)] tests in this module; production use is deferred until the external gRPC service impl is wired (Task 13).
 pub mod tools {
     use std::net::IpAddr;
     use std::path::{Path, PathBuf};
@@ -150,5 +149,130 @@ mod tests {
             "JWT private key ({}) must parse as jsonwebtoken EncodingKey",
             assets.jwt_algorithm
         );
+    }
+}
+
+/// CLI entry point for the `generate-external-cert` subcommand.
+///
+/// Invoked from `src-tauri/src/main.rs` before Tauri initialization if
+/// `std::env::args().nth(1)` is `"generate-external-cert"`. Exits the
+/// process with code 0 on success or 1 on failure.
+#[cfg(feature = "external-grpc-tools")]
+pub mod cli {
+    use std::net::IpAddr;
+    use std::path::PathBuf;
+
+    use clap::Parser;
+
+    use super::tools::generate_external_cert_assets;
+
+    #[derive(Parser, Debug)]
+    #[command(name = "generate-external-cert")]
+    #[command(about = "Generate TLS + JWT keypair for external gRPC binding")]
+    pub struct Args {
+        /// Directory to write the 4 generated files into (created if missing).
+        #[arg(long)]
+        pub output_dir: PathBuf,
+        /// IP address the TLS cert SAN should include (defaults to 0.0.0.0).
+        #[arg(long, default_value = "0.0.0.0")]
+        pub bind_ip: IpAddr,
+        /// Overwrite existing files in `output_dir`.
+        #[arg(long)]
+        pub force: bool,
+    }
+
+    /// Run the CLI with the given argv (slice starting AFTER the subcommand).
+    ///
+    /// The subcommand name is prepended to the parse call since clap expects
+    /// `argv[0]` to be the program name.
+    pub fn run(argv: &[String]) -> anyhow::Result<()> {
+        let args = Args::try_parse_from(
+            std::iter::once(&"generate-external-cert".to_string()).chain(argv.iter()),
+        )?;
+        if !args.force && args.output_dir.exists() && args.output_dir.read_dir()?.next().is_some() {
+            anyhow::bail!(
+                "output directory {:?} is not empty; use --force to overwrite",
+                args.output_dir
+            );
+        }
+        let assets = generate_external_cert_assets(&args.output_dir, args.bind_ip)?;
+        println!("Generated:");
+        println!("  TLS cert: {}", assets.server_cert_path.display());
+        println!("  TLS key:  {}", assets.server_key_path.display());
+        println!("  JWT pub:  {}", assets.jwt_pub_path.display());
+        println!("  JWT priv: {}", assets.jwt_priv_path.display());
+        println!("  Algorithm: {}", assets.jwt_algorithm);
+        println!();
+        println!("Next steps:");
+        println!(
+            "  1. Copy jwt_signing.priv to your central auth service (if minting tokens remotely)."
+        );
+        println!("  2. Set external_grpc.tls_cert_path + jwt_public_key_path in the agent config.");
+        println!("  3. Restart the agent with external_grpc.enabled=true.");
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use tempfile::TempDir;
+
+        #[test]
+        fn default_flags_produce_assets() {
+            let dir = TempDir::new().unwrap();
+            let argv = vec![
+                "--output-dir".to_string(),
+                dir.path().to_string_lossy().into_owned(),
+                "--bind-ip".to_string(),
+                "127.0.0.1".to_string(),
+            ];
+            run(&argv).expect("cert generation should succeed");
+            assert!(
+                dir.path().join("server.crt").exists(),
+                "server cert missing"
+            );
+            assert!(dir.path().join("server.key").exists(), "server key missing");
+            assert!(
+                dir.path().join("jwt_signing.pub").exists(),
+                "jwt pub missing"
+            );
+            assert!(
+                dir.path().join("jwt_signing.priv").exists(),
+                "jwt priv missing"
+            );
+        }
+
+        #[test]
+        fn force_flag_overwrites() {
+            let dir = TempDir::new().unwrap();
+            // Pre-populate with a sentinel file.
+            std::fs::write(dir.path().join("pre-existing.txt"), b"hi").unwrap();
+            let argv = vec![
+                "--output-dir".to_string(),
+                dir.path().to_string_lossy().into_owned(),
+                "--bind-ip".to_string(),
+                "127.0.0.1".to_string(),
+                "--force".to_string(),
+            ];
+            run(&argv).expect("with --force, should succeed despite non-empty dir");
+            assert!(dir.path().join("server.crt").exists());
+        }
+
+        #[test]
+        fn existing_files_error_without_force() {
+            let dir = TempDir::new().unwrap();
+            std::fs::write(dir.path().join("pre-existing.txt"), b"hi").unwrap();
+            let argv = vec![
+                "--output-dir".to_string(),
+                dir.path().to_string_lossy().into_owned(),
+                "--bind-ip".to_string(),
+                "127.0.0.1".to_string(),
+            ];
+            let err = run(&argv).expect_err("should fail without --force");
+            assert!(
+                err.to_string().contains("not empty"),
+                "expected 'not empty' in error, got: {err}"
+            );
+        }
     }
 }
