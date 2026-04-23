@@ -7,12 +7,14 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use oneshim_api_contracts::stream::RealtimeEvent;
+use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use oneshim_core::config::ExternalGrpcConfig;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::monitor::SystemMonitor;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use tokio::sync::{broadcast, watch};
 
+use crate::grpc::load_policy::LoadPolicy;
 use crate::storage_port::WebStorage;
 
 use super::cert_resolver::HotReloadCertResolver;
@@ -62,6 +64,15 @@ pub struct ExternalGrpcSpawnConfig {
     /// `shutdown_rx.changed()` calls with an `Err` — causing the watcher and expiry tasks
     /// to exit.
     pub shutdown_tx: Arc<watch::Sender<bool>>,
+    /// PII sanitizer for `AiRuntimeStatus` fallback-reason fields. Passed through
+    /// from loopback; the external `DashboardServiceImpl` uses it identically.
+    pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
+    /// AiRuntimeStatus snapshot (build-time). Passed through from loopback.
+    pub ai_runtime_status_snapshot: Option<AiRuntimeStatus>,
+    /// Server load-shedding policy. Passed through from loopback.
+    pub load_policy: Arc<LoadPolicy>,
+    /// Mirror of loopback `streaming_enabled`. External server honors the same flag.
+    pub streaming_enabled: bool,
 }
 
 /// Custom `Debug` impl — redacts cert key material and verifier contents.
@@ -81,6 +92,12 @@ impl std::fmt::Debug for ExternalGrpcSpawnConfig {
             .field("jwt_verifier_present", &self.jwt_verifier.is_some())
             .field("mtls_verifier_present", &self.mtls_verifier.is_some())
             .field("shutdown_signalled", &*self.shutdown_rx.borrow())
+            .field("pii_sanitizer_present", &self.pii_sanitizer.is_some())
+            .field(
+                "ai_runtime_status_present",
+                &self.ai_runtime_status_snapshot.is_some(),
+            )
+            .field("streaming_enabled", &self.streaming_enabled)
             .finish_non_exhaustive()
     }
 }
@@ -179,6 +196,12 @@ mod tests {
             metrics: Arc::new(ExternalMetrics::new()),
             shutdown_rx,
             shutdown_tx: Arc::new(shutdown_tx),
+            pii_sanitizer: None,
+            ai_runtime_status_snapshot: None,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+            streaming_enabled: true,
         }
     }
 

@@ -452,6 +452,12 @@ mod tests {
             metrics: Arc::new(metrics::ExternalMetrics::new()),
             shutdown_rx,
             shutdown_tx: shutdown_tx.clone(),
+            pii_sanitizer: None,
+            ai_runtime_status_snapshot: None,
+            load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+            streaming_enabled: true,
         };
 
         // Start the server in a task. It will bind and then wait for shutdown.
@@ -528,6 +534,12 @@ mod tests {
             metrics: Arc::new(metrics::ExternalMetrics::new()),
             shutdown_rx: supervisor_shutdown_rx,
             shutdown_tx: Arc::new(supervisor_shutdown_tx),
+            pii_sanitizer: None,
+            ai_runtime_status_snapshot: None,
+            load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+            streaming_enabled: true,
         };
 
         // Arm the panic injector.

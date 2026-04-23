@@ -186,6 +186,12 @@ fn make_jwt_config(jwt_pub_key_path: &std::path::Path) -> (ExternalGrpcSpawnConf
         metrics: Arc::new(ExternalMetrics::new()),
         shutdown_rx,
         shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+        streaming_enabled: true,
     };
     (cfg, bind_addr)
 }
@@ -223,6 +229,12 @@ fn make_mtls_config(ca_pem_path: &std::path::Path) -> (ExternalGrpcSpawnConfig, 
         metrics: Arc::new(ExternalMetrics::new()),
         shutdown_rx,
         shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+        streaming_enabled: true,
     };
     (cfg, bind_addr)
 }
@@ -457,6 +469,12 @@ async fn external_grpc_jwt_plus_mtls_both_valid() {
         metrics: Arc::new(ExternalMetrics::new()),
         shutdown_rx,
         shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+        streaming_enabled: true,
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -526,6 +544,12 @@ async fn external_grpc_jwt_plus_mtls_mtls_only() {
         metrics: Arc::new(ExternalMetrics::new()),
         shutdown_rx,
         shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+        streaming_enabled: true,
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -601,6 +625,12 @@ async fn external_grpc_jwt_plus_mtls_cert_valid_jwt_expired() {
         metrics: Arc::new(ExternalMetrics::new()),
         shutdown_rx,
         shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+        streaming_enabled: true,
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -986,6 +1016,12 @@ async fn external_grpc_jwt_plus_mtls_jwt_only() {
         metrics: Arc::new(ExternalMetrics::new()),
         shutdown_rx,
         shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+        streaming_enabled: true,
     };
     let (handle, port) = spawn_server(cfg).await;
 
@@ -1103,6 +1139,12 @@ async fn external_grpc_jwt_plus_mtls_cert_invalid_jwt_valid() {
         metrics: Arc::new(ExternalMetrics::new()),
         shutdown_rx,
         shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+        streaming_enabled: true,
     };
     let (handle, port) = spawn_server(cfg).await;
 

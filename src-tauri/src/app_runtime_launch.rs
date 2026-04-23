@@ -865,12 +865,30 @@ impl AppRuntimeLaunchBuilder {
                                 logger,
                             ))
                         };
+                        // Construct the 4 pass-through values the same way the
+                        // loopback server does (L798-803) so both binaries enforce
+                        // identical load-shedding, PII redaction, AI-status, and
+                        // streaming behavior.
+                        let ext_thresholds =
+                            config.web.grpc_load_thresholds.clone().unwrap_or_default();
+                        let ext_load_policy =
+                            std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(ext_thresholds));
+                        let ext_pii_sanitizer: std::sync::Arc<
+                            dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer,
+                        > = std::sync::Arc::new(oneshim_vision::privacy::VisionPiiSanitizer);
+                        let ext_ai_status = web_server_runtime.ai_runtime_status.clone();
+                        let ext_streaming_enabled = config.web.grpc_streaming_enabled;
+
                         match handle.block_on(build_external_spawn_config(
                             ext_cfg,
                             ext_storage,
                             ext_monitor,
                             event_tx.clone(),
                             ext_audit,
+                            Some(ext_pii_sanitizer),
+                            ext_ai_status,
+                            ext_load_policy,
+                            ext_streaming_enabled,
                         )) {
                             Ok(spawn_cfg) => {
                                 let _ext_handle = handle.block_on(
@@ -1184,6 +1202,10 @@ async fn build_external_spawn_config(
     system_monitor: std::sync::Arc<dyn oneshim_core::ports::monitor::SystemMonitor>,
     event_tx: tokio::sync::broadcast::Sender<oneshim_api_contracts::stream::RealtimeEvent>,
     audit_port: std::sync::Arc<dyn oneshim_core::ports::audit_log::AuditLogPort>,
+    pii_sanitizer: Option<std::sync::Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>>,
+    ai_runtime_status_snapshot: Option<oneshim_api_contracts::stream::AiRuntimeStatus>,
+    load_policy: std::sync::Arc<oneshim_web::grpc::LoadPolicy>,
+    streaming_enabled: bool,
 ) -> anyhow::Result<oneshim_web::grpc::external::spawn_config::ExternalGrpcSpawnConfig> {
     use anyhow::Context as _;
     use oneshim_web::grpc::external::{
@@ -1290,6 +1312,10 @@ async fn build_external_spawn_config(
             metrics: metrics_arc,
             shutdown_rx,
             shutdown_tx,
+            pii_sanitizer,
+            ai_runtime_status_snapshot,
+            load_policy,
+            streaming_enabled,
         },
     )
 }
