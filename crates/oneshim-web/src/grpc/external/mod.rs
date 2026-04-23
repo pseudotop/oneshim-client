@@ -12,6 +12,7 @@ pub mod ip_ban;
 pub mod jwt_verifier;
 pub mod metrics;
 pub mod mtls_verifier;
+pub mod port_collision;
 pub mod spawn_config;
 pub mod tls_config;
 

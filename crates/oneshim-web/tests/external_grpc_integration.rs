@@ -2,10 +2,10 @@
 //!
 //! Each test spins up a full `serve_external` instance on an ephemeral port,
 //! connects a tonic TLS client (with the self-signed server cert as CA), and
-//! exercises the auth matrix. Because `ExternalDashboardService` returns
-//! `Status::unimplemented` for every RPC, a **successful auth handshake** is
-//! proven by receiving `Status::Unimplemented` — the request reached the
-//! service layer, which means TLS + auth layers accepted it.
+//! exercises the auth matrix. The server runs the real `DashboardServiceImpl`
+//! (wired in Task 13) with `integration_auth_token: None`; a successful auth
+//! handshake is therefore proven by an `Ok(AgentInfoResponse)` carrying a
+//! non-empty `build_profile`.
 //!
 //! Feature gate: requires `grpc-dashboard-external,external-grpc-tools,test-support`.
 
@@ -1231,15 +1231,11 @@ async fn external_grpc_concurrent_stream_cap_enforced() {
     unimplemented!("TODO: stream cap test requiring streaming RPC wiring (Task 13)");
 }
 
-/// Test 15: TCP connection cap — 1025th connection closes immediately.
-/// TODO: Implement — marked slow (fd ulimit concern).
-#[ignore = "slow: requires 1024+ TCP connections, fd ulimit concern"]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn external_grpc_concurrent_connection_cap_enforced() {
-    // Spawn 1024 TCP connections → 1025th closes immediately.
-    // Gated behind --ignored due to fd exhaustion concerns on constrained CI.
-    unimplemented!("TODO: 1024 connection cap test (slow, fd ulimit)");
-}
+// T15 (concurrent_connection_cap_enforced) deleted — resource-exhaustion
+// tests require dedicated CI workflow with elevated fd ulimit + opt-in
+// trigger (`ulimit -n 65536`; separate workflow with manual dispatch). This
+// is tracked in `project_next_tasks.md` as "External gRPC stress test suite"
+// and is out of scope for Task 13 per user direction.
 
 /// Test 16: Supervisor respawn — panic in accept loop → supervisor respawns.
 /// TODO: Implement — requires PANIC_ON_FIRST_ACCEPT injection from integration context.
@@ -1253,23 +1249,35 @@ async fn external_grpc_task_panic_respawned() {
 }
 
 /// Test 17: Port collision — external port == loopback port → launcher refuses external.
-/// TODO: Implement — cross-config validation (F13 guard) exercised via the launcher.
-#[ignore = "TODO: launcher-level port collision detection test"]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn external_grpc_port_collides_with_loopback() {
-    // config port==loopback port → the launcher's cross-config check rejects the config.
-    // Requires Task 13 launcher wiring to be testable here.
-    unimplemented!("TODO: port collision detection in launcher config validation");
+///// Test 17: Port collision guard — external port == loopback port triggers
+/// a validation error that the launcher surfaces (F13 guard). Unit-level
+/// test: the helper itself is the single source of truth for the check.
+#[test]
+fn external_grpc_port_collides_with_loopback() {
+    use oneshim_web::grpc::external::port_collision::check_port_collision;
+    let err = check_port_collision(10091, 10091).expect_err("same port must error");
+    assert!(
+        err.contains("10091"),
+        "error should name the port; got: {err}"
+    );
+    assert!(check_port_collision(10092, 10091).is_ok());
 }
 
-/// Test 18: Token isolation — loopback token != None on external service.
-/// TODO: Implement — the external ExternalDashboardService should have integration_auth_token=None.
-#[ignore = "TODO: verify external service impl has integration_auth_token=None"]
+/// Test 18: Token isolation — `integration_auth_token` on the external
+/// service impl MUST be None (spec §2.5 threat model). The loopback's
+/// opt-out bypass path can only be reached by a caller presenting a
+/// matching token; if the external server were to inherit the loopback's
+/// token, an external client could bypass auth.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_separate_service_impl_doesnt_leak_loopback_token() {
-    // Construct the external service via builder and assert integration_auth_token==None.
-    // This test is a unit-level check; the auth gate is the security boundary.
-    unimplemented!("TODO: ExternalDashboardService token isolation (Task 13 full wiring)");
+    install_rustls_crypto_provider();
+    let jwt_kp = test_jwt_keypair();
+    let (cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let svc = oneshim_web::grpc::DashboardServiceImpl::from_external_spawn_config(&cfg);
+    assert!(
+        !svc.has_integration_token(),
+        "external DashboardServiceImpl MUST have integration_auth_token=None (spec §2.5)"
+    );
 }
 
 /// Test 19: Graceful shutdown — open streams receive `Unavailable` on shutdown.

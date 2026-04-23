@@ -832,10 +832,16 @@ impl AppRuntimeLaunchBuilder {
                         .ok()
                         .and_then(|s| s.parse().ok())
                         .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
-                    if ext_cfg.port == loopback_port {
+                    if let Err(msg) =
+                        oneshim_web::grpc::external::port_collision::check_port_collision(
+                            ext_cfg.port,
+                            loopback_port,
+                        )
+                    {
                         tracing::error!(
                             external_port = ext_cfg.port,
                             loopback_port,
+                            err = %msg,
                             "external_grpc: port collides with loopback grpc port; disabling external server"
                         );
                     } else if let Err(e) = ext_cfg.validate() {
