@@ -1202,6 +1202,7 @@ impl AppRuntimeLaunchBuilder {
 /// optionally builds `JwtVerifier` / `MtlsVerifier` according to `auth_mode`.
 /// Returns `Err` if any required path is missing or key material fails to load.
 #[cfg(feature = "grpc-dashboard-external")]
+#[allow(clippy::too_many_arguments)]
 async fn build_external_spawn_config(
     cfg: &oneshim_core::config::ExternalGrpcConfig,
     storage: std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>,
