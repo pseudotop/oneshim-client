@@ -79,6 +79,8 @@ rustls-pemfile = { workspace = true, optional = true }
 tokio-rustls = { workspace = true, optional = true }
 ulid = { workspace = true, optional = true }
 x509-parser = { workspace = true, optional = true }
+# D13-v2c: test helpers (test_support.rs in src/grpc/external/) — enabled via test-support feature.
+tempfile = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -118,7 +120,10 @@ external-grpc-tools = ["grpc-dashboard-external", "dep:rcgen"]
 # introspection accessors). INVARIANT: MUST NEVER be enabled by default or
 # transitively via `grpc-dashboard`. Strictly opt-in for in-tree tests + any
 # future downstream test harness that reuses the mock.
-test-support = []
+#
+# D13-v2c: also enables external/test_support.rs (cert helpers, JWT helpers).
+# Requires grpc-dashboard-external + external-grpc-tools for full external test support.
+test-support = ["dep:tempfile"]
 
 
 [dev-dependencies]

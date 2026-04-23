@@ -13,6 +13,9 @@ pub mod mtls_verifier;
 pub mod spawn_config;
 pub mod tls_config;
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
