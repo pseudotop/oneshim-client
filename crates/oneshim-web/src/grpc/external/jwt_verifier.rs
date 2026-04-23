@@ -110,7 +110,7 @@ impl JwtVerifier {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use jsonwebtoken::{encode, EncodingKey, Header};
 

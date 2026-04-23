@@ -42,6 +42,7 @@ parking_lot = { workspace = true }
 
 # 웹 프레임워크
 axum = { workspace = true }
+http = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 

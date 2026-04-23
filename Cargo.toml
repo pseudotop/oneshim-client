@@ -176,6 +176,7 @@ zip = "8"
 
 # 웹 프레임워크 (Axum)
 axum = { version = "0.8", features = ["macros"] }
+http = "1"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors", "fs", "compression-gzip"] }
 tokio-stream = { version = "0.1", features = ["sync"] }

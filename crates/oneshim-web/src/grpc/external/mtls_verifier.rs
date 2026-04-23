@@ -118,11 +118,13 @@ fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use rcgen::{CertificateParams, KeyPair};
 
-    fn gen_cert_with_cn(cn: &str, lifetime_hours: u32) -> Vec<u8> {
+    /// Generates a self-signed DER cert with the given CN and lifetime.
+    /// `pub(crate)` so Task 10 auth_layer tests can reuse without duplicating.
+    pub(crate) fn gen_cert_with_cn(cn: &str, lifetime_hours: u32) -> Vec<u8> {
         // Use rcgen's re-exported `time` date helpers to avoid adding `time` as a direct dep.
         // chrono is the workspace's date/time crate (already non-optional in oneshim-web);
         // compute year/month/day and feed rcgen::date_time_ymd (same pattern as lan_tls.rs).
