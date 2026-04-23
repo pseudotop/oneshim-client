@@ -1,7 +1,7 @@
 //! Per-IP (or IPv6 /64 prefix) exponential backoff ban.
 //! Checked in the custom accept loop BEFORE TLS handshake.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
@@ -76,7 +76,7 @@ impl IpBan {
         let now = Instant::now();
         let guard = self.cache.read();
         match guard.peek(&key) {
-            Some(state) => state.banned_until.map_or(false, |until| until > now),
+            Some(state) => state.banned_until.is_some_and(|until| until > now),
             None => false,
         }
     }
@@ -113,7 +113,7 @@ impl IpBan {
         let guard = self.cache.read();
         guard
             .iter()
-            .filter(|(_, s)| s.banned_until.map_or(false, |until| until > now))
+            .filter(|(_, s)| s.banned_until.is_some_and(|until| until > now))
             .count()
     }
 }
@@ -127,7 +127,7 @@ impl Default for IpBan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     fn addr_v4(a: u8, b: u8, c: u8, d: u8) -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(a, b, c, d)), 12345)

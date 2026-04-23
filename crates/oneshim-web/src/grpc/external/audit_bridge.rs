@@ -4,11 +4,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Utc;
 use serde::Serialize;
-use ulid::Ulid;
 
-use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStatus};
+use oneshim_core::models::audit::{AuditLevel, AuditStatus};
 use oneshim_core::ports::audit_log::AuditLogPort;
 
 use super::conn_info::{AuthContext, AuthType};
@@ -41,6 +39,7 @@ impl AuditBridge {
     /// Uses `log_complete_with_time` so that `command_id`, `session_id`,
     /// `details`, and `execution_time_ms` are all preserved in the stored entry.
     /// The `status` and `failure_reason` are encoded inside the JSON details blob.
+    #[allow(clippy::too_many_arguments)]
     pub async fn record(
         &self,
         ctx: &AuthContext,
@@ -105,6 +104,11 @@ mod tests {
 
     use oneshim_core::models::ai_session::SessionAuditEntry;
     use oneshim_core::models::audit::{AuditStats, AuditStatus};
+
+    use chrono::Utc;
+    use ulid::Ulid;
+
+    use oneshim_core::models::audit::AuditEntry;
 
     /// Lightweight mock that captures `log_complete_with_time` calls as `AuditEntry`
     /// values so that tests can assert on `command_id`, `details`, and derived `status`.

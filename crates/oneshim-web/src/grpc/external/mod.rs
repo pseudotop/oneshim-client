@@ -216,21 +216,21 @@ pub async fn serve_external(
     info!(%bound_addr, "external_grpc: server bound");
 
     // Load mTLS CA bytes if needed.
-    let mtls_ca_bytes: Option<Vec<u8>> =
-        if cfg.config.auth_mode.map_or(false, |m| m.includes_mtls()) {
-            if let Some(ref ca_path) = cfg.config.mtls_ca_path {
-                Some(std::fs::read(ca_path).map_err(|e| {
-                    ServeExternalError::Tls(TlsLoadError::Read {
-                        path: ca_path.clone(),
-                        source: e,
-                    })
-                })?)
-            } else {
-                None
-            }
+    let mtls_ca_bytes: Option<Vec<u8>> = if cfg.config.auth_mode.is_some_and(|m| m.includes_mtls())
+    {
+        if let Some(ref ca_path) = cfg.config.mtls_ca_path {
+            Some(std::fs::read(ca_path).map_err(|e| {
+                ServeExternalError::Tls(TlsLoadError::Read {
+                    path: ca_path.clone(),
+                    source: e,
+                })
+            })?)
         } else {
             None
-        };
+        }
+    } else {
+        None
+    };
 
     let server_config = build_server_config(cfg.cert_resolver.clone(), mtls_ca_bytes)
         .map_err(ServeExternalError::Tls)?;

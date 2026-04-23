@@ -42,7 +42,7 @@ impl MtlsVerifier {
     ) -> Result<Self, MtlsVerifyError> {
         let mut fingerprint_allowlist = HashSet::new();
         for line in allowlist_hex {
-            let hex = line.trim().replace(':', "").replace(' ', "");
+            let hex = line.trim().replace([':', ' '], "");
             if hex.is_empty() || hex.starts_with('#') {
                 continue;
             }
@@ -179,10 +179,7 @@ pub(crate) mod tests {
         let verifier = MtlsVerifier::new(48, &[]).unwrap();
         match verifier.verify(&der) {
             Err(MtlsVerifyError::LifetimeExceeded { lifetime_hours, .. }) => {
-                assert!(
-                    lifetime_hours >= 71 && lifetime_hours <= 72,
-                    "got {lifetime_hours}"
-                );
+                assert!((71..=72).contains(&lifetime_hours), "got {lifetime_hours}");
             }
             other => panic!("expected LifetimeExceeded, got {other:?}"),
         }

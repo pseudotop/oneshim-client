@@ -130,7 +130,7 @@ pub async fn run_accept_loop(
                     let needs_mtls = cfg_c
                         .config
                         .auth_mode
-                        .map_or(false, |m| m.includes_mtls());
+                        .is_some_and(|m| m.includes_mtls());
                     let peer_cert_der: Option<Vec<u8>> = if needs_mtls {
                         let session = tls_stream.get_ref().1;
                         let certs = session.peer_certificates();
