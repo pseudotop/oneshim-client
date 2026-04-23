@@ -174,10 +174,15 @@ pub async fn spawn_cert_watcher(
     Ok(())
 }
 
-/// Spawn a daily background task that logs a warning when the cert expires within 7 days
-/// and records the remaining seconds into the metrics gauge.
+/// Spawn a background task that checks TLS cert expiry at startup and every 24h
+/// thereafter. Logs a `warn!` when expiry is within 7 days and updates the
+/// `tls_cert_expiry_seconds` metric gauge on every tick.
 ///
-/// The task exits when `shutdown` is signalled (`true`).
+/// Tokio's `interval()` fires the first tick immediately — this is intentional:
+/// the metric is populated on boot rather than waiting 24h for the first sample.
+///
+/// The task exits when `shutdown` is signalled (`true`) or the shutdown channel
+/// is dropped (all senders released).
 pub fn spawn_expiry_monitor(
     resolver: Arc<HotReloadCertResolver>,
     metrics: Arc<crate::grpc::external::metrics::ExternalMetrics>,
