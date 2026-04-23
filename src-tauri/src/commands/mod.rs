@@ -10,6 +10,7 @@ pub(crate) mod dashboard;
 pub(crate) mod detection;
 pub(crate) mod error_report;
 pub(crate) mod focus;
+pub(crate) mod generate_external_cert;
 pub(crate) mod integration;
 pub(crate) mod onboarding;
 pub(crate) mod permissions;

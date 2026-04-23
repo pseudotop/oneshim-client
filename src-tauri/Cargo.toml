@@ -72,6 +72,10 @@ image = { workspace = true }
 lru = { workspace = true }
 raw-window-handle = "0.6"
 
+# D13-v2c: generate-external-cert subcommand (feature-gated, external-grpc-tools)
+rcgen = { workspace = true, optional = true }
+time = { workspace = true, optional = true }
+
 # 텔레메트리 (feature-gated, default OFF)
 opentelemetry = { version = "0.27", optional = true, default-features = false, features = ["trace"] }
 opentelemetry_sdk = { version = "0.27", optional = true, default-features = false, features = ["rt-tokio", "trace"] }
@@ -88,6 +92,11 @@ grpc = ["server", "oneshim-network/grpc"]
 # Axum REST on a separate port). Opt-in so default builds pay zero tonic
 # dep cost.
 grpc-dashboard = ["oneshim-web/grpc-dashboard"]
+# D13-v2c: External gRPC binding — opt-in TLS+JWT/mTLS server on a separate port.
+# Depends on grpc-dashboard (loopback) being compiled in as well.
+grpc-dashboard-external = ["oneshim-web/grpc-dashboard-external"]
+# D13-v2c: generate-external-cert subcommand — rcgen + JWT keypair generation.
+external-grpc-tools = ["oneshim-web/external-grpc-tools", "dep:rcgen", "dep:time"]
 audio = ["dep:oneshim-audio"]
 stt = ["audio", "oneshim-audio/whisper"]
 cloud-stt = ["audio", "oneshim-audio/cloud-stt"]
@@ -159,3 +168,6 @@ axum = { workspace = true }
 tower = { workspace = true }
 zeroize = { workspace = true }
 serial_test = "3"
+# D13-v2c: generate-external-cert test helpers.
+x509-parser = { workspace = true }
+jsonwebtoken = { workspace = true }
