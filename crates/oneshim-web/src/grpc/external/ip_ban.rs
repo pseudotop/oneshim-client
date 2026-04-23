@@ -11,13 +11,13 @@ use parking_lot::RwLock;
 /// Normalized key: IPv4 uses full address; IPv6 uses /64 prefix
 /// (first 64 bits) per spec §S5.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum BanKey {
+pub(crate) enum BanKey {
     V4(Ipv4Addr),
     V6Prefix64(u64),
 }
 
 impl BanKey {
-    pub fn from_ip(ip: IpAddr) -> Self {
+    pub(crate) fn from_ip(ip: IpAddr) -> Self {
         match ip {
             IpAddr::V4(v4) => Self::V4(v4),
             IpAddr::V6(v6) => {
@@ -30,16 +30,16 @@ impl BanKey {
             }
         }
     }
-    pub fn from_socket(addr: SocketAddr) -> Self {
+    pub(crate) fn from_socket(addr: SocketAddr) -> Self {
         Self::from_ip(addr.ip())
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct BanState {
-    pub failure_count: u32,
-    pub first_failure_at: Instant,
-    pub banned_until: Option<Instant>,
+pub(crate) struct BanState {
+    pub(crate) failure_count: u32,
+    pub(crate) first_failure_at: Instant,
+    pub(crate) banned_until: Option<Instant>,
 }
 
 /// Ladder: (threshold, ban_duration).
@@ -82,7 +82,7 @@ impl IpBan {
     }
 
     /// Record a failure. Returns the new ban state (if any).
-    pub fn record_failure(&self, addr: SocketAddr) -> Option<BanState> {
+    pub(crate) fn record_failure(&self, addr: SocketAddr) -> Option<BanState> {
         let key = BanKey::from_socket(addr);
         let now = Instant::now();
         let mut guard = self.cache.write();

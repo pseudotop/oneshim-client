@@ -33,7 +33,7 @@ const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 /// accepted `PeerAwareStream` through `conn_tx` for tonic to serve.
 ///
 /// The loop exits when `shutdown_rx` receives a change notification.
-pub async fn run_accept_loop(
+pub(crate) async fn run_accept_loop(
     listener: TcpListener,
     acceptor: TlsAcceptor,
     cfg: Arc<ExternalGrpcSpawnConfig>,
