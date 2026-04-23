@@ -740,8 +740,12 @@ impl AppRuntimeLaunchBuilder {
         }
 
         let automation_controller = if config.web.enabled {
-            let launch_context =
-                WebServerLaunchContext::new(&handle, &shutdown_tx, event_tx, web_port.clone());
+            let launch_context = WebServerLaunchContext::new(
+                &handle,
+                &shutdown_tx,
+                event_tx.clone(),
+                web_port.clone(),
+            );
             let support_context = WebServerSupportContext::new(
                 config_manager.clone(),
                 update_control.clone(),
@@ -812,6 +816,78 @@ impl AppRuntimeLaunchBuilder {
                 handle.spawn(async move {
                     oneshim_web::grpc::serve_optional(cfg).await;
                 });
+            }
+
+            // D13-v2c: External gRPC binding — TLS + JWT/mTLS authenticated server on
+            // a separate port. Feature-gated; default builds pay zero cost.
+            // F13: cross-config port collision guard prevents both servers from
+            // binding to the same port.
+            #[cfg(feature = "grpc-dashboard-external")]
+            {
+                let ext_cfg = &config.external_grpc;
+                if ext_cfg.enabled {
+                    // F13: read the loopback port the same way the loopback spawn does,
+                    // then refuse to start the external server if they collide.
+                    let loopback_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
+                    if ext_cfg.port == loopback_port {
+                        tracing::error!(
+                            external_port = ext_cfg.port,
+                            loopback_port,
+                            "external_grpc: port collides with loopback grpc port; disabling external server"
+                        );
+                    } else if let Err(e) = ext_cfg.validate() {
+                        tracing::error!(err = %e, "external_grpc: config validation failed; disabling");
+                    } else {
+                        let ext_storage = sqlite_storage.clone()
+                            as std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>;
+                        let ext_monitor =
+                            std::sync::Arc::new(oneshim_monitor::system::SysInfoMonitor::new())
+                                as std::sync::Arc<dyn oneshim_core::ports::monitor::SystemMonitor>;
+                        let ext_audit: std::sync::Arc<
+                            dyn oneshim_core::ports::audit_log::AuditLogPort,
+                        > = {
+                            let storage_for_audit = sqlite_storage.clone();
+                            let persistence_cb: std::sync::Arc<
+                                dyn oneshim_automation::audit::AuditPersistence,
+                            > = std::sync::Arc::new(
+                                move |entry: &oneshim_core::models::audit::AuditEntry| {
+                                    storage_for_audit.save_audit_entry(entry);
+                                },
+                            );
+                            let logger = std::sync::Arc::new(tokio::sync::RwLock::new(
+                                oneshim_automation::audit::AuditLogger::new(500, 50)
+                                    .with_persistence(persistence_cb),
+                            ));
+                            std::sync::Arc::new(oneshim_automation::audit::AuditLogAdapter::new(
+                                logger,
+                            ))
+                        };
+                        match handle.block_on(build_external_spawn_config(
+                            ext_cfg,
+                            ext_storage,
+                            ext_monitor,
+                            event_tx.clone(),
+                            ext_audit,
+                        )) {
+                            Ok(spawn_cfg) => {
+                                let _ext_handle = handle.block_on(
+                                    oneshim_web::grpc::external::spawn_with_supervisor(spawn_cfg),
+                                );
+                                tracing::info!(
+                                    bind = %format!("{}:{}", ext_cfg.bind_address, ext_cfg.port),
+                                    auth_mode = ?ext_cfg.auth_mode,
+                                    "external_grpc: server spawned"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(err = %e, "external_grpc: failed to build spawn config; disabling");
+                            }
+                        }
+                    }
+                }
             }
 
             web_server_runtime.automation_controller
@@ -1094,4 +1170,88 @@ impl AppRuntimeLaunchBuilder {
             state_builder,
         })
     }
+}
+
+/// Build an `ExternalGrpcSpawnConfig` from the external gRPC section of `AppConfig`.
+///
+/// Loads TLS key material, constructs the `HotReloadCertResolver`, and
+/// optionally builds `JwtVerifier` / `MtlsVerifier` according to `auth_mode`.
+/// Returns `Err` if any required path is missing or key material fails to load.
+#[cfg(feature = "grpc-dashboard-external")]
+async fn build_external_spawn_config(
+    cfg: &oneshim_core::config::ExternalGrpcConfig,
+    storage: std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>,
+    system_monitor: std::sync::Arc<dyn oneshim_core::ports::monitor::SystemMonitor>,
+    event_tx: tokio::sync::broadcast::Sender<oneshim_api_contracts::stream::RealtimeEvent>,
+    audit_port: std::sync::Arc<dyn oneshim_core::ports::audit_log::AuditLogPort>,
+) -> anyhow::Result<oneshim_web::grpc::external::spawn_config::ExternalGrpcSpawnConfig> {
+    use anyhow::Context as _;
+    use oneshim_web::grpc::external::{
+        cert_resolver::HotReloadCertResolver, ip_ban::IpBan, jwt_verifier::JwtVerifier,
+        metrics::ExternalMetrics, mtls_verifier::MtlsVerifier, tls_config::load_certified_key,
+    };
+
+    let cert = load_certified_key(
+        cfg.tls_cert_path
+            .as_ref()
+            .context("tls_cert_path required when external_grpc.enabled")?,
+        cfg.tls_key_path
+            .as_ref()
+            .context("tls_key_path required when external_grpc.enabled")?,
+    )?;
+    let cert_resolver = std::sync::Arc::new(HotReloadCertResolver::new(cert));
+
+    let jwt_verifier = if cfg.auth_mode.map_or(false, |m| m.includes_jwt()) {
+        let pub_pem = std::fs::read(
+            cfg.jwt_public_key_path
+                .as_ref()
+                .context("jwt_public_key_path required for JWT auth mode")?,
+        )?;
+        Some(std::sync::Arc::new(JwtVerifier::new(
+            cfg.jwt_algorithm
+                .context("jwt_algorithm required for JWT auth mode")?,
+            &pub_pem,
+            cfg.jwt_expected_issuer
+                .as_deref()
+                .context("jwt_expected_issuer required for JWT auth mode")?,
+            cfg.jwt_expected_audience
+                .as_deref()
+                .context("jwt_expected_audience required for JWT auth mode")?,
+        )?))
+    } else {
+        None
+    };
+
+    let mtls_verifier = if cfg.auth_mode.map_or(false, |m| m.includes_mtls()) {
+        let allowlist = if let Some(p) = &cfg.mtls_fingerprint_allowlist_path {
+            std::fs::read_to_string(p)?
+                .lines()
+                .map(String::from)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Some(std::sync::Arc::new(MtlsVerifier::new(
+            cfg.mtls_max_cert_lifetime_hours,
+            &allowlist,
+        )?))
+    } else {
+        None
+    };
+
+    Ok(
+        oneshim_web::grpc::external::spawn_config::ExternalGrpcSpawnConfig {
+            bind_addr: std::net::SocketAddr::new(cfg.bind_address, cfg.port),
+            config: cfg.clone(),
+            storage,
+            system_monitor,
+            event_tx,
+            audit_port,
+            cert_resolver,
+            jwt_verifier,
+            mtls_verifier,
+            ip_ban: std::sync::Arc::new(IpBan::new()),
+            metrics: std::sync::Arc::new(ExternalMetrics::new()),
+        },
+    )
 }

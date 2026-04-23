@@ -88,6 +88,9 @@ grpc = ["server", "oneshim-network/grpc"]
 # Axum REST on a separate port). Opt-in so default builds pay zero tonic
 # dep cost.
 grpc-dashboard = ["oneshim-web/grpc-dashboard"]
+# D13-v2c: External gRPC binding — opt-in TLS+JWT/mTLS server on a separate port.
+# Depends on grpc-dashboard (loopback) being compiled in as well.
+grpc-dashboard-external = ["oneshim-web/grpc-dashboard-external"]
 audio = ["dep:oneshim-audio"]
 stt = ["audio", "oneshim-audio/whisper"]
 cloud-stt = ["audio", "oneshim-audio/cloud-stt"]
