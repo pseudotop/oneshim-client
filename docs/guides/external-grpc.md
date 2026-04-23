@@ -227,7 +227,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 3. Check certificate expiry: `openssl x509 -enddate -noout -in server.crt`.
 
 **Fix:**
-- Regenerate the cert pair: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0`.
+- Regenerate the cert pair: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0` (see the [Task 13 follow-up note](#certificate-generation) above — CLI is not yet wired; generate manually for now).
 - Update the config paths and restart the agent.
 - For development with self-signed certs, clients must allow `tls_insecure_skip_verify` (equivalent to curl `-k`).
 
@@ -269,7 +269,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 **Diagnosis:**
 The agent checks certificate expiry at startup and logs warnings if the cert expires within 7 days.
 
-**Fix:**
+**Fix** (once the CLI ships — see [Task 13 follow-up note](#certificate-generation) above):
 - Regenerate the cert immediately:
   ```bash
   cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert \

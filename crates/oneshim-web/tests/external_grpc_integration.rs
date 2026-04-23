@@ -64,9 +64,10 @@ fn make_test_shutdown_pair() -> (
 
 // ── Port allocator ───────────────────────────────────────────────────────────
 
-/// Global counter for ephemeral test ports. Starts at 44200 — below the OS
-/// ephemeral range (49152 on Linux, 49152-65535 on macOS) to avoid conflicts
-/// with OS-assigned ephemeral ports from other processes on the test host.
+/// Global counter for ephemeral test ports. Starts at 44200 — below macOS's
+/// default ephemeral range (49152-65535). Linux's default `net.ipv4.ip_local_port_range`
+/// is 32768-60999, so 44200 falls INSIDE Linux's ephemeral range; the
+/// `acquire_port()` helper retries on EADDRINUSE to tolerate collisions.
 /// Tests consume one port each; 10 tests = 10 ports.
 static NEXT_PORT: AtomicU16 = AtomicU16::new(44200);
 

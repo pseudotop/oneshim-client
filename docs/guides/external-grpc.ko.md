@@ -217,7 +217,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 3. 인증서 만료 확인: `openssl x509 -enddate -noout -in server.crt`.
 
 **해결:**
-- 인증서 쌍 재생성: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0`.
+- 인증서 쌍 재생성: `cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert --output-dir ~/.oneshim/certs/ --bind-ip 0.0.0.0` (위 [Task 13 follow-up 참고사항](#인증서-생성) 참조 — CLI 미배선, 당분간 수동 생성).
 - 설정 경로를 업데이트하고 에이전트를 다시 시작합니다.
 - 개발 중 자체 서명 인증서의 경우 클라이언트는 `tls_insecure_skip_verify`를 허용해야 합니다(curl `-k`와 동등).
 
@@ -259,7 +259,7 @@ sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetim
 **진단:**
 에이전트는 시작 시 인증서 만료를 확인하고 인증서가 7일 이내에 만료되면 경고를 기록합니다.
 
-**해결:**
+**해결** (CLI 배선 완료 후 — 위 [Task 13 follow-up 참고사항](#인증서-생성) 참조):
 - 인증서를 즉시 재생성합니다:
   ```bash
   cargo run -p oneshim-app --features external-grpc-tools -- generate-external-cert \
