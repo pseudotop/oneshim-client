@@ -158,8 +158,13 @@ pub async fn spawn_cert_watcher(
                     }
                 }
                 changed = shutdown.changed() => {
-                    if changed.is_ok() && *shutdown.borrow() {
-                        break;
+                    match changed {
+                        // Channel closed (all senders dropped) — exit to avoid busy-spin.
+                        Err(_) => break,
+                        // Explicit shutdown signal.
+                        Ok(()) if *shutdown.borrow() => break,
+                        // Value changed but not to `true`; keep watching.
+                        Ok(()) => {}
                     }
                 }
             }
@@ -194,8 +199,11 @@ pub fn spawn_expiry_monitor(
                     }
                 }
                 changed = shutdown.changed() => {
-                    if changed.is_ok() && *shutdown.borrow() {
-                        break;
+                    match changed {
+                        // Channel closed — exit to avoid busy-spin.
+                        Err(_) => break,
+                        Ok(()) if *shutdown.borrow() => break,
+                        Ok(()) => {}
                     }
                 }
             }
