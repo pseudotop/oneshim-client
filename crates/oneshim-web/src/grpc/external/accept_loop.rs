@@ -43,8 +43,10 @@ pub(crate) async fn run_accept_loop(
     active_conns: Arc<AtomicUsize>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) {
-    // Optional test-only panic injection point (Step 12.6).
-    #[cfg(test)]
+    // Optional test-only panic injection point. Gated on `test-support` so the
+    // external integration test binary — which enables `test-support` but is
+    // compiled outside the regular `#[cfg(test)]` frame — can also trigger it.
+    #[cfg(any(test, feature = "test-support"))]
     if PANIC_ON_FIRST_ACCEPT.load(Ordering::SeqCst) {
         PANIC_ON_FIRST_ACCEPT.store(false, Ordering::SeqCst);
         panic!("injected test panic in accept loop");
@@ -183,8 +185,12 @@ pub(crate) async fn run_accept_loop(
 
 /// Atomic flag for injecting a panic in the accept loop during tests.
 /// Set to `true` before the first accept; the loop panics once then resets the flag.
-#[cfg(test)]
-pub(crate) static PANIC_ON_FIRST_ACCEPT: std::sync::atomic::AtomicBool =
+///
+/// Gated on `test-support` so integration tests in the outer (non-unit) test
+/// frame can reach it (T16 panic respawn test). Keeping the gate narrow
+/// ensures a release binary never exposes this attack surface.
+#[cfg(any(test, feature = "test-support"))]
+pub static PANIC_ON_FIRST_ACCEPT: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(all(test, feature = "external-grpc-tools"))]
