@@ -26,116 +26,14 @@ use futures::FutureExt as _;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, warn};
 
-use crate::proto::dashboard::v1::dashboard_service_server::{
-    DashboardService, DashboardServiceServer,
-};
-use crate::proto::dashboard::v1::{
-    AgentInfoResponse, FocusStatsResponse, GetAgentInfoRequest, GetFocusStatsRequest,
-    GetProductivityMetricsRequest, GetRecentFramesRequest, GetSessionStatsRequest,
-    HealthCheckRequest, HealthCheckResponse, ProductivityMetricsResponse, RecentFramesResponse,
-    SessionStatsResponse, SubscribeEventsRequest, SubscribeEventsResponse, SubscribeMetricsRequest,
-    SubscribeMetricsResponse,
-};
-use tonic::{Request, Response, Status};
+use crate::proto::dashboard::v1::dashboard_service_server::DashboardServiceServer;
 
 use self::accept_loop::run_accept_loop;
 use self::audit_bridge::AuditBridge;
+use self::audit_layer::AuditLayer;
 use self::auth_layer::AuthLayer;
 use self::spawn_config::ExternalGrpcSpawnConfig;
 use self::tls_config::TlsLoadError;
-
-// ── Placeholder service ──────────────────────────────────────────────────────
-
-/// Minimal placeholder `DashboardService` implementation for the external server.
-///
-/// Returns `Status::unimplemented` for all RPCs. This decouples the Task 12
-/// TLS + accept-loop + supervisor infrastructure from the full `DashboardServiceImpl`
-/// wiring.
-///
-/// TODO(Task 13): wire full `DashboardServiceImpl` with `integration_auth_token: None`.
-struct ExternalDashboardService;
-
-#[tonic::async_trait]
-impl DashboardService for ExternalDashboardService {
-    type SubscribeMetricsStream = std::pin::Pin<
-        Box<dyn futures::Stream<Item = Result<SubscribeMetricsResponse, Status>> + Send>,
-    >;
-    type SubscribeEventsStream = std::pin::Pin<
-        Box<dyn futures::Stream<Item = Result<SubscribeEventsResponse, Status>> + Send>,
-    >;
-
-    async fn get_agent_info(
-        &self,
-        _req: Request<GetAgentInfoRequest>,
-    ) -> Result<Response<AgentInfoResponse>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-
-    async fn health_check(
-        &self,
-        _req: Request<HealthCheckRequest>,
-    ) -> Result<Response<HealthCheckResponse>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-
-    async fn get_session_stats(
-        &self,
-        _req: Request<GetSessionStatsRequest>,
-    ) -> Result<Response<SessionStatsResponse>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-
-    async fn get_recent_frames(
-        &self,
-        _req: Request<GetRecentFramesRequest>,
-    ) -> Result<Response<RecentFramesResponse>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-
-    async fn get_productivity_metrics(
-        &self,
-        _req: Request<GetProductivityMetricsRequest>,
-    ) -> Result<Response<ProductivityMetricsResponse>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-
-    async fn get_focus_stats(
-        &self,
-        _req: Request<GetFocusStatsRequest>,
-    ) -> Result<Response<FocusStatsResponse>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-
-    async fn subscribe_metrics(
-        &self,
-        _req: Request<SubscribeMetricsRequest>,
-    ) -> Result<Response<Self::SubscribeMetricsStream>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-
-    async fn subscribe_events(
-        &self,
-        _req: Request<SubscribeEventsRequest>,
-    ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
-        Err(Status::unimplemented(
-            "external server not yet wired (Task 13)",
-        ))
-    }
-}
 
 // ── TLS helpers ──────────────────────────────────────────────────────────────
 
@@ -250,18 +148,9 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
         shutdown.clone(),
     ));
 
-    // Fix 4: Startup warning — all RPCs return Unimplemented until Task 13 wires
-    // the full DashboardServiceImpl. This is intentional and must be visible in
-    // production logs so operators know to complete the wiring before serving real traffic.
-    tracing::warn!(
-        "external_grpc: running with placeholder DashboardService — all RPCs return Unimplemented. \
-         Wire the full DashboardServiceImpl (Task 13 follow-up) before serving external traffic in production."
-    );
-
-    // Build the placeholder service and auth layer.
-    // TODO(Task 13): replace ExternalDashboardService with a full DashboardServiceImpl
-    // using `integration_auth_token: None`.
-    let service = ExternalDashboardService;
+    // Build the real DashboardServiceImpl + auth + audit layer stack.
+    // `integration_auth_token: None` is enforced by `from_external_spawn_config`.
+    let service_impl = crate::grpc::DashboardServiceImpl::from_external_spawn_config(&cfg_arc);
     let auth_mode = cfg_arc
         .config
         .auth_mode
@@ -273,7 +162,11 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
         mtls_verifier: cfg_arc.mtls_verifier.clone(),
         ip_ban: cfg_arc.ip_ban.clone(),
         metrics: cfg_arc.metrics.clone(),
-        audit_bridge,
+        audit_bridge: audit_bridge.clone(),
+    };
+    let audit_layer = AuditLayer {
+        bridge: audit_bridge,
+        metrics: cfg_arc.metrics.clone(),
     };
 
     let stream = ReceiverStream::new(conn_rx);
@@ -290,14 +183,18 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
     // tonic 0.14 when using serve_with_incoming — documented in tonic source.
     // The concurrency_limit_per_connection and timeout settings ARE applied.
     // max_concurrent_streams from config (default from ExternalGrpcConfig::default).
+    //
+    // Layer ordering (tonic 0.14 / tower 0.5): each `.layer()` wraps the
+    // previously-built service — the LAST one added becomes the OUTERMOST
+    // (runs first on the request path). To get `auth → audit → handler`,
+    // `audit_layer` is added FIRST (innermost), `auth_layer` SECOND (outermost).
     let concurrency = cfg_arc.config.max_concurrent_streams;
     tonic::transport::Server::builder()
         .concurrency_limit_per_connection(concurrency)
         .timeout(Duration::from_secs(60))
-        .layer(auth_layer)
-        .add_service(
-            DashboardServiceServer::new(service).max_decoding_message_size(1_048_576), // 1 MiB
-        )
+        .layer(audit_layer) // innermost — runs AFTER auth on request ingress
+        .layer(auth_layer) // outermost — runs FIRST on request ingress
+        .add_service(DashboardServiceServer::new(service_impl).max_decoding_message_size(1_048_576))
         .serve_with_incoming_shutdown(stream, shutdown_signal)
         .await
         .map_err(ServeExternalError::Tonic)?;

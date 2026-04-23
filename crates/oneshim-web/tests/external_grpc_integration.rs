@@ -318,24 +318,29 @@ fn server_cert_pem() -> Vec<u8> {
     std::fs::read(&cert_path).expect("read server cert PEM")
 }
 
-// ── Helper: assert RPC → Unimplemented (successful auth, placeholder service) ─
+// ── Helper: assert RPC reached the authenticated service (got business data) ─
 
-/// Call `GetAgentInfo` and assert it returns `Unimplemented`.
-/// This proves the auth layer accepted the request — the placeholder service
-/// returns Unimplemented for every RPC (ExternalDashboardService, Task 12 stub).
+/// Call `GetAgentInfo` and assert auth succeeded (handler returned Ok or a
+/// terminal domain error that isn't Unauthenticated / Cancelled). After Task 9
+/// wired the real `DashboardServiceImpl`, a successful auth handshake yields
+/// an Ok response carrying `AgentInfoResponse` with version + platform.
 async fn assert_reaches_service(client: &mut DashboardServiceClient<Channel>) {
     let result = client.get_agent_info(GetAgentInfoRequest {}).await;
     match result {
-        Err(s) if s.code() == Code::Unimplemented => {
-            // Expected — auth passed, placeholder service returned unimplemented.
+        Ok(resp) => {
+            // Sanity — response carries an agent build_profile string.
+            let info = resp.into_inner();
+            assert!(
+                !info.build_profile.is_empty(),
+                "AgentInfoResponse.build_profile should be populated"
+            );
         }
-        Err(s) => panic!(
-            "expected Unimplemented (auth ok, placeholder service), got: {:?}",
-            s
-        ),
-        Ok(_) => {
-            panic!("expected Unimplemented, got Ok — ExternalDashboardService should not return Ok")
+        Err(s) if s.code() == Code::NotFound => {
+            // Some RPCs legitimately return NotFound with empty state; still
+            // indicates auth passed. (Not expected for get_agent_info, but
+            // tolerant in case future changes alter the default.)
         }
+        Err(s) => panic!("expected Ok from authenticated get_agent_info; got {:?}", s),
     }
 }
 
@@ -350,16 +355,17 @@ async fn assert_reaches_service_with_bearer(channel: Channel, token: &str) {
         .get_agent_info(req)
         .await;
     match result {
-        Err(s) if s.code() == Code::Unimplemented => {
-            // Expected — auth passed.
+        Ok(resp) => {
+            let info = resp.into_inner();
+            assert!(
+                !info.build_profile.is_empty(),
+                "AgentInfoResponse.build_profile should be populated"
+            );
         }
-        Err(s) => panic!(
-            "expected Unimplemented (auth ok, placeholder service), got: {:?}",
-            s
-        ),
-        Ok(_) => {
-            panic!("expected Unimplemented, got Ok — ExternalDashboardService should not return Ok")
+        Err(s) if s.code() == Code::NotFound => {
+            // Tolerant of empty state — auth passed.
         }
+        Err(s) => panic!("expected Ok from authenticated get_agent_info; got {:?}", s),
     }
 }
 
@@ -915,17 +921,13 @@ async fn loopback_server_unaffected_when_external_disabled() {
 
 /// Test 10: x-request-id header is returned in response metadata.
 ///
-/// The AuthLayer inserts a `command_id` (ulid) into `AuthContext`. The plan
-/// specifies that the response includes `x-request-id` matching the audit
-/// command_id. Since `ExternalDashboardService` is a stub, this test verifies
-/// the header infrastructure — a valid JWT request reaches the service and
-/// the response includes the command_id header inserted by AuditBridge.
+/// Smoke test: a JWT-authenticated request reaches the real
+/// DashboardServiceImpl (Task 9) and receives an Ok response.
 ///
-/// **NOTE**: The current stub (`ExternalDashboardService`) does not yet emit
-/// the `x-request-id` header (that's wired in Task 13). This test therefore
-/// relaxes the assertion to: auth passes and we receive Unimplemented (the
-/// `x-request-id` response header will be added when Task 13 wires the full
-/// service). The test is still useful as an auth-path smoke test.
+/// Note: the planned `x-request-id` response header carrying the audit
+/// command_id is not yet emitted by tonic — that is tracked as a
+/// post-Task-13 follow-up (spec §8). This test covers the auth-to-service
+/// smoke path only; the header assertion returns when implemented.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_request_id_header_returned() {
     let jwt_kp = test_jwt_keypair();
@@ -947,17 +949,15 @@ async fn external_grpc_request_id_header_returned() {
         "authorization",
         format!("Bearer {token}").parse().expect("valid header"),
     );
-    // Auth passes → Unimplemented from stub service (proves auth layer accepted request).
-    let result = DashboardServiceClient::new(channel)
+    let resp = DashboardServiceClient::new(channel)
         .get_agent_info(req)
-        .await;
-    match result {
-        Err(s) if s.code() == Code::Unimplemented => {
-            // Expected — auth layer accepted the request.
-        }
-        Err(s) => panic!("expected Unimplemented, got {:?}", s),
-        Ok(_) => panic!("expected Unimplemented from stub service"),
-    }
+        .await
+        .expect("auth should succeed and yield AgentInfoResponse");
+    let info = resp.into_inner();
+    assert!(
+        !info.build_profile.is_empty(),
+        "AgentInfoResponse.build_profile must be populated"
+    );
 
     handle.abort();
     let _ = handle.await;
