@@ -12,6 +12,7 @@
 /// If the crate is ever compiled with the `rcgen/aws_lc_rs` feature, the fallback logic here
 /// will succeed with RSA 2048 and print "Keys generated: RSA-2048".
 #[cfg(feature = "external-grpc-tools")]
+#[allow(dead_code)] // TODO(Task 13 follow-up): wire as a CLI subcommand via Tauri CommandHandler OR standalone binary target. For now, the functions are exercised by #[cfg(test)] tests in this module; production use is deferred until the external gRPC service impl is wired (Task 13).
 pub mod tools {
     use std::net::IpAddr;
     use std::path::{Path, PathBuf};

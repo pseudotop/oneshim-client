@@ -398,6 +398,11 @@ mod tests {
     async fn server_binds_configured_port() {
         use oneshim_storage::sqlite::SqliteStorage;
 
+        // Install rustls CryptoProvider so this test is order-independent within
+        // the test binary (earlier tests in the same process usually install it,
+        // but relying on that is fragile — see iter-6 review).
+        test_support::install_rustls_crypto_provider();
+
         // Use port 0 so the OS picks an available port.
         let bind_addr = std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 
