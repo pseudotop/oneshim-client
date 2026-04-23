@@ -5,16 +5,20 @@
 
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
+use oneshim_core::models::audit::AuditStatus;
 use tonic::Status;
 use tower::{Layer, Service};
 use ulid::Ulid;
 
 use oneshim_core::config::AuthMode;
 
+use super::audit_bridge::AuditBridge;
 use super::conn_info::{AuthContext, AuthType, PeerInfo};
 use super::ip_ban::IpBan;
 use super::jwt_verifier::JwtVerifier;
+use super::metrics::ExternalMetrics;
 use super::mtls_verifier::MtlsVerifier;
 
 #[derive(Clone)]
@@ -23,6 +27,8 @@ pub struct AuthLayer {
     pub jwt_verifier: Option<Arc<JwtVerifier>>,
     pub mtls_verifier: Option<Arc<MtlsVerifier>>,
     pub ip_ban: Arc<IpBan>,
+    pub metrics: Arc<ExternalMetrics>,
+    pub audit_bridge: Arc<AuditBridge>,
 }
 
 impl<S: Clone> Layer<S> for AuthLayer {
@@ -34,6 +40,8 @@ impl<S: Clone> Layer<S> for AuthLayer {
             jwt_verifier: self.jwt_verifier.clone(),
             mtls_verifier: self.mtls_verifier.clone(),
             ip_ban: self.ip_ban.clone(),
+            metrics: self.metrics.clone(),
+            audit_bridge: self.audit_bridge.clone(),
         }
     }
 }
@@ -45,6 +53,8 @@ pub struct AuthService<S> {
     jwt_verifier: Option<Arc<JwtVerifier>>,
     mtls_verifier: Option<Arc<MtlsVerifier>>,
     ip_ban: Arc<IpBan>,
+    metrics: Arc<ExternalMetrics>,
+    audit_bridge: Arc<AuditBridge>,
 }
 
 impl<S, B, RespBody> Service<http::Request<B>> for AuthService<S>
@@ -75,6 +85,8 @@ where
         let mtls_verifier = self.mtls_verifier.clone();
         let auth_mode = self.auth_mode;
         let ip_ban = self.ip_ban.clone();
+        let metrics = self.metrics.clone();
+        let audit_bridge = self.audit_bridge.clone();
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
@@ -104,11 +116,60 @@ where
                         }
                         Err(_) => {
                             ip_ban.record_failure(peer.remote_addr);
+                            metrics.auth_failure_bump("invalid_jwt");
+                            // Build a stub context for the audit record (auth failed, no real client_id).
+                            let stub_ctx = AuthContext {
+                                auth_type: AuthType::Jwt,
+                                client_id: "unknown".into(),
+                                jti: None,
+                                command_id: Ulid::new().to_string(),
+                            };
+                            let bridge = audit_bridge.clone();
+                            let remote = peer.remote_addr.to_string();
+                            tokio::spawn(async move {
+                                bridge
+                                    .record(
+                                        &stub_ctx,
+                                        remote,
+                                        "external_grpc",
+                                        "auth_failed",
+                                        AuditStatus::Failed,
+                                        Duration::ZERO,
+                                        None,
+                                        None,
+                                        Some("invalid_jwt"),
+                                    )
+                                    .await;
+                            });
                             return Ok(status_response(Status::unauthenticated("unauthenticated")));
                         }
                     },
                     _ => {
                         ip_ban.record_failure(peer.remote_addr);
+                        metrics.auth_failure_bump("missing_token");
+                        let stub_ctx = AuthContext {
+                            auth_type: AuthType::Jwt,
+                            client_id: "unknown".into(),
+                            jti: None,
+                            command_id: Ulid::new().to_string(),
+                        };
+                        let bridge = audit_bridge.clone();
+                        let remote = peer.remote_addr.to_string();
+                        tokio::spawn(async move {
+                            bridge
+                                .record(
+                                    &stub_ctx,
+                                    remote,
+                                    "external_grpc",
+                                    "auth_failed",
+                                    AuditStatus::Failed,
+                                    Duration::ZERO,
+                                    None,
+                                    None,
+                                    Some("missing_token"),
+                                )
+                                .await;
+                        });
                         return Ok(status_response(Status::unauthenticated("unauthenticated")));
                     }
                 }
@@ -127,22 +188,100 @@ where
                         }
                         Err(_) => {
                             ip_ban.record_failure(peer.remote_addr);
+                            metrics.auth_failure_bump("fingerprint_mismatch");
+                            let stub_ctx = AuthContext {
+                                auth_type: AuthType::Mtls,
+                                client_id: "unknown".into(),
+                                jti: None,
+                                command_id: Ulid::new().to_string(),
+                            };
+                            let bridge = audit_bridge.clone();
+                            let remote = peer.remote_addr.to_string();
+                            tokio::spawn(async move {
+                                bridge
+                                    .record(
+                                        &stub_ctx,
+                                        remote,
+                                        "external_grpc",
+                                        "auth_failed",
+                                        AuditStatus::Failed,
+                                        Duration::ZERO,
+                                        None,
+                                        None,
+                                        Some("fingerprint_mismatch"),
+                                    )
+                                    .await;
+                            });
                             return Ok(status_response(Status::unauthenticated("unauthenticated")));
                         }
                     },
                     _ => {
                         ip_ban.record_failure(peer.remote_addr);
+                        metrics.auth_failure_bump("missing_cert");
+                        let stub_ctx = AuthContext {
+                            auth_type: AuthType::Mtls,
+                            client_id: "unknown".into(),
+                            jti: None,
+                            command_id: Ulid::new().to_string(),
+                        };
+                        let bridge = audit_bridge.clone();
+                        let remote = peer.remote_addr.to_string();
+                        tokio::spawn(async move {
+                            bridge
+                                .record(
+                                    &stub_ctx,
+                                    remote,
+                                    "external_grpc",
+                                    "auth_failed",
+                                    AuditStatus::Failed,
+                                    Duration::ZERO,
+                                    None,
+                                    None,
+                                    Some("missing_cert"),
+                                )
+                                .await;
+                        });
                         return Ok(status_response(Status::unauthenticated("unauthenticated")));
                     }
                 }
             }
 
+            let auth_type = auth_mode_to_type(auth_mode);
             let ctx = AuthContext {
-                auth_type: auth_mode_to_type(auth_mode),
+                auth_type,
                 client_id: client_id.unwrap_or_else(|| "unknown".into()),
                 jti,
                 command_id: Ulid::new().to_string(),
             };
+
+            // Record successful auth dispatch.
+            let auth_type_str = match auth_type {
+                AuthType::Jwt => "jwt",
+                AuthType::Mtls => "mtls",
+                AuthType::JwtAndMtls => "jwt+mtls",
+            };
+            metrics.request_bump("external", auth_type_str, "ok");
+            {
+                let bridge = audit_bridge.clone();
+                let ctx_clone = ctx.clone();
+                let remote = peer.remote_addr.to_string();
+                tokio::spawn(async move {
+                    bridge
+                        .record(
+                            &ctx_clone,
+                            remote,
+                            "external_grpc",
+                            "ok",
+                            AuditStatus::Started,
+                            Duration::ZERO,
+                            None,
+                            None,
+                            None,
+                        )
+                        .await;
+                });
+            }
+
             req.extensions_mut().insert(ctx);
             inner.call(req).await
         })
@@ -202,6 +341,56 @@ mod tests {
         }
     }
 
+    /// Build a no-op `AuditBridge` backed by a minimal `AuditLogPort` stub.
+    fn noop_audit_bridge() -> Arc<AuditBridge> {
+        use async_trait::async_trait;
+        use oneshim_core::models::ai_session::SessionAuditEntry;
+        use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
+        use oneshim_core::ports::audit_log::AuditLogPort;
+
+        struct NoopAudit;
+        #[async_trait]
+        impl AuditLogPort for NoopAudit {
+            async fn pending_count(&self) -> usize {
+                0
+            }
+            async fn recent_entries(&self, _: usize) -> Vec<AuditEntry> {
+                vec![]
+            }
+            async fn entries_by_status(&self, _: &AuditStatus, _: usize) -> Vec<AuditEntry> {
+                vec![]
+            }
+            async fn entries_by_action_prefix(&self, _: &str, _: usize) -> Vec<AuditEntry> {
+                vec![]
+            }
+            async fn stats(&self) -> AuditStats {
+                AuditStats::default()
+            }
+            async fn has_pending_batch(&self) -> bool {
+                false
+            }
+            async fn log_event(&self, _: &str, _: &str, _: &str) {}
+            async fn log_start_if(&self, _: AuditLevel, _: &str, _: &str, _: &str) {}
+            async fn log_complete_with_time(
+                &self,
+                _: AuditLevel,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: u64,
+            ) {
+            }
+            async fn drain_batch(&self) -> Vec<AuditEntry> {
+                vec![]
+            }
+            async fn drain_all(&self) -> Vec<AuditEntry> {
+                vec![]
+            }
+            async fn record_session_event(&self, _: SessionAuditEntry) {}
+        }
+        Arc::new(AuditBridge::new(Arc::new(NoopAudit)))
+    }
+
     #[tokio::test]
     async fn missing_peer_info_returns_internal_error() {
         let layer = AuthLayer {
@@ -209,6 +398,8 @@ mod tests {
             jwt_verifier: None,
             mtls_verifier: None,
             ip_ban: Arc::new(IpBan::new()),
+            metrics: Arc::new(ExternalMetrics::new()),
+            audit_bridge: noop_audit_bridge(),
         };
         let mut svc = layer.layer(echo_service());
         // Request with NO PeerInfo extension inserted.
@@ -254,6 +445,8 @@ mod tests {
             jwt_verifier: Some(verifier),
             mtls_verifier: None,
             ip_ban: Arc::new(IpBan::new()),
+            metrics: Arc::new(ExternalMetrics::new()),
+            audit_bridge: noop_audit_bridge(),
         };
         let mut svc = layer.layer(echo_service());
         let mut req = Request::builder().uri("/").body(vec![]).unwrap();
@@ -278,6 +471,8 @@ mod tests {
             jwt_verifier: Some(verifier),
             mtls_verifier: None,
             ip_ban: ban.clone(),
+            metrics: Arc::new(ExternalMetrics::new()),
+            audit_bridge: noop_audit_bridge(),
         };
         let mut svc = layer.layer(echo_service());
         let mut req = Request::builder().uri("/").body(vec![]).unwrap();
@@ -305,6 +500,8 @@ mod tests {
             jwt_verifier: None,
             mtls_verifier: Some(mtls),
             ip_ban: Arc::new(IpBan::new()),
+            metrics: Arc::new(ExternalMetrics::new()),
+            audit_bridge: noop_audit_bridge(),
         };
         let mut svc = layer.layer(echo_service());
         let mut req = Request::builder().uri("/").body(vec![]).unwrap();
@@ -314,6 +511,87 @@ mod tests {
             resp.body(),
             b"ok",
             "mTLS-only path accepted and AuthContext inserted"
+        );
+    }
+
+    /// Auth failure bumps `metrics.auth_failures_total["invalid_jwt"]`.
+    #[tokio::test]
+    async fn jwt_invalid_bumps_auth_failure_metric() {
+        use crate::grpc::external::jwt_verifier::tests::rsa_keypair_pem;
+        use oneshim_core::config::JwtAlgorithm;
+
+        let (_, pub_pem) = rsa_keypair_pem();
+        let verifier =
+            Arc::new(JwtVerifier::new(JwtAlgorithm::Rs256, &pub_pem, "iss-1", "aud-1").unwrap());
+        let metrics = Arc::new(ExternalMetrics::new());
+        let layer = AuthLayer {
+            auth_mode: AuthMode::Jwt,
+            jwt_verifier: Some(verifier),
+            mtls_verifier: None,
+            ip_ban: Arc::new(IpBan::new()),
+            metrics: metrics.clone(),
+            audit_bridge: noop_audit_bridge(),
+        };
+        let mut svc = layer.layer(echo_service());
+        let mut req = Request::builder().uri("/").body(vec![]).unwrap();
+        req.extensions_mut().insert(mk_peer(None));
+        req.headers_mut()
+            .insert("authorization", "Bearer bad.token".parse().unwrap());
+        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
+        assert_eq!(
+            metrics.get_auth_failure_count("invalid_jwt"),
+            1,
+            "invalid JWT must bump auth_failure_count[invalid_jwt]"
+        );
+    }
+
+    /// Successful JWT auth bumps `metrics.requests_total["external|jwt|ok"]`.
+    #[tokio::test]
+    async fn jwt_valid_bumps_request_metric() {
+        use crate::grpc::external::jwt_verifier::tests::rsa_keypair_pem;
+        use oneshim_core::config::JwtAlgorithm;
+
+        let (priv_pem, pub_pem) = rsa_keypair_pem();
+        let verifier =
+            Arc::new(JwtVerifier::new(JwtAlgorithm::Rs256, &pub_pem, "iss-1", "aud-1").unwrap());
+        let enc = jsonwebtoken::EncodingKey::from_rsa_pem(&priv_pem).unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let claims = serde_json::json!({
+            "sub": "user-B",
+            "iss": "iss-1",
+            "aud": "aud-1",
+            "exp": now + 3600,
+            "iat": now,
+        });
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
+            &claims,
+            &enc,
+        )
+        .unwrap();
+
+        let metrics = Arc::new(ExternalMetrics::new());
+        let layer = AuthLayer {
+            auth_mode: AuthMode::Jwt,
+            jwt_verifier: Some(verifier),
+            mtls_verifier: None,
+            ip_ban: Arc::new(IpBan::new()),
+            metrics: metrics.clone(),
+            audit_bridge: noop_audit_bridge(),
+        };
+        let mut svc = layer.layer(echo_service());
+        let mut req = Request::builder().uri("/").body(vec![]).unwrap();
+        req.extensions_mut().insert(mk_peer(None));
+        req.headers_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
+        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
+        assert_eq!(
+            metrics.get_request_count("external|jwt|ok"),
+            1,
+            "successful JWT auth must bump requests_total[external|jwt|ok]"
         );
     }
 }

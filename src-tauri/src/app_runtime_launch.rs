@@ -1201,7 +1201,32 @@ async fn build_external_spawn_config(
     )?;
     let cert_resolver = std::sync::Arc::new(HotReloadCertResolver::new(cert));
 
-    let jwt_verifier = if cfg.auth_mode.map_or(false, |m| m.includes_jwt()) {
+    // Spawn cert hot-reload watcher and daily expiry monitor.
+    // Both are best-effort: errors are logged but do not prevent startup.
+    let metrics_arc = std::sync::Arc::new(ExternalMetrics::new());
+    {
+        use oneshim_web::grpc::external::tls_config::{spawn_cert_watcher, spawn_expiry_monitor};
+        let cert_path = cfg
+            .tls_cert_path
+            .clone()
+            .context("tls_cert_path required when external_grpc.enabled")?;
+        let key_path = cfg
+            .tls_key_path
+            .clone()
+            .context("tls_key_path required when external_grpc.enabled")?;
+        let watcher_resolver = cert_resolver.clone();
+        let watcher_metrics = metrics_arc.clone();
+        // spawn_cert_watcher is async and blocks only on initial watcher setup;
+        // the actual file-watch loop runs inside a spawned task.
+        tokio::spawn(async move {
+            if let Err(e) = spawn_cert_watcher(cert_path, key_path, watcher_resolver).await {
+                tracing::warn!(err = %e, "external_grpc: cert watcher failed to start");
+            }
+        });
+        spawn_expiry_monitor(cert_resolver.clone(), watcher_metrics);
+    }
+
+    let jwt_verifier = if cfg.auth_mode.is_some_and(|m| m.includes_jwt()) {
         let pub_pem = std::fs::read(
             cfg.jwt_public_key_path
                 .as_ref()
@@ -1222,7 +1247,7 @@ async fn build_external_spawn_config(
         None
     };
 
-    let mtls_verifier = if cfg.auth_mode.map_or(false, |m| m.includes_mtls()) {
+    let mtls_verifier = if cfg.auth_mode.is_some_and(|m| m.includes_mtls()) {
         let allowlist = if let Some(p) = &cfg.mtls_fingerprint_allowlist_path {
             std::fs::read_to_string(p)?
                 .lines()
@@ -1251,7 +1276,7 @@ async fn build_external_spawn_config(
             jwt_verifier,
             mtls_verifier,
             ip_ban: std::sync::Arc::new(IpBan::new()),
-            metrics: std::sync::Arc::new(ExternalMetrics::new()),
+            metrics: metrics_arc,
         },
     )
 }

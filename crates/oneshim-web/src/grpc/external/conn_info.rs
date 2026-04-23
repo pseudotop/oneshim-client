@@ -5,9 +5,32 @@
 
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+/// RAII guard that decrements the active-connection counter when dropped.
+///
+/// Created when a connection is successfully handed to tonic; ensures that
+/// `active_conns` is decremented even if tonic drops the stream mid-flight
+/// without going through a normal shutdown path.
+pub struct ActiveConnGuard {
+    counter: Arc<AtomicUsize>,
+}
+
+impl ActiveConnGuard {
+    pub fn new(counter: Arc<AtomicUsize>) -> Self {
+        Self { counter }
+    }
+}
+
+impl Drop for ActiveConnGuard {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Relaxed);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PeerInfo {
@@ -36,14 +59,22 @@ pub enum AuthType {
 
 /// Wraps a TLS stream + PeerInfo; implements Connected so tonic's
 /// ConnectInfoLayer exposes PeerInfo in every request's extensions.
+///
+/// Optionally holds an `ActiveConnGuard` to decrement `active_conns` when
+/// the stream is dropped (RAII — no manual decrement needed on success path).
 pub struct PeerAwareStream<S> {
     inner: S,
     peer_info: PeerInfo,
+    _active_conns_guard: Option<ActiveConnGuard>,
 }
 
 impl<S> PeerAwareStream<S> {
-    pub fn new(inner: S, peer_info: PeerInfo) -> Self {
-        Self { inner, peer_info }
+    pub fn new(inner: S, peer_info: PeerInfo, guard: Option<ActiveConnGuard>) -> Self {
+        Self {
+            inner,
+            peer_info,
+            _active_conns_guard: guard,
+        }
     }
     pub fn peer_info(&self) -> &PeerInfo {
         &self.peer_info
@@ -101,7 +132,7 @@ mod tests {
     #[test]
     fn connect_info_returns_peer() {
         let (a, _b) = duplex(64);
-        let stream = PeerAwareStream::new(a, mk_peer());
+        let stream = PeerAwareStream::new(a, mk_peer(), None);
         let info = stream.connect_info();
         assert_eq!(info.remote_addr.port(), 5001);
     }
@@ -109,7 +140,7 @@ mod tests {
     #[tokio::test]
     async fn async_read_delegates() {
         let (a, mut b) = duplex(64);
-        let mut stream = PeerAwareStream::new(a, mk_peer());
+        let mut stream = PeerAwareStream::new(a, mk_peer(), None);
         b.write_all(b"hello").await.unwrap();
         drop(b);
         let mut buf = [0u8; 5];
@@ -120,12 +151,51 @@ mod tests {
     #[tokio::test]
     async fn async_write_delegates() {
         let (a, mut b) = duplex(64);
-        let mut stream = PeerAwareStream::new(a, mk_peer());
+        let mut stream = PeerAwareStream::new(a, mk_peer(), None);
         stream.write_all(b"world").await.unwrap();
         stream.shutdown().await.unwrap();
         let mut buf = Vec::new();
         b.read_to_end(&mut buf).await.unwrap();
         assert_eq!(&buf, b"world");
+    }
+
+    /// Verify that dropping a `PeerAwareStream` with a guard decrements the counter.
+    #[test]
+    fn active_conn_guard_decrements_on_stream_drop() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let counter = Arc::new(AtomicUsize::new(100));
+        let (a, _b) = duplex(64);
+        let guard = ActiveConnGuard::new(counter.clone());
+        let stream = PeerAwareStream::new(a, mk_peer(), Some(guard));
+        drop(stream);
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            99,
+            "guard must decrement on drop"
+        );
+    }
+
+    /// 100 accepted+closed connections must leave active_conns at 0.
+    #[test]
+    fn active_conn_guard_100_accepts_leave_zero() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        for _ in 0..100 {
+            counter.fetch_add(1, Ordering::Relaxed);
+            let (a, _b) = duplex(64);
+            let guard = ActiveConnGuard::new(counter.clone());
+            let stream = PeerAwareStream::new(a, mk_peer(), Some(guard));
+            drop(stream);
+        }
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            0,
+            "100 accepts+closes must leave active_conns=0"
+        );
     }
 
     #[test]

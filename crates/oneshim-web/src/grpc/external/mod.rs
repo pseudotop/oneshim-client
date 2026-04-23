@@ -38,6 +38,7 @@ use crate::proto::dashboard::v1::{
 use tonic::{Request, Response, Status};
 
 use self::accept_loop::run_accept_loop;
+use self::audit_bridge::AuditBridge;
 use self::auth_layer::AuthLayer;
 use self::spawn_config::ExternalGrpcSpawnConfig;
 use self::tls_config::TlsLoadError;
@@ -250,6 +251,14 @@ pub async fn serve_external(
         shutdown.clone(),
     ));
 
+    // Fix 4: Startup warning — all RPCs return Unimplemented until Task 13 wires
+    // the full DashboardServiceImpl. This is intentional and must be visible in
+    // production logs so operators know to complete the wiring before serving real traffic.
+    tracing::warn!(
+        "external_grpc: running with placeholder DashboardService — all RPCs return Unimplemented. \
+         Wire the full DashboardServiceImpl (Task 13 follow-up) before serving external traffic in production."
+    );
+
     // Build the placeholder service and auth layer.
     // TODO(Task 13): replace ExternalDashboardService with a full DashboardServiceImpl
     // using `integration_auth_token: None`.
@@ -258,11 +267,14 @@ pub async fn serve_external(
         .config
         .auth_mode
         .unwrap_or(oneshim_core::config::AuthMode::Jwt);
+    let audit_bridge = Arc::new(AuditBridge::new(cfg_arc.audit_port.clone()));
     let auth_layer = AuthLayer {
         auth_mode,
         jwt_verifier: cfg_arc.jwt_verifier.clone(),
         mtls_verifier: cfg_arc.mtls_verifier.clone(),
         ip_ban: cfg_arc.ip_ban.clone(),
+        metrics: cfg_arc.metrics.clone(),
+        audit_bridge,
     };
 
     let stream = ReceiverStream::new(conn_rx);
@@ -278,11 +290,15 @@ pub async fn serve_external(
     // Note: http2_keepalive_interval / http2_keepalive_timeout are ignored by
     // tonic 0.14 when using serve_with_incoming — documented in tonic source.
     // The concurrency_limit_per_connection and timeout settings ARE applied.
+    // max_concurrent_streams from config (default from ExternalGrpcConfig::default).
+    let concurrency = cfg_arc.config.max_concurrent_streams;
     tonic::transport::Server::builder()
-        .concurrency_limit_per_connection(32)
+        .concurrency_limit_per_connection(concurrency)
         .timeout(Duration::from_secs(60))
         .layer(auth_layer)
-        .add_service(DashboardServiceServer::new(service))
+        .add_service(
+            DashboardServiceServer::new(service).max_decoding_message_size(1_048_576), // 1 MiB
+        )
         .serve_with_incoming_shutdown(stream, shutdown_signal)
         .await
         .map_err(ServeExternalError::Tonic)?;

@@ -20,7 +20,7 @@ use tokio::sync::{mpsc, watch};
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, warn};
 
-use super::conn_info::{PeerAwareStream, PeerInfo};
+use super::conn_info::{ActiveConnGuard, PeerAwareStream, PeerInfo};
 use super::spawn_config::ExternalGrpcSpawnConfig;
 
 /// How long to wait for a TLS handshake before dropping the connection.
@@ -162,16 +162,19 @@ pub async fn run_accept_loop(
                         cert_subject_cn: None,
                         tls_version: "TLSv1.3".to_string(),
                     };
-                    let wrapped = PeerAwareStream::new(tls_stream, peer_info);
+                    // RAII guard: decrements active_conns when the stream is dropped.
+                    let guard = ActiveConnGuard::new(active_c.clone());
+                    let wrapped = PeerAwareStream::new(tls_stream, peer_info, Some(guard));
 
                     // Forward to tonic. Drop on channel-closed (server shut down).
+                    // If send fails, the guard in `wrapped` drops here and decrements.
                     if conn_tx_c.send(Ok(wrapped)).await.is_err() {
-                        active_c.fetch_sub(1, Ordering::Relaxed);
+                        // Guard was moved into `wrapped`, which is now dropped here —
+                        // the decrement happens automatically via Drop.
                     }
-                    // NOTE: `active_c.fetch_sub` on disconnect is handled by the
-                    // wrapping layer that holds the stream (see connection-drop guard
-                    // in serve_external). This subtraction is a best-effort decrement
-                    // on the "connection was never actually handed over" path.
+                    // NOTE: for all pre-stream-creation error paths above (TLS failure,
+                    // handshake timeout, mTLS rejection) the manual fetch_sub calls
+                    // handle the decrement because no guard was created yet.
                 });
             }
         }
