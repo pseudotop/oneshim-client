@@ -286,6 +286,7 @@ mod tests {
     /// client setup needed — connection is dropped immediately after TCP accept).
     #[tokio::test]
     async fn accept_loop_rejects_banned_ip() {
+        super::super::test_support::install_rustls_crypto_provider();
         let ban = Arc::new(IpBan::new());
         let cfg = minimal_cfg(1024, ban.clone()).await;
 
@@ -340,6 +341,7 @@ mod tests {
     /// Accept loop drops connections when active_conns >= max_connections.
     #[tokio::test]
     async fn accept_loop_rejects_over_max_connections() {
+        super::super::test_support::install_rustls_crypto_provider();
         let ban = Arc::new(IpBan::new());
         // max_connections = 0 → every connection is immediately over cap.
         let cfg = minimal_cfg(0, ban).await;
@@ -378,6 +380,7 @@ mod tests {
     /// Graceful shutdown: the accept loop exits when the shutdown watch fires.
     #[tokio::test]
     async fn graceful_shutdown_stops_accept_loop() {
+        super::super::test_support::install_rustls_crypto_provider();
         let ban = Arc::new(IpBan::new());
         let cfg = minimal_cfg(1024, ban).await;
 

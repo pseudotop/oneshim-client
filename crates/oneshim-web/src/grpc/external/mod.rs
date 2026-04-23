@@ -372,6 +372,7 @@ mod tests {
     /// `build_server_config` without mTLS succeeds (no CA bytes).
     #[test]
     fn build_server_config_without_mtls_uses_no_client_auth() {
+        test_support::install_rustls_crypto_provider();
         use cert_resolver::HotReloadCertResolver;
         use rcgen::{CertificateParams, KeyPair};
 

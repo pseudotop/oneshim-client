@@ -16,8 +16,28 @@
 
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Once, OnceLock};
 use tempfile::TempDir;
+
+// ── rustls crypto provider ────────────────────────────────────────────────────
+
+static RUSTLS_INIT: Once = Once::new();
+
+/// Install the aws-lc-rs CryptoProvider as the process-level default for rustls.
+///
+/// rustls 0.23 requires an explicit provider when both `aws-lc-rs` and `ring`
+/// are present in the dependency graph. Tests that call
+/// `rustls::ServerConfig::builder()` or `WebPkiClientVerifier::builder()`
+/// must call this function first — those paths consult the process-level
+/// default, which is unset unless installed explicitly.
+///
+/// Idempotent: the `Once` guard ensures the install runs at most once per
+/// process, regardless of how many tests call this function.
+pub fn install_rustls_crypto_provider() {
+    RUSTLS_INIT.call_once(|| {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    });
+}
 
 // ── Server TLS cert pair ─────────────────────────────────────────────────────
 

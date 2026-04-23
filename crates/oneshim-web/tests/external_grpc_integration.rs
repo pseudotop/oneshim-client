@@ -43,7 +43,8 @@ use oneshim_web::storage_port::WebStorage;
 
 // Bring in the test_support helpers from the external module.
 use oneshim_web::grpc::external::test_support::{
-    test_ca_and_client_cert, test_cert_pair, test_jwt_keypair, test_mint_jwt,
+    install_rustls_crypto_provider, test_ca_and_client_cert, test_cert_pair, test_jwt_keypair,
+    test_mint_jwt,
 };
 
 // ── Shutdown pair helper ─────────────────────────────────────────────────────
@@ -233,6 +234,10 @@ fn make_mtls_config(ca_pem_path: &std::path::Path) -> (ExternalGrpcSpawnConfig, 
 /// The shutdown channel lives inside `cfg.shutdown_tx` / `cfg.shutdown_rx`.
 /// Callers abort the handle to stop the server.
 async fn spawn_server(cfg: ExternalGrpcSpawnConfig) -> (tokio::task::JoinHandle<()>, u16) {
+    // rustls 0.23 requires an explicit CryptoProvider when both aws-lc-rs and ring
+    // are present. `serve_external` calls `build_server_config` →
+    // `rustls::ServerConfig::builder()` which consults the process-level default.
+    install_rustls_crypto_provider();
     let port = next_test_port();
 
     let real_cfg = ExternalGrpcSpawnConfig {
