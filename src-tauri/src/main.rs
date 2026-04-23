@@ -108,6 +108,24 @@ use tracing_subscriber::EnvFilter;
 pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
 
 fn main() {
+    // D13 Task 13: `generate-external-cert` CLI subcommand — dispatched BEFORE
+    // any Tauri initialization so we never spawn the webview runtime for
+    // pure-utility invocations. Tauri itself does not parse CLI args for
+    // arbitrary subcommands; we do it here.
+    #[cfg(feature = "external-grpc-tools")]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if args.get(1).map(|s| s.as_str()) == Some("generate-external-cert") {
+            match crate::commands::generate_external_cert::cli::run(&args[2..]) {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("{e:#}");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
     // Windows DLL search order hardening (Spec Section 9.2):
     // Remove CWD from DLL search path to prevent DLL hijacking.
     #[cfg(target_os = "windows")]
