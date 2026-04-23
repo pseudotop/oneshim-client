@@ -17,6 +17,7 @@ use super::ip_ban::IpBan;
 use super::jwt_verifier::JwtVerifier;
 use super::mtls_verifier::MtlsVerifier;
 
+#[derive(Clone)]
 pub struct AuthLayer {
     pub auth_mode: AuthMode,
     pub jwt_verifier: Option<Arc<JwtVerifier>>,
