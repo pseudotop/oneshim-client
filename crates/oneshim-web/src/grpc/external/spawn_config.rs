@@ -11,7 +11,7 @@ use oneshim_api_contracts::stream::RealtimeEvent;
 use oneshim_core::config::ExternalGrpcConfig;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::monitor::SystemMonitor;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 use crate::storage_port::WebStorage;
 
@@ -49,6 +49,19 @@ pub struct ExternalGrpcSpawnConfig {
     pub ip_ban: Arc<IpBan>,
     /// In-process atomic counters (requests, auth failures, active streams).
     pub metrics: Arc<ExternalMetrics>,
+    /// Shutdown signal receiver — cloned by cert watcher + expiry monitor tasks, and
+    /// by `serve_external` for tonic graceful shutdown.
+    ///
+    /// When `true` is sent on the paired `shutdown_tx`, all three background tasks
+    /// (cert watcher, expiry monitor, tonic server) break out of their loops cleanly.
+    pub shutdown_rx: watch::Receiver<bool>,
+    /// Shutdown signal sender — kept alive for the lifetime of `spawn_with_supervisor`.
+    ///
+    /// Dropping this `Arc` (when the last reference is released as the supervisor exits
+    /// or gives up) closes the watch channel, which also unblocks any pending
+    /// `shutdown_rx.changed()` calls with an `Err` — causing the watcher and expiry tasks
+    /// to exit.
+    pub shutdown_tx: Arc<watch::Sender<bool>>,
 }
 
 /// Custom `Debug` impl — redacts cert key material and verifier contents.
@@ -67,6 +80,7 @@ impl std::fmt::Debug for ExternalGrpcSpawnConfig {
             .field("max_connections", &self.config.max_connections)
             .field("jwt_verifier_present", &self.jwt_verifier.is_some())
             .field("mtls_verifier_present", &self.mtls_verifier.is_some())
+            .field("shutdown_signalled", &*self.shutdown_rx.borrow())
             .finish_non_exhaustive()
     }
 }
@@ -143,6 +157,7 @@ mod tests {
         let storage =
             Arc::new(SqliteStorage::open_in_memory(30).expect("sqlite")) as Arc<dyn WebStorage>;
         let (event_tx, _) = broadcast::channel(16);
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         ExternalGrpcSpawnConfig {
             bind_addr,
@@ -162,6 +177,8 @@ mod tests {
             mtls_verifier: None,
             ip_ban: Arc::new(IpBan::new()),
             metrics: Arc::new(ExternalMetrics::new()),
+            shutdown_rx,
+            shutdown_tx: Arc::new(shutdown_tx),
         }
     }
 

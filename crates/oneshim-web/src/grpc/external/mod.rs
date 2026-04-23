@@ -21,7 +21,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::FutureExt as _;
-use tokio::sync::watch;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, warn};
 
@@ -205,11 +204,9 @@ impl std::fmt::Display for ServeExternalError {
 /// Binds a `TcpListener`, runs the custom accept loop (IP ban + TLS handshake),
 /// and serves through a tonic `Server` with `AuthLayer` middleware.
 ///
-/// Returns when `shutdown` fires or on a fatal error.
-pub async fn serve_external(
-    cfg: ExternalGrpcSpawnConfig,
-    shutdown: watch::Receiver<bool>,
-) -> Result<(), ServeExternalError> {
+/// Returns when the shutdown signal in `cfg.shutdown_rx` fires or on a fatal error.
+pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExternalError> {
+    let shutdown = cfg.shutdown_rx.clone();
     let listener = tokio::net::TcpListener::bind(cfg.bind_addr)
         .await
         .map_err(ServeExternalError::Bind)?;
@@ -315,23 +312,24 @@ pub async fn serve_external(
 /// The supervisor respawns once (with an exponential back-off starting at 1 second).
 /// A second panic within 30 seconds of the first causes the supervisor to give up.
 ///
-/// The supervisor owns a `watch::Sender<bool>` whose drop signals shutdown to the
-/// inner `serve_external`. The returned `JoinHandle` can be aborted to stop the
-/// supervisor entirely.
+/// The `cfg.shutdown_tx` `Arc` is held by the spawned task for the supervisor lifetime.
+/// When the supervisor exits (clean shutdown, fatal error, or double-panic give-up),
+/// the last `Arc` clone is dropped, which closes the watch channel and unblocks the
+/// cert watcher and expiry monitor tasks so they exit too.
+///
+/// The returned `JoinHandle` can be aborted to stop the supervisor entirely.
 pub async fn spawn_with_supervisor(cfg: ExternalGrpcSpawnConfig) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        // `_tx` is kept alive for the supervisor lifetime; dropping it signals
-        // shutdown to `rx.changed()` inside `serve_external`. The
-        // unused-variable convention (`_tx`) documents the intentional
-        // drop-on-exit behavior to clippy.
-        let (_tx, rx) = watch::channel(false);
+        // Keep `_tx` alive for the supervisor lifetime. Dropping it signals
+        // shutdown to all `shutdown_rx` listeners (cert watcher, expiry monitor,
+        // accept loop, tonic server) via the closed-channel Err path.
+        let _tx = cfg.shutdown_tx.clone();
         let mut backoff = Duration::from_secs(1);
         let mut last_panic_at: Option<std::time::Instant> = None;
 
         loop {
             let cfg_clone = cfg.clone();
-            let rx_clone = rx.clone();
-            let fut = serve_external(cfg_clone, rx_clone);
+            let fut = serve_external(cfg_clone);
             let result = std::panic::AssertUnwindSafe(fut).catch_unwind().await;
 
             match result {
@@ -369,6 +367,7 @@ pub async fn spawn_with_supervisor(cfg: ExternalGrpcSpawnConfig) -> tokio::task:
 mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};
+    use tokio::sync::watch;
 
     /// `build_server_config` without mTLS succeeds (no CA bytes).
     #[test]
@@ -406,6 +405,7 @@ mod tests {
             as Arc<dyn crate::storage_port::WebStorage>;
         let (event_tx, _) = tokio::sync::broadcast::channel(1);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let shutdown_tx = Arc::new(shutdown_tx);
 
         let logger = Arc::new(tokio::sync::RwLock::new(
             oneshim_automation::audit::AuditLogger::new(64, 16),
@@ -444,10 +444,12 @@ mod tests {
             mtls_verifier: None,
             ip_ban: Arc::new(ip_ban::IpBan::new()),
             metrics: Arc::new(metrics::ExternalMetrics::new()),
+            shutdown_rx,
+            shutdown_tx: shutdown_tx.clone(),
         };
 
         // Start the server in a task. It will bind and then wait for shutdown.
-        let server_task = tokio::spawn(serve_external(cfg, shutdown_rx));
+        let server_task = tokio::spawn(serve_external(cfg));
 
         // Give the server a moment to bind.
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -500,6 +502,7 @@ mod tests {
             }
         }
 
+        let (supervisor_shutdown_tx, supervisor_shutdown_rx) = watch::channel(false);
         let cfg = ExternalGrpcSpawnConfig {
             bind_addr,
             config: oneshim_core::config::ExternalGrpcConfig {
@@ -517,6 +520,8 @@ mod tests {
             mtls_verifier: None,
             ip_ban: Arc::new(ip_ban::IpBan::new()),
             metrics: Arc::new(metrics::ExternalMetrics::new()),
+            shutdown_rx: supervisor_shutdown_rx,
+            shutdown_tx: Arc::new(supervisor_shutdown_tx),
         };
 
         // Arm the panic injector.

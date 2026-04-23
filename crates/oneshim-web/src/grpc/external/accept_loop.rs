@@ -259,6 +259,7 @@ mod tests {
             }
         }
 
+        let (shutdown_tx_inner, shutdown_rx_inner) = tokio::sync::watch::channel(false);
         Arc::new(super::super::spawn_config::ExternalGrpcSpawnConfig {
             bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
             config: ExternalGrpcConfig {
@@ -276,6 +277,8 @@ mod tests {
             mtls_verifier: None,
             ip_ban,
             metrics: Arc::new(ExternalMetrics::new()),
+            shutdown_rx: shutdown_rx_inner,
+            shutdown_tx: Arc::new(shutdown_tx_inner),
         })
     }
 

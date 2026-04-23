@@ -1201,6 +1201,13 @@ async fn build_external_spawn_config(
     )?;
     let cert_resolver = std::sync::Arc::new(HotReloadCertResolver::new(cert));
 
+    // Create the shutdown channel shared by: cert watcher, expiry monitor, and tonic server.
+    // The Sender Arc is kept alive in ExternalGrpcSpawnConfig.shutdown_tx, which is held by
+    // spawn_with_supervisor for the server lifetime. Dropping the last Arc clone closes the
+    // channel and causes all shutdown_rx listeners to exit.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    let shutdown_tx = std::sync::Arc::new(shutdown_tx);
+
     // Spawn cert hot-reload watcher and daily expiry monitor.
     // Both are best-effort: errors are logged but do not prevent startup.
     let metrics_arc = std::sync::Arc::new(ExternalMetrics::new());
@@ -1216,14 +1223,18 @@ async fn build_external_spawn_config(
             .context("tls_key_path required when external_grpc.enabled")?;
         let watcher_resolver = cert_resolver.clone();
         let watcher_metrics = metrics_arc.clone();
+        let watcher_shutdown = shutdown_rx.clone();
+        let expiry_shutdown = shutdown_rx.clone();
         // spawn_cert_watcher is async and blocks only on initial watcher setup;
         // the actual file-watch loop runs inside a spawned task.
         tokio::spawn(async move {
-            if let Err(e) = spawn_cert_watcher(cert_path, key_path, watcher_resolver).await {
+            if let Err(e) =
+                spawn_cert_watcher(cert_path, key_path, watcher_resolver, watcher_shutdown).await
+            {
                 tracing::warn!(err = %e, "external_grpc: cert watcher failed to start");
             }
         });
-        spawn_expiry_monitor(cert_resolver.clone(), watcher_metrics);
+        spawn_expiry_monitor(cert_resolver.clone(), watcher_metrics, expiry_shutdown);
     }
 
     let jwt_verifier = if cfg.auth_mode.is_some_and(|m| m.includes_jwt()) {
@@ -1277,6 +1288,8 @@ async fn build_external_spawn_config(
             mtls_verifier,
             ip_ban: std::sync::Arc::new(IpBan::new()),
             metrics: metrics_arc,
+            shutdown_rx,
+            shutdown_tx,
         },
     )
 }

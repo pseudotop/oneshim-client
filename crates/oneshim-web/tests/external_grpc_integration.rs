@@ -46,6 +46,21 @@ use oneshim_web::grpc::external::test_support::{
     test_ca_and_client_cert, test_cert_pair, test_jwt_keypair, test_mint_jwt,
 };
 
+// ── Shutdown pair helper ─────────────────────────────────────────────────────
+
+/// Create a fresh `(shutdown_tx, shutdown_rx)` pair for one server instance.
+///
+/// Each test server needs its own pair so signals don't cross test boundaries.
+/// The returned `Arc<Sender<bool>>` must be kept alive (or explicitly dropped)
+/// to control when the watcher / expiry tasks exit.
+fn make_test_shutdown_pair() -> (
+    Arc<tokio::sync::watch::Sender<bool>>,
+    tokio::sync::watch::Receiver<bool>,
+) {
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    (Arc::new(tx), rx)
+}
+
 // ── Port allocator ───────────────────────────────────────────────────────────
 
 /// Global counter for ephemeral test ports. Starts at 44200 (well above 49152
@@ -146,6 +161,7 @@ fn make_jwt_config(jwt_pub_key_path: &std::path::Path) -> (ExternalGrpcSpawnConf
         .expect("JwtVerifier"),
     );
 
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
     let cfg = ExternalGrpcSpawnConfig {
         bind_addr,
         config: ExternalGrpcConfig {
@@ -164,6 +180,8 @@ fn make_jwt_config(jwt_pub_key_path: &std::path::Path) -> (ExternalGrpcSpawnConf
         mtls_verifier: None,
         ip_ban: Arc::new(IpBan::new()),
         metrics: Arc::new(ExternalMetrics::new()),
+        shutdown_rx,
+        shutdown_tx,
     };
     (cfg, bind_addr)
 }
@@ -179,6 +197,7 @@ fn make_mtls_config(ca_pem_path: &std::path::Path) -> (ExternalGrpcSpawnConfig, 
 
     let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("MtlsVerifier"));
 
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
     let cfg = ExternalGrpcSpawnConfig {
         bind_addr,
         config: ExternalGrpcConfig {
@@ -198,6 +217,8 @@ fn make_mtls_config(ca_pem_path: &std::path::Path) -> (ExternalGrpcSpawnConfig, 
         mtls_verifier: Some(mtls_verifier),
         ip_ban: Arc::new(IpBan::new()),
         metrics: Arc::new(ExternalMetrics::new()),
+        shutdown_rx,
+        shutdown_tx,
     };
     (cfg, bind_addr)
 }
@@ -209,7 +230,8 @@ fn make_mtls_config(ca_pem_path: &std::path::Path) -> (ExternalGrpcSpawnConfig, 
 /// before serve_external runs, the rebind window is minimal and occurs in the
 /// same process so REUSEADDR makes it reliable.
 ///
-/// Uses a `watch` channel for shutdown; the caller aborts the handle when done.
+/// The shutdown channel lives inside `cfg.shutdown_tx` / `cfg.shutdown_rx`.
+/// Callers abort the handle to stop the server.
 async fn spawn_server(cfg: ExternalGrpcSpawnConfig) -> (tokio::task::JoinHandle<()>, u16) {
     let port = next_test_port();
 
@@ -218,13 +240,12 @@ async fn spawn_server(cfg: ExternalGrpcSpawnConfig) -> (tokio::task::JoinHandle<
         ..cfg
     };
 
-    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-
     let handle = tokio::spawn(async move {
-        // Keep `_shutdown_tx` alive until the task ends (dropping it signals shutdown).
-        // NOTE: `let _ = x` drops x immediately; `let _x = x` keeps it alive.
-        let _shutdown_tx = shutdown_tx;
-        match serve_external(real_cfg, shutdown_rx).await {
+        // `real_cfg.shutdown_tx` (Arc<Sender<bool>>) is kept alive inside the spawned
+        // task for the server lifetime. Dropping it when the task ends closes the channel
+        // and terminates background tasks (cert watcher, expiry monitor) that hold a
+        // cloned `shutdown_rx`.
+        match serve_external(real_cfg).await {
             Ok(()) => {}
             Err(e) => eprintln!("serve_external error: {e:?}"),
         }
@@ -406,6 +427,7 @@ async fn external_grpc_jwt_plus_mtls_both_valid() {
     let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("mtls verifier"));
 
     let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
     let cfg = ExternalGrpcSpawnConfig {
         bind_addr,
         config: ExternalGrpcConfig {
@@ -425,6 +447,8 @@ async fn external_grpc_jwt_plus_mtls_both_valid() {
         mtls_verifier: Some(mtls_verifier),
         ip_ban: Arc::new(IpBan::new()),
         metrics: Arc::new(ExternalMetrics::new()),
+        shutdown_rx,
+        shutdown_tx,
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -472,6 +496,7 @@ async fn external_grpc_jwt_plus_mtls_mtls_only() {
     let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("mtls verifier"));
 
     let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
     let cfg = ExternalGrpcSpawnConfig {
         bind_addr,
         config: ExternalGrpcConfig {
@@ -491,6 +516,8 @@ async fn external_grpc_jwt_plus_mtls_mtls_only() {
         mtls_verifier: Some(mtls_verifier),
         ip_ban: Arc::new(IpBan::new()),
         metrics: Arc::new(ExternalMetrics::new()),
+        shutdown_rx,
+        shutdown_tx,
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -544,6 +571,7 @@ async fn external_grpc_jwt_plus_mtls_cert_valid_jwt_expired() {
     let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("mtls verifier"));
 
     let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
     let cfg = ExternalGrpcSpawnConfig {
         bind_addr,
         config: ExternalGrpcConfig {
@@ -563,6 +591,8 @@ async fn external_grpc_jwt_plus_mtls_cert_valid_jwt_expired() {
         mtls_verifier: Some(mtls_verifier),
         ip_ban: Arc::new(IpBan::new()),
         metrics: Arc::new(ExternalMetrics::new()),
+        shutdown_rx,
+        shutdown_tx,
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -926,6 +956,7 @@ async fn external_grpc_jwt_plus_mtls_jwt_only() {
         .expect("verifier"),
     );
     let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("mtls verifier"));
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
     let cfg = ExternalGrpcSpawnConfig {
         bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         config: ExternalGrpcConfig {
@@ -945,6 +976,8 @@ async fn external_grpc_jwt_plus_mtls_jwt_only() {
         mtls_verifier: Some(mtls_verifier),
         ip_ban: Arc::new(IpBan::new()),
         metrics: Arc::new(ExternalMetrics::new()),
+        shutdown_rx,
+        shutdown_tx,
     };
     let (handle, port) = spawn_server(cfg).await;
 
@@ -1040,6 +1073,7 @@ async fn external_grpc_jwt_plus_mtls_cert_invalid_jwt_valid() {
         .expect("verifier"),
     );
     let mtls_verifier = Arc::new(MtlsVerifier::new(48, &[]).expect("mtls verifier"));
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
     let cfg = ExternalGrpcSpawnConfig {
         bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         config: ExternalGrpcConfig {
@@ -1059,6 +1093,8 @@ async fn external_grpc_jwt_plus_mtls_cert_invalid_jwt_valid() {
         mtls_verifier: Some(mtls_verifier),
         ip_ban: Arc::new(IpBan::new()),
         metrics: Arc::new(ExternalMetrics::new()),
+        shutdown_rx,
+        shutdown_tx,
     };
     let (handle, port) = spawn_server(cfg).await;
 

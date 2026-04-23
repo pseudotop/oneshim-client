@@ -14,7 +14,7 @@ use rustls::crypto::aws_lc_rs;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::sign::CertifiedKey;
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{error, info, warn};
 
 use crate::grpc::external::cert_resolver::HotReloadCertResolver;
@@ -75,11 +75,12 @@ pub fn load_certified_key(
 /// the OS reports as a create+delete event at the directory level, not a modify on the
 /// original file path.
 ///
-/// The task runs until the returned `JoinHandle` is aborted or the `resolver` is dropped.
+/// The task exits when `shutdown` is signalled (`true`) or when the notify channel closes.
 pub async fn spawn_cert_watcher(
     cert_path: PathBuf,
     key_path: PathBuf,
     resolver: Arc<HotReloadCertResolver>,
+    mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), TlsLoadError> {
     // Canonicalize paths so comparison against watcher-reported events works on macOS
     // where /tmp is a symlink to /private/tmp and notify returns the resolved path.
@@ -119,30 +120,47 @@ pub async fn spawn_cert_watcher(
 
     tokio::spawn(async move {
         let _keep_alive = debouncer; // keep watcher alive until task ends
-        while let Some(evt_res) = rx.recv().await {
-            match evt_res {
-                Ok(events) => {
-                    let affected = events
-                        .iter()
-                        .any(|e| e.path == canonical_cert || e.path == canonical_key);
-                    if !affected {
-                        continue;
-                    }
-                    match load_certified_key(&cert_path, &key_path) {
-                        Ok(key) => {
-                            resolver.swap(key);
-                            info!("external_grpc: TLS cert hot-reloaded successfully");
+        loop {
+            tokio::select! {
+                maybe_event = rx.recv() => {
+                    match maybe_event {
+                        Some(evt_res) => {
+                            match evt_res {
+                                Ok(events) => {
+                                    let affected = events
+                                        .iter()
+                                        .any(|e| e.path == canonical_cert || e.path == canonical_key);
+                                    if !affected {
+                                        continue;
+                                    }
+                                    match load_certified_key(&cert_path, &key_path) {
+                                        Ok(key) => {
+                                            resolver.swap(key);
+                                            info!("external_grpc: TLS cert hot-reloaded successfully");
+                                        }
+                                        Err(e) => {
+                                            warn!(
+                                                err = %e,
+                                                "external_grpc: cert reload failed, keeping previous cert"
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!(err = ?e, "external_grpc: file watcher error");
+                                }
+                            }
                         }
-                        Err(e) => {
-                            warn!(
-                                err = %e,
-                                "external_grpc: cert reload failed, keeping previous cert"
-                            );
+                        None => {
+                            // Notify channel closed — stop watching.
+                            break;
                         }
                     }
                 }
-                Err(e) => {
-                    error!(err = ?e, "external_grpc: file watcher error");
+                changed = shutdown.changed() => {
+                    if changed.is_ok() && *shutdown.borrow() {
+                        break;
+                    }
                 }
             }
         }
@@ -153,21 +171,32 @@ pub async fn spawn_cert_watcher(
 
 /// Spawn a daily background task that logs a warning when the cert expires within 7 days
 /// and records the remaining seconds into the metrics gauge.
+///
+/// The task exits when `shutdown` is signalled (`true`).
 pub fn spawn_expiry_monitor(
     resolver: Arc<HotReloadCertResolver>,
     metrics: Arc<crate::grpc::external::metrics::ExternalMetrics>,
+    mut shutdown: watch::Receiver<bool>,
 ) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(StdDuration::from_secs(24 * 3600));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
-            interval.tick().await;
-            if let Some(days) = resolver.days_until_expiry() {
-                metrics
-                    .tls_cert_expiry_seconds
-                    .store(days * 24 * 3600, std::sync::atomic::Ordering::Relaxed);
-                if days < 7 {
-                    tracing::warn!(days, "external_grpc: TLS cert expiry within 7 days");
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Some(days) = resolver.days_until_expiry() {
+                        metrics
+                            .tls_cert_expiry_seconds
+                            .store(days * 24 * 3600, std::sync::atomic::Ordering::Relaxed);
+                        if days < 7 {
+                            tracing::warn!(days, "external_grpc: TLS cert expiry within 7 days");
+                        }
+                    }
+                }
+                changed = shutdown.changed() => {
+                    if changed.is_ok() && *shutdown.borrow() {
+                        break;
+                    }
                 }
             }
         }
@@ -227,8 +256,9 @@ mod tests {
         let watcher_resolver = resolver.clone();
         let cert_path_c = cert_path.clone();
         let key_path_c = key_path.clone();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
         let handle = tokio::spawn(async move {
-            spawn_cert_watcher(cert_path_c, key_path_c, watcher_resolver).await
+            spawn_cert_watcher(cert_path_c, key_path_c, watcher_resolver, shutdown_rx).await
         });
 
         tokio::time::sleep(Duration::from_millis(100)).await; // let watcher arm
