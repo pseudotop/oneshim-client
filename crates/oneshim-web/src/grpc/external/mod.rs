@@ -142,11 +142,14 @@ impl DashboardService for ExternalDashboardService {
 /// If `mtls_ca_bytes` is `Some`, install a `WebPkiClientVerifier` requiring
 /// the client to present a certificate signed by the supplied CA(s).
 /// Otherwise, `with_no_client_auth()` is used (JWT-only auth mode).
+///
+/// ALPN: `["h2"]` is always advertised — required for gRPC (HTTP/2) clients
+/// that use TLS ALPN negotiation (e.g., tonic with `tls-aws-lc`).
 pub fn build_server_config(
     cert_resolver: Arc<cert_resolver::HotReloadCertResolver>,
     mtls_ca_bytes: Option<Vec<u8>>,
 ) -> Result<rustls::ServerConfig, TlsLoadError> {
-    if let Some(ca_bytes) = mtls_ca_bytes {
+    let mut cfg = if let Some(ca_bytes) = mtls_ca_bytes {
         use rustls::server::WebPkiClientVerifier;
         use rustls::RootCertStore;
 
@@ -160,14 +163,17 @@ pub fn build_server_config(
         let verifier = WebPkiClientVerifier::builder(Arc::new(roots))
             .build()
             .map_err(|e| TlsLoadError::ParseCert(e.to_string()))?;
-        Ok(rustls::ServerConfig::builder()
+        rustls::ServerConfig::builder()
             .with_client_cert_verifier(verifier)
-            .with_cert_resolver(cert_resolver))
+            .with_cert_resolver(cert_resolver)
     } else {
-        Ok(rustls::ServerConfig::builder()
+        rustls::ServerConfig::builder()
             .with_no_client_auth()
-            .with_cert_resolver(cert_resolver))
-    }
+            .with_cert_resolver(cert_resolver)
+    };
+    // Advertise HTTP/2 via ALPN — required for gRPC clients doing TLS ALPN negotiation.
+    cfg.alpn_protocols = vec![b"h2".to_vec()];
+    Ok(cfg)
 }
 
 // ── serve_external ───────────────────────────────────────────────────────────
