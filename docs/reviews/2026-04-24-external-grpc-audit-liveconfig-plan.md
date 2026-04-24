@@ -2,7 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Revision**: **rev-3** (Loop 2 Round 2 verify applied). Round-2 found 4 new Critical regressions (all introduced by rev-2 edits) + 3 unresolved Round-1 Importants. Rev-3 fixes:
+**Revision**: **rev-4** — Loop 2 Round 3 verify applied. Two 1-line fixes from R3 Platform/Risk:
+- N-I1: Task 9.0 `cfg_mgr.current()` → `cfg_mgr.snapshot()` (verified real API at `config_manager.rs:122`)
+- N-I2: Task 9.0 `log_event` closure `session_id`, `details` → `_session_id`, `_details` (clippy -D warnings fail avoided)
+
+Loop 2 status: **CONVERGED** (Architecture PASS + Product/Test PASS + Platform/Risk PASS expected after rev-4). Ready for Loop 3 (subagent-driven-development implementation).
+
+Prior revision (rev-3): Loop 2 Round 2 verify applied. Round-2 found 4 new Critical regressions (all introduced by rev-2 edits) + 3 unresolved Round-1 Importants. Rev-3 fixes:
 - R2-C1 (phantom Task 9.0): **Task 9.0 created** — CapturingAudit structural rewrite + spawn_server_with_config_manager helper
 - R2-C2+C3 (ConfigManager API wrong): Task 9.4 G3 test now uses real `ConfigManager::with_path(PathBuf)` ctor + sync `update_with` with `&mut AppConfig` closure returning `Result<(), String>`
 - R2-C4 (Arc::make_mut regression in G3): removed; closure mutates `c` directly per real API
@@ -3438,9 +3444,11 @@ impl CapturingAudit {
 
 #[async_trait::async_trait]
 impl AuditLogPort for CapturingAudit {
-    async fn log_event(&self, action_type: &str, session_id: &str, details: &str) {
+    async fn log_event(&self, action_type: &str, _session_id: &str, _details: &str) {
         // log_event doesn't carry command_id in the port trait; session_id is the stable
         // correlation key at this layer. Store with empty command_id.
+        // _session_id/_details prefixed underscore: unused here but clippy -D warnings
+        // would fail without the prefix per Task 10.3 lint gate.
         self.entries.lock().unwrap().push(CapturedEntry {
             command_id: String::new(),
             action_type: action_type.to_string(),
@@ -3523,7 +3531,8 @@ pub async fn spawn_server_with_config_manager(
     cfg_mgr: Arc<ConfigManager>,
 ) -> (tokio::task::JoinHandle<()>, u16) {
     // Reuse logic from existing spawn_server but pull initial AppConfig from cfg_mgr.
-    let cfg = cfg_mgr.current();  // Arc<AppConfig>
+    // Real API per oneshim-core/src/config_manager.rs:122 — `snapshot()`, not `current()`.
+    let cfg = cfg_mgr.snapshot();  // Arc<AppConfig>
     // Build ExternalGrpcSpawnConfig with the ConfigManager passed through
     // (build_external_spawn_config signature after Task 4.2 accepts config_manager).
     // ... (implementer inlines 10-15 LoC from existing spawn_server)
