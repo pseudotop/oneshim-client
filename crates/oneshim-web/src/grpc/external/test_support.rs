@@ -611,6 +611,25 @@ pub async fn connect_loopback(port: u16) -> tonic::transport::Channel {
         .expect("connect to loopback server")
 }
 
+// TODO(Task 9.4): Add `spawn_server_with_config_manager` helper here.
+//
+// Task 9.4 (G3 gate — live reload convergence) needs a variant of
+// `spawn_server` in `tests/external_grpc_integration.rs` that accepts a
+// pre-built `Arc<ConfigManager>` and threads it through `ExternalGrpcSpawnConfig`
+// so the G3 test can drive live-config updates while the server is running.
+//
+// Implementation sketch:
+//   pub async fn spawn_server_with_config_manager(
+//       cfg_mgr: std::sync::Arc<oneshim_core::config_manager::ConfigManager>,
+//   ) -> (tokio::task::JoinHandle<()>, u16) {
+//       // Mirror spawn_server logic, pull initial AppConfig from cfg_mgr,
+//       // pass cfg_mgr into ExternalGrpcSpawnConfig, return (handle, port).
+//       todo!("Task 9.4")
+//   }
+//
+// Deferred because Task 9.4 is the sole consumer and its spec is still in
+// progress; premature implementation risks interface churn.
+
 /// Build a test gRPC request with a placeholder bearer token header.
 ///
 /// Inserts `Authorization: Bearer TEST_TOKEN_PLACEHOLDER` into the request

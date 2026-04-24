@@ -1448,10 +1448,36 @@ async fn external_grpc_real_handler_returns_business_data() {
     let _ = handle.await;
 }
 
-// Mock audit log that retains every `log_complete_with_time` entry so the
-// e2e tests below can inspect what AuditLayer recorded.
+// Mock audit log that retains every `log_complete_with_time` and `log_event`
+// entry so the e2e tests below can inspect what AuditLayer recorded.
+//
+// Structural rewrite (Task 9.0, CR4 / R2-NI1): replaces the previous
+// action_type-as-command_id conflation with real command_id preservation and
+// grpc_status_code JSON extraction from the details blob.  Unblocks Phase 9
+// Tasks 9.1+ which assert command_id correlation and D26 raw-code visibility.
+#[derive(Default)]
 struct CapturingAudit {
-    entries: std::sync::Mutex<Vec<AuditEntry>>,
+    entries: std::sync::Mutex<Vec<CapturedEntry>>,
+}
+
+/// A lightweight capture record used by Phase 9 integration tests to assert
+/// on command_id, action_type, status, grpc_status_code, and execution timing.
+///
+/// `details` preserves the raw JSON blob from `log_complete_with_time` so that
+/// tests can inspect operation names (e.g. "SubscribeEvents") without re-parsing
+/// the struct.
+#[derive(Clone, Debug)]
+#[allow(dead_code)] // fields consumed by Phase 9.1+ assertion helpers
+struct CapturedEntry {
+    command_id: String,
+    action_type: String,
+    status: AuditStatus,
+    grpc_status_code: Option<u32>,
+    execution_time_ms: u64,
+    /// Raw `details` string passed by the audit bridge (JSON blob or empty).
+    /// Populated by `log_complete_with_time` and `log_event`; `None` for
+    /// entries that have no details context.
+    details: Option<String>,
 }
 
 impl CapturingAudit {
@@ -1460,10 +1486,80 @@ impl CapturingAudit {
             entries: std::sync::Mutex::new(vec![]),
         })
     }
+
+    /// Return a snapshot of all captured entries.  Used by Phase 9.1+ tests
+    /// to assert command_id correlation and grpc_status_code visibility.
+    #[allow(dead_code)] // used by Phase 9.1+ tests
+    fn snapshot(&self) -> Vec<CapturedEntry> {
+        self.entries.lock().unwrap().clone()
+    }
 }
 
 #[async_trait::async_trait]
 impl AuditLogPort for CapturingAudit {
+    async fn log_event(&self, action_type: &str, _session_id: &str, details: &str) {
+        // AuditBridge emits action_type "external_grpc_started" etc.
+        // alongside log_complete_with_time; use this to capture Started rows.
+        let status = match action_type {
+            "external_grpc_started" => AuditStatus::Started,
+            "external_grpc_completed" => AuditStatus::Completed,
+            "external_grpc_failed" | "external_grpc_denied" | "external_grpc_timeout" => {
+                AuditStatus::Failed
+            }
+            _ => AuditStatus::Completed,
+        };
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: String::new(),
+            action_type: action_type.to_string(),
+            status,
+            grpc_status_code: None,
+            execution_time_ms: 0,
+            details: Some(details.to_string()),
+        });
+    }
+
+    async fn log_start_if(
+        &self,
+        _level: AuditLevel,
+        command_id: &str,
+        _session_id: &str,
+        action_type: &str,
+    ) {
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: command_id.to_string(),
+            action_type: action_type.to_string(),
+            status: AuditStatus::Started,
+            grpc_status_code: None,
+            execution_time_ms: 0,
+            details: None,
+        });
+    }
+
+    async fn log_complete_with_time(
+        &self,
+        _level: AuditLevel,
+        command_id: &str,
+        _session_id: &str,
+        details: &str,
+        execution_time_ms: u64,
+    ) {
+        let status = parse_status_from_details(details);
+        let grpc_status_code: Option<u32> = serde_json::from_str::<serde_json::Value>(details)
+            .ok()
+            .and_then(|v| {
+                v.get("grpc_status_code")
+                    .and_then(|n| n.as_u64().map(|u| u as u32))
+            });
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: command_id.to_string(),
+            action_type: String::new(),
+            status,
+            grpc_status_code,
+            execution_time_ms,
+            details: Some(details.to_string()),
+        });
+    }
+
     async fn pending_count(&self) -> usize {
         0
     }
@@ -1485,58 +1581,6 @@ impl AuditLogPort for CapturingAudit {
     async fn has_pending_batch(&self) -> bool {
         false
     }
-    async fn log_start_if(
-        &self,
-        _level: AuditLevel,
-        _command_id: &str,
-        _session_id: &str,
-        _action_type: &str,
-    ) {
-    }
-    async fn log_complete_with_time(
-        &self,
-        _level: AuditLevel,
-        command_id: &str,
-        session_id: &str,
-        details: &str,
-        execution_time_ms: u64,
-    ) {
-        self.entries.lock().unwrap().push(AuditEntry {
-            entry_id: ulid::Ulid::new().to_string(),
-            timestamp: chrono::Utc::now(),
-            action_type: "external_grpc".to_string(),
-            command_id: command_id.to_string(),
-            session_id: session_id.to_string(),
-            // Status derived later from action_type (captured via log_event).
-            status: AuditStatus::Completed,
-            details: Some(details.to_string()),
-            execution_time_ms: Some(execution_time_ms),
-        });
-    }
-
-    async fn log_event(&self, action_type: &str, session_id: &str, details: &str) {
-        // AuditBridge emits action_type "external_grpc_started" vs
-        // "external_grpc_completed" alongside log_complete_with_time; use
-        // this to disambiguate Started vs Completed rows.
-        let status = match action_type {
-            "external_grpc_started" => AuditStatus::Started,
-            "external_grpc_completed" => AuditStatus::Completed,
-            "external_grpc_failed" | "external_grpc_denied" | "external_grpc_timeout" => {
-                AuditStatus::Failed
-            }
-            _ => AuditStatus::Completed,
-        };
-        self.entries.lock().unwrap().push(AuditEntry {
-            entry_id: ulid::Ulid::new().to_string(),
-            timestamp: chrono::Utc::now(),
-            action_type: action_type.to_string(),
-            command_id: action_type.to_string(), // distinctive key
-            session_id: session_id.to_string(),
-            status,
-            details: Some(details.to_string()),
-            execution_time_ms: None,
-        });
-    }
     async fn drain_batch(&self) -> Vec<AuditEntry> {
         vec![]
     }
@@ -1544,6 +1588,22 @@ impl AuditLogPort for CapturingAudit {
         vec![]
     }
     async fn record_session_event(&self, _e: SessionAuditEntry) {}
+}
+
+/// Derive `AuditStatus` from the JSON `result` field in the details blob emitted
+/// by `AuditBridge::record`.  Returns `Completed` for any unrecognized value.
+fn parse_status_from_details(details: &str) -> AuditStatus {
+    serde_json::from_str::<serde_json::Value>(details)
+        .ok()
+        .and_then(|v| v.get("result").and_then(|r| r.as_str().map(String::from)))
+        .map(|s| match s.as_str() {
+            "ok" => AuditStatus::Completed,
+            "denied" => AuditStatus::Denied,
+            "timeout" => AuditStatus::Timeout,
+            "error" | "failed" => AuditStatus::Failed,
+            _ => AuditStatus::Completed,
+        })
+        .unwrap_or(AuditStatus::Completed)
 }
 
 /// E2E-2: After a successful RPC, the audit trail contains both Started
