@@ -10,7 +10,7 @@
  *   GET  /api/tracking-schedule/status  → TrackingScheduleStatus
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   getTrackingSchedule,
@@ -20,6 +20,7 @@ import {
   type TrackingScheduleStatus,
   type TrackingWindow,
 } from '../../api/client'
+import type { Weekday } from '../../api/contracts'
 import { Button, Card, CardTitle, Input, Select } from '../../components/ui'
 import { colors, form, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
@@ -29,6 +30,9 @@ import { cn } from '../../utils/cn'
 // ---------------------------------------------------------------------------
 
 const HH_MM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+/** All 7 days in backend-canonical order, matching Rust's Weekday enum. */
+const ALL_DAYS: Weekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 /** A small curated list of IANA time zones shown in the dropdown. */
 const IANA_ZONES = [
@@ -68,7 +72,7 @@ function nextWindowId(): number {
 }
 
 function defaultWindowEntry(): WindowEntry {
-  return { id: nextWindowId(), win: { start: '09:00', end: '17:00', label: '' } }
+  return { id: nextWindowId(), win: { start: '09:00', end: '17:00', days_of_week: [...ALL_DAYS], label: '' } }
 }
 
 function toEntries(windows: TrackingWindow[]): WindowEntry[] {
@@ -119,13 +123,16 @@ export function TrackingScheduleSettings() {
   const [errors, setErrors] = useState<Record<number, { start?: string; end?: string }>>({})
   const [initialised, setInitialised] = useState(false)
 
-  // Seed local state once config arrives (only on first load)
-  if (config && !initialised) {
-    setEnabled(config.enabled)
-    setEntries(toEntries(config.windows))
-    setTimezone(config.timezone ?? 'Local')
-    setInitialised(true)
-  }
+  // Seed local state once config arrives (only on first load).
+  // Wrapped in useEffect to avoid render-phase setState (React 18 Strict Mode tearing).
+  useEffect(() => {
+    if (config && !initialised) {
+      setEnabled(config.enabled)
+      setEntries(toEntries(config.windows))
+      setTimezone(config.timezone ?? 'Local')
+      setInitialised(true)
+    }
+  }, [config, initialised])
 
   // ── mutation ───────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
@@ -169,6 +176,18 @@ export function TrackingScheduleSettings() {
         })
       }
     }
+  }
+
+  /** Toggle a single day in a window's days_of_week list. */
+  function toggleDay(id: number, day: Weekday) {
+    setEntries((prev) =>
+      prev.map((e) => {
+        if (e.id !== id) return e
+        const current = e.win.days_of_week
+        const next = current.includes(day) ? current.filter((d) => d !== day) : [...current, day]
+        return { ...e, win: { ...e.win, days_of_week: next } }
+      }),
+    )
   }
 
   /** Validate a single HH:MM field and record the error keyed by stable ID. Returns true if valid. */
@@ -271,7 +290,7 @@ export function TrackingScheduleSettings() {
                       onChange={(e) => updateWindow(id, 'start', e.target.value)}
                       onBlur={(e) => validateTimeField(id, 'start', e.target.value)}
                     />
-                    {errors[id]?.start && <p className="mt-1 text-xs text-danger">{errors[id].start}</p>}
+                    {errors[id]?.start && <p className="mt-1 text-danger text-xs">{errors[id].start}</p>}
                   </div>
 
                   {/* End time */}
@@ -288,7 +307,26 @@ export function TrackingScheduleSettings() {
                       onChange={(e) => updateWindow(id, 'end', e.target.value)}
                       onBlur={(e) => validateTimeField(id, 'end', e.target.value)}
                     />
-                    {errors[id]?.end && <p className="mt-1 text-xs text-danger">{errors[id].end}</p>}
+                    {errors[id]?.end && <p className="mt-1 text-danger text-xs">{errors[id].end}</p>}
+                  </div>
+                </div>
+
+                {/* Day-of-week checkboxes */}
+                <div className="mt-3">
+                  <span className={form.label}>{t('trackingSchedule.daysLabel')}</span>
+                  <div className="mt-1 flex flex-wrap gap-3">
+                    {ALL_DAYS.map((day) => (
+                      <label key={day} className="flex cursor-pointer select-none items-center gap-1 text-sm">
+                        <input
+                          type="checkbox"
+                          className={form.checkbox}
+                          aria-label={t(`trackingSchedule.${day.toLowerCase()}`)}
+                          checked={win.days_of_week.includes(day)}
+                          onChange={() => toggleDay(id, day)}
+                        />
+                        {t(`trackingSchedule.${day.toLowerCase()}`)}
+                      </label>
+                    ))}
                   </div>
                 </div>
 
@@ -322,11 +360,18 @@ export function TrackingScheduleSettings() {
         </Button>
 
         {/* Save */}
-        <div className="flex justify-end pt-4 border-t border-muted">
+        <div className="flex justify-end border-muted border-t pt-4">
           <Button type="submit" variant="primary" size="md" isLoading={saveMutation.isPending}>
             {t('trackingSchedule.save')}
           </Button>
         </div>
+
+        {/* Save error feedback */}
+        {saveMutation.isError && (
+          <p className="text-danger text-sm" role="alert">
+            {t('trackingSchedule.saveError')}
+          </p>
+        )}
       </form>
     </Card>
   )

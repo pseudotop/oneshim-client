@@ -1744,9 +1744,14 @@ export interface PresetSummaryListDto {
 
 // ── Tracking Schedule ───────────────────────────────────────────────────────
 
+/** Matches Rust's `Weekday` enum serialized as short names (ADR-001 serde). */
+export type Weekday = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
+
 export interface TrackingWindow {
   start: string
   end: string
+  /** Days of week this window is active. Empty = never active (matches backend). */
+  days_of_week: Weekday[]
   label?: string
 }
 

@@ -1693,6 +1693,15 @@
     "save": "저장",
     "activeNow": "현재 활성 — {{time}}에 종료",
     "validationHhmm": "시간은 HH:MM (00:00–23:59) 형식이어야 합니다",
-    "enabled": "활성화"
+    "enabled": "활성화",
+    "daysLabel": "활성 요일",
+    "mon": "월",
+    "tue": "화",
+    "wed": "수",
+    "thu": "목",
+    "fri": "금",
+    "sat": "토",
+    "sun": "일",
+    "saveError": "저장에 실패했습니다."
   }
 }

@@ -29,12 +29,20 @@ afterEach(() => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+/** A window fixture with all required fields (including days_of_week). */
+const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 /** Build a minimal 200 Response for GET /api/tracking-schedule */
 function makeConfigResponse(windows: unknown[] = [], timezone = 'Local') {
   return new Response(JSON.stringify({ enabled: false, windows, timezone }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+/** Build a window fixture with all required backend fields. */
+function makeWindow(start: string, end: string, label = '', days = ALL_DAYS) {
+  return { start, end, days_of_week: days, label }
 }
 
 /** Build a 200 Response for GET /api/tracking-schedule/status */
@@ -82,7 +90,7 @@ describe('TrackingScheduleSettings', () => {
    * start and end). The stub doesn't render the button so the click can't happen
    * → test fails on the getByRole('button') assertion.
    */
-  it('clicking "Add window" appends a default window row', async () => {
+  it('clicking "Add window" appends a default window row with day-of-week checkboxes', async () => {
     const user = userEvent.setup()
 
     fetchMock.mockResolvedValueOnce(makeConfigResponse([])).mockResolvedValueOnce(makeStatusResponse(false))
@@ -92,11 +100,17 @@ describe('TrackingScheduleSettings', () => {
     const addBtn = await screen.findByRole('button', { name: /add window/i })
     await user.click(addBtn)
 
-    // After clicking, at least one window row should be visible.
-    // A.20 will render a row with HH:MM start + end inputs.
+    // After clicking, at least one window row should be visible with HH:MM inputs.
     await waitFor(() => {
       const timeInputs = screen.getAllByRole('textbox')
       expect(timeInputs.length).toBeGreaterThanOrEqual(2)
+    })
+
+    // A.20b: DOW checkboxes should appear (7 per window).
+    await waitFor(() => {
+      const checkboxes = screen.getAllByRole('checkbox')
+      // At least 7 checkboxes: 1 enabled toggle + 7 DOW = 8 total minimum
+      expect(checkboxes.length).toBeGreaterThanOrEqual(7)
     })
   })
 
@@ -114,14 +128,14 @@ describe('TrackingScheduleSettings', () => {
 
     // GET config (one pre-existing window so the form is not empty)
     fetchMock
-      .mockResolvedValueOnce(makeConfigResponse([{ start: '09:00', end: '17:00', label: 'Work' }]))
+      .mockResolvedValueOnce(makeConfigResponse([makeWindow('09:00', '17:00', 'Work')]))
       .mockResolvedValueOnce(makeStatusResponse(false))
       // PUT response
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             enabled: true,
-            windows: [{ start: '09:00', end: '17:00', label: 'Work' }],
+            windows: [makeWindow('09:00', '17:00', 'Work')],
             timezone: 'Local',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -151,7 +165,7 @@ describe('TrackingScheduleSettings', () => {
    */
   it('shows "Active now — ends HH:MM" pill when /status returns active_now=true', async () => {
     fetchMock
-      .mockResolvedValueOnce(makeConfigResponse([{ start: '09:00', end: '17:00', label: 'Work' }]))
+      .mockResolvedValueOnce(makeConfigResponse([makeWindow('09:00', '17:00', 'Work')]))
       .mockResolvedValueOnce(makeStatusResponse(true, '2026-04-24T17:00:00+09:00'))
 
     renderWithProviders(<TrackingScheduleSettings />)
@@ -174,7 +188,7 @@ describe('TrackingScheduleSettings', () => {
     const user = userEvent.setup()
 
     fetchMock
-      .mockResolvedValueOnce(makeConfigResponse([{ start: '09:00', end: '17:00', label: 'Work' }]))
+      .mockResolvedValueOnce(makeConfigResponse([makeWindow('09:00', '17:00', 'Work')]))
       .mockResolvedValueOnce(makeStatusResponse(false))
 
     renderWithProviders(<TrackingScheduleSettings />)

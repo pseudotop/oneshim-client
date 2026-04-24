@@ -1693,6 +1693,15 @@
     "save": "Save",
     "activeNow": "Active now — ends {{time}}",
     "validationHhmm": "Time must be HH:MM (00:00–23:59)",
-    "enabled": "Enabled"
+    "enabled": "Enabled",
+    "daysLabel": "Active days",
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun",
+    "saveError": "Failed to save."
   }
 }
