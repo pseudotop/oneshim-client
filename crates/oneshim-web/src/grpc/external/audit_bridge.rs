@@ -28,6 +28,13 @@ pub(crate) struct ExternalGrpcAuditDetails<'a> {
     /// `CountingStream` via request extensions (spec §2.4).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) response_message_count: Option<u64>,
+    /// Raw tonic::Code as u32. Populated by AuditBridge completion paths so
+    /// security dashboards can disambiguate Unauthenticated (16) vs
+    /// PermissionDenied (7) — both otherwise collapse into AuditStatus::Denied.
+    /// None for Success paths (status already conveys success). Task 0.6 wires
+    /// the producer; this field is None at all construction sites until then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) grpc_status_code: Option<u32>,
 }
 
 pub struct AuditBridge {
@@ -72,6 +79,7 @@ impl AuditBridge {
             failure_reason,
             jti: ctx.jti.as_deref(),
             response_message_count: None,
+            grpc_status_code: None, // Task 0.6 wires producer
         };
         let details_json =
             serde_json::to_string(&details).unwrap_or_else(|e| format!("{{\"err\":\"{e}\"}}"));
@@ -141,6 +149,7 @@ impl AuditBridge {
             failure_reason,
             jti: ctx.jti.as_deref(),
             response_message_count,
+            grpc_status_code: None, // Task 0.6 wires producer
         };
         let details_json =
             serde_json::to_string(&details).unwrap_or_else(|e| format!("{{\"err\":\"{e}\"}}"));
@@ -479,5 +488,62 @@ mod tests {
             serde_json::from_str(entries[0].details.as_ref().unwrap()).unwrap();
         // skip_serializing_if None → absent key
         assert!(d.get("response_message_count").is_none());
+    }
+
+    // ── grpc_status_code field tests (Task 0.5 / spec §5.5 / D26 OQ15) ────
+
+    // NOTE on deserialization tests:
+    // Plan §5.5 / D26 template included tests for:
+    //   - Deserializing older audit rows (without grpc_status_code field)
+    //   - Tolerating future unknown fields
+    // These cannot be exercised on ExternalGrpcAuditDetails directly because the
+    // struct is Serialize-only (has lifetime-parameterized &str fields; deriving
+    // Deserialize would require owning strings via String or Cow). In practice
+    // nothing deserializes this struct — audit rows are stored as opaque JSON
+    // in audit_log.details. Backward-compat concerns are therefore moot.
+    //
+    // If a future task introduces a read-path that deserializes audit details
+    // (e.g. a `OwnedAuditDetails` type for DB reads), deserialization tests
+    // should be added against THAT type.
+
+    #[test]
+    fn external_grpc_audit_details_serializes_grpc_status_code_when_some() {
+        let d = ExternalGrpcAuditDetails {
+            transport: "external",
+            remote_addr: "127.0.0.1:1234".to_string(),
+            auth_type: "jwt",
+            operation: "/dashboard.v1.Foo/Bar",
+            result: "denied",
+            request_size_bytes: None,
+            response_size_bytes: None,
+            failure_reason: None,
+            jti: None,
+            response_message_count: None,
+            grpc_status_code: Some(7), // PermissionDenied
+        };
+        let json = serde_json::to_value(&d).expect("serialize");
+        assert_eq!(json["grpc_status_code"], 7);
+    }
+
+    #[test]
+    fn external_grpc_audit_details_none_grpc_status_code_skipped_in_serialization() {
+        let d = ExternalGrpcAuditDetails {
+            transport: "external",
+            remote_addr: "127.0.0.1:1234".to_string(),
+            auth_type: "jwt",
+            operation: "/dashboard.v1.Foo/Bar",
+            result: "ok",
+            request_size_bytes: None,
+            response_size_bytes: None,
+            failure_reason: None,
+            jti: None,
+            response_message_count: None,
+            grpc_status_code: None,
+        };
+        let json = serde_json::to_string(&d).expect("serialize");
+        assert!(
+            !json.contains("grpc_status_code"),
+            "None must skip; backward-compat for older audit rows: got {json}"
+        );
     }
 }
