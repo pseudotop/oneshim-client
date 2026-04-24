@@ -444,3 +444,138 @@ async fn concurrent_connection_cap_enforced() {
     handle.abort();
     let _ = handle.await;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Test 2: fd_pressure_resilience
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Invariant: 3 rounds of open-1024 / hold-200ms / drop-all do not leak fds
+/// or kill the accept loop. Post-loop the server still serves a unary RPC
+/// AND can accept another 1024 streams.
+///
+/// Regression targets (spec §4.2):
+///   - accept_loop's Drop path on connection cleanup
+///   - supervisor respawn fidelity (silent accept-loop death post-churn)
+///   - tokio task leakage (spawned RPC handlers not joined on drop)
+///
+/// Runtime estimate: ~20–35s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn fd_pressure_resilience() {
+    const CAP: usize = 1024;
+    const ROUNDS: usize = 3;
+
+    let jwt_kp = test_jwt_keypair();
+    let cfg = make_jwt_stress_config(
+        &jwt_kp.pub_pem_path,
+        CAP,
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+    );
+    let (handle, addr) = spawn_stress_server(cfg).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "stress-fd",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+
+    for round in 0..ROUNDS {
+        // ── 2a: open CAP concurrent streams ─────────────────────────────────
+        let mut tasks = JoinSet::new();
+        for i in 0..CAP {
+            let addr_c = addr;
+            let cert_c = cert_pem.clone();
+            let token_c = token.clone();
+            tasks.spawn(async move {
+                let channel = make_stress_tls_channel(addr_c, &cert_c)
+                    .await
+                    .map_err(|e| format!("round {round} channel {i}: {e}"))?;
+                let mut req = tonic::Request::new(SubscribeEventsRequest::default());
+                req.metadata_mut().insert(
+                    "authorization",
+                    format!("Bearer {token_c}").parse().expect("valid header"),
+                );
+                let stream = DashboardServiceClient::new(channel.clone())
+                    .subscribe_events(req)
+                    .await
+                    .map_err(|e| format!("round {round} stream {i}: {e}"))?
+                    .into_inner();
+                Ok::<(Channel, _), String>((channel, stream))
+            });
+        }
+
+        let mut held = Vec::with_capacity(CAP);
+        while let Some(joined) = tasks.join_next().await {
+            let pair = joined
+                .expect("task panicked")
+                .unwrap_or_else(|e| panic!("round {round} setup failed: {e}"));
+            held.push(pair);
+        }
+        assert_eq!(
+            held.len(),
+            CAP,
+            "round {round}: should establish all {CAP} streams"
+        );
+
+        // ── 2b: hold ────────────────────────────────────────────────────────
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // ── 2c: drop all ────────────────────────────────────────────────────
+        drop(held);
+
+        // ── 2d: wait up to 5s for server-side cleanup (V4 fallback) ─────────
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        poll_unary_until_success(addr, &cert_pem, &token, deadline)
+            .await
+            .unwrap_or_else(|e| panic!("round {round} cleanup poll failed: {e}"));
+    }
+
+    // ── Post-loop verification ─────────────────────────────────────────────
+    // P1: fresh unary RPC succeeds.
+    let post_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    poll_unary_until_success(addr, &cert_pem, &token, post_deadline)
+        .await
+        .expect("post-loop unary RPC must succeed");
+
+    // P2: open CAP new streams — no residual fd leak.
+    let mut tasks = JoinSet::new();
+    for i in 0..CAP {
+        let addr_c = addr;
+        let cert_c = cert_pem.clone();
+        let token_c = token.clone();
+        tasks.spawn(async move {
+            let channel = make_stress_tls_channel(addr_c, &cert_c)
+                .await
+                .map_err(|e| format!("post channel {i}: {e}"))?;
+            let mut req = tonic::Request::new(SubscribeEventsRequest::default());
+            req.metadata_mut().insert(
+                "authorization",
+                format!("Bearer {token_c}").parse().expect("valid header"),
+            );
+            let stream = DashboardServiceClient::new(channel.clone())
+                .subscribe_events(req)
+                .await
+                .map_err(|e| format!("post stream {i}: {e}"))?
+                .into_inner();
+            Ok::<(Channel, _), String>((channel, stream))
+        });
+    }
+    let mut held = Vec::with_capacity(CAP);
+    while let Some(joined) = tasks.join_next().await {
+        let pair = joined
+            .expect("task panicked")
+            .unwrap_or_else(|e| panic!("post-loop fan-out failed: {e}"));
+        held.push(pair);
+    }
+    assert_eq!(
+        held.len(),
+        CAP,
+        "post-loop should still admit {CAP} streams (no fd leak)"
+    );
+
+    drop(held);
+    handle.abort();
+    let _ = handle.await;
+}
