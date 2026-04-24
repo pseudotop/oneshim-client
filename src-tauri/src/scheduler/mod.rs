@@ -895,4 +895,136 @@ mod tests {
             "Wed 21:59 must be outside (before start hour 22 on Wed) (CONS-C05)"
         );
     }
+
+    // ── Hoist migration tests: capture_permitted_now composite gate (A.6) ───
+    //
+    // These tests migrate the schedule-logic coverage from
+    // `oneshim-vision::trigger` (marked #[ignore] in A.6, deleted in A.7) into
+    // the scheduler where the schedule gate now lives.  They use the 4-arg
+    // `capture_permitted_now(cfg, consent, capture_paused, now)` helper
+    // directly so that `now` can be injected deterministically.
+
+    /// Build a `ConsentPermissions` with `screen_capture` set to the given bool
+    /// and all other fields defaulted to `false`.
+    fn capture_consent(granted: bool) -> oneshim_core::consent::ConsentPermissions {
+        oneshim_core::consent::ConsentPermissions {
+            screen_capture: granted,
+            ..Default::default()
+        }
+    }
+
+    /// `capture_permitted_now` must return `false` when `now` is outside the
+    /// configured active_hours window.
+    ///
+    /// Config: active_hours_enabled=true, 09:00–17:00, Mon only.
+    /// now = Mon 20:00 → outside window → gate rejects capture.
+    #[test]
+    fn scheduler_blocks_capture_outside_active_hours() {
+        let mut cfg = AppConfig::default_config();
+        cfg.schedule.active_hours_enabled = true;
+        cfg.schedule.active_start_hour = 9;
+        cfg.schedule.active_end_hour = 17;
+        cfg.schedule.active_days = vec![oneshim_core::config::Weekday::Mon];
+
+        let consent = capture_consent(true);
+        // 2024-01-08 is a Monday; 20:00 is outside the 09:00–17:00 window.
+        let now = fixed_at_local(2024, 1, 8, 20, 0);
+
+        assert!(
+            !loops::tracking_schedule_helper::capture_permitted_now(&cfg, &consent, false, now),
+            "Mon 20:00 must be blocked when active_hours is 09-17 (Mon only)"
+        );
+    }
+
+    /// `capture_permitted_now` must return `true` when `active_hours_enabled`
+    /// is `false`, regardless of the current time or weekday.
+    ///
+    /// Config: active_hours_enabled=false (default AppConfig); tracking_schedule
+    /// disabled; consent granted; capture_paused=false.
+    /// SmartCaptureTrigger is now schedule-free (A.7 hoist intent), so the
+    /// gate always passes when scheduling is disabled.
+    #[test]
+    fn scheduler_allows_capture_when_schedule_disabled() {
+        // Default AppConfig has active_hours_enabled=false and tracking_schedule
+        // disabled, so any instant must be permitted.
+        let cfg = AppConfig::default_config();
+        let consent = capture_consent(true);
+
+        // Sunday midnight — would be blocked by any typical Mon-Fri 09-17 window,
+        // but schedule is disabled so it must be allowed.
+        let now = fixed_at_local(2024, 1, 7, 0, 0); // 2024-01-07 = Sunday
+
+        assert!(
+            loops::tracking_schedule_helper::capture_permitted_now(&cfg, &consent, false, now),
+            "capture must be permitted when active_hours_enabled=false (any time, any day)"
+        );
+    }
+
+    /// `capture_permitted_now` handles overnight active_hours windows (end < start)
+    /// correctly via pred-weekday carry-over (interpretation B, approved deviation
+    /// from plan §3.3 A.6 original text which said interpretation A).
+    ///
+    /// Config: active_hours_enabled=true, 22:00–06:00, Mon–Fri.
+    ///
+    /// Sequence verified:
+    /// - Wed 23:00 → true  (Wed in active_days, hour >= 22)
+    /// - Thu 01:00 → true  (carry-over from Wed night, hour < 6)
+    /// - Thu 05:59 → true  (still carry-over; end 06:00 is exclusive)
+    /// - Thu 06:01 → false (past end; no carry-over applies)
+    /// - Sat 00:01 → TRUE (Fri opened at 22:00, carries into Sat morning;
+    ///   pred-weekday of Sat is Fri which IS in active_days and 00:01 < end_hour 06 —
+    ///   interpretation B approved: Fri night is a single "Fri shift" spanning Saturday)
+    #[test]
+    fn scheduler_handles_overnight_active_hours() {
+        let mut cfg = AppConfig::default_config();
+        cfg.schedule.active_hours_enabled = true;
+        cfg.schedule.active_start_hour = 22;
+        cfg.schedule.active_end_hour = 6; // end < start → overnight wrap
+        cfg.schedule.active_days = vec![
+            oneshim_core::config::Weekday::Mon,
+            oneshim_core::config::Weekday::Tue,
+            oneshim_core::config::Weekday::Wed,
+            oneshim_core::config::Weekday::Thu,
+            oneshim_core::config::Weekday::Fri,
+        ];
+
+        let consent = capture_consent(true);
+        let permit = |now| {
+            loops::tracking_schedule_helper::capture_permitted_now(&cfg, &consent, false, now)
+        };
+
+        // 2024-01-10 = Wednesday, 2024-01-11 = Thursday, 2024-01-13 = Saturday.
+        let wed_23 = fixed_at_local(2024, 1, 10, 23, 0);
+        assert!(permit(wed_23), "Wed 23:00 must be inside window (CONS-C05)");
+
+        let thu_01 = fixed_at_local(2024, 1, 11, 1, 0);
+        assert!(
+            permit(thu_01),
+            "Thu 01:00 must be inside (carry-over from Wed night) (CONS-C05)"
+        );
+
+        let thu_0559 = fixed_at_local(2024, 1, 11, 5, 59);
+        assert!(
+            permit(thu_0559),
+            "Thu 05:59 must be inside (end 06:00 is exclusive) (CONS-C05)"
+        );
+
+        let thu_0601 = fixed_at_local(2024, 1, 11, 6, 1);
+        assert!(
+            !permit(thu_0601),
+            "Thu 06:01 must be outside (past end hour 06) (CONS-C05)"
+        );
+
+        // Sat 00:01 — interpretation B (pred-weekday carry-over):
+        // Fri opened at 22:00 and the overnight window carries into Sat morning.
+        // pred(Sat) == Fri, Fri IS in active_days, and 00:01 < end_hour 6
+        // → the gate must pass (TRUE), not reject as plan text originally said.
+        // Approved deviation: matches real-world shift scheduling semantics.
+        let sat_0001 = fixed_at_local(2024, 1, 13, 0, 1);
+        assert!(
+            permit(sat_0001),
+            "Sat 00:01 must be inside (Fri carry-over, interpretation B — \
+             pred-weekday check against active_days) (CONS-C05)"
+        );
+    }
 }

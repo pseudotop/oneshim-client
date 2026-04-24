@@ -370,6 +370,7 @@ mod tests {
     // ── Blackout-hours tests (Q3) ────────────────────────────────────
 
     #[test]
+    #[ignore = "Phase 9: migrated to scheduler::mod::tests in A.7"]
     fn blocks_capture_outside_active_hours() {
         use oneshim_core::config::Weekday as CfgWeekday;
 
@@ -395,6 +396,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Phase 9: migrated to scheduler::mod::tests in A.7"]
     fn allows_capture_when_schedule_disabled() {
         // Default ScheduleConfig has active_hours_enabled = false
         let trigger = SmartCaptureTrigger::new(5000);
@@ -406,6 +408,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Phase 9: migrated to scheduler::mod::tests in A.7"]
     fn handles_overnight_active_hours() {
         use oneshim_core::config::Weekday as CfgWeekday;
 
