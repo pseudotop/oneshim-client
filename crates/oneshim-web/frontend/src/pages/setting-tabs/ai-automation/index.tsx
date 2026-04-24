@@ -17,7 +17,7 @@ import {
   surfaceSupportsModelSelection,
 } from '../../../features/providerSurfaces'
 import { form, typography } from '../../../styles/tokens'
-import { useSettingsFormContext } from '../../settings/SettingsFormContext'
+import { useLoadedFormData, useSettingsFormContext } from '../../settings/SettingsFormContext'
 import {
   executionKindLabel,
   placementKindDescription,
@@ -38,7 +38,7 @@ import SceneIntelligenceConfig from './SceneIntelligenceConfig'
 export default function AiAutomationTab() {
   const { form: settingsForm, data } = useSettingsFormContext()
   const { t } = useTranslation()
-  const formData = settingsForm.formData!
+  const formData = useLoadedFormData()
   const allProviderSurfaces = data.providerCatalog.surfaces
   const featureCapabilities = data.featureCapabilities
   const secretBackendCapabilities = data.secretBackendCapabilities

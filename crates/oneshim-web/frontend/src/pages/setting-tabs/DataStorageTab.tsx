@@ -3,7 +3,7 @@ import { Card, CardTitle, Input, Spinner } from '../../components/ui'
 import { colors, form, iconSize, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { formatBytes, formatNumber } from '../../utils/formatters'
-import { useSettingsFormContext } from '../settings/SettingsFormContext'
+import { useLoadedFormData, useSettingsFormContext } from '../settings/SettingsFormContext'
 import ToggleRow from './ToggleRow'
 
 interface StorageCardProps {
@@ -63,7 +63,7 @@ function ExportButton({ label, description, onClick, loading }: ExportButtonProp
 export default function DataStorageTab() {
   const { t } = useTranslation()
   const { form: formCtx, data } = useSettingsFormContext()
-  const formData = formCtx.formData!
+  const formData = useLoadedFormData()
   const storageStats = data.storageStats
   const storageLoading = data.storageLoading
   const exportFormat = formCtx.exportFormat

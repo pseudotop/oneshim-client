@@ -5,7 +5,7 @@ import type { AppSettings, DesktopPermissionState } from '../../api/client'
 import { Alert, Badge, Button, Card, CardTitle, Checkbox, Input } from '../../components/ui'
 import { colors, form, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
-import { useSettingsFormContext } from '../settings/SettingsFormContext'
+import { useLoadedFormData, useSettingsFormContext } from '../settings/SettingsFormContext'
 import ToggleRow from './ToggleRow'
 
 interface PermissionRowAction {
@@ -72,7 +72,7 @@ function describeMacNotificationPermission(
 
 export default function MonitoringTab() {
   const { form: settingsForm, data } = useSettingsFormContext()
-  const formData = settingsForm.formData!
+  const formData = useLoadedFormData()
   const permissionStatus = data.desktopPermissionStatus ?? null
   const permissionStatusLoading = data.desktopPermissionStatusLoading
   const permissionStatusRefreshing = data.desktopPermissionStatusRefreshing
