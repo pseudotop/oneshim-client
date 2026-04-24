@@ -59,19 +59,19 @@ From PR #486 commit log:
 
 - **G1** — Every external gRPC request (auth-passed) emits a Started + Completed audit pair where `command_id` = a globally unique request ID, available to the caller via `x-request-id` response header.
 - **G2** — The Completed audit row reflects the actual gRPC status of the response (Ok / PermissionDenied / Cancelled / DeadlineExceeded / Failed / ...), mapped deterministically to `AuditStatus::{Completed, Denied, Timeout, Failed}`.
-- **G3** — `streaming_enabled` and `LoadPolicy` thresholds can be toggled/adjusted via config file edit + `ConfigManager` reload, reflected in subsequent request decisions within **≤5 seconds** without server restart.
+- **G3** (revised per D33) — `streaming_enabled` and `LoadPolicy` thresholds can be toggled/adjusted via config file edit + `ConfigManager` reload, reflected in subsequent request decisions **within one tokio scheduler tick (typically <10ms)** without server restart. CI test asserts convergence ≤1 second (generous margin for scheduler jitter).
 - **G4** — Coverage: unit tests for each new module (target ≥90% line coverage), integration tests for each new behavior (x-request-id round-trip, status mapping for Denied/Timeout, live reload toggle effect), zero flakes.
 - **G5** — Zero performance regression on the happy path: unary request median latency Δ < +200µs relative to PR #486 baseline.
 
 ### 3.2 Non-Goals
 
-- **NG1** — Loopback server changes. Loopback has no `AuditLayer`, no auth, no user-facing runtime knobs worth live-reloading today.
+- **NG1** (clarified per U1/D22) — Loopback server's own state is unchanged: no `AuditLayer` added, no live-reload for loopback's `DashboardServiceImpl`. Note that `AppConfig.web.grpc_streaming_enabled` is shared between loopback and external servers; the external server gains an **override** `ExternalGrpcConfig.streaming_enabled: Option<bool>` (D22) so operators can toggle external-only behavior without touching loopback. When `None`, external falls back to the shared `web.grpc_streaming_enabled` value as before.
 - **NG2** — Live reload of fields requiring rebind or verifier rebuild (`port`, `bind_address`, `auth_mode`, JWT public key path, TLS cert path). These remain restart-required.
 - **NG3** — Distributed tracing (OpenTelemetry, W3C TraceContext). `x-request-id` is correlation-only; full tracing is a separate future project.
 - **NG4** — Request-ID enforcement or rate-limiting by ID. Informational header only.
 - **NG5** — New audit action types or new `AuditStatus` variants. Reuse the existing 4-variant enum exposed by PR #486 Task 5 (`Started`, `Completed`, `Denied`, `Timeout`, `Failed`).
 - **NG6** — Config schema migration. Reuses existing `AppConfig.web.grpc_streaming_enabled` + `AppConfig.web.grpc_load_thresholds` fields; no user-facing config change.
-- **NG7** — Per-field live reload granularity. The whole `LiveExternalConfig` atomic updates on any relevant change — readers don't observe partial updates.
+- **NG7** (revised per D21) — Per-field live reload granularity. The whole `LiveSnapshot` is atomic-swapped on any update; readers load a consistent snapshot via `live.snapshot()` and never observe torn cross-field reads. A long-running streaming RPC that calls `snapshot()` multiple times over its lifetime may see different snapshots (eventually-consistent per-decision semantics) — this is intentional: operators expect "flip switch, it takes effect." Explicit test `live_reload_affects_long_running_stream` pins this behavior (§9.2).
 
 ---
 
@@ -134,21 +134,42 @@ Server::builder()
 
 tonic 0.14 layer semantics: first `.layer()` call is outermost on ingress (per PR #486 empirical fix, documented in `reference_tonic_layer_order.md` memory).
 
-### 4.2 Component map
+### 4.2 Component map (revised — rev-2)
 
 | Kind | Path | LoC est. | Role |
 |------|------|----------|------|
-| 🆕 New | `grpc/external/live_config.rs` | ~80 impl + ~100 test | `LiveExternalConfig` — `AtomicBool` + `ArcSwap<LoadPolicy>` wrapper |
-| 🆕 New | `grpc/external/request_id_layer.rs` | ~150 impl + ~150 test | Tower Layer — ingress validate/generate, egress header inject |
-| 🆕 New | `grpc/external/trailer_body.rs` | ~150 impl + ~150 test | `http_body::Body` wrapper — trailer observation via `poll_frame` |
-| 🆕 New | `grpc/external/config_reload.rs` | ~100 impl + ~100 test | tokio task — `watch` subscription → `LiveExternalConfig` swap |
-| ✏️ Mod | `grpc/external/audit_layer.rs` | +60/-30 | Deferred completion via `oneshot::Receiver`, `RequestId` extraction, status mapping |
-| ✏️ Mod | `grpc/external/spawn_config.rs` | +10/-3 | `streaming_enabled` + `load_policy` collapsed into `live: Arc<LiveExternalConfig>`; new `config_rx: watch::Receiver<Arc<AppConfig>>` |
-| ✏️ Mod | `grpc/external/mod.rs` | +30/-5 | `serve_external` inserts `RequestIdLayer`, spawns `ConfigReloadTask` |
-| ✏️ Mod | `grpc/mod.rs` | +15/-10 | `DashboardServiceImpl::from_external_spawn_config` reads `cfg.live` instead of raw fields |
-| ✏️ Mod | `src-tauri/src/app_runtime_launch.rs` | +20/-10 | `build_external_spawn_config` constructs `Arc<LiveExternalConfig>`, passes `config_manager.subscribe()` |
+| 🆕 New | `grpc/external/live_config.rs` | ~70 impl + ~90 test | `LiveSnapshot` + `LiveExternalConfig` — single `ArcSwap<LiveSnapshot>` (D21) |
+| 🆕 New | `grpc/external/request_id_layer.rs` | ~160 impl + ~180 test | Tower Layer (outermost per U5/D14) — ingress validate/generate, egress header conditional-overwrite (D31) |
+| 🆕 New | `grpc/external/trailer_body.rs` | ~170 impl + ~180 test | `http_body::Body` wrapper — trailer observation + `new_already_fired` ctor for trailers-only fast path (D28) |
+| 🆕 New | `grpc/external/config_reload.rs` | ~130 impl + ~120 test | tokio task — `watch` subscription → atomic `LiveSnapshot` store. Uses `try_new_with_started_at` (D27) + partial apply (D23) |
+| 🆕 New | `grpc/external/streaming_source.rs` (or in `grpc/mod.rs`) | ~40 impl + ~60 test | `enum StreamingSource { Fixed, Live }` (D24) — DashboardServiceImpl dual-mode |
+| 🆕 New | `grpc/external/live_config_handler.rs` | ~50 impl + ~60 test | REST `GET /api/external-grpc/live-config` (D29) |
+| ✏️ Mod | `grpc/external/audit_layer.rs` | +90/-30 | Header-first status observation (D28/CR1), deferred completion, `RequestId` extraction, status mapping |
+| ✏️ Mod | `grpc/external/audit_bridge.rs` | +15/-0 | `record`/`record_completion` gain `command_id: Option<String>` arg (8th) + `grpc_status_code: Option<u32>` in `ExternalGrpcAuditDetails` (D26) |
+| ✏️ Mod | `grpc/external/spawn_config.rs` | +15/-4 | `streaming_enabled` + `load_policy` collapsed into `live: Arc<LiveExternalConfig>`; new `config_rx: watch::Receiver<Arc<AppConfig>>`; manual `Debug` impl updated for renamed fields |
+| ✏️ Mod | `grpc/external/auth_layer.rs` | +12/-2 | 4 Failed-path spawn blocks read `RequestId` from extensions for command_id (rather than None per U5) |
+| ✏️ Mod | `grpc/external/mod.rs` | +35/-5 | `serve_external` inserts `RequestIdLayer` outermost; `pub(crate) mod` lines for 4-6 new files (I7) |
+| ✏️ Mod | `grpc/mod.rs` | +50/-15 | `DashboardServiceImpl` holds `streaming_source: StreamingSource` (D24); both `from_spawn_config` + `from_external_spawn_config` updated |
+| ✏️ Mod | `grpc/load_policy.rs` | +35/-5 | `try_new` / `try_new_with_started_at` / `started_at` accessor (D23/D27); `LoadPolicyError` enum |
+| ✏️ Mod | `grpc/subscribe_metrics.rs`, `subscribe_events.rs` | +10/-5 each | Read `cfg.streaming_source.streaming_enabled()` + `.load_policy()` — no longer take raw `bool` and `Arc<LoadPolicy>` as parameters |
+| ✏️ Mod | `oneshim-core/src/ports/audit_log.rs` | +8/-0 | Add `entries_by_command_id(cmd_id: &str, limit: usize)` trait method (D25) |
+| ✏️ Mod | `oneshim-storage/src/sqlite/*` (audit impl) | +30/-0 | Implement `entries_by_command_id` — SELECT WHERE command_id = ? (D25) |
+| ✏️ Mod | `oneshim-web/src/handlers/audit.rs` (or similar) | +20/-0 | Extend `GET /api/audit/export` with `?command_id=X` query param (D25) |
+| ✏️ Mod | `oneshim-web/src/routes.rs` | +1/-0 | Register new `/api/external-grpc/live-config` route (D29) |
+| ✏️ Mod | `oneshim-core/src/config/sections/network.rs` | +8/-0 | Add `ExternalGrpcConfig.streaming_enabled: Option<bool>` (D22) |
+| ✏️ Mod | `src-tauri/src/app_runtime_launch.rs` | +30/-10 | `build_external_spawn_config` gains `config_manager` param, constructs `Arc<LiveExternalConfig>` from initial `LiveSnapshot`, spawns `ConfigReloadTask` (D30) |
 
-**Total**: ~1300 LoC (roughly 625 impl + 625 test) across 9 files.
+**Total**: ~1500 LoC (roughly 750 impl + 750 test) across 15-17 files. +200 LoC vs rev-1 due to user-decision expansions (U1 override field, U2 query surface, D29 REST endpoint, D24 StreamingSource enum, D26 raw code persistence).
+
+**Module declarations** added to `grpc/external/mod.rs` (I7):
+```rust
+pub(crate) mod config_reload;
+pub(crate) mod live_config;
+pub(crate) mod live_config_handler;  // if separate file
+pub(crate) mod request_id_layer;
+pub(crate) mod streaming_source;     // if separate file, else inline in grpc/mod.rs
+pub(crate) mod trailer_body;
+```
 
 ### 4.3 Dependency graph (crate-boundary sanity)
 
@@ -297,9 +318,18 @@ fn call(&mut self, mut req: http::Request<B>) -> Self::Future {
     let mut inner = self.inner.clone();
     Box::pin(async move {
         let mut response = inner.call(req).await?;
-        // Inject into response; overwrite any pre-existing value from handler.
-        if let Ok(hv) = HeaderValue::from_str(&request_id) {
-            response.headers_mut().insert("x-request-id", hv);
+        // Conditional overwrite (D31): if handler already set x-request-id AND
+        // the value matches our validated ID, leave alone. Otherwise insert ours.
+        // This preserves rare proxy-forward patterns where a gRPC handler mirrors
+        // an upstream correlation ID, without breaking correlation for the 99% case.
+        let should_insert = match response.headers().get("x-request-id") {
+            Some(existing) => existing.to_str().map(|s| s != request_id).unwrap_or(true),
+            None => true,
+        };
+        if should_insert {
+            if let Ok(hv) = HeaderValue::from_str(&request_id) {
+                response.headers_mut().insert("x-request-id", hv);
+            }
         }
         Ok(response)
     })
@@ -313,6 +343,10 @@ fn is_valid(s: &str) -> bool {
 ```
 
 The raw value is validated and — if valid — used verbatim as the `RequestId`. No trim, no normalization. The caller's exact string is preserved for cross-system correlation; whitespace-padded input (any `0x20`, `\t`, `\n`, ...) fails the `0x21..=0x7E` check and triggers UUID generation.
+
+**UUIDv4 compatibility** (addresses Platform I5): `uuid::Uuid::new_v4().to_string()` produces 36 lowercase hex chars + hyphens — all within `0x21..=0x7E` by construction. Generated IDs always satisfy `is_valid`; the inserted value round-trips cleanly through any downstream validator using the same rule.
+
+**Note on layer position**: `RequestIdLayer` is now **outermost** (D14 revised, U5) — it runs *before* `AuthLayer`. This means auth-rejected requests get a `RequestId` populated in their `http::Request::extensions()` before `AuthLayer::call` executes. `AuthLayer`'s 4 Failed-path audit writes are updated to read `req.extensions().get::<RequestId>()` and pass the value as `command_id` in their `bridge.record(...)` calls (§5.5).
 
 ### 5.3 `TrailerCapturingBody<B>`
 
@@ -653,11 +687,15 @@ const _: fn() = || {
 
 **Prometheus cardinality note** (addresses Arch M3): The `request_bump` metric label goes from hardcoded `"ok"` (rev-1) to one of 4 values (`ok`/`denied`/`timeout`/`failed`). This is a bounded-cardinality change (4 labels × `auth_type` labels); dashboards aggregating by raw code rather than label should migrate to the new `grpc_status_code` field. Documented in §8.6.
 
-### 5.6 `ExternalGrpcSpawnConfig` — modified
+### 5.6 `ExternalGrpcSpawnConfig` — modified (rev-2)
 
 ```rust
 pub struct ExternalGrpcSpawnConfig {
-    // ... existing fields unchanged ...
+    // ... existing fields unchanged (bind_addr, config, storage, system_monitor,
+    //                                 event_tx, audit_port, cert_resolver,
+    //                                 jwt_verifier, mtls_verifier, ip_ban,
+    //                                 metrics, shutdown_rx, shutdown_tx,
+    //                                 pii_sanitizer, ai_runtime_status_snapshot) ...
 
     // REMOVED:
     //   pub streaming_enabled: bool,
@@ -665,13 +703,327 @@ pub struct ExternalGrpcSpawnConfig {
 
     // ADDED:
     pub live: Arc<LiveExternalConfig>,
-    /// Watch receiver for live config reload. The paired Sender is owned by
-    /// ConfigManager; dropping the manager ends the reload task cleanly.
-    pub config_rx: watch::Receiver<Arc<AppConfig>>,
+    // Note: `config_rx` is NOT stored here (D30). The reload task is spawned
+    // in build_external_spawn_config and owns its Receiver directly.
 }
 ```
 
-**Debug impl adjustment**: replace `.field("streaming_enabled", ...)` with `.field("streaming_enabled_live", &self.live.streaming_enabled())`. `config_rx` debug impl is uninteresting; elide.
+**Debug impl adjustment** (addresses Platform I2):
+- Drop any `#[derive(Debug)]` and keep the existing **manual** `impl Debug` (already present per spawn_config.rs:82-103).
+- Replace `.field("streaming_enabled", ...)` with `.field("streaming_enabled_live", &self.live.snapshot().streaming_enabled)`.
+- Existing redaction (cert/JWT material, bool-presence flags) preserved.
+
+**Test updates required** (addresses Arch I6):
+- `spawn_config_clone_is_shallow` (`spawn_config.rs:242-250`) — add `assert!(Arc::ptr_eq(&cfg.live, &clone.live));` to the existing Arc-ptr-equality chain.
+- `spawn_config_debug_redacts_sensitive_fields` (`spawn_config.rs:210-238`) — replace `streaming_enabled` substring check with `streaming_enabled_live`.
+
+### 5.7 `build_external_spawn_config` — modified signature (rev-2)
+
+**src-tauri/src/app_runtime_launch.rs** — gains 1 parameter + 3 constructor blocks:
+
+```rust
+async fn build_external_spawn_config(
+    cfg: &oneshim_core::config::ExternalGrpcConfig,
+    // ... existing 8 params unchanged ...
+    config_manager: std::sync::Arc<oneshim_core::config_manager::ConfigManager>,  // NEW
+    app_config_snapshot: std::sync::Arc<oneshim_core::config::AppConfig>,          // NEW (for initial values)
+) -> anyhow::Result<ExternalGrpcSpawnConfig> {
+    // ... existing construction of storage, verifiers, cert_resolver, etc. ...
+
+    // Initial LiveSnapshot from current AppConfig.
+    let initial_streaming = cfg
+        .streaming_enabled
+        .unwrap_or(app_config_snapshot.web.grpc_streaming_enabled);
+    let initial_thresholds = app_config_snapshot.web.grpc_load_thresholds.clone().unwrap_or_default();
+    // NOTE: boot-time validation — try_new is called here once; panic is acceptable
+    //       at boot (config was validated by earlier ConfigManager::update_with).
+    //       During ConfigReloadTask operation, try_new's Err is caught and logged.
+    let initial_policy = LoadPolicy::try_new(initial_thresholds)
+        .context("Invalid LoadThresholds at boot — check config.web.grpc_load_thresholds")?;
+
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: initial_streaming,
+        load_policy: Arc::new(initial_policy),
+    }));
+
+    // Spawn reload task (D30 — matches cert_watcher/expiry_monitor pattern).
+    let config_rx = config_manager.subscribe();
+    tokio::spawn(run_config_reload(
+        live.clone(),
+        config_rx,
+        shutdown_rx.clone(),
+    ));
+
+    Ok(ExternalGrpcSpawnConfig {
+        // ... existing ...
+        live,
+    })
+}
+```
+
+**Call site at `app_runtime_launch.rs:897`** passes the new 2 args: `config_manager.clone()` + the current config snapshot (cloneable `Arc<AppConfig>` from `config_manager.current()`).
+
+---
+
+### 5.8 `StreamingSource` enum — DashboardServiceImpl dual-mode (D24)
+
+**File**: `crates/oneshim-web/src/grpc/streaming_source.rs` (new) — or inlined in `grpc/mod.rs`.
+
+```rust
+use std::sync::Arc;
+use crate::grpc::load_policy::LoadPolicy;
+use crate::grpc::external::live_config::{LiveExternalConfig, LiveSnapshot};
+
+/// Dual-mode source for streaming config fields that handlers read on every call.
+///
+/// Loopback server uses `Fixed` (values captured once at service-build time).
+/// External server uses `Live` (values atomic-swapped by ConfigReloadTask).
+#[derive(Clone)]
+pub(crate) enum StreamingSource {
+    /// Static values — used by loopback `from_spawn_config`.
+    Fixed {
+        streaming_enabled: bool,
+        load_policy: Arc<LoadPolicy>,
+    },
+    /// Live-reloadable — used by external `from_external_spawn_config`.
+    Live(Arc<LiveExternalConfig>),
+}
+
+impl StreamingSource {
+    pub fn streaming_enabled(&self) -> bool {
+        match self {
+            Self::Fixed { streaming_enabled, .. } => *streaming_enabled,
+            Self::Live(live) => live.snapshot().streaming_enabled,
+        }
+    }
+
+    pub fn load_policy(&self) -> Arc<LoadPolicy> {
+        match self {
+            Self::Fixed { load_policy, .. } => load_policy.clone(),
+            Self::Live(live) => live.snapshot().load_policy.clone(),
+        }
+    }
+}
+```
+
+**DashboardServiceImpl field change** (`grpc/mod.rs`):
+```rust
+// REMOVED:
+// pub(crate) load_policy: Arc<LoadPolicy>,
+// pub(crate) streaming_enabled: bool,
+
+// ADDED:
+pub(crate) streaming_source: StreamingSource,
+```
+
+Both `DashboardServiceImpl::from_spawn_config` (loopback) and `from_external_spawn_config` (external) are updated to construct the appropriate variant:
+- loopback: `StreamingSource::Fixed { streaming_enabled: cfg.streaming_enabled, load_policy: cfg.load_policy }`
+- external: `StreamingSource::Live(cfg.live.clone())`
+
+Handler call sites (`subscribe_metrics`, `subscribe_events`, etc.) read via `self.streaming_source.streaming_enabled()` / `.load_policy()` — single atomic snapshot load per call (D21 guarantee).
+
+---
+
+### 5.9 `AuditLogPort::entries_by_command_id` — new query surface (D25)
+
+**File**: `crates/oneshim-core/src/ports/audit_log.rs` (modified)
+
+```rust
+#[async_trait]
+pub trait AuditLogPort: Send + Sync {
+    // ... existing methods ...
+
+    /// Return audit entries whose `command_id` exactly matches the given value.
+    /// Ordered by `timestamp DESC`. Empty vector if none match.
+    ///
+    /// # Errors
+    /// Infallible (returns empty vec on storage error; error is logged).
+    async fn entries_by_command_id(
+        &self,
+        command_id: &str,
+        limit: usize,
+    ) -> Vec<AuditEntry>;
+}
+```
+
+**SqliteStorage impl** (`crates/oneshim-storage/src/sqlite/` — existing audit module):
+```rust
+async fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+    tokio::task::block_in_place(|| {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, command_id, session_id, action_type, details, status,
+                    execution_time_ms, timestamp
+             FROM audit_entries
+             WHERE command_id = ?1
+             ORDER BY timestamp DESC
+             LIMIT ?2"
+        ).ok()?;
+        stmt.query_map(rusqlite::params![command_id, limit as i64], map_row)
+            .ok()?
+            .filter_map(|r| r.ok())
+            .collect()
+    }).unwrap_or_default()
+}
+```
+
+**REST handler** (`crates/oneshim-web/src/handlers/audit.rs` — or existing audit export path):
+
+Extends the existing `GET /api/audit/export` with a `?command_id=<value>` query param:
+```rust
+#[derive(Deserialize)]
+pub struct AuditExportQuery {
+    // ... existing fields ...
+    #[serde(default)]
+    pub command_id: Option<String>,  // NEW
+    pub limit: Option<usize>,
+}
+
+pub async fn export_audit(...) -> Result<Json<Vec<AuditEntry>>, ApiError> {
+    let limit = query.limit.unwrap_or(100).min(1000);
+    let entries = match &query.command_id {
+        Some(cmd_id) => state.audit_port.entries_by_command_id(cmd_id, limit).await,
+        None => {
+            // ... existing logic ...
+        }
+    };
+    Ok(Json(entries))
+}
+```
+
+`NoopAudit` (test helper in `spawn_config.rs` + `audit_layer.rs` tests) must implement the new trait method with `vec![]` default.
+
+---
+
+### 5.10 `LoadPolicy` additions — `try_new` + `started_at` preservation (D23, D27)
+
+**File**: `crates/oneshim-web/src/grpc/load_policy.rs` (modified)
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum LoadPolicyError {
+    #[error("invalid LoadThresholds: {reason}")]
+    InvalidThresholds { reason: String },
+}
+
+impl LoadPolicy {
+    /// Fallible constructor — validates threshold ordering.
+    pub fn try_new(thresholds: LoadThresholds) -> Result<Self, LoadPolicyError> {
+        Self::try_new_with_started_at(thresholds, Instant::now())
+    }
+
+    /// Fallible constructor with externally supplied `started_at`.
+    /// Used by `ConfigReloadTask` to preserve the original warmup anchor
+    /// across reloads (otherwise every reload forces a fresh 30s `Medium`).
+    pub fn try_new_with_started_at(
+        thresholds: LoadThresholds,
+        started_at: Instant,
+    ) -> Result<Self, LoadPolicyError> {
+        if !(thresholds.cpu_low_pct < thresholds.cpu_medium_pct) {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "cpu_low_pct ({}) must be < cpu_medium_pct ({})",
+                    thresholds.cpu_low_pct, thresholds.cpu_medium_pct
+                ),
+            });
+        }
+        if !(thresholds.cpu_medium_pct < thresholds.cpu_high_pct) {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "cpu_medium_pct ({}) must be < cpu_high_pct ({})",
+                    thresholds.cpu_medium_pct, thresholds.cpu_high_pct
+                ),
+            });
+        }
+        if !(thresholds.cpu_high_pct <= 100.0) {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "cpu_high_pct ({}) must be <= 100.0",
+                    thresholds.cpu_high_pct
+                ),
+            });
+        }
+        Ok(Self { thresholds, started_at })
+    }
+
+    /// Read accessor — needed by ConfigReloadTask for `started_at` preservation.
+    pub fn started_at(&self) -> Instant {
+        self.started_at
+    }
+
+    /// Backward-compat — existing `pub fn new(thresholds) -> Self` retained as:
+    pub fn new(thresholds: LoadThresholds) -> Self {
+        Self::try_new(thresholds).expect(
+            "LoadPolicy::new: thresholds must be validated before construction; \
+             use try_new for runtime-fallible construction"
+        )
+    }
+}
+```
+
+`LoadPolicy::new` remains the boot-time entry point (config has already been validated at that stage; expect is appropriate). `try_new` / `try_new_with_started_at` are the reload-time entry points.
+
+---
+
+### 5.11 Live-config REST endpoint (D29)
+
+**File**: `crates/oneshim-web/src/handlers/external_grpc_live_config.rs` (new)
+
+```rust
+use std::sync::Arc;
+use axum::{extract::State, Json};
+use serde::Serialize;
+use crate::grpc::external::live_config::LiveExternalConfig;
+
+#[derive(Serialize)]
+pub struct LiveConfigResponse {
+    pub streaming_enabled: bool,
+    pub load_policy_snapshot: LoadPolicyView,
+}
+
+#[derive(Serialize)]
+pub struct LoadPolicyView {
+    pub cpu_low_pct: f32,
+    pub cpu_medium_pct: f32,
+    pub cpu_high_pct: f32,
+    pub min_free_mem_gb: f32,
+    pub started_at_unix_ms: u64,
+    pub in_warmup: bool,
+}
+
+pub async fn get_live_config(
+    State(state): State<AppState>,
+) -> Result<Json<LiveConfigResponse>, ApiError> {
+    // Only available when external gRPC is enabled; return 503 otherwise.
+    let Some(live) = &state.external_grpc_live else {
+        return Err(ApiError::service_unavailable("external gRPC not enabled"));
+    };
+    let snap = live.snapshot();
+    let policy = &snap.load_policy;
+    Ok(Json(LiveConfigResponse {
+        streaming_enabled: snap.streaming_enabled,
+        load_policy_snapshot: LoadPolicyView {
+            cpu_low_pct: policy.thresholds().cpu_low_pct,
+            cpu_medium_pct: policy.thresholds().cpu_medium_pct,
+            cpu_high_pct: policy.thresholds().cpu_high_pct,
+            min_free_mem_gb: policy.thresholds().min_free_mem_gb,
+            started_at_unix_ms: /* elapsed-since-boot equivalent */,
+            in_warmup: policy.is_in_warmup(),
+        },
+    }))
+}
+```
+
+**Route registration** (`crates/oneshim-web/src/routes.rs`):
+```rust
+.route("/api/external-grpc/live-config", get(get_live_config))
+```
+
+**AppState wiring**: `AppState` gains `external_grpc_live: Option<Arc<LiveExternalConfig>>` populated in `build_external_spawn_config` (stored alongside the spawn_config). `None` when external gRPC is disabled → handler returns 503.
+
+**Test expectations** (§9.2 new):
+- `live_config_endpoint_returns_current_snapshot` — integration: toggle config, call endpoint, verify response reflects new values
+- `live_config_endpoint_503_when_external_disabled` — unit: bare AppState without external, call endpoint, expect 503
 
 ### 5.7 `build_external_spawn_config` — modified signature
 
@@ -854,14 +1206,20 @@ No new shutdown coordination; `ConfigReloadTask` simply joins the existing 3-tas
 
 ## 7. Configuration
 
-### 7.1 Consumed config fields
+### 7.1 Consumed config fields (revised — rev-2)
 
-| AppConfig path | Type | Default | Consumed by |
-|---------------|------|---------|-------------|
-| `web.grpc_streaming_enabled` | `bool` | `true` (existing) | `LiveExternalConfig.streaming_enabled` |
-| `web.grpc_load_thresholds` | `Option<LoadThresholds>` | `None` → `LoadThresholds::default()` | `LiveExternalConfig.load_policy` (via `LoadPolicy::new`) |
+| AppConfig path | Type | Default | Consumed by | Notes |
+|---------------|------|---------|-------------|-------|
+| **`external_grpc.streaming_enabled`** (**NEW**, D22) | `Option<bool>` | `None` → fall back to `web.grpc_streaming_enabled` | `LiveSnapshot.streaming_enabled` | External override so operators can disable external-only streaming without affecting loopback |
+| `web.grpc_streaming_enabled` (existing) | `bool` | `true` | Loopback `DashboardServiceImpl` (NG1 — unchanged), **fallback** for external when `external_grpc.streaming_enabled: None` | Shared between loopback and external |
+| `web.grpc_load_thresholds` | `Option<LoadThresholds>` | `None` → `LoadThresholds::default()` | `LiveSnapshot.load_policy` (via `LoadPolicy::try_new_with_started_at`) | Same field reused for external live-reload |
 
-No new config fields. No schema migration. Users who never edited these fields see no behavior change; users who edit them see changes take effect on next `ConfigManager` reload.
+**One new field** (`external_grpc.streaming_enabled`). Schema migration: **none** — field is `Option<bool>` with `None` default; backward compatible (existing configs continue to work, defaulting to the shared fallback).
+
+**User visibility**:
+- Operator who doesn't touch `external_grpc.streaming_enabled` sees no change (shared field behavior preserved).
+- Operator who sets `external_grpc.streaming_enabled = false` during an incident → external server disables streaming on next reload (~10ms) while loopback keeps running.
+- Operator who edits `web.grpc_load_thresholds` → external server picks up new thresholds on next reload; warmup anchor preserved (D27 — no forced 30s Medium).
 
 ### 7.2 Not watched (restart-required)
 
@@ -993,17 +1351,43 @@ New tracing log event on successful reload (INFO level): already included in §5
 
 All gated on `feature = "grpc-dashboard-external, external-grpc-tools, test-support"`.
 
-- `external_grpc_request_id_incoming_preserved_in_response` — client sends "req-123", asserts response header = "req-123"
-- `external_grpc_request_id_generated_when_missing` — no header sent, asserts response header matches UUID regex
-- `external_grpc_request_id_invalid_replaced` — sends malformed ID, asserts response has UUID (different from sent)
-- `external_grpc_audit_completed_for_ok_response` — make request, read audit via CapturingAudit, assert Completed + command_id populated
-- `external_grpc_audit_denied_for_permission_denied` — configure handler to return `Status::permission_denied`, assert audit = Denied
-- `external_grpc_audit_timeout_for_cancelled_stream` — open SubscribeMetrics, client cancels mid-stream, assert audit = Timeout
-- `external_grpc_live_streaming_toggle_reflects_immediately` — spawn server, reload config with streaming_enabled=false, next SubscribeMetrics returns `Unavailable`
-- `external_grpc_live_load_thresholds_applied` — reload with new LoadThresholds, next request's enforcement reflects (e.g., cpu_low_pct threshold change → shed behavior)
-- `external_grpc_config_reload_task_exits_on_shutdown` — spawn, trigger shutdown, assert task joins within timeout
+Each entry is tagged **NEW** / **REPLACE** (existing test body fully rewritten) / **EXTEND** (existing asserts kept + new asserts added).
 
-Expected count: ~9 new integration tests added to the current 19 = total ~28.
+Request-ID behavior:
+- **REPLACE** `external_grpc_request_id_header_returned` (line 933 in current file) — currently TODO-stub; rewrite to send incoming "req-xyz-123", assert response header = "req-xyz-123"
+- **NEW** `external_grpc_request_id_generated_when_missing` — no incoming header; assert response header matches UUIDv4 regex `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`
+- **NEW** `external_grpc_request_id_invalid_replaced` — send malformed ID (e.g., `"bad\x01id"`); assert response contains a UUID (and not the malformed input)
+- **NEW** `external_grpc_request_id_preserved_across_auth_reject` — send incoming "req-abc-123" + invalid JWT; assert audit `command_id = "req-abc-123"` (validates U5/D14 — correlation preserved at security boundary)
+
+Audit status mapping (D28 header-first verified):
+- **EXTEND** `external_grpc_audit_completed_entry_written_after_ok_response` (line 1531) — existing asserts kept; additionally assert `command_id` matches incoming/generated request ID and `grpc_status_code = 0` in details JSON
+- **NEW** `external_grpc_audit_denied_when_handler_returns_permission_denied` — test-fixture handler returns `Err(Status::permission_denied("..."))`; assert audit row has `status = Denied`, `grpc_status_code = 7`. This is the primary CR1-regression-catch test.
+- **NEW** `external_grpc_audit_timeout_when_handler_returns_cancelled` — handler returns `Err(Status::cancelled("..."))`; assert `status = Timeout`, `grpc_status_code = 1`. Deterministic via trailers-only header path (Option B from closed OQ6).
+- **NEW** `external_grpc_audit_failed_when_handler_returns_internal` — handler returns `Err(Status::internal("..."))`; assert `status = Failed`, `grpc_status_code = 13`.
+- **NEW** `external_grpc_audit_completed_when_client_drops_before_trailer` — client drops stream mid-flight (realistic drop); assert audit = `Completed` with msg_count > 0. Documents the OQ6-Option-A fallback behavior.
+- **EXTEND** `external_grpc_streaming_audit_records_message_count` (line 1594) — existing asserts kept; additionally verify msg_count correlation with status mapping.
+
+Audit query surface (D25):
+- **NEW** `audit_entries_by_command_id_returns_matching_rows` — insert 3 audit entries with same command_id + 2 with different; call `AuditLogPort::entries_by_command_id(cmd_id, 10)`; assert exactly 3 returned, newest first
+- **NEW** `audit_export_rest_endpoint_filters_by_command_id` — call `GET /api/audit/export?command_id=X`; assert only matching rows returned
+
+Live config reload:
+- **NEW** `external_grpc_live_streaming_toggle_reflects_within_1s` — spawn server, reload config with `external_grpc.streaming_enabled = false`, next SubscribeMetrics returns `Unavailable`; assert `start.elapsed() < Duration::from_secs(1)` (CI convergence bound per D33)
+- **NEW** `external_grpc_live_load_thresholds_applied_without_warmup_reset` — spawn server, wait 30s (out of warmup), reload with new thresholds, assert NOT in warmup on next request (D27 started_at preserved)
+- **NEW** `external_grpc_live_reload_rejects_malformed_thresholds_and_continues` — reload with invalid thresholds (e.g., `cpu_low = 90, cpu_medium = 50`); assert ConfigReloadTask still running, `streaming_enabled` change (if any) still applied, `load_policy` unchanged
+- **NEW** `external_grpc_live_reload_coalesces_rapid_updates` — fire 100 config updates in rapid succession; assert final `live.snapshot()` matches last update; task not panicked
+- **NEW** `live_reload_affects_long_running_stream` — open SubscribeMetrics, reload with threshold-changing-to-shed config mid-stream, verify shed behavior on subsequent decisions
+- **NEW** `external_grpc_config_reload_task_exits_on_shutdown` — spawn, trigger shutdown, assert task joins within 5s timeout
+
+Live config inspection endpoint (D29):
+- **NEW** `live_config_endpoint_returns_current_snapshot` — call `GET /api/external-grpc/live-config`, assert JSON response matches expected shape with current values
+- **NEW** `live_config_endpoint_503_when_external_disabled` — call endpoint without external enabled; assert 503
+
+Fallback field semantics (D22):
+- **NEW** `loopback_streaming_enabled_is_not_live_reloaded` — toggle `external_grpc.streaming_enabled = false`; assert external is disabled AND loopback is still enabled (preserves NG1)
+- **NEW** `external_streaming_falls_back_to_web_field_when_external_none` — set `external_grpc.streaming_enabled = None`; set `web.grpc_streaming_enabled = false`; external server honors false
+
+Expected count: **~18 new integration tests** (replacing/extending 2 existing) added to current 19 = total ~37.
 
 ### 9.3 Property-based / fuzz tests (optional)
 
@@ -1022,17 +1406,20 @@ Not a gating test (too flaky for CI), but a benchmark script:
 
 Document result in PR description; reject if regression >500µs.
 
-### 9.5 Test organization
+### 9.5 Test organization (revised — rev-2)
 
 | Crate:module | Test count (new) | Run command |
 |-------------|------------------|-------------|
 | `oneshim-web::grpc::external::live_config::tests` | 4 | `cargo test -p oneshim-web --features ... --lib live_config` |
-| `oneshim-web::grpc::external::request_id_layer::tests` | 8 | `--lib request_id_layer` |
-| `oneshim-web::grpc::external::trailer_body::tests` | 9 | `--lib trailer_body` |
-| `oneshim-web::grpc::external::config_reload::tests` | 5 | `--lib config_reload` |
-| `oneshim-web::grpc::external::audit_layer::tests` (augmented) | +7 | `--lib audit_layer` |
-| `oneshim-web` integration | +9 | `--test external_grpc_integration` |
-| **Total** | **~42** | — |
+| `oneshim-web::grpc::external::request_id_layer::tests` | 9 (+1 for conditional-overwrite per D31) | `--lib request_id_layer` |
+| `oneshim-web::grpc::external::trailer_body::tests` | 10 (+1 for `new_already_fired` ctor per D28) | `--lib trailer_body` |
+| `oneshim-web::grpc::external::config_reload::tests` | 7 (+2 for try_new rejection + started_at preservation) | `--lib config_reload` |
+| `oneshim-web::grpc::external::audit_layer::tests` (augmented) | +9 (+2 for header-first grpc-status + grpc_status_code field) | `--lib audit_layer` |
+| `oneshim-web::grpc::streaming_source::tests` (new) | 3 | `--lib streaming_source` |
+| `oneshim-web::grpc::load_policy::tests` (augmented) | +4 (try_new success/error variants, started_at preservation) | `--lib load_policy` |
+| `oneshim-core::ports::audit_log` / `oneshim-storage::sqlite` contract tests | +3 (entries_by_command_id) | `--lib` |
+| `oneshim-web` integration | +18 (D25 + D28 + D29 + D22 + D27 tests, replace 2 existing) | `--test external_grpc_integration` |
+| **Total** | **~66 test additions** (18 integration + 48 unit/contract) | — |
 
 ---
 
@@ -1129,20 +1516,29 @@ Explicitly **not** covered, tracked for future PRs:
 
 ---
 
-## 13. Open Questions — Deep-Review Target
+## 13. Open Questions — Status after rev-2 (Loop 1 Round 1 synthesis applied)
 
-Items for spec-loop review rounds (Critical/Important candidates):
+- **OQ1** — **RESOLVED (D23)**: `LoadPolicy::new` verified to panic via `assert!` at `load_policy.rs:42-58`. `LoadPolicy::try_new` introduced; `apply_config` catches `Err` and preserves previous `load_policy`. See §5.4 + §5.10.
+- **OQ2** — **RESOLVED (D19 revised)**: `pin_project_lite` confirmed transitive in workspace (via tokio/tower/hyper/http-body-util). Use directly, no new dependency.
+- **OQ3** — **DEFERRED (non-blocking)**: Audit bridge impls are expected to be panic-safe by contract (AuditLogPort docstring). No `catch_unwind` wrapper needed around deferred task. If a real panic scenario surfaces in production, a `tokio::task::JoinHandle::catch_unwind` wrapper can be added without spec change.
+- **OQ4** — **RESOLVED**: validate raw, no trim. See §5.2.
+- **OQ5** — **RESOLVED (D20)**: tracing events for `record` and `record_completion` include structured field `request_id = %command_id` at `info!` level. Implementation plan makes this concrete in each module.
+- **OQ6** — **RESOLVED (via D28 header-first + split tests)**: the `timeout_for_cancelled_stream` test is split into two per §9.2:
+  - `external_grpc_audit_timeout_when_handler_returns_cancelled` (Option B — deterministic via trailers-only header path)
+  - `external_grpc_audit_completed_when_client_drops_before_trailer` (Option A — documents fallback behavior)
+  Unit-level test on `TrailerCapturingBody` with hand-crafted trailer also covers streaming DeadlineExceeded via the trailer path.
+- **OQ7** — **RESOLVED**: `config_rx` is no longer stored on `ExternalGrpcSpawnConfig` (D30); the reload task receives the Receiver directly at spawn time in `build_external_spawn_config`. No Clone cascade concern.
+- **OQ8** — **DEFERRED (instrumented)**: memory pressure from per-request oneshot allocations remains bounded by `max_concurrent_streams` + `max_connections`. `ExternalMetrics.deferred_audit_in_flight` gauge (D32) gives observability to quantify at production load.
+- **OQ9** — **DEFERRED (D26 addresses)**: `map_code_to_audit_status` still coalesces `Internal`/`Unknown`/`DataLoss` to `Failed`. Raw `grpc_status_code: u32` in details JSON (D26) allows query-time re-splitting — no schema change or new `AuditStatus` variant needed.
+- **OQ10** — **RESOLVED**: `config_rx.borrow_and_update()` returns `watch::Ref<'_, Arc<AppConfig>>`; the borrow is dropped at the end of `apply_config(&live, &config_rx.borrow_and_update());` statement (scope ends at `;`). No await held across; no deadlock. Documented in §5.4 code comment.
 
-- **OQ1**: `LoadPolicy::new(LoadThresholds)` — is this infallible or can it return `Err`? If fallible, error-handling path in `ConfigReloadTask` needs explicit design (log + skip cycle, or log + fall back to previous).
-- **OQ2**: `pin_project_lite` vs `pin_project` — verify current workspace adoption; adopt whichever is already used elsewhere in `oneshim-web` to avoid new dep.
-- **OQ3**: Spawned deferred audit task — runtime panic from inside `record_completion` (e.g., storage unreachable) aborts the spawn. Do we need a panic catcher around it for belt-and-suspenders? (Existing `Arc<dyn AuditLogPort>` impls already panic-safe by contract.)
-- **OQ4**: ~~Incoming `x-request-id` with trailing/leading whitespace — validate raw (reject) or trim?~~ **Answered inline** (§5.2): validate raw with no trim; whitespace-padded values are treated as malformed → fresh UUID. Listed here only to surface the decision for reviewer confirmation.
-- **OQ5**: Should `AuditLayer` log `request_id` as a structured tracing field on every `record_completion` for Loki/Grafana filtering? Spec currently says yes (D20); confirm coverage in logging events.
-- **OQ6**: Test for `external_grpc_audit_timeout_for_cancelled_stream` — how to simulate client cancellation cleanly? Option A: client-side drop of the stream handle. Option B: server returns `Status::cancelled` directly. B is simpler but A is more realistic. Choose during plan phase.
-- **OQ7**: `ExternalGrpcSpawnConfig` gains `config_rx: watch::Receiver<Arc<AppConfig>>` — does this create an unexpected Clone blowup if the struct is cloned inside tonic (`Server::builder().layer(...)` takes owned values)? `watch::Receiver` is `Clone` and cheap; should be fine. Verify at implementation.
-- **OQ8**: Single oneshot channel per request — memory pressure at high RPS? oneshot is cheap (~80 bytes) and scales linearly with in-flight requests, which are already bounded by `max_concurrent_streams` + `max_connections`. No concern at target load, but benchmark in §9.4.
-- **OQ9**: Should `map_code_to_audit_status` map `Internal`/`Unknown`/`DataLoss` distinctly from `Failed`? Current design coalesces them all to `Failed`. Distinguishing "known internal error" from "unclassified" might be valuable. Propose deferral: audit query layer can re-split by raw `grpc-status` stored in `details` JSON.
-- **OQ10**: `config_rx.borrow_and_update()` — does this clone the `Arc<AppConfig>` or borrow? If borrow, ensure the borrow is dropped before calling `LoadPolicy::new` to avoid holding the read lock across the clone. (Probably fine — borrow drops at expression end — but confirm.)
+### New open questions surfaced in Loop 1 Round 1 (not yet classified as C/I)
+
+- **OQ11** (rev-2 from review): `ExternalGrpcSpawnConfig` is `pub` and used directly by integration tests under `#[cfg(feature = "test-support")]`. Refactoring it is a ripple through those tests. Implementation plan must call this out in task ordering.
+- **OQ12** (rev-2): `external_grpc.streaming_enabled: Option<bool>` serialization: confirm `#[serde(default, skip_serializing_if = "Option::is_none")]` attrs so existing config files don't grow a `"streaming_enabled": null` line on re-save. Minor config-hygiene detail.
+- **OQ13** (rev-2 from Platform Q1): Should handler-panic case record `AuditStatus::Failed` with a distinct `failure_reason = "handler_panic"` marker separate from normal `Err(Status::internal)` returns? Existing `AuditBridge::record_completion` signature supports `failure_reason: Option<&str>` but spec §5.5 does not populate it. Follow-up: extend the deferred task to distinguish `Err(e)` from panic (currently caught via `?` — a handler panic would propagate to tonic's panic handler, bypassing our body-wrap). Deferred non-blocking.
+
+These 3 new open questions are all flagged for Round-2 verify reviewers.
 
 ---
 
@@ -1154,7 +1550,13 @@ Items for spec-loop review rounds (Critical/Important candidates):
   - `oneshim-app` with features `external-grpc-tools`
 - [ ] `cargo test --workspace` zero regression (baseline: current main)
 - [ ] Memory `reference_tonic_layer_order.md` updated if this PR introduces a new layer
-- [ ] Docs: `docs/guides/external-grpc.md` + `.ko.md` updated — Auditing section mentions `x-request-id`, new `AuditStatus` granularity (Denied/Timeout/Failed); Live-reload section added with supported-fields table
+- [ ] Docs: `docs/guides/external-grpc.md` + `.ko.md` updated (addresses Product-I6):
+  - Auditing section **accurately** describes per-request status mapping (Completed/Denied/Timeout/Failed). **Existing aspirational text at line 171** (claiming `external_grpc_denied`/`external_grpc_timeout` were emitted) was a lie pre-this-PR — must be rewritten as a correctness fix, not just an addition.
+  - `x-request-id` request/response header documented with validation rules + example
+  - Live-reload section added with full watched-fields table (mirrors §7.1)
+  - Live-config inspection endpoint (`GET /api/external-grpc/live-config`) documented per D29
+  - Audit query surface (`GET /api/audit/export?command_id=X`) documented per D25
+  - Korean companion doc synced section-for-section per `docs/DOCUMENTATION_POLICY.md`
 - [ ] PR description references this spec + commit-squashed body summarizes the 3 bundled items
 - [ ] Phase 9 worktree merge-tree check passes (`git merge-tree main phase9-tracking-schedule feature/external-grpc-audit-liveconfig` shows no conflict)
 
