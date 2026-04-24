@@ -65,6 +65,12 @@ impl ClipboardMonitor {
 
     /// Check if the given text represents a new clipboard value.
     /// Returns a `ClipboardEvent` if the content changed, `None` otherwise.
+    ///
+    /// P2 PR-A: `last_content_hash` mutex is held across the compare + mutate
+    /// sequence (check-if-changed + update) as the atomicity guard. Tightening
+    /// would allow two rapid clipboard changes to both emit events with the
+    /// same hash.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn check_text_change(&self, text: &str) -> Option<ClipboardEvent> {
         let hash = hash_string(text);
 

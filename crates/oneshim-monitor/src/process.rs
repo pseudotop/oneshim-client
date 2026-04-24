@@ -79,6 +79,11 @@ impl ProcessMonitor for ProcessTracker {
         }
     }
 
+    // P2 PR-A: sys lock held across refresh + process enumeration. sysinfo's
+    // process iterator borrows from the Sys instance, so the lock must live
+    // until collection is complete. Tightening would require a clone that
+    // defeats sysinfo's purpose.
+    #[allow(clippy::significant_drop_tightening)]
     async fn get_top_processes(&self, limit: usize) -> Result<Vec<ProcessInfo>, CoreError> {
         let mut sys = self.sys.lock().map_err(|e| CoreError::Internal {
             code: oneshim_core::error_codes::InternalCode::Generic,
@@ -108,6 +113,8 @@ impl ProcessMonitor for ProcessTracker {
         Ok(processes)
     }
 
+    // P2 PR-A: same sysinfo borrow constraint as `get_top_processes`.
+    #[allow(clippy::significant_drop_tightening)]
     async fn get_detailed_processes(
         &self,
         foreground_pid: Option<u32>,

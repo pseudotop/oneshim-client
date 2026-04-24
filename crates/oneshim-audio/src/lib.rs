@@ -13,6 +13,11 @@
     clippy::option_if_let_else,
     clippy::redundant_pub_crate
 )]
+// P2 PR-A nursery-hardening: mutex guards must not be held across I/O or
+// long-running work unless intentionally kept (use function-level #[allow]
+// with reason). See docs/reviews/2026-04-21-p2-significant-drop-tightening-spec.md.
+#![deny(clippy::significant_drop_tightening)]
+#![cfg_attr(test, allow(clippy::significant_drop_tightening))]
 
 mod capture;
 pub mod vad;

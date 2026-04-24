@@ -97,6 +97,10 @@ impl SmartCaptureTrigger {
 }
 
 impl CaptureTrigger for SmartCaptureTrigger {
+    // P2 PR-A: state mutex is held across classify + importance calc + throttle
+    // check + mutation as one atomic "observe-then-update" window. Tightening
+    // would create a race where two events see the same prev_app_name.
+    #[allow(clippy::significant_drop_tightening)]
     fn should_capture(&self, event: &ContextEvent) -> Option<CaptureRequest> {
         let mut state = self
             .state

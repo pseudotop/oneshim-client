@@ -87,6 +87,10 @@ impl SuggestionReceiver {
         Ok(())
     }
 
+    // P2 PR-A: the queue lock is held across an intentional "expiry + dedup
+    // + push" atomicity window — these must be one lock window to prevent
+    // races where the queue is pushed to twice with stale expiry state.
+    #[allow(clippy::significant_drop_tightening)]
     async fn handle_suggestion(&self, mut suggestion: Suggestion) {
         // 1. Feedback-based relevance adjustment
         let should_queue = {
