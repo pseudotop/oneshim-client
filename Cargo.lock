@@ -5474,6 +5474,7 @@ dependencies = [
  "block2",
  "bsdiff",
  "chrono",
+ "chrono-tz",
  "clap",
  "directories",
  "dispatch2",

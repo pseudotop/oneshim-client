@@ -45,4 +45,5 @@ pub mod suggestions;
 pub mod support;
 pub mod tags;
 pub mod timeline;
+pub mod tracking_schedule;
 pub mod update;

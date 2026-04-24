@@ -348,6 +348,9 @@ fn main() {
             commands::audio::stop_vad_listening,
             commands::bug_report::export_bug_report,
             commands::error_report::report_frontend_error,
+            commands::tracking_schedule::get_tracking_schedule,
+            commands::tracking_schedule::set_tracking_schedule,
+            commands::tracking_schedule::get_tracking_schedule_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");
