@@ -341,6 +341,9 @@ mod tests {
             async fn entries_by_action_prefix(&self, _: &str, _: usize) -> Vec<AuditEntry> {
                 vec![]
             }
+            async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
+                vec![]
+            }
             async fn stats(&self) -> AuditStats {
                 AuditStats::default()
             }

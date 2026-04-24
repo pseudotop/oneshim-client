@@ -442,6 +442,9 @@ impl AuditLogPort for MockRecorder {
     async fn entries_by_action_prefix(&self, _p: &str, _l: usize) -> Vec<AuditEntry> {
         vec![]
     }
+    async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
+        vec![]
+    }
     async fn stats(&self) -> AuditStats {
         AuditStats::default()
     }
