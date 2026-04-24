@@ -2194,3 +2194,611 @@ async fn external_grpc_request_id_preserved_across_auth_reject() {
     handle.abort();
     let _ = handle.await;
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Task 9.2 — Audit status mapping integration tests (4 tests)
+//
+// Spec §9.2 L1395-1401. Each test exercises `AuditLayer::map_code_to_audit_status`
+// (task 1.3 commit 8efbe91f) end-to-end via a fixture handler that returns a
+// canned `tonic::Status`. The fixture is wired into the real layer stack via
+// `serve_external_with_service` (test_support helper added by this task), so
+// the request_id → auth → audit → handler flow matches production exactly.
+//
+// Test 1 is the PRIMARY CR1-regression-catch: handler-returned PermissionDenied
+// must produce `AuditStatus::Denied` + `grpc_status_code=7`. This is distinct
+// from `external_grpc_audit_denied_for_permission_denied` (L1014) which goes
+// through `validate_authority` (an interceptor-emitted status, not a handler-
+// emitted status) — the handler-return path is the one CR1 was about.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Pre-programmed scenario for the test fixture's handlers.  Each test selects
+/// exactly one variant; un-used RPCs return `unimplemented!()` so a wiring
+/// mistake (test calling the wrong RPC) surfaces as a panic instead of silent
+/// success.
+#[derive(Clone, Copy)]
+enum FixtureScenario {
+    /// `get_agent_info` returns `Err(Status::permission_denied(...))`.
+    PermissionDenied,
+    /// `subscribe_metrics` returns `Err(Status::cancelled(...))` BEFORE opening
+    /// the stream — produces a trailers-only HTTP/2 response (no data frames).
+    /// Exercises the §5.5 header-first observation branch (NV6).
+    StreamCancelled,
+    /// `get_agent_info` returns `Err(Status::internal(...))`.
+    Internal,
+    /// `subscribe_metrics` opens a stream, sends ≥1 message, then sleeps
+    /// indefinitely.  Client drops mid-stream → no trailer observed →
+    /// AuditLayer falls back to `Completed` (OQ6-Option-A behavior).
+    StreamSendThenIdle,
+}
+
+/// Wrap a `Stream` and bump `counter` on every yielded item.  Local equivalent
+/// of the production `CountingStream` (`crates/oneshim-web/src/grpc/counting_stream.rs`,
+/// `pub(crate)`) — needed so the streaming-RPC fixture can populate the audit
+/// row's `response_message_count` field via the `msg_counter` extension that
+/// `AuditLayer` inserts before the handler runs.
+fn count_yielded_stream<S, T>(
+    inner: S,
+    counter: std::sync::Arc<std::sync::atomic::AtomicU64>,
+) -> impl tokio_stream::Stream<Item = T> + Send
+where
+    S: tokio_stream::Stream<Item = T> + Send + 'static,
+    T: Send + 'static,
+{
+    use std::sync::atomic::Ordering;
+    use tokio_stream::StreamExt as _;
+    inner.map(move |item| {
+        counter.fetch_add(1, Ordering::Relaxed);
+        item
+    })
+}
+
+/// Test-only `DashboardService` impl that returns canned `tonic::Status` values
+/// driven by a `FixtureScenario`.  Only the RPCs invoked by Task 9.2 tests are
+/// implemented; the rest panic with `unimplemented!()` so misuse is loud.
+struct FixtureDashboardService {
+    scenario: FixtureScenario,
+}
+
+impl FixtureDashboardService {
+    fn new(scenario: FixtureScenario) -> Self {
+        Self { scenario }
+    }
+}
+
+#[tonic::async_trait]
+impl oneshim_web::proto::dashboard::v1::dashboard_service_server::DashboardService
+    for FixtureDashboardService
+{
+    async fn get_agent_info(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetAgentInfoRequest>,
+    ) -> Result<tonic::Response<oneshim_web::proto::dashboard::v1::AgentInfoResponse>, tonic::Status>
+    {
+        match self.scenario {
+            FixtureScenario::PermissionDenied => Err(tonic::Status::permission_denied(
+                "fixture: permission denied",
+            )),
+            FixtureScenario::Internal => Err(tonic::Status::internal("fixture: internal error")),
+            other => unimplemented!(
+                "FixtureDashboardService::get_agent_info called with scenario {:?}; \
+                 unexpected — only PermissionDenied / Internal route here",
+                other as u8
+            ),
+        }
+    }
+
+    async fn health_check(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::HealthCheckRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::HealthCheckResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("health_check not used by Task 9.2 tests");
+    }
+
+    async fn get_session_stats(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetSessionStatsRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::SessionStatsResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("get_session_stats not used by Task 9.2 tests");
+    }
+
+    async fn get_recent_frames(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetRecentFramesRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::RecentFramesResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("get_recent_frames not used by Task 9.2 tests");
+    }
+
+    async fn get_productivity_metrics(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetProductivityMetricsRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::ProductivityMetricsResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("get_productivity_metrics not used by Task 9.2 tests");
+    }
+
+    async fn get_focus_stats(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetFocusStatsRequest>,
+    ) -> Result<tonic::Response<oneshim_web::proto::dashboard::v1::FocusStatsResponse>, tonic::Status>
+    {
+        unimplemented!("get_focus_stats not used by Task 9.2 tests");
+    }
+
+    type SubscribeMetricsStream = std::pin::Pin<
+        Box<
+            dyn tokio_stream::Stream<
+                    Item = Result<
+                        oneshim_web::proto::dashboard::v1::SubscribeMetricsResponse,
+                        tonic::Status,
+                    >,
+                > + Send
+                + 'static,
+        >,
+    >;
+
+    async fn subscribe_metrics(
+        &self,
+        req: tonic::Request<oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest>,
+    ) -> Result<tonic::Response<Self::SubscribeMetricsStream>, tonic::Status> {
+        match self.scenario {
+            FixtureScenario::StreamCancelled => {
+                // 0-message-fixture per spec L1398 (NV6): return Err BEFORE any
+                // stream is opened.  Tonic emits trailers-only HTTP/2 response
+                // (grpc-status=1 in initial HEADERS, no body data) — exercises
+                // the §5.5 header-first audit observation branch.
+                Err(tonic::Status::cancelled("fixture: handler cancelled"))
+            }
+            FixtureScenario::StreamSendThenIdle => {
+                // Mirror production: extract the `msg_counter` extension that
+                // AuditLayer inserted before the handler ran, so the Completed
+                // audit row carries `response_message_count`.  The production
+                // `CountingStream` is `pub(crate)` and not reachable from an
+                // integration test crate — `count_yielded_stream` below is a
+                // minimal local equivalent.
+                let msg_counter: Option<std::sync::Arc<std::sync::atomic::AtomicU64>> =
+                    req.extensions().get().cloned();
+
+                // Open the stream, send 1 message synchronously, then never
+                // emit another frame.  Client drops mid-stream → no trailer
+                // observed → AuditLayer falls back to Completed (OQ6-A).
+                let (tx, rx) = tokio::sync::mpsc::channel(4);
+                tokio::spawn(async move {
+                    let payload = oneshim_web::proto::dashboard::v1::SubscribeMetricsResponse {
+                        payload: None,
+                    };
+                    let _ = tx.send(Ok(payload)).await;
+                    // Hold the sender open for a long time — the client will
+                    // drop the stream first.  When the test completes, this
+                    // task is dropped together with the server task.
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                });
+                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+                let counted: Self::SubscribeMetricsStream = match msg_counter {
+                    Some(counter) => Box::pin(count_yielded_stream(stream, counter)),
+                    None => Box::pin(stream),
+                };
+                Ok(tonic::Response::new(counted))
+            }
+            other => unimplemented!(
+                "FixtureDashboardService::subscribe_metrics called with scenario {:?}; \
+                 unexpected — only StreamCancelled / StreamSendThenIdle route here",
+                other as u8
+            ),
+        }
+    }
+
+    type SubscribeEventsStream = std::pin::Pin<
+        Box<
+            dyn tokio_stream::Stream<
+                    Item = Result<
+                        oneshim_web::proto::dashboard::v1::SubscribeEventsResponse,
+                        tonic::Status,
+                    >,
+                > + Send
+                + 'static,
+        >,
+    >;
+
+    async fn subscribe_events(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::SubscribeEventsRequest>,
+    ) -> Result<tonic::Response<Self::SubscribeEventsStream>, tonic::Status> {
+        unimplemented!("subscribe_events not used by Task 9.2 tests");
+    }
+}
+
+/// Sibling of [`spawn_server`] that injects a [`FixtureDashboardService`] in
+/// place of the real `DashboardServiceImpl`.  Reuses the production layer
+/// stack (request_id → auth → audit) via `serve_external_with_service`.
+async fn spawn_server_with_fixture_service(
+    cfg: ExternalGrpcSpawnConfig,
+    scenario: FixtureScenario,
+) -> (tokio::task::JoinHandle<()>, u16) {
+    install_rustls_crypto_provider();
+    let port = next_test_port();
+
+    let real_cfg = ExternalGrpcSpawnConfig {
+        bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+        ..cfg
+    };
+
+    let handle = tokio::spawn(async move {
+        let svc = FixtureDashboardService::new(scenario);
+        match oneshim_web::grpc::external::test_support::serve_external_with_service(real_cfg, svc)
+            .await
+        {
+            Ok(()) => {}
+            Err(e) => eprintln!("serve_external_with_service error: {e:?}"),
+        }
+    });
+
+    // Wait for TCP listen.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!("external gRPC fixture server did not start on port {port} within 5s");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    (handle, port)
+}
+
+// Manual Debug for FixtureScenario so unimplemented!() panic messages show
+// the variant.  `#[derive(Debug)]` on the outer enum + the `as u8` cast in
+// the panic args avoids the `unused_variables` lint when only one arm runs.
+impl std::fmt::Debug for FixtureScenario {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PermissionDenied => f.write_str("PermissionDenied"),
+            Self::StreamCancelled => f.write_str("StreamCancelled"),
+            Self::Internal => f.write_str("Internal"),
+            Self::StreamSendThenIdle => f.write_str("StreamSendThenIdle"),
+        }
+    }
+}
+
+// ── Test 1 — PRIMARY CR1-REGRESSION-CATCH ────────────────────────────────────
+/// Spec §9.2 L1397: handler returns `Err(Status::permission_denied(...))` →
+/// AuditLayer must record `AuditStatus::Denied` + `grpc_status_code=7`.
+///
+/// The existing `external_grpc_audit_denied_for_permission_denied` (L1014)
+/// covers the `validate_authority` interceptor path (host-header gate).
+/// THIS test covers the handler-return path — the one CR1 was actually about.
+/// Without the §5.5 header-first observation in AuditLayer, a handler `Err`
+/// produces trailers-only HTTP/2 (grpc-status in HEADERS, no body) and the
+/// previous body-trailer-only observation defaulted to `Completed`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_denied_when_handler_returns_permission_denied() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) =
+        spawn_server_with_fixture_service(cfg, FixtureScenario::PermissionDenied).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-pd-handler",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await;
+    let status = result.expect_err("fixture handler must return PermissionDenied");
+    assert_eq!(
+        status.code(),
+        Code::PermissionDenied,
+        "fixture-handler error must propagate as PermissionDenied; got {status:?}"
+    );
+
+    // Give the deferred AuditLayer task time to flush.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let (denied_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let denied: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Denied))
+            .collect();
+        let code = denied.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (denied.len(), code, dbg)
+    };
+    assert!(
+        denied_count >= 1,
+        "expected ≥1 Denied audit row from handler-return PermissionDenied; \
+         got {denied_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(7),
+        "Denied row must carry grpc_status_code=7 (PermissionDenied); \
+         entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ── Test 2 — Cancelled / 0-message-fixture ────────────────────────────────────
+/// Spec §9.2 L1398 (NV6): handler returns `Err(Status::cancelled(...))` from a
+/// streaming RPC BEFORE any data frame is emitted → trailers-only response →
+/// AuditLayer's §5.5 header-first branch must observe the code, mapping it to
+/// `AuditStatus::Timeout` + `grpc_status_code=1`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_timeout_when_handler_returns_cancelled() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) =
+        spawn_server_with_fixture_service(cfg, FixtureScenario::StreamCancelled).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-cancelled",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .subscribe_metrics(req)
+        .await;
+    let status = result.expect_err("fixture handler must return Cancelled");
+    assert_eq!(
+        status.code(),
+        Code::Cancelled,
+        "fixture-handler error must propagate as Cancelled; got {status:?}"
+    );
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let (timeout_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let timeout: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Timeout))
+            .collect();
+        let code = timeout.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (timeout.len(), code, dbg)
+    };
+    assert!(
+        timeout_count >= 1,
+        "expected ≥1 Timeout audit row from handler-return Cancelled; \
+         got {timeout_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(1),
+        "Timeout row must carry grpc_status_code=1 (Cancelled); \
+         entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ── Test 3 — Internal → Failed ───────────────────────────────────────────────
+/// Spec §9.2 L1399: handler returns `Err(Status::internal(...))` →
+/// AuditLayer records `AuditStatus::Failed` + `grpc_status_code=13`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_failed_when_handler_returns_internal() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server_with_fixture_service(cfg, FixtureScenario::Internal).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-internal",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await;
+    let status = result.expect_err("fixture handler must return Internal");
+    assert_eq!(
+        status.code(),
+        Code::Internal,
+        "fixture-handler error must propagate as Internal; got {status:?}"
+    );
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let (failed_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let failed: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Failed))
+            .collect();
+        let code = failed.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (failed.len(), code, dbg)
+    };
+    assert!(
+        failed_count >= 1,
+        "expected ≥1 Failed audit row from handler-return Internal; \
+         got {failed_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(13),
+        "Failed row must carry grpc_status_code=13 (Internal); \
+         entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ── Test 4 — Client drops mid-stream → Completed (OQ6-Option-A fallback) ─────
+/// Spec §9.2 L1400: client establishes a streaming RPC, receives ≥1 message,
+/// then drops the stream.  No trailer is observed by the server-side
+/// `TrailerCapturingBody` → AuditLayer falls back to `AuditStatus::Completed`
+/// (OQ6-Option-A).  The Completed audit row also carries `msg_count > 0`
+/// because the streaming handler's `CountingStream` (via `msg_counter`
+/// extension) bumped on the data frame the client drained.
+///
+/// Note on the wired flow: the fixture sleeps 60s after sending 1 message;
+/// the client receives that message (assert ≥1) and drops the stream.  The
+/// server-side body is dropped without emitting a trailer frame; the
+/// AuditLayer's oneshot `Drop` handler fires `None` (mapped to `Completed`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn external_grpc_audit_completed_when_client_drops_before_trailer() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) =
+        spawn_server_with_fixture_service(cfg, FixtureScenario::StreamSendThenIdle).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-clientdrop",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let mut stream = DashboardServiceClient::new(channel)
+        .subscribe_metrics(req)
+        .await
+        .expect("stream must open before client-drop")
+        .into_inner();
+
+    // Drain ≥1 message so the streaming handler's msg_counter bumps.
+    let first = tokio::time::timeout(Duration::from_secs(2), stream.message())
+        .await
+        .expect("first message arrives within 2s")
+        .expect("first message must be Ok")
+        .expect("stream must yield a payload before client drops");
+    // Sanity — the fixture's payload field is empty but the response struct
+    // is well-formed.
+    assert!(
+        first.payload.is_none(),
+        "fixture sends an empty SubscribeMetricsResponse — payload must be None"
+    );
+
+    // Drop mid-stream.  The server's TrailerCapturingBody is dropped without
+    // a trailer; AuditLayer's oneshot Drop fires None → Completed (OQ6-A).
+    drop(stream);
+
+    // Give the deferred audit task time to record.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // We assert against the row produced by AuditLayer's deferred
+    // `record_completion(...)` task — distinguishable from the Started
+    // row's `record(...)` call by the presence of the `response_message_count`
+    // field in the JSON details (`record` always passes None and serde
+    // skip_serializing_if drops the field).  Both rows would otherwise share
+    // `result:"ok"` and the `Completed` status (CapturingAudit infers from
+    // `result`), so this is the load-bearing disambiguation.
+    let (completion_row_count, msg_count, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let completion_rows: Vec<_> = entries
+            .iter()
+            .filter(|e| {
+                e.details
+                    .as_deref()
+                    .map(|d| {
+                        d.contains("\"operation\":\"/oneshim.dashboard.v1.DashboardService/SubscribeMetrics\"")
+                            && d.contains("\"response_message_count\"")
+                    })
+                    .unwrap_or(false)
+            })
+            .collect();
+        let mc: u64 = completion_rows
+            .first()
+            .and_then(|e| e.details.as_deref())
+            .and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
+            .and_then(|v| v.get("response_message_count").and_then(|n| n.as_u64()))
+            .unwrap_or(0);
+        // Sanity — every completion row claims `result:"ok"` (OQ6-A fallback to
+        // Completed when no trailer fired), so AuditStatus mapping is Completed.
+        let all_completed = completion_rows
+            .iter()
+            .all(|e| matches!(e.status, AuditStatus::Completed));
+        let dbg = format!("{entries:?}");
+        assert!(
+            all_completed,
+            "every SubscribeMetrics completion row must map to Completed; \
+             entries: {dbg}"
+        );
+        (completion_rows.len(), mc, dbg)
+    };
+    assert!(
+        completion_row_count >= 1,
+        "expected ≥1 SubscribeMetrics completion audit row after client drop \
+         (OQ6-Option-A: trailer-absent → Completed fallback); \
+         got {completion_row_count} (entries: {entries_debug})"
+    );
+    assert!(
+        msg_count >= 1,
+        "Completed row must carry response_message_count ≥ 1 (client drained ≥1 msg); \
+         got {msg_count} (entries: {entries_debug})"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}

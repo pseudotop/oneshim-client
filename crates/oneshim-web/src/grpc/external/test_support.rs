@@ -650,3 +650,131 @@ pub fn req_with_valid_auth<T>(body: T) -> tonic::Request<T> {
     );
     req
 }
+
+// ── serve_external_with_service ───────────────────────────────────────────────
+// Task 9.2: variant of `serve_external` that accepts an injected
+// `DashboardService` impl in place of the production `DashboardServiceImpl`.
+//
+// Tests need this so a fixture handler can return canned `tonic::Status`
+// errors (PermissionDenied, Cancelled, Internal) and exercise the
+// AuditLayer's `map_code_to_audit_status` mapping end-to-end through the
+// real layer stack (request_id → auth → audit) — which is `pub(crate)` and
+// not constructible from an integration-test crate. Mirrors the body of
+// `serve_external` (mod.rs L112-L213) verbatim except for the service type.
+//
+// The fixture service replaces `DashboardServiceImpl::from_external_spawn_config`
+// — `cfg.config.integration_auth_token` and other DashboardServiceImpl-specific
+// state are NOT applied (the fixture has its own state).
+
+/// Spawn the external gRPC server with an injected `DashboardService` impl.
+///
+/// Identical to `serve_external` but uses `service` in place of the real
+/// `DashboardServiceImpl`. Layers (request_id → auth → audit), TLS,
+/// accept loop, and shutdown handling are bit-for-bit the same.
+///
+/// Errors mirror [`super::ServeExternalError`] semantics (bind, tls, tonic).
+/// Test-only — gated on `#[cfg(any(test, feature = "test-support"))]` via
+/// the surrounding module.
+pub async fn serve_external_with_service<T>(
+    cfg: super::spawn_config::ExternalGrpcSpawnConfig,
+    service: T,
+) -> Result<(), super::ServeExternalError>
+where
+    T: crate::proto::dashboard::v1::dashboard_service_server::DashboardService,
+{
+    use std::sync::atomic::AtomicUsize;
+    use std::time::Duration;
+    use tokio_stream::wrappers::ReceiverStream;
+    use tracing::info;
+
+    use super::accept_loop::run_accept_loop;
+    use super::audit_bridge::AuditBridge;
+    use super::audit_layer::AuditLayer;
+    use super::auth_layer::AuthLayer;
+    use super::request_id_layer::RequestIdLayer;
+    use super::tls_config::TlsLoadError;
+    use super::ServeExternalError;
+    use crate::proto::dashboard::v1::dashboard_service_server::DashboardServiceServer;
+
+    let shutdown = cfg.shutdown_rx.clone();
+    let listener = tokio::net::TcpListener::bind(cfg.bind_addr)
+        .await
+        .map_err(ServeExternalError::Bind)?;
+    let bound_addr = listener.local_addr().map_err(ServeExternalError::Bind)?;
+    info!(%bound_addr, "external_grpc(test): server bound");
+
+    // Load mTLS CA bytes if needed (mirrors serve_external).
+    let mtls_ca_bytes: Option<Vec<u8>> = if cfg.config.auth_mode.is_some_and(|m| m.includes_mtls())
+    {
+        if let Some(ref ca_path) = cfg.config.mtls_ca_path {
+            Some(std::fs::read(ca_path).map_err(|e| {
+                ServeExternalError::Tls(TlsLoadError::Read {
+                    path: ca_path.clone(),
+                    source: e,
+                })
+            })?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let server_config = super::build_server_config(cfg.cert_resolver.clone(), mtls_ca_bytes)
+        .map_err(ServeExternalError::Tls)?;
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
+
+    let (conn_tx, conn_rx) = tokio::sync::mpsc::channel(64);
+    let active_conns = Arc::new(AtomicUsize::new(0));
+    let cfg_arc = Arc::new(cfg);
+
+    tokio::spawn(run_accept_loop(
+        listener,
+        acceptor,
+        cfg_arc.clone(),
+        conn_tx,
+        active_conns,
+        shutdown.clone(),
+    ));
+
+    let auth_mode = cfg_arc
+        .config
+        .auth_mode
+        .unwrap_or(oneshim_core::config::AuthMode::Jwt);
+    let audit_bridge = Arc::new(AuditBridge::new(cfg_arc.audit_port.clone()));
+    let auth_layer = AuthLayer {
+        auth_mode,
+        jwt_verifier: cfg_arc.jwt_verifier.clone(),
+        mtls_verifier: cfg_arc.mtls_verifier.clone(),
+        ip_ban: cfg_arc.ip_ban.clone(),
+        metrics: cfg_arc.metrics.clone(),
+        audit_bridge: audit_bridge.clone(),
+    };
+    let audit_layer = AuditLayer {
+        bridge: audit_bridge,
+        metrics: cfg_arc.metrics.clone(),
+    };
+
+    let stream = ReceiverStream::new(conn_rx);
+    let shutdown_signal = {
+        let mut rx = shutdown.clone();
+        async move {
+            let _ = rx.changed().await;
+        }
+    };
+
+    let concurrency = cfg_arc.config.max_concurrent_streams;
+    tonic::transport::Server::builder()
+        .concurrency_limit_per_connection(concurrency)
+        .timeout(Duration::from_secs(60))
+        .layer(RequestIdLayer)
+        .layer(auth_layer)
+        .layer(audit_layer)
+        .add_service(DashboardServiceServer::new(service).max_decoding_message_size(1_048_576))
+        .serve_with_incoming_shutdown(stream, shutdown_signal)
+        .await
+        .map_err(ServeExternalError::Tonic)?;
+
+    info!("external_grpc(test): server shut down cleanly");
+    Ok(())
+}
