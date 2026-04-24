@@ -328,3 +328,37 @@ Alert if:
 - [gRPC Governance](grpc-governance.md) — RPC versioning and API stability policy.
 - [gRPC Error Mapping](grpc-error-mapping.md) — Understanding gRPC error codes.
 - [Enterprise Deployment](enterprise-deployment.md) — Scaling the agent across a fleet.
+
+## Running stress tests locally
+
+The external gRPC stress suite (`crates/oneshim-web/tests/external_grpc_stress.rs`) is gated behind the `stress-test` cargo feature so it never runs in the regular `cargo test --workspace` path. The suite covers three scenarios:
+
+1. `concurrent_connection_cap_enforced` — 1024 concurrent connections at `max_connections = 1024`, slot-recovery on drop.
+2. `fd_pressure_resilience` — 3 rounds of 1024-stream churn, no fd leak post-loop.
+3. `ipv6_64_prefix_ban_full_stack` — `IpBan` accept-loop wiring on `[::1]` (5 auth failures → 6th rejected pre-TLS).
+
+### Local prerequisites
+
+- `ulimit -n 65536` (raise the open-file limit before invoking cargo).
+- IPv6 loopback (`[::1]`) reachable. Default on Linux/macOS.
+- ~5s to ~15s per test on modern hardware.
+
+### Command
+
+```sh
+ulimit -n 65536
+cargo test -p oneshim-web --features stress-test \
+  --test external_grpc_stress \
+  -- --test-threads=1 --nocapture
+```
+
+`--test-threads=1` is mandatory — Tests 1 and 2 each consume ~2050 file descriptors. Running them in parallel needs >4000 fds AND increases racy cleanup paths.
+
+### CI invocation
+
+Stress tests run via the `gRPC Stress Test` workflow (`.github/workflows/grpc-stress.yml`):
+
+- Manually: `gh workflow run grpc-stress.yml --ref <branch>`.
+- Weekly: every Sunday 03:00 UTC.
+
+The workflow runs on `ubuntu-latest` (only platform with predictable `ulimit -n` and IPv6 loopback semantics).
