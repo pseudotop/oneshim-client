@@ -5,6 +5,10 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap
 )]
+// P2 PR-C: `missing_const_for_fn` accepted crate-wide. See
+// docs/reviews/2026-04-21-p2-missing-const-for-fn-decision.md —
+// const-viral cascade + nursery false-positive rate outweigh the value.
+#![allow(clippy::missing_const_for_fn)]
 
 //! # oneshim-core
 

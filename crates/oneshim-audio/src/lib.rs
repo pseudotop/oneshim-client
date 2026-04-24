@@ -4,6 +4,10 @@
 //! - `VadDetector`: energy-based voice activity detection
 //! - `WhisperSttProvider`: local Whisper STT (feature-gated behind `whisper`)
 
+// P2 PR-C: `missing_const_for_fn` accepted crate-wide. See
+// docs/reviews/2026-04-21-p2-missing-const-for-fn-decision.md.
+#![allow(clippy::missing_const_for_fn)]
+
 mod capture;
 pub mod vad;
 
