@@ -611,24 +611,106 @@ pub async fn connect_loopback(port: u16) -> tonic::transport::Channel {
         .expect("connect to loopback server")
 }
 
-// TODO(Task 9.4): Add `spawn_server_with_config_manager` helper here.
+// ── spawn_server_with_config_manager ─────────────────────────────────────────
+// Task 9.4: variant of `spawn_server` that accepts a pre-built
+// `Arc<ConfigManager>` in addition to the normal `ExternalGrpcSpawnConfig`.
+// Spawns BOTH the tonic server AND the `ConfigReloadTask` so live-config
+// mutations made via `cfg_mgr.update_with(..)` propagate to the server's
+// `LiveExternalConfig` within one `watch::Receiver::changed()` round-trip.
 //
-// Task 9.4 (G3 gate — live reload convergence) needs a variant of
-// `spawn_server` in `tests/external_grpc_integration.rs` that accepts a
-// pre-built `Arc<ConfigManager>` and threads it through `ExternalGrpcSpawnConfig`
-// so the G3 test can drive live-config updates while the server is running.
+// Why here (vs. the integration test file): the `ConfigReloadTask` wiring
+// mirrors production (`app_runtime_launch::build_external_spawn_config`
+// L1344-1358 in src-tauri). Hosting the wiring in `test_support.rs` keeps
+// the integration test free of reload-task plumbing and lets future tests
+// reuse the helper without duplicating the `tokio::spawn(run_config_reload(..))`
+// boilerplate.
 //
-// Implementation sketch:
-//   pub async fn spawn_server_with_config_manager(
-//       cfg_mgr: std::sync::Arc<oneshim_core::config_manager::ConfigManager>,
-//   ) -> (tokio::task::JoinHandle<()>, u16) {
-//       // Mirror spawn_server logic, pull initial AppConfig from cfg_mgr,
-//       // pass cfg_mgr into ExternalGrpcSpawnConfig, return (handle, port).
-//       todo!("Task 9.4")
-//   }
+// The caller is responsible for:
+//   - building `cfg.bind_addr` with a pre-allocated ephemeral port
+//   - seeding any initial `cfg.live` snapshot (this helper will NOT rewrite it
+//     — it only hooks up the reload task to observe future changes)
+//   - dropping `cfg.shutdown_tx` / `handles.abort()` to tear everything down
 //
-// Deferred because Task 9.4 is the sole consumer and its spec is still in
-// progress; premature implementation risks interface churn.
+// Returns `(server_handle, reload_task_handle, port)`. The two handles let
+// Task 9.4 Test 6 assert that the reload task joins within 5 seconds of
+// shutdown, independently of the server's own shutdown.
+
+/// Spawn `serve_external` together with a `ConfigReloadTask` bound to the
+/// provided `ConfigManager`. Mirrors the production wiring in
+/// `src-tauri/src/app_runtime_launch.rs::build_external_spawn_config` (where
+/// both tasks share the same `shutdown_rx` and the reload task observes
+/// `cfg_mgr.subscribe()` for `AppConfig` changes).
+///
+/// The server and reload task run independently; the caller must either
+/// `abort()` both handles or send `true` on `cfg.shutdown_tx` to stop them.
+///
+/// **Panics** if `cfg.bind_addr.port() == 0`: this helper does NOT allocate
+/// a port for the caller — use `next_test_port()` (integration test) or bind
+/// a throwaway `std::net::TcpListener` to pick one before calling.
+pub async fn spawn_server_with_config_manager(
+    cfg: super::spawn_config::ExternalGrpcSpawnConfig,
+    cfg_mgr: std::sync::Arc<oneshim_core::config_manager::ConfigManager>,
+) -> (
+    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<()>,
+    u16,
+) {
+    use std::time::Duration;
+
+    install_rustls_crypto_provider();
+
+    let port = cfg.bind_addr.port();
+    assert!(
+        port != 0,
+        "spawn_server_with_config_manager requires a pre-allocated port; \
+         got bind_addr {}",
+        cfg.bind_addr
+    );
+
+    // Spawn ConfigReloadTask mirroring production (D30 — fire-and-forget
+    // outside `serve_external` to avoid supervisor-respawn double-task hazard).
+    // Clone the shutdown_rx so both tasks observe the same shutdown signal.
+    let live_for_reload = cfg.live.clone();
+    let metrics_for_reload = cfg.metrics.clone();
+    let shutdown_rx_for_reload = cfg.shutdown_rx.clone();
+    let config_rx = cfg_mgr.subscribe();
+    let reload_handle = tokio::spawn(async move {
+        super::config_reload::run_config_reload(
+            live_for_reload,
+            metrics_for_reload,
+            config_rx,
+            shutdown_rx_for_reload,
+        )
+        .await;
+    });
+
+    // Spawn the tonic server — same pattern as `spawn_server` in the
+    // integration test. Errors are printed to stderr to surface flakes
+    // without tripping panic-propagation across tests.
+    let server_handle = tokio::spawn(async move {
+        match super::serve_external(cfg).await {
+            Ok(()) => {}
+            Err(e) => eprintln!("serve_external error: {e:?}"),
+        }
+    });
+
+    // Wait for the TCP listener to come up (mirrors `spawn_server`).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!("external gRPC server did not start on port {port} within 5s");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    (server_handle, reload_handle, port)
+}
 
 /// Build a test gRPC request with a placeholder bearer token header.
 ///

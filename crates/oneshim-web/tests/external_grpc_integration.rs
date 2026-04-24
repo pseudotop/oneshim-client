@@ -47,8 +47,8 @@ use oneshim_web::storage_port::WebStorage;
 
 // Bring in the test_support helpers from the external module.
 use oneshim_web::grpc::external::test_support::{
-    install_rustls_crypto_provider, test_ca_and_client_cert, test_cert_pair, test_jwt_keypair,
-    test_mint_jwt,
+    install_rustls_crypto_provider, spawn_server_with_config_manager, test_ca_and_client_cert,
+    test_cert_pair, test_jwt_keypair, test_mint_jwt,
 };
 
 // ── Shutdown pair helper ─────────────────────────────────────────────────────
@@ -2794,4 +2794,455 @@ async fn external_grpc_audit_completed_when_client_drops_before_trailer() {
 
     handle.abort();
     let _ = handle.await;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Task 9.4 — Live config reload integration tests (spec §9.2 L1407-1413)
+//
+// Each test uses `spawn_server_with_config_manager` (test_support.rs) to run
+// BOTH the tonic server AND a `ConfigReloadTask` wired to a real
+// `ConfigManager`. Mutations via `cfg_mgr.update_with(..)` propagate through
+// `watch::Sender::send_replace` → `run_config_reload::apply_config` →
+// `LiveExternalConfig::store` → next request sees the new snapshot.
+//
+// `ConfigManager::with_path` persists to disk on every update, so all tests
+// use `tempfile::NamedTempFile` to keep the writes out of the user's config
+// directory.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Build an initial `AppConfig` that boots the external gRPC server with
+/// JWT auth, streaming enabled (via `web.grpc_streaming_enabled`), and the
+/// TLS cert/key paths pointing at the shared `test_cert_pair` fixture.
+///
+/// Leaves `external_grpc.streaming_enabled = None` so the shared
+/// `web.grpc_streaming_enabled` fallback applies (mirrors how
+/// `apply_config` resolves the live `streaming_enabled` value).
+fn test_cfg_with_external_enabled(
+    jwt_pub_key_path: &std::path::Path,
+) -> oneshim_core::config::AppConfig {
+    let (cert_path, key_path) = test_cert_pair();
+    let mut cfg = oneshim_core::config::AppConfig::default_config();
+    cfg.web.grpc_streaming_enabled = true;
+    cfg.external_grpc = ExternalGrpcConfig {
+        enabled: true,
+        auth_mode: Some(AuthMode::Jwt),
+        tls_cert_path: Some(cert_path),
+        tls_key_path: Some(key_path),
+        jwt_algorithm: Some(JwtAlgorithm::Es256),
+        jwt_public_key_path: Some(jwt_pub_key_path.to_path_buf()),
+        jwt_expected_issuer: Some("test-issuer".to_string()),
+        jwt_expected_audience: Some("test-audience".to_string()),
+        max_connections: 64,
+        max_concurrent_streams: 16,
+        streaming_enabled: None, // fall through to web.grpc_streaming_enabled
+        ..Default::default()
+    };
+    cfg
+}
+
+/// Build a JWT-mode `ExternalGrpcSpawnConfig` whose `live` / `metrics` are
+/// pre-allocated so Task 9.4 tests can inspect them both before and after
+/// a reload. The caller owns the returned `Arc<ExternalMetrics>` and
+/// `Arc<LiveExternalConfig>`; the spawn config also holds `Arc` clones.
+fn make_jwt_spawn_config_for_reload(
+    jwt_pub_key_path: &std::path::Path,
+    port: u16,
+    live: Arc<LiveExternalConfig>,
+    metrics: Arc<ExternalMetrics>,
+    shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) -> ExternalGrpcSpawnConfig {
+    let (cert_path, key_path) = test_cert_pair();
+    let certified_key = load_certified_key(&cert_path, &key_path).expect("load certified key");
+    let cert_resolver = Arc::new(HotReloadCertResolver::new(certified_key));
+
+    let (event_tx, _) = tokio::sync::broadcast::channel(16);
+    let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+
+    let pub_key_bytes = std::fs::read(jwt_pub_key_path).expect("read jwt pub key");
+    let jwt_verifier = Arc::new(
+        JwtVerifier::new(
+            JwtAlgorithm::Es256,
+            &pub_key_bytes,
+            "test-issuer",
+            "test-audience",
+        )
+        .expect("JwtVerifier"),
+    );
+
+    ExternalGrpcSpawnConfig {
+        bind_addr,
+        config: ExternalGrpcConfig {
+            enabled: true,
+            auth_mode: Some(AuthMode::Jwt),
+            max_connections: 64,
+            max_concurrent_streams: 16,
+            ..Default::default()
+        },
+        storage: in_memory_storage(),
+        system_monitor: MockSystemMonitor::new(20.0, 2048, 8192),
+        event_tx,
+        audit_port: Arc::new(NoopAudit) as Arc<dyn AuditLogPort>,
+        cert_resolver,
+        jwt_verifier: Some(jwt_verifier),
+        mtls_verifier: None,
+        ip_ban: Arc::new(IpBan::new()),
+        metrics,
+        shutdown_rx,
+        shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        live,
+    }
+}
+
+/// G3 gate test — streaming toggle reflects within 1 second.
+///
+/// Spec §9.2 L1407, D33 (CI convergence bound). Seeds the config with
+/// `streaming_enabled = true`, verifies a sanity `subscribe_metrics` call
+/// succeeds, then flips `external_grpc.streaming_enabled = Some(false)`
+/// and polls until the next `subscribe_metrics` returns `Unavailable`.
+/// Panics if convergence takes ≥ 1s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
+    use std::time::Instant;
+
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    // Real-API ConfigManager backed by a tempfile (CI-safe per ADR-016).
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    // Seed the initial config: streaming enabled via the shared web field;
+    // external override left as `None` so the fallback path is exercised.
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.web.grpc_streaming_enabled = true;
+            c.external_grpc.streaming_enabled = None;
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    // Allocate port + pre-populate the live snapshot to match the seeded config.
+    let port = next_test_port();
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Mint a JWT + build a TLS channel (external server requires both).
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-g3",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Sanity: initial subscribe_metrics succeeds (streaming_enabled = true).
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+    let sanity = DashboardServiceClient::new(channel.clone())
+        .subscribe_metrics(req)
+        .await;
+    assert!(
+        sanity.is_ok(),
+        "initial subscribe must succeed with streaming_enabled=true; got {:?}",
+        sanity.as_ref().err()
+    );
+    drop(sanity);
+
+    // Flip streaming_enabled to false; ConfigReloadTask observes the watch
+    // change and swaps the LiveSnapshot atomically. The per-request entry
+    // in `subscribe_metrics` will see the new snapshot next.
+    let start = Instant::now();
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(false);
+            Ok(())
+        })
+        .expect("update_with apply");
+
+    // Poll until subscribe_metrics returns Unavailable. Cap at 1s (G3).
+    let timeout = Duration::from_secs(1);
+    loop {
+        let mut req = tonic::Request::new(
+            oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default(),
+        );
+        req.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {token}").parse().expect("valid header"),
+        );
+        let result = DashboardServiceClient::new(channel.clone())
+            .subscribe_metrics(req)
+            .await;
+        if let Err(status) = &result {
+            if status.code() == Code::Unavailable {
+                let elapsed = start.elapsed();
+                assert!(
+                    elapsed < timeout,
+                    "G3 violation: convergence {elapsed:?} >= 1s cap"
+                );
+                server_handle.abort();
+                reload_handle.abort();
+                let _ = server_handle.await;
+                let _ = reload_handle.await;
+                return; // PASS
+            }
+        }
+        if start.elapsed() > timeout {
+            panic!("G3 violation: streaming toggle did not reflect within 1s (D33 CI bound)");
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+/// D27 — warmup preservation. Seeds an initial `LiveSnapshot` whose
+/// `started_at` is 60s in the past (well out of the 30s warmup window),
+/// then reloads with new thresholds. After reload, `is_in_warmup()` must
+/// remain `false` AND the new thresholds must be visible.
+///
+/// Uses `LoadPolicy::try_new_with_started_at` to construct the past-warmup
+/// policy without waiting 30s of real time.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_load_thresholds_applied_without_warmup_reset() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    // Seed initial config with default thresholds.
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    // Build an initial load_policy whose started_at is 60s in the past —
+    // well beyond the 30s WARMUP. `try_new_with_started_at` is the API
+    // that ConfigReloadTask uses internally to preserve warmup across
+    // reloads (D27); we use it here to bootstrap the test snapshot.
+    let past_anchor = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    let initial_thresholds = oneshim_core::config::LoadThresholds::default();
+    let initial_policy = Arc::new(
+        LoadPolicy::try_new_with_started_at(initial_thresholds, past_anchor)
+            .expect("valid initial thresholds"),
+    );
+    assert!(
+        !initial_policy.is_in_warmup(),
+        "precondition: initial policy must already be out of warmup"
+    );
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: initial_policy.clone(),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Reload with new (still valid) thresholds. ConfigReloadTask must
+    // preserve the original `started_at` per D27.
+    let new_thresholds = oneshim_core::config::LoadThresholds {
+        min_free_mem_gb: 1.5,
+        cpu_low_pct: 25.0,
+        cpu_medium_pct: 55.0,
+        cpu_high_pct: 80.0,
+    };
+    cfg_mgr
+        .update_with(|c| {
+            c.web.grpc_load_thresholds = Some(new_thresholds.clone());
+            Ok(())
+        })
+        .expect("reload new thresholds");
+
+    // Give the reload task a moment to observe the watch change + apply.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let snap = live.snapshot();
+    let post_thresholds = snap.load_policy.thresholds();
+    assert!(
+        (post_thresholds.cpu_low_pct - 25.0).abs() < f32::EPSILON,
+        "new cpu_low_pct must apply; got {}",
+        post_thresholds.cpu_low_pct
+    );
+    assert!(
+        (post_thresholds.cpu_medium_pct - 55.0).abs() < f32::EPSILON,
+        "new cpu_medium_pct must apply; got {}",
+        post_thresholds.cpu_medium_pct
+    );
+    assert!(
+        !snap.load_policy.is_in_warmup(),
+        "D27: warmup anchor must carry over across reloads"
+    );
+    assert_eq!(
+        snap.load_policy.started_at(),
+        past_anchor,
+        "D27: started_at must be bit-identical to the pre-reload anchor"
+    );
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Partial-apply invariant — a malformed thresholds reload is rejected and
+/// the previous policy is preserved, while `streaming_enabled` (trivially
+/// valid) still updates. Task 2.1 commit db1d1252 guarantees this via
+/// `apply_config` keeping `current.load_policy` when `try_new_with_started_at`
+/// errors.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.web.grpc_streaming_enabled = true;
+            c.external_grpc.streaming_enabled = Some(true);
+            // Seed explicit valid thresholds so we can assert they survive.
+            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 30.0,
+                cpu_medium_pct: 60.0,
+                cpu_high_pct: 85.0,
+            });
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let initial_policy = Arc::new(LoadPolicy::new(oneshim_core::config::LoadThresholds {
+        min_free_mem_gb: 1.0,
+        cpu_low_pct: 30.0,
+        cpu_medium_pct: 60.0,
+        cpu_high_pct: 85.0,
+    }));
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: initial_policy.clone(),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics.clone(),
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Reload with invalid thresholds (low > medium violates ordering) AND
+    // flip streaming_enabled. Partial-apply: streaming flips, policy does
+    // NOT.
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(false);
+            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 90.0, // invalid: low > medium
+                cpu_medium_pct: 50.0,
+                cpu_high_pct: 85.0,
+            });
+            Ok(())
+        })
+        .expect("update_with (malformed thresholds)");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let snap = live.snapshot();
+    assert!(
+        !snap.streaming_enabled,
+        "streaming_enabled update MUST apply despite malformed thresholds (partial-apply)"
+    );
+    let post_thresholds = snap.load_policy.thresholds();
+    assert!(
+        (post_thresholds.cpu_low_pct - 30.0).abs() < f32::EPSILON,
+        "invalid thresholds rejected; previous cpu_low_pct must survive; got {}",
+        post_thresholds.cpu_low_pct
+    );
+    assert!(
+        (post_thresholds.cpu_medium_pct - 60.0).abs() < f32::EPSILON,
+        "invalid thresholds rejected; previous cpu_medium_pct must survive; got {}",
+        post_thresholds.cpu_medium_pct
+    );
+    assert!(
+        Arc::ptr_eq(&snap.load_policy, &initial_policy),
+        "invalid policy rejected; Arc identity must equal the initial policy"
+    );
+    assert!(
+        metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task must remain alive after rejecting a malformed update"
+    );
+
+    // Follow-up valid reload must still apply — the task survived the
+    // invalid one and keeps draining events.
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(true);
+            Ok(())
+        })
+        .expect("follow-up valid reload");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        live.snapshot().streaming_enabled,
+        "follow-up valid reload must still apply after the rejected one"
+    );
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
 }
