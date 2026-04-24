@@ -2,6 +2,7 @@ pub mod ai_models;
 pub mod ai_provider_surfaces;
 pub mod ai_session;
 pub mod annotations;
+pub mod audit_export;
 pub mod automation;
 pub mod automation_gui;
 pub mod bug_report;

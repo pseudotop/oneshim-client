@@ -167,6 +167,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/audit/export":
+    get:
+      tags:
+        - audit_export
+      operationId: audit_export_get_api_audit_export
+      summary: "GET /api/audit/export"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/automation/audit":
     get:
       tags:
@@ -1231,8 +1250,8 @@ paths:
   "/api/external-grpc/live-config":
     get:
       tags:
-        - external_grpc
-      operationId: external_grpc_get_api_external_grpc_live_config
+        - tracking_schedule
+      operationId: tracking_schedule_get_api_external_grpc_live_config
       summary: "GET /api/external-grpc/live-config"
       responses:
         "200":

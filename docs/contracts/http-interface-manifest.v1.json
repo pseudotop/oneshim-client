@@ -698,6 +698,15 @@
           "path": "/api/external-grpc/live-config"
         }
       ]
+    },
+    {
+      "module": "audit_export",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/audit/export"
+        }
+      ]
     }
   ]
 }

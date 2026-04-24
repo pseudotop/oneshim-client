@@ -23,6 +23,7 @@
 
 pub mod ai_providers;
 pub mod annotations;
+pub mod audit_export;
 pub mod automation;
 pub mod automation_gui;
 pub mod backup;
