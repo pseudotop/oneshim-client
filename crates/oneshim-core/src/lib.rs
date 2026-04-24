@@ -9,6 +9,13 @@
 // docs/reviews/2026-04-21-p2-missing-const-for-fn-decision.md —
 // const-viral cascade + nursery false-positive rate outweigh the value.
 #![allow(clippy::missing_const_for_fn)]
+// P2 remaining-nursery-lints: stylistic/cosmetic nursery lints accepted
+// crate-wide. See docs/reviews/2026-04-21-p2-remaining-nursery-lints-decision.md.
+#![allow(
+    clippy::use_self,
+    clippy::option_if_let_else,
+    clippy::redundant_pub_crate
+)]
 
 //! # oneshim-core
 
