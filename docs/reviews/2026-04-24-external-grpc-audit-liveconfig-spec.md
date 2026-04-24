@@ -4,7 +4,7 @@
 **Author**: Bundled follow-up spec (PR #486 deferrals + D13 V2c live config TODO)
 **Base commit**: `5618558c` (origin/main post-PR-#486)
 **Branch**: `feature/external-grpc-audit-liveconfig`
-**Status**: Draft — pending deep review (3-loop quality gate)
+**Status**: Draft **rev-2** — Loop 1 Round 1 synthesis applied (see `2026-04-24-external-grpc-spec-review-synthesis.md`). 7 Critical + 15 Important + 11 Minor resolved. 5 user decisions (U1-U5) inferred per "recommended option" convention. Awaiting Round-2 verify reviews.
 
 ---
 
@@ -80,53 +80,59 @@ From PR #486 commit log:
 ### 4.1 Layer stack change
 
 ```
-BEFORE (post-PR #486):                       AFTER (this spec):
+BEFORE (post-PR #486):                       AFTER (this spec, rev-2):
 
    ┌──────────────┐                            ┌──────────────┐
    │ tonic Server │                            │ tonic Server │
    └──────┬───────┘                            └──────┬───────┘
           │                                           │
+          │                                    ┌──────▼────────┐
+          │                                    │RequestIdLayer │ ← OUTERMOST (U5 — NEW)
+          │                                    └──────┬────────┘   ingress validate/gen,
+          │                                           │             insert RequestId ext,
+          │                                           │             egress header inject
+          │                                           │
    ┌──────▼───────┐                            ┌──────▼───────┐
-   │  AuthLayer   │ ← outermost                │  AuthLayer   │ ← outermost
-   └──────┬───────┘                            └──────┬───────┘
+   │  AuthLayer   │ ← outermost                │  AuthLayer   │ ← reads RequestId for
+   └──────┬───────┘                            └──────┬───────┘   Failed-path command_id
           │                                           │
-   ┌──────▼───────┐                            ┌──────▼────────┐
-   │  AuditLayer  │ ← hardcoded Completed      │RequestIdLayer │ ← NEW
-   └──────┬───────┘                            └──────┬────────┘
-          │                                           │
-          │                                    ┌──────▼───────┐
-          │                                    │  AuditLayer  │ ← reads RequestId,
-          │                                    └──────┬───────┘   wraps body,
+   ┌──────▼───────┐                            ┌──────▼───────┐
+   │  AuditLayer  │ ← hardcoded Completed      │  AuditLayer  │ ← reads RequestId,
+   └──────┬───────┘                            └──────┬───────┘   header-first status
+          │                                           │           obs, wraps body
+          │                                           │           for streaming only,
           │                                           │           deferred record
           │                                           │
    ┌──────▼────────────────────────┐           ┌──────▼────────────────────────┐
    │DashboardServiceServer         │           │DashboardServiceServer         │
-   │  (streaming_enabled captured  │           │  (reads cfg.live on each call)│
-   │   at service-build time)      │           │                               │
+   │  (streaming_enabled captured  │           │  (reads cfg.live snapshot     │
+   │   at service-build time)      │           │   each call via StreamingSrc) │
    └───────────────────────────────┘           └───────────────────────────────┘
 
-                                                Background task (spawned in serve_external):
+                                                Background task (spawned in
+                                                build_external_spawn_config):
                                                 ┌───────────────────────────────┐
                                                 │  ConfigReloadTask             │ ← NEW
                                                 │   watch::Receiver<AppConfig>  │
-                                                │   → LiveExternalConfig swap   │
+                                                │   → LiveSnapshot atomic swap  │
+                                                │   (single ArcSwap, try_new)   │
                                                 └───────────────────────────────┘
 ```
 
-Layer application order in `serve_external`:
+Layer application order in `serve_external` (tonic 0.14 applies `.layer()` FIFO-on-ingress, so the **first** `.layer()` is outermost):
 
 ```rust
 Server::builder()
-    .layer(auth_layer)        // outermost — first on ingress (PR #486 fix)
-    .layer(request_id_layer)  // NEW — runs after auth, before audit
-    .layer(audit_layer)       // innermost — reads RequestId extension
+    .layer(request_id_layer)  // OUTERMOST (U5) — assigns ID BEFORE auth so auth
+                              //                  rejection rows correlate with client's x-request-id
+    .layer(auth_layer)        // second — validates JWT/mTLS; can read RequestId
+    .layer(audit_layer)       // innermost — reads RequestId + header-first status
     .add_service(...)
 ```
 
-tonic 0.14 layer semantics: first `.layer()` call is outermost on ingress (per PR #486 iter with empirical fix, documented in `reference_tonic_layer_order.md` memory). This ordering ensures:
-- AuthLayer rejects/authenticates first (unauthorized requests never touch RequestId/Audit)
-- RequestIdLayer issues/validates ID for auth-passed requests
-- AuditLayer records with the issued ID
+**Rationale for RequestIdLayer outermost (U5)**: the correlation chain at the security boundary is where operators need it most. Auth-rejected audit rows get the same `command_id` as the request's `x-request-id` header, enabling end-to-end trace from client error report → server-side audit row. Cost: every unauth request pays ~30ns for UUID construction + extension insert. Negligible.
+
+tonic 0.14 layer semantics: first `.layer()` call is outermost on ingress (per PR #486 empirical fix, documented in `reference_tonic_layer_order.md` memory).
 
 ### 4.2 Component map
 
@@ -180,61 +186,65 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 ## 5. Components — Detailed API
 
-### 5.1 `LiveExternalConfig`
+### 5.1 `LiveExternalConfig` (revised — single `ArcSwap<LiveSnapshot>` per D21)
 
 **File**: `crates/oneshim-web/src/grpc/external/live_config.rs`
 
 ```rust
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use arc_swap::ArcSwap;
 
 use crate::grpc::load_policy::LoadPolicy;
 
-/// Runtime-tunable config slice for the external gRPC server.
+/// Atomic snapshot of all runtime-tunable config fields. Readers load a
+/// snapshot once per request-entry and see a consistent view of all fields.
 ///
-/// Readers use `streaming_enabled()` / `load_policy()` on every request and
-/// observe eventually-consistent snapshots (Relaxed memory ordering — no
-/// happens-before guarantees are needed across config fields).
+/// Writers (ConfigReloadTask only) atomic-swap the whole snapshot. Updating
+/// a single field requires constructing a new snapshot with the other
+/// fields carried forward.
+#[derive(Clone)]
+pub(crate) struct LiveSnapshot {
+    pub streaming_enabled: bool,
+    pub load_policy: Arc<LoadPolicy>,
+}
+
+/// Runtime-tunable config holder for the external gRPC server.
+///
+/// Readers use `snapshot()` → returns `Arc<LiveSnapshot>` (cheap clone),
+/// then access `.streaming_enabled` / `.load_policy` on that snapshot.
+/// **The whole snapshot is atomic** — a reader never observes a torn read
+/// across fields (a consequence of D21).
 ///
 /// Writers are restricted to `ConfigReloadTask` via `pub(crate)` visibility.
 pub(crate) struct LiveExternalConfig {
-    streaming_enabled: AtomicBool,
-    load_policy: ArcSwap<LoadPolicy>,
+    current: ArcSwap<LiveSnapshot>,
 }
 
 impl LiveExternalConfig {
-    pub fn new(initial_streaming: bool, initial_policy: LoadPolicy) -> Self {
+    pub fn new(initial: LiveSnapshot) -> Self {
         Self {
-            streaming_enabled: AtomicBool::new(initial_streaming),
-            load_policy: ArcSwap::new(Arc::new(initial_policy)),
+            current: ArcSwap::new(Arc::new(initial)),
         }
     }
 
-    /// Non-blocking, lock-free read. Called on every streaming RPC.
-    pub fn streaming_enabled(&self) -> bool {
-        self.streaming_enabled.load(Ordering::Relaxed)
+    /// Non-blocking, lock-free read. Called on every request entry.
+    /// Returns a consistent snapshot of all fields.
+    pub fn snapshot(&self) -> Arc<LiveSnapshot> {
+        self.current.load_full()
     }
 
-    /// Non-blocking read. Returns a cheap-to-clone Arc snapshot.
-    pub fn load_policy(&self) -> Arc<LoadPolicy> {
-        self.load_policy.load_full()
-    }
-
-    pub(crate) fn set_streaming_enabled(&self, v: bool) {
-        self.streaming_enabled.store(v, Ordering::Relaxed);
-    }
-
-    pub(crate) fn set_load_policy(&self, p: LoadPolicy) {
-        self.load_policy.store(Arc::new(p));
+    /// Atomic replace the full snapshot. Only called by ConfigReloadTask.
+    pub(crate) fn store(&self, new: LiveSnapshot) {
+        self.current.store(Arc::new(new));
     }
 }
 ```
 
 **Invariants**:
-- `Send + Sync` — via `AtomicBool` + `ArcSwap` (both `Sync`).
-- Readers never block or wait.
-- `Ordering::Relaxed` is safe: each field is independent; readers don't need cross-field happens-before.
+- `Send + Sync` — via `ArcSwap` (both `Sync`).
+- Readers never block or wait; `ArcSwap::load_full` is lock-free.
+- **Atomic across fields** (D21): unlike the rev-1 dual-atomic design, readers see a consistent cross-field view. A reload that changes both `streaming_enabled` and `load_policy` is observed as a single transition.
+- Partial updates (e.g., `apply_config` accepts new `streaming_enabled` but rejects malformed `load_policy`) must construct a snapshot that carries forward the old `load_policy` — see §5.4.
 
 ### 5.2 `RequestIdLayer`
 
@@ -340,6 +350,15 @@ impl<B> TrailerCapturingBody<B> {
     pub fn new(inner: B, signal: oneshot::Sender<Option<tonic::Code>>) -> Self {
         Self { inner, signal: Some(signal), captured: None }
     }
+
+    /// Construct a wrapper where the status code is already known from
+    /// initial response headers (trailers-only response path per D28).
+    /// The caller has already fired the oneshot; this wrapper still
+    /// implements `Body` faithfully but will not attempt to observe
+    /// trailers (there won't be any).
+    pub fn new_already_fired(inner: B, captured: Option<tonic::Code>) -> Self {
+        Self { inner, signal: None, captured }
+    }
 }
 
 impl<B> Body for TrailerCapturingBody<B>
@@ -403,7 +422,7 @@ pub(crate) fn map_code_to_audit_status(code: Option<tonic::Code>) -> oneshim_cor
 
 **Why not fire on `is_end_stream` returning true without trailer?**: HTTP/2 streams can be cancelled mid-frame or aborted at the transport layer. `is_end_stream` may never be called. Drop is the reliable termination signal.
 
-### 5.4 `ConfigReloadTask`
+### 5.4 `ConfigReloadTask` (revised — `try_new` + partial apply + spawn in builder per D23)
 
 **File**: `crates/oneshim-web/src/grpc/external/config_reload.rs`
 
@@ -413,7 +432,7 @@ use tokio::sync::watch;
 use oneshim_core::config::AppConfig;
 
 use crate::grpc::load_policy::LoadPolicy;
-use super::live_config::LiveExternalConfig;
+use super::live_config::{LiveExternalConfig, LiveSnapshot};
 
 pub(crate) async fn run_config_reload(
     live: Arc<LiveExternalConfig>,
@@ -433,19 +452,46 @@ pub(crate) async fn run_config_reload(
                     tracing::warn!("external_grpc: ConfigManager sender dropped; exiting reload task");
                     break;
                 }
-                apply_config(&live, &*config_rx.borrow_and_update());
+                apply_config(&live, &config_rx.borrow_and_update());
+                // borrow dropped at statement end; no .await held across.
             }
         }
     }
+    // Optional metric: flip alive=false on clean exit (see §8.6).
 }
 
 fn apply_config(live: &LiveExternalConfig, cfg: &AppConfig) {
-    let new_streaming = cfg.web.grpc_streaming_enabled;
-    let new_thresholds = cfg.web.grpc_load_thresholds.clone().unwrap_or_default();
-    let new_policy = LoadPolicy::new(new_thresholds);
+    // Start from current snapshot so partial-apply preserves other fields.
+    let current = live.snapshot();
 
-    live.set_streaming_enabled(new_streaming);
-    live.set_load_policy(new_policy);
+    // streaming_enabled: external override with fallback to shared web field (U1/D22).
+    //   external_grpc.streaming_enabled: Some(v)  → v
+    //   external_grpc.streaming_enabled: None     → web.grpc_streaming_enabled
+    let new_streaming = cfg
+        .external_grpc
+        .streaming_enabled
+        .unwrap_or(cfg.web.grpc_streaming_enabled);
+
+    // load_policy: try_new is fallible; preserve started_at across reloads (U4/D27).
+    let new_thresholds = cfg.web.grpc_load_thresholds.clone().unwrap_or_default();
+    let old_started_at = current.load_policy.started_at();
+    let new_load_policy = match LoadPolicy::try_new_with_started_at(new_thresholds, old_started_at) {
+        Ok(p) => Arc::new(p),
+        Err(e) => {
+            tracing::error!(
+                err = %e,
+                "external_grpc: invalid LoadThresholds in reloaded config; keeping previous load_policy"
+            );
+            // Partial apply: keep old policy, still update streaming_enabled.
+            current.load_policy.clone()
+        }
+    };
+
+    // Single atomic store of the whole snapshot — no torn reads.
+    live.store(LiveSnapshot {
+        streaming_enabled: new_streaming,
+        load_policy: new_load_policy,
+    });
 
     tracing::info!(
         streaming_enabled = new_streaming,
@@ -454,31 +500,41 @@ fn apply_config(live: &LiveExternalConfig, cfg: &AppConfig) {
 }
 ```
 
-**Spawn site**: `serve_external` (in `grpc/external/mod.rs`):
+**Spawn site (D23)**: in `build_external_spawn_config` (src-tauri/app_runtime_launch.rs), **not** inside `serve_external`. This matches the cert-watcher + expiry-monitor pattern: one task per server lifecycle, surviving supervisor respawns without duplicate-spawning.
 
 ```rust
+// In build_external_spawn_config, after constructing `live` and `config_rx`:
 let reload_handle = tokio::spawn(run_config_reload(
-    cfg.live.clone(),
-    cfg.config_rx.clone(),
-    cfg.shutdown_rx.clone(),
+    live.clone(),
+    config_rx,
+    shutdown_rx.clone(),
 ));
+// reload_handle is fire-and-forget; task exits on shutdown_rx or config_rx-dropped.
 ```
-
-The `JoinHandle` is tracked alongside the cert watcher + expiry monitor handles (existing pattern); supervisor awaits it on shutdown.
 
 **`biased;` in select**: Prefer shutdown over config-changed. Under shutdown, we don't want to apply a final config change that might be stale.
 
-**`LoadPolicy::new()`**: Assumed to be infallible from `LoadThresholds` (verify during implementation — if fallible, wrap in `try_new` and log error without breaking the task).
+**`LoadPolicy::try_new_with_started_at`** (new API per D23/D27):
+- `LoadPolicy::try_new(thresholds) -> Result<Self, LoadPolicyError>` — fallible constructor, validates `cpu_low < cpu_medium < cpu_high <= 100.0`. Returns `Err(LoadPolicyError::InvalidThresholds { reason: String })` on violation.
+- `LoadPolicy::try_new_with_started_at(thresholds, started_at: Instant) -> Result<Self, LoadPolicyError>` — same validation but carries an externally supplied `started_at` (reload preserves original warmup anchor).
+- `LoadPolicy::new(thresholds) -> Self` — **retained as `try_new(...).expect(...)` wrapper** for boot-time callers (where config is known-valid via earlier validation); no source break.
+- `LoadPolicy::started_at(&self) -> Instant` — accessor added so `apply_config` can preserve the value across reloads.
 
-### 5.5 `AuditLayer::call` — modified
+**Partial-apply semantics (D23)**: If `try_new` fails, the new `streaming_enabled` is still applied (from-boolean-field validation is trivial — it's a boolean); only the `load_policy` update is skipped. The `LiveSnapshot` atomic-swap ensures readers see the new `streaming_enabled` with preserved `load_policy`, or preserved both if unchanged. No torn reads.
 
-**Key changes**:
+### 5.5 `AuditLayer::call` — modified with **header-first grpc-status path** (D28)
+
+**Key changes from rev-1**:
 
 1. Read `RequestId` from extensions (injected by `RequestIdLayer`).
-2. After `inner.call(req).await?`, wrap the response body with `TrailerCapturingBody`.
-3. Create `oneshot::channel::<Option<tonic::Code>>`. Pass `tx` to body; hold `rx` for deferred task.
-4. Spawn deferred audit task: awaits `rx`, maps status, calls `record_completion` with `command_id = Some(request_id)`.
-5. Return response with wrapped body synchronously.
+2. After `inner.call(req).await?`, **inspect response initial headers for `grpc-status` FIRST** (trailers-only response path — §6.1 case B).
+3. If header-status present: fire oneshot synchronously; wrap body for msg_counter semantics only (no trailer observation needed).
+4. If header-status absent: wrap body with `TrailerCapturingBody`; oneshot fires when body emits trailer or is dropped.
+5. Spawn deferred audit task: awaits `rx`, maps status, calls `record_completion` with `command_id = Some(request_id)` and `grpc_status_code: Option<u32>` (D26).
+6. Return response with wrapped body synchronously.
+
+**Rationale for header-first (D28 / CR1 fix)**:
+Verified at `tonic-0.14.5/src/status.rs:605-613` + `server/grpc.rs:20`: when a handler returns `Err(Status)`, tonic constructs a **trailers-only** HTTP response — `grpc-status` lives in **initial headers**, body is empty (`B::default()`), no trailer frame is emitted. Without this header-first path, `TrailerCapturingBody::poll_frame` would observe `Ready(None)` immediately, `Drop` would fire `None`, and `map_code_to_audit_status` would return `Completed` — recording every denied/failed handler-`Err(Status)` return as `Completed`. This is the exact bug G2 aims to fix.
 
 **Crucial**: the deferred task holds captured clones (`bridge`, `metrics`, `ctx`, `operation`, `remote`, `request_id`, `msg_counter`, `start`). It does not borrow from the parent scope.
 
@@ -491,49 +547,82 @@ fn call(&mut self, mut req: http::Request<B>) -> Self::Future {
     let bridge = self.bridge.clone();
     let metrics = self.metrics.clone();
 
+    // RequestIdLayer is outermost (U5); its extension is guaranteed present
+    // for any request that reached AuditLayer.
+    let request_id = req.extensions().get::<RequestId>().map(|r| r.0.clone());
     let auth_ctx = req.extensions().get::<AuthContext>().cloned();
     let peer = req.extensions().get::<PeerInfo>().cloned();
-    let request_id = req.extensions().get::<RequestId>().map(|r| r.0.clone());
     let operation = req.uri().path().to_string();
 
     let msg_counter = Arc::new(AtomicU64::new(0));
     req.extensions_mut().insert(msg_counter.clone());
 
     Box::pin(async move {
+        // Fallthrough: if auth_ctx/peer missing, skip audit (unit-test path).
+        // AuthLayer now runs AFTER RequestIdLayer but BEFORE AuditLayer, so
+        // in production these extensions are always present here.
         let Some(ctx) = auth_ctx else { return inner.call(req).await; };
         let Some(peer) = peer else { return inner.call(req).await; };
         let remote = peer.remote_addr.to_string();
 
+        // Started — record synchronously before handler.
         let _ = bridge.record(
             &ctx, remote.clone(), &operation,
             "ok", AuditStatus::Started,
-            Duration::ZERO, None, None, request_id.clone(),
+            Duration::ZERO, None, None,
+            /* failure_reason */ None,
+            /* command_id    */ request_id.clone(),
         ).await;
 
         let start = Instant::now();
         let response = inner.call(req).await?;
 
+        // ── Header-first grpc-status observation (D28) ────────────────────
+        // tonic emits "trailers-only" for handler Err(Status) returns:
+        // grpc-status in initial headers, empty body, no trailer frame.
+        let header_code = response
+            .headers()
+            .get("grpc-status")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<i32>().ok())
+            .map(tonic::Code::from_i32);
+
         let (tx, rx) = oneshot::channel::<Option<tonic::Code>>();
         let (parts, body) = response.into_parts();
-        let wrapped = TrailerCapturingBody::new(body, tx);
+
+        let wrapped = if let Some(code) = header_code {
+            // Fire immediately — body won't emit trailer for trailers-only.
+            let _ = tx.send(Some(code));
+            // Still wrap for type-uniformity + msg_counter semantics (counter
+            // stays 0 because body is empty; preserved for consistency).
+            TrailerCapturingBody::new_already_fired(body, Some(code))
+        } else {
+            // Streaming or normal-trailers case: observe trailer via body wrap.
+            TrailerCapturingBody::new(body, tx)
+        };
         let response = http::Response::from_parts(parts, wrapped);
 
+        // Deferred completion record.
         tokio::spawn(async move {
             let observed = rx.await.ok().flatten();
-            let status = map_code_to_audit_status(observed);
+            let audit_status = map_code_to_audit_status(observed);
+            let grpc_status_code: Option<u32> = observed.map(|c| c as i32 as u32);
             let duration = start.elapsed();
             let msg_count = msg_counter.load(Ordering::Relaxed);
             let msg_count_opt = (msg_count > 0).then_some(msg_count);
 
             let _ = bridge.record_completion(
-                &ctx, remote, &operation, status,
-                duration, msg_count_opt, request_id,
+                &ctx, remote, &operation, audit_status,
+                duration, msg_count_opt,
+                /* failure_reason    */ None,
+                /* command_id        */ request_id,
+                /* grpc_status_code  */ grpc_status_code,  // NEW per D26
             ).await;
 
             metrics.request_bump(
                 "external",
                 ctx.auth_type.as_str(),
-                audit_status_label(status),
+                audit_status_label(audit_status),
             );
         });
 
@@ -552,7 +641,17 @@ fn audit_status_label(s: AuditStatus) -> &'static str {
 }
 ```
 
-**Type parameter note**: `AuditLayer` currently has generic `<S, B, RespBody>`. Replacing `RespBody` in the return type with `TrailerCapturingBody<RespBody>` changes the outer response body type. Consumers (tonic server builder) accept any `http_body::Body`, so this is safe. Confirm during implementation that the `AuditService::Response` type compiles as `http::Response<TrailerCapturingBody<RespBody>>`.
+**Unary vs streaming latency** (addresses Arch I4): For unary **Err(Status)** responses (trailers-only), the oneshot fires synchronously inside `call` before `Ok(response)` returns; the deferred task's `rx.await` resolves immediately — no shutdown-race window. For unary **Ok** responses, tonic writes data frame + trailer back-to-back; `TrailerCapturingBody::poll_frame` observes the trailer inline; deferred task resolves on first body poll. Only streaming RPCs have a long tail — consistent with their semantics.
+
+**Type parameter note**: `AuditLayer` currently has generic `<S, B, RespBody>`. The return type becomes `http::Response<TrailerCapturingBody<RespBody>>`. Tonic 0.14's `Server::builder` accepts any service with `Response = http::Response<T> where T: http_body::Body + Send + 'static`. Compile-time assertion added in `trailer_body.rs` tests (§9.1.3):
+```rust
+const _: fn() = || {
+    fn assert_body<T: http_body::Body + Send + 'static>() {}
+    assert_body::<TrailerCapturingBody<tonic::body::Body>>();
+};
+```
+
+**Prometheus cardinality note** (addresses Arch M3): The `request_bump` metric label goes from hardcoded `"ok"` (rev-1) to one of 4 values (`ok`/`denied`/`timeout`/`failed`). This is a bounded-cardinality change (4 labels × `auth_type` labels); dashboards aggregating by raw code rather than label should migrate to the new `grpc_status_code` field. Documented in §8.6.
 
 ### 5.6 `ExternalGrpcSpawnConfig` — modified
 
@@ -1007,13 +1106,26 @@ Explicitly **not** covered, tracked for future PRs:
 | D11 | `ConfigReloadTask` uses `biased; shutdown → config_changed` order | Prefer clean exit over final stale config application |
 | D12 | `AuditLayer` spawns deferred task for `record_completion` | Streaming-RPC final status arrives after `inner.call` returns; can't block |
 | D13 | `AuthLayer` Started-success spawn remains removed (PR #486 Task 7) | AuditLayer owns Started+Completed pair; no regression |
-| D14 | Layer ordering: `.layer(auth).layer(request_id).layer(audit)` (auth outermost) | PR #486's empirical FIFO-on-ingress convention; unauth requests never touch RequestId/Audit |
+| D14 (**revised**) | Layer ordering: `.layer(request_id).layer(auth).layer(audit)` — **RequestIdLayer outermost** | U5 synthesis: auth-rejected audit rows correlate with client's `x-request-id`. ~30ns UUID cost on unauth paths is negligible. Rev-1 had auth outermost — replaced. |
 | D15 | No feature flag | Strict improvement + additive; no rollback concern |
-| D16 | `command_id` in audit rows is now `Option<String>` with `Some(request_id)` when RequestIdLayer ran | Reuses existing `command_id` field; no schema change |
+| D16 | `command_id` in audit rows is now `Option<String>` with `Some(request_id)` for every request (including auth-rejected, per U5) | Reuses existing `command_id` field; no schema change |
 | D17 | New files use `pub(crate)` visibility by default | ADR-001 §5 + workspace convention (iter-7 polish pass) |
 | D18 | No new tokio runtime requirement | All new tasks run on the existing main runtime |
-| D19 | `pin_project_lite` preferred over `pin_project` proc-macro | Smaller compile-time footprint if already adopted; verify during implementation |
+| D19 (**revised**) | Use `pin_project_lite` directly — already transitive in workspace | Verified: tokio/tower/hyper/http-body-util all depend on `pin-project-lite v0.2.17`. OQ2 closed. Zero new dependency. |
 | D20 | Span-level tracing unchanged; add `request_id` structured field to key log events | Minimal observability improvement inside existing tracing setup |
+| **D21** (new) | `LiveExternalConfig` uses a **single** `ArcSwap<LiveSnapshot>`, not dual `AtomicBool` + `ArcSwap<LoadPolicy>` | CR-arch3 / I1-platform: eliminates cross-field torn reads. Readers load whole snapshot once per request-entry. Writers atomic-swap the whole struct. |
+| **D22** (new) | Add `ExternalGrpcConfig.streaming_enabled: Option<bool>` (overrides shared `web.grpc_streaming_enabled` when `Some`) | U1 / CR2-platform: loopback server unaffected by external-only live reload. Backward compat: `None` → legacy fall-through to `web.grpc_streaming_enabled`. |
+| **D23** (new) | `LoadPolicy::try_new(thresholds) -> Result<Self, LoadPolicyError>` — fallible constructor. `LoadPolicy::new` retained as `try_new(...).expect(...)`. `apply_config` uses `try_new`; on `Err` logs error + keeps previous `load_policy` (partial apply, `streaming_enabled` still updates). | CR3 / CR-arch2: eliminates ConfigReloadTask panic path. D21 atomic store ensures readers see consistent partial-apply state. |
+| **D24** (new) | `DashboardServiceImpl` dual-mode via `enum StreamingSource { Fixed(bool, Arc<LoadPolicy>), Live(Arc<LiveExternalConfig>) }` | CR4: loopback `from_spawn_config` constructs `Fixed`; external `from_external_spawn_config` constructs `Live`. Handlers call `self.streaming_source.streaming_enabled()` / `.load_policy()`. Avoids sibling-struct duplication. |
+| **D25** (new) | Add `AuditLogPort::entries_by_command_id(cmd_id: &str, limit: usize) -> Vec<AuditEntry>` + SqliteStorage impl + REST `GET /api/audit/export?command_id=X` query param | CR5: operator correlation "<1s lookup" needs a first-class query surface, not raw sqlite3. +60 LoC port+impl, +3 integration tests. |
+| **D26** (new) | `ExternalGrpcAuditDetails` gains `grpc_status_code: Option<u32>` field (`#[serde(skip_serializing_if = "Option::is_none")]`) | CR7: `Unauthenticated`/`PermissionDenied` conflation into `Denied` bucket is acceptable for audit-status granularity, but raw code enables security dashboards to disambiguate at query time. |
+| **D27** (new) | `LoadPolicy::started_at()` accessor + `LoadPolicy::try_new_with_started_at(thresholds, started_at)` constructor. `apply_config` preserves `started_at` across reloads. | U4 / Arch-Q1: prevents 30s warmup reset on each reload — operators tuning thresholds during incident get immediate effect, not 30s of forced `Medium`. |
+| **D28** (new) | `AuditLayer::call` inspects `response.headers().get("grpc-status")` BEFORE body wrap. If present → trailers-only path → fire oneshot synchronously with parsed code. Else → wrap body with `TrailerCapturingBody` as before. | CR1: handler `Err(Status)` returns go through trailers-only HTTP response (tonic `Status::into_http`); without header-first observation, all Denied/Failed/Timeout handler returns would audit as `Completed`. |
+| **D29** (new) | Add REST endpoint `GET /api/external-grpc/live-config` returning `{ streaming_enabled: bool, load_policy_snapshot: LoadPolicyView }` | I2-product: operators verifying a reload took effect need an inspection endpoint, not just log grep. ~40 LoC handler + 2 tests. |
+| **D30** (new) | `ConfigReloadTask` spawned inside `build_external_spawn_config`, NOT inside `serve_external` | Arch-I2: matches cert-watcher/expiry-monitor pattern; supervisor respawn of `serve_external` does not duplicate-spawn the reload task. |
+| **D31** (new) | `RequestIdLayer` does **conditional overwrite** of `x-request-id` response header: if handler-set value matches validated value, leave alone; otherwise insert ours | Arch-I5: preserves rare proxy-forward patterns without breaking correlation for the 99% case. Replaces rev-1's unconditional overwrite. |
+| **D32** (new) | `ExternalMetrics.deferred_audit_in_flight: AtomicUsize` gauge + `config_reload_total: AtomicU64` counter + `config_reload_task_alive: AtomicBool` | Platform-I3 + Q3: observability for unbounded per-request spawn + reload task liveness. Promoted from "optional deferred" to in-scope. |
+| **D33** (new) | G3 SLO revised: "≤1s convergence at CI (tested), typically <10ms in production"; remove ≤5s | Platform-I4 + Product-I1: ≤5s was hand-wavy and inconsistent with synchronous `watch::send_replace`. CI test asserts ≤1s via `start.elapsed()` bound. |
 
 ---
 
