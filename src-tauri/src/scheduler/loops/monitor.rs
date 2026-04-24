@@ -87,6 +87,7 @@ impl Scheduler {
                 .as_ref()
                 .map(|cm| cm.get().analysis.text_intelligence.pii_extraction_level)
                 .unwrap_or_default();
+            let mut ts_notify_state = (false, None::<Instant>); // A.18: (prev_active, last_notified)
 
             loop {
                 tokio::select! {
@@ -107,6 +108,9 @@ impl Scheduler {
                             focus_mode.is_active(),
                             &event_tx_mon,  // reuse clone added by B3-1
                         ).await;
+
+                        // A.18: TS window enter/exit → desktop notify (60s debounce)
+                        super::tracking_schedule_helper::tick_ts_notifications(&config_manager1, notif1.as_deref(), &mut ts_notify_state.0, &mut ts_notify_state.1).await;
 
                         match act_mon.collect_context().await {
                             Ok(ctx) => {

@@ -124,6 +124,10 @@ pub struct NotificationConfig {
     pub high_usage_threshold: u32,
     #[serde(default)]
     pub daily_summary_notification: bool,
+    /// Whether to fire a desktop notification when the tracking-schedule window
+    /// is entered or exited. Defaults to `true` (CONS-M05).
+    #[serde(default = "default_true")]
+    pub tracking_schedule_enabled: bool,
 }
 
 impl Default for NotificationConfig {
@@ -137,6 +141,7 @@ impl Default for NotificationConfig {
             high_usage_notification: default_high_usage_notification(),
             high_usage_threshold: default_high_usage_threshold(),
             daily_summary_notification: false,
+            tracking_schedule_enabled: default_true(),
         }
     }
 }
@@ -300,6 +305,10 @@ pub(crate) fn default_max_storage_mb() -> u64 {
 }
 
 // ── Private default helpers ─────────────────────────────────────────
+
+fn default_true() -> bool {
+    true
+}
 
 fn default_integrity_enabled() -> bool {
     true

@@ -8,11 +8,32 @@
 //! * [`capture_permitted_now`] — composes all four privacy gates per spec §3.4:
 //!   `consent_granted AND active_hours AND !tracking_schedule_active AND !capture_paused`.
 //!
+//! * [`evaluate_and_notify_transitions`] — fires a desktop notification when the
+//!   tracking-schedule window is entered or exited, with a 60-second debounce guard
+//!   to suppress flip-flop storms from DST edges or backward clock jumps (A.18).
+//!
 //! A.5 implements the real logic for both functions.
 
+use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use oneshim_core::config::AppConfig;
 use oneshim_core::consent::ConsentPermissions;
+use std::time::Instant;
+
+// ── TsNotifier — narrow port for tracking-schedule notifications ─────────────
+
+/// 트래킹 스케줄 전환 알림을 발송하는 좁은 포트.
+///
+/// [`NotificationManager`] 는 이 트레이트를 구현하므로 프로덕션에서 직접 사용된다.
+/// 테스트에서는 [`RecordingNotifier`] 모의 구현을 사용한다.
+///
+/// [`NotificationManager`]: crate::notification_manager::NotificationManager
+#[async_trait]
+pub(crate) trait TsNotifier: Send + Sync {
+    /// 제목과 본문으로 데스크탑 알림을 발송한다.
+    /// 알림 라이브러리 실패는 무시 (best-effort).
+    async fn notify_ts(&self, title: &str, body: &str);
+}
 
 // ── Implementations ─────────────────────────────────────────────────────────
 
@@ -67,6 +88,107 @@ pub(crate) fn capture_permitted_now(
         && crate::scheduler::should_run_now_with_time(cfg, now)
         && !tracking_schedule_active(cfg, now)
         && !capture_paused
+}
+
+// ── evaluate_and_notify_transitions ─────────────────────────────────────────
+
+/// 트래킹 스케줄 윈도우의 진입/퇴장 전환을 감지하여 데스크탑 알림을 발송한다.
+///
+/// # 동작
+///
+/// 1. `cfg.notification.tracking_schedule_enabled` 가 `false` 면 즉시 반환 (no-op).
+/// 2. `prev_active == now_active` 이면 전환 없음 — 즉시 반환.
+/// 3. 마지막 알림 발송 이후 60초 미만이면 디바운스 — 즉시 반환.
+///    이는 DST 경계나 역방향 클락 점프로 인한 플립-플랍 폭풍을 방지한다.
+/// 4. 위 조건을 통과하면 `last_notified_at` 을 현재 `Instant` 로 갱신하고
+///    `notifier` 를 통해 알림을 발송한다.
+///
+/// `notifier` 가 `None` 이면 알림 없이 상태만 갱신한다.
+///
+/// # 인자
+///
+/// * `cfg` — 현재 앱 설정 (알림 토글 및 스케줄 확인용)
+/// * `prev_active` — 이전 틱의 트래킹 스케줄 활성 상태
+/// * `now_active` — 이번 틱의 트래킹 스케줄 활성 상태
+/// * `last_notified_at` — 마지막 알림 시각 (60초 디바운스 상태); 인/아웃 모두 공유
+/// * `notifier` — 알림 발송 구현체 (옵션)
+pub(crate) async fn evaluate_and_notify_transitions<N: TsNotifier>(
+    cfg: &AppConfig,
+    prev_active: bool,
+    now_active: bool,
+    last_notified_at: &mut Option<Instant>,
+    notifier: Option<&N>,
+) {
+    // Gate 1: 알림 설정 비활성화 시 no-op
+    if !cfg.notification.tracking_schedule_enabled {
+        return;
+    }
+    // Gate 2: 전환 없음 시 no-op
+    if prev_active == now_active {
+        return;
+    }
+    // Gate 3: 60초 디바운스 — 마지막 알림으로부터 60초 미만이면 억제
+    let now = Instant::now();
+    if let Some(last) = *last_notified_at {
+        if now.duration_since(last).as_secs() < 60 {
+            return;
+        }
+    }
+    // 상태 갱신 + 알림 발송
+    *last_notified_at = Some(now);
+    if let Some(n) = notifier {
+        if now_active {
+            n.notify_ts(
+                "Tracking Schedule Active",
+                "Capture/telemetry paused during configured window",
+            )
+            .await;
+        } else {
+            n.notify_ts("Tracking Schedule Ended", "Capture/telemetry resumed")
+                .await;
+        }
+    }
+}
+
+// ── Monitor-loop tick helper ─────────────────────────────────────────────────
+
+/// 매 모니터 틱에서 호출되는 트래킹 스케줄 알림 평가 래퍼.
+///
+/// `config_manager` 스냅샷을 가져오고 `tracking_schedule_active` 를 평가한 뒤
+/// `evaluate_and_notify_transitions` 를 호출한다. 모니터 루프 클로저 크기 제한(500줄)
+/// 을 지키기 위해 인라인 블록을 이 함수로 추출한다 (monitor-loop-size hook).
+pub(super) async fn tick_ts_notifications(
+    config_manager: &Option<oneshim_core::config_manager::ConfigManager>,
+    notifier: Option<&crate::notification_manager::NotificationManager>,
+    prev_ts_active: &mut bool,
+    last_ts_notified_at: &mut Option<std::time::Instant>,
+) {
+    let cfg = config_manager
+        .as_ref()
+        .map(|cm| cm.get())
+        .unwrap_or_else(oneshim_core::config::AppConfig::default_config);
+    let now_active = tracking_schedule_active(&cfg, chrono::Local::now());
+    evaluate_and_notify_transitions(
+        &cfg,
+        *prev_ts_active,
+        now_active,
+        last_ts_notified_at,
+        notifier,
+    )
+    .await;
+    *prev_ts_active = now_active;
+}
+
+// ── TsNotifier impl for NotificationManager ──────────────────────────────────
+
+// `NotificationManager` 가 `TsNotifier` 를 구현하므로 monitor 루프에서 직접 전달된다.
+// 이 impl 은 notification_manager 크레이트 모듈이 아닌 helper 내에 위치하여
+// `loops` 모듈의 비공개 경계를 넘지 않도록 한다.
+#[async_trait]
+impl TsNotifier for crate::notification_manager::NotificationManager {
+    async fn notify_ts(&self, title: &str, body: &str) {
+        self.notify(title, body).await;
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -567,6 +689,123 @@ mod tests {
         assert!(
             capture_permitted_now(&cfg, &c, capture_paused, now),
             "all four gates true must return true"
+        );
+    }
+
+    // ── evaluate_and_notify_transitions tests (A.18) ────────────────────────
+
+    /// Mock TsNotifier that records all (title, body) pairs sent to it.
+    struct RecordingNotifier {
+        calls: std::sync::Mutex<Vec<(String, String)>>,
+    }
+
+    impl RecordingNotifier {
+        fn new() -> Self {
+            Self {
+                calls: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn recorded(&self) -> Vec<(String, String)> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TsNotifier for RecordingNotifier {
+        async fn notify_ts(&self, title: &str, body: &str) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((title.to_string(), body.to_string()));
+        }
+    }
+
+    /// Build an `AppConfig` with `notification.tracking_schedule_enabled` set.
+    fn notif_cfg(enabled: bool) -> AppConfig {
+        let mut cfg = AppConfig::default_config();
+        cfg.notification.tracking_schedule_enabled = enabled;
+        cfg
+    }
+
+    /// Test A.18-1: transition false → true fires "Tracking Schedule Active".
+    #[tokio::test]
+    async fn notifier_fires_on_ts_enter() {
+        let cfg = notif_cfg(true);
+        let notifier = RecordingNotifier::new();
+        let mut last: Option<Instant> = None;
+
+        evaluate_and_notify_transitions(&cfg, false, true, &mut last, Some(&notifier)).await;
+
+        let calls = notifier.recorded();
+        assert_eq!(
+            calls.len(),
+            1,
+            "expected exactly one notification on TS enter"
+        );
+        assert_eq!(calls[0].0, "Tracking Schedule Active");
+        assert!(last.is_some(), "last_notified_at must be set after firing");
+    }
+
+    /// Test A.18-2: transition true → false fires "Tracking Schedule Ended".
+    #[tokio::test]
+    async fn notifier_fires_on_ts_exit() {
+        let cfg = notif_cfg(true);
+        let notifier = RecordingNotifier::new();
+        let mut last: Option<Instant> = None;
+
+        evaluate_and_notify_transitions(&cfg, true, false, &mut last, Some(&notifier)).await;
+
+        let calls = notifier.recorded();
+        assert_eq!(
+            calls.len(),
+            1,
+            "expected exactly one notification on TS exit"
+        );
+        assert_eq!(calls[0].0, "Tracking Schedule Ended");
+    }
+
+    /// Test A.18-3: second transition within 60s is suppressed by the debounce.
+    ///
+    /// Simulates a backward clock-jump / DST flip-flop: first notification fires,
+    /// then a second immediate transition (within the debounce window) is suppressed.
+    #[tokio::test]
+    async fn notifier_debounces_within_60s() {
+        let cfg = notif_cfg(true);
+        let notifier = RecordingNotifier::new();
+
+        // Prime last_notified_at to "just now" — debounce should block next fire.
+        let mut last: Option<Instant> = Some(Instant::now());
+
+        // Immediately attempt a transition (0 secs elapsed — well under 60s).
+        evaluate_and_notify_transitions(&cfg, false, true, &mut last, Some(&notifier)).await;
+
+        let calls = notifier.recorded();
+        assert!(
+            calls.is_empty(),
+            "second notification within 60s must be suppressed by debounce; got {calls:?}"
+        );
+    }
+
+    /// Test A.18-4: `notification.tracking_schedule_enabled = false` → no notifications.
+    #[tokio::test]
+    async fn notifier_does_not_fire_when_config_disabled() {
+        let cfg = notif_cfg(false);
+        let notifier = RecordingNotifier::new();
+        let mut last: Option<Instant> = None;
+
+        // Both enter and exit transitions attempted.
+        evaluate_and_notify_transitions(&cfg, false, true, &mut last, Some(&notifier)).await;
+        evaluate_and_notify_transitions(&cfg, true, false, &mut last, Some(&notifier)).await;
+
+        let calls = notifier.recorded();
+        assert!(
+            calls.is_empty(),
+            "no notifications must fire when tracking_schedule_enabled=false; got {calls:?}"
+        );
+        assert!(
+            last.is_none(),
+            "last_notified_at must remain None when config disabled"
         );
     }
 }
