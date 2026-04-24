@@ -2,7 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Revision**: rev-2 (Loop 2 Round 1 synthesis applied — see `2026-04-24-external-grpc-plan-review-synthesis.md`). 5 Critical + 13 Important findings from 3 review lenses resolved. Key fixes: Task 0.3/0.4 rewritten against actual audit architecture (AuditLogAdapter + audit_log table + std::sync::Mutex); Task 0.6 changed from "rewrite" to "additive signature"; Task 0.0 added for test-support helpers; Task 9.4 G3 convergence test now has complete code.
+**Revision**: **rev-3** (Loop 2 Round 2 verify applied). Round-2 found 4 new Critical regressions (all introduced by rev-2 edits) + 3 unresolved Round-1 Importants. Rev-3 fixes:
+- R2-C1 (phantom Task 9.0): **Task 9.0 created** — CapturingAudit structural rewrite + spawn_server_with_config_manager helper
+- R2-C2+C3 (ConfigManager API wrong): Task 9.4 G3 test now uses real `ConfigManager::with_path(PathBuf)` ctor + sync `update_with` with `&mut AppConfig` closure returning `Result<(), String>`
+- R2-C4 (Arc::make_mut regression in G3): removed; closure mutates `c` directly per real API
+- R1-I4: `deserialize_tolerates_future_unknown_fields` test added to Task 0.5
+- R1-I5: Task 9.1 REPLACE/EXTEND targets enumerated (2 REPLACE + 1 EXTEND by name)
+- R2-NI2: Task 0.4 Step 2 module-name typo `v32_audit_command_id_index` → `v32_audit_log_command_id_index` corrected
+
+Prior revision (rev-2): Loop 2 Round 1 synthesis — 5 Critical + 13 Important from 3 review lenses. Key fixes: Task 0.3/0.4 rewritten against actual audit architecture (AuditLogAdapter + audit_log table + std::sync::Mutex); Task 0.6 changed from "rewrite" to "additive signature"; Task 0.0 added for test-support helpers; Task 9.4 G3 convergence test body inlined.
 
 **Goal:** Close audit-completeness gaps in the external gRPC server (x-request-id header, accurate grpc-status mapping) and make `streaming_enabled` + `LoadPolicy` thresholds live-reloadable — without affecting the loopback server.
 
@@ -723,10 +731,10 @@ pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
 }
 ```
 
-Register in `crates/oneshim-storage/src/migration/mod.rs`:
-- Add `mod v32_audit_command_id_index;`
+Register in `crates/oneshim-storage/src/migration/mod.rs` (typo-corrected per R2-NI2):
+- Add `mod v32_audit_log_command_id_index;`
 - Bump `pub const CURRENT_VERSION: u32 = 32;` (was 31)
-- Add the migration call in the version-dispatch match arm
+- Add the migration call in the version-dispatch match arm (see Step 3)
 
 - [ ] **Step 3: Register migration**
 
@@ -985,6 +993,23 @@ fn external_grpc_audit_details_deserialize_old_row_without_grpc_status_code() {
     let d: ExternalGrpcAuditDetails = serde_json::from_str(json)
         .expect("old row must deserialize cleanly");
     assert_eq!(d.grpc_status_code, None);
+}
+
+#[test]
+fn external_grpc_audit_details_deserialize_tolerates_future_unknown_fields() {
+    // Forward-compat: a row written by a future version with extra fields
+    // must deserialize into the current shape without error (per synthesis I12 / R1-I4).
+    let json = r#"{
+        "auth_type": "jwt",
+        "response_message_count": 5,
+        "grpc_status_code": 0,
+        "future_field_foo": "bar",
+        "future_field_baz": {"nested": true}
+    }"#;
+    let d: ExternalGrpcAuditDetails = serde_json::from_str(json)
+        .expect("future-field-tolerant deserialize");
+    assert_eq!(d.grpc_status_code, Some(0));
+    // struct-level #[serde(default)] alone is sufficient; no #[serde(deny_unknown_fields)].
 }
 ```
 
@@ -3374,16 +3399,185 @@ EOF
 
 **Depends on:** all previous phases.
 
-### Task 9.1: Request-ID integration tests (4 tests)
+### Task 9.0 (NEW — rev-3 R2-C1 fix): `CapturingAudit` structural rewrite + `spawn_server_with_config_manager` helper
+
+**Spec ref:** §5.5, §5.9, D26. **Synthesis CR4 + R2-NI1 fix** — Task 0.3 stubbed CapturingAudit with `vec![]` placeholder and deferred structural work here. Without this task, integration tests (L1531, L1594) cannot assert `command_id` or `grpc_status_code`.
+
+**Files:**
+- Modify: `crates/oneshim-web/tests/external_grpc_integration.rs` (CapturingAudit at ~L1447)
+- Modify: `crates/oneshim-web/src/grpc/external/audit_layer.rs` (CapturingAudit at ~L199)
+- Modify: `crates/oneshim-web/src/grpc/external/test_support.rs` (add `spawn_server_with_config_manager`)
+
+- [ ] **Step 1: Rewrite `CapturingAudit` in `external_grpc_integration.rs`**
+
+Read existing impl (`grep -n "struct CapturingAudit\|impl AuditLogPort for CapturingAudit" crates/oneshim-web/tests/external_grpc_integration.rs`) and replace with a version that:
+1. Captures `command_id` from `log_event`/`log_start_if`/`log_complete_with_time` parameters (do NOT overwrite with `action_type`)
+2. For `log_complete_with_time`, parses `details` JSON and extracts `grpc_status_code: Option<u32>` into the captured entry
+
+Template:
+```rust
+#[derive(Default)]
+struct CapturingAudit {
+    entries: std::sync::Mutex<Vec<CapturedEntry>>,
+}
+
+#[derive(Clone, Debug)]
+struct CapturedEntry {
+    command_id: String,
+    action_type: String,
+    status: oneshim_core::models::audit::AuditStatus,
+    grpc_status_code: Option<u32>,
+    execution_time_ms: u64,
+}
+
+impl CapturingAudit {
+    fn entries(&self) -> Vec<CapturedEntry> {
+        self.entries.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl AuditLogPort for CapturingAudit {
+    async fn log_event(&self, action_type: &str, session_id: &str, details: &str) {
+        // log_event doesn't carry command_id in the port trait; session_id is the stable
+        // correlation key at this layer. Store with empty command_id.
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: String::new(),
+            action_type: action_type.to_string(),
+            status: oneshim_core::models::audit::AuditStatus::Completed,
+            grpc_status_code: None,
+            execution_time_ms: 0,
+        });
+    }
+
+    async fn log_start_if(&self, _level: AuditLevel, command_id: &str, _session_id: &str, action_type: &str) {
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: command_id.to_string(),
+            action_type: action_type.to_string(),
+            status: AuditStatus::Started,
+            grpc_status_code: None,
+            execution_time_ms: 0,
+        });
+    }
+
+    async fn log_complete_with_time(
+        &self,
+        _level: AuditLevel,
+        command_id: &str,
+        _session_id: &str,
+        details: &str,
+        execution_time_ms: u64,
+    ) {
+        let status = parse_status_from_details(details);
+        let grpc_status_code: Option<u32> = serde_json::from_str::<serde_json::Value>(details)
+            .ok()
+            .and_then(|v| v.get("grpc_status_code").and_then(|n| n.as_u64().map(|u| u as u32)));
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: command_id.to_string(),
+            action_type: String::new(),  // not surfaced in log_complete_with_time
+            status,
+            grpc_status_code,
+            execution_time_ms,
+        });
+    }
+
+    // Other AuditLogPort methods — delegate to no-op/default (entries_by_command_id from Task 0.3 stays vec![]).
+    async fn pending_count(&self) -> usize { 0 }
+    async fn recent_entries(&self, _: usize) -> Vec<AuditEntry> { vec![] }
+    async fn entries_by_status(&self, _: &AuditStatus, _: usize) -> Vec<AuditEntry> { vec![] }
+    async fn entries_by_action_prefix(&self, _: &str, _: usize) -> Vec<AuditEntry> { vec![] }
+    async fn entries_by_command_id(&self, _: &str, _: usize) -> Vec<AuditEntry> { vec![] }
+    async fn stats(&self) -> AuditStats { AuditStats::default() }
+    async fn has_pending_batch(&self) -> bool { false }
+    async fn drain_batch(&self) -> Vec<AuditEntry> { vec![] }
+    async fn drain_all(&self) -> Vec<AuditEntry> { vec![] }
+    async fn record_session_event(&self, _: SessionAuditEntry) {}
+}
+
+fn parse_status_from_details(details: &str) -> AuditStatus {
+    use serde_json::Value;
+    serde_json::from_str::<Value>(details)
+        .ok()
+        .and_then(|v| v.get("result").and_then(|r| r.as_str().map(String::from)))
+        .map(|s| match s.as_str() {
+            "ok" => AuditStatus::Completed,
+            "denied" => AuditStatus::Denied,
+            "timeout" => AuditStatus::Timeout,
+            "failed" => AuditStatus::Failed,
+            _ => AuditStatus::Completed,
+        })
+        .unwrap_or(AuditStatus::Completed)
+}
+```
+
+- [ ] **Step 2: Apply the same rewrite to `grpc/external/audit_layer.rs` CapturingAudit (~L199)**
+
+It's a separate in-module test helper — same shape. Copy the struct + impl block.
+
+- [ ] **Step 3: Add `spawn_server_with_config_manager` helper to test_support module**
+
+In `crates/oneshim-web/src/grpc/external/test_support.rs` (or extend existing):
+```rust
+#[cfg(any(test, feature = "test-support"))]
+pub async fn spawn_server_with_config_manager(
+    cfg_mgr: Arc<ConfigManager>,
+) -> (tokio::task::JoinHandle<()>, u16) {
+    // Reuse logic from existing spawn_server but pull initial AppConfig from cfg_mgr.
+    let cfg = cfg_mgr.current();  // Arc<AppConfig>
+    // Build ExternalGrpcSpawnConfig with the ConfigManager passed through
+    // (build_external_spawn_config signature after Task 4.2 accepts config_manager).
+    // ... (implementer inlines 10-15 LoC from existing spawn_server)
+}
+```
+
+(Exact body mirrors existing `spawn_server` helper — grep to locate.)
+
+- [ ] **Step 4: Run tests to verify CapturingAudit rewrite compiles + behavior preserved**
+
+```bash
+cargo test -p oneshim-web --features "grpc-dashboard-external,external-grpc-tools,test-support" --test external_grpc_integration
+```
+Expected: existing 19 integration tests still pass; CapturingAudit tests in Phase 9.x can now assert command_id + grpc_status_code.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/oneshim-web/tests/external_grpc_integration.rs \
+         crates/oneshim-web/src/grpc/external/audit_layer.rs \
+         crates/oneshim-web/src/grpc/external/test_support.rs
+git commit -m "$(cat <<'EOF'
+test(external-grpc): CapturingAudit structural rewrite + spawn_server_with_config_manager
+
+Per synthesis CR4 / R2-NI1. Replaces action_type-as-command_id
+conflation with real command_id preservation + grpc_status_code
+JSON extraction from details. Unblocks Phase 9 Task 9.2+ which
+assert command_id correlation and D26 raw-code visibility.
+
+Also adds spawn_server_with_config_manager helper used by Task 9.4
+G3 convergence test.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+### Task 9.1 (rev-3): Request-ID integration tests (4 tests) — REPLACE/EXTEND/NEW enumerated per R1-I5
 
 **Spec ref:** §9.2 Request-ID block.
 
 **Files:**
 - Modify: `crates/oneshim-web/tests/external_grpc_integration.rs`
 
-Implement the 4 tests listed in spec §9.2 Request-ID block. For the REPLACE `external_grpc_request_id_header_returned` (L933-ish), delete the TODO-stub body and write the real incoming-preserved assertion.
+**REPLACE/EXTEND target enumeration (R1-I5 fix)** — the 2 REPLACE + 1 EXTEND the spec mandates:
+- **REPLACE #1**: `external_grpc_request_id_header_returned` (currently at ~L933) — rewrite body to send incoming `x-request-id: test-req-123` + assert response metadata preserves it
+- **REPLACE #2**: `external_grpc_audit_denied_for_permission_denied` — currently asserts just `Unimplemented`; rewrite to assert `AuditStatus::Denied` + `grpc_status_code = 7` via CapturingAudit (depends on Task 9.0 CapturingAudit rewrite)
+- **EXTEND #1**: `external_grpc_audit_completed_entry_written_after_ok_response` (currently at ~L1531) — existing asserts preserved; ADD: `command_id` matches generated UUID + `grpc_status_code == 0` from details JSON
 
-For each test, follow the TDD flow: assert → run → implement (though the infrastructure is in place, so most should pass first try) → commit per group.
+**NEW (3)**: `external_grpc_request_id_generated_when_missing`, `external_grpc_request_id_invalid_replaced`, `external_grpc_request_id_preserved_across_auth_reject`.
+
+For each test, follow the TDD flow: assert → run → implement (infrastructure already in place, so most pass first try) → commit per group.
 
 - [ ] Implement 4 tests in one commit:
 
@@ -3413,13 +3607,23 @@ Full test body (paste verbatim into `external_grpc_integration.rs`):
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
     use oneshim_core::config_manager::ConfigManager;
+    use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    // Spawn external server with streaming initially enabled.
-    let mut cfg = test_cfg_with_external_enabled();
-    cfg.web.grpc_streaming_enabled = true;
-    cfg.external_grpc.streaming_enabled = None;  // fall-through to web field
-    let cfg_mgr = Arc::new(ConfigManager::new_in_memory(Arc::new(cfg)));
+    // Create ConfigManager backed by a temp file (real API persists to disk;
+    // CI test uses tempfile so it doesn't pollute the user's config dir).
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path")
+    );
+    // Seed the initial config via update_with (sync — see real API below).
+    cfg_mgr.update_with(|c| {
+        *c = test_cfg_with_external_enabled();
+        c.web.grpc_streaming_enabled = true;
+        c.external_grpc.streaming_enabled = None;  // fall-through to web field
+        Ok(())
+    }).expect("seed initial config");
 
     let (handle, port) = spawn_server_with_config_manager(cfg_mgr.clone()).await;
 
@@ -3430,11 +3634,13 @@ async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
     assert!(sanity.is_ok(), "initial subscribe must succeed with streaming_enabled=true");
     drop(sanity);
 
-    // ── Toggle to disabled ──
+    // ── Toggle to disabled (R2-C3 fix: update_with is SYNC, closure takes
+    //    &mut AppConfig not &mut Arc, must return Result<(), String>) ──
     let start = Instant::now();
     cfg_mgr.update_with(|c| {
-        Arc::make_mut(c).external_grpc.streaming_enabled = Some(false);
-    }).await;
+        c.external_grpc.streaming_enabled = Some(false);
+        Ok(())
+    }).expect("update_with apply");
 
     // Poll next subscribe until it returns Unavailable. Cap at 1s per D33 / G3.
     let timeout = Duration::from_secs(1);
@@ -3460,13 +3666,17 @@ async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
 }
 ```
 
-**Helper functions required** (already exist in `external_grpc_integration.rs` per CLAUDE.md; verify via `grep -n`):
+**Real API notes** (verified from `crates/oneshim-core/src/config_manager.rs`):
+- Ctor: **`ConfigManager::new() -> Result<Self, CoreError>`** (default path) or **`with_path(PathBuf) -> Result<Self, CoreError>`** (explicit path). There is NO `new_in_memory`.
+- Update: **`update_with<F>(&self, F) -> Result<AppConfig, CoreError> where F: FnOnce(&mut AppConfig) -> Result<(), String>`** — **synchronous**. Persists to disk via `save_to_file` then fires `watch::send_replace`. CI test uses `tempfile::NamedTempFile` so disk write is a no-op on teardown.
+
+**Helper functions required** (created in Task 0.0 if missing):
 - `test_cfg_with_external_enabled()` — returns `AppConfig` with external_grpc.enabled=true + test JWT paths
-- `spawn_server_with_config_manager(Arc<ConfigManager>)` — spawns server reading from a live ConfigManager (add this helper if only `spawn_server(cfg: AppConfig)` exists; ~15 LoC extension)
+- `spawn_server_with_config_manager(Arc<ConfigManager>)` — spawns server reading from a live ConfigManager (extension of existing `spawn_server`)
 - `connect_loopback(port) -> Channel` — TLS-skipping test channel constructor
 - `req_with_valid_auth()` — returns `Request<SubscribeMetricsRequest>` with valid JWT bearer
 
-If `spawn_server_with_config_manager` does not exist, add it in Task 9.0 (test-support expansion).
+`tempfile` is already a dev-dep in `oneshim-web/Cargo.toml` (gated behind `test-support`).
 
 After all integration tests:
 ```bash
