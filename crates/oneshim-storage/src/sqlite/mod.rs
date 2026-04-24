@@ -282,6 +282,90 @@ impl SqliteStorage {
     }
 }
 
+impl SqliteStorage {
+    /// Return audit entries whose `command_id` equals the given value, ordered
+    /// newest-first, up to `limit` rows.
+    ///
+    /// Synchronous, matching the existing [`Self::save_audit_entry`] pattern.
+    /// Async callers wrap at the Adapter layer. Infallible — logs `warn!` on
+    /// SQLite error and returns an empty `Vec`.
+    ///
+    /// Not an `impl AuditLogPort` — `SqliteStorage` does not implement the
+    /// port trait directly. The `AuditLogAdapter` (in `oneshim-automation`)
+    /// holds `Arc<RwLock<AuditLogger>>` and may delegate here as a fall-through
+    /// in a future task.
+    pub fn entries_by_command_id(
+        &self,
+        command_id: &str,
+        limit: usize,
+    ) -> Vec<oneshim_core::models::audit::AuditEntry> {
+        use oneshim_core::models::audit::{AuditEntry, AuditStatus};
+
+        let Ok(conn) = self.conn.lock() else {
+            warn!("audit: entries_by_command_id failed to acquire SQLite lock");
+            return Vec::new();
+        };
+
+        let mut stmt = match conn.prepare(
+            "SELECT entry_id, timestamp, session_id, command_id, action_type,
+                    status, details, execution_time_ms
+             FROM audit_log
+             WHERE command_id = ?1
+             ORDER BY timestamp DESC
+             LIMIT ?2",
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(err = %e, "audit: entries_by_command_id prepare failed");
+                return Vec::new();
+            }
+        };
+
+        let mapped = stmt.query_map(rusqlite::params![command_id, limit as i64], |row| {
+            let ts_str: String = row.get("timestamp")?;
+            let timestamp = chrono::DateTime::parse_from_rfc3339(&ts_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        1,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
+
+            let status_str: String = row.get("status")?;
+            let status = match status_str.as_str() {
+                "Completed" => AuditStatus::Completed,
+                "Failed" => AuditStatus::Failed,
+                "Denied" => AuditStatus::Denied,
+                "Timeout" => AuditStatus::Timeout,
+                "Started" => AuditStatus::Started,
+                _ => AuditStatus::Completed, // forward-compat default
+            };
+
+            let etime: Option<i64> = row.get("execution_time_ms").ok();
+            Ok(AuditEntry {
+                entry_id: row.get("entry_id")?,
+                timestamp,
+                session_id: row.get("session_id")?,
+                command_id: row.get("command_id")?,
+                action_type: row.get("action_type")?,
+                status,
+                details: row.get("details").ok(),
+                execution_time_ms: etime.map(|v| v as u64),
+            })
+        });
+
+        match mapped {
+            Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                warn!(err = %e, "audit: entries_by_command_id query_map failed");
+                Vec::new()
+            }
+        }
+    }
+}
+
 /// Apply SQLCipher `PRAGMA key` and verify the key works.
 ///
 /// If the key is rejected (e.g. database was previously unencrypted), falls back
