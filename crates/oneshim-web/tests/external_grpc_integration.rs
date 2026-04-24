@@ -1968,3 +1968,219 @@ async fn external_grpc_request_id_generated_when_missing() {
     handle.abort();
     let _ = handle.await;
 }
+
+/// N2 — RequestIdLayer discards a malformed client x-request-id and substitutes
+/// a fresh UUIDv4.
+///
+/// Per spec §5.2 / L307: when the client sends an `x-request-id` that fails
+/// `is_valid()` (ASCII graphic 0x21..=0x7E, 1..=128 chars), `RequestIdLayer`
+/// emits a `tracing::warn!` and generates a fresh UUIDv4.  The warn+regenerate
+/// path proves that a malicious / malformed client cannot inject arbitrary
+/// bytes into the response-header / downstream audit trail.
+///
+/// The malformed payload used here is `"bad\tid"` — the tab byte (0x09) is a
+/// valid HeaderValue byte (HTAB is permitted by `http::HeaderValue::from_str`)
+/// but falls outside the `is_valid()` 0x21..=0x7E range, so the server-side
+/// validator will reject it and substitute a UUIDv4.  Mirrors the in-crate
+/// `rejects_invalid_characters_generates_new` unit test (request_id_layer.rs L189).
+///
+/// Assertions:
+/// 1. Response metadata carries a valid 36-char UUIDv4 (4 hyphens, parses as UUID v4).
+/// 2. Response's `x-request-id` does NOT equal the malformed client input.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_request_id_invalid_replaced() {
+    let jwt_kp = test_jwt_keypair();
+    let (cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let (handle, port) = spawn_server(cfg).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-bad-reqid",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Malformed x-request-id: tab (0x09) is valid as an http HeaderValue byte
+    // but fails the is_valid(0x21..=0x7E) range, forcing the warn+regenerate path.
+    let malformed_id = "bad\tid";
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "x-request-id",
+        tonic::metadata::MetadataValue::try_from(malformed_id)
+            .expect("tab (0x09) is a valid HeaderValue byte"),
+    );
+    let resp = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await
+        .expect("auth + real handler → Ok");
+
+    // 1. Response must carry a server-substituted x-request-id.
+    let returned_id = resp
+        .metadata()
+        .get("x-request-id")
+        .expect("x-request-id must be present (server substitutes on invalid input)")
+        .to_str()
+        .expect("substituted x-request-id must be valid ASCII");
+
+    // 2. Value must NOT be the malformed client input.
+    assert_ne!(
+        returned_id, malformed_id,
+        "server must discard malformed x-request-id and substitute a UUID"
+    );
+
+    // 3. Value must be a valid UUIDv4 (36 chars, 4 hyphens, version 4).
+    assert_eq!(
+        returned_id.len(),
+        36,
+        "substituted x-request-id must be 36 chars; got {returned_id:?}"
+    );
+    assert_eq!(
+        returned_id.chars().filter(|c| *c == '-').count(),
+        4,
+        "substituted x-request-id must have 4 hyphens (UUIDv4); got {returned_id:?}"
+    );
+    let parsed_uuid = uuid::Uuid::parse_str(returned_id).expect("x-request-id must parse as UUID");
+    assert_eq!(
+        parsed_uuid.get_version_num(),
+        4,
+        "substituted x-request-id must be UUIDv4; got version {}",
+        parsed_uuid.get_version_num()
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+/// N3 — x-request-id is preserved across the auth-rejection boundary (U5 / D14).
+///
+/// Per spec §5.2 / §9.2 L1393: `RequestIdLayer` is the outermost layer and runs
+/// BEFORE `AuthLayer`, so it inserts the `RequestId` extension with the client's
+/// header value before any auth gate fires.  When `AuthLayer` subsequently
+/// rejects the request (invalid JWT → Unauthenticated), its Failed-path
+/// `bridge.record(...)` reads the extension and passes it as `command_id`
+/// (commit `7bd7c944`, Task 6.1).  This closes the correlation gap at the
+/// security boundary — security dashboards can still trace which client call
+/// produced each auth rejection.
+///
+/// Flow:
+/// 1. Client sends `x-request-id: req-abc-123` + a JWT signed with a wrong issuer.
+/// 2. Server's `RequestIdLayer` validates the header (passes) and inserts
+///    `RequestId("req-abc-123")` into request extensions.
+/// 3. `AuthLayer`'s JWT gate calls `verifier.verify(tok)`, which fails (wrong
+///    issuer), and takes the `invalid_jwt` Failed-path.
+/// 4. The Failed-path reads the `RequestId` extension and calls
+///    `bridge.record(..., Some("req-abc-123"))`, which persists the Failed
+///    audit row with `command_id = "req-abc-123"`.
+///
+/// Assertions:
+/// 1. RPC returns `Err(Status)` with code `Unauthenticated` (16).
+/// 2. CapturingAudit captures ≥1 Failed audit row.
+/// 3. That Failed row's `command_id` equals `"req-abc-123"`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_request_id_preserved_across_auth_reject() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server(cfg).await;
+
+    // Invalid JWT — wrong issuer → JwtVerifier::verify() fails → invalid_jwt path.
+    let bad_token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-auth-reject",
+        "wrong-issuer", // mismatch with verifier's "test-issuer" → verify fails
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Valid x-request-id — passes is_valid() (all ASCII graphic chars).
+    let client_req_id = "req-abc-123";
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {bad_token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "x-request-id",
+        tonic::metadata::MetadataValue::try_from(client_req_id).expect("valid x-request-id value"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await;
+
+    // 1. RPC must fail with Unauthenticated (invalid_jwt path).
+    let status = result.expect_err("wrong-issuer JWT must yield Err");
+    assert_eq!(
+        status.code(),
+        Code::Unauthenticated,
+        "invalid JWT must yield Unauthenticated (code 16); got {status:?}"
+    );
+
+    // Give the tokio::spawn'd AuthLayer Failed-path record() time to flush.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // 2 + 3. The auth-rejection audit row must carry the client's x-request-id
+    // as command_id. AuthLayer's Failed-path calls both `log_complete_with_time`
+    // (writes command_id + details JSON) and `log_event("external_grpc_failed")`
+    // (prefix-queryable marker).  We locate the authoritative auth-rejection
+    // row by its details payload (`"result":"auth_failed"` + `"failure_reason":
+    // "invalid_jwt"`) — this is the row whose command_id must equal the client's
+    // x-request-id per U5/D14.
+    //
+    // NOTE: CapturingAudit's `parse_status_from_details` maps `"auth_failed"`
+    // into the default `Completed` bucket (it only recognizes "ok" / "denied" /
+    // "timeout" / "error" / "failed"), which is why we filter by details
+    // content rather than by `AuditStatus`.
+    //
+    // Drop the lock before any `.await`.
+    let (auth_failed_count, auth_failed_cmd_id, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let auth_failed: Vec<_> = entries
+            .iter()
+            .filter(|e| {
+                e.details
+                    .as_deref()
+                    .map(|d| {
+                        d.contains("\"result\":\"auth_failed\"")
+                            && d.contains("\"failure_reason\":\"invalid_jwt\"")
+                    })
+                    .unwrap_or(false)
+                    && !e.command_id.is_empty()
+            })
+            .collect();
+        let cmd_id = auth_failed
+            .first()
+            .map(|e| e.command_id.clone())
+            .unwrap_or_default();
+        let dbg = format!("{entries:?}");
+        (auth_failed.len(), cmd_id, dbg)
+    };
+    assert!(
+        auth_failed_count >= 1,
+        "expected ≥1 auth-rejection audit row with populated command_id + \
+         details.result='auth_failed' + failure_reason='invalid_jwt'; \
+         got {auth_failed_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        auth_failed_cmd_id, client_req_id,
+        "auth-rejection audit row's command_id must equal the client's x-request-id \
+         (U5/D14 correlation preserved at security boundary); entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
