@@ -20,8 +20,7 @@ use super::live_config::{LiveExternalConfig, LiveSnapshot};
 use super::metrics::ExternalMetrics;
 use crate::grpc::load_policy::LoadPolicy;
 
-#[allow(dead_code)] // Phase 2 scaffold; spawned by Phase 4 build_external_spawn_config
-pub(crate) async fn run_config_reload(
+pub async fn run_config_reload(
     live: Arc<LiveExternalConfig>,
     metrics: Arc<ExternalMetrics>,
     mut config_rx: watch::Receiver<Arc<AppConfig>>,
