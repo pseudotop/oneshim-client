@@ -37,23 +37,24 @@ fn fresh_audit_adapter() -> Arc<AuditLogAdapter> {
     Arc::new(AuditLogAdapter::new(logger))
 }
 
-/// Seed `n` entries with the given `command_id` via `log_start_if` (which uses
-/// `Utc::now()` at insertion time). Inserts a `tokio::time::sleep(1ms)` between
-/// successive entries so timestamps are strictly monotonic — required for the
-/// "newest-first" ordering assertion since the prod impl orders by insertion
-/// order (which equals timestamp order when monotonic).
-async fn seed_entries(adapter: &Arc<AuditLogAdapter>, command_id: &str, n: usize) {
+/// Seed `n` entries with the given `command_id` via `log_start_if`.
+///
+/// Each entry receives a distinct `action_type` of the form `"seed-action-{i}"`.
+/// Returns the action types in **insertion order** so callers can derive the
+/// expected newest-first order by reversing the returned vec.
+///
+/// No timestamp sleep is needed: production ordering is VecDeque insertion
+/// order (`self.buffer.iter().rev()`), never timestamps.
+async fn seed_entries(adapter: &Arc<AuditLogAdapter>, command_id: &str, n: usize) -> Vec<String> {
+    let mut action_types = Vec::with_capacity(n);
     for i in 0..n {
+        let action_type = format!("seed-action-{i}");
         adapter
-            .log_start_if(
-                AuditLevel::Basic,
-                command_id,
-                "session-test",
-                &format!("action-{i}"),
-            )
+            .log_start_if(AuditLevel::Basic, command_id, "session-test", &action_type)
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        action_types.push(action_type);
     }
+    action_types
 }
 
 /// Build an `AppState` with the supplied audit adapter wired into
@@ -83,14 +84,24 @@ fn loopback_app(state: AppState) -> axum::Router {
 /// return exactly the 3 matching rows, newest first.
 ///
 /// Drives the production `AuditLogAdapter` (the wired prod impl) — not a mock.
+///
+/// NOTE (upstream): Production AuditLogAdapter::entries_by_command_id reads
+/// only the in-memory VecDeque (cap ~1000). Task 0.3.1 will wire
+/// SqliteStorage-backed fall-through so historical lookup beyond the buffer
+/// works. When that lands, this test should be extended to exercise the
+/// fall-through path (e.g., insert via buffer, flush + evict, verify the
+/// query still returns from storage). Today's assertion shape (newest-first
+/// = reverse insertion order) must be preserved in the new impl.
 #[tokio::test]
 async fn audit_entries_by_command_id_returns_matching_rows() {
     let adapter = fresh_audit_adapter();
 
     // Seed 3 entries with the target command_id, then 2 with a different one.
-    // Timestamps are forced strictly monotonic by the 1ms sleep in seed_entries.
-    seed_entries(&adapter, "cmd-target-123", 3).await;
-    seed_entries(&adapter, "cmd-other-456", 2).await;
+    // Each entry has a distinct action_type ("seed-action-{i}") for direct
+    // ordering verification. No sleep needed: production ordering is
+    // VecDeque::iter().rev() — insertion order, not timestamp order.
+    let target_actions = seed_entries(&adapter, "cmd-target-123", 3).await;
+    let _other_actions = seed_entries(&adapter, "cmd-other-456", 2).await;
 
     // Query: limit 10 (well above the 3 matching rows).
     let results: Vec<AuditEntry> = adapter.entries_by_command_id("cmd-target-123", 10).await;
@@ -112,16 +123,16 @@ async fn audit_entries_by_command_id_returns_matching_rows() {
         );
     }
 
-    // Newest-first ordering: timestamps strictly non-increasing across the
-    // returned slice (each pair satisfies `prev >= next`).
-    for window in results.windows(2) {
-        assert!(
-            window[0].timestamp >= window[1].timestamp,
-            "expected newest-first ordering; got {} before {}",
-            window[0].timestamp,
-            window[1].timestamp,
-        );
-    }
+    // Newest-first ordering: directly assert reverse-insertion-order via
+    // action_type identifiers. Production impl uses VecDeque::iter().rev(),
+    // so newest-first == reverse insertion order — no timestamp proxy needed.
+    let expected: Vec<&str> = target_actions.iter().rev().map(String::as_str).collect();
+    let actual: Vec<&str> = results.iter().map(|e| e.action_type.as_str()).collect();
+    assert_eq!(
+        actual, expected,
+        "newest-first must equal reverse insertion order; expected {:?}, got {:?}",
+        expected, actual
+    );
 }
 
 // ── Test 2: GET /api/audit/export?command_id=X ───────────────────────────────
@@ -144,8 +155,8 @@ async fn audit_export_rest_endpoint_filters_by_command_id() {
     let adapter = fresh_audit_adapter();
 
     // Seed 2 matching + 2 non-matching rows.
-    seed_entries(&adapter, "cmd-target-789", 2).await;
-    seed_entries(&adapter, "cmd-other-321", 2).await;
+    let _matching_actions = seed_entries(&adapter, "cmd-target-789", 2).await;
+    let _other_actions = seed_entries(&adapter, "cmd-other-321", 2).await;
 
     let state = app_state_with_audit(adapter as Arc<dyn AuditLogPort>);
     let app = loopback_app(state);
