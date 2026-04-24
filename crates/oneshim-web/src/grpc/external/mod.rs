@@ -13,6 +13,7 @@ pub(crate) mod live_config;
 pub mod metrics;
 pub mod mtls_verifier;
 pub mod port_collision;
+pub(crate) mod request_id_layer;
 pub mod spawn_config;
 pub mod tls_config;
 
