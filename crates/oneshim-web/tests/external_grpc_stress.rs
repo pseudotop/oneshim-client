@@ -606,7 +606,7 @@ async fn ipv6_64_prefix_ban_full_stack() {
         SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 0),
     );
     let (handle, addr) = spawn_stress_server(cfg).await;
-    assert!(addr.is_ipv6(), "Test 3 must bind IPv6 ::1");
+    assert!(addr.is_ipv6(), "Test 3 must bind IPv6 ::1, got {addr}");
 
     let bad_token = test_mint_jwt(
         &jwt_kp.enc_key,
@@ -629,16 +629,28 @@ async fn ipv6_64_prefix_ban_full_stack() {
     // be at 1 before Phase 1 RPCs begin, so only 4 more auth failures are needed
     // to hit the threshold of 5.
     //
-    // Strategy: loop up to MAX_RPC (8, well above threshold) RPC attempts.
-    // If make_stress_tls_channel fails (pre-TLS rejection) the ban is already
-    // active — break early. This makes the test self-calibrating regardless of
-    // how many probe-induced failures the startup probe contributes.
-    const MAX_RPC: usize = 8;
+    // Strategy: loop up to MAX_PHASE1_RPC_ATTEMPTS (8, well above threshold) RPC
+    // attempts. If make_stress_tls_channel fails (pre-TLS rejection) the ban is
+    // already active — break early. This makes the test self-calibrating regardless
+    // of how many probe-induced failures the startup probe contributes.
+    // MAX_PHASE1_RPC_ATTEMPTS must exceed IpBan threshold (5) by >=3 to
+    // tolerate variable probe-induced failure count from spawn_stress_server.
+    // See accept_loop.rs:77/114/123 for the record_failure call sites.
+    const MAX_PHASE1_RPC_ATTEMPTS: usize = 8;
     let mut rpc_done = 0_usize;
-    for attempt in 0..MAX_RPC {
+    // Plan §Task 5 had `for attempt in 0..5`; deviated to self-calibrating
+    // MAX_PHASE1_RPC_ATTEMPTS=8 because the spawn_stress_server TCP probe
+    // contributes record_failure([::1]) via accept_loop.rs:114. See commit
+    // 9fb6f488 for deviation rationale.
+    for attempt in 0..MAX_PHASE1_RPC_ATTEMPTS {
         let channel = match make_stress_tls_channel(addr, &cert_pem).await {
             Ok(c) => c,
-            Err(_) => break, // pre-TLS rejection → ban already active, Phase 1 done
+            Err(e) => {
+                eprintln!(
+                    "Phase 1 attempt {attempt}: pre-TLS rejection after {rpc_done} RPCs: {e}"
+                );
+                break;
+            }
         };
         let mut req = tonic::Request::new(GetAgentInfoRequest {});
         req.metadata_mut().insert(
@@ -660,7 +672,9 @@ async fn ipv6_64_prefix_ban_full_stack() {
     }
     assert!(
         rpc_done > 0,
-        "Phase 1: at least one RPC must be served before ban"
+        "Phase 1: at least one RPC must be served before ban. Zero RPCs implies \
+         probe contributed >=5 record_failure calls (unexpected — see \
+         accept_loop.rs:77/114/123) OR IpBan was banned from server start (regression)."
     );
 
     // Brief wait for ip_ban state to commit (record_failure is sync but the
@@ -691,10 +705,25 @@ async fn ipv6_64_prefix_ban_full_stack() {
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
         }
     };
-    assert!(
-        banned_path_result.is_err(),
-        "Phase 2 attempt from ::1 must fail (banned). Got: {banned_path_result:?}"
-    );
+    // Regression guard (spec §4.3 / V1): banned_path must fail via transport-level
+    // rejection (accept_loop:77 drops TCP) OR an Unavailable RPC — NOT via
+    // Unauthenticated (which would indicate accept_loop:77 is a no-op and
+    // auth_layer is still being reached, meaning the ban wiring regressed).
+    match &banned_path_result {
+        Ok(()) => panic!(
+            "Phase 2: 6th attempt from ::1 must fail. It succeeded — ban wiring \
+             regression or /128 sliding-window expired."
+        ),
+        Err(e) => {
+            let s = format!("{e}");
+            assert!(
+                !s.contains("Unauthenticated"),
+                "Phase 2: got Unauthenticated from ::1 after ban threshold met — \
+                 this implies accept_loop.rs:77 is NOT rejecting before TLS; \
+                 auth_layer is still being reached. Ban wiring regression. Got: {s}"
+            );
+        }
+    }
 
     handle.abort();
     let _ = handle.await;
