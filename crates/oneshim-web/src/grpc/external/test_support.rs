@@ -401,7 +401,11 @@ use oneshim_core::models::ai_session::SessionAuditEntry;
 use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
 use oneshim_core::ports::audit_log::AuditLogPort;
 
-/// Capturing mock that records every `log_complete_with_time` call.
+/// Capturing `AuditLogPort` impl used by [`fixture_bridge`].
+///
+/// Construct via [`fixture_bridge`]`() -> (AuditBridge, Arc<MockRecorder>)` — the
+/// struct's `new()` constructor is crate-private to enforce this factory pattern.
+/// Tests read captured entries via [`MockRecorder::snapshot`].
 ///
 /// Used by `fixture_bridge` so that Tasks 0.6 and 3.1 can assert on the
 /// exact audit entries emitted by `AuditBridge::record` /
@@ -504,11 +508,21 @@ pub fn fixture_metrics() -> Arc<ExternalMetrics> {
 // ── connect_loopback / req_with_valid_auth ────────────────────────────────────
 // Task 9.4 G3 test dependencies — created in Task 0.0 per plan §Step 2.
 
-/// Connect to a loopback gRPC server for test-local use (no TLS).
+/// Plaintext loopback gRPC channel connector for tests.
 ///
 /// Returns a connected `tonic::transport::Channel` pointing at
 /// `http://127.0.0.1:{port}`. Use only for in-process integration tests
 /// where the server is also bound to localhost without TLS.
+///
+/// **Caller contract**: call only after the server has successfully bound to `port`.
+/// A typical pattern is:
+///   1. `tokio::spawn(async move { serve_external(...).await });`
+///   2. Wait for a bind-confirmation signal (or `tokio::time::sleep(Duration::from_millis(50))`)
+///   3. `let ch = connect_loopback(port).await;`
+///
+/// Panics with "connect to loopback server" if the server is not yet listening — the
+/// panic message does not include port or timing context; add your own retry/wait if
+/// flakiness appears in CI.
 pub async fn connect_loopback(port: u16) -> tonic::transport::Channel {
     let addr = format!("http://127.0.0.1:{port}");
     tonic::transport::Channel::from_shared(addr)
@@ -518,11 +532,18 @@ pub async fn connect_loopback(port: u16) -> tonic::transport::Channel {
         .expect("connect to loopback server")
 }
 
-/// Build a test request with a bearer authorization header.
+/// Build a test gRPC request with a placeholder bearer token header.
 ///
 /// Inserts `Authorization: Bearer TEST_TOKEN_PLACEHOLDER` into the request
-/// metadata. Task 9.4 implementers should replace `TEST_TOKEN_PLACEHOLDER`
-/// with a real token minted via `test_mint_jwt` using the test ES256 keypair.
+/// metadata.
+///
+/// **IMPORTANT**: The current token is a literal `"TEST_TOKEN_PLACEHOLDER"` that will
+/// fail validation against any real `JwtVerifier`. This helper exists to let Task 9.4
+/// G3-test scaffolding compile; the actual JWT minting belongs to Task 9.4 itself via
+/// [`test_mint_jwt`] (present in `tests/external_grpc_integration.rs`).
+///
+/// Callers: **replace the placeholder with a real minted token** before running the
+/// test against a configured server, OR use this only with a bypass-auth server setup.
 pub fn req_with_valid_auth<T>(body: T) -> tonic::Request<T> {
     let mut req = tonic::Request::new(body);
     req.metadata_mut().insert(
