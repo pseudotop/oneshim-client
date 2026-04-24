@@ -16,6 +16,8 @@ mod load_policy;
 mod rate_limiter;
 mod spawn_config;
 mod stream_counter;
+#[cfg(feature = "grpc-dashboard-external")]
+pub(crate) mod streaming_source;
 mod subscribe_events;
 mod subscribe_metrics;
 pub use auth_gate::{honor_opt_out, validate_authority};
