@@ -2215,7 +2215,7 @@ async fn external_grpc_request_id_preserved_across_auth_reject() {
 /// exactly one variant; un-used RPCs return `unimplemented!()` so a wiring
 /// mistake (test calling the wrong RPC) surfaces as a panic instead of silent
 /// success.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum FixtureScenario {
     /// `get_agent_info` returns `Err(Status::permission_denied(...))`.
     PermissionDenied,
@@ -2226,8 +2226,9 @@ enum FixtureScenario {
     /// `get_agent_info` returns `Err(Status::internal(...))`.
     Internal,
     /// `subscribe_metrics` opens a stream, sends ≥1 message, then sleeps
-    /// indefinitely.  Client drops mid-stream → no trailer observed →
-    /// AuditLayer falls back to `Completed` (OQ6-Option-A behavior).
+    /// briefly (5s — far longer than the client lives).  Client drops
+    /// mid-stream → no trailer observed → AuditLayer falls back to
+    /// `Completed` (OQ6-Option-A behavior).
     StreamSendThenIdle,
 }
 
@@ -2280,9 +2281,8 @@ impl oneshim_web::proto::dashboard::v1::dashboard_service_server::DashboardServi
             )),
             FixtureScenario::Internal => Err(tonic::Status::internal("fixture: internal error")),
             other => unimplemented!(
-                "FixtureDashboardService::get_agent_info called with scenario {:?}; \
+                "FixtureDashboardService::get_agent_info called with scenario {other:?}; \
                  unexpected — only PermissionDenied / Internal route here",
-                other as u8
             ),
         }
     }
@@ -2378,10 +2378,11 @@ impl oneshim_web::proto::dashboard::v1::dashboard_service_server::DashboardServi
                         payload: None,
                     };
                     let _ = tx.send(Ok(payload)).await;
-                    // Hold the sender open for a long time — the client will
-                    // drop the stream first.  When the test completes, this
-                    // task is dropped together with the server task.
-                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    // Hold the sender open until the client drops.  Cleanup is
+                    // via runtime drop (test end), not handle.abort() propagation
+                    // to this orphan task.  5s bound prevents hung runtimes if
+                    // a future refactor reuses runtimes across tests.
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                 });
                 let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
                 let counted: Self::SubscribeMetricsStream = match msg_counter {
@@ -2391,9 +2392,8 @@ impl oneshim_web::proto::dashboard::v1::dashboard_service_server::DashboardServi
                 Ok(tonic::Response::new(counted))
             }
             other => unimplemented!(
-                "FixtureDashboardService::subscribe_metrics called with scenario {:?}; \
+                "FixtureDashboardService::subscribe_metrics called with scenario {other:?}; \
                  unexpected — only StreamCancelled / StreamSendThenIdle route here",
-                other as u8
             ),
         }
     }
@@ -2459,20 +2459,6 @@ async fn spawn_server_with_fixture_service(
     }
 
     (handle, port)
-}
-
-// Manual Debug for FixtureScenario so unimplemented!() panic messages show
-// the variant.  `#[derive(Debug)]` on the outer enum + the `as u8` cast in
-// the panic args avoids the `unused_variables` lint when only one arm runs.
-impl std::fmt::Debug for FixtureScenario {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::PermissionDenied => f.write_str("PermissionDenied"),
-            Self::StreamCancelled => f.write_str("StreamCancelled"),
-            Self::Internal => f.write_str("Internal"),
-            Self::StreamSendThenIdle => f.write_str("StreamSendThenIdle"),
-        }
-    }
 }
 
 // ── Test 1 — PRIMARY CR1-REGRESSION-CATCH ────────────────────────────────────
@@ -2691,10 +2677,11 @@ async fn external_grpc_audit_failed_when_handler_returns_internal() {
 /// because the streaming handler's `CountingStream` (via `msg_counter`
 /// extension) bumped on the data frame the client drained.
 ///
-/// Note on the wired flow: the fixture sleeps 60s after sending 1 message;
-/// the client receives that message (assert ≥1) and drops the stream.  The
-/// server-side body is dropped without emitting a trailer frame; the
-/// AuditLayer's oneshot `Drop` handler fires `None` (mapped to `Completed`).
+/// Note on the wired flow: the fixture sends 1 message then sleeps 5s (longer
+/// than the client lives); the client receives that message (assert ≥1) and
+/// drops the stream.  The server-side body is dropped without emitting a
+/// trailer frame; the AuditLayer's oneshot `Drop` handler fires `None`
+/// (mapped to `Completed`).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn external_grpc_audit_completed_when_client_drops_before_trailer() {
     let jwt_kp = test_jwt_keypair();
@@ -2754,6 +2741,12 @@ async fn external_grpc_audit_completed_when_client_drops_before_trailer() {
     // skip_serializing_if drops the field).  Both rows would otherwise share
     // `result:"ok"` and the `Completed` status (CapturingAudit infers from
     // `result`), so this is the load-bearing disambiguation.
+    //
+    // INVARIANT: depends on `#[serde(skip_serializing_if = "Option::is_none")]`
+    // on `ExternalGrpcAuditDetails::response_message_count`
+    // (audit_bridge.rs:29).  If that attribute is ever removed, this filter
+    // silently matches both Started+Completed rows; the msg_count assertion
+    // would fail with 0 because Started rows have no count to extract.
     let (completion_row_count, msg_count, entries_debug) = {
         let entries = capturing.entries.lock().unwrap();
         let completion_rows: Vec<_> = entries
