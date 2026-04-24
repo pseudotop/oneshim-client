@@ -129,8 +129,8 @@ test-support = ["dep:tempfile"]
 # D13-v2c stress test suite: gated test file at tests/external_grpc_stress.rs.
 # Pulls in external-grpc-tools (rcgen for cert/JWT key gen) + test-support
 # (test_support.rs helpers like install_rustls_crypto_provider, test_jwt_keypair).
-# Feature deliberately excluded from `--all-features` workflows except clippy
-# (acceptance criteria §8: stress file must clippy-clean).
+# When invoked manually with --all-features (e.g., a local clippy pass), the
+# stress file must remain clippy-clean (acceptance criteria §8).
 stress-test = ["external-grpc-tools", "test-support"]
 
 
