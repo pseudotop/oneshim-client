@@ -21,6 +21,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // startup config and applies the user's opt-in if present.
     spawn_telemetry_toggle_task(app, &bundle);
 
+    // Clone ConfigManager before bundle is consumed by AppRuntimeLaunchBuilder.
+    // ConfigManager::clone is cheap — it shares Arc<Inner>.
+    let config_manager_for_tray = bundle.config_manager.clone();
+
     let AppRuntimeLaunchResult {
         frontend_web_port,
         state_builder,
@@ -33,6 +37,15 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     DesktopStartupCoordinator::apply(app, frontend_web_port)?;
     crate::setup_windows::prepare(app);
     crate::setup_platform::apply(app);
+
+    // A.17: Spawn tray tooltip propagation task — watches tracking_schedule
+    // sub-tree of ConfigManager and updates the tray tooltip on change.
+    // Spawned AFTER setup_tray (inside DesktopStartupCoordinator::apply) so
+    // the "main-tray" icon exists before the task can call set_tooltip.
+    // JoinHandle is stored as Tauri managed state for teardown on app shutdown.
+    let tray_watch_handle =
+        crate::tray_watch::spawn_tray_watch_task(&config_manager_for_tray, app.handle().clone());
+    app.manage(tray_watch_handle);
 
     info!("Tauri setup complete");
     Ok(())

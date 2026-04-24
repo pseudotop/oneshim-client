@@ -5,6 +5,25 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap
 )]
+// P2 PR-C: `missing_const_for_fn` accepted crate-wide. See
+// docs/reviews/2026-04-21-p2-missing-const-for-fn-decision.md.
+#![allow(clippy::missing_const_for_fn)]
+// P2 remaining-nursery-lints: see decision doc.
+#![allow(
+    clippy::use_self,
+    clippy::option_if_let_else,
+    clippy::redundant_pub_crate
+)]
+// P2 PR-A (B2): `significant_drop_tightening` is accepted crate-wide.
+// Rationale: 18 flagged sites across 12 files — TokenManager,
+// OAuth, integration, sync, circuit_breaker. All either (a) tokio::sync
+// RwLock/Mutex held across token-exchange/network-roundtrip (intentional
+// atomicity), or (b) held across in-memory state transitions that clippy's
+// "tighten via single-usage" heuristic cannot rewrite (produces invalid
+// Rust — confirmed on similar sites in PR #468). The nursery lint's false-
+// positive rate here outweighs its diagnostic value.
+// See docs/reviews/2026-04-21-p2-significant-drop-tightening-spec.md §Category B.
+#![allow(clippy::significant_drop_tightening)]
 
 //! # oneshim-network
 //! ## Feature Flags

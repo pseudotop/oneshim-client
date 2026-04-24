@@ -142,26 +142,52 @@ impl AiSessionRuntimeState {
 /// Feature-scoped Tauri managed state for audio capture and STT commands.
 pub struct AudioRuntimeState {
     config_manager: ConfigManager,
+    /// ConsentManager for GDPR-compliant gate check in start_audio_capture (CONS-PC04 / D13).
+    consent_manager: Option<Arc<ConsentManager>>,
+    /// Tray-pause veto flag for start_audio_capture gate (CONS-PC02 / D13).
+    capture_paused: Arc<AtomicBool>,
     audio: AudioContext,
 }
 
 impl AudioRuntimeState {
-    pub(crate) fn new(config_manager: ConfigManager, audio: AudioContext) -> Self {
+    pub(crate) fn new(
+        config_manager: ConfigManager,
+        consent_manager: Option<Arc<ConsentManager>>,
+        capture_paused: Arc<AtomicBool>,
+        audio: AudioContext,
+    ) -> Self {
         Self {
             config_manager,
+            consent_manager,
+            capture_paused,
             audio,
         }
     }
 
     pub(crate) fn disabled(config_manager: ConfigManager) -> Self {
+        // Seed `capture_paused` with `true` so the 4-term privacy gate in
+        // `start_audio_capture` always returns false while this placeholder
+        // state is installed. Without this, a future regression that attaches
+        // a real `AudioContext` without also swapping the runtime state (via
+        // `with_audio_runtime`) could pass the gate unchallenged.
         Self::new(
             config_manager,
+            None,
+            Arc::new(AtomicBool::new(true)),
             AudioContext::disabled(std::env::temp_dir().join("oneshim-audio-models")),
         )
     }
 
     pub(crate) fn config_manager(&self) -> &ConfigManager {
         &self.config_manager
+    }
+
+    pub(crate) fn consent_manager(&self) -> Option<&Arc<ConsentManager>> {
+        self.consent_manager.as_ref()
+    }
+
+    pub(crate) fn capture_paused(&self) -> &Arc<AtomicBool> {
+        &self.capture_paused
     }
 
     pub(crate) fn audio(&self) -> &AudioContext {
@@ -693,5 +719,30 @@ mod tests {
             "unavailable"
         );
         assert!(!registration.secret_backend_state.0.oauth_available);
+    }
+
+    #[test]
+    fn audio_runtime_state_disabled_seeds_capture_paused_true() {
+        // Regression guard: the `disabled()` placeholder state must seed
+        // `capture_paused` with `true`. That value is consumed by the 4-term
+        // privacy gate in `commands::audio::start_audio_capture`; a `false`
+        // seed would bypass the pause veto if a future wiring change let a
+        // real `AudioContext` reach this state without going through
+        // `with_audio_runtime`.
+        use std::sync::atomic::Ordering;
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let config_manager =
+            ConfigManager::with_path(temp_dir.path().join("config.json")).expect("config manager");
+        let state = AudioRuntimeState::disabled(config_manager);
+
+        assert!(
+            state.capture_paused().load(Ordering::Relaxed),
+            "AudioRuntimeState::disabled() must seed capture_paused=true to block the privacy gate"
+        );
+        assert!(
+            state.consent_manager().is_none(),
+            "disabled() must not carry a real ConsentManager"
+        );
     }
 }
