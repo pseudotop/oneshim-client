@@ -2146,6 +2146,16 @@ async fn external_grpc_request_id_preserved_across_auth_reject() {
     // "timeout" / "error" / "failed"), which is why we filter by details
     // content rather than by `AuditStatus`.
     //
+    // The `!e.command_id.is_empty()` predicate disambiguates the two audit rows
+    // that share the same details JSON: `log_complete_with_time` (L1657 in
+    // CapturingAudit) populates `command_id` from the forwarded request-id,
+    // whereas `log_event` (L1615) hard-codes `String::new()`.  If
+    // CapturingAudit is ever refactored so that `log_event` also populates
+    // `command_id`, this filter will match both rows and `auth_failed.first()`
+    // will non-deterministically return either one.  In that case tighten the
+    // predicate (e.g., match on the event type string) or assert
+    // `auth_failed_count == 1` to catch the ambiguity at test time.
+    //
     // Drop the lock before any `.await`.
     let (auth_failed_count, auth_failed_cmd_id, entries_debug) = {
         let entries = capturing.entries.lock().unwrap();
