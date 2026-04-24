@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Revision**: rev-2 (Loop 2 Round 1 synthesis applied — see `2026-04-24-external-grpc-plan-review-synthesis.md`). 5 Critical + 13 Important findings from 3 review lenses resolved. Key fixes: Task 0.3/0.4 rewritten against actual audit architecture (AuditLogAdapter + audit_log table + std::sync::Mutex); Task 0.6 changed from "rewrite" to "additive signature"; Task 0.0 added for test-support helpers; Task 9.4 G3 convergence test now has complete code.
+
 **Goal:** Close audit-completeness gaps in the external gRPC server (x-request-id header, accurate grpc-status mapping) and make `streaming_enabled` + `LoadPolicy` thresholds live-reloadable — without affecting the loopback server.
 
 **Architecture:** Approach 2 (Layered abstraction, per spec §4.2): 6 new modules under `grpc/external/` + 8-9 modified files. Tower Layer stack: `request_id → auth → audit`. Lock-free reads via `ArcSwap<LiveSnapshot>`. Deferred audit completion via oneshot + `TrailerCapturingBody` wrapping `http_body::Body`, with a **header-first** fast path for trailers-only (tonic `Err(Status)`) responses.
@@ -382,14 +384,35 @@ EOF
 
 ---
 
-### Task 0.3: `AuditLogPort::entries_by_command_id` trait method + `NoopAudit` impl
+### Task 0.3 (rev-2): `AuditLogPort::entries_by_command_id` — trait + `AuditLogger` walker + `AuditLogAdapter` impl + ALL 7 test-double updates
 
-**Spec ref:** §5.9, D25. Addresses product-CR1 (no lookup by command_id).
+**Spec ref:** §5.9, D25. **Synthesis CR2 fix** — rev-1 missed the AuditLogAdapter impl and 4 out of 6 test-double updates.
+
+**Codebase reality**:
+- `AuditLogPort` is implemented by **`oneshim-automation::AuditLogAdapter`** (`audit.rs:337`), which wraps `Arc<RwLock<AuditLogger>>`
+- `AuditLogger` (same file) holds an in-memory `VecDeque<AuditEntry>` buffer — this is where the read happens in the MVP
+- 7 `impl AuditLogPort` sites total (1 PROD + 6 test doubles — all must add the new method):
+
+```
+Production:
+  crates/oneshim-automation/src/audit.rs:337            impl AuditLogAdapter
+
+Test doubles:
+  crates/oneshim-web/tests/external_grpc_integration.rs:95     NoopAudit
+  crates/oneshim-web/tests/external_grpc_integration.rs:1447   CapturingAudit
+  crates/oneshim-web/src/grpc/mod.rs:535                       NoopAudit (loopback)
+  crates/oneshim-web/src/grpc/external/auth_layer.rs:331       NoopAudit
+  crates/oneshim-web/src/grpc/external/audit_layer.rs:199      CapturingAudit
+  crates/oneshim-web/src/grpc/external/spawn_config.rs:116     NoopAudit
+  crates/oneshim-web/src/grpc/external/audit_bridge.rs:199     MockAuditLog
+```
+
+**MVP scope**: in-memory buffer lookup only. Storage-backed historical fall-through (using Task 0.4's SqliteStorage method) is a follow-up.
 
 **Files:**
-- Modify: `crates/oneshim-core/src/ports/audit_log.rs`
-- Modify: `crates/oneshim-web/src/grpc/external/spawn_config.rs` (NoopAudit test helper)
-- Modify: `crates/oneshim-web/src/grpc/external/audit_layer.rs` (CapturingAudit test helper)
+- Modify: `crates/oneshim-core/src/ports/audit_log.rs` (port trait)
+- Modify: `crates/oneshim-automation/src/audit.rs` (AuditLogger walker + AuditLogAdapter impl)
+- Modify: 7 test-double files listed above (one-line `vec![]` stub each)
 
 - [ ] **Step 1: Write failing test**
 
@@ -433,47 +456,120 @@ In `crates/oneshim-core/src/ports/audit_log.rs`, inside the `pub trait AuditLogP
     ) -> Vec<AuditEntry>;
 ```
 
-- [ ] **Step 4: Add stubs to NoopAudit + CapturingAudit helpers**
+- [ ] **Step 4: Add `AuditLogger::entries_by_command_id` method (in-memory walker)**
 
-In `crates/oneshim-web/src/grpc/external/spawn_config.rs` (inside `impl AuditLogPort for NoopAudit` block):
+In `crates/oneshim-automation/src/audit.rs`, inside `impl AuditLogger`, add (near `recent_entries` / `entries_by_status` sibling methods):
+```rust
+    /// In-memory buffer lookup by command_id (newest first).
+    /// Storage-backed historical lookup is a follow-up — current impl serves
+    /// only entries still in the VecDeque buffer (capacity 1000 by default).
+    pub fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+        self.buffer
+            .iter()
+            .rev()  // newest first
+            .filter(|e| e.command_id == command_id)
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+```
+
+- [ ] **Step 5: Add impl to `AuditLogAdapter`**
+
+In same file, inside `impl oneshim_core::ports::audit_log::AuditLogPort for AuditLogAdapter` (around L337), add (consistent with sibling delegations like `recent_entries`):
+```rust
+    async fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+        self.inner.read().await.entries_by_command_id(command_id, limit)
+    }
+```
+
+- [ ] **Step 6: Update all 6 test-double impls**
+
+Each of the 6 test doubles listed above needs this one-liner inside its `impl AuditLogPort` block:
 ```rust
     async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
         vec![]
     }
 ```
 
-In `crates/oneshim-web/src/grpc/external/audit_layer.rs` (inside the `CapturingAudit` test helper, in the `#[cfg(test)]` mod — find `impl AuditLogPort for CapturingAudit`):
-```rust
-    async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
-        vec![]
-    }
+Enumerate the exact locations before editing:
+```bash
+grep -rn "impl.*AuditLogPort for\|impl AuditLogPort for" \
+    crates/oneshim-web/ crates/oneshim-automation/
 ```
 
-Also in `crates/oneshim-web/tests/external_grpc_integration.rs`, if there's a `CapturingAudit` test helper, add the same method there.
+Verify exactly 7 matches (1 PROD + 6 test). Edit each test-double file; leave the PROD impl alone (handled in Step 5).
 
-- [ ] **Step 5: Run tests to verify compile + pass**
+**Special case — `CapturingAudit` structural update is deferred to Task 9.0** (it needs more than a stub — it must preserve real `command_id` + capture `grpc_status_code`). Add the `vec![]` stub here for compile correctness; Task 9.0 replaces it.
+
+- [ ] **Step 7: Write behavioral tests**
+
+In `crates/oneshim-automation/src/audit.rs` test module:
+```rust
+#[tokio::test]
+async fn audit_logger_entries_by_command_id_walks_buffer() {
+    let mut logger = AuditLogger::new(100, 10);
+    logger.log_start_if(AuditLevel::Basic, "cmd-X", "s1", "act1");
+    logger.log_start_if(AuditLevel::Basic, "cmd-Y", "s2", "act1");
+    logger.log_start_if(AuditLevel::Basic, "cmd-X", "s3", "act2");
+
+    let results = logger.entries_by_command_id("cmd-X", 10);
+    assert_eq!(results.len(), 2);
+    for r in &results {
+        assert_eq!(r.command_id, "cmd-X");
+    }
+}
+
+#[tokio::test]
+async fn audit_log_adapter_entries_by_command_id_delegates_to_logger() {
+    use tokio::sync::RwLock;
+    let logger = Arc::new(RwLock::new(AuditLogger::new(100, 10)));
+    logger.write().await.log_start_if(AuditLevel::Basic, "cmd-A", "s1", "act");
+    let adapter = AuditLogAdapter::new(logger);
+    let results = adapter.entries_by_command_id("cmd-A", 10).await;
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].command_id, "cmd-A");
+}
+```
+
+- [ ] **Step 8: Run full verification**
 
 ```bash
 cargo test -p oneshim-core --lib port_contract_tests
+cargo test -p oneshim-automation entries_by_command_id
 cargo check -p oneshim-web --features "grpc-dashboard-external,external-grpc-tools,test-support" --tests
 ```
-Expected: no compile errors.
+Expected: 2 new behavioral tests PASS + compile-time port-contract bound + all test-double stubs compile.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add crates/oneshim-core/src/ports/audit_log.rs \
-         crates/oneshim-web/src/grpc/external/spawn_config.rs \
+         crates/oneshim-automation/src/audit.rs \
+         crates/oneshim-web/tests/external_grpc_integration.rs \
+         crates/oneshim-web/src/grpc/mod.rs \
+         crates/oneshim-web/src/grpc/external/auth_layer.rs \
          crates/oneshim-web/src/grpc/external/audit_layer.rs \
-         crates/oneshim-web/tests/external_grpc_integration.rs
+         crates/oneshim-web/src/grpc/external/spawn_config.rs \
+         crates/oneshim-web/src/grpc/external/audit_bridge.rs
 git commit -m "$(cat <<'EOF'
-feat(audit-log): add AuditLogPort::entries_by_command_id trait method
+feat(audit-log): AuditLogPort::entries_by_command_id — in-memory walker + all 7 impls
 
-Per spec §5.9 / D25. Enables operator correlation lookup by x-request-id
-without raw sqlite3 access. Test helpers (NoopAudit, CapturingAudit)
-default to empty vec.
+Per spec §5.9 / D25. Adds:
+- AuditLogPort trait method (oneshim-core)
+- AuditLogger::entries_by_command_id in-memory VecDeque walker
+- AuditLogAdapter::entries_by_command_id async delegation
+- 6 test-double stubs (NoopAudit ×4 + CapturingAudit ×2 + MockAuditLog)
 
-Storage impl + REST endpoint land in Tasks 0.4 + 7.2 respectively.
+MVP scope: reads from in-memory buffer (capacity ~1000 by default).
+SqliteStorage fall-through (Task 0.4 direct method) is a follow-up.
+
+CapturingAudit gets stub here for compile correctness; Task 9.0
+replaces it with a structural update preserving real command_id +
+capturing grpc_status_code.
+
+Tests: port_contract compile-time bound (oneshim-core) +
+AuditLogger walker behavior + AuditLogAdapter delegation.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -482,34 +578,46 @@ EOF
 
 ---
 
-### Task 0.4: SqliteStorage `entries_by_command_id` impl + schema index
+### Task 0.4 (rev-2): SqliteStorage direct `entries_by_command_id` method + V32 index
 
-**Spec ref:** §5.9, D25.
+**Spec ref:** §5.9, D25. **Synthesis CR1 fix** — rev-1 targeted wrong table/column/Mutex API.
+
+**Codebase reality (verified 2026-04-24)**:
+- Table: **`audit_log`** (V25 — `migration/v25.rs:6`) NOT `audit_entries`
+- PK column: **`entry_id`** NOT `id`
+- `SqliteStorage.conn`: `Arc<std::sync::Mutex<Connection>>` (fallible lock via `LockResult`)
+- `SqliteStorage` does NOT `impl AuditLogPort` — exposes direct sync methods; the Adapter (oneshim-automation) owns the port impl (Task 0.3)
+- Existing write: `save_audit_entry` sync, `let Ok(conn) = self.conn.lock() else { ... }` pattern (`sqlite/mod.rs:255`)
+- Current `CURRENT_VERSION: u32 = 31` (`migration/mod.rs:36`)
+
+**Scope**: add a **direct sync method** on SqliteStorage (not a trait impl). Used internally by the AuditLogAdapter as a future fall-through to storage (not wired in rev-2 — Adapter serves from in-memory buffer per Task 0.3 MVP).
 
 **Files:**
-- Modify: `crates/oneshim-storage/src/sqlite/mod.rs` (or the existing audit submodule)
-- Modify: `crates/oneshim-storage/src/migration/` (new migration file)
+- Create: `crates/oneshim-storage/src/migration/v32_audit_log_command_id_index.rs`
+- Modify: `crates/oneshim-storage/src/migration/mod.rs` (add mod + bump CURRENT_VERSION)
+- Modify: `crates/oneshim-storage/src/sqlite/mod.rs` (add direct method)
 
-- [ ] **Step 1: Check schema state**
+- [ ] **Step 1: Phase 9 migration-version collision check**
 
 ```bash
-grep -rn "audit_entries" crates/oneshim-storage/src/migration/ | head
+git fetch origin
+git show origin/feature/phase9-tracking-schedule:crates/oneshim-storage/src/migration/mod.rs 2>/dev/null | grep CURRENT_VERSION
 ```
-Identify the migration file that creates the `audit_entries` table; confirm it has a `command_id` column.
+Expected at plan-time: `pub const CURRENT_VERSION: u32 = 31;` — no collision. If Phase 9 has bumped to 32+ by consume time, change this task to V33 + reserve V32 via empty stub.
 
-- [ ] **Step 2: Add new migration file**
+- [ ] **Step 2: Add migration file**
 
-Create `crates/oneshim-storage/src/migration/vNN_audit_command_id_index.rs` (NN = next version number, currently 31 → use 32 per spec references to `CURRENT_VERSION`):
+Create `crates/oneshim-storage/src/migration/v32_audit_log_command_id_index.rs`:
 
 ```rust
-//! Migration V32: add index on audit_entries.command_id for D25 entries_by_command_id queries.
+//! Migration V32: add partial index on audit_log.command_id for D25 entries_by_command_id queries.
 
 use rusqlite::Connection;
 
 pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS idx_audit_entries_command_id
-         ON audit_entries (command_id) WHERE command_id IS NOT NULL;",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_command_id
+         ON audit_log (command_id) WHERE command_id IS NOT NULL;",
     )?;
     Ok(())
 }
@@ -520,140 +628,218 @@ Register in `crates/oneshim-storage/src/migration/mod.rs`:
 - Bump `pub const CURRENT_VERSION: u32 = 32;` (was 31)
 - Add the migration call in the version-dispatch match arm
 
-- [ ] **Step 3: Write failing test**
+- [ ] **Step 3: Register migration**
 
-In `crates/oneshim-storage/src/sqlite/mod.rs` (test module), add:
+In `crates/oneshim-storage/src/migration/mod.rs`:
+- Add `mod v32_audit_log_command_id_index;`
+- Bump `pub const CURRENT_VERSION: u32 = 32;` (was 31)
+- Extend the version-dispatch with:
 ```rust
-#[tokio::test]
-async fn entries_by_command_id_returns_matching_rows_newest_first() {
-    let storage = SqliteStorage::open_in_memory(30).expect("sqlite");
+if current < 32 {
+    v32_audit_log_command_id_index::migrate(conn)?;
+    tracing::info!("migration V32 applied: idx_audit_log_command_id");
+}
+```
+(Match existing dispatch shape — grep `::migrate(conn)?` to locate.)
 
-    // Insert 3 entries with command_id "cmd-X" + 2 with different IDs.
+- [ ] **Step 4: Write failing tests**
+
+In `crates/oneshim-storage/src/sqlite/mod.rs` (test module):
+```rust
+#[test]
+fn entries_by_command_id_returns_matching_rows_newest_first() {
+    use chrono::Utc;
+    use oneshim_core::models::audit::{AuditEntry, AuditStatus};
+
+    let storage = SqliteStorage::open_in_memory(30).expect("sqlite open");
+
+    // 3 entries with command_id "cmd-X" (descending timestamps)
     for i in 0..3 {
         let entry = AuditEntry {
-            id: format!("id-{i}"),
-            command_id: "cmd-X".to_string(),
-            // ... other fields with sensible defaults; use audit_entry_fixture() if available
+            entry_id: format!("id-X-{i}"),
+            timestamp: Utc::now() - chrono::Duration::milliseconds(i as i64),
             session_id: "s".to_string(),
+            command_id: "cmd-X".to_string(),
             action_type: "test".to_string(),
-            details: "{}".to_string(),
             status: AuditStatus::Completed,
-            execution_time_ms: 0,
-            timestamp: chrono::Utc::now() - chrono::Duration::seconds(i),
+            details: None,
+            execution_time_ms: Some(10),
         };
-        storage.log_entry(entry).await;
+        storage.save_audit_entry(&entry);
     }
+    // 2 entries with command_id "cmd-Y"
     for i in 0..2 {
         let entry = AuditEntry {
-            id: format!("id-Y-{i}"),
-            command_id: "cmd-Y".to_string(),
+            entry_id: format!("id-Y-{i}"),
+            timestamp: Utc::now(),
             session_id: "s".to_string(),
+            command_id: "cmd-Y".to_string(),
             action_type: "test".to_string(),
-            details: "{}".to_string(),
             status: AuditStatus::Completed,
-            execution_time_ms: 0,
-            timestamp: chrono::Utc::now(),
+            details: None,
+            execution_time_ms: Some(10),
         };
-        storage.log_entry(entry).await;
+        storage.save_audit_entry(&entry);
     }
 
-    let results = storage.entries_by_command_id("cmd-X", 10).await;
-    assert_eq!(results.len(), 3, "must return exactly 3 matching rows");
+    let results = storage.entries_by_command_id("cmd-X", 10);
+    assert_eq!(results.len(), 3);
     for r in &results {
         assert_eq!(r.command_id, "cmd-X");
     }
-    // Newest first
     for w in results.windows(2) {
-        assert!(w[0].timestamp >= w[1].timestamp, "must be ordered newest first");
+        assert!(w[0].timestamp >= w[1].timestamp, "ordered newest first");
     }
 }
 
-#[tokio::test]
-async fn entries_by_command_id_empty_for_no_match() {
+#[test]
+fn entries_by_command_id_empty_for_no_match() {
     let storage = SqliteStorage::open_in_memory(30).expect("sqlite");
-    let results = storage.entries_by_command_id("nonexistent", 10).await;
-    assert!(results.is_empty());
+    assert!(storage.entries_by_command_id("nonexistent", 10).is_empty());
 }
 
-#[tokio::test]
-async fn entries_by_command_id_respects_limit() {
+#[test]
+fn entries_by_command_id_respects_limit() {
+    use chrono::Utc;
+    use oneshim_core::models::audit::{AuditEntry, AuditStatus};
     let storage = SqliteStorage::open_in_memory(30).expect("sqlite");
     for i in 0..10 {
-        storage.log_entry(AuditEntry { /* ... command_id: "cmd-Z" ... */ }).await;
+        let entry = AuditEntry {
+            entry_id: format!("id-Z-{i}"),
+            timestamp: Utc::now(),
+            session_id: "s".to_string(),
+            command_id: "cmd-Z".to_string(),
+            action_type: "test".to_string(),
+            status: AuditStatus::Completed,
+            details: None,
+            execution_time_ms: Some(5),
+        };
+        storage.save_audit_entry(&entry);
     }
-    let results = storage.entries_by_command_id("cmd-Z", 3).await;
-    assert_eq!(results.len(), 3, "must cap at limit");
+    let results = storage.entries_by_command_id("cmd-Z", 3);
+    assert_eq!(results.len(), 3);
 }
 ```
 
-(Adjust to use existing helpers like `audit_entry_fixture` if present.)
-
-- [ ] **Step 4: Run tests to verify failure**
+- [ ] **Step 5: Run tests to verify failure**
 
 ```bash
 cargo test -p oneshim-storage entries_by_command_id
 ```
-Expected: compile error or method-not-found.
+Expected: compile error "no method `entries_by_command_id` found".
 
-- [ ] **Step 5: Implement**
+- [ ] **Step 6: Implement direct method on SqliteStorage**
 
-In `crates/oneshim-storage/src/sqlite/` (the audit submodule), add inside `impl AuditLogPort for SqliteStorage`:
+In `crates/oneshim-storage/src/sqlite/mod.rs`, near `save_audit_entry` (L255), add (note: **not** inside `impl AuditLogPort` — `SqliteStorage` doesn't impl the port):
 ```rust
-    async fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
-        let command_id = command_id.to_string();
-        let conn = self.conn.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn = conn.lock();
-            let mut stmt = match conn.prepare(
-                "SELECT id, command_id, session_id, action_type, details, status,
-                        execution_time_ms, timestamp
-                 FROM audit_entries
-                 WHERE command_id = ?1
-                 ORDER BY timestamp DESC
-                 LIMIT ?2"
-            ) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(err = %e, "audit: entries_by_command_id prepare failed");
-                    return Vec::new();
-                }
-            };
-            let rows = match stmt.query_map(
-                rusqlite::params![&command_id, limit as i64],
-                map_audit_row,  // assume existing row-mapping helper
-            ) {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!(err = %e, "audit: entries_by_command_id query failed");
-                    return Vec::new();
-                }
-            };
-            rows.filter_map(|r| r.ok()).collect()
-        })
-        .await
-        .unwrap_or_default()
+impl SqliteStorage {
+    // ... existing methods ...
+
+    /// Return audit entries whose `command_id` equals the provided value, newest first.
+    ///
+    /// Synchronous to match the existing `save_audit_entry` pattern (no `spawn_blocking`).
+    /// Async callers wrap at the Adapter layer. Infallible — logs `warn!` on SQL error,
+    /// returns `Vec::new()`.
+    pub fn entries_by_command_id(
+        &self,
+        command_id: &str,
+        limit: usize,
+    ) -> Vec<oneshim_core::models::audit::AuditEntry> {
+        use oneshim_core::models::audit::{AuditEntry, AuditStatus};
+        let Ok(conn) = self.conn.lock() else {
+            tracing::warn!("audit: entries_by_command_id failed to acquire SQLite lock");
+            return Vec::new();
+        };
+        let mut stmt = match conn.prepare(
+            "SELECT entry_id, timestamp, session_id, command_id, action_type,
+                    status, details, execution_time_ms
+             FROM audit_log
+             WHERE command_id = ?1
+             ORDER BY timestamp DESC
+             LIMIT ?2",
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(err = %e, "audit: entries_by_command_id prepare failed");
+                return Vec::new();
+            }
+        };
+        let mapped = stmt.query_map(
+            rusqlite::params![command_id, limit as i64],
+            |row| {
+                let ts_str: String = row.get("timestamp")?;
+                let timestamp = chrono::DateTime::parse_from_rfc3339(&ts_str)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        1, rusqlite::types::Type::Text, Box::new(e)))?;
+                let status_str: String = row.get("status")?;
+                let status = match status_str.as_str() {
+                    "Completed" => AuditStatus::Completed,
+                    "Failed" => AuditStatus::Failed,
+                    "Denied" => AuditStatus::Denied,
+                    "Timeout" => AuditStatus::Timeout,
+                    "Started" => AuditStatus::Started,
+                    _ => AuditStatus::Completed,  // forward-compat default
+                };
+                let etime: Option<i64> = row.get("execution_time_ms").ok();
+                Ok(AuditEntry {
+                    entry_id: row.get("entry_id")?,
+                    timestamp,
+                    session_id: row.get("session_id")?,
+                    command_id: row.get("command_id")?,
+                    action_type: row.get("action_type")?,
+                    status,
+                    details: row.get("details").ok(),
+                    execution_time_ms: etime.map(|v| v as u64),
+                })
+            },
+        );
+        match mapped {
+            Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                tracing::warn!(err = %e, "audit: entries_by_command_id query_map failed");
+                Vec::new()
+            }
+        }
     }
+}
 ```
 
-(Use existing `map_audit_row` helper; if it doesn't exist under that name, check the surrounding impl to find the equivalent. Or inline the row extraction matching `log_entry`'s format.)
+**Row-mapping reuse note**: if `save_audit_entry`'s read-path (for `recent_entries` or similar) already has a reusable row-mapper helper, import it. Run `grep -n "AuditEntry {" crates/oneshim-storage/src/sqlite/mod.rs` to locate any reusable mapper.
 
-- [ ] **Step 6: Run tests to verify pass**
+- [ ] **Step 7: Run tests to verify pass**
 
 ```bash
 cargo test -p oneshim-storage entries_by_command_id
+cargo test -p oneshim-storage --test migration
 ```
-Expected: 3 tests PASS.
+Expected: 3 new tests PASS + migration to V32 applies cleanly.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add crates/oneshim-storage/src/sqlite/ crates/oneshim-storage/src/migration/
+git add crates/oneshim-storage/src/sqlite/mod.rs \
+         crates/oneshim-storage/src/migration/mod.rs \
+         crates/oneshim-storage/src/migration/v32_audit_log_command_id_index.rs
 git commit -m "$(cat <<'EOF'
-feat(sqlite-storage): entries_by_command_id impl + schema V32 index
+feat(sqlite-storage): entries_by_command_id direct method + V32 partial index
 
-Per spec §5.9 / D25. Adds index on audit_entries.command_id (partial
-index skipping NULL) to make lookups O(log n). Migration V32 creates
-it. Infallible impl (errors logged, return empty vec).
+Per spec §5.9 / D25. Direct sync method on SqliteStorage (not an
+AuditLogPort trait impl — SqliteStorage doesn't impl the port; the
+AuditLogAdapter does per Task 0.3). Reads from actual audit_log table
+(V25 schema). Matches existing save_audit_entry sync pattern with
+fallible std::sync::Mutex lock handling.
+
+Migration V32 adds idx_audit_log_command_id partial index
+(WHERE command_id IS NOT NULL) for O(log n) lookups.
+
+MVP wiring: not connected to AuditLogAdapter yet — the Adapter
+serves from in-memory buffer per Task 0.3. Storage fall-through
+is a follow-up.
+
+Phase 9 coexistence: V32 verified non-colliding with
+origin/feature/phase9-tracking-schedule (both at V31 baseline).
+If Phase 9 takes V32 before this lands, rebase to V33.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
