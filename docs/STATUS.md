@@ -27,11 +27,11 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## Current Snapshot (2026-04-20)
+## Current Snapshot (2026-04-24)
 
 ### Version
 
-v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
+v0.4.39-rc.1 (Phase 9 Tracking Schedule privacy primitive in progress; ADR-019 + Phase 5-D8 shipped)
 
 ### Workspace
 
@@ -49,7 +49,7 @@ v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **3,651 passed, 0 failed, 21 ignored** (post-ADR-019 + drift-audit + Follow-up baseline. Cumulative growth from prior 3,455: ADR-019 Error Code Infrastructure + C5 Bedrock skip + post-merge drift audit iter 87~214 added ~196 tests — 85+ HTTP status-mapping regression tests across 16 dispatchers, ~38 Internal→specific-variant re-route tests, 4 subprocess_kind (iter-149) + 3 LLM envelope-extraction (iter-151) + 10 `IpcError` contract tests (iter-196 Follow-up #1) + other targeted regression guards. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`. **Not counted in 3,651**: 6 `map_challenge_status_to_error` tests (iter-195 Follow-up #5) are feature-gated behind `lan-sync` — run `cargo test -p oneshim-network --features lan-sync --lib sync::lan_transport::auth` to include them.)
+- `cargo test --workspace`: pass — **3,798 passed, 0 failed, 21 ignored** (Phase 9 PR-A Tracking Schedule adds +147 tests over the prior 3,651 baseline: A.2 serde+validation 12, A.4 pure-fn contracts 16, A.6 migration tests 3, A.8 scheduler gating 21, A.10 uploader suppression 3, A.13 IPC contract 5, A.15 REST handler 4, A.17 tray-watch 7, A.18 notifier integration 4, A.19 frontend Vitest 7 — plus additional coverage from helper modules. Prior baseline cumulative growth: ADR-019 Error Code Infrastructure + C5 Bedrock skip + post-merge drift audit iter 87~214 added ~196 tests — 85+ HTTP status-mapping regression tests across 16 dispatchers, ~38 Internal→specific-variant re-route tests, 4 subprocess_kind (iter-149) + 3 LLM envelope-extraction (iter-151) + 10 `IpcError` contract tests (iter-196 Follow-up #1) + other targeted regression guards. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`. **Not counted in 3,798**: 6 `map_challenge_status_to_error` tests (iter-195 Follow-up #5) are feature-gated behind `lan-sync` — run `cargo test -p oneshim-network --features lan-sync --lib sync::lan_transport::auth` to include them.)
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass

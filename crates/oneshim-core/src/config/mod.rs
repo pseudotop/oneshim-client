@@ -66,6 +66,11 @@ pub struct AppConfig {
     pub audio: AudioConfig,
     #[serde(default)]
     pub focus_auto: FocusAutoConfig,
+    #[serde(default)]
+    pub external_grpc: ExternalGrpcConfig,
+    /// Tracking schedule — wall-clock mute windows (Phase 9 PR-A).
+    #[serde(default)]
+    pub tracking_schedule: TrackingScheduleConfig,
 }
 
 // AppConfig impl
@@ -122,6 +127,8 @@ impl AppConfig {
             suggestions: SuggestionConfig::default(),
             audio: AudioConfig::default(),
             focus_auto: FocusAutoConfig::default(),
+            external_grpc: ExternalGrpcConfig::default(),
+            tracking_schedule: TrackingScheduleConfig::default(),
         }
     }
 

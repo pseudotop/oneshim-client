@@ -11,6 +11,7 @@ pub mod coaching;
 pub mod coaching_template;
 pub mod context;
 pub mod daily_digest;
+pub mod dashboard_streaming;
 pub mod embedding;
 pub mod event;
 pub mod focused_element;

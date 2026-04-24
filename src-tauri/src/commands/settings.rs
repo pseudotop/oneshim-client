@@ -52,6 +52,7 @@ pub(crate) const ALLOWED_KEYS: &[&str] = &[
     "analysis",
     "audio",
     "coaching",
+    "tracking_schedule",
 ];
 
 #[cfg(test)]
@@ -356,6 +357,7 @@ mod tests {
             "analysis",
             "audio",
             "coaching",
+            "tracking_schedule",
         ];
         assert_eq!(ALLOWED_KEYS, expected.as_slice());
     }

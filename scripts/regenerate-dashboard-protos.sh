@@ -64,7 +64,10 @@ $(for p in "${PROTOS[@]}"; do echo "        std::path::PathBuf::from(\"$p\"),"; 
 
     tonic_prost_build::configure()
         .build_server(true)
-        .build_client(false)
+        // D13-v2 integration test needs client stubs to exercise the server
+        // end-to-end. Client code only links in when the test binary builds;
+        // production release binaries tree-shake it if unused.
+        .build_client(true)
         .out_dir(&out_dir)
         .compile_protos(&protos, std::slice::from_ref(&proto_root))
         .expect("Failed to compile dashboard protos");

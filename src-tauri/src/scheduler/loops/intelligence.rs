@@ -1,4 +1,5 @@
 use chrono::Utc;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -20,6 +21,9 @@ impl Scheduler {
         let storage_ref = self.storage.clone();
         let sqlite_ref = self.sqlite_storage.clone();
         let config_manager = self.config_manager.clone();
+        // D13: 4-term privacy gate DI.
+        let consent_mgr_a = self.consent_manager.clone();
+        let capture_paused_a = self.capture_paused.clone();
 
         tokio::spawn(async move {
             let analyzer = match analyzer {
@@ -42,6 +46,19 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
+                        // D13: 4-term composite gate (CONS-PC02 / §3.3 A.9).
+                        let consent = consent_mgr_a.as_ref()
+                            .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                            .unwrap_or_default();
+                        let paused = capture_paused_a.load(Ordering::Relaxed);
+                        let permitted = config_manager.as_ref()
+                            .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                            .unwrap_or(!paused);
+                        if !permitted {
+                            debug!("analysis loop: capture gate closed (TS/consent/paused) — skipping tick");
+                            continue;
+                        }
+
                         // Read current config from ConfigManager (the single source
                         // of truth also written to by update_analysis_config).
                         let current_config = config_manager
@@ -126,6 +143,10 @@ impl Scheduler {
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let focus8 = self.focus_analyzer.clone();
+        // D13: 4-term privacy gate DI.
+        let config_mgr_f = self.config_manager.clone();
+        let consent_mgr_f = self.consent_manager.clone();
+        let capture_paused_f = self.capture_paused.clone();
 
         tokio::spawn(async move {
             let focus = match focus8 {
@@ -140,6 +161,18 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
+                        // D13: 4-term composite gate (CONS-PC02 / §3.3 A.9).
+                        let consent = consent_mgr_f.as_ref()
+                            .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                            .unwrap_or_default();
+                        let paused = capture_paused_f.load(Ordering::Relaxed);
+                        let permitted = config_mgr_f.as_ref()
+                            .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                            .unwrap_or(!paused);
+                        if !permitted {
+                            debug!("focus loop: capture gate closed (TS/consent/paused) — skipping tick");
+                            continue;
+                        }
                         focus.analyze_periodic().await;
                     }
                     _ = shutdown_rx.changed() => {
@@ -164,6 +197,10 @@ impl Scheduler {
     ) -> tokio::task::JoinHandle<()> {
         let coaching = self.coaching_engine.clone();
         let _notif = self.notification_manager.clone();
+        // D13: 4-term privacy gate DI.
+        let config_mgr_c = self.config_manager.clone();
+        let consent_mgr_c = self.consent_manager.clone();
+        let capture_paused_c = self.capture_paused.clone();
 
         tokio::spawn(async move {
             let engine = match coaching {
@@ -181,6 +218,19 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
+                        // D13: 4-term composite gate (CONS-PC02 / §3.3 A.9).
+                        // Coaching during an opt-out window is invasive (R3.I4).
+                        let consent = consent_mgr_c.as_ref()
+                            .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                            .unwrap_or_default();
+                        let paused = capture_paused_c.load(Ordering::Relaxed);
+                        let permitted = config_mgr_c.as_ref()
+                            .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                            .unwrap_or(!paused);
+                        if !permitted {
+                            debug!("coaching loop: capture gate closed (TS/consent/paused) — skipping tick");
+                            continue;
+                        }
                         // Read current regime context from the monitor loop (C1)
                         let snap = shared_regime.snapshot();
                         engine.evaluate_implicit_feedback(
