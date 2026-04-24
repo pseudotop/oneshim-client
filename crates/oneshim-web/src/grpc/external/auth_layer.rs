@@ -138,6 +138,7 @@ where
                                         None,
                                         None,
                                         Some("invalid_jwt"),
+                                        None,
                                     )
                                     .await;
                             });
@@ -167,6 +168,7 @@ where
                                     None,
                                     None,
                                     Some("missing_token"),
+                                    None,
                                 )
                                 .await;
                         });
@@ -209,6 +211,7 @@ where
                                         None,
                                         None,
                                         Some("fingerprint_mismatch"),
+                                        None,
                                     )
                                     .await;
                             });
@@ -238,6 +241,7 @@ where
                                     None,
                                     None,
                                     Some("missing_cert"),
+                                    None,
                                 )
                                 .await;
                         });

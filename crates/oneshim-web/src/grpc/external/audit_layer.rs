@@ -114,6 +114,7 @@ where
                     None,
                     None,
                     None,
+                    None,
                 )
                 .await;
 
@@ -136,6 +137,8 @@ where
                     status,
                     duration,
                     msg_count_opt,
+                    None,
+                    None,
                     None,
                 )
                 .await;
