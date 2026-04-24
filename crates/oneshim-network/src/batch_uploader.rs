@@ -87,6 +87,20 @@ impl BatchUploader {
         self
     }
 
+    /// Attach a suppression predicate that gates each `flush()` call.
+    ///
+    /// When the predicate returns `true`, `flush()` skips draining the queue
+    /// and returns `Ok(0)`. When it returns `false`, normal flush logic runs.
+    ///
+    /// # A.10 stub — A.11 implements storage + flush gate
+    ///
+    /// This method accepts and discards the predicate; the stub body returns
+    /// `self` unchanged so that A.10 TDD-red tests compile and exhibit the
+    /// expected assertion failures (flush drains despite predicate=true).
+    pub fn with_suppression_predicate(self, _pred: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        self
+    }
+
     /// Enqueue an event for batch upload.
     ///
     /// Note: Under heavy concurrent enqueue pressure, the queue may briefly
