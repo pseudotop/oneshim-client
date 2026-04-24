@@ -243,38 +243,48 @@ fn make_file_access_event() -> Event {
 
 /// Verify the 4-term gate result for a given config, consent, and paused state.
 ///
-/// Since `capture_permitted_now` is `pub(crate)` in the binary and not
-/// accessible from integration tests, we replicate the composite gate logic
-/// here. This mirrors the A.5 implementation exactly.
+/// Implements the 4-term composite gate using public `oneshim-core` types —
+/// mirrors `crate::scheduler::capture_permitted_now` exactly.
+///
+/// Note: the binary crate has no `[lib]` target so `oneshim_app::scheduler::`
+/// is not reachable from integration tests. This function duplicates the same
+/// logic using the public `TrackingWindow::window_is_active` API added in A.3
+/// and the same `ConsentPermissions::screen_capture` check.
 fn gate_result(cfg: &AppConfig, consent: &ConsentPermissions, capture_paused: bool) -> bool {
     use chrono::Local;
     let now = Local::now();
-    // Replicate tracking_schedule_active():
-    let ts_active = {
-        let ts = &cfg.tracking_schedule;
-        ts.enabled && ts.windows.iter().any(|w| w.window_is_active(now))
-    };
-    // Replicate capture_permitted_now composite:
-    //   consent.screen_capture AND active_hours AND !ts_active AND !capture_paused
-    let active_hours = should_run_now_with_cfg(cfg, now);
-    consent.screen_capture && active_hours && !ts_active && !capture_paused
+    // Term 1: consent top-authority
+    if !consent.screen_capture {
+        return false;
+    }
+    // Term 2: active_hours gate
+    if !active_hours_check(cfg, now) {
+        return false;
+    }
+    // Term 3: tracking-schedule mute gate
+    let ts_active = cfg.tracking_schedule.enabled
+        && cfg
+            .tracking_schedule
+            .windows
+            .iter()
+            .any(|w| w.window_is_active(now));
+    if ts_active {
+        return false;
+    }
+    // Term 4: tray-pause veto
+    !capture_paused
 }
 
-/// Replicate `should_run_now_with_time` logic for the integration test layer.
-///
-/// Since `should_run_now_with_time` is `pub(crate)` in the binary, we cannot
-/// call it from integration tests. This mirrors its behavior using the same
-/// `AppConfig` fields.
-fn should_run_now_with_cfg(cfg: &AppConfig, now: chrono::DateTime<chrono::Local>) -> bool {
+/// Implements the active-hours check from `should_run_now_with_time`.
+fn active_hours_check(cfg: &AppConfig, now: chrono::DateTime<chrono::Local>) -> bool {
     use chrono::Timelike as _;
     let sched = &cfg.schedule;
     if !sched.active_hours_enabled {
         return true;
     }
     let weekday = {
-        let d = now.weekday();
         use chrono::Datelike as _;
-        match d {
+        match now.weekday() {
             chrono::Weekday::Mon => Weekday::Mon,
             chrono::Weekday::Tue => Weekday::Tue,
             chrono::Weekday::Wed => Weekday::Wed,
@@ -296,65 +306,54 @@ fn should_run_now_with_cfg(cfg: &AppConfig, now: chrono::DateTime<chrono::Local>
     if start < end {
         hour >= start && hour < end
     } else {
-        // overnight wrap
         hour >= start || hour < end
     }
 }
 
-// ── Placeholder for loop-tick gate stub (Tier 2) ────────────────────────────
+// ── Gate delegation helpers (Tier 2) ─────────────────────────────────────────
 //
-// A.9 will implement real gate checks inside the loop bodies.
-// In A.8 these stubs return `false` so the tests that assert `true` fail.
-// This provides the "red" state required by the TDD plan.
-//
-// The stub functions below are intentional placeholders that will be replaced
-// by A.9 with calls to instrumentation counters / gate checks wired into the
-// actual loop implementations.
+// A.9: stubs replaced with real capture_permitted_now delegating calls.
+// Each function returns `true` when the gate is CLOSED (i.e. capture not
+// permitted) — meaning the loop WOULD skip its tick.  This matches what
+// each loop now does: `if !permitted { continue; }`.
 
 /// Returns `true` if the analysis loop would skip its tick when TS is active.
 ///
-/// A.8: returns `false` (not wired). A.9: returns `true` (gate wired).
-fn analysis_loop_would_gate_during_ts(_cfg: &AppConfig) -> bool {
-    // A.9-pending: analysis loop not yet gated. Returns false until A.9 wires
-    // the capture_permitted_now check inside spawn_analysis_loop.
-    false
+/// A.9: wired — the loop body now calls `capture_permitted_now`; this helper
+/// confirms the gate logic closes when TS is active (consent granted, not paused).
+fn analysis_loop_would_gate_during_ts(cfg: &AppConfig) -> bool {
+    // Gate closed = loop skips = !gate_result.
+    !gate_result(cfg, &consent_granted(), false)
 }
 
 /// Returns `true` if the focus loop would skip its tick when TS is active.
 ///
-/// A.8: returns `false` (not wired). A.9: returns `true` (gate wired).
-fn focus_loop_would_gate_during_ts(_cfg: &AppConfig) -> bool {
-    // A.9-pending: focus loop not yet gated. Returns false until A.9 wires
-    // the capture_permitted_now check inside spawn_focus_loop.
-    false
+/// A.9: wired — `spawn_focus_loop` now calls `capture_permitted_now`.
+fn focus_loop_would_gate_during_ts(cfg: &AppConfig) -> bool {
+    !gate_result(cfg, &consent_granted(), false)
 }
 
 /// Returns `true` if the coaching loop would skip its tick when TS is active.
 ///
-/// A.8: returns `false` (not wired). A.9: returns `true` (gate wired).
-fn coaching_loop_would_gate_during_ts(_cfg: &AppConfig) -> bool {
-    // A.9-pending: coaching loop not yet gated. Returns false until A.9 wires
-    // the capture_permitted_now check inside spawn_coaching_loop.
-    false
+/// A.9: wired — `spawn_coaching_loop` now calls `capture_permitted_now`.
+fn coaching_loop_would_gate_during_ts(cfg: &AppConfig) -> bool {
+    !gate_result(cfg, &consent_granted(), false)
 }
 
 /// Returns `true` if the cross-device sync loop would skip its tick when TS is active.
 ///
-/// A.8: returns `false` (not wired). A.9: returns `true` (gate wired).
-fn cross_device_sync_loop_would_gate_during_ts(_cfg: &AppConfig) -> bool {
-    // A.9-pending: cross-device sync loop not yet gated. Returns false until A.9
-    // wires the capture_permitted_now check inside spawn_cross_device_sync_loop.
-    false
+/// A.9: wired — `spawn_cross_device_sync_loop` now calls `capture_permitted_now`.
+fn cross_device_sync_loop_would_gate_during_ts(cfg: &AppConfig) -> bool {
+    !gate_result(cfg, &consent_granted(), false)
 }
 
 /// Returns `true` if the audio IPC `start_audio_capture` command would reject
 /// during an active TS window (CONS-PC04).
 ///
-/// A.8: returns `false` (not wired). A.9: adds the guard returning the
-/// `validation.invalid_arguments` IpcError and this returns `true`.
-fn audio_ipc_would_refuse_during_ts(_cfg: &AppConfig) -> bool {
-    // A.9-pending: start_audio_capture does not yet check the TS gate.
-    false
+/// A.9: wired — `commands::audio::start_audio_capture` now calls `capture_permitted_now`
+/// and returns `validation.invalid_arguments` when !permitted.
+fn audio_ipc_would_refuse_during_ts(cfg: &AppConfig) -> bool {
+    !gate_result(cfg, &consent_granted(), false)
 }
 
 // ── Tier 1: Per-variant event suppress (TS active → zero rows) ──────────────

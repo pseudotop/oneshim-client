@@ -19,6 +19,28 @@ fn audio_capture_not_available() -> IpcError {
 pub async fn start_audio_capture(
     state: tauri::State<'_, AudioRuntimeState>,
 ) -> Result<(), IpcError> {
+    // CONS-PC04 / D13: 4-term composite gate — reject when capture is not permitted.
+    // Uses snapshot() (O(1) Arc-clone) per CONS-PI13; NOT get() (deep-clone 37 sections).
+    {
+        use std::sync::atomic::Ordering;
+        let consent = state
+            .consent_manager()
+            .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+            .unwrap_or_default();
+        let paused = state.capture_paused().load(Ordering::Relaxed);
+        let permitted = crate::scheduler::capture_permitted_now(
+            &state.config_manager().snapshot(),
+            &consent,
+            paused,
+        );
+        if !permitted {
+            return Err(IpcError::new(
+                "validation.invalid_arguments",
+                "Audio capture unavailable — privacy gate active (consent/hours/schedule/pause).",
+            ));
+        }
+    }
+
     let capture = state
         .audio()
         .capture

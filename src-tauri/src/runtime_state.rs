@@ -142,13 +142,24 @@ impl AiSessionRuntimeState {
 /// Feature-scoped Tauri managed state for audio capture and STT commands.
 pub struct AudioRuntimeState {
     config_manager: ConfigManager,
+    /// ConsentManager for GDPR-compliant gate check in start_audio_capture (CONS-PC04 / D13).
+    consent_manager: Option<Arc<ConsentManager>>,
+    /// Tray-pause veto flag for start_audio_capture gate (CONS-PC02 / D13).
+    capture_paused: Arc<AtomicBool>,
     audio: AudioContext,
 }
 
 impl AudioRuntimeState {
-    pub(crate) fn new(config_manager: ConfigManager, audio: AudioContext) -> Self {
+    pub(crate) fn new(
+        config_manager: ConfigManager,
+        consent_manager: Option<Arc<ConsentManager>>,
+        capture_paused: Arc<AtomicBool>,
+        audio: AudioContext,
+    ) -> Self {
         Self {
             config_manager,
+            consent_manager,
+            capture_paused,
             audio,
         }
     }
@@ -156,12 +167,22 @@ impl AudioRuntimeState {
     pub(crate) fn disabled(config_manager: ConfigManager) -> Self {
         Self::new(
             config_manager,
+            None,
+            Arc::new(AtomicBool::new(false)),
             AudioContext::disabled(std::env::temp_dir().join("oneshim-audio-models")),
         )
     }
 
     pub(crate) fn config_manager(&self) -> &ConfigManager {
         &self.config_manager
+    }
+
+    pub(crate) fn consent_manager(&self) -> Option<&Arc<ConsentManager>> {
+        self.consent_manager.as_ref()
+    }
+
+    pub(crate) fn capture_paused(&self) -> &Arc<AtomicBool> {
+        &self.capture_paused
     }
 
     pub(crate) fn audio(&self) -> &AudioContext {

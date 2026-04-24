@@ -1091,6 +1091,9 @@ impl AppRuntimeLaunchBuilder {
         );
         let audio_runtime_state = AudioRuntimeState::new(
             config_manager.clone(),
+            // D13 (CONS-PC04): pass ConsentManager + capture_paused for start_audio_capture gate.
+            Some(capture_consent_manager.clone()),
+            capture_paused.clone(),
             AudioContext {
                 capture: audio_capture,
                 stt_engine: Arc::new(tokio::sync::RwLock::new(stt_engine)),
