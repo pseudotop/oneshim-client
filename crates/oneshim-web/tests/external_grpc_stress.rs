@@ -190,8 +190,10 @@ fn make_jwt_stress_config(
 //
 // Strategy: caller passes bind_addr with port 0; we replicate the bind ourselves
 // to discover the OS-assigned port, drop our listener, then pass the resolved
-// addr to serve_external. Race window between drop + serve_external bind is
-// covered by SO_REUSEADDR in the same process.
+// addr to serve_external. The window between drop and rebind is tight (same
+// process, same thread, no TIME_WAIT because drop() immediately releases the
+// port) but NOT theoretically zero. If a flaky "AddrInUse" ever appears in CI,
+// retry in a loop or use a free-port allocator (external_grpc_integration.rs:74).
 
 async fn spawn_stress_server(
     mut cfg: ExternalGrpcSpawnConfig,
@@ -274,13 +276,18 @@ async fn poll_unary_until_success(
     token: &str,
     deadline: tokio::time::Instant,
 ) -> Result<(), String> {
+    let mut last_err: Option<String> = None;
     loop {
         if tokio::time::Instant::now() >= deadline {
-            return Err("poll_unary_until_success: deadline exceeded".into());
+            return Err(format!(
+                "poll_unary_until_success: deadline exceeded; last error: {}",
+                last_err.unwrap_or_else(|| "<none observed>".into())
+            ));
         }
         let channel = match make_stress_tls_channel(addr, cert_pem).await {
             Ok(c) => c,
-            Err(_) => {
+            Err(e) => {
+                last_err = Some(format!("connect: {e}"));
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 continue;
             }
@@ -295,7 +302,8 @@ async fn poll_unary_until_success(
             .await
         {
             Ok(_) => return Ok(()),
-            Err(_) => {
+            Err(e) => {
+                last_err = Some(format!("rpc: {e}"));
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         }
@@ -404,6 +412,11 @@ async fn concurrent_connection_cap_enforced() {
     );
 
     // ── Phase 3: drop one slot, retry ───────────────────────────────────────
+    // Dropping a held (Channel, Stream) pair on the client closes client-side TCP.
+    // The server's ActiveConnGuard::drop (conn_info.rs:29) decrements only after
+    // tonic sees the FIN and drops the PeerAwareStream wrapper.
+    // poll_unary_until_success retries on a 50 ms cadence to absorb this
+    // client→server propagation latency.
     drop(held.pop().expect("at least one held pair"));
 
     // V4 fallback: poll for liveness via fresh unary RPC.
