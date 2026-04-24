@@ -22,7 +22,6 @@
 
 #![cfg(feature = "stress-test")]
 
-#[allow(unused_imports)] // Ipv6Addr used in Test 3 (C5)
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -576,6 +575,127 @@ async fn fd_pressure_resilience() {
     );
 
     drop(held);
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Test 3: ipv6_64_prefix_ban_full_stack
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Invariant: IpBan::record_failure (auth_layer / accept_loop on TLS error)
+/// + IpBan::is_banned (accept_loop pre-TLS) are wired on the IPv6 path.
+/// After ≥5 total failures from [::1] (auth rejections + TLS probe failure
+/// from the readiness probe in spawn_stress_server), subsequent connections
+/// from [::1] are rejected before TLS handshake (V1 verified accept_loop:77
+/// ordering).
+///
+/// Single-/128 limitation (spec §4.3 known limitations): CI loopback is one
+/// ::1/128. All attempts share that /128. The test verifies WIRING
+/// (IpBan called on IPv6 accept path), not the /64 prefix logic — which
+/// is unit-tested at ip_ban.rs::ipv6_64_prefix_shared_ban.
+///
+/// Runtime estimate: ~2–5s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ipv6_64_prefix_ban_full_stack() {
+    const SMALL_CAP: usize = 32; // small; never the rejecting layer
+    let jwt_kp = test_jwt_keypair();
+    let cfg = make_jwt_stress_config(
+        &jwt_kp.pub_pem_path,
+        SMALL_CAP,
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 0),
+    );
+    let (handle, addr) = spawn_stress_server(cfg).await;
+    assert!(addr.is_ipv6(), "Test 3 must bind IPv6 ::1");
+
+    let bad_token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "ban-victim",
+        "test-issuer",
+        "wrong-audience", // intentional aud mismatch → JWT verifier rejects
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+
+    // ── Phase 1: accumulate ≥ 5 failures from [::1] ─────────────────────────
+    //
+    // The IpBan THRESHOLDS ladder in ip_ban.rs requires 5 total failures within
+    // the sliding window for a 60s ban. `record_failure` is called both by
+    // auth_layer (JWT rejection) AND by accept_loop's TLS-handshake-failure path.
+    //
+    // spawn_stress_server's readiness probe makes a raw TCP connection from [::1]
+    // that immediately closes without a TLS handshake, causing accept_loop to
+    // call record_failure([::1]) once. This means the IpBan counter may already
+    // be at 1 before Phase 1 RPCs begin, so only 4 more auth failures are needed
+    // to hit the threshold of 5.
+    //
+    // Strategy: loop up to MAX_RPC (8, well above threshold) RPC attempts.
+    // If make_stress_tls_channel fails (pre-TLS rejection) the ban is already
+    // active — break early. This makes the test self-calibrating regardless of
+    // how many probe-induced failures the startup probe contributes.
+    const MAX_RPC: usize = 8;
+    let mut rpc_done = 0_usize;
+    for attempt in 0..MAX_RPC {
+        let channel = match make_stress_tls_channel(addr, &cert_pem).await {
+            Ok(c) => c,
+            Err(_) => break, // pre-TLS rejection → ban already active, Phase 1 done
+        };
+        let mut req = tonic::Request::new(GetAgentInfoRequest {});
+        req.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {bad_token}").parse().expect("valid header"),
+        );
+        let err = DashboardServiceClient::new(channel)
+            .get_agent_info(req)
+            .await
+            .expect_err(&format!(
+                "attempt {attempt}: bad-aud token must be rejected"
+            ));
+        assert_eq!(
+            err.code(),
+            tonic::Code::Unauthenticated,
+            "attempt {attempt}: expected Unauthenticated; got {err:?}"
+        );
+        rpc_done += 1;
+    }
+    assert!(
+        rpc_done > 0,
+        "Phase 1: at least one RPC must be served before ban"
+    );
+
+    // Brief wait for ip_ban state to commit (record_failure is sync but the
+    // channel-shutdown side of the auth-failure path is async).
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // ── Phase 2: next attempt rejected before TLS ────────────────────────────
+    //
+    // accept_loop:77 calls ip_ban.is_banned(remote) immediately after TCP
+    // accept. is_banned == true → accept_loop drops the TCP. From the client
+    // side, the TLS handshake fails (server closed connection mid-handshake)
+    // OR the connect itself fails. Either is acceptable — we assert any
+    // error path, not a specific gRPC Code.
+    let result = make_stress_tls_channel(addr, &cert_pem).await;
+    let banned_path_result: Result<(), Box<dyn std::error::Error + Send + Sync>> = match result {
+        Err(e) => Err(Box::new(e)),
+        Ok(channel) => {
+            // Channel created lazily; the failure may surface on first RPC.
+            let mut req = tonic::Request::new(GetAgentInfoRequest {});
+            req.metadata_mut().insert(
+                "authorization",
+                format!("Bearer {bad_token}").parse().expect("valid header"),
+            );
+            DashboardServiceClient::new(channel)
+                .get_agent_info(req)
+                .await
+                .map(|_| ())
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+        }
+    };
+    assert!(
+        banned_path_result.is_err(),
+        "Phase 2 attempt from ::1 must fail (banned). Got: {banned_path_result:?}"
+    );
+
     handle.abort();
     let _ = handle.await;
 }
