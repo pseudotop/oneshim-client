@@ -1,0 +1,37 @@
+name: gRPC Stress Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0'  # Every Sunday 03:00 UTC
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Print fd limits
+        run: |
+          echo "soft: $(ulimit -Sn)"
+          echo "hard: $(ulimit -Hn)"
+      - name: Install frontend dist stub (rust-embed compile-time requirement)
+        run: |
+          mkdir -p crates/oneshim-web/frontend/dist
+          echo '<!doctype html>' > crates/oneshim-web/frontend/dist/index.html
+      # No sandbox-worker stub required: cargo test -p oneshim-web does not
+      # compile src-tauri (dep graph is src-tauri → oneshim-web, not reverse).
+      - name: Run stress tests
+        run: |
+          ulimit -n 65536
+          cargo test -p oneshim-web \
+            --features stress-test \
+            --test external_grpc_stress \
+            -- --test-threads=1 --nocapture
+        env:
+          RUST_BACKTRACE: 1
+          RUST_LOG: info
