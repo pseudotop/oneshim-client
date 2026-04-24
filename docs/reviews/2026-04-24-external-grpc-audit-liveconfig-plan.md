@@ -127,6 +127,106 @@ git merge-tree main feature/phase9-tracking-schedule feature/external-grpc-audit
 
 **Goal:** Prepare the shared-type/port surface that every later phase depends on. Each task is independently committable.
 
+### Task 0.0 (NEW — rev-2 per CR4): Audit/inventory test-support helpers
+
+**Spec ref:** §9.1, plan synthesis CR4. Ensures later tasks (0.6, 3.1, 6.1, 9.x) have compilable test fixtures.
+
+**Files** (identify via enumeration — do not create duplicate helpers):
+- Audit: `crates/oneshim-web/src/grpc/external/` + `crates/oneshim-web/tests/`
+- Helpers referenced by later tasks: `fixture_bridge()`, `fixture_metrics()`, `InnerEcho::with_trailer_status(i32)`, `InnerEcho::trailers_only_with_status(i32)`, `AuthContext::fixture()`, `PeerInfo::fixture()`, `PassthroughInner`, `spawn_server_with_config_manager`
+
+- [ ] **Step 1: Inventory existing helpers**
+
+```bash
+# Search for the named helpers — most may already exist:
+grep -rn "fn fixture_bridge\|struct InnerEcho\|PeerInfo {\|AuthContext {\|fn spawn_server" \
+    crates/oneshim-web/src/grpc/external/ \
+    crates/oneshim-web/tests/
+
+# Also check test_support module:
+grep -rn "test_support\|test-support" crates/oneshim-web/Cargo.toml \
+    crates/oneshim-web/src/grpc/external/test_support.rs 2>/dev/null
+```
+
+Document which helpers exist and which are missing. Expected outcome: `AuthContext`, `PeerInfo` likely exist as normal structs (referenced in `conn_info.rs`) — just need `::fixture()` constructors. `InnerEcho` may exist as a trivial test double. `spawn_server_with_config_manager` likely does NOT exist — an extension of `spawn_server` is needed.
+
+- [ ] **Step 2: Identify gaps**
+
+For each missing helper, note which later task depends on it:
+- Task 0.6 / 3.1: `fixture_bridge`, `fixture_metrics`, `InnerEcho::{with_trailer_status, trailers_only_with_status}`, `AuthContext::fixture`, `PeerInfo::fixture`
+- Task 6.1: `fixture_bridge`, `PassthroughInner`
+- Task 9.4 G3 test: `spawn_server_with_config_manager`, `connect_loopback`, `req_with_valid_auth`
+
+- [ ] **Step 3: Consolidation strategy**
+
+Create or extend `crates/oneshim-web/src/grpc/external/test_support.rs` (gate under `#[cfg(any(test, feature = "test-support"))]`). Each missing helper gets minimal impl (≤20 lines each) exposing a public-to-test API. Example for `InnerEcho`:
+
+```rust
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) mod test_support {
+    use super::*;
+    use http::{HeaderMap, HeaderValue, Response};
+    use http_body::{Body, Frame};
+    use std::convert::Infallible;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tower::Service;
+
+    /// Test double inner service returning a preset response body.
+    #[derive(Clone)]
+    pub struct InnerEcho {
+        trailer_status: Option<i32>,
+        trailers_only: bool,
+    }
+
+    impl InnerEcho {
+        pub fn new() -> Self {
+            Self { trailer_status: None, trailers_only: false }
+        }
+        pub fn with_trailer_status(code: i32) -> Self {
+            Self { trailer_status: Some(code), trailers_only: false }
+        }
+        pub fn trailers_only_with_status(code: i32) -> Self {
+            Self { trailer_status: Some(code), trailers_only: true }
+        }
+    }
+
+    // Body impl + Service impl — ~40 LoC; see trailer_body::tests::FixtureBody for pattern.
+}
+```
+
+Similar minimal impls for remaining helpers. For `fixture_bridge` / `fixture_metrics` — return `(AuditBridge, MockRecorder)` tuples that capture calls for assertion.
+
+- [ ] **Step 4: Compile-check**
+
+```bash
+cargo check -p oneshim-web --features "grpc-dashboard-external,external-grpc-tools,test-support" --tests
+```
+Expected: all test-support helpers referenced by Tasks 0.6 / 3.1 / 6.1 / 9.4 resolve cleanly.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/oneshim-web/src/grpc/external/test_support.rs \
+         crates/oneshim-web/src/grpc/external/mod.rs  # new pub(crate) mod declaration
+git commit -m "$(cat <<'EOF'
+test(external-grpc): test-support helpers scaffold for Phase 0-9 tasks
+
+Per CR4 (Loop 2 Round 1 synthesis). Consolidates test fixtures
+(InnerEcho, AuthContext::fixture, PeerInfo::fixture, fixture_bridge,
+fixture_metrics, spawn_server_with_config_manager) in one
+test_support module, gated behind #[cfg(any(test, feature = "test-support"))].
+
+Prevents Tasks 0.6 / 3.1 / 6.1 / 9.4 from each re-inventing test
+doubles ad-hoc. No production behavior change.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
 ### Task 0.1: Add `ExternalGrpcConfig.streaming_enabled: Option<bool>` field
 
 **Spec ref:** §7.1, D22 (U1 resolution). Addresses CR2-platform (shared-field scope).
@@ -931,20 +1031,28 @@ EOF
 
 ---
 
-### Task 0.6: `AuditBridge::record` + `record_completion` signature expansion
+### Task 0.6 (rev-2): **Additive** param expansion for `AuditBridge::record` + `record_completion`
 
-**Spec ref:** §5.5. Addresses Platform Q2 (record_completion arg expansion).
+**Spec ref:** §5.5. **Synthesis CR3 fix** — rev-1 framed this as "rewrite"; it must be strict **ADD 2 params at the tail** (no rewrite, no dropped params).
 
 **Files:**
 - Modify: `crates/oneshim-web/src/grpc/external/audit_bridge.rs`
 
-- [ ] **Step 1: Check current signature**
+- [ ] **Step 1: Enumerate current signature + ALL call sites**
 
 ```bash
-grep -n "async fn record\|async fn record_completion" crates/oneshim-web/src/grpc/external/audit_bridge.rs
+# Signature
+grep -n "pub async fn record\b\|pub async fn record_completion\b" \
+    crates/oneshim-web/src/grpc/external/audit_bridge.rs
+
+# Callers (must each get None added for the new args)
+rg 'bridge\.(record|record_completion)\(' \
+    crates/oneshim-web/src/grpc/external/ --line-number
 ```
 
-Note the current signatures — typically `record(&self, ctx, remote, operation, reason, status, duration, response_message_count, ..., failure_reason)`.
+Record the current arg list **verbatim**. Example shape (current): `record(ctx, remote, op, reason, status, duration, resp_msg_count, ???, failure_reason)`. List every caller file:line.
+
+**⚠️ Do not drop any existing parameter.** This is a **2-param ADD** at the tail, not a rewrite.
 
 - [ ] **Step 2: Write failing test**
 
@@ -3289,11 +3397,76 @@ git commit -m "test(external-grpc): 4 request-id integration tests"
 Group commits by spec §9.2 section:
 - **Task 9.2**: Audit status mapping (4 tests) — one commit
 - **Task 9.3**: Audit query surface (2 tests) — one commit
-- **Task 9.4**: Live reload (6 tests) — two commits (3 each to keep under 100-line-diff rule)
+- **Task 9.4**: Live reload (6 tests) — two commits (3 each to keep under 100-line-diff rule). **G3 gate test body fully inlined below (CR5 fix).**
 - **Task 9.5**: Live-config endpoint (2 tests) — one commit
 - **Task 9.6**: Fallback semantics (2 tests, D22 override-beats-parent) — one commit
 
 Each test follows the pattern already established in `external_grpc_integration.rs` — spawn server via `spawn_server`, open client channel, call RPC, verify audit row / response header / live snapshot.
+
+#### Task 9.4 G3 gate test — `external_grpc_live_streaming_toggle_reflects_within_1s` (complete body per CR5)
+
+**Spec ref:** §3.1 G3, D33.
+
+Full test body (paste verbatim into `external_grpc_integration.rs`):
+
+```rust
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
+    use oneshim_core::config_manager::ConfigManager;
+    use std::time::{Duration, Instant};
+
+    // Spawn external server with streaming initially enabled.
+    let mut cfg = test_cfg_with_external_enabled();
+    cfg.web.grpc_streaming_enabled = true;
+    cfg.external_grpc.streaming_enabled = None;  // fall-through to web field
+    let cfg_mgr = Arc::new(ConfigManager::new_in_memory(Arc::new(cfg)));
+
+    let (handle, port) = spawn_server_with_config_manager(cfg_mgr.clone()).await;
+
+    // Sanity: initial subscribe succeeds (streaming enabled).
+    let channel = connect_loopback(port).await;
+    let mut client = DashboardServiceClient::new(channel.clone());
+    let sanity = client.subscribe_metrics(req_with_valid_auth()).await;
+    assert!(sanity.is_ok(), "initial subscribe must succeed with streaming_enabled=true");
+    drop(sanity);
+
+    // ── Toggle to disabled ──
+    let start = Instant::now();
+    cfg_mgr.update_with(|c| {
+        Arc::make_mut(c).external_grpc.streaming_enabled = Some(false);
+    }).await;
+
+    // Poll next subscribe until it returns Unavailable. Cap at 1s per D33 / G3.
+    let timeout = Duration::from_secs(1);
+    loop {
+        let mut client = DashboardServiceClient::new(channel.clone());
+        let result = client.subscribe_metrics(req_with_valid_auth()).await;
+        if let Err(status) = &result {
+            if status.code() == tonic::Code::Unavailable {
+                let elapsed = start.elapsed();
+                assert!(
+                    elapsed < timeout,
+                    "G3 violation: convergence {elapsed:?} >= 1s cap"
+                );
+                handle.abort();
+                return;  // PASS
+            }
+        }
+        if start.elapsed() > timeout {
+            panic!("G3 violation: streaming toggle did not reflect within 1s (D33 CI bound)");
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+```
+
+**Helper functions required** (already exist in `external_grpc_integration.rs` per CLAUDE.md; verify via `grep -n`):
+- `test_cfg_with_external_enabled()` — returns `AppConfig` with external_grpc.enabled=true + test JWT paths
+- `spawn_server_with_config_manager(Arc<ConfigManager>)` — spawns server reading from a live ConfigManager (add this helper if only `spawn_server(cfg: AppConfig)` exists; ~15 LoC extension)
+- `connect_loopback(port) -> Channel` — TLS-skipping test channel constructor
+- `req_with_valid_auth()` — returns `Request<SubscribeMetricsRequest>` with valid JWT bearer
+
+If `spawn_server_with_config_manager` does not exist, add it in Task 9.0 (test-support expansion).
 
 After all integration tests:
 ```bash
