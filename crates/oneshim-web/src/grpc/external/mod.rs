@@ -10,7 +10,7 @@ pub(crate) mod config_reload;
 pub mod conn_info;
 pub mod ip_ban;
 pub mod jwt_verifier;
-pub(crate) mod live_config;
+pub mod live_config;
 pub mod metrics;
 pub mod mtls_verifier;
 pub mod port_collision;
@@ -359,10 +359,14 @@ mod tests {
             shutdown_tx: shutdown_tx.clone(),
             pii_sanitizer: None,
             ai_runtime_status_snapshot: None,
-            load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
-                oneshim_core::config::LoadThresholds::default(),
+            live: Arc::new(crate::grpc::external::live_config::LiveExternalConfig::new(
+                crate::grpc::external::live_config::LiveSnapshot {
+                    streaming_enabled: true,
+                    load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
+                        oneshim_core::config::LoadThresholds::default(),
+                    )),
+                },
             )),
-            streaming_enabled: true,
         };
 
         // Start the server in a task. It will bind and then wait for shutdown.
@@ -441,10 +445,14 @@ mod tests {
             shutdown_tx: Arc::new(supervisor_shutdown_tx),
             pii_sanitizer: None,
             ai_runtime_status_snapshot: None,
-            load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
-                oneshim_core::config::LoadThresholds::default(),
+            live: Arc::new(crate::grpc::external::live_config::LiveExternalConfig::new(
+                crate::grpc::external::live_config::LiveSnapshot {
+                    streaming_enabled: true,
+                    load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
+                        oneshim_core::config::LoadThresholds::default(),
+                    )),
+                },
             )),
-            streaming_enabled: true,
         };
 
         // Arm the panic injector.

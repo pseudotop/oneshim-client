@@ -18,18 +18,15 @@ use crate::grpc::load_policy::LoadPolicy;
 /// atomic-stored into `LiveExternalConfig::current`. Readers always
 /// see a consistent cross-field view.
 #[derive(Clone)]
-#[allow(dead_code)] // Phase 1 scaffold; consumed in Phase 2+ (ConfigReloadTask wiring)
-pub(crate) struct LiveSnapshot {
+pub struct LiveSnapshot {
     pub streaming_enabled: bool,
     pub load_policy: Arc<LoadPolicy>,
 }
 
-#[allow(dead_code)] // Phase 1 scaffold; consumed in Phase 2+ (ConfigReloadTask wiring)
-pub(crate) struct LiveExternalConfig {
+pub struct LiveExternalConfig {
     current: ArcSwap<LiveSnapshot>,
 }
 
-#[allow(dead_code)] // Phase 1 scaffold; consumed in Phase 2+ (ConfigReloadTask wiring)
 impl LiveExternalConfig {
     pub fn new(initial: LiveSnapshot) -> Self {
         Self {

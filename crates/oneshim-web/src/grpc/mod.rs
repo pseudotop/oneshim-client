@@ -149,14 +149,15 @@ impl DashboardServiceImpl {
     pub fn from_external_spawn_config(
         cfg: &crate::grpc::external::spawn_config::ExternalGrpcSpawnConfig,
     ) -> Self {
+        let snap = cfg.live.snapshot();
         Self {
             started_at: Instant::now(),
             storage: cfg.storage.clone(),
             system_monitor: cfg.system_monitor.clone(),
             event_tx: cfg.event_tx.clone(),
             integration_auth_token: None, // CRITICAL — spec §2.5
-            load_policy: cfg.load_policy.clone(),
-            streaming_enabled: cfg.streaming_enabled,
+            load_policy: snap.load_policy.clone(),
+            streaming_enabled: snap.streaming_enabled,
             active_streams: Arc::new(AtomicUsize::new(0)),
             max_concurrent_streams: cfg.config.max_concurrent_streams,
             pii_sanitizer: cfg.pii_sanitizer.clone(),
@@ -645,8 +646,14 @@ mod tests {
                 shutdown_tx: Arc::new(shutdown_tx),
                 pii_sanitizer: None,
                 ai_runtime_status_snapshot: None::<AiRuntimeStatus>,
-                load_policy: Arc::new(load_policy::LoadPolicy::new(LoadThresholds::default())),
-                streaming_enabled: true,
+                live: Arc::new(crate::grpc::external::live_config::LiveExternalConfig::new(
+                    crate::grpc::external::live_config::LiveSnapshot {
+                        streaming_enabled: true,
+                        load_policy: Arc::new(load_policy::LoadPolicy::new(
+                            LoadThresholds::default(),
+                        )),
+                    },
+                )),
             }
         }
 
