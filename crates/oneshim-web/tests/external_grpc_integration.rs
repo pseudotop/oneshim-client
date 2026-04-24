@@ -936,15 +936,15 @@ async fn loopback_server_unaffected_when_external_disabled() {
     let _ = server_task.await;
 }
 
-/// Test 10: x-request-id header is returned in response metadata.
+/// R1 — Test 10: RequestIdLayer preserves a valid client-supplied x-request-id.
 ///
-/// Smoke test: a JWT-authenticated request reaches the real
-/// DashboardServiceImpl (Task 9) and receives an Ok response.
+/// Per spec §5.2 / D31: when the client sends a valid `x-request-id` header
+/// (ASCII graphic, 1..=128 chars), `RequestIdLayer` echoes that EXACT value in
+/// the response — it does NOT overwrite a matching value.
 ///
-/// Note: the planned `x-request-id` response header carrying the audit
-/// command_id is not yet emitted by tonic — that is tracked as a
-/// post-Task-13 follow-up (spec §8). This test covers the auth-to-service
-/// smoke path only; the header assertion returns when implemented.
+/// Assertion: the response metadata carries `x-request-id: test-req-123`
+/// exactly as supplied, proving the conditional-overwrite path (D31) works
+/// end-to-end through the real `serve_external` stack.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_request_id_header_returned() {
     let jwt_kp = test_jwt_keypair();
@@ -961,19 +961,122 @@ async fn external_grpc_request_id_header_returned() {
     let cert_pem = server_cert_pem();
     let channel = make_tls_channel(port, &cert_pem, None).await;
 
+    // Attach both authorization AND a valid x-request-id header.
     let mut req = tonic::Request::new(GetAgentInfoRequest {});
     req.metadata_mut().insert(
         "authorization",
-        format!("Bearer {token}").parse().expect("valid header"),
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "x-request-id",
+        tonic::metadata::MetadataValue::try_from("test-req-123").expect("valid x-request-id value"),
     );
     let resp = DashboardServiceClient::new(channel)
         .get_agent_info(req)
         .await
         .expect("auth should succeed and yield AgentInfoResponse");
+
+    // The x-request-id that the server echoed must be the exact client value.
+    let returned_id = resp
+        .metadata()
+        .get("x-request-id")
+        .expect("x-request-id must be present in response metadata")
+        .to_str()
+        .expect("x-request-id must be valid ASCII");
+    assert_eq!(
+        returned_id, "test-req-123",
+        "RequestIdLayer (D31) must preserve the client-supplied x-request-id unchanged"
+    );
+
+    // Also verify the handler returned real business data (smoke).
     let info = resp.into_inner();
     assert!(
         !info.build_profile.is_empty(),
         "AgentInfoResponse.build_profile must be populated"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+/// R2 — Test: AuditLayer records Denied + grpc_status_code=7 for PermissionDenied.
+///
+/// `subscribe_events` calls `validate_authority(host_header)` which returns
+/// `Status::permission_denied("authority not allowlisted")` (code 7) for any
+/// host not in ["localhost", "127.0.0.1", "::1", "::ffff:127.0.0.1"].
+///
+/// The AuditLayer observes code 7 via the header-first path (D28), maps it to
+/// `AuditStatus::Denied`, and records `grpc_status_code: Some(7)` in the details
+/// blob (D26).  The CapturingAudit mock extracts this from the JSON details.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_denied_for_permission_denied() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server(cfg).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-pd-audit",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Set a "host" metadata header to a non-allowlisted authority — this is the
+    // trigger for validate_authority → Err(Status::permission_denied(...)).
+    // The AuditLayer's deferred task sees grpc-status 7 in the response headers.
+    let mut req = tonic::Request::new(SubscribeEventsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "host",
+        tonic::metadata::MetadataValue::try_from("evil.example.com:443")
+            .expect("valid host header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .subscribe_events(req)
+        .await;
+    // The call must fail with PermissionDenied (code 7).
+    let status = result.expect_err("expected PermissionDenied error from subscribe_events");
+    assert_eq!(
+        status.code(),
+        tonic::Code::PermissionDenied,
+        "authority not in allowlist must yield PermissionDenied; got {status:?}"
+    );
+
+    // Give the tokio::spawn'd AuditLayer deferred task time to flush.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Extract Denied entry with grpc_status_code — drop lock before any await.
+    let (denied_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let denied: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Denied))
+            .collect();
+        let code = denied.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (denied.len(), code, dbg)
+    };
+    assert!(
+        denied_count >= 1,
+        "expected ≥1 Denied audit row; got {denied_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(7),
+        "Denied row must carry grpc_status_code=7 (PermissionDenied); entries: {entries_debug}"
     );
 
     handle.abort();
@@ -1606,9 +1709,15 @@ fn parse_status_from_details(details: &str) -> AuditStatus {
         .unwrap_or(AuditStatus::Completed)
 }
 
-/// E2E-2: After a successful RPC, the audit trail contains both Started
+/// E1 / E2E-2: After a successful RPC, the audit trail contains both Started
 /// and Completed rows with the same command_id. This proves AuditLayer's
 /// Started+Completed pairing works end-to-end.
+///
+/// Extended (Task 9.1 E1): also asserts:
+/// - The Completed row's `command_id` is a valid UUIDv4 (36 chars, 4 hyphens) —
+///   generated by RequestIdLayer since no client-supplied x-request-id was sent.
+/// - The Completed row's `grpc_status_code` is `Some(0)` (gRPC Ok / Code::Ok),
+///   proving D26 raw-code persistence for the success path.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_audit_completed_entry_written_after_ok_response() {
     let jwt_kp = test_jwt_keypair();
@@ -1631,6 +1740,7 @@ async fn external_grpc_audit_completed_entry_written_after_ok_response() {
         "authorization",
         format!("Bearer {token}").parse().expect("valid header"),
     );
+    // No x-request-id header — RequestIdLayer generates a UUIDv4.
     DashboardServiceClient::new(channel)
         .get_agent_info(req)
         .await
@@ -1639,20 +1749,29 @@ async fn external_grpc_audit_completed_entry_written_after_ok_response() {
     // Give the tokio::spawn'd record() calls time to flush to the mock.
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Copy counts into locals + drop the lock BEFORE any `await` to avoid
+    // Copy all needed data into locals + drop the lock BEFORE any `await` to avoid
     // `await_holding_lock` clippy — std::sync::MutexGuard is not `Send`.
-    let (started_count, completed_count, entries_debug) = {
+    let (started_count, completed_count, completed_cmd_id, completed_grpc_code, entries_debug) = {
         let entries = capturing.entries.lock().unwrap();
         let started = entries
             .iter()
             .filter(|e| matches!(e.status, AuditStatus::Started))
             .count();
-        let completed = entries
+        // log_complete_with_time sets grpc_status_code; find the Completed row
+        // that has it populated (the deferred AuditLayer task).
+        let completed_row = entries
+            .iter()
+            .find(|e| matches!(e.status, AuditStatus::Completed) && e.grpc_status_code.is_some());
+        let cmd_id = completed_row
+            .map(|e| e.command_id.clone())
+            .unwrap_or_default();
+        let grpc_code = completed_row.and_then(|e| e.grpc_status_code);
+        let completed_any = entries
             .iter()
             .filter(|e| matches!(e.status, AuditStatus::Completed))
             .count();
         let dbg = format!("{entries:?}");
-        (started, completed, dbg)
+        (started, completed_any, cmd_id, grpc_code, dbg)
     };
     assert!(
         started_count >= 1,
@@ -1661,6 +1780,30 @@ async fn external_grpc_audit_completed_entry_written_after_ok_response() {
     assert!(
         completed_count >= 1,
         "expected ≥1 Completed row; got {completed_count} (entries: {entries_debug})"
+    );
+
+    // E1 extension: command_id must be a UUIDv4 (36-char string, 4 hyphens).
+    // RequestIdLayer generates it when the client omits x-request-id, and
+    // AuditLayer's `request_id override (U5)` propagates it to command_id.
+    assert_eq!(
+        completed_cmd_id.len(),
+        36,
+        "command_id must be a 36-char UUIDv4 string; got {completed_cmd_id:?}"
+    );
+    assert_eq!(
+        completed_cmd_id.chars().filter(|c| *c == '-').count(),
+        4,
+        "UUIDv4 command_id must have 4 hyphens; got {completed_cmd_id:?}"
+    );
+    uuid::Uuid::parse_str(&completed_cmd_id).unwrap_or_else(|e| {
+        panic!("command_id {completed_cmd_id:?} must be parseable as UUID: {e}")
+    });
+
+    // E1 extension: grpc_status_code=Some(0) for the Ok path (D26).
+    assert_eq!(
+        completed_grpc_code,
+        Some(0),
+        "Completed row must carry grpc_status_code=0 (Code::Ok); entries: {entries_debug}"
     );
 
     handle.abort();
@@ -1725,6 +1868,101 @@ async fn external_grpc_streaming_audit_records_message_count() {
     assert!(
         has_subscribe_row,
         "expected ≥1 audit row for SubscribeEvents; got entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+/// N1 — RequestIdLayer generates a UUIDv4 when the client omits x-request-id.
+///
+/// When no `x-request-id` header is sent, `RequestIdLayer` (spec §5.2 / None
+/// branch) generates a fresh UUIDv4 and inserts it into the response.  The
+/// CapturingAudit's Completed row carries that same UUID as `command_id` via
+/// AuditLayer's request_id override (U5), proving end-to-end propagation.
+///
+/// Assertions:
+/// 1. Response metadata has `x-request-id` (server-generated).
+/// 2. The value is a valid 36-char UUIDv4 (4 hyphens, parseable by `uuid`).
+/// 3. The CapturingAudit Completed row's `command_id` matches the response header.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_request_id_generated_when_missing() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server(cfg).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-gen-id",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // No x-request-id header — RequestIdLayer must generate a UUIDv4.
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    let resp = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await
+        .expect("auth + real handler → Ok");
+
+    // 1. Response must carry a server-generated x-request-id.
+    let generated_id = resp
+        .metadata()
+        .get("x-request-id")
+        .expect("server must insert x-request-id when client omits it")
+        .to_str()
+        .expect("x-request-id must be valid ASCII");
+
+    // 2. Must be a valid UUIDv4 (36 chars, 4 hyphens).
+    assert_eq!(
+        generated_id.len(),
+        36,
+        "generated x-request-id must be 36 chars; got {generated_id:?}"
+    );
+    assert_eq!(
+        generated_id.chars().filter(|c| *c == '-').count(),
+        4,
+        "generated x-request-id must have 4 hyphens (UUIDv4); got {generated_id:?}"
+    );
+    let parsed_uuid = uuid::Uuid::parse_str(generated_id).expect("x-request-id must parse as UUID");
+    // UUIDv4: version nibble == 4, variant == 0b10xx.
+    assert_eq!(
+        parsed_uuid.get_version_num(),
+        4,
+        "generated ID must be UUIDv4; got version {}",
+        parsed_uuid.get_version_num()
+    );
+
+    // Give AuditLayer's deferred task time to flush to the mock.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // 3. CapturingAudit's Completed row must carry the same UUID as command_id.
+    // Drop the lock before any `.await`.
+    let (audit_cmd_id, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let completed = entries
+            .iter()
+            .find(|e| matches!(e.status, AuditStatus::Completed) && e.grpc_status_code.is_some())
+            .map(|e| e.command_id.clone())
+            .unwrap_or_default();
+        let dbg = format!("{entries:?}");
+        (completed, dbg)
+    };
+    assert_eq!(
+        audit_cmd_id, generated_id,
+        "AuditLayer command_id must equal the x-request-id echoed in the response; \
+         entries: {entries_debug}"
     );
 
     handle.abort();
