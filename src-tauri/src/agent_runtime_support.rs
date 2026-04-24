@@ -247,11 +247,9 @@ impl<'a> AgentSupportContextBuilder<'a> {
         };
 
         let system_monitor = Arc::new(oneshim_monitor::system::SysInfoMonitor::new());
-        let capture_trigger: Arc<dyn oneshim_core::ports::vision::CaptureTrigger> =
-            Arc::new(SmartCaptureTrigger::with_schedule(
-                self.config.vision.capture_throttle_ms,
-                self.config.schedule.clone(),
-            ));
+        let capture_trigger: Arc<dyn oneshim_core::ports::vision::CaptureTrigger> = Arc::new(
+            SmartCaptureTrigger::new(self.config.vision.capture_throttle_ms),
+        );
 
         let session_id = generate_session_id();
         #[cfg(feature = "server")]

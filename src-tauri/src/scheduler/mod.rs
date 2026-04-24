@@ -615,6 +615,9 @@ pub(crate) fn should_run_now_with_time(
 
 /// Returns `true` when the current wall-clock time falls within the configured
 /// active-hours window (or active_hours is disabled).
+// A.7 removed the last non-test call-site (monitor.rs now uses capture_permitted_now).
+// Retained for tests and potential future callers (e.g. A.9 loop gating helpers).
+#[allow(dead_code)]
 pub fn should_run_now(config: &AppConfig) -> bool {
     should_run_now_with_time(config, chrono::Local::now())
 }
@@ -643,8 +646,6 @@ pub fn tracking_schedule_active(config: &AppConfig) -> bool {
 /// Callers must supply a [`ConsentPermissions`] snapshot and the current
 /// `capture_paused` atomic read (A.7 / A.9 / A.12 / A.14 will thread these
 /// through scheduler loops and IPC commands).
-// A.7/A.9 call-sites will consume this; allow until wired.
-#[allow(dead_code)]
 pub fn capture_permitted_now(
     config: &AppConfig,
     consent: &oneshim_core::consent::ConsentPermissions,
@@ -779,9 +780,9 @@ mod tests {
 
     // ── Overnight active_hours wrap tests (CONS-C05) ─────────────────────────
 
-    /// Build a `DateTime<Local>` for a known weekday at HH:MM using UTC+0
-    /// FixedOffset so wall-clock matches the literal date, independent of
-    /// test-machine timezone.
+    /// Build a `DateTime<Local>` for a known weekday at HH:MM.
+    /// Wall-clock hour and weekday match the literal values on any machine,
+    /// because `Local` interprets the naive datetime as local time.
     ///
     /// - 2024-01-10 = Wednesday
     /// - 2024-01-11 = Thursday

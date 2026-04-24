@@ -197,14 +197,15 @@ impl Scheduler {
                                     input_activity_level: input_collector.peek_activity_level(),
                                 };
 
-                                // Skip capture when outside active hours (schedule config)
-                                let within_active_hours = config_manager1
-                                    .as_ref()
-                                    .map(|cm| crate::scheduler::should_run_now(&cm.get()))
-                                    .unwrap_or(true);
-
-                                // Skip capture/frame processing when paused or outside active hours
-                                if within_active_hours && !capture_paused.load(std::sync::atomic::Ordering::Relaxed) {
+                                // Gate: consent · active_hours · tracking-schedule · tray-pause (A.7)
+                                let consent = consent_manager1.as_ref()
+                                    .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                                    .unwrap_or_default();
+                                let paused = capture_paused.load(std::sync::atomic::Ordering::Relaxed);
+                                let permitted = config_manager1.as_ref()
+                                    .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                                    .unwrap_or(!paused);
+                                if permitted {
                                 // --- Ring buffer: capture thumbnail every cycle ---
                                 if let Ok(thumb_data) = processor.capture_thumbnail().await {
                                     ring_buffer.push(RingFrame {
@@ -289,22 +290,19 @@ impl Scheduler {
                                         }
                                     }
                                 }
-                                } // end capture_paused guard
-
                                 let ctx_event = Event::Context(event);
                                 if let Err(e) = storage1.save_event(&ctx_event).await {
                                     warn!(err.code = %e.code(), "event save failure: {e}");
                                 }
-
                                 if let Err(e) = sqlite1.increment_session_counters(&session1, 1, 0, 0).await {
                                     debug!("increment_session_counters failed: {e}");
                                 }
-
                                 if let Some(ref sink) = uploader1 {
                                     if let Some(upload_event) = egress1.prepare_event_for_upload(ctx_event) {
                                         sink.enqueue(upload_event);
                                     }
                                 }
+                                } // end capture gate
 
                                 let app_changed = prev_app.as_ref() != Some(&app_name);
                                 if app_changed {
