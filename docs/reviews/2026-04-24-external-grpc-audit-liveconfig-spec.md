@@ -4,12 +4,12 @@
 **Author**: Bundled follow-up spec (PR #486 deferrals + D13 V2c live config TODO)
 **Base commit**: `5618558c` (origin/main post-PR-#486)
 **Branch**: `feature/external-grpc-audit-liveconfig`
-**Status**: Draft **rev-3** — Loop 1 Round 2 verify polish applied. Round-2 verdicts:
-- Architecture: CONDITIONAL-PASS (rev-2) → PASS expected after rev-3 (I8 stale §5.7 deleted, I10 started_at_elapsed_ms, I9 Debug load_policy_snapshot)
-- Product/Test: CONDITIONAL-PASS (rev-2) → PASS expected after rev-3 (NV1 /api/audit/export now documented as new, NV2 task_alive surfaced)
-- Platform/Risk: PASS (rev-2)
+**Status**: Draft **rev-4** — Loop 1 CONVERGED. Round-3 verify verdicts (all PASS):
+- Architecture: PASS (1 Minor N1 — fixed in rev-4)
+- Product/Test: PASS (2 Minors NV7 + NV8 — fixed in rev-4)
+- Platform/Risk: PASS (from Round 2, unchanged)
 
-5 Round-2 Important resolved + 4 Round-2 Minors polished. Awaiting Round-3 verify confirmation before transitioning to Loop 2 (plan phase).
+Loop 1 closure criteria met: 0 Critical + 0 Important across all 3 lenses. Ready for Loop 2 (plan phase).
 
 ---
 
@@ -151,7 +151,7 @@ tonic 0.14 layer semantics: first `.layer()` call is outermost on ingress (per P
 | 🆕 New | `grpc/external/live_config_handler.rs` | ~50 impl + ~60 test | REST `GET /api/external-grpc/live-config` (D29) |
 | ✏️ Mod | `grpc/external/audit_layer.rs` | +90/-30 | Header-first status observation (D28/CR1), deferred completion, `RequestId` extraction, status mapping |
 | ✏️ Mod | `grpc/external/audit_bridge.rs` | +15/-0 | `record`/`record_completion` gain `command_id: Option<String>` arg (8th) + `grpc_status_code: Option<u32>` in `ExternalGrpcAuditDetails` (D26) |
-| ✏️ Mod | `grpc/external/spawn_config.rs` | +15/-4 | `streaming_enabled` + `load_policy` collapsed into `live: Arc<LiveExternalConfig>`; new `config_rx: watch::Receiver<Arc<AppConfig>>`; manual `Debug` impl updated for renamed fields |
+| ✏️ Mod | `grpc/external/spawn_config.rs` | +15/-4 | `streaming_enabled` + `load_policy` collapsed into `live: Arc<LiveExternalConfig>` (D30 removes `config_rx` from this struct — the reload task in `build_external_spawn_config` owns its `Receiver` directly); manual `Debug` impl updated for renamed fields |
 | ✏️ Mod | `grpc/external/auth_layer.rs` | +12/-2 | 4 Failed-path spawn blocks read `RequestId` from extensions for command_id (rather than None per U5) |
 | ✏️ Mod | `grpc/external/mod.rs` | +35/-5 | `serve_external` inserts `RequestIdLayer` outermost; `pub(crate) mod` lines for 4-6 new files (I7) |
 | ✏️ Mod | `grpc/mod.rs` | +50/-15 | `DashboardServiceImpl` holds `streaming_source: StreamingSource` (D24); both `from_spawn_config` + `from_external_spawn_config` updated |
@@ -160,7 +160,7 @@ tonic 0.14 layer semantics: first `.layer()` call is outermost on ingress (per P
 | ✏️ Mod | `oneshim-core/src/ports/audit_log.rs` | +8/-0 | Add `entries_by_command_id(cmd_id: &str, limit: usize)` trait method (D25) |
 | ✏️ Mod | `oneshim-storage/src/sqlite/*` (audit impl) | +30/-0 | Implement `entries_by_command_id` — SELECT WHERE command_id = ? (D25) |
 | 🆕 New | `oneshim-web/src/handlers/audit_export.rs` | ~80 impl + ~60 test | **New** `GET /api/audit/export` endpoint (D25 / NV1 fix) — rev-2 spec incorrectly assumed this was pre-existing |
-| ✏️ Mod | `oneshim-web/src/routes.rs` | +1/-0 | Register new `/api/external-grpc/live-config` route (D29) |
+| ✏️ Mod | `oneshim-web/src/routes.rs` | +2/-0 | Register 2 new routes: `/api/external-grpc/live-config` (D29) + `/api/audit/export` (D25 / NV1) |
 | ✏️ Mod | `oneshim-core/src/config/sections/network.rs` | +8/-0 | Add `ExternalGrpcConfig.streaming_enabled: Option<bool>` (D22) |
 | ✏️ Mod | `src-tauri/src/app_runtime_launch.rs` | +30/-10 | `build_external_spawn_config` gains `config_manager` param, constructs `Arc<LiveExternalConfig>` from initial `LiveSnapshot`, spawns `ConfigReloadTask` (D30) |
 
@@ -1069,7 +1069,11 @@ pub async fn get_live_config(
 .route("/api/external-grpc/live-config", get(get_live_config))
 ```
 
-**AppState wiring**: `AppState` gains `external_grpc_live: Option<Arc<LiveExternalConfig>>` populated in `build_external_spawn_config` (stored alongside the spawn_config). `None` when external gRPC is disabled → handler returns 503.
+**AppState wiring**: `AppState` gains **two** new fields (both `Option`, `None` when external gRPC is disabled):
+- `external_grpc_live: Option<Arc<LiveExternalConfig>>` — for reading the current snapshot
+- `external_grpc_metrics: Option<Arc<ExternalMetrics>>` — for reading `config_reload_task_alive` (NV2 fix) + other D32 metrics surface
+
+Both populated in `build_external_spawn_config` from the same values passed to the gRPC server. `None` in either field → handler returns 503 (external gRPC not enabled).
 
 **Test expectations** (§9.2 new):
 - `live_config_endpoint_returns_current_snapshot` — integration: toggle config, call endpoint, verify response reflects new values
