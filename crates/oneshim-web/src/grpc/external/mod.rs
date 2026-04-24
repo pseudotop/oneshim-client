@@ -16,6 +16,7 @@ pub mod port_collision;
 pub(crate) mod request_id_layer;
 pub mod spawn_config;
 pub mod tls_config;
+pub(crate) mod trailer_body;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
