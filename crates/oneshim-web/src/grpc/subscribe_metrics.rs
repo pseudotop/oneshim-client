@@ -43,7 +43,9 @@ use crate::storage_port::WebStorage;
 
 use super::auth_gate::{honor_opt_out, validate_authority};
 use super::hint_emitter::HintEmitter;
-use super::load_policy::{LoadLevel, LoadPolicy, INTERVAL_CEILING, INTERVAL_FLOOR};
+#[cfg(not(feature = "grpc-dashboard-external"))]
+use super::load_policy::LoadPolicy;
+use super::load_policy::{LoadLevel, INTERVAL_CEILING, INTERVAL_FLOOR};
 use super::stream_counter::StreamCounterGuard;
 use super::to_proto_ts;
 
@@ -57,11 +59,20 @@ pub async fn subscribe_metrics(
     system_monitor: Arc<dyn SystemMonitor>,
     event_tx: tokio::sync::broadcast::Sender<RealtimeEvent>,
     integration_auth_token: Option<String>,
-    load_policy: Arc<LoadPolicy>,
-    streaming_enabled: bool,
+    #[cfg(feature = "grpc-dashboard-external")]
+    streaming_source: crate::grpc::streaming_source::StreamingSource,
+    #[cfg(not(feature = "grpc-dashboard-external"))] load_policy: Arc<LoadPolicy>,
+    #[cfg(not(feature = "grpc-dashboard-external"))] streaming_enabled: bool,
     active_streams: Arc<AtomicUsize>,
     max_concurrent_streams: usize,
 ) -> Result<Response<SubscribeMetricsStream>, Status> {
+    // D24 / Task 5.2: under external feature, derive the pair from an atomic
+    // snapshot of streaming_source at call entry (spec D21).
+    #[cfg(feature = "grpc-dashboard-external")]
+    let (load_policy, streaming_enabled) = (
+        streaming_source.load_policy(),
+        streaming_source.streaming_enabled(),
+    );
     // Step 0a: authority validation (IMP-V2-A) — reject DNS-rebound hostnames
     // when the client exposes `:authority` via the `"host"` metadata key.
     // Tonic 0.14 does not uniformly propagate `:authority` into request

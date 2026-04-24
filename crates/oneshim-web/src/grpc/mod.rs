@@ -458,12 +458,12 @@ impl DashboardService for DashboardServiceImpl {
             self.system_monitor.clone(),
             self.event_tx.clone(),
             self.integration_auth_token.clone(),
+            // D24 / Task 5.2: external feature passes StreamingSource for
+            // atomic per-call snapshot reads (D21). Loopback keeps pair.
             #[cfg(feature = "grpc-dashboard-external")]
-            self.streaming_source.load_policy(),
+            self.streaming_source.clone(),
             #[cfg(not(feature = "grpc-dashboard-external"))]
             self.load_policy.clone(),
-            #[cfg(feature = "grpc-dashboard-external")]
-            self.streaming_source.streaming_enabled(),
             #[cfg(not(feature = "grpc-dashboard-external"))]
             self.streaming_enabled,
             self.active_streams.clone(),
@@ -481,12 +481,12 @@ impl DashboardService for DashboardServiceImpl {
             self.system_monitor.clone(),
             self.event_tx.clone(),
             self.integration_auth_token.clone(),
+            // D24 / Task 5.2: external feature passes StreamingSource for
+            // atomic per-call snapshot reads (D21). Loopback keeps pair.
             #[cfg(feature = "grpc-dashboard-external")]
-            self.streaming_source.load_policy(),
+            self.streaming_source.clone(),
             #[cfg(not(feature = "grpc-dashboard-external"))]
             self.load_policy.clone(),
-            #[cfg(feature = "grpc-dashboard-external")]
-            self.streaming_source.streaming_enabled(),
             #[cfg(not(feature = "grpc-dashboard-external"))]
             self.streaming_enabled,
             self.active_streams.clone(),
