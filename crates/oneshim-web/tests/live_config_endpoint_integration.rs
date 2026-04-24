@@ -177,6 +177,23 @@ async fn live_config_endpoint_returns_current_snapshot() {
         view.min_free_mem_gb, thresholds.min_free_mem_gb,
         "min_free_mem_gb must match injected LoadThresholds"
     );
+
+    // Bounded assertion on started_at_elapsed_ms — fresh LoadPolicy::new()
+    // uses Instant::now(); within CI dispatch latency this should be << 60s.
+    // Ruling out a saturating-zero or negative-cast regression.
+    assert!(
+        view.started_at_elapsed_ms < 60_000,
+        "started_at_elapsed_ms should be sub-minute since fixture creation, got {}",
+        view.started_at_elapsed_ms
+    );
+
+    // Deterministic assertion on in_warmup — WARMUP=30s; test creates the
+    // policy and dispatches within milliseconds, so it must be in_warmup=true.
+    // Test would have to take >30s to flake.
+    assert!(
+        view.in_warmup,
+        "fresh LoadPolicy must be in warmup window (WARMUP=30s)"
+    );
 }
 
 // ── Test 2: GET /api/external-grpc/live-config (disabled) → 503 ──────────
@@ -229,10 +246,14 @@ async fn live_config_endpoint_503_when_external_disabled() {
         status: u16,
     }
 
-    // Sanity-check: the project's ErrorResponse type really is `{ error, status }`.
-    // Using the Serialize side proves the wire shape matches what we deserialize.
-    let _shape_check = ErrorResponse {
-        error: "x".to_string(),
+    // Compile-time proof that ErrorResponse retains { error, status }.
+    // The destructure pattern fails to compile if either field is renamed
+    // or removed — catches both rename and removal regressions.
+    let ErrorResponse {
+        error: _,
+        status: _,
+    } = ErrorResponse {
+        error: String::new(),
         status: 503,
     };
 
