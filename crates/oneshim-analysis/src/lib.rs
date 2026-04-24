@@ -19,6 +19,14 @@
     clippy::option_if_let_else,
     clippy::redundant_pub_crate
 )]
+// P2 PR-A (B2): `significant_drop_tightening` is accepted crate-wide.
+// Rationale: this crate has 17 flagged sites across 7 files — all are either
+// (a) tokio/std Mutex held across fast in-memory ops (clustering algorithms,
+// regime classification) where contention cost is negligible, or (b) held
+// across LLM/embedding calls where serialization is the intent. The nursery
+// lint's false-positive rate on this crate is too high to enforce.
+// See docs/reviews/2026-04-21-p2-significant-drop-tightening-spec.md §Category B.
+#![allow(clippy::significant_drop_tightening)]
 
 pub mod adaptive_search;
 mod adaptive_trigger;
