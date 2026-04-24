@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Timestamps are RFC 3339 strings so they survive JSON serialization losslessly
 /// and are unambiguous about UTC offset.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TrackingScheduleStatus {
     /// Whether tracking is currently muted by the schedule.
     pub active_now: bool,

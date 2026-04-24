@@ -15,7 +15,7 @@ pub struct MetricBucketRecord {
     pub active_mouse_clicks: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DashboardEventSignal {
     Frame(i64),      // frames table primary key
     Idle,            // latest-state lookup (served from event payload)
