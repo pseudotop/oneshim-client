@@ -60,7 +60,18 @@ impl LoadPolicy {
         thresholds: LoadThresholds,
         started_at: Instant,
     ) -> Result<Self, LoadPolicyError> {
-        if !(thresholds.cpu_low_pct < thresholds.cpu_medium_pct) {
+        if !thresholds.cpu_low_pct.is_finite()
+            || !thresholds.cpu_medium_pct.is_finite()
+            || !thresholds.cpu_high_pct.is_finite()
+        {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "thresholds must be finite (non-NaN, non-infinite): low={}, medium={}, high={}",
+                    thresholds.cpu_low_pct, thresholds.cpu_medium_pct, thresholds.cpu_high_pct,
+                ),
+            });
+        }
+        if thresholds.cpu_low_pct >= thresholds.cpu_medium_pct {
             return Err(LoadPolicyError::InvalidThresholds {
                 reason: format!(
                     "cpu_low_pct ({}) must be < cpu_medium_pct ({})",
@@ -68,7 +79,7 @@ impl LoadPolicy {
                 ),
             });
         }
-        if !(thresholds.cpu_medium_pct < thresholds.cpu_high_pct) {
+        if thresholds.cpu_medium_pct >= thresholds.cpu_high_pct {
             return Err(LoadPolicyError::InvalidThresholds {
                 reason: format!(
                     "cpu_medium_pct ({}) must be < cpu_high_pct ({})",
@@ -76,7 +87,7 @@ impl LoadPolicy {
                 ),
             });
         }
-        if !(thresholds.cpu_high_pct <= 100.0) {
+        if thresholds.cpu_high_pct > 100.0 {
             return Err(LoadPolicyError::InvalidThresholds {
                 reason: format!(
                     "cpu_high_pct ({}) must be <= 100.0",
@@ -332,6 +343,39 @@ mod tests {
         assert!(
             result.is_err(),
             "new() must panic on invalid thresholds (backward compat)"
+        );
+    }
+
+    #[test]
+    fn try_new_rejects_nan_threshold() {
+        let t = LoadThresholds {
+            cpu_low_pct: f32::NAN,
+            cpu_medium_pct: 60.0,
+            cpu_high_pct: 85.0,
+            min_free_mem_gb: 1.0,
+        };
+        let err = LoadPolicy::try_new(t).unwrap_err();
+        match err {
+            LoadPolicyError::InvalidThresholds { reason } => {
+                assert!(
+                    reason.contains("finite"),
+                    "NaN threshold must be rejected with a finite-check error; got: {reason}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn try_new_accepts_high_exactly_100() {
+        let t = LoadThresholds {
+            cpu_low_pct: 30.0,
+            cpu_medium_pct: 60.0,
+            cpu_high_pct: 100.0,
+            min_free_mem_gb: 1.0,
+        };
+        assert!(
+            LoadPolicy::try_new(t).is_ok(),
+            "high==100.0 must be accepted (inclusive upper bound)"
         );
     }
 }
