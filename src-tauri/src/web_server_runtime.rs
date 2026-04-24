@@ -252,6 +252,13 @@ pub(crate) struct WebServerRuntimeBuilder<'a> {
     recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
     coaching_engine: Option<Arc<dyn oneshim_core::ports::coaching::CoachingPort>>,
     session_manager: Option<Arc<dyn oneshim_core::ports::conversation_session::SessionManager>>,
+    /// Task 7.1: pre-built LiveExternalConfig Arc shared with the external gRPC server.
+    /// Populated before `build_and_spawn` when `grpc-dashboard-external` is active so the
+    /// web server's `DiagnosticsState` can serve `GET /api/external-grpc/live-config`.
+    #[cfg(feature = "grpc-dashboard-external")]
+    external_grpc_live: Option<Arc<oneshim_web::grpc::external::live_config::LiveExternalConfig>>,
+    #[cfg(feature = "grpc-dashboard-external")]
+    external_grpc_metrics: Option<Arc<oneshim_web::grpc::external::metrics::ExternalMetrics>>,
 }
 
 impl<'a> WebServerRuntimeBuilder<'a> {
@@ -272,7 +279,25 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             recluster_requested: None,
             coaching_engine: None,
             session_manager: None,
+            #[cfg(feature = "grpc-dashboard-external")]
+            external_grpc_live: None,
+            #[cfg(feature = "grpc-dashboard-external")]
+            external_grpc_metrics: None,
         }
+    }
+
+    /// Pass pre-created `LiveExternalConfig` and `ExternalMetrics` Arcs into the web
+    /// server's `DiagnosticsState` so `GET /api/external-grpc/live-config` can serve
+    /// the current live snapshot. Must be called before `build_and_spawn`.
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub(crate) fn with_external_grpc_live_and_metrics(
+        mut self,
+        live: Arc<oneshim_web::grpc::external::live_config::LiveExternalConfig>,
+        metrics: Arc<oneshim_web::grpc::external::metrics::ExternalMetrics>,
+    ) -> Self {
+        self.external_grpc_live = Some(live);
+        self.external_grpc_metrics = Some(metrics);
+        self
     }
 
     #[cfg(feature = "server")]
@@ -382,6 +407,10 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         let web_storage = self.storage.clone();
         let web_config = self.config.web.clone();
         let web_port_state = self.launch_context.web_port_state.clone();
+        #[cfg(feature = "grpc-dashboard-external")]
+        let ext_live_for_web = self.external_grpc_live.take();
+        #[cfg(feature = "grpc-dashboard-external")]
+        let ext_metrics_for_web = self.external_grpc_metrics.take();
         self.launch_context.runtime_handle.spawn(async move {
             if let Some(controller) = automation_controller {
                 runtime_bindings.automation.automation_controller = Some(controller);
@@ -398,6 +427,19 @@ impl<'a> WebServerRuntimeBuilder<'a> {
                 .with_system_info_provider(
                     Arc::new(SysInfoProvider::new()) as Arc<dyn SystemInfoProvider>
                 );
+            // Task 7.1: wire LiveExternalConfig + ExternalMetrics into AppState so the
+            // GET /api/external-grpc/live-config endpoint can serve live snapshots.
+            #[cfg(feature = "grpc-dashboard-external")]
+            let web_server = {
+                let mut ws = web_server;
+                if let Some(live) = ext_live_for_web {
+                    ws = ws.with_external_grpc_live(live);
+                }
+                if let Some(metrics) = ext_metrics_for_web {
+                    ws = ws.with_external_grpc_metrics(metrics);
+                }
+                ws
+            };
             if let Err(error) = web_server.run(web_shutdown_rx).await {
                 error!("WebServer error: {error}");
             }

@@ -692,6 +692,10 @@
         {
           "method": "GET",
           "path": "/api/tracking-schedule/status"
+        },
+        {
+          "method": "GET",
+          "path": "/api/external-grpc/live-config"
         }
       ]
     }

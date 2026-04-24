@@ -769,6 +769,51 @@ impl AppRuntimeLaunchBuilder {
                 builder = builder.with_session_manager(sm.clone()
                     as Arc<dyn oneshim_core::ports::conversation_session::SessionManager>);
             }
+            // Task 7.1: pre-create LiveExternalConfig + ExternalMetrics Arcs so they can be
+            // shared between the web server's DiagnosticsState (for live-config REST) and the
+            // external gRPC server (for streaming control). Created here, before build_and_spawn,
+            // so both consumers hold a reference to the same underlying ArcSwap cell.
+            // Only built when the external feature is compiled and the feature is enabled in config.
+            #[cfg(feature = "grpc-dashboard-external")]
+            let (ext_shared_live, ext_shared_metrics) = {
+                if config.external_grpc.enabled {
+                    let initial_streaming = config
+                        .external_grpc
+                        .streaming_enabled
+                        .unwrap_or(config.web.grpc_streaming_enabled);
+                    let initial_thresholds =
+                        config.web.grpc_load_thresholds.clone().unwrap_or_default();
+                    let initial_policy = oneshim_web::grpc::LoadPolicy::try_new(initial_thresholds)
+                        .unwrap_or_else(|e| {
+                            tracing::warn!(
+                                err = %e,
+                                "external_grpc: invalid LoadThresholds at pre-creation; using defaults"
+                            );
+                            oneshim_web::grpc::LoadPolicy::new(Default::default())
+                        });
+                    let live = std::sync::Arc::new(
+                        oneshim_web::grpc::external::live_config::LiveExternalConfig::new(
+                            oneshim_web::grpc::external::live_config::LiveSnapshot {
+                                streaming_enabled: initial_streaming,
+                                load_policy: std::sync::Arc::new(initial_policy),
+                            },
+                        ),
+                    );
+                    let metrics = std::sync::Arc::new(
+                        oneshim_web::grpc::external::metrics::ExternalMetrics::new(),
+                    );
+                    (Some(live), Some(metrics))
+                } else {
+                    (None, None)
+                }
+            };
+            #[cfg(feature = "grpc-dashboard-external")]
+            let builder = match (&ext_shared_live, &ext_shared_metrics) {
+                (Some(live), Some(metrics)) => {
+                    builder.with_external_grpc_live_and_metrics(live.clone(), metrics.clone())
+                }
+                _ => builder,
+            };
             #[cfg(feature = "server")]
             let builder = server_context.configure_web_server_builder(builder);
             let web_server_runtime = builder.build_and_spawn();
@@ -887,6 +932,8 @@ impl AppRuntimeLaunchBuilder {
                             ext_ai_status,
                             config_manager.clone(),
                             ext_app_config_snapshot,
+                            ext_shared_live.clone(),
+                            ext_shared_metrics.clone(),
                         )) {
                             Ok(spawn_cfg) => {
                                 let _ext_handle = handle.block_on(
@@ -1196,6 +1243,10 @@ impl AppRuntimeLaunchBuilder {
 /// Loads TLS key material, constructs the `HotReloadCertResolver`, and
 /// optionally builds `JwtVerifier` / `MtlsVerifier` according to `auth_mode`.
 /// Returns `Err` if any required path is missing or key material fails to load.
+///
+/// `pre_live` and `pre_metrics` are pre-created Arcs shared with the web server's
+/// `DiagnosticsState` (Task 7.1). When `Some`, they are used directly; when
+/// `None`, fresh instances are created (backwards-compatible for tests).
 #[cfg(feature = "grpc-dashboard-external")]
 #[allow(clippy::too_many_arguments)]
 async fn build_external_spawn_config(
@@ -1208,6 +1259,8 @@ async fn build_external_spawn_config(
     ai_runtime_status_snapshot: Option<oneshim_api_contracts::stream::AiRuntimeStatus>,
     config_manager: oneshim_core::config_manager::ConfigManager,
     app_config_snapshot: std::sync::Arc<oneshim_core::config::AppConfig>,
+    pre_live: Option<std::sync::Arc<oneshim_web::grpc::external::live_config::LiveExternalConfig>>,
+    pre_metrics: Option<std::sync::Arc<oneshim_web::grpc::external::metrics::ExternalMetrics>>,
 ) -> anyhow::Result<oneshim_web::grpc::external::spawn_config::ExternalGrpcSpawnConfig> {
     use anyhow::Context as _;
     use oneshim_web::grpc::external::{
@@ -1234,7 +1287,7 @@ async fn build_external_spawn_config(
 
     // Spawn cert hot-reload watcher and daily expiry monitor.
     // Both are best-effort: errors are logged but do not prevent startup.
-    let metrics_arc = std::sync::Arc::new(ExternalMetrics::new());
+    let metrics_arc = pre_metrics.unwrap_or_else(|| std::sync::Arc::new(ExternalMetrics::new()));
     {
         use oneshim_web::grpc::external::tls_config::{spawn_cert_watcher, spawn_expiry_monitor};
         let cert_path = cfg
@@ -1262,26 +1315,31 @@ async fn build_external_spawn_config(
     }
 
     // Initial LiveSnapshot construction (spec §5.7 / D23 / D30).
-    // cfg.streaming_enabled overrides the shared fallback in app_config_snapshot.web.
-    let initial_streaming = cfg
-        .streaming_enabled
-        .unwrap_or(app_config_snapshot.web.grpc_streaming_enabled);
-    let initial_thresholds = app_config_snapshot
-        .web
-        .grpc_load_thresholds
-        .clone()
-        .unwrap_or_default();
-    let initial_policy = oneshim_web::grpc::LoadPolicy::try_new(initial_thresholds)
-        .context("Invalid LoadThresholds at boot — check config.web.grpc_load_thresholds")?;
-
-    let live = std::sync::Arc::new(
-        oneshim_web::grpc::external::live_config::LiveExternalConfig::new(
-            oneshim_web::grpc::external::live_config::LiveSnapshot {
-                streaming_enabled: initial_streaming,
-                load_policy: std::sync::Arc::new(initial_policy),
-            },
-        ),
-    );
+    // When `pre_live` is Some (Task 7.1 shared-Arc path), use it directly so the web
+    // server's DiagnosticsState and the gRPC server share a single ArcSwap cell.
+    let live = if let Some(pre) = pre_live {
+        pre
+    } else {
+        // cfg.streaming_enabled overrides the shared fallback in app_config_snapshot.web.
+        let initial_streaming = cfg
+            .streaming_enabled
+            .unwrap_or(app_config_snapshot.web.grpc_streaming_enabled);
+        let initial_thresholds = app_config_snapshot
+            .web
+            .grpc_load_thresholds
+            .clone()
+            .unwrap_or_default();
+        let initial_policy = oneshim_web::grpc::LoadPolicy::try_new(initial_thresholds)
+            .context("Invalid LoadThresholds at boot — check config.web.grpc_load_thresholds")?;
+        std::sync::Arc::new(
+            oneshim_web::grpc::external::live_config::LiveExternalConfig::new(
+                oneshim_web::grpc::external::live_config::LiveSnapshot {
+                    streaming_enabled: initial_streaming,
+                    load_policy: std::sync::Arc::new(initial_policy),
+                },
+            ),
+        )
+    };
 
     // Spawn ConfigReloadTask fire-and-forget, matching cert_watcher pattern per D30.
     // Watches for AppConfig changes via ConfigManager and atomically swaps LiveSnapshot.

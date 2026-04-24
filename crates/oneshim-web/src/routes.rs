@@ -336,6 +336,11 @@ pub fn api_routes() -> Router<AppState> {
             "/tracking-schedule/status",
             get(handlers::tracking_schedule::get_status),
         )
+        // External gRPC live-config introspection (spec §5.11 / D29)
+        .route(
+            "/external-grpc/live-config",
+            get(handlers::external_grpc_live_config::get_live_config),
+        )
 }
 
 pub fn integration_routes() -> Router<AppState> {

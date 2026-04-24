@@ -35,6 +35,7 @@ pub mod digests;
 pub mod error;
 pub mod events;
 pub mod export;
+pub mod external_grpc;
 pub mod focus;
 pub mod frames;
 pub mod idle;

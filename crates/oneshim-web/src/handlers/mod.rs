@@ -15,6 +15,7 @@ pub mod coaching;
 pub mod data;
 pub mod events;
 pub mod export;
+pub mod external_grpc_live_config;
 pub mod focus;
 pub mod frames;
 pub mod idle;

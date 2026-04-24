@@ -1228,6 +1228,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/external-grpc/live-config":
+    get:
+      tags:
+        - tracking_schedule
+      operationId: tracking_schedule_get_api_external_grpc_live_config
+      summary: "GET /api/external-grpc/live-config"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/focus/interruptions":
     get:
       tags:
