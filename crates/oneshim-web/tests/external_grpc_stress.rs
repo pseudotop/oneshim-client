@@ -309,6 +309,60 @@ async fn poll_unary_until_success(
     }
 }
 
+// ── Streaming-open poll (slot-recovery retry) ────────────────────────────────
+//
+// Opens a fresh TLS channel + SubscribeEvents stream, retrying on transport
+// errors until success or deadline. Used by Test 1 Phase 3 after
+// poll_unary_until_success: the unary poll proves the server is alive, but
+// its own last channel's ActiveConnGuard::drop (conn_info.rs:29) runs AFTER
+// the client-side channel leaves scope and the TCP FIN reaches the server.
+// On slow CI the decrement can still be in flight when a single retry fires,
+// producing a transient over-cap silent drop (accept_loop.rs:85-91, which
+// does NOT call record_failure so IpBan stays clean) that surfaces on the
+// client as `tls handshake eof`. Retrying on a 50 ms cadence absorbs that
+// propagation window without masking a real slot-recovery failure — the
+// deadline still fails the test if the slot never frees.
+
+async fn retry_stream_open_until_success(
+    addr: SocketAddr,
+    cert_pem: &[u8],
+    token: &str,
+    deadline: tokio::time::Instant,
+) -> Result<(), String> {
+    let mut last_err: Option<String> = None;
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!(
+                "retry_stream_open_until_success: deadline exceeded; last error: {}",
+                last_err.unwrap_or_else(|| "<none observed>".into())
+            ));
+        }
+        let channel = match make_stress_tls_channel(addr, cert_pem).await {
+            Ok(c) => c,
+            Err(e) => {
+                last_err = Some(format!("connect: {e}"));
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            }
+        };
+        let mut req = tonic::Request::new(SubscribeEventsRequest::default());
+        req.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {token}").parse().expect("valid header"),
+        );
+        match DashboardServiceClient::new(channel)
+            .subscribe_events(req)
+            .await
+        {
+            Ok(_response) => return Ok(()),
+            Err(e) => {
+                last_err = Some(format!("subscribe_events: {e}"));
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Test 1: concurrent_connection_cap_enforced
 // ════════════════════════════════════════════════════════════════════════════
@@ -424,19 +478,16 @@ async fn concurrent_connection_cap_enforced() {
         .await
         .expect("unary RPC must succeed after slot freed");
 
-    // Now retry the (CAP)-th stream — should succeed.
-    let retry_channel = make_stress_tls_channel(addr, &cert_pem)
+    // Retry the (CAP)-th stream open. poll_unary above confirmed the server is
+    // accepting connections, but its own last channel's ActiveConnGuard drop
+    // may still be in flight on the server, so a single-shot retry can hit the
+    // over-cap silent-drop path on slow CI runners (surfaces as tls handshake
+    // EOF). retry_stream_open_until_success retries on a 50 ms cadence with a
+    // 5 s deadline to absorb that propagation window.
+    let retry_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    retry_stream_open_until_success(addr, &cert_pem, &token, retry_deadline)
         .await
-        .expect("retry channel after slot recovery must connect");
-    let mut req = tonic::Request::new(SubscribeEventsRequest::default());
-    req.metadata_mut().insert(
-        "authorization",
-        format!("Bearer {token}").parse().expect("valid header"),
-    );
-    let _retry_stream = DashboardServiceClient::new(retry_channel)
-        .subscribe_events(req)
-        .await
-        .expect("retry stream open after slot recovery");
+        .expect("retry stream open after slot recovery must succeed within deadline");
 
     // Cleanup
     drop(held);
