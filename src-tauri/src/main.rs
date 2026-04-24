@@ -84,6 +84,7 @@ mod sync_engine;
 mod telemetry;
 mod tray;
 mod tray_icon;
+mod tray_watch;
 mod update_coordinator;
 mod update_runtime;
 mod updater;
@@ -385,6 +386,14 @@ fn main() {
                         }
                     }
                 }
+            }
+
+            // A.17: Abort the tray-watch task before the background runtime shuts
+            // down, preventing a spurious "config channel closed" warn log on exit.
+            if let Some(tray_watch) =
+                app_handle.try_state::<crate::tray_watch::TrayWatchHandle>()
+            {
+                tray_watch.0.abort();
             }
 
             if let Some(state) = app_handle.try_state::<runtime_state::AppState>() {
