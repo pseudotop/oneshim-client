@@ -3246,3 +3246,340 @@ async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() 
     let _ = server_handle.await;
     let _ = reload_handle.await;
 }
+
+/// Watch coalescing — 100 rapid `update_with` calls must not panic the
+/// reload task AND the live snapshot must match the LAST update's value.
+/// `tokio::sync::watch` has latest-wins semantics: the reload task's
+/// `changed().await` may coalesce intermediate transitions, but the
+/// final observed state must equal the final sent state.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_reload_coalesces_rapid_updates() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.external_grpc.streaming_enabled = Some(true);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics.clone(),
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Fire 100 updates as fast as `update_with` will accept them. Alternate
+    // streaming_enabled so every call genuinely mutates state — the last
+    // update wins (even iterations flip true, odd false; i=99 is odd →
+    // final streaming_enabled = false).
+    for i in 0..100 {
+        let enabled = i % 2 == 0;
+        cfg_mgr
+            .update_with(move |c| {
+                c.external_grpc.streaming_enabled = Some(enabled);
+                Ok(())
+            })
+            .expect("rapid update");
+    }
+
+    // Allow the reload task's coalesced apply to drain.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // i=99 is odd → final update set streaming_enabled = Some(false).
+    assert!(
+        !live.snapshot().streaming_enabled,
+        "final snapshot must match the last update (streaming_enabled=false)"
+    );
+    assert!(
+        !reload_handle.is_finished(),
+        "reload task must still be running after coalescing 100 rapid updates"
+    );
+    assert!(
+        metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task liveness flag must still be set"
+    );
+    // Coalescing invariant: reload_total is bounded by 100 (≤ sends) and
+    // must be ≥ 1 (at least one apply observed the final state).
+    let total = metrics
+        .config_reload_total
+        .load(std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        (1..=100).contains(&total),
+        "config_reload_total must be within [1, 100] after coalescing; got {total}"
+    );
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Live reload affects the next per-request decision after the reload
+/// lands. Already-open streams snapshot `load_policy` at call entry
+/// (spec D21) — this is intentional — so we verify the *next* RPC's
+/// entry-point sees the new policy via `live.snapshot()`.
+///
+/// Opens a `SubscribeMetrics` stream (which stays alive using the
+/// fixture's 1-msg-then-idle handler), mutates thresholds mid-stream,
+/// then asserts the live snapshot reflects the new thresholds — which
+/// is what a fresh RPC entry would observe per D21.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn live_reload_affects_long_running_stream() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.external_grpc.streaming_enabled = Some(true);
+            // Seed wide thresholds — "no shed" baseline.
+            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 30.0,
+                cpu_medium_pct: 60.0,
+                cpu_high_pct: 85.0,
+            });
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    // Past-warmup policy so the classify branch isn't forced-Medium (WARMUP=30s).
+    let past_anchor = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    let initial_policy = Arc::new(
+        LoadPolicy::try_new_with_started_at(
+            oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 30.0,
+                cpu_medium_pct: 60.0,
+                cpu_high_pct: 85.0,
+            },
+            past_anchor,
+        )
+        .expect("valid initial thresholds"),
+    );
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: initial_policy.clone(),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Open a SubscribeMetrics stream. The real handler in
+    // `DashboardServiceImpl` stays alive and emits periodically; we don't
+    // need to drain — we just need the stream call to have been made.
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-longstream",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+    let stream_response = DashboardServiceClient::new(channel.clone())
+        .subscribe_metrics(req)
+        .await
+        .expect("initial stream open");
+    // Keep the inner stream alive for the rest of the test — dropping it
+    // would release the server's per-stream guard; we want the stream to
+    // be concurrent with the reload.
+    let _keep_stream_alive = stream_response.into_inner();
+
+    // Mid-stream: reload with tight "shed" thresholds. The existing stream
+    // keeps its captured policy per D21; new per-request decisions observe
+    // the new policy via `live.snapshot()`.
+    let shed_thresholds = oneshim_core::config::LoadThresholds {
+        min_free_mem_gb: 100.0, // require ≥100 GB free — always Critical
+        cpu_low_pct: 1.0,
+        cpu_medium_pct: 2.0,
+        cpu_high_pct: 3.0,
+    };
+    cfg_mgr
+        .update_with(|c| {
+            c.web.grpc_load_thresholds = Some(shed_thresholds.clone());
+            Ok(())
+        })
+        .expect("mid-stream reload");
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // A fresh `live.snapshot()` (what a new RPC entry would observe) must
+    // reflect the tight shed thresholds — this is the "next per-request
+    // decision" observability point per D21.
+    let post_snap = live.snapshot();
+    let post_thresholds = post_snap.load_policy.thresholds();
+    assert!(
+        (post_thresholds.cpu_high_pct - 3.0).abs() < f32::EPSILON,
+        "post-reload cpu_high_pct must reflect shed thresholds; got {}",
+        post_thresholds.cpu_high_pct
+    );
+    assert!(
+        (post_thresholds.min_free_mem_gb - 100.0).abs() < f32::EPSILON,
+        "post-reload min_free_mem_gb must reflect shed thresholds; got {}",
+        post_thresholds.min_free_mem_gb
+    );
+    // Classify a realistic-load metrics snapshot under the new policy —
+    // it MUST come back Critical (cpu > 3 and free_mem_gb < 100).
+    let mk_metrics =
+        |cpu: f32, used_gib: u64, total_gib: u64| oneshim_core::models::system::SystemMetrics {
+            timestamp: chrono::Utc::now(),
+            cpu_usage: cpu,
+            memory_used: used_gib * 1_073_741_824,
+            memory_total: total_gib * 1_073_741_824,
+            disk_used: 0,
+            disk_total: 0,
+            network: None,
+            typing_wpm: 0.0,
+        };
+    let shed_level = post_snap.load_policy.classify(&mk_metrics(50.0, 8, 16));
+    assert_eq!(
+        shed_level,
+        oneshim_web::grpc::LoadLevel::Critical,
+        "under shed thresholds, moderate metrics must classify as Critical"
+    );
+
+    // D21: already-open streams keep their captured policy reference —
+    // represented here by the `initial_policy` Arc that preceded the
+    // reload. That Arc must be a DIFFERENT instance from the live
+    // snapshot's current `load_policy` (the ConfigReloadTask built a
+    // fresh Arc in `apply_config`). The initial policy's thresholds
+    // must also still be the pre-reload values.
+    assert!(
+        !Arc::ptr_eq(&initial_policy, &post_snap.load_policy),
+        "D21: post-reload live policy must be a distinct Arc from the pre-reload one"
+    );
+    let initial_thresholds = initial_policy.thresholds();
+    assert!(
+        (initial_thresholds.cpu_high_pct - 85.0).abs() < f32::EPSILON,
+        "already-captured initial policy must still carry pre-reload cpu_high_pct=85.0; got {}",
+        initial_thresholds.cpu_high_pct
+    );
+
+    drop(_keep_stream_alive);
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Shutdown — the `ConfigReloadTask` must exit within 5 seconds of the
+/// shutdown signal. The task's `tokio::select!` biases on `shutdown_rx`
+/// (spec §5.4) so it will notice the flip even when a config update is
+/// queued concurrently.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_config_reload_task_exits_on_shutdown() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live,
+        metrics.clone(),
+        shutdown_tx.clone(),
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Sanity: reload task alive-flag is set after startup.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task must be alive before shutdown"
+    );
+
+    // Signal shutdown.
+    shutdown_tx.send_replace(true);
+
+    // The reload task MUST complete within 5s of the signal landing.
+    let joined = tokio::time::timeout(Duration::from_secs(5), reload_handle)
+        .await
+        .expect("reload task must exit within 5s of shutdown signal");
+    assert!(
+        joined.is_ok(),
+        "reload task should complete cleanly on shutdown; got {joined:?}"
+    );
+    assert!(
+        !metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task liveness flag must clear on exit"
+    );
+
+    // Server may still be draining in-flight work; abort to end the test.
+    server_handle.abort();
+    let _ = server_handle.await;
+}
