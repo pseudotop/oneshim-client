@@ -20,7 +20,7 @@
 //! - [`InnerEcho`] — Tasks 0.6, 3.1 (trailer-status simulation)
 //! - [`AuthContext::fixture`] / [`PeerInfo::fixture`] — Tasks 0.6, 3.1, 6.1
 //! - [`PassthroughInner`] — Task 6.1
-//! - [`spawn_server_with_config_manager`] — Task 9.4
+//! - [`connect_loopback`] / [`req_with_valid_auth`] — Task 9.4 G3 test dependencies
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -501,69 +501,33 @@ pub fn fixture_metrics() -> Arc<ExternalMetrics> {
     Arc::new(ExternalMetrics::new())
 }
 
-// ── spawn_server_with_config_manager ─────────────────────────────────────────
+// ── connect_loopback / req_with_valid_auth ────────────────────────────────────
+// Task 9.4 G3 test dependencies — created in Task 0.0 per plan §Step 2.
 
-/// Extension of `spawn_server` that also returns an `Arc<ExternalGrpcSpawnConfig>`
-/// so that Task 9.4 G3 tests can inspect or hold config state after the server starts.
+/// Connect to a loopback gRPC server for test-local use (no TLS).
 ///
-/// The returned `Arc<ExternalGrpcSpawnConfig>` shares the same `shutdown_tx`,
-/// `metrics`, and `ip_ban` instances wired into the live server — all atomic
-/// fields are directly observable.
+/// Returns a connected `tonic::transport::Channel` pointing at
+/// `http://127.0.0.1:{port}`. Use only for in-process integration tests
+/// where the server is also bound to localhost without TLS.
+pub async fn connect_loopback(port: u16) -> tonic::transport::Channel {
+    let addr = format!("http://127.0.0.1:{port}");
+    tonic::transport::Channel::from_shared(addr)
+        .expect("valid loopback URI")
+        .connect()
+        .await
+        .expect("connect to loopback server")
+}
+
+/// Build a test request with a bearer authorization header.
 ///
-/// The caller is responsible for sending the shutdown signal via
-/// `cfg_arc.shutdown_tx.send(true)` and optionally aborting the `JoinHandle`.
-pub async fn spawn_server_with_config_manager(
-    cfg: super::spawn_config::ExternalGrpcSpawnConfig,
-) -> (
-    tokio::task::JoinHandle<()>,
-    u16,
-    Arc<super::spawn_config::ExternalGrpcSpawnConfig>,
-) {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use std::sync::atomic::AtomicU16;
-    use std::time::Duration;
-
-    install_rustls_crypto_provider();
-
-    static NEXT_PORT: AtomicU16 = AtomicU16::new(44300);
-    let port = loop {
-        let p = NEXT_PORT.fetch_add(1, Ordering::Relaxed);
-        if std::net::TcpListener::bind(format!("127.0.0.1:{p}")).is_ok() {
-            break p;
-        }
-    };
-
-    let real_cfg = super::spawn_config::ExternalGrpcSpawnConfig {
-        bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
-        ..cfg
-    };
-    let cfg_arc = Arc::new(real_cfg.clone());
-
-    let handle = tokio::spawn({
-        let rc = real_cfg;
-        async move {
-            match super::serve_external(rc).await {
-                Ok(()) => {}
-                Err(e) => eprintln!("spawn_server_with_config_manager error: {e:?}"),
-            }
-        }
-    });
-
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        if tokio::net::TcpStream::connect(("127.0.0.1", port))
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            panic!(
-                "spawn_server_with_config_manager: server did not start on port {port} within 5s"
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    (handle, port, cfg_arc)
+/// Inserts `Authorization: Bearer TEST_TOKEN_PLACEHOLDER` into the request
+/// metadata. Task 9.4 implementers should replace `TEST_TOKEN_PLACEHOLDER`
+/// with a real token minted via `test_mint_jwt` using the test ES256 keypair.
+pub fn req_with_valid_auth<T>(body: T) -> tonic::Request<T> {
+    let mut req = tonic::Request::new(body);
+    req.metadata_mut().insert(
+        "authorization",
+        tonic::metadata::MetadataValue::from_static("Bearer TEST_TOKEN_PLACEHOLDER"),
+    );
+    req
 }
