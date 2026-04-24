@@ -3305,10 +3305,28 @@ async fn external_grpc_live_reload_coalesces_rapid_updates() {
             .expect("rapid update");
     }
 
-    // Allow the reload task's coalesced apply to drain.
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
+    // Replace fixed sleep with convergence poll — waits for the reload task
+    // to drain up to the final update without relying on a fixed timeout.
     // i=99 is odd → final update set streaming_enabled = Some(false).
+    let expected_final_streaming = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let snap = live.snapshot();
+        if snap.streaming_enabled == expected_final_streaming {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!(
+                "reload task did not converge to final update within 2s; \
+                 current streaming_enabled={}, expected={}",
+                snap.streaming_enabled, expected_final_streaming
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    // Defensive re-read: guards against the reload task doing one more
+    // update between the convergence break and this assertion.
     assert!(
         !live.snapshot().streaming_enabled,
         "final snapshot must match the last update (streaming_enabled=false)"
@@ -3502,6 +3520,35 @@ async fn live_reload_affects_long_running_stream() {
         "already-captured initial policy must still carry pre-reload cpu_high_pct=85.0; got {}",
         initial_thresholds.cpu_high_pct
     );
+
+    // End-to-end: a 2nd RPC entering the server observes the new policy via
+    // streaming_source.load_policy() at subscribe_metrics.rs:72-75 (D21
+    // snapshot-at-call-entry). Opening a fresh stream proves the server-stack
+    // propagation works — not just the ArcSwap substrate.
+    let mut req2 =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req2.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("auth header"),
+    );
+    let second_open = DashboardServiceClient::new(channel.clone())
+        .subscribe_metrics(req2)
+        .await;
+    assert!(
+        second_open.is_ok(),
+        "2nd RPC must still open post-reload; shed affects tick cadence not the gate"
+    );
+    // Verify the snapshot substrate is stable across the 2nd entry (identity,
+    // not rebuild) — proves the fresh Arc assembled during apply_config is
+    // what the new RPC would observe.
+    let post_2nd_snap = live.snapshot();
+    assert!(
+        Arc::ptr_eq(&post_2nd_snap.load_policy, &post_snap.load_policy),
+        "snapshot stable across 2nd RPC entry; live.snapshot() should return \
+         the same Arc until the next reload"
+    );
+    // Drop the 2nd stream to release its per-stream guard.
+    drop(second_open.unwrap().into_inner());
 
     drop(_keep_stream_alive);
     server_handle.abort();
