@@ -5,7 +5,7 @@
 // of the week. Overnight wrap (end < start) is supported when the resulting
 // window spans ≤ 16 hours (windows spanning > 16 hours are rejected as likely
 // config errors — see validation comments below).
-use chrono::{DateTime, Datelike, Local, NaiveTime, Timelike};
+use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Timelike};
 use serde::{Deserialize, Serialize};
 
 use crate::config::enums::Weekday;
@@ -219,17 +219,22 @@ fn default_timezone() -> String {
 impl TrackingWindow {
     /// Return `true` if `now` falls within this window.
     ///
+    /// The parameter is generic over `TimeZone` so callers can pass any
+    /// `DateTime<Tz>` — `DateTime<Local>` (production), `DateTime<FixedOffset>`
+    /// (tests), `DateTime<chrono_tz::Tz>`, etc.  Only `now.time()` and
+    /// `now.weekday()` are used; the timezone itself is not inspected.
+    ///
     /// Overnight windows (`end < start`) wrap across midnight and match times
     /// in `[start, 24:00)` on the configured day OR `[00:00, end)` on the
     /// following day. Empty `days_of_week` always returns `false`.
     ///
     /// DST notes:
-    /// - Spring-forward: no `DateTime<Local>` exists for the skipped hour, so
+    /// - Spring-forward: no real instant exists for the skipped hour, so
     ///   no call to this method can land in the skipped interval.
     /// - Fall-back: both absolute instants that share the same wall-clock time
     ///   have identical `now.time()` and `now.weekday()`, so both are treated
     ///   identically — if the window covers that wall-clock time, both match.
-    pub fn window_is_active(&self, now: DateTime<Local>) -> bool {
+    pub fn window_is_active<Tz: TimeZone>(&self, now: DateTime<Tz>) -> bool {
         if self.days_of_week.is_empty() {
             return false;
         }
@@ -321,11 +326,6 @@ mod tests {
         }
     }
 
-    /// Convert a `chrono_tz` `DateTime` to a `DateTime<Local>`.
-    fn to_local<Tz: chrono::TimeZone>(dt: chrono::DateTime<Tz>) -> DateTime<Local> {
-        dt.with_timezone(&Local)
-    }
-
     // ── 1. Default ─────────────────────────────────────────────────────────
 
     #[test]
@@ -385,40 +385,43 @@ mod tests {
         // Sat 23:00 → inside (Saturday in window hours 22-24)
         // Sun 01:00 → inside (Sunday in overnight carry-over hours 00-06)
         // Sat 21:00 → outside
+        //
+        // Using DateTime<FixedOffset> with UTC+0 so wall-clock == UTC, making
+        // the test TZ-independent: now.time() / now.weekday() are always the
+        // UTC wall-clock values regardless of machine timezone.
 
-        use chrono::NaiveDate;
-        use chrono::TimeZone as _;
-        use chrono_tz::UTC;
+        use chrono::{FixedOffset, NaiveDate, TimeZone as _};
 
+        let utc = FixedOffset::east_opt(0).unwrap();
         let w = window("22:00", "06:00", vec![Weekday::Sat]);
 
-        // 2024-11-09 is a Saturday in UTC.
-        let sat_23 = to_local(
-            UTC.from_utc_datetime(
+        // 2024-11-09 is a Saturday.
+        let sat_23 = utc
+            .from_local_datetime(
                 &NaiveDate::from_ymd_opt(2024, 11, 9)
                     .unwrap()
                     .and_hms_opt(23, 0, 0)
                     .unwrap(),
-            ),
-        );
-        // 2024-11-10 is a Sunday, 01:00 UTC — carry-over from Saturday window.
-        let sun_01 = to_local(
-            UTC.from_utc_datetime(
+            )
+            .unwrap();
+        // 2024-11-10 is a Sunday, 01:00 — carry-over from Saturday window.
+        let sun_01 = utc
+            .from_local_datetime(
                 &NaiveDate::from_ymd_opt(2024, 11, 10)
                     .unwrap()
                     .and_hms_opt(1, 0, 0)
                     .unwrap(),
-            ),
-        );
-        // 2024-11-09 Saturday 21:00 UTC — before window opens.
-        let sat_21 = to_local(
-            UTC.from_utc_datetime(
+            )
+            .unwrap();
+        // 2024-11-09 Saturday 21:00 — before window opens.
+        let sat_21 = utc
+            .from_local_datetime(
                 &NaiveDate::from_ymd_opt(2024, 11, 9)
                     .unwrap()
                     .and_hms_opt(21, 0, 0)
                     .unwrap(),
-            ),
-        );
+            )
+            .unwrap();
 
         assert!(
             w.window_is_active(sat_23),
@@ -438,38 +441,41 @@ mod tests {
 
     #[test]
     fn normal_window_does_not_wrap() {
-        use chrono::NaiveDate;
-        use chrono::TimeZone as _;
-        use chrono_tz::UTC;
-
         // Window 12:00–13:00 on Monday only.
+        //
+        // Using DateTime<FixedOffset> with UTC+0 so wall-clock == date literal,
+        // making the test TZ-independent.
+
+        use chrono::{FixedOffset, NaiveDate, TimeZone as _};
+
+        let utc = FixedOffset::east_opt(0).unwrap();
         let w = window("12:00", "13:00", vec![Weekday::Mon]);
 
         // 2024-11-11 is a Monday.
-        let mon_1230 = to_local(
-            UTC.from_utc_datetime(
+        let mon_1230 = utc
+            .from_local_datetime(
                 &NaiveDate::from_ymd_opt(2024, 11, 11)
                     .unwrap()
                     .and_hms_opt(12, 30, 0)
                     .unwrap(),
-            ),
-        );
-        let mon_1301 = to_local(
-            UTC.from_utc_datetime(
+            )
+            .unwrap();
+        let mon_1301 = utc
+            .from_local_datetime(
                 &NaiveDate::from_ymd_opt(2024, 11, 11)
                     .unwrap()
                     .and_hms_opt(13, 1, 0)
                     .unwrap(),
-            ),
-        );
-        let mon_1159 = to_local(
-            UTC.from_utc_datetime(
+            )
+            .unwrap();
+        let mon_1159 = utc
+            .from_local_datetime(
                 &NaiveDate::from_ymd_opt(2024, 11, 11)
                     .unwrap()
                     .and_hms_opt(11, 59, 0)
                     .unwrap(),
-            ),
-        );
+            )
+            .unwrap();
 
         assert!(w.window_is_active(mon_1230), "Mon 12:30 should be active");
         assert!(
@@ -486,21 +492,20 @@ mod tests {
 
     #[test]
     fn empty_days_never_active() {
-        use chrono::NaiveDate;
-        use chrono::TimeZone as _;
-        use chrono_tz::UTC;
+        use chrono::{FixedOffset, NaiveDate, TimeZone as _};
 
+        let utc = FixedOffset::east_opt(0).unwrap();
         let w = window("00:00", "23:59", vec![]);
 
         // Even a time that would match any time-of-day must be false.
-        let any_time = to_local(
-            UTC.from_utc_datetime(
+        let any_time = utc
+            .from_local_datetime(
                 &NaiveDate::from_ymd_opt(2024, 11, 11)
                     .unwrap()
                     .and_hms_opt(12, 0, 0)
                     .unwrap(),
-            ),
-        );
+            )
+            .unwrap();
         assert!(
             !w.window_is_active(any_time),
             "empty days_of_week must always return false"
@@ -539,8 +544,12 @@ mod tests {
             other => panic!("expected Ambiguous, got {:?}", other),
         };
 
-        let t_early = to_local(early);
-        let t_late = to_local(late);
+        // Use fixed_offset() instead of to_local() so that now.time() returns
+        // Eastern wall-clock 01:30 regardless of machine timezone. Both early
+        // (EDT, UTC-4) and late (EST, UTC-5) have wall-clock 01:30 in Eastern,
+        // which fixed_offset() preserves exactly.
+        let t_early = early.fixed_offset();
+        let t_late = late.fixed_offset();
 
         assert!(
             w.window_is_active(t_early),
