@@ -193,12 +193,15 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
     // call becomes the OUTERMOST and runs first on ingress. Verified at
     // runtime via an AuditLayer debug print: with `auth` first and `audit`
     // second, AuditLayer saw AuthContext=Some (auth had already run).
-    // Ordering below gives request flow: `auth → audit → handler`.
+    // Ordering below gives request flow: `request_id → auth → audit → handler`.
+    // RequestIdLayer is OUTERMOST per D14 revised / U5 so auth-rejected audit
+    // rows correlate with client's x-request-id.
     let concurrency = cfg_arc.config.max_concurrent_streams;
     tonic::transport::Server::builder()
         .concurrency_limit_per_connection(concurrency)
         .timeout(Duration::from_secs(60))
-        .layer(auth_layer) // outermost — runs FIRST on request ingress
+        .layer(request_id_layer::RequestIdLayer) // OUTERMOST per D14 revised / U5
+        .layer(auth_layer) // runs SECOND on request ingress
         .layer(audit_layer) // innermost — runs AFTER auth
         .add_service(DashboardServiceServer::new(service_impl).max_decoding_message_size(1_048_576))
         .serve_with_incoming_shutdown(stream, shutdown_signal)
