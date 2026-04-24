@@ -2,6 +2,7 @@ mod annotation_storage_impl;
 mod calibration_store_impl;
 mod coaching_storage;
 mod coaching_storage_port_impl;
+mod dashboard_streaming;
 mod device_identity;
 pub(crate) mod edge_intelligence;
 mod events;

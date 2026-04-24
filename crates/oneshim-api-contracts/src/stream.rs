@@ -39,10 +39,32 @@ pub struct FrameUpdate {
     pub app_name: String,
     pub window_title: String,
     pub importance: f32,
+    pub trigger_type: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct IdleUpdate {
     pub is_idle: bool,
     pub idle_secs: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_update_serializes_trigger_type() {
+        let e = RealtimeEvent::Frame(FrameUpdate {
+            id: 1,
+            timestamp: "t".to_string(),
+            app_name: "a".to_string(),
+            window_title: "w".to_string(),
+            importance: 0.5,
+            trigger_type: "timer".to_string(),
+        });
+        let j = serde_json::to_string(&e).unwrap();
+        assert!(j.contains("\"trigger_type\":\"timer\""));
+        let v: serde_json::Value = serde_json::from_str(&j).unwrap();
+        assert_eq!(v["data"]["trigger_type"], "timer");
+    }
 }

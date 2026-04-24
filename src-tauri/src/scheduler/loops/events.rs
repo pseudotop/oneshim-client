@@ -1,6 +1,7 @@
 use chrono::Utc;
 use oneshim_core::models::event::{Event, ProcessSnapshotEvent};
 use oneshim_monitor::input_activity::InputActivityCollector;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -24,6 +25,10 @@ impl Scheduler {
         let uploader9 = self.batch_sink.clone();
         let input_collector9 = input_collector;
         let egress9 = egress_policy;
+        // D13: 4-term privacy gate DI — clone singletons for the async block.
+        let config9 = self.config_manager.clone();
+        let consent9 = self.consent_manager.clone();
+        let capture_paused9 = self.capture_paused.clone();
 
         // Clipboard monitor — polls system clipboard for changes each input tick.
         let clipboard_pii_level = self
@@ -58,6 +63,18 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = process_interval.tick() => {
+                        // Row 7: 4-term composite gate (CONS-PC02 / D13).
+                        let consent = consent9.as_ref()
+                            .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                            .unwrap_or_default();
+                        let paused = capture_paused9.load(Ordering::Relaxed);
+                        let permitted = config9.as_ref()
+                            .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                            .unwrap_or(!paused);
+                        if !permitted {
+                            debug!("event_snapshot(process): capture gate closed (TS/consent/paused) — skipping tick");
+                            continue;
+                        }
                         match proc_mon9.get_detailed_processes(foreground_pid, 10).await {
                             Ok(processes) => {
                                 let total = processes.len() as u32;
@@ -91,6 +108,20 @@ impl Scheduler {
                         }
                     }
                     _ = input_interval.tick() => {
+                        // Rows 8-10: 4-term composite gate — input, clipboard, file-access
+                        // sub-branches all inside this block, so a single gate covers all three
+                        // (CONS-PC02 / D13).
+                        let consent = consent9.as_ref()
+                            .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                            .unwrap_or_default();
+                        let paused = capture_paused9.load(Ordering::Relaxed);
+                        let permitted = config9.as_ref()
+                            .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                            .unwrap_or(!paused);
+                        if !permitted {
+                            debug!("event_snapshot(input/clipboard/file): capture gate closed (TS/consent/paused) — skipping tick");
+                            continue;
+                        }
                         let input_event = input_collector9.take_snapshot();
 
                         if input_event.mouse.click_count > 0

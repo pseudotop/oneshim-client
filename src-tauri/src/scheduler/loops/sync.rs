@@ -1,5 +1,6 @@
 use chrono::Utc;
 use oneshim_monitor::input_activity::InputActivityCollector;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
@@ -90,6 +91,10 @@ impl Scheduler {
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let sync_engine = self.sync_engine.clone();
+        // D13: 4-term privacy gate DI (row 11 — cross-device sync is gated).
+        let config_mgr_s = self.config_manager.clone();
+        let consent_mgr_s = self.consent_manager.clone();
+        let capture_paused_s = self.capture_paused.clone();
 
         tokio::spawn(async move {
             let engine = match sync_engine {
@@ -108,6 +113,18 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
+                        // D13: 4-term composite gate (CONS-PC02 / §3.3 A.9).
+                        let consent = consent_mgr_s.as_ref()
+                            .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                            .unwrap_or_default();
+                        let paused = capture_paused_s.load(Ordering::Relaxed);
+                        let permitted = config_mgr_s.as_ref()
+                            .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                            .unwrap_or(!paused);
+                        if !permitted {
+                            debug!("cross-device sync: capture gate closed (TS/consent/paused) — skipping tick");
+                            continue;
+                        }
                         match engine.run_cycle().await {
                             Ok(Some(result)) => {
                                 info!(
