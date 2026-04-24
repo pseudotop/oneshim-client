@@ -266,38 +266,93 @@ impl PeerInfo {
 // ── InnerEcho — minimal tower::Service returning preset HTTP responses ────────
 
 use std::convert::Infallible;
+use std::pin::Pin;
 use std::task::{Context, Poll};
 
-/// Minimal `tower::Service` test double that echoes a preset HTTP status code
-/// into both the response status and a `grpc-status` trailer.
+use bytes::Bytes;
+use http::HeaderMap;
+use http_body::{Body, Frame};
+
+/// `http_body::Body` impl used by [`InnerEcho`] so `AuditLayer::call` can
+/// wrap the response body with `TrailerCapturingBody<RespBody>` (which
+/// requires `RespBody: http_body::Body`).
 ///
-/// Used by Tasks 0.6 and 3.1 to simulate handler responses with specific
-/// gRPC status codes without standing up a real tonic server.
+/// Two shapes:
+/// - **Body + trailer**: `data = Some(...)`, `trailers = Some(...)` — the
+///   `poll_frame` returns one `Frame::data` then one `Frame::trailers`.
+/// - **Trailers-only (empty body)**: `data = None`, `trailers = None` — the
+///   `poll_frame` immediately returns `Ready(None)`. The grpc-status lives
+///   in INITIAL headers per the tonic `Err(Status)` trailers-only convention.
 ///
-/// # Variants
+/// Fields are `pub` so tests can construct bespoke bodies directly (e.g.
+/// `SlowInner` in audit_layer tests that need a known delay before the
+/// trailer frame is emitted).
+pub struct EchoBody {
+    pub data: Option<Bytes>,
+    pub trailers: Option<HeaderMap>,
+}
+
+impl Body for EchoBody {
+    type Data = Bytes;
+    type Error = std::io::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        if let Some(d) = self.data.take() {
+            return Poll::Ready(Some(Ok(Frame::data(d))));
+        }
+        if let Some(t) = self.trailers.take() {
+            return Poll::Ready(Some(Ok(Frame::trailers(t))));
+        }
+        Poll::Ready(None)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.data.is_none() && self.trailers.is_none()
+    }
+}
+
+/// Minimal `tower::Service` test double that echoes a preset HTTP response
+/// with a `grpc-status` code encoded per one of two tonic conventions:
 ///
-/// - `InnerEcho::with_trailer_status(code)` — body + `grpc-status` trailer
-/// - `InnerEcho::trailers_only_with_status(code)` — empty body; trailer only
+/// - [`InnerEcho::with_trailer_status`] — non-empty body + a **trailer frame**
+///   carrying `grpc-status`. Simulates an Ok unary response or streaming
+///   response terminating cleanly. `AuditLayer` observes the code via
+///   `TrailerCapturingBody::poll_frame` when the body is polled.
+///
+/// - [`InnerEcho::trailers_only_with_status`] — empty body + `grpc-status`
+///   in **initial response headers**, no body trailer frame. Simulates
+///   `tonic::Status::from` (handler `Err(Status)`) which constructs a
+///   trailers-only HTTP/2 response. `AuditLayer` observes the code via
+///   `response.headers().get("grpc-status")` BEFORE wrapping the body
+///   (spec §5.5 D28 header-first path).
 #[derive(Clone)]
 pub struct InnerEcho {
     grpc_status: i32,
     body_bytes: &'static [u8],
+    /// When `true`, emit `grpc-status` in INITIAL headers + empty body (no
+    /// trailer frame). When `false`, emit `grpc-status` as a body trailer.
+    trailers_only: bool,
 }
 
 impl InnerEcho {
-    /// Return a response with a non-empty body and a `grpc-status` trailer.
+    /// Non-empty body + a `grpc-status` **trailer frame** (normal-trailers path).
     pub fn with_trailer_status(grpc_status: i32) -> Self {
         Self {
             grpc_status,
             body_bytes: b"body",
+            trailers_only: false,
         }
     }
 
-    /// Return a response with an empty body and only a `grpc-status` trailer.
+    /// Empty body + `grpc-status` in **initial headers** (tonic Err(Status) path).
     pub fn trailers_only_with_status(grpc_status: i32) -> Self {
         Self {
             grpc_status,
             body_bytes: b"",
+            trailers_only: true,
         }
     }
 }
@@ -306,7 +361,7 @@ impl<B> tower::Service<http::Request<B>> for InnerEcho
 where
     B: Send + 'static,
 {
-    type Response = http::Response<Vec<u8>>;
+    type Response = http::Response<EchoBody>;
     type Error = Infallible;
     type Future = std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
@@ -318,18 +373,39 @@ where
 
     fn call(&mut self, _req: http::Request<B>) -> Self::Future {
         let grpc_status = self.grpc_status;
-        let body = self.body_bytes.to_vec();
+        let body_bytes = self.body_bytes;
+        let trailers_only = self.trailers_only;
         Box::pin(async move {
-            let resp = http::Response::builder()
-                .status(200)
-                .header("content-type", "application/grpc")
-                // grpc-status trailer encoded in header position (tonic convention
-                // for unary responses — the value is identical; both positions are
-                // inspected by the spec §3.1 audit-layer tests).
-                .header("grpc-status", grpc_status.to_string())
-                .body(body)
-                .expect("InnerEcho response");
-            Ok(resp)
+            if trailers_only {
+                // Tonic `Err(Status)` trailers-only convention: grpc-status
+                // in INITIAL headers, empty body, no trailer frame.
+                let body = EchoBody {
+                    data: None,
+                    trailers: None,
+                };
+                let resp = http::Response::builder()
+                    .status(200)
+                    .header("content-type", "application/grpc")
+                    .header("grpc-status", grpc_status.to_string())
+                    .body(body)
+                    .expect("InnerEcho trailers-only response");
+                Ok(resp)
+            } else {
+                // Normal-trailers path: non-empty body frame + trailer frame
+                // carrying grpc-status. No grpc-status header.
+                let mut trailers = HeaderMap::new();
+                trailers.insert("grpc-status", http::HeaderValue::from(grpc_status));
+                let body = EchoBody {
+                    data: Some(Bytes::copy_from_slice(body_bytes)),
+                    trailers: Some(trailers),
+                };
+                let resp = http::Response::builder()
+                    .status(200)
+                    .header("content-type", "application/grpc")
+                    .body(body)
+                    .expect("InnerEcho trailer-status response");
+                Ok(resp)
+            }
         })
     }
 }

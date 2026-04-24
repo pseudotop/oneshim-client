@@ -57,6 +57,21 @@ impl<B> TrailerCapturingBody<B> {
     }
 }
 
+/// `Default` impl required by `AuthLayer::status_response<B: Default>` — the
+/// outer auth layer constructs a trailers-only gRPC error response via
+/// `Status::into_http::<B>()`, which calls `B::default()` to supply an
+/// empty body. Because `AuthLayer` now sits outside `AuditLayer` and
+/// sees `RespBody = TrailerCapturingBody<…>`, this impl is load-bearing.
+impl<B: Default> Default for TrailerCapturingBody<B> {
+    fn default() -> Self {
+        Self {
+            inner: B::default(),
+            signal: None,
+            captured: None,
+        }
+    }
+}
+
 impl<B: Body> Body for TrailerCapturingBody<B> {
     type Data = B::Data;
     type Error = B::Error;
