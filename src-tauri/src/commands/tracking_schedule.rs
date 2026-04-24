@@ -279,7 +279,20 @@ mod tests {
 
     #[test]
     fn get_status_returns_active_when_now_in_window() {
-        let cfg = schedule_with_window("00:00", "23:59", "Always-on window");
+        // `schedule_with_window` defaults to Mon-Fri, which fails on weekends.
+        // Inline JSON with all 7 days ensures this test is truly "always-on".
+        let json = r#"{
+            "enabled": true,
+            "windows": [{
+                "start": "00:00",
+                "end": "23:59",
+                "days_of_week": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+                "label": "Always-on window"
+            }],
+            "timezone": "Asia/Seoul"
+        }"#;
+        let cfg: TrackingScheduleConfig =
+            serde_json::from_str(json).expect("valid always-on schedule");
 
         let status = get_tracking_schedule_status_inner(cfg)
             .expect("get_tracking_schedule_status should succeed");

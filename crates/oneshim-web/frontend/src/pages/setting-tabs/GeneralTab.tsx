@@ -21,7 +21,7 @@ import { addToast } from '../../hooks/useToast'
 import { translateError, type WireErrorLocale } from '../../i18n/translateError'
 import { form } from '../../styles/tokens'
 import { IS_TAURI } from '../../utils/platform'
-import { useSettingsFormContext } from '../settings/SettingsFormContext'
+import { useLoadedFormData, useSettingsFormContext } from '../settings/SettingsFormContext'
 import NotificationSettings from './NotificationSettings'
 import ScheduleSettings from './ScheduleSettings'
 import ToggleRow from './ToggleRow'
@@ -60,7 +60,7 @@ async function invokeDesktop<T>(cmd: string, args?: Record<string, unknown>): Pr
 export default function GeneralTab() {
   const { form: settingsForm, data } = useSettingsFormContext()
   const { t } = useTranslation()
-  const formData = settingsForm.formData!
+  const formData = useLoadedFormData()
 
   return (
     <div className="space-y-6">

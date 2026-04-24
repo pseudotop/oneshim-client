@@ -5,6 +5,11 @@ import { useSettingsData } from '../hooks/useSettingsData'
 import type { SettingsFormResult } from '../hooks/useSettingsForm'
 import { useSettingsForm } from '../hooks/useSettingsForm'
 
+// Tab components live under `SettingsLayout`'s loading gate, which does not
+// render `<Outlet />` until `form.formData` resolves. Inside that gate,
+// `form.formData` is always non-null — but the upstream type keeps the `null`
+// branch to model the loading state for the layout itself.
+
 export interface SettingsContextValue {
   form: SettingsFormResult
   data: SettingsDataResult
@@ -53,4 +58,15 @@ export function useSettingsFormContext(): SettingsContextValue {
   const ctx = useContext(SettingsFormContext)
   if (!ctx) throw new Error('useSettingsFormContext must be used inside SettingsFormProvider')
   return ctx
+}
+
+// Narrow `form.formData` to non-null for tab components that render only
+// after `SettingsLayout`'s loading gate. Throws if used upstream of the
+// gate — which would be a bug the layout contract is supposed to prevent.
+export function useLoadedFormData(): AppSettings {
+  const { form } = useSettingsFormContext()
+  if (!form.formData) {
+    throw new Error('useLoadedFormData must be used under SettingsLayout loading gate')
+  }
+  return form.formData
 }

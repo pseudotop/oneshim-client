@@ -3,7 +3,7 @@ import type { AppSettings } from '../../api/client'
 import { Card, CardTitle, Input } from '../../components/ui'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
-import { useSettingsFormContext } from '../settings/SettingsFormContext'
+import { useLoadedFormData, useSettingsFormContext } from '../settings/SettingsFormContext'
 import ToggleRow from './ToggleRow'
 
 function SectionLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
@@ -48,7 +48,7 @@ function NumberField({
 export default function AdvancedTab() {
   const { t } = useTranslation()
   const { form } = useSettingsFormContext()
-  const formData = form.formData!
+  const formData = useLoadedFormData()
 
   const handleChange = <K extends keyof AppSettings>(section: K, field: string, value: unknown) => {
     form.setFormData((prev) => {

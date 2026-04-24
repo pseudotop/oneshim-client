@@ -46,8 +46,6 @@ pub(crate) trait TsNotifier: Send + Sync {
 /// The function iterates all configured windows and delegates per-window
 /// range checks to [`TrackingWindow::window_is_active`] (implemented in A.3),
 /// which handles both same-day and overnight wrap windows correctly.
-// A.7/A.9 call-sites will consume this; allow until wired.
-#[allow(dead_code)]
 pub(crate) fn tracking_schedule_active(cfg: &AppConfig, now: DateTime<Local>) -> bool {
     let ts = &cfg.tracking_schedule;
     if !ts.enabled {
@@ -76,8 +74,6 @@ pub(crate) fn tracking_schedule_active(cfg: &AppConfig, now: DateTime<Local>) ->
 /// but that method does not exist in `oneshim-core`. The actual API exposes the
 /// field `ConsentPermissions.screen_capture: bool`, confirmed during A.4. This
 /// implementation uses the field directly.
-// A.7/A.9 call-sites will consume this; allow until wired.
-#[allow(dead_code)]
 pub(crate) fn capture_permitted_now(
     cfg: &AppConfig,
     consent: &ConsentPermissions,
