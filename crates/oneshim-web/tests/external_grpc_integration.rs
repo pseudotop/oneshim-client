@@ -3809,6 +3809,12 @@ async fn external_streaming_falls_back_to_web_field_when_external_none() {
     let (server_handle, reload_handle, port) =
         spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
 
+    // Sanity: seed landed — external override of Some(true) → streaming enabled.
+    assert!(
+        live.snapshot().streaming_enabled,
+        "sanity: seed → external streaming initially true (external=Some(true))"
+    );
+
     // Mint a JWT + TLS channel for end-to-end verification via subscribe_metrics.
     let token = test_mint_jwt(
         &jwt_kp.enc_key,
@@ -3927,6 +3933,12 @@ async fn external_streaming_override_wins_over_web_field_when_some() {
     );
     let (server_handle, reload_handle, port) =
         spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Sanity: seed landed — both flags false, resolved streaming disabled.
+    assert!(
+        !live.snapshot().streaming_enabled,
+        "sanity: seed → external streaming initially false (external=Some(false), web=false)"
+    );
 
     let token = test_mint_jwt(
         &jwt_kp.enc_key,
