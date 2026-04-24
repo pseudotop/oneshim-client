@@ -4,7 +4,12 @@
 **Author**: Bundled follow-up spec (PR #486 deferrals + D13 V2c live config TODO)
 **Base commit**: `5618558c` (origin/main post-PR-#486)
 **Branch**: `feature/external-grpc-audit-liveconfig`
-**Status**: Draft **rev-2** — Loop 1 Round 1 synthesis applied (see `2026-04-24-external-grpc-spec-review-synthesis.md`). 7 Critical + 15 Important + 11 Minor resolved. 5 user decisions (U1-U5) inferred per "recommended option" convention. Awaiting Round-2 verify reviews.
+**Status**: Draft **rev-3** — Loop 1 Round 2 verify polish applied. Round-2 verdicts:
+- Architecture: CONDITIONAL-PASS (rev-2) → PASS expected after rev-3 (I8 stale §5.7 deleted, I10 started_at_elapsed_ms, I9 Debug load_policy_snapshot)
+- Product/Test: CONDITIONAL-PASS (rev-2) → PASS expected after rev-3 (NV1 /api/audit/export now documented as new, NV2 task_alive surfaced)
+- Platform/Risk: PASS (rev-2)
+
+5 Round-2 Important resolved + 4 Round-2 Minors polished. Awaiting Round-3 verify confirmation before transitioning to Loop 2 (plan phase).
 
 ---
 
@@ -154,12 +159,12 @@ tonic 0.14 layer semantics: first `.layer()` call is outermost on ingress (per P
 | ✏️ Mod | `grpc/subscribe_metrics.rs`, `subscribe_events.rs` | +10/-5 each | Read `cfg.streaming_source.streaming_enabled()` + `.load_policy()` — no longer take raw `bool` and `Arc<LoadPolicy>` as parameters |
 | ✏️ Mod | `oneshim-core/src/ports/audit_log.rs` | +8/-0 | Add `entries_by_command_id(cmd_id: &str, limit: usize)` trait method (D25) |
 | ✏️ Mod | `oneshim-storage/src/sqlite/*` (audit impl) | +30/-0 | Implement `entries_by_command_id` — SELECT WHERE command_id = ? (D25) |
-| ✏️ Mod | `oneshim-web/src/handlers/audit.rs` (or similar) | +20/-0 | Extend `GET /api/audit/export` with `?command_id=X` query param (D25) |
+| 🆕 New | `oneshim-web/src/handlers/audit_export.rs` | ~80 impl + ~60 test | **New** `GET /api/audit/export` endpoint (D25 / NV1 fix) — rev-2 spec incorrectly assumed this was pre-existing |
 | ✏️ Mod | `oneshim-web/src/routes.rs` | +1/-0 | Register new `/api/external-grpc/live-config` route (D29) |
 | ✏️ Mod | `oneshim-core/src/config/sections/network.rs` | +8/-0 | Add `ExternalGrpcConfig.streaming_enabled: Option<bool>` (D22) |
 | ✏️ Mod | `src-tauri/src/app_runtime_launch.rs` | +30/-10 | `build_external_spawn_config` gains `config_manager` param, constructs `Arc<LiveExternalConfig>` from initial `LiveSnapshot`, spawns `ConfigReloadTask` (D30) |
 
-**Total**: ~1500 LoC (roughly 750 impl + 750 test) across 15-17 files. +200 LoC vs rev-1 due to user-decision expansions (U1 override field, U2 query surface, D29 REST endpoint, D24 StreamingSource enum, D26 raw code persistence).
+**Total**: ~1600 LoC (roughly 820 impl + 780 test) across 16-18 files. +300 LoC vs rev-1 due to user-decision expansions (U1 override field, U2 query surface — now confirmed NEW not extend per NV1, D29 REST endpoint, D24 StreamingSource enum, D26 raw code persistence).
 
 **Module declarations** added to `grpc/external/mod.rs` (I7):
 ```rust
@@ -708,10 +713,14 @@ pub struct ExternalGrpcSpawnConfig {
 }
 ```
 
-**Debug impl adjustment** (addresses Platform I2):
+**Debug impl adjustment** (addresses Platform I2 + verify-round I9):
 - Drop any `#[derive(Debug)]` and keep the existing **manual** `impl Debug` (already present per spawn_config.rs:82-103).
-- Replace `.field("streaming_enabled", ...)` with `.field("streaming_enabled_live", &self.live.snapshot().streaming_enabled)`.
+- Take a **single** `live.snapshot()` for all live-config Debug fields within one Debug print — avoids cross-field torn reads within a single `{:?}` output.
+- Replace the rev-1 `.field("streaming_enabled", ...)` with two fields:
+  - `.field("streaming_enabled_live", &snap.streaming_enabled)`
+  - `.field("load_policy_snapshot_summary", &format_args!("cpu {:.0}/{:.0}/{:.0}, mem_gb {:.1}", snap.load_policy.thresholds().cpu_low_pct, snap.load_policy.thresholds().cpu_medium_pct, snap.load_policy.thresholds().cpu_high_pct, snap.load_policy.thresholds().min_free_mem_gb))`
 - Existing redaction (cert/JWT material, bool-presence flags) preserved.
+- **Racy across prints**: Debug values reflect the snapshot at print-time; consecutive `{:?}` prints during a reload may show different values. Documented; acceptable for diagnostic output (not a correctness surface).
 
 **Test updates required** (addresses Arch I6):
 - `spawn_config_clone_is_shallow` (`spawn_config.rs:242-250`) — add `assert!(Arc::ptr_eq(&cfg.live, &clone.live));` to the existing Arc-ptr-equality chain.
@@ -867,31 +876,58 @@ async fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<Aud
 }
 ```
 
-**REST handler** (`crates/oneshim-web/src/handlers/audit.rs` — or existing audit export path):
+**REST handler** (**new file** `crates/oneshim-web/src/handlers/audit_export.rs` — addresses NV1 from verify Round-2):
 
-Extends the existing `GET /api/audit/export` with a `?command_id=<value>` query param:
+Verify Round-2 (NV1) confirmed `GET /api/audit/export` does **not** currently exist — only the integration-specific `/integration/audit` route is registered (`routes.rs`). This spec introduces the endpoint as **net-new**:
+
 ```rust
+// crates/oneshim-web/src/handlers/audit_export.rs (NEW FILE)
+use std::sync::Arc;
+use axum::{extract::{State, Query}, Json};
+use serde::Deserialize;
+use oneshim_core::models::audit::AuditEntry;
+
 #[derive(Deserialize)]
 pub struct AuditExportQuery {
-    // ... existing fields ...
     #[serde(default)]
-    pub command_id: Option<String>,  // NEW
+    pub command_id: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,  // reserved for future filters
     pub limit: Option<usize>,
 }
 
-pub async fn export_audit(...) -> Result<Json<Vec<AuditEntry>>, ApiError> {
+pub async fn export_audit(
+    State(state): State<AppState>,
+    Query(query): Query<AuditExportQuery>,
+) -> Result<Json<Vec<AuditEntry>>, ApiError> {
     let limit = query.limit.unwrap_or(100).min(1000);
     let entries = match &query.command_id {
-        Some(cmd_id) => state.audit_port.entries_by_command_id(cmd_id, limit).await,
-        None => {
-            // ... existing logic ...
+        Some(cmd_id) if !cmd_id.is_empty() => {
+            state.audit_port.entries_by_command_id(cmd_id, limit).await
         }
+        _ => state.audit_port.recent_entries(limit).await,
     };
     Ok(Json(entries))
 }
 ```
 
-`NoopAudit` (test helper in `spawn_config.rs` + `audit_layer.rs` tests) must implement the new trait method with `vec![]` default.
+**Route registration** (`routes.rs`, adds 1 line):
+```rust
+.route("/api/audit/export", get(export_audit))
+```
+
+**DoS cap**: `limit.min(1000)` clamps response size at ~2MB (1000 rows × ~2KB JSON). Agent is loopback-only; cap is adequate.
+
+**`NoopAudit`** test helper (in `spawn_config.rs` + `audit_layer.rs` tests) gains:
+```rust
+async fn entries_by_command_id(&self, _id: &str, _limit: usize) -> Vec<AuditEntry> {
+    vec![]
+}
+```
+
+**OpenAPI contract update** (per `docs/contracts/oneshim-web.v1.openapi.yaml`): new path `GET /api/audit/export` with `command_id` + `status` + `limit` query params, response `application/json: Vec<AuditEntry>`. Add to plan-phase tasks.
+
+**Serde backward-compat** (OQ15 resolution): `#[serde(default)]` on `AuditExportQuery` fields + `#[serde(default)]` on `ExternalGrpcAuditDetails` struct ensure old audit rows (without `grpc_status_code`) deserialize as `None`.
 
 ---
 
@@ -976,19 +1012,25 @@ use serde::Serialize;
 use crate::grpc::external::live_config::LiveExternalConfig;
 
 #[derive(Serialize)]
-pub struct LiveConfigResponse {
-    pub streaming_enabled: bool,
-    pub load_policy_snapshot: LoadPolicyView,
-}
-
-#[derive(Serialize)]
 pub struct LoadPolicyView {
     pub cpu_low_pct: f32,
     pub cpu_medium_pct: f32,
     pub cpu_high_pct: f32,
     pub min_free_mem_gb: f32,
-    pub started_at_unix_ms: u64,
+    /// Milliseconds since this LoadPolicy's warmup anchor (monotonic).
+    /// Operators compute wall-clock origin as `now - started_at_elapsed_ms`.
+    /// Monotonic-clock avoids SystemTime drift/suspend-resume weirdness.
+    pub started_at_elapsed_ms: u64,
     pub in_warmup: bool,
+}
+
+/// Task liveness surfaced to operators per D32 — addresses NV2 (silent
+/// ConfigReloadTask panic is invisible otherwise).
+#[derive(Serialize)]
+pub struct LiveConfigResponse {
+    pub streaming_enabled: bool,
+    pub load_policy_snapshot: LoadPolicyView,
+    pub config_reload_task_alive: bool,
 }
 
 pub async fn get_live_config(
@@ -1000,6 +1042,9 @@ pub async fn get_live_config(
     };
     let snap = live.snapshot();
     let policy = &snap.load_policy;
+    // Decision I10 resolution: use monotonic elapsed rather than Unix epoch ms.
+    // `Instant::elapsed()` is infallible; avoids `SystemTime` wall-clock hazards.
+    let started_at_elapsed_ms = policy.started_at().elapsed().as_millis() as u64;
     Ok(Json(LiveConfigResponse {
         streaming_enabled: snap.streaming_enabled,
         load_policy_snapshot: LoadPolicyView {
@@ -1007,9 +1052,14 @@ pub async fn get_live_config(
             cpu_medium_pct: policy.thresholds().cpu_medium_pct,
             cpu_high_pct: policy.thresholds().cpu_high_pct,
             min_free_mem_gb: policy.thresholds().min_free_mem_gb,
-            started_at_unix_ms: /* elapsed-since-boot equivalent */,
+            started_at_elapsed_ms,
             in_warmup: policy.is_in_warmup(),
         },
+        // NV2 fix: surface config_reload_task_alive for operators.
+        config_reload_task_alive: state.external_grpc_metrics
+            .as_ref()
+            .map(|m| m.config_reload_task_alive.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false),
     }))
 }
 ```
@@ -1024,32 +1074,6 @@ pub async fn get_live_config(
 **Test expectations** (§9.2 new):
 - `live_config_endpoint_returns_current_snapshot` — integration: toggle config, call endpoint, verify response reflects new values
 - `live_config_endpoint_503_when_external_disabled` — unit: bare AppState without external, call endpoint, expect 503
-
-### 5.7 `build_external_spawn_config` — modified signature
-
-**src-tauri/src/app_runtime_launch.rs** — add 2 parameters:
-
-```rust
-async fn build_external_spawn_config(
-    // ... existing 9 params ...
-    config_manager: Arc<ConfigManager>,  // NEW — for subscribe()
-) -> anyhow::Result<ExternalGrpcSpawnConfig> {
-    // ... existing construction ...
-
-    let initial_streaming = /* passed-in value from caller; unchanged plumbing */;
-    let initial_policy = /* passed-in value from caller; unchanged plumbing */;
-    let live = Arc::new(LiveExternalConfig::new(initial_streaming, initial_policy));
-    let config_rx = config_manager.subscribe();
-
-    Ok(ExternalGrpcSpawnConfig {
-        // ... existing ...
-        live,
-        config_rx,
-    })
-}
-```
-
-Call site at `L897` (`build_external_spawn_config(...)`) adds the `config_manager.clone()` arg. This is an addition only; no existing arg removed → diff is surgical.
 
 ---
 
@@ -1291,7 +1315,12 @@ Malicious caller supplies same x-request-id repeatedly: each is treated independ
 
 New tracing log event on successful reload (INFO level): already included in §5.4.
 
-**Optional metric** (deferred unless requested): add `external_grpc_config_reload_total` counter in `ExternalMetrics` (bumped on each successful `apply_config`). Not blocking for this PR.
+**In-scope metrics** (promoted from rev-1 "optional/deferred" per D32 / verify-round NV3):
+- `external_grpc_config_reload_total: AtomicU64` — bumped on each successful `apply_config`
+- `external_grpc_deferred_audit_in_flight: AtomicUsize` — gauge, increment on `tokio::spawn` in `AuditLayer::call`, decrement at task end
+- `external_grpc_config_reload_task_alive: AtomicBool` — set true at task start, false on clean exit (panic leaves unchanged → observability for silent death)
+
+These are surfaced via `ExternalMetrics` struct. Wire-level exposure (Prometheus/etc.) reuses existing telemetry plumbing.
 
 ---
 
@@ -1362,7 +1391,7 @@ Request-ID behavior:
 Audit status mapping (D28 header-first verified):
 - **EXTEND** `external_grpc_audit_completed_entry_written_after_ok_response` (line 1531) — existing asserts kept; additionally assert `command_id` matches incoming/generated request ID and `grpc_status_code = 0` in details JSON
 - **NEW** `external_grpc_audit_denied_when_handler_returns_permission_denied` — test-fixture handler returns `Err(Status::permission_denied("..."))`; assert audit row has `status = Denied`, `grpc_status_code = 7`. This is the primary CR1-regression-catch test.
-- **NEW** `external_grpc_audit_timeout_when_handler_returns_cancelled` — handler returns `Err(Status::cancelled("..."))`; assert `status = Timeout`, `grpc_status_code = 1`. Deterministic via trailers-only header path (Option B from closed OQ6).
+- **NEW** `external_grpc_audit_timeout_when_handler_returns_cancelled` — handler returns `Err(Status::cancelled("..."))`; assert `status = Timeout`, `grpc_status_code = 1`. Deterministic via trailers-only header path (Option B from closed OQ6). **Test uses a 0-message-fixture handler** (no data frames emitted) so the `Err` produces a trailers-only HTTP response exercising the §5.5 header-first branch (addresses NV6 — streaming-RPC test mechanism clarity).
 - **NEW** `external_grpc_audit_failed_when_handler_returns_internal` — handler returns `Err(Status::internal("..."))`; assert `status = Failed`, `grpc_status_code = 13`.
 - **NEW** `external_grpc_audit_completed_when_client_drops_before_trailer` — client drops stream mid-flight (realistic drop); assert audit = `Completed` with msg_count > 0. Documents the OQ6-Option-A fallback behavior.
 - **EXTEND** `external_grpc_streaming_audit_records_message_count` (line 1594) — existing asserts kept; additionally verify msg_count correlation with status mapping.
@@ -1386,6 +1415,7 @@ Live config inspection endpoint (D29):
 Fallback field semantics (D22):
 - **NEW** `loopback_streaming_enabled_is_not_live_reloaded` — toggle `external_grpc.streaming_enabled = false`; assert external is disabled AND loopback is still enabled (preserves NG1)
 - **NEW** `external_streaming_falls_back_to_web_field_when_external_none` — set `external_grpc.streaming_enabled = None`; set `web.grpc_streaming_enabled = false`; external server honors false
+- **NEW** `external_streaming_override_wins_over_web_field_when_some` — set `external_grpc.streaming_enabled = Some(true)`; set `web.grpc_streaming_enabled = false`; external server honors true (addresses NV4 — override-beats-parent semantics)
 
 Expected count: **~18 new integration tests** (replacing/extending 2 existing) added to current 19 = total ~37.
 
@@ -1470,7 +1500,7 @@ Explicitly **not** covered, tracked for future PRs:
 | Live reload of `max_concurrent_streams` | StreamCounter cap change mid-flight is complex | Separate spec |
 | Live reload of `auth_mode` / JWT / TLS paths | Requires verifier rebuild + in-flight connection handling | Separate spec |
 | Request-ID propagation into downstream internal calls (trace across services) | OpenTelemetry scope | TBD |
-| `external_grpc_config_reload_total` metric | Monitoring polish | Follow-up issue |
+| ~~`external_grpc_config_reload_total` metric~~ | ~~Monitoring polish~~ | **Now in-scope per D32 / §8.6** (resolved, not deferred) |
 | TCP connection stress test (T15 deferred from PR #486) | Dedicated CI with elevated ulimit | Separate stress-test-suite spec |
 | Subscribe handlers observing `shutdown_rx` to emit `Unavailable` on graceful shutdown (T19 narrow) | Handler-side shutdown awareness is its own scope | Separate streaming-shutdown spec |
 
