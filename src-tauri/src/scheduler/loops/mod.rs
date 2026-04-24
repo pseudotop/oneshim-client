@@ -11,7 +11,7 @@ mod network;
 pub(crate) mod suggestions;
 mod sync;
 mod system;
-mod tracking_schedule_helper;
+pub(super) mod tracking_schedule_helper;
 mod vision_helper;
 
 // ── Public re-exports ────────────────────────────────────────────────

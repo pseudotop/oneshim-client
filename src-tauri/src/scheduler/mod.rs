@@ -545,13 +545,32 @@ impl Scheduler {
     }
 }
 
-pub fn should_run_now(config: &AppConfig) -> bool {
+/// Time-injectable core of the active-hours gate.
+///
+/// Accepts an explicit `now: DateTime<Local>` so callers in tests can drive
+/// deterministic scenarios (including the overnight wrap covered by CONS-C05).
+/// Production call-sites should use [`should_run_now`] which calls
+/// `chrono::Local::now()` internally.
+///
+/// # Overnight wrap (CONS-C05)
+///
+/// When `active_end_hour < active_start_hour` the window wraps midnight, e.g.
+/// `22:00 – 06:00`.  For the hour-in-range check the rule is:
+/// - Non-wrapping (`end > start`): `hour ∈ [start, end)` on `now.weekday()`.
+/// - Wrapping (`end < start`): `hour ≥ start` OR `hour < end`.
+///   - If `hour ≥ start`: check `now.weekday()` is in `active_days`.
+///   - If `hour < end`:  check the *previous* weekday is in `active_days`
+///     (because the window was opened last night).
+/// - Equal (`end == start`): treated as empty window → returns `false`.
+pub(crate) fn should_run_now_with_time(
+    config: &AppConfig,
+    now: chrono::DateTime<chrono::Local>,
+) -> bool {
     let schedule = &config.schedule;
     if !schedule.active_hours_enabled {
         return true;
     }
 
-    let now = chrono::Local::now();
     let hour = now.hour() as u8;
     let weekday = match now.weekday() {
         chrono::Weekday::Mon => Weekday::Mon,
@@ -563,11 +582,95 @@ pub fn should_run_now(config: &AppConfig) -> bool {
         chrono::Weekday::Sun => Weekday::Sun,
     };
 
-    if !schedule.active_days.contains(&weekday) {
-        return false;
-    }
+    let start = schedule.active_start_hour;
+    let end = schedule.active_end_hour;
 
-    hour >= schedule.active_start_hour && hour < schedule.active_end_hour
+    if end > start {
+        // Non-wrapping window: e.g. 09:00–17:00.
+        // Active when hour ∈ [start, end) on a configured weekday.
+        if !schedule.active_days.contains(&weekday) {
+            return false;
+        }
+        hour >= start && hour < end
+    } else if end < start {
+        // Overnight (wrapping) window: e.g. 22:00–06:00.
+        // The window opens at `start` on the "start-day" and closes at
+        // `end` on the next calendar day.
+        if hour >= start {
+            // We are in the evening portion — check today's weekday.
+            schedule.active_days.contains(&weekday)
+        } else if hour < end {
+            // We are in the early-morning carry-over portion — check yesterday.
+            let yesterday = weekday_pred(weekday);
+            schedule.active_days.contains(&yesterday)
+        } else {
+            // hour == end exactly — window is half-open [start, end), so end is excluded.
+            false
+        }
+    } else {
+        // start == end: empty / degenerate window → inactive.
+        false
+    }
+}
+
+/// Returns `true` when the current wall-clock time falls within the configured
+/// active-hours window (or active_hours is disabled).
+pub fn should_run_now(config: &AppConfig) -> bool {
+    should_run_now_with_time(config, chrono::Local::now())
+}
+
+/// Returns `true` when the current instant falls inside any configured
+/// tracking-schedule mute window.
+///
+/// Delegates to the time-injectable helper; uses `chrono::Local::now()`.
+// A.7/A.9 call-sites will consume this; allow until wired.
+#[allow(dead_code)]
+pub fn tracking_schedule_active(config: &AppConfig) -> bool {
+    loops::tracking_schedule_helper::tracking_schedule_active(config, chrono::Local::now())
+}
+
+/// Full 4-term privacy gate composite — use this at all gate sites rather than
+/// piecemeal checks.
+///
+/// ```text
+/// capture_permitted_now =
+///     consent.screen_capture              // consent top-authority (CONS-PC02)
+///     AND should_run_now(cfg)             // active_hours gate
+///     AND !tracking_schedule_active(cfg)  // tracking-schedule mute gate
+///     AND !capture_paused                 // user tray-toggle veto
+/// ```
+///
+/// Callers must supply a [`ConsentPermissions`] snapshot and the current
+/// `capture_paused` atomic read (A.7 / A.9 / A.12 / A.14 will thread these
+/// through scheduler loops and IPC commands).
+// A.7/A.9 call-sites will consume this; allow until wired.
+#[allow(dead_code)]
+pub fn capture_permitted_now(
+    config: &AppConfig,
+    consent: &oneshim_core::consent::ConsentPermissions,
+    capture_paused: bool,
+) -> bool {
+    loops::tracking_schedule_helper::capture_permitted_now(
+        config,
+        consent,
+        capture_paused,
+        chrono::Local::now(),
+    )
+}
+
+/// Returns the predecessor (previous) weekday.
+///
+/// Used by [`should_run_now_with_time`] for overnight window carry-over checks.
+fn weekday_pred(day: Weekday) -> Weekday {
+    match day {
+        Weekday::Mon => Weekday::Sun,
+        Weekday::Tue => Weekday::Mon,
+        Weekday::Wed => Weekday::Tue,
+        Weekday::Thu => Weekday::Wed,
+        Weekday::Fri => Weekday::Thu,
+        Weekday::Sat => Weekday::Fri,
+        Weekday::Sun => Weekday::Sat,
+    }
 }
 
 #[cfg(test)]
@@ -672,5 +775,124 @@ mod tests {
         });
 
         assert!(policy.prepare_event_for_upload(event).is_none());
+    }
+
+    // ── Overnight active_hours wrap tests (CONS-C05) ─────────────────────────
+
+    /// Build a `DateTime<Local>` for a known weekday at HH:MM using UTC+0
+    /// FixedOffset so wall-clock matches the literal date, independent of
+    /// test-machine timezone.
+    ///
+    /// - 2024-01-10 = Wednesday
+    /// - 2024-01-11 = Thursday
+    /// - 2024-01-13 = Saturday
+    fn fixed_at_local(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+    ) -> chrono::DateTime<chrono::Local> {
+        use chrono::{NaiveDate, TimeZone as _};
+        let naive = NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(hour, minute, 0)
+            .unwrap();
+        // Interpret the naive datetime as local wall-clock time so that
+        // now.hour() == hour and now.weekday() == the date's weekday on any machine.
+        chrono::Local
+            .from_local_datetime(&naive)
+            .earliest()
+            .unwrap()
+    }
+
+    /// Build an `AppConfig` with an overnight active_hours window 22:00–06:00
+    /// on Mon–Fri.
+    fn overnight_cfg() -> AppConfig {
+        let mut cfg = AppConfig::default_config();
+        cfg.schedule.active_hours_enabled = true;
+        cfg.schedule.active_start_hour = 22;
+        cfg.schedule.active_end_hour = 6; // end < start → overnight wrap
+        cfg.schedule.active_days = vec![
+            Weekday::Mon,
+            Weekday::Tue,
+            Weekday::Wed,
+            Weekday::Thu,
+            Weekday::Fri,
+        ];
+        cfg
+    }
+
+    /// Overnight wrap: active_hours 22:00–06:00 on Mon–Fri.
+    ///
+    /// Tests four instants (all via `should_run_now_with_time`):
+    /// - Wed 23:00: inside (Wed in active_days, hour >= 22) → true
+    /// - Thu 01:00: carry-over from Wed night (hour < 6, Wed in active_days) → true
+    /// - Thu 05:59: still carry-over (end 06:00 is exclusive) → true
+    /// - Thu 06:01: outside (past end 06, not carry-over) → false
+    ///
+    /// Note: Sat 00:01 IS inside the window (Fri opened at 22:00, carries to Sat 06:00).
+    #[test]
+    fn should_run_now_handles_overnight_range() {
+        let cfg = overnight_cfg();
+
+        // Wed 23:00 — evening portion on Wed (in active_days).
+        let wed_23 = fixed_at_local(2024, 1, 10, 23, 0);
+        assert!(
+            should_run_now_with_time(&cfg, wed_23),
+            "Wed 23:00 must be inside overnight window 22-06 (CONS-C05)"
+        );
+
+        // Thu 01:00 — carry-over from Wed night.
+        let thu_01 = fixed_at_local(2024, 1, 11, 1, 0);
+        assert!(
+            should_run_now_with_time(&cfg, thu_01),
+            "Thu 01:00 must be inside carry-over from Wed night (CONS-C05)"
+        );
+
+        // Thu 05:59 — still carry-over (end is exclusive at 06:00).
+        let thu_0559 = fixed_at_local(2024, 1, 11, 5, 59);
+        assert!(
+            should_run_now_with_time(&cfg, thu_0559),
+            "Thu 05:59 must be inside carry-over (end 06:00 is exclusive) (CONS-C05)"
+        );
+
+        // Thu 06:01 — outside window; Thu is a start-day but hour 6 == end → excluded.
+        // 06:01 is also past end, so outside carry-over too.
+        let thu_0601 = fixed_at_local(2024, 1, 11, 6, 1);
+        assert!(
+            !should_run_now_with_time(&cfg, thu_0601),
+            "Thu 06:01 must be outside the window (past end hour 06) (CONS-C05)"
+        );
+    }
+
+    /// Overnight wrap midnight: explicit Wed 23:00 → Thu 01:00 → Thu 05:59 →
+    /// Thu 06:01 → Sat 00:01 sequence mirrors CONS-C05 pseudocode.
+    #[test]
+    fn should_run_now_wraps_midnight_thu_01() {
+        let cfg = overnight_cfg();
+
+        // Sat 00:01 — Sat is NOT in active_days as start, but Fri IS and
+        // 00:01 < end_hour (6), so this is carry-over from Fri night → true.
+        let sat_0001 = fixed_at_local(2024, 1, 13, 0, 1);
+        assert!(
+            should_run_now_with_time(&cfg, sat_0001),
+            "Sat 00:01 must be inside carry-over from Fri night \
+             (Fri is in active_days, hour 0 < end 6) (CONS-C05)"
+        );
+
+        // Sat 06:01 — past the carry-over end, and Sat is not in active_days.
+        let sat_0601 = fixed_at_local(2024, 1, 13, 6, 1);
+        assert!(
+            !should_run_now_with_time(&cfg, sat_0601),
+            "Sat 06:01 must be outside (past end 06, Sat not in active_days) (CONS-C05)"
+        );
+
+        // Wed 21:59 — before window opens on Wed.
+        let wed_2159 = fixed_at_local(2024, 1, 10, 21, 59);
+        assert!(
+            !should_run_now_with_time(&cfg, wed_2159),
+            "Wed 21:59 must be outside (before start hour 22 on Wed) (CONS-C05)"
+        );
     }
 }

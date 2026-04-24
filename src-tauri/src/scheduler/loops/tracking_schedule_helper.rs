@@ -8,13 +8,13 @@
 //! * [`capture_permitted_now`] — composes all four privacy gates per spec §3.4:
 //!   `consent_granted AND active_hours AND !tracking_schedule_active AND !capture_paused`.
 //!
-//! A.5 will replace the `todo!()` stubs with real implementations.
+//! A.5 implements the real logic for both functions.
 
 use chrono::{DateTime, Local};
 use oneshim_core::config::AppConfig;
 use oneshim_core::consent::ConsentPermissions;
 
-// ── Public stubs ────────────────────────────────────────────────────────────
+// ── Implementations ─────────────────────────────────────────────────────────
 
 /// Returns `true` when `now` falls inside any configured tracking-schedule
 /// mute window.
@@ -22,36 +22,51 @@ use oneshim_core::consent::ConsentPermissions;
 /// When `cfg.tracking_schedule.enabled` is `false` or the `windows` list is
 /// empty, the schedule is considered inactive and this returns `false`.
 ///
-/// A.5 provides the real implementation.
+/// The function iterates all configured windows and delegates per-window
+/// range checks to [`TrackingWindow::window_is_active`] (implemented in A.3),
+/// which handles both same-day and overnight wrap windows correctly.
+// A.7/A.9 call-sites will consume this; allow until wired.
 #[allow(dead_code)]
-pub(crate) fn tracking_schedule_active(_cfg: &AppConfig, _now: DateTime<Local>) -> bool {
-    todo!("A.5 impl")
+pub(crate) fn tracking_schedule_active(cfg: &AppConfig, now: DateTime<Local>) -> bool {
+    let ts = &cfg.tracking_schedule;
+    if !ts.enabled {
+        return false;
+    }
+    ts.windows.iter().any(|w| w.window_is_active(now))
 }
 
 /// Returns `true` when capture is permitted right now.
 ///
-/// Composes all 4 privacy gates per spec §3.4:
+/// Composes all 4 privacy gates per spec §3.4 (CONS-PC02):
 ///
 /// ```text
 /// capture_permitted_now =
-///     consent.screen_capture                    // consent top-authority gate
-///     AND should_run_now_with_time(cfg, now)    // active_hours gate
-///     AND !tracking_schedule_active(cfg, now)   // tracking-schedule negative gate
-///     AND !capture_paused                        // user tray-toggle veto
+///     consent.screen_capture                     // consent top-authority gate
+///     AND should_run_now_with_time(cfg, now)     // active_hours gate
+///     AND !tracking_schedule_active(cfg, now)    // tracking-schedule negative gate
+///     AND !capture_paused                         // user tray-toggle veto
 /// ```
 ///
 /// All four gates must be true for capture to be permitted. Any single `false`
-/// propagates to `false` regardless of the other gate values (CONS-PC02).
+/// short-circuits and returns `false` regardless of the other gate values.
 ///
-/// A.5 provides the real implementation.
+/// # Plan deviation note
+/// The original plan spec §3.4 cited `consent.allows_tier(ConsentTier::Capture)`
+/// but that method does not exist in `oneshim-core`. The actual API exposes the
+/// field `ConsentPermissions.screen_capture: bool`, confirmed during A.4. This
+/// implementation uses the field directly.
+// A.7/A.9 call-sites will consume this; allow until wired.
 #[allow(dead_code)]
 pub(crate) fn capture_permitted_now(
-    _cfg: &AppConfig,
-    _consent: &ConsentPermissions,
-    _capture_paused: bool,
-    _now: DateTime<Local>,
+    cfg: &AppConfig,
+    consent: &ConsentPermissions,
+    capture_paused: bool,
+    now: DateTime<Local>,
 ) -> bool {
-    todo!("A.5 impl")
+    consent.screen_capture
+        && crate::scheduler::should_run_now_with_time(cfg, now)
+        && !tracking_schedule_active(cfg, now)
+        && !capture_paused
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -59,17 +74,19 @@ pub(crate) fn capture_permitted_now(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{FixedOffset, NaiveDate, TimeZone as _, Timelike};
+    use chrono::{NaiveDate, TimeZone as _, Timelike};
     use oneshim_core::config::Weekday;
     use oneshim_core::config::{TrackingScheduleConfig, TrackingWindow};
 
     // ── Fixture helpers ─────────────────────────────────────────────────────
 
     /// Build a `DateTime<Local>` for a known-Monday date (2024-01-08) at the
-    /// given HH:MM, using a UTC+0 FixedOffset so wall-clock == date literal
-    /// and the result is independent of the test machine's timezone.
+    /// given HH:MM.
     ///
-    /// Returns `DateTime<Local>` via a cast that preserves the wall-clock value.
+    /// The result is independent of the test machine's timezone: the naive
+    /// wall-clock values (weekday, hour, minute) are interpreted as "Local"
+    /// time, so `now.time()` and `now.weekday()` return exactly what the
+    /// literal says regardless of the machine's UTC offset.
     fn monday_at(hour: u32, minute: u32) -> DateTime<Local> {
         // 2024-01-08 is a Monday (verified: python3 -c "import datetime; print(datetime.date(2024,1,8).strftime('%A'))" → Monday)
         fixed_at(2024, 1, 8, hour, minute) // Monday
@@ -80,20 +97,25 @@ mod tests {
         fixed_at(2024, 1, 10, hour, minute) // Wednesday
     }
 
-    /// Build a `DateTime<Local>` for any ymd/hms via FixedOffset UTC+0.
+    /// Build a `DateTime<Local>` for any ymd/hms whose `.time()` and
+    /// `.weekday()` return the literal values supplied.
+    ///
+    /// Uses `NaiveDateTime::and_local_timezone(Local)` to interpret the naive
+    /// datetime *as* local wall-clock time rather than UTC, so the result is
+    /// independent of the test machine's UTC offset.
+    ///
+    /// # Panics
+    /// Panics if the given ymd/hms is invalid or ambiguous in the local timezone
+    /// (DST spring-forward gap). All test call-sites use unambiguous, valid dates.
     fn fixed_at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
-        let utc = FixedOffset::east_opt(0).unwrap();
         let naive = NaiveDate::from_ymd_opt(year, month, day)
             .unwrap()
             .and_hms_opt(hour, minute, 0)
             .unwrap();
-        let dt = utc.from_local_datetime(&naive).unwrap();
-        // Cast to Local: chrono allows this via fixed_offset().with_timezone().
-        // Both instants represent the same absolute UTC point; Local just
-        // re-labels the timezone. For these tests the machine timezone is
-        // irrelevant because we only care about the function's behavior given
-        // the `now` argument — the impl must not call `Local::now()` internally.
-        dt.with_timezone(&Local)
+        // Interpret the naive datetime as local wall-clock time.
+        // This ensures now.time() == NaiveTime { hour, minute, 0 } and
+        // now.weekday() == the weekday of the given date, on any machine.
+        Local.from_local_datetime(&naive).earliest().unwrap()
     }
 
     /// Build a `TrackingWindow` for use in tests (no label, panics on invalid input
@@ -111,22 +133,6 @@ mod tests {
     fn cfg_with_ts(ts: TrackingScheduleConfig) -> AppConfig {
         let mut cfg = AppConfig::default_config();
         cfg.tracking_schedule = ts;
-        cfg
-    }
-
-    /// Build an `AppConfig` with active_hours gate enabled for the given
-    /// hour range [start, end) on all weekdays (Mon–Fri).
-    ///
-    /// Sets `schedule.active_hours_enabled = true`, `active_start_hour`, and
-    /// `active_end_hour`. Used by the 16-row truth table to put the active_hours
-    /// gate in a known state.
-    #[allow(dead_code)]
-    fn cfg_with_active_hours(start_h: u8, end_h: u8, days: Vec<Weekday>) -> AppConfig {
-        let mut cfg = AppConfig::default_config();
-        cfg.schedule.active_hours_enabled = true;
-        cfg.schedule.active_start_hour = start_h;
-        cfg.schedule.active_end_hour = end_h;
-        cfg.schedule.active_days = days;
         cfg
     }
 
