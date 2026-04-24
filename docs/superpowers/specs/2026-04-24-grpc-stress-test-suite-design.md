@@ -11,7 +11,7 @@
   - `crates/oneshim-web/tests/external_grpc_integration.rs:1300-1307` — T16 deletion note
   - `crates/oneshim-web/src/grpc/external/ip_ban.rs:127-250` — existing IpBan unit tests (`ipv6_64_prefix_shared_ban` covers /64 prefix logic)
   - Sibling branch `feature/external-grpc-audit-liveconfig` (features2) — active parallel work to avoid conflicts with
-  - Memory: `project_next_tasks.md`, `reference_serial_test_pattern.md`, `reference_ci_tauri_externalbin_stub.md`, `feedback_3loop_quality_gate.md`, `feedback_subagent_driven_catches_stale_plans.md`, `feedback_pipelined_reviews_pattern.md`, `feedback_squash_merge_cliff_skip.md`
+  - Memory: `project_next_tasks.md`, `reference_ci_tauri_externalbin_stub.md`, `feedback_3loop_quality_gate.md`, `feedback_subagent_driven_catches_stale_plans.md`, `feedback_pipelined_reviews_pattern.md`, `feedback_squash_merge_cliff_skip.md`
 
 ---
 
@@ -77,7 +77,7 @@ Five binary decisions shaped this spec:
 
 ```
 crates/oneshim-web/
-├── Cargo.toml                            # +[features] stress-test = []
+├── Cargo.toml                            # +[features] stress-test = ["grpc-dashboard", "grpc-dashboard-external", "test-support"]
 └── tests/
     └── external_grpc_stress.rs           # NEW. #![cfg(feature = "stress-test")]
 
@@ -420,7 +420,7 @@ features2 is an active parallel branch (in plan-rework state per `project_next_t
 | `ExternalGrpcConfig` struct | none (consumed read-only) | adding field | ✅ zero (additive field; test config literals spread-default or explicit-init) |
 | `crates/oneshim-web/tests/external_grpc_stress.rs` | create | unaware | ✅ zero |
 | `.github/workflows/grpc-stress.yml` | create | unaware | ✅ zero |
-| `crates/oneshim-web/Cargo.toml` `[features]` | add `stress-test = []` | unknown (likely unchanged) | ⚠️ trivial 1-line conflict possible |
+| `crates/oneshim-web/Cargo.toml` `[features]` | add `stress-test = ["grpc-dashboard", "grpc-dashboard-external", "test-support"]` | unknown (likely unchanged) | ⚠️ trivial 1-line conflict possible |
 | `docs/guides/external-grpc.md` | append section | unknown (may append) | ⚠️ trivial section-append conflict possible |
 
 ### 10.2 Semantic contract
