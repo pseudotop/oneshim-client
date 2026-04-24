@@ -209,7 +209,8 @@
       "audio": "Audio",
       "sync": "Sync",
       "focusAuto": "Focus Auto",
-      "advanced": "Advanced"
+      "advanced": "Advanced",
+      "trackingSchedule": "Tracking Schedule"
     },
     "groupCore": "Core",
     "groupAdvanced": "Advanced",
@@ -1677,5 +1678,30 @@
     "steps": "{{count}} steps",
     "builtin": "Built-in",
     "templateCount": "{{count}} items"
+  },
+  "trackingSchedule": {
+    "title": "Tracking Schedule",
+    "noWindows": "No windows configured.",
+    "addWindow": "Add window",
+    "startTime": "Start",
+    "endTime": "End",
+    "timezone": "Timezone",
+    "timezoneLocal": "Local",
+    "timezoneLabel": "Timezone",
+    "label": "Label",
+    "removeWindow": "Remove",
+    "save": "Save",
+    "activeNow": "Active now — ends {{time}}",
+    "validationHhmm": "Time must be HH:MM (00:00–23:59)",
+    "enabled": "Enabled",
+    "daysLabel": "Active days",
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun",
+    "saveError": "Failed to save."
   }
 }

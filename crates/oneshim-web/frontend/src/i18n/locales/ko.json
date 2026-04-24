@@ -209,7 +209,8 @@
       "audio": "오디오",
       "sync": "동기화",
       "focusAuto": "집중 자동",
-      "advanced": "고급"
+      "advanced": "고급",
+      "trackingSchedule": "추적 일정"
     },
     "groupCore": "기본",
     "groupAdvanced": "고급",
@@ -1677,5 +1678,30 @@
     "steps": "{{count}}단계",
     "builtin": "내장",
     "templateCount": "{{count}}개 항목"
+  },
+  "trackingSchedule": {
+    "title": "추적 일정",
+    "noWindows": "설정된 창이 없습니다.",
+    "addWindow": "창 추가",
+    "startTime": "시작",
+    "endTime": "종료",
+    "timezone": "시간대",
+    "timezoneLocal": "로컬",
+    "timezoneLabel": "시간대",
+    "label": "레이블",
+    "removeWindow": "삭제",
+    "save": "저장",
+    "activeNow": "현재 활성 — {{time}}에 종료",
+    "validationHhmm": "시간은 HH:MM (00:00–23:59) 형식이어야 합니다",
+    "enabled": "활성화",
+    "daysLabel": "활성 요일",
+    "mon": "월",
+    "tue": "화",
+    "wed": "수",
+    "thu": "목",
+    "fri": "금",
+    "sat": "토",
+    "sun": "일",
+    "saveError": "저장에 실패했습니다."
   }
 }

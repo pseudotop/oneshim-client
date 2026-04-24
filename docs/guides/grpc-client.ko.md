@@ -540,6 +540,70 @@ let response = client.upload_batch(request).await?;
 NO_EMOJI=1 cargo run -p oneshim-app --features grpc
 ```
 
+## V2b: SubscribeEvents
+
+`SubscribeEvents`는 Frame / Idle / AiRuntimeStatus 타입의 `DashboardEvent`와
+함께 `ServerLoadHint` 및 `DroppedEventsSignal` 대역 외 메시지를 전달하는
+서버 스트리밍 RPC입니다.
+
+### 요청
+
+```proto
+message SubscribeEventsRequest {
+  repeated string event_types = 1;  // "frame" | "idle" | "ai_runtime_status"
+  bool respect_server_hints = 2;
+}
+```
+
+- `event_types` 비어 있음 → 세 가지 모두 구독.
+- 알 수 없는 타입은 자동으로 무시됨 (순방향 호환).
+
+### 응답 시맨틱
+
+- `Event(DashboardEvent)` — 페이로드 variant:
+  - `Frame(FrameEvent)` — 스케줄러 캡처 경로에서 그대로 전달.
+  - `Idle(IdleEvent)` — 엣지 트리거; Active↔Idle 전환마다 1회 발행.
+  - `AiRuntimeStatus(AiRuntimeStatusEvent)` — **구독 시 스냅샷**.
+    구독 시점에 정확히 한 번 발행. 서버에 구성된 상태가 없으면
+    `ocr_source == "unknown"`.
+- `Hint(ServerLoadHint)` — 스로틀 적용 (30s 하트비트 + 레벨 전환 시).
+- `Dropped(DroppedEventsSignal)` — reason별 드롭 신호 (v2c+)
+
+  서버는 요청된 속도로 이벤트를 전달할 수 없을 때 `DroppedEventsSignal`을 발행합니다. 각 신호의 `reason` 필드는 드롭이 발생한 *이유*를 나타냅니다. 서로 다른 이유의 드롭이 같은 틱에 겹치면 **틱당 여러 신호**를 볼 수 있습니다.
+
+  | `reason`       | 발생 조건                                                   | `by_type[].event_type` | 비고                                                        |
+  | -------------- | ----------------------------------------------------------- | ---------------------- | ----------------------------------------------------------- |
+  | `rate_limit`   | 서버 사이드 rate limiter가 Frame/Idle 이벤트 거부             | `frame` 또는 `idle`    | 이벤트 타입별 breakdown 정확                                 |
+  | `channel_lag`  | Broadcast 채널 오버플로 (`Lagged(n)`)                        | `unknown`              | 드롭 탐지 시점에 이벤트 타입 알 수 없음; `Lagged(n)`마다 `n`개 드롭 기록 (실제 누락 이벤트 수 반영) |
+
+  Throttle: 각 reason은 초당 최대 1회 emit. 구독자는 `dropped_count`를 해당 `(reason, since, until)` 구간의 총계로 해석해야 합니다. 드롭 탐지 시점에 특정 이벤트 타입을 복원할 수 없는 경우 OTel 관례에 따라 `event_type = "unknown"`을 사용합니다.
+
+  **순서**: 같은 틱에 복수 signal이 emit될 때 핸들러 로컬 순서는 rate_limit → channel_lag. proto contract가 아니므로 클라이언트는 순서에 의존하지 않아야 합니다.
+
+  **필터 상호작용**: 드롭 신호는 `SubscribeEventsRequest`의 `event_types` 필터와 무관하게 전달됩니다. `event_types=["frame"]`으로 구독한 클라이언트도 `by_type[].event_type = "unknown"`을 포함한 `channel_lag` 드롭 신호를 받습니다 — channel-lag는 이벤트 스트림과 out-of-band에서 탐지되기 때문입니다.
+
+### 스냅샷 전용 구독
+
+`event_types: ["ai_runtime_status"]` 단독 구독은 스냅샷 하나를 받은 후
+대기합니다. 스트림은 열린 상태를 유지하며 HTTP/2 PING 킵얼라이브
+(30s 간격, 10s 타임아웃)로 NAT/LB 유휴 타임아웃을 방지합니다.
+클라이언트는 언제든지 `cancel()`할 수 있습니다.
+
+### IdleTracker 콜드 스타트 엣지 동작 (U7)
+
+새로운 `IdleTracker`는 `previous_state = Active`로 시작합니다. 서버
+시작 시점에 사용자가 이미 유휴 상태이면, 첫 번째 스케줄러 틱에서
+`Active → Idle` 엣지가 감지되어 `is_idle: true`인 Idle 이벤트가 발행됩니다.
+구독자 관점에서는 올바른 동작(현실의 스냅샷이 "유휴 상태")이지만,
+직관적인 "전환이 시작 시점에 발생했다"는 의미와 다를 수 있습니다.
+대시보드는 첫 IdleEvent를 진정한 전환 로그가 아닌 권위 있는 상태
+단언으로 취급해야 합니다.
+
+### 속도 제한
+
+스트림별, 이벤트 타입별 토큰 버킷: 20 버스트, 초당 10 토큰 보충.
+초과 이벤트는 삭제되고 `DroppedEventsSignal.by_type`에 집계됩니다.
+
 ## 참조
 
 - Proto 정의 — `api/proto/oneshim/v1/` (서버 저장소 참조)
@@ -550,4 +614,4 @@ NO_EMOJI=1 cargo run -p oneshim-app --features grpc
 
 ---
 
-_마지막 업데이트: 2026-02-04_
+_마지막 업데이트: 2026-04-22_

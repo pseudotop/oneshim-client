@@ -56,6 +56,7 @@ mod tests {
             app_name: "VS Code".to_string(),
             window_title: "main.rs".to_string(),
             importance: 0.85,
+            trigger_type: "timer".to_string(),
         });
         let json = serde_json::to_string(&event).expect("frame event should serialize");
         assert!(json.contains("\"type\":\"frame\""));

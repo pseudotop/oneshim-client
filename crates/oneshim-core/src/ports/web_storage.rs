@@ -397,6 +397,45 @@ pub trait HabitStorage: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
+// Sub-trait: DashboardStreamingStorage
+// ---------------------------------------------------------------------------
+
+/// v2b dashboard streaming reads. Frame lookups hit the DB; Idle and
+/// AiRuntimeStatus have no DB persistence so `fetch_dashboard_event_source`
+/// is a Frame-only entry point — Idle / AiRuntimeStatus are served from
+/// the RealtimeEvent payload carried on event_tx (see design §4 data flow).
+pub trait DashboardStreamingStorage: Send + Sync {
+    /// Aggregate a single MetricBucket from raw `system_metrics` rows in
+    /// the half-open `[from, to)` window. Returns a zero-initialised
+    /// bucket when the window is empty. Averages cpu_usage / memory_used
+    /// and (future) sums keystroke / mouse-click counters.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Storage` on SQL / IO failure;
+    /// `CoreError::Internal` on mutex-lock poisoning.
+    fn aggregate_metrics_window(
+        &self,
+        from: chrono::DateTime<chrono::Utc>,
+        to: chrono::DateTime<chrono::Utc>,
+    ) -> Result<crate::models::dashboard_streaming::MetricBucketRecord, CoreError>;
+
+    /// Fetch a canonical frames-table row for the event signal. Only
+    /// DashboardEventSignal::Frame(id) is a real DB lookup; calling with
+    /// any other variant is a bug (the v2b SubscribeEvents handler
+    /// converts Idle / AiRuntimeStatus directly from the event payload).
+    ///
+    /// # Errors
+    /// - `CoreError::NotFound` when the frame id is missing (defensive —
+    ///   see design §5 event↔DB race).
+    /// - `CoreError::Storage` on SQL / IO failure.
+    /// - `CoreError::Internal` when called with a non-Frame signal.
+    fn fetch_dashboard_event_source(
+        &self,
+        signal: &crate::models::dashboard_streaming::DashboardEventSignal,
+    ) -> Result<crate::models::dashboard_streaming::DashboardEventRecord, CoreError>;
+}
+
+// ---------------------------------------------------------------------------
 // Composed supertrait
 // ---------------------------------------------------------------------------
 
@@ -422,6 +461,7 @@ pub trait WebStorage:
     + CoachingQueryStorage
     + HabitStorage
     + AnnotationStorage
+    + DashboardStreamingStorage
     + Send
     + Sync
 {
@@ -446,6 +486,7 @@ impl<T> WebStorage for T where
         + CoachingQueryStorage
         + HabitStorage
         + AnnotationStorage
+        + DashboardStreamingStorage
         + Send
         + Sync
 {

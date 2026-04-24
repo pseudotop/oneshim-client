@@ -166,3 +166,12 @@ Detailed changelog of each implementation phase. For current crate structure and
 - C5: AWS Bedrock catalog-deleted; 8 match arms + 2 defense-in-depth guards return `ConfigCode::UnsupportedProviderBedrock`; OCR silent no-auth fallthrough closed
 - ~1,030 callsites retrofitted via 4-phase soft-migration (V1→V2→V1-rename); post-merge drift audit iter 87~177 removed 16 orphan wire codes + 15 dead adapter-error variants + ~138 `Internal.Generic` re-routes + 62/62 port `# Errors` doc standardization + HTTP status mapping canonicalization + doc-org convergence
 - ADR + companion: `docs/architecture/ADR-019-error-code-infrastructure.{md,ko.md}`; CHANGELOG `[Unreleased]` line 12 carries the full summary
+
+## Phase 9: Tracking Schedule Privacy Primitive (2026-04-24)
+
+Phase 9 PR-A introduces a **tracking-schedule** privacy primitive — a configurable allow-list of day-of-week + time-of-day windows during which the agent is permitted to capture context. When the current instant falls outside all configured windows the agent silently suppresses capture, batch upload, and notifications without any user friction.
+
+The implementation spans 21 commits across the full client stack: `TrackingScheduleConfig` types with `chrono-tz`-aware window matching (A.1–A.3), a 4-term composite gate `capture_permitted_now` that ANDs consent + active_hours + tracking_schedule + pause (A.5), extraction of `tracking_schedule_helper.rs` from the monitor loop to respect the 500-line guardrail (A.7), gating of all 9 data-producing scheduler loops + batch-upload flush (A.9), a `BatchUploader::with_suppression_predicate` builder for real-time upload gating (A.10–A.12), Tauri IPC commands `get_tracking_schedule`/`set_tracking_schedule` with settings allowlist wiring (A.13–A.14), three REST endpoints (`GET/PUT /api/tracking-schedule`, `GET /api/tracking-schedule/status`) with http-interface-manifest + OpenAPI registration (A.15–A.16), tray tooltip propagation via `ConfigManager::subscribe` (A.17), `DesktopNotifier` window-enter/exit notifications with 60 s debounce (A.18), and a `TrackingScheduleSettings` React component wired into the Settings layout (A.19–A.20). Total new tests: +147 (3,651 → 3,798 workspace-passed).
+
+- Scope: `oneshim-core` config types, `oneshim-network` uploader, `src-tauri` scheduler + IPC + tray, `oneshim-web` REST handlers + React frontend
+- Design + plan: `docs/reviews/2026-04-24-phase9-tracking-schedule-{spec,plan}.md`
