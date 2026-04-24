@@ -677,6 +677,23 @@
           "path": "/api/pomodoro/complete"
         }
       ]
+    },
+    {
+      "module": "tracking_schedule",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/tracking-schedule"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/tracking-schedule"
+        },
+        {
+          "method": "GET",
+          "path": "/api/tracking-schedule/status"
+        }
+      ]
     }
   ]
 }

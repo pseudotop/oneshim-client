@@ -326,6 +326,16 @@ pub fn api_routes() -> Router<AppState> {
             "/pomodoro/complete",
             post(handlers::pomodoro::complete_pomodoro),
         )
+        // Tracking-schedule configuration + status (A.15/A.16)
+        .route(
+            "/tracking-schedule",
+            get(handlers::tracking_schedule::get_config)
+                .put(handlers::tracking_schedule::put_config),
+        )
+        .route(
+            "/tracking-schedule/status",
+            get(handlers::tracking_schedule::get_status),
+        )
 }
 
 pub fn integration_routes() -> Router<AppState> {
