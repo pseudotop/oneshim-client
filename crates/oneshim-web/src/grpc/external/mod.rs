@@ -9,6 +9,7 @@ pub mod cert_resolver;
 pub mod conn_info;
 pub mod ip_ban;
 pub mod jwt_verifier;
+pub(crate) mod live_config;
 pub mod metrics;
 pub mod mtls_verifier;
 pub mod port_collision;
