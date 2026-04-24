@@ -13,6 +13,14 @@
 //! **rcgen 0.14 signed_by API**: `CertificateParams::signed_by` takes two arguments:
 //! `(self, public_key: &impl PublicKeyData, issuer: &Issuer<'_, impl SigningKey>)`.
 //! Create the `Issuer` using `Issuer::from_ca_cert_pem`.
+//!
+//! # Phase 0-9 test fixture API (CR4)
+//!
+//! - [`fixture_bridge`] / [`fixture_metrics`] — Tasks 0.6, 3.1
+//! - [`InnerEcho`] — Tasks 0.6, 3.1 (trailer-status simulation)
+//! - [`AuthContext::fixture`] / [`PeerInfo::fixture`] — Tasks 0.6, 3.1, 6.1
+//! - [`PassthroughInner`] — Task 6.1
+//! - [`spawn_server_with_config_manager`] — Task 9.4
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -220,4 +228,342 @@ pub fn test_ca_and_client_cert(lifetime_hours: i64) -> TestCaAndClient {
         client_cert_der,
         _dir: dir,
     }
+}
+
+// ── AuthContext::fixture / PeerInfo::fixture ─────────────────────────────────
+
+use super::conn_info::{AuthContext, AuthType, PeerInfo};
+
+impl AuthContext {
+    /// Canonical fixture used by Tasks 0.6, 3.1, 6.1, 9.4.
+    ///
+    /// Returns a deterministic `AuthContext` with `AuthType::Jwt`, a fixed
+    /// `client_id`, a fixed `jti`, and a stable ULID-shaped `command_id`.
+    pub fn fixture() -> Self {
+        Self {
+            auth_type: AuthType::Jwt,
+            client_id: "test-client".into(),
+            jti: Some("test-jti".into()),
+            command_id: "01HXFIXTURE0000000000000000".into(),
+        }
+    }
+}
+
+impl PeerInfo {
+    /// Canonical fixture used by Tasks 0.6, 3.1, 6.1, 9.4.
+    ///
+    /// Returns `127.0.0.1:50001` with no mTLS cert and TLS 1.3 version string.
+    pub fn fixture() -> Self {
+        Self {
+            remote_addr: "127.0.0.1:50001".parse().expect("fixture addr"),
+            peer_cert_der: None,
+            cert_subject_cn: None,
+            tls_version: "TLSv1.3".into(),
+        }
+    }
+}
+
+// ── InnerEcho — minimal tower::Service returning preset HTTP responses ────────
+
+use std::convert::Infallible;
+use std::task::{Context, Poll};
+
+/// Minimal `tower::Service` test double that echoes a preset HTTP status code
+/// into both the response status and a `grpc-status` trailer.
+///
+/// Used by Tasks 0.6 and 3.1 to simulate handler responses with specific
+/// gRPC status codes without standing up a real tonic server.
+///
+/// # Variants
+///
+/// - `InnerEcho::with_trailer_status(code)` — body + `grpc-status` trailer
+/// - `InnerEcho::trailers_only_with_status(code)` — empty body; trailer only
+#[derive(Clone)]
+pub struct InnerEcho {
+    grpc_status: i32,
+    body_bytes: &'static [u8],
+}
+
+impl InnerEcho {
+    /// Return a response with a non-empty body and a `grpc-status` trailer.
+    pub fn with_trailer_status(grpc_status: i32) -> Self {
+        Self {
+            grpc_status,
+            body_bytes: b"body",
+        }
+    }
+
+    /// Return a response with an empty body and only a `grpc-status` trailer.
+    pub fn trailers_only_with_status(grpc_status: i32) -> Self {
+        Self {
+            grpc_status,
+            body_bytes: b"",
+        }
+    }
+}
+
+impl<B> tower::Service<http::Request<B>> for InnerEcho
+where
+    B: Send + 'static,
+{
+    type Response = http::Response<Vec<u8>>;
+    type Error = Infallible;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _req: http::Request<B>) -> Self::Future {
+        let grpc_status = self.grpc_status;
+        let body = self.body_bytes.to_vec();
+        Box::pin(async move {
+            let resp = http::Response::builder()
+                .status(200)
+                .header("content-type", "application/grpc")
+                // grpc-status trailer encoded in header position (tonic convention
+                // for unary responses — the value is identical; both positions are
+                // inspected by the spec §3.1 audit-layer tests).
+                .header("grpc-status", grpc_status.to_string())
+                .body(body)
+                .expect("InnerEcho response");
+            Ok(resp)
+        })
+    }
+}
+
+// ── PassthroughInner — transparent Service that records call counts ───────────
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
+/// Transparent `tower::Service` that delegates to the inner service and counts
+/// how many times `call` was invoked. Used by Task 6.1 to verify that
+/// the audit or auth layer does (or does not) forward requests to the handler.
+#[derive(Clone)]
+pub struct PassthroughInner {
+    /// Number of times `call` has been invoked.
+    pub call_count: Arc<AtomicUsize>,
+}
+
+impl PassthroughInner {
+    /// Create a new `PassthroughInner` with the counter at zero.
+    pub fn new() -> Self {
+        Self {
+            call_count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Snapshot the call count at this instant.
+    pub fn count(&self) -> usize {
+        self.call_count.load(Ordering::Relaxed)
+    }
+}
+
+impl Default for PassthroughInner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<B> tower::Service<http::Request<B>> for PassthroughInner
+where
+    B: Send + 'static,
+{
+    type Response = http::Response<Vec<u8>>;
+    type Error = Infallible;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _req: http::Request<B>) -> Self::Future {
+        self.call_count.fetch_add(1, Ordering::Relaxed);
+        Box::pin(async move {
+            Ok(http::Response::builder()
+                .status(200)
+                .body(vec![])
+                .expect("PassthroughInner response"))
+        })
+    }
+}
+
+// ── fixture_bridge / fixture_metrics ─────────────────────────────────────────
+
+use super::audit_bridge::AuditBridge;
+use super::metrics::ExternalMetrics;
+use oneshim_core::models::ai_session::SessionAuditEntry;
+use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
+use oneshim_core::ports::audit_log::AuditLogPort;
+
+/// Capturing mock that records every `log_complete_with_time` call.
+///
+/// Used by `fixture_bridge` so that Tasks 0.6 and 3.1 can assert on the
+/// exact audit entries emitted by `AuditBridge::record` /
+/// `AuditBridge::record_completion`.
+pub struct MockRecorder {
+    /// All entries captured by `log_complete_with_time`.
+    pub entries: std::sync::Mutex<Vec<AuditEntry>>,
+}
+
+impl MockRecorder {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            entries: std::sync::Mutex::new(vec![]),
+        })
+    }
+
+    /// Snapshot entries without holding the lock past the call.
+    pub fn snapshot(&self) -> Vec<AuditEntry> {
+        self.entries.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl AuditLogPort for MockRecorder {
+    async fn pending_count(&self) -> usize {
+        0
+    }
+    async fn recent_entries(&self, _limit: usize) -> Vec<AuditEntry> {
+        vec![]
+    }
+    async fn entries_by_status(&self, _s: &AuditStatus, _l: usize) -> Vec<AuditEntry> {
+        vec![]
+    }
+    async fn entries_by_action_prefix(&self, _p: &str, _l: usize) -> Vec<AuditEntry> {
+        vec![]
+    }
+    async fn stats(&self) -> AuditStats {
+        AuditStats::default()
+    }
+    async fn has_pending_batch(&self) -> bool {
+        false
+    }
+    async fn log_event(&self, _a: &str, _s: &str, _d: &str) {}
+    async fn log_start_if(&self, _l: AuditLevel, _c: &str, _s: &str, _a: &str) {}
+    async fn log_complete_with_time(
+        &self,
+        _level: AuditLevel,
+        command_id: &str,
+        session_id: &str,
+        details: &str,
+        execution_time_ms: u64,
+    ) {
+        use ulid::Ulid;
+        let status = serde_json::from_str::<serde_json::Value>(details)
+            .ok()
+            .and_then(|v| {
+                v.get("result").and_then(|r| r.as_str()).map(|r| match r {
+                    "ok" => AuditStatus::Completed,
+                    "denied" => AuditStatus::Denied,
+                    "timeout" => AuditStatus::Timeout,
+                    _ => AuditStatus::Failed,
+                })
+            })
+            .unwrap_or(AuditStatus::Completed);
+        self.entries.lock().unwrap().push(AuditEntry {
+            entry_id: Ulid::new().to_string(),
+            timestamp: chrono::Utc::now(),
+            session_id: session_id.into(),
+            command_id: command_id.into(),
+            action_type: "external_grpc".into(),
+            status,
+            details: Some(details.into()),
+            execution_time_ms: Some(execution_time_ms),
+        });
+    }
+    async fn drain_batch(&self) -> Vec<AuditEntry> {
+        vec![]
+    }
+    async fn drain_all(&self) -> Vec<AuditEntry> {
+        vec![]
+    }
+    async fn record_session_event(&self, _e: SessionAuditEntry) {}
+}
+
+/// Build an `(AuditBridge, Arc<MockRecorder>)` pair ready for unit tests.
+///
+/// The `MockRecorder` captures every `log_complete_with_time` call; the
+/// `AuditBridge` delegates to it. Used by Tasks 0.6 and 3.1.
+pub fn fixture_bridge() -> (AuditBridge, Arc<MockRecorder>) {
+    let recorder = MockRecorder::new();
+    let bridge = AuditBridge::new(recorder.clone() as Arc<dyn AuditLogPort>);
+    (bridge, recorder)
+}
+
+/// Build a fresh `Arc<ExternalMetrics>` pre-zeroed. Used by Tasks 0.6 and 3.1.
+pub fn fixture_metrics() -> Arc<ExternalMetrics> {
+    Arc::new(ExternalMetrics::new())
+}
+
+// ── spawn_server_with_config_manager ─────────────────────────────────────────
+
+/// Extension of `spawn_server` that also returns an `Arc<ExternalGrpcSpawnConfig>`
+/// so that Task 9.4 G3 tests can inspect or hold config state after the server starts.
+///
+/// The returned `Arc<ExternalGrpcSpawnConfig>` shares the same `shutdown_tx`,
+/// `metrics`, and `ip_ban` instances wired into the live server — all atomic
+/// fields are directly observable.
+///
+/// The caller is responsible for sending the shutdown signal via
+/// `cfg_arc.shutdown_tx.send(true)` and optionally aborting the `JoinHandle`.
+pub async fn spawn_server_with_config_manager(
+    cfg: super::spawn_config::ExternalGrpcSpawnConfig,
+) -> (
+    tokio::task::JoinHandle<()>,
+    u16,
+    Arc<super::spawn_config::ExternalGrpcSpawnConfig>,
+) {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::atomic::AtomicU16;
+    use std::time::Duration;
+
+    install_rustls_crypto_provider();
+
+    static NEXT_PORT: AtomicU16 = AtomicU16::new(44300);
+    let port = loop {
+        let p = NEXT_PORT.fetch_add(1, Ordering::Relaxed);
+        if std::net::TcpListener::bind(format!("127.0.0.1:{p}")).is_ok() {
+            break p;
+        }
+    };
+
+    let real_cfg = super::spawn_config::ExternalGrpcSpawnConfig {
+        bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+        ..cfg
+    };
+    let cfg_arc = Arc::new(real_cfg.clone());
+
+    let handle = tokio::spawn({
+        let rc = real_cfg;
+        async move {
+            match super::serve_external(rc).await {
+                Ok(()) => {}
+                Err(e) => eprintln!("spawn_server_with_config_manager error: {e:?}"),
+            }
+        }
+    });
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!(
+                "spawn_server_with_config_manager: server did not start on port {port} within 5s"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    (handle, port, cfg_arc)
 }

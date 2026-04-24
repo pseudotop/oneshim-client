@@ -30,7 +30,7 @@ pub(crate) struct ExternalGrpcAuditDetails<'a> {
     pub(crate) response_message_count: Option<u64>,
 }
 
-pub(crate) struct AuditBridge {
+pub struct AuditBridge {
     port: Arc<dyn AuditLogPort>,
 }
 
