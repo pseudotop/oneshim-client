@@ -692,7 +692,12 @@
         {
           "method": "GET",
           "path": "/api/tracking-schedule/status"
-        },
+        }
+      ]
+    },
+    {
+      "module": "external_grpc_live_config",
+      "operations": [
         {
           "method": "GET",
           "path": "/api/external-grpc/live-config"

@@ -1250,8 +1250,8 @@ paths:
   "/api/external-grpc/live-config":
     get:
       tags:
-        - tracking_schedule
-      operationId: tracking_schedule_get_api_external_grpc_live_config
+        - external_grpc_live_config
+      operationId: external_grpc_live_config_get_api_external_grpc_live_config
       summary: "GET /api/external-grpc/live-config"
       responses:
         "200":
