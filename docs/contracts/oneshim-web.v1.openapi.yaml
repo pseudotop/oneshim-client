@@ -2699,6 +2699,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/tracking-schedule":
+    get:
+      tags:
+        - tracking_schedule
+      operationId: tracking_schedule_get_api_tracking_schedule
+      summary: "GET /api/tracking-schedule"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - tracking_schedule
+      operationId: tracking_schedule_put_api_tracking_schedule
+      summary: "PUT /api/tracking-schedule"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/tracking-schedule/status":
+    get:
+      tags:
+        - tracking_schedule
+      operationId: tracking_schedule_get_api_tracking_schedule_status
+      summary: "GET /api/tracking-schedule/status"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/update/action":
     post:
       tags:

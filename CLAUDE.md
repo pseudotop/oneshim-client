@@ -414,7 +414,7 @@ Rules to prevent known issues from recurring. Enforced by code review.
 
 ### Monitor Loop Complexity
 
-`spawn_monitor_loop` in `scheduler/loops/monitor.rs` must stay under 500 lines. When adding functionality, extract into a helper function in the `loops/` directory (like `coaching_helper.rs`).
+`spawn_monitor_loop` in `scheduler/loops/monitor.rs` must stay under 500 lines. When adding functionality, extract into a helper function in the `loops/` directory (like `coaching_helper.rs`, `tracking_schedule_helper.rs`).
 
 ### Port Instance Sharing
 

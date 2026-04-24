@@ -84,6 +84,7 @@ mod sync_engine;
 mod telemetry;
 mod tray;
 mod tray_icon;
+mod tray_watch;
 mod update_coordinator;
 mod update_runtime;
 mod updater;
@@ -348,6 +349,9 @@ fn main() {
             commands::audio::stop_vad_listening,
             commands::bug_report::export_bug_report,
             commands::error_report::report_frontend_error,
+            commands::tracking_schedule::get_tracking_schedule,
+            commands::tracking_schedule::set_tracking_schedule,
+            commands::tracking_schedule::get_tracking_schedule_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");
@@ -382,6 +386,14 @@ fn main() {
                         }
                     }
                 }
+            }
+
+            // A.17: Abort the tray-watch task before the background runtime shuts
+            // down, preventing a spurious "config channel closed" warn log on exit.
+            if let Some(tray_watch) =
+                app_handle.try_state::<crate::tray_watch::TrayWatchHandle>()
+            {
+                tray_watch.0.abort();
             }
 
             if let Some(state) = app_handle.try_state::<runtime_state::AppState>() {

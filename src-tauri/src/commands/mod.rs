@@ -19,6 +19,7 @@ pub(crate) mod suggestion_parser;
 pub(crate) mod suggestions;
 pub(crate) mod sync;
 pub(crate) mod system;
+pub(crate) mod tracking_schedule;
 
 /// Recursively merge `patch` into `base`.
 /// Objects are merged key-by-key; all other values are replaced.
