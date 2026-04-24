@@ -676,4 +676,45 @@ mod tests {
             "expected 'validation.invalid_field' in error, got: {err_msg}"
         );
     }
+
+    // ── 13. Overnight wrap at exactly 16h is accepted (threshold boundary) ─
+
+    #[test]
+    fn overnight_wrap_exactly_16_hours_is_valid() {
+        // 22:00 → 14:00 wraps across midnight for (14:00 + 24h) - 22:00 = 16h.
+        // Validation rejects wraps strictly greater than 16h, so exactly 16h
+        // sits on the accepting side of the boundary (policy: `> 16h` → reject).
+        let json = r#"{"start":"22:00","end":"14:00","days_of_week":["Mon"]}"#;
+        let result = serde_json::from_str::<TrackingWindow>(json);
+        assert!(
+            result.is_ok(),
+            "16h overnight wrap (22:00→14:00) must be accepted at the boundary; got: {:?}",
+            result.err(),
+        );
+    }
+
+    // ── 14. Overnight wrap at 16h + 1 minute is rejected ──────────────────
+
+    #[test]
+    fn overnight_wrap_just_over_16_hours_is_invalid() {
+        // 22:00 → 14:01 wraps for (14:01 + 24h) - 22:00 = 16h 1m, one minute
+        // past the threshold. This must be rejected with a message that
+        // mentions the actual duration.
+        let json = r#"{"start":"22:00","end":"14:01","days_of_week":["Mon"]}"#;
+        let result = serde_json::from_str::<TrackingWindow>(json);
+        assert!(
+            result.is_err(),
+            "16h 1m overnight wrap (22:00→14:01) must be rejected just past the boundary; got: {:?}",
+            result.ok(),
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("16-hour"),
+            "expected the error to cite the 16-hour threshold, got: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("16h 1m"),
+            "expected the error to report the actual wrap duration (16h 1m), got: {err_msg}"
+        );
+    }
 }
