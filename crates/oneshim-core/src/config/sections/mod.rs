@@ -28,6 +28,7 @@ mod storage;
 mod suggestion;
 mod sync;
 mod tracking_schedule;
+pub use tracking_schedule::*;
 
 pub use ai::*;
 pub use ai_session::*;

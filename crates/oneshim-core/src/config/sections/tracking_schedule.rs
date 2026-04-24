@@ -1,10 +1,11 @@
 // Tracking schedule configuration — privacy-hardening feature (Phase 9 PR-A).
 //
 // Allows users to configure wall-clock windows during which telemetry/capture
-// is muted. A.3 will provide the real Default + window_is_active implementations;
-// the types here are stubbed with `todo!()` so that A.2's 12 contract tests
-// compile cleanly and reach runtime-red via panic (TDD red state).
-use chrono::{DateTime, Local};
+// is muted. A window is specified as a start/end HH:MM pair on selected days
+// of the week. Overnight wrap (end < start) is supported when the resulting
+// window spans ≤ 16 hours (windows spanning > 16 hours are rejected as likely
+// config errors — see validation comments below).
+use chrono::{DateTime, Datelike, Local, NaiveTime, Timelike};
 use serde::{Deserialize, Serialize};
 
 use crate::config::enums::Weekday;
@@ -19,10 +20,8 @@ use crate::config::enums::Weekday;
 /// meaning the system local timezone.
 ///
 /// Default: disabled, no windows, timezone `"Local"`.
-// A.3 adds `pub use tracking_schedule::*;` in mod.rs which resolves dead_code.
-// Until then, suppress to keep clippy -D warnings clean.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(try_from = "TrackingScheduleConfigRaw")]
 pub struct TrackingScheduleConfig {
     /// Master switch; false = schedule is ignored and tracking always runs.
     #[serde(default)]
@@ -37,13 +36,64 @@ pub struct TrackingScheduleConfig {
     pub timezone: String,
 }
 
+/// Raw serde helper for `TrackingScheduleConfig` — accepts all strings without
+/// validation; `TryFrom` performs validation after deserialization.
+#[derive(Deserialize)]
+struct TrackingScheduleConfigRaw {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    windows: Vec<TrackingWindow>,
+    #[serde(default = "default_timezone")]
+    timezone: String,
+}
+
+impl TryFrom<TrackingScheduleConfigRaw> for TrackingScheduleConfig {
+    type Error = String;
+
+    fn try_from(raw: TrackingScheduleConfigRaw) -> Result<Self, Self::Error> {
+        // Validate timezone: must be "Local" or a valid IANA timezone recognized
+        // by chrono_tz. An invalid value produces a "config.invalid" error.
+        if raw.timezone != "Local" {
+            raw.timezone
+                .parse::<chrono_tz::Tz>()
+                .map_err(|_| format!("config.invalid: unknown timezone '{}'", raw.timezone))?;
+        }
+        Ok(TrackingScheduleConfig {
+            enabled: raw.enabled,
+            windows: raw.windows,
+            timezone: raw.timezone,
+        })
+    }
+}
+
+// Custom Deserialize routes through the raw helper + TryFrom validation.
+impl<'de> Deserialize<'de> for TrackingScheduleConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = TrackingScheduleConfigRaw::deserialize(d)?;
+        TrackingScheduleConfig::try_from(raw).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Default for TrackingScheduleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            windows: vec![],
+            timezone: default_timezone(),
+        }
+    }
+}
+
+// ── TrackingWindow ──────────────────────────────────────────────────
+
 /// A single wall-clock window within which tracking behaviour is altered.
 ///
 /// `start` and `end` are `"HH:MM"` strings (24-hour). If `end < start` the
 /// window wraps overnight (e.g. `22:00`–`06:00`). `days_of_week` lists the
 /// days the window is active; an empty vec means the window never fires.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(try_from = "TrackingWindowRaw")]
 pub struct TrackingWindow {
     /// Window open time, `"HH:MM"` (24-hour). Must be a valid HH:MM string.
     pub start: String,
@@ -57,26 +107,198 @@ pub struct TrackingWindow {
     pub label: String,
 }
 
-#[allow(dead_code)]
+/// Raw serde helper for `TrackingWindow` — accepts all strings without
+/// validation; `TryFrom` performs validation after deserialization.
+#[derive(Deserialize)]
+struct TrackingWindowRaw {
+    start: String,
+    end: String,
+    #[serde(default)]
+    days_of_week: Vec<Weekday>,
+    #[serde(default)]
+    label: String,
+}
+
+/// Parse a strict `HH:MM` string (hours 00-23, minutes 00-59) into a
+/// `NaiveTime`. Returns an error message containing
+/// `"validation.invalid_field"` on failure.
+fn parse_hhmm(s: &str, field: &str) -> Result<NaiveTime, String> {
+    if s.is_empty() {
+        return Err(format!(
+            "validation.invalid_field: '{field}' must not be empty"
+        ));
+    }
+    // Must be exactly HH:MM (5 characters).
+    let parts: Vec<&str> = s.splitn(2, ':').collect();
+    if parts.len() != 2 || parts[0].len() != 2 || parts[1].len() != 2 {
+        return Err(format!(
+            "validation.invalid_field: '{field}' is not a valid HH:MM value (got '{s}')"
+        ));
+    }
+    let h: u32 = parts[0].parse().map_err(|_| {
+        format!("validation.invalid_field: '{field}' hour is not a number (got '{s}')")
+    })?;
+    let m: u32 = parts[1].parse().map_err(|_| {
+        format!("validation.invalid_field: '{field}' minute is not a number (got '{s}')")
+    })?;
+    NaiveTime::from_hms_opt(h, m, 0)
+        .ok_or_else(|| format!("validation.invalid_field: '{field}' is out of range (got '{s}')"))
+}
+
+impl TryFrom<TrackingWindowRaw> for TrackingWindow {
+    type Error = String;
+
+    fn try_from(raw: TrackingWindowRaw) -> Result<Self, Self::Error> {
+        let start_time = parse_hhmm(&raw.start, "start")?;
+        let end_time = parse_hhmm(&raw.end, "end")?;
+
+        // Reject zero-length windows (start == end).
+        if start_time == end_time {
+            return Err(format!(
+                "validation.invalid_field: 'start' and 'end' must not be equal (got '{}')",
+                raw.start,
+            ));
+        }
+
+        // Overnight-wrap policy:
+        //
+        // When end < start the window wraps across midnight. Classic overnight
+        // windows (e.g. 22:00–06:00) are valid and common (8-hour wrap).
+        // However, a window like 13:00–12:00 spans 23 hours — almost the entire
+        // day — and is almost certainly a config error rather than intentional
+        // scheduling.
+        //
+        // Rule: overnight wraps that exceed 16 hours are rejected.
+        //   - 22:00 → 06:00: (06:00 + 24h) - 22:00 = 8h  → VALID
+        //   - 13:00 → 12:00: (12:00 + 24h) - 13:00 = 23h → INVALID (> 16h)
+        //
+        // 16h was chosen as the threshold because legitimate overnight windows
+        // (e.g. evenings + mornings) rarely exceed 12-14 hours, while a 23h
+        // wrap is clearly unintentional. 16h provides a comfortable safety margin
+        // between the two classes.
+        if end_time < start_time {
+            // Compute wrap duration in minutes.
+            let start_mins = start_time.num_seconds_from_midnight() / 60;
+            let end_mins = end_time.num_seconds_from_midnight() / 60;
+            let wrap_duration_mins = (end_mins + 24 * 60) - start_mins;
+            if wrap_duration_mins > 16 * 60 {
+                return Err(format!(
+                    "validation.invalid_field: overnight window '{}–{}' spans {}h {}m which exceeds the 16-hour safety threshold; \
+                     did you swap start/end? Use a shorter window or split into two windows.",
+                    raw.start,
+                    raw.end,
+                    wrap_duration_mins / 60,
+                    wrap_duration_mins % 60,
+                ));
+            }
+        }
+
+        Ok(TrackingWindow {
+            start: raw.start,
+            end: raw.end,
+            days_of_week: raw.days_of_week,
+            label: raw.label,
+        })
+    }
+}
+
+// Custom Deserialize routes through the raw helper + TryFrom validation.
+impl<'de> Deserialize<'de> for TrackingWindow {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = TrackingWindowRaw::deserialize(d)?;
+        TrackingWindow::try_from(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 fn default_timezone() -> String {
     "Local".to_string()
 }
 
-impl Default for TrackingScheduleConfig {
-    fn default() -> Self {
-        todo!("A.3 impl")
-    }
-}
+// ── window_is_active ────────────────────────────────────────────────
 
-#[allow(dead_code)]
 impl TrackingWindow {
     /// Return `true` if `now` falls within this window.
     ///
     /// Overnight windows (`end < start`) wrap across midnight and match times
     /// in `[start, 24:00)` on the configured day OR `[00:00, end)` on the
     /// following day. Empty `days_of_week` always returns `false`.
-    pub fn window_is_active(&self, _now: DateTime<Local>) -> bool {
-        todo!("A.3 impl")
+    ///
+    /// DST notes:
+    /// - Spring-forward: no `DateTime<Local>` exists for the skipped hour, so
+    ///   no call to this method can land in the skipped interval.
+    /// - Fall-back: both absolute instants that share the same wall-clock time
+    ///   have identical `now.time()` and `now.weekday()`, so both are treated
+    ///   identically — if the window covers that wall-clock time, both match.
+    pub fn window_is_active(&self, now: DateTime<Local>) -> bool {
+        if self.days_of_week.is_empty() {
+            return false;
+        }
+
+        // Parse start/end — we validate in TryFrom so these are safe to unwrap.
+        // If somehow called on an unchecked instance (test construction), treat
+        // parse failure as inactive.
+        let start_time = match parse_hhmm(&self.start, "start") {
+            Ok(t) => t,
+            Err(_) => return false,
+        };
+        let end_time = match parse_hhmm(&self.end, "end") {
+            Ok(t) => t,
+            Err(_) => return false,
+        };
+
+        let now_time = now.time();
+        let now_weekday = chrono_weekday_to_ours(now.weekday());
+
+        if end_time > start_time {
+            // ── Non-wrapping (same-day) window: [start, end) ──────────────
+            // Active only when `now` is on a configured day AND within [start, end).
+            self.days_of_week.contains(&now_weekday)
+                && now_time >= start_time
+                && now_time < end_time
+        } else {
+            // ── Overnight (wrapping) window ───────────────────────────────
+            // The window opens at `start` on the "start-day" and closes at
+            // `end` on the following calendar day.
+            //
+            // `now` is in the window if either:
+            //   (A) now_weekday is a configured start-day AND now_time >= start, OR
+            //   (B) now_weekday is the day-after a configured start-day AND now_time < end.
+            let is_start_day = self.days_of_week.contains(&now_weekday);
+            let is_carry_over_day = self
+                .days_of_week
+                .iter()
+                .any(|&d| weekday_succ(d) == now_weekday);
+
+            (is_start_day && now_time >= start_time) || (is_carry_over_day && now_time < end_time)
+        }
+    }
+}
+
+// ── Weekday conversion helpers ──────────────────────────────────────
+
+/// Convert a `chrono::Weekday` to our config `Weekday`.
+fn chrono_weekday_to_ours(w: chrono::Weekday) -> Weekday {
+    match w {
+        chrono::Weekday::Mon => Weekday::Mon,
+        chrono::Weekday::Tue => Weekday::Tue,
+        chrono::Weekday::Wed => Weekday::Wed,
+        chrono::Weekday::Thu => Weekday::Thu,
+        chrono::Weekday::Fri => Weekday::Fri,
+        chrono::Weekday::Sat => Weekday::Sat,
+        chrono::Weekday::Sun => Weekday::Sun,
+    }
+}
+
+/// Return the day after `d` (wrapping Sun → Mon).
+fn weekday_succ(d: Weekday) -> Weekday {
+    match d {
+        Weekday::Mon => Weekday::Tue,
+        Weekday::Tue => Weekday::Wed,
+        Weekday::Wed => Weekday::Thu,
+        Weekday::Thu => Weekday::Fri,
+        Weekday::Fri => Weekday::Sat,
+        Weekday::Sat => Weekday::Sun,
+        Weekday::Sun => Weekday::Mon,
     }
 }
 
@@ -88,7 +310,8 @@ mod tests {
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    /// Build a TrackingWindow without a label.
+    /// Build a TrackingWindow without a label. Panics if the window is invalid
+    /// (callers should only construct valid windows here).
     fn window(start: &str, end: &str, days: Vec<Weekday>) -> TrackingWindow {
         TrackingWindow {
             start: start.to_string(),
@@ -106,10 +329,7 @@ mod tests {
     // ── 1. Default ─────────────────────────────────────────────────────────
 
     #[test]
-    #[should_panic(expected = "A.3 impl")]
     fn default_is_disabled_with_empty_windows() {
-        // A.3 impl will return TrackingScheduleConfig { enabled: false, windows: vec![], timezone: "Local" }.
-        // Until then: todo!() panics → red state.
         let cfg = TrackingScheduleConfig::default();
         assert!(!cfg.enabled);
         assert!(cfg.windows.is_empty());
@@ -160,7 +380,6 @@ mod tests {
     // ── 4. Overnight window wraps midnight ────────────────────────────────
 
     #[test]
-    #[should_panic(expected = "A.3 impl")]
     fn overnight_window_wraps() {
         // Window 22:00–06:00 on Saturday.
         // Sat 23:00 → inside (Saturday in window hours 22-24)
@@ -218,7 +437,6 @@ mod tests {
     // ── 5. Normal (non-wrapping) window ───────────────────────────────────
 
     #[test]
-    #[should_panic(expected = "A.3 impl")]
     fn normal_window_does_not_wrap() {
         use chrono::NaiveDate;
         use chrono::TimeZone as _;
@@ -267,7 +485,6 @@ mod tests {
     // ── 6. Empty days_of_week never active ────────────────────────────────
 
     #[test]
-    #[should_panic(expected = "A.3 impl")]
     fn empty_days_never_active() {
         use chrono::NaiveDate;
         use chrono::TimeZone as _;
@@ -293,7 +510,6 @@ mod tests {
     // ── 7. DST fall-back — ambiguous hour fires twice ─────────────────────
 
     #[test]
-    #[should_panic(expected = "A.3 impl")]
     fn dst_fall_back_fires_twice() {
         // US/Eastern fall-back 2024-11-03: clocks go 02:00 EST → 01:00 EST.
         // A window covering 01:00–02:30 on Sunday must match BOTH the EDT
@@ -375,10 +591,8 @@ mod tests {
 
     #[test]
     fn serde_rejects_invalid_hhmm() {
-        // A.3 will add custom validation in Deserialize. Until then, the
-        // derive-generated impl accepts any string — this test is RED (passes
-        // without error, assertion fails). A.3 greens it by emitting
-        // "validation.invalid_field" in the serde error message.
+        // A.3 adds custom validation in Deserialize via TryFrom<TrackingWindowRaw>.
+        // "25:00" is an invalid hour → rejected with "validation.invalid_field".
         let json = r#"{"start":"25:00","end":"08:00","days_of_week":["Mon"]}"#;
         let result = serde_json::from_str::<TrackingWindow>(json);
         assert!(
@@ -397,9 +611,8 @@ mod tests {
 
     #[test]
     fn serde_rejects_invalid_iana_timezone() {
-        // A.3 will validate `timezone` as either "Local" or a valid IANA name
-        // parseable by `chrono_tz::Tz::from_str`. Until then, derive accepts
-        // any string — test is RED. A.3 greens it.
+        // A.3 validates `timezone` as either "Local" or a valid IANA name
+        // parseable by `chrono_tz::Tz::from_str`.
         let json = r#"{"enabled":true,"windows":[],"timezone":"Foo/Bar"}"#;
         let result = serde_json::from_str::<TrackingScheduleConfig>(json);
         assert!(
@@ -418,8 +631,7 @@ mod tests {
 
     #[test]
     fn window_with_empty_end_is_invalid() {
-        // A.3 will validate HH:MM format in Deserialize; empty string is
-        // structurally invalid. Until then, derive accepts it — test is RED.
+        // Empty string is not a valid HH:MM value.
         let json = r#"{"start":"09:00","end":"","days_of_week":["Mon"]}"#;
         let result = serde_json::from_str::<TrackingWindow>(json);
         assert!(
@@ -438,13 +650,10 @@ mod tests {
 
     #[test]
     fn window_end_before_start_not_same_day_is_invalid() {
-        // start "13:00", end "12:00" with Mon-only days — this would be an
-        // ambiguous 23h window. Per spec, A.3 rejects same-day configurations
-        // where end <= start with only one day listed (no overnight intent
-        // expressed by a multi-day window). A.3 decides the exact policy; the
-        // test asserts the serde/validation path returns an error.
-        //
-        // Until A.3: derive accepts it — test is RED.
+        // start "13:00", end "12:00" with Mon-only days.
+        // Overnight-wrap semantics: Mon 13:00 → Tue 12:00 = 23-hour window.
+        // Policy: overnight wraps that exceed 16 hours are rejected as likely
+        // config errors (see parse validation comment in TryFrom<TrackingWindowRaw>).
         let json = r#"{"start":"13:00","end":"12:00","days_of_week":["Mon"]}"#;
         let result = serde_json::from_str::<TrackingWindow>(json);
         assert!(
