@@ -209,7 +209,8 @@
       "audio": "Audio",
       "sync": "Sync",
       "focusAuto": "Focus Auto",
-      "advanced": "Advanced"
+      "advanced": "Advanced",
+      "trackingSchedule": "Tracking Schedule"
     },
     "groupCore": "Core",
     "groupAdvanced": "Advanced",

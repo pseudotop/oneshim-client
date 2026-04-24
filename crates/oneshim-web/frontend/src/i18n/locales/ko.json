@@ -209,7 +209,8 @@
       "audio": "오디오",
       "sync": "동기화",
       "focusAuto": "집중 자동",
-      "advanced": "고급"
+      "advanced": "고급",
+      "trackingSchedule": "추적 일정"
     },
     "groupCore": "기본",
     "groupAdvanced": "고급",

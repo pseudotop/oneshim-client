@@ -181,7 +181,7 @@ describe('TrackingScheduleSettings', () => {
 
     // Find the start-time input for the first window.
     const startInput = await screen.findByLabelText(/start/i)
-    await user.triple_click(startInput)
+    await user.tripleClick(startInput)
     await user.type(startInput, '12:XX')
 
     await waitFor(() => {

@@ -1741,3 +1741,24 @@ export interface PresetSummaryDto {
 export interface PresetSummaryListDto {
   presets: PresetSummaryDto[]
 }
+
+// ── Tracking Schedule ───────────────────────────────────────────────────────
+
+export interface TrackingWindow {
+  start: string
+  end: string
+  label?: string
+}
+
+export interface TrackingScheduleConfig {
+  enabled: boolean
+  windows: TrackingWindow[]
+  timezone?: string
+}
+
+export interface TrackingScheduleStatus {
+  active_now: boolean
+  ends_at: string | null
+  next_starts_at: string | null
+  label: string
+}

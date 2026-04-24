@@ -84,6 +84,9 @@ import type {
   Tag,
   TimelineParams,
   TimelineResponse,
+  TrackingScheduleConfig,
+  TrackingScheduleStatus,
+  TrackingWindow,
   UiScene,
   UpdateAction,
   UpdateActionResponse,
@@ -1233,3 +1236,39 @@ export async function fetchPresetLibrary(): Promise<PresetSummaryListDto> {
   }
   return res.json()
 }
+
+// ── Tracking Schedule API ───────────────────────────────────────────────────
+
+export async function getTrackingSchedule(): Promise<TrackingScheduleConfig> {
+  const res = await fetchWithRetry(`${BASE_URL}/tracking-schedule`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Tracking schedule query failed' }))
+    throw new Error(err.error || 'Tracking schedule query failed')
+  }
+  return res.json()
+}
+
+export async function setTrackingSchedule(cfg: TrackingScheduleConfig): Promise<TrackingScheduleConfig> {
+  const res = await fetchWithRetry(`${BASE_URL}/tracking-schedule`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Tracking schedule save failed' }))
+    throw new Error(err.error || 'Tracking schedule save failed')
+  }
+  return res.json()
+}
+
+export async function getTrackingScheduleStatus(): Promise<TrackingScheduleStatus> {
+  const res = await fetchWithRetry(`${BASE_URL}/tracking-schedule/status`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Tracking schedule status query failed' }))
+    throw new Error(err.error || 'Tracking schedule status query failed')
+  }
+  return res.json()
+}
+
+// Re-export TrackingWindow so consumers can import it from client directly
+export type { TrackingWindow }
