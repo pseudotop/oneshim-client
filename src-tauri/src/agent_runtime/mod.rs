@@ -125,6 +125,8 @@ impl AgentRuntimeBundle {
         if let Some(ref flag) = self.analysis_health_flag {
             builder = builder.with_analysis_health_flag(flag.clone());
         }
+        // Clone before the move into Scheduler::with_config_manager below.
+        builder = builder.with_config_manager(self.config_manager.clone());
         let support = builder.build().await?;
         let accessibility_extractor = support.accessibility_extractor.clone();
 
