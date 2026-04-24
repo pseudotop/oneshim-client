@@ -6,6 +6,7 @@ pub mod audit_bridge;
 pub(crate) mod audit_layer;
 pub mod auth_layer;
 pub mod cert_resolver;
+pub(crate) mod config_reload;
 pub mod conn_info;
 pub mod ip_ban;
 pub mod jwt_verifier;
