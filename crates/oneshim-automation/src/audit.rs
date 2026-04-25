@@ -22,11 +22,31 @@ impl<F: Fn(&AuditEntry) + Send + Sync> AuditPersistence for F {
     }
 }
 
+/// Query interface for historical audit lookup.
+///
+/// Implemented by the binary crate to bridge `AuditLogger` (library) with
+/// SQLite-backed historical storage, preserving hexagonal architecture
+/// boundaries (`oneshim-automation` cannot depend on `oneshim-storage`
+/// directly per ADR-001).
+///
+/// Used by [`AuditLogger::entries_by_command_id`] to fall through from the
+/// in-memory `VecDeque` buffer (~1000-row cap) to persistent storage when
+/// the buffer doesn't have enough matching entries.
+pub trait AuditQuery: Send + Sync {
+    /// Return audit entries whose `command_id` exactly matches.
+    /// Ordered by `timestamp DESC`. Empty vec if none match.
+    /// Synchronous — implementations doing I/O should use `block_in_place`.
+    fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry>;
+}
+
 pub struct AuditLogger {
     buffer: VecDeque<AuditEntry>,
     max_buffer_size: usize,
     batch_size: usize,
     persistence: Option<Arc<dyn AuditPersistence>>,
+    /// Storage-backed historical query handle. When set, `entries_by_command_id`
+    /// falls through to this after exhausting the in-memory buffer.
+    query: Option<Arc<dyn AuditQuery>>,
     /// D5 iter-6: Audit log details may include command stdout/stderr which
     /// can contain API keys, tokens, or other sensitive output. Apply the
     /// strictest PII filtering unconditionally at the record boundary (not
@@ -41,6 +61,7 @@ impl AuditLogger {
             max_buffer_size,
             batch_size,
             persistence: None,
+            query: None,
             pii_sanitizer: None,
         }
     }
@@ -51,6 +72,18 @@ impl AuditLogger {
     /// immediately after being added to the in-memory buffer.
     pub fn with_persistence(mut self, cb: Arc<dyn AuditPersistence>) -> Self {
         self.persistence = Some(cb);
+        self
+    }
+
+    /// Attach a query handle for historical (storage-backed) audit lookup.
+    ///
+    /// When set, [`Self::entries_by_command_id`] falls through to this query
+    /// handle after consulting the in-memory buffer, merging results and
+    /// deduplicating by `entry_id`. Use the matching binary-crate wrapper
+    /// (e.g., `SqliteAuditQuery` in `src-tauri`) to bridge to storage —
+    /// `oneshim-automation` itself MUST NOT depend on `oneshim-storage`.
+    pub fn with_query(mut self, q: Arc<dyn AuditQuery>) -> Self {
+        self.query = Some(q);
         self
     }
 
@@ -215,17 +248,55 @@ impl AuditLogger {
             .collect()
     }
 
-    /// In-memory buffer lookup by command_id (newest first).
-    /// Storage-backed historical lookup is a follow-up — current impl serves
-    /// only entries still in the VecDeque buffer (capacity ~1000 by default).
+    /// Lookup audit entries by `command_id` with storage fall-through.
+    ///
+    /// Walks the in-memory `VecDeque` buffer first (newest-first via
+    /// `iter().rev()`). If the buffer doesn't satisfy `limit` and an
+    /// [`AuditQuery`] handle was attached via [`Self::with_query`], queries
+    /// the historical storage for the remainder, deduplicating by `entry_id`
+    /// (entries persisted to storage may still be present in the buffer —
+    /// both write paths fire on the same insertion). Final results are
+    /// re-sorted by `timestamp DESC` and truncated to `limit`.
     pub fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
-        self.buffer
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        // Buffer first — newest entries (capacity ~1000 by default).
+        let mut results: Vec<AuditEntry> = self
+            .buffer
             .iter()
             .rev()
             .filter(|e| e.command_id == command_id)
             .take(limit)
             .cloned()
-            .collect()
+            .collect();
+
+        // Fall-through: if buffer didn't satisfy `limit`, query storage for
+        // the remainder, deduping by entry_id (entries persisted to storage
+        // may still be in buffer — both write paths fire on the same insertion).
+        if results.len() < limit {
+            if let Some(q) = &self.query {
+                let buffer_ids: std::collections::HashSet<String> =
+                    results.iter().map(|e| e.entry_id.clone()).collect();
+                let storage_results = q.entries_by_command_id(command_id, limit);
+                for entry in storage_results {
+                    if results.len() >= limit {
+                        break;
+                    }
+                    if !buffer_ids.contains(&entry.entry_id) {
+                        results.push(entry);
+                    }
+                }
+            }
+        }
+
+        // Re-sort by timestamp DESC. Buffer rows are inserted-newest-first
+        // (VecDeque + .rev()), and storage rows arrive in timestamp DESC. After
+        // merge they may interleave, so re-sort to maintain newest-first.
+        results.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        results.truncate(limit);
+        results
     }
 
     pub fn stats(&self) -> AuditStats {

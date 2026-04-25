@@ -18,6 +18,7 @@
 mod agent_runtime;
 mod agent_runtime_support;
 mod app_runtime_launch;
+mod audit_query;
 mod auditing_session;
 mod auth_cli;
 mod automation_controller_builder;

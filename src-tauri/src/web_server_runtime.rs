@@ -348,8 +348,14 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             std::sync::Arc::new(move |entry: &oneshim_core::models::audit::AuditEntry| {
                 storage_for_audit.save_audit_entry(entry);
             });
+        let audit_query: std::sync::Arc<dyn oneshim_automation::audit::AuditQuery> =
+            std::sync::Arc::new(crate::audit_query::SqliteAuditQuery::new(
+                self.storage.clone(),
+            ));
         let web_audit_logger = Arc::new(tokio::sync::RwLock::new(
-            AuditLogger::default().with_persistence(persistence_cb),
+            AuditLogger::default()
+                .with_persistence(persistence_cb)
+                .with_query(audit_query),
         ));
         let (bound_port_tx, bound_port_rx) = tokio::sync::oneshot::channel::<u16>();
 
