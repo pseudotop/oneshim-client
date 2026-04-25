@@ -88,14 +88,14 @@
 | 2: AutostartConfig + AutostartPromptState in core | ✅ COMPLETE | commit `0c9ac38d` (sonnet impl, haiku 2-stage review, all green) |
 | 3: AutostartConfig unit tests | ✅ COMPLETE | commit `eecc5e00` (10 tests pass, clippy struct-literal fix applied) |
 | 4: IPC commands + wire codes (per A1+A2+A5) | ✅ COMPLETE | commit `c3e8685a` (sonnet impl + haiku spec review ✅, code-quality review blocked by session cwd issue but auto-gates all GREEN: cargo test 551 pass, wire snapshot pass, i18n CI pass, clippy/fmt clean). Implementer caught my ordering error: `auth.failed` < `autostart.*` lexicographically — codes correctly placed AFTER `auth.failed`. |
-| 5: IPC command tests (per A3 inline) | pending | 1h |
-| 6: Single-instance plugin + D-Bus check | pending | 2h |
-| 7: Single-instance integration smoke test | pending | 1.5h |
-| 8: GeneralTab Startup section + i18n | pending | 2.5h |
-| 9: GeneralTab Vitest coverage | pending | 1h |
-| 10: Productive-session detection in monitor.rs (per A4) | pending | 3h, large — may split |
-| 11: Autostart helper unit tests (per A4 closure pattern) | pending | 1h |
-| 12: AutostartOnboardingPrompt + Host (per A5+A6) | pending | 3h, large — may split |
-| 13: AutostartOnboardingPrompt Vitest | pending | 1.5h |
+| 5: IPC command tests (per A3 inline) | ✅ COMPLETE | commit `1f1acb7f` (2 unit tests pass + 1 ignored round-trip; per Addendum A3 inline not separate tests/) |
+| 6: Single-instance plugin + D-Bus check | ✅ COMPLETE | commit `3cb2bd3e` (main.rs + setup.rs; cfg-gated import; FIFO plugin order; D-Bus warn log) |
+| 7: Single-instance integration smoke test | ✅ COMPLETE | commit `072ffa97` (subprocess-spawn test in tests/, #[ignore]d, cargo check + fmt clean) |
+| 8: GeneralTab Startup section + i18n | ✅ COMPLETE | commit `288d307e` (3 files, Card/Alert/Checkbox UI components, i18n keys at `settings.autostart.*` not `settings.general.autostart.*` per actual existing structure — downstream Task 12 must use same path) |
+| 9: GeneralTab Vitest coverage | ✅ COMPLETE | commit `c56f23e1` (5 tests pass; `StartupSection` exported for testability; dual mock strategy for Vitest dynamic-import race) |
+| 10: Productive-session detection in monitor.rs (per A4) | ✅ COMPLETE | commit `69c5c805` (Generic Runtime + closure-based testing + FocusBlockState struct) + fix commit `bf9113d3` (CounterIncrementFailed/EventEmitFailed wire codes added per ADR-019) |
+| 11: Autostart helper unit tests (per A4 closure pattern) | ✅ COMPLETE | 4 tests in Task 10 commit `69c5c805` + 5th test (dismissed_state_skips_event_emission) in commit `0dc613ab` |
+| 12: AutostartOnboardingPrompt + Host (per A5+A6) | ✅ COMPLETE | commit `18f6e381` (background subagent created files; controller manually committed after stuck on stale GeneralTab.test.tsx lint) |
+| 13: AutostartOnboardingPrompt Vitest | ✅ COMPLETE | commit `55c90949` (5 tests pass; renderPrompt helper; Escape on document not window per Dialog impl) |
 | 14: STATUS.md + PHASE-HISTORY entry | pending | 0.5h |
 | 15: Manual smoke test matrix (PR description) | pending | 1h |
