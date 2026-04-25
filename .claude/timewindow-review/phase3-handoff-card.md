@@ -33,7 +33,7 @@ gh pr view 508 --json state | jq -r .state
 | 1 | TimeWindow Foundation (primitive + CoreError struct-variant + TimeWindowCode + ApiError mapping) | 4.5h | **Single commit** — circular dep avoided |
 | 2 | Wire-error i18n translations (en + ko) | 0.5h | Update BOTH `toHaveLength()` assertions (lines 30 + 122) |
 | 3 | TimeRangeQuery::to_time_window adapter | 1.5h | Add `Default` derive; adapter is `&self` (non-consuming) |
-| 4 | SQL port + impl + 30 caller sites (lockstep) | 5h | 8 port methods. INHERENT pub fn changes too. Half-open `< ?2` preserved in work_sessions per NG6. Containment `start_time >= ?1 AND end_time <= ?2` preserved per NG-CONTAIN. |
+| 4 | SQL port + impl + 30 caller sites (lockstep) | 5h | 8 port methods. INHERENT pub fn changes too. Half-open `< ?2` preserved in work_sessions per NG6. Containment semantic `start_time >= ?1 AND end_time <= ?2` (different columns each side) preserved in calibration list_segment_time_ranges — see spec v15 §5.3 PRESERVE-BODY notes. |
 | 5 | Storage boundary regression tests (3 helpers) | 1.5h | Use actual `DeletedRangeCounts` field names (`events_deleted` not `events`) |
 | 6 | REST handler + service-layer migration (7 services) | 5h | **Migrate at SERVICE layer, NOT handler layer**. Default lookback `Duration::hours(24)` (preserve existing behavior — NOT 7d/30d). Decompose `&window` for non-migrated storage methods |
 | 7 | data.rs + reports.rs service-layer migration | 1.5h | `request.period()` accessor (Option C). ReportQuery is **date-only `%Y-%m-%d`** — update `resolve_report_window` in reports_query_support.rs |
