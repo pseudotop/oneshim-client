@@ -3,6 +3,17 @@
 
 pre-push:
   commands:
+    clippy-195-scan:
+      # Fast (sub-second) grep scan for Rust 1.95 clippy patterns whose
+      # signatures are precise enough to flag without false positives.
+      # Currently covers `unnecessary_sort_by` (REVERSE-sort with `.cmp()`).
+      # Skipped under subagent mode for parity with cargo-clippy pre-commit.
+      run: |
+        if [ "$ONESHIM_AGENT" = "subagent" ]; then
+          echo "clippy-195-scan: skipped (subagent mode)"
+          exit 0
+        fi
+        ./scripts/scan-clippy-195-patterns.sh
     pre-release-check:
       # Runs on: (1) version tag push (v*), (2) release branch push (release/v*)
       run: |
