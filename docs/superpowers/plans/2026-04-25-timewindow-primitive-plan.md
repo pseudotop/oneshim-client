@@ -21,7 +21,7 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v10 (Phase 2 iter-10 cleanup — addresses 2 NEW Critical + 2 NEW Important from iter-9 verification:
+**Plan version:** v11 (Phase 2 iter-11 — addresses NEW Critical: ReportQuery.from/to use date-only `%Y-%m-%d` parsing via NaiveDate (NOT RFC3339 timestamps). Plan v10 Step 7.3 prescribed `#[serde(flatten)] time_range: TimeRangeQuery` + `time_range.to_time_window(...)` — but to_time_window parses RFC3339 via `parse_from_rfc3339`, which would FAIL on date-only inputs and break the reports endpoint. Plan v11 keeps ReportQuery's date-only schema intact, updates `resolve_report_window` in reports_query_support.rs to construct TimeWindow from existing NaiveDate parse logic). v10 cleanup — addresses 2 NEW Critical + 2 NEW Important from iter-9 verification:
 - NEW-C1: default-window-size regression (existing helpers default 24h, plan v9 prescribed 7d/30d which is 7×/30× widening). v10 changes default to `Duration::hours(24)` everywhere to preserve existing behavior; future PR can deliberately change.
 - NEW-C2: Service-layer migration must decompose `&window` for non-migrated storage methods (get_frames/get_events/get_metrics/etc. still take `DateTime<Utc>`, NOT `&TimeWindow`). Documented decomposition pattern.
 - NEW-I1: Step 6.2-6.7 add explicit "continues Task 4D.3" framing per Step 7.4 model.
@@ -2136,78 +2136,107 @@ mod tests {
 }
 ```
 
-- [ ] **Step 7.3: Migrate ReportQuery via flatten (Phase 2 iter-1 I11 + iter-2 N-I2)**
+- [ ] **Step 7.3: Keep ReportQuery date-only schema; do NOT flatten TimeRangeQuery (Phase 2 iter-11 NEW Critical fix)**
 
-Open `crates/oneshim-api-contracts/src/reports.rs`. Current:
+Reality (verified `crates/oneshim-web/src/services/reports_query_support.rs:30-44`): `ReportQuery.from`/`.to` are date-only strings `%Y-%m-%d` (e.g., "2026-04-25") parsed via `NaiveDate::parse_from_str(s, "%Y-%m-%d")` then `.and_hms_opt(0,0,0).and_utc()` for from / `.and_hms_opt(23,59,59).and_utc()` for to. **NOT RFC3339 timestamps.**
+
+Plan v9/v10 prescribed `#[serde(flatten)] time_range: TimeRangeQuery` + `time_range.to_time_window(...)`. But `TimeRangeQuery::to_time_window` parses with `DateTime::parse_from_rfc3339` — would FAIL on `2026-04-25` (no T separator, no Z suffix) and break the reports endpoint.
+
+**v11 corrected approach**: keep ReportQuery's existing date-only schema intact:
+
 ```rust
+// crates/oneshim-api-contracts/src/reports.rs — UNCHANGED
 #[derive(Debug, Deserialize)]
 pub struct ReportQuery {
     #[serde(default)]
     pub period: ReportPeriod,
-    pub from: Option<String>,
-    pub to: Option<String>,
+    pub from: Option<String>,        // YYYY-MM-DD date-only string
+    pub to: Option<String>,          // YYYY-MM-DD date-only string
 }
 ```
 
-Change to use `#[serde(flatten)]` (which DOES work for struct-typed fields, unlike C9's invalid `flatten + with` combo). **Use `crate::common`, NOT `oneshim_api_contracts::common`** (Phase 2 iter-2 N-I2 — same-crate import):
+**No struct refactor** — but Step 7.5 below updates `resolve_report_window` to construct `TimeWindow` from the existing NaiveDate parse logic (replaces tuple return with TimeWindow).
+
+- [ ] **Step 7.3.5: ~~Add `serde_urlencoded` dev-dependency~~ NOT NEEDED (Phase 2 iter-11)**
+
+The serde_urlencoded test was for verifying `#[serde(flatten)] time_range: TimeRangeQuery` query-string roundtrip. Since v11 NO LONGER flattens, this test + dev-dep are unnecessary. Skip Step 7.3.5.
+
+- [ ] **Step 7.3.6: ~~Add roundtrip test~~ NOT NEEDED (Phase 2 iter-11)**
+
+Same reason as Step 7.3.5. Existing reports endpoint integration tests (if any) cover the date-only contract.
+
+- [ ] **Step 7.4: Update reports_query_support.rs::resolve_report_window (Phase 2 iter-11 corrected target)**
+
+Reality (verified `crates/oneshim-web/src/services/reports_query_support.rs:14-44`): the actual period dispatch happens in `resolve_report_window(params, now) -> Result<(DateTime<Utc>, DateTime<Utc>, String), ApiError>` — NOT in `reports_service::generate_report`. The service `generate_report` calls `resolve_report_window` and destructures `(from, to, title)`.
+
+v11 fix: update `resolve_report_window` to return `Result<(TimeWindow, String), ApiError>` (consolidating the 2 datetimes into TimeWindow) and update its single caller in `reports_service::generate_report:30` to destructure `(window, title)`.
 
 ```rust
-use crate::common::TimeRangeQuery;
-
-#[derive(Debug, Deserialize, Default)]
-pub struct ReportQuery {
-    #[serde(default)]
-    pub period: ReportPeriod,
-    #[serde(flatten)]
-    pub time_range: TimeRangeQuery,
-}
-
-impl ReportQuery {
-    /// Convenience accessor — only meaningful when period == ReportPeriod::Custom.
-    /// For Week/Month, callers should compute the window from period semantics
-    /// rather than from time_range fields.
-    pub fn to_time_window(&self, default_lookback: chrono::Duration) -> Result<oneshim_core::types::TimeWindow, oneshim_core::types::TimeWindowError> {
-        self.time_range.to_time_window(default_lookback)
-    }
-}
+// crates/oneshim-web/src/services/reports_query_support.rs:14-44 — full diff
+- pub(crate) fn resolve_report_window(
+-     params: &ReportQuery,
+-     now: DateTime<Utc>,
+- ) -> Result<(DateTime<Utc>, DateTime<Utc>, String), ApiError> {
++ pub(crate) fn resolve_report_window(
++     params: &ReportQuery,
++     now: DateTime<Utc>,
++ ) -> Result<(TimeWindow, String), ApiError> {
++     use oneshim_core::types::TimeWindow;
+      match params.period {
+          ReportPeriod::Week => {
+              let to = now;
+              let from = to - Duration::days(7);
+-             Ok((from, to, "주간 Activity Report".to_string()))
++             let window = TimeWindow::new(from, to).expect("now - 7d <= now");
++             Ok((window, "주간 Activity Report".to_string()))
+          }
+          ReportPeriod::Month => {
+              let to = now;
+              let from = to - Duration::days(30);
+-             Ok((from, to, "월간 Activity Report".to_string()))
++             let window = TimeWindow::new(from, to).expect("now - 30d <= now");
++             Ok((window, "월간 Activity Report".to_string()))
+          }
+          ReportPeriod::Custom => {
+              // ... existing NaiveDate parsing PRESERVED (date-only %Y-%m-%d format)
+              let from_str = params.from.as_ref().ok_or_else(|| ApiError::BadRequest("from date is required".to_string()))?;
+              let to_str = params.to.as_ref().ok_or_else(|| ApiError::BadRequest("to date is required".to_string()))?;
+              let from_date = NaiveDate::parse_from_str(from_str, "%Y-%m-%d")
+                  .map_err(|_| ApiError::BadRequest(format!("Invalid from date: {from_str}")))?;
+              let to_date = NaiveDate::parse_from_str(to_str, "%Y-%m-%d")
+                  .map_err(|_| ApiError::BadRequest(format!("Invalid to date: {to_str}")))?;
+              let from = from_date.and_hms_opt(0, 0, 0)
+                  .ok_or_else(|| ApiError::Internal("Time conversion failed".to_string()))?
+                  .and_utc();
+              let to = to_date.and_hms_opt(23, 59, 59)
+                  .ok_or_else(|| ApiError::Internal("Time conversion failed".to_string()))?
+                  .and_utc();
++             let window = TimeWindow::new(from, to)
++                 .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+-             Ok((from, to, format!("Activity Report ({from_str} ~ {to_str})")))
++             Ok((window, format!("Activity Report ({from_str} ~ {to_str})")))
+          }
+      }
+  }
 ```
 
-This preserves the existing query string contract (`?period=custom&from=...&to=...`) — frontend unaffected.
-
-- [ ] **Step 7.3.5: Add `serde_urlencoded` dev-dependency (Phase 2 iter-2 N-I3)**
-
-```bash
-grep -E "^serde_urlencoded\s*=" crates/oneshim-api-contracts/Cargo.toml
-```
-
-If empty, add to `[dev-dependencies]` in `crates/oneshim-api-contracts/Cargo.toml`:
-```toml
-[dev-dependencies]
-serde_urlencoded = "0.7"
-```
-
-(Used by Step 7.3 query-string roundtrip test.)
-
-- [ ] **Step 7.3.6: Add roundtrip test**
-
+**Update single caller** at `crates/oneshim-web/src/services/reports_service.rs:30`:
 ```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn report_query_query_string_roundtrip() {
-        // Simulating axum's serde-urlencoded query parsing
-        let raw = "period=custom&from=2026-04-01T00:00:00Z&to=2026-04-25T00:00:00Z";
-        let q: ReportQuery = serde_urlencoded::from_str(raw).unwrap();
-        assert_eq!(q.period, ReportPeriod::Custom);
-        assert_eq!(q.time_range.from, Some("2026-04-01T00:00:00Z".to_string()));
-        assert_eq!(q.time_range.to, Some("2026-04-25T00:00:00Z".to_string()));
-    }
-}
+// Before:
+let (from, to, title) = resolve_report_window(params, now)?;
+// ... later: self.ctx.storage.get_metrics(from, to, 100000).await?
+// After:
+let (window, title) = resolve_report_window(params, now)?;
+// ... later: decompose for non-migrated storage methods:
+let TimeWindow { start: from, end: to } = window;
+self.ctx.storage.get_metrics(from, to, 100000).await?
 ```
 
-- [ ] **Step 7.4: Update DataCommandService (NOT handler — Phase 2 iter-9 NEW-C1 architectural correction)**
+`get_metrics`/`get_events`/etc. are out-of-plan-scope (NOT migrated to `&TimeWindow` in Task 4). Service decomposes per the Step 6.1 decomposition pattern.
+
+**No changes to `crates/oneshim-web/src/handlers/reports.rs`** — already correct as thin delegate.
+
+- [ ] **Step 7.5: Update DataCommandService (NOT handler — Phase 2 iter-9 NEW-C1 architectural correction)**
 
 Reality (verified at `crates/oneshim-web/src/handlers/data.rs:9-16`): handler is thin pass-through to `DataCommandService::delete_data_range(&request)?`. The SQL deletion happens inside the service.
 
@@ -2231,34 +2260,6 @@ Hoist the `let window = request.period()?;` to the top of `delete_data_range` me
 
 **No changes to `crates/oneshim-web/src/handlers/data.rs`** — already correct as thin delegate.
 
-- [ ] **Step 7.5: Update ReportQueryService (NOT handler — Phase 2 iter-9 NEW-C1 architectural correction)**
-
-Reality (verified at `crates/oneshim-web/src/handlers/reports.rs:11-19`): handler is thin pass-through to `ReportQueryService::generate_report(&params).await?`. The dispatch logic happens inside the service.
-
-Open `crates/oneshim-web/src/services/reports_service.rs`. Inside `generate_report`, find the period dispatch logic and update:
-
-```rust
-use chrono::Duration;
-use oneshim_core::types::TimeWindow;
-
-pub async fn generate_report(&self, params: &ReportQuery) -> Result<ReportResponse, ApiError> {
-    let window = match params.period {
-        ReportPeriod::Custom => params.time_range.to_time_window(Duration::days(30))
-            .map_err(|e| ApiError::BadRequest(e.to_string()))?,
-        ReportPeriod::Week => {
-            let now = Utc::now();
-            TimeWindow::new(now - Duration::days(7), now).expect("valid 7-day window")
-        },
-        ReportPeriod::Month => {
-            let now = Utc::now();
-            TimeWindow::new(now - Duration::days(30), now).expect("valid 30-day window")
-        },
-    };
-    // ... rest of report generation uses &window
-}
-```
-
-**No changes to `crates/oneshim-web/src/handlers/reports.rs`** — already correct as thin delegate.
 
 - [ ] **Step 7.6: Verify compile + tests**
 
@@ -2730,6 +2731,12 @@ PR description should summarize:
 - Q-8 baseline count: PF3 captures actual count at impl time (NOT trusted from spec)
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
+
+### 5h. Phase 2 iter-11 findings disposition (v11 ReportQuery date-only fix)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Critical | NEW-C1 — ReportQuery is date-only, not RFC3339 | ✅ Step 7.3 reverted: ReportQuery.from/.to stay as-is (Option<String> date-only `%Y-%m-%d`). NO #[serde(flatten)] TimeRangeQuery. Step 7.4 (renumbered from old 7.5) updates `resolve_report_window` in `reports_query_support.rs` to construct TimeWindow from existing NaiveDate parsing logic + return `Result<(TimeWindow, String), ApiError>`. Step 7.5 (renumbered from old 7.4) is the data_web_service.rs migration. Removed obsolete Step 7.3.5 (serde_urlencoded dev-dep) + Step 7.3.6 (flatten roundtrip test) since they were predicated on the now-rejected flatten approach. |
 
 ### 5g. Phase 2 iter-10 findings disposition (v10 cleanup)
 
