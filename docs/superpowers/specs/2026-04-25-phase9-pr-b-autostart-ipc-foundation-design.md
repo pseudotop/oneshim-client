@@ -1472,7 +1472,7 @@ The reconciler is informational only — no auto-correct. Users can re-toggle fr
 
 ---
 
-## 15. Spec Self-Review (v2)
+## 15. Spec Self-Review (v3)
 
 ### 15.1 Placeholders / TODOs scan
 - ✅ No "TBD" in spec body
@@ -1497,12 +1497,14 @@ The reconciler is informational only — no auto-correct. Users can re-toggle fr
 ## 16. Implementation Status
 
 - **Spec v1**: 2026-04-25 (commit `fd8f64cf`)
-- **Spec v2**: 2026-04-25 (this document — incorporates 5 Critical + 8 Important fixes)
+- **Spec v2**: 2026-04-25 (commit `5f1add95` — 5 Critical + 8 Important fixes)
+- **Spec v3**: 2026-04-25 (commit `1777a387` — 1 Critical + 3 Important + 3 Nice-to-have fixes; Q7-Q9 resolved)
 - **Worktree**: `/Volumes/.../client-rust/.claude/worktrees/phase9-autostart-foundation` on `feature/phase9-autostart-foundation`
 - **Phase 1 review iter-1**: complete (`/.claude/pr-b-review/phase1-iter1-findings.md`)
-- **Phase 1 review iter-2**: TBD — verify v2 fixes are correct, address Q7-Q9
-- **Phase 2 (writing-plans)**: TBD — only after Phase 1 zero-issue gate
-- **Phase 3 (subagent-driven impl)**: TBD
+- **Phase 1 review iter-2**: complete (`/.claude/pr-b-review/phase1-iter2-findings.md`)
+- **Phase 1 review iter-3**: complete (verifier confirms PHASE 1 READY FOR EXIT, zero new Critical/Important)
+- **Phase 2 (writing-plans)**: starting next — invoke `superpowers:writing-plans` skill
+- **Phase 3 (subagent-driven impl)**: pending Phase 2 completion
 
 ---
 
@@ -1538,4 +1540,4 @@ Before opening PR-B1:
 
 ---
 
-**End of spec v2.**
+**End of spec v3.**
