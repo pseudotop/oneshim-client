@@ -1,6 +1,9 @@
 audio.capture_failed
 audio.stt_failed
 auth.failed
+autostart.disable_failed
+autostart.enable_failed
+autostart.query_failed
 config.invalid
 config.missing
 config.out_of_range
