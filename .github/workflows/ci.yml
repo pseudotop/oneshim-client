@@ -234,6 +234,15 @@ jobs:
       - name: Run clippy (grpc-dashboard + test-support)
         run: ./scripts/cargo-cache.sh clippy -p oneshim-web --no-default-features --features grpc-dashboard,test-support --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
+      # D13-v2c follow-up (PR #491): the external gRPC code path
+      # (`#[cfg(feature = "grpc-dashboard-external")]` modules under
+      # `crates/oneshim-web/src/grpc/external/*`) was not clippy-checked by
+      # any prior step. Latent `significant_drop_tightening` violations
+      # only surfaced when `grpc-dashboard-external` was locally enabled.
+      # This step closes the coverage gap.
+      - name: Run clippy (grpc-dashboard-external + external-grpc-tools + test-support)
+        run: ./scripts/cargo-cache.sh clippy -p oneshim-web --no-default-features --features grpc-dashboard-external,external-grpc-tools,test-support --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
       - name: Run clippy (lan-sync features)
         run: ./scripts/cargo-cache.sh clippy -p oneshim-network --all-targets --features lan-sync -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
@@ -384,6 +393,18 @@ jobs:
       - name: Run tests (grpc-dashboard + test-support)
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test -p oneshim-web --no-default-features --features grpc-dashboard,test-support
+
+      # D13-v2c follow-up (PR #491): execute the 36 external_grpc_integration
+      # tests + 2 sibling integration files (audit_query_surface,
+      # live_config_endpoint). The default `cargo test --workspace` runs
+      # without the `grpc-dashboard-external` + `external-grpc-tools` feature
+      # set, so without this step the ~40 integration tests guarding D14
+      # request-id correlation, D22 fallback, D25 audit query, D27 warmup
+      # preservation, D28 status mapping, D29 live-config, D33 1s reload
+      # convergence are not actually executed by CI.
+      - name: Run tests (grpc-dashboard-external + external-grpc-tools + test-support)
+        if: env.RUN_HEAVY_TESTS == 'true'
+        run: ./scripts/cargo-cache.sh test -p oneshim-web --no-default-features --features grpc-dashboard-external,external-grpc-tools,test-support
 
       - name: Run tests (lan-sync features)
         if: env.RUN_HEAVY_TESTS == 'true'
