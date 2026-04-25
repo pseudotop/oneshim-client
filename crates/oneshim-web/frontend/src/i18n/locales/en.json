@@ -429,6 +429,18 @@
     "updateApproveNow": "Update now",
     "updateDefer": "Defer",
     "updateActionSuccess": "Update action requested",
+    "autostart": {
+      "title": "Startup",
+      "description": "Automatically start ONESHIM when you sign in to your computer.",
+      "toggle": "Start ONESHIM at login",
+      "error": "Failed to update autostart: {{error}}",
+      "unsupported_snap_sandbox": "Use Snap's built-in autostart settings",
+      "unsupported_flatpak_sandbox": "Use Flatpak's built-in autostart settings",
+      "unsupported_headless_session": "Autostart requires a desktop session",
+      "unsupported_systemctl_unavailable": "systemctl not available — using XDG autostart fallback",
+      "unsupported_unsupported_platform": "Autostart not supported on this platform",
+      "unsupported_unknown": "Autostart unavailable in this environment"
+    },
     "bugReportWizardTitle": "Bug Report",
     "bugReportStepGenerate": "Generate",
     "bugReportStepReview": "Review",
