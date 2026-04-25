@@ -687,14 +687,14 @@ These are internal — no external consumers (this is a desktop client, not a li
 |---|----------|-----------------|
 | Q-1 | ✅ RESOLVED (Phase 1 iter-1 I1): `FocusMetrics` is internal model only — REST serializes `FocusMetricsDto` (different fields). Frontend has zero references to `period_start/period_end`. Use **Option Z** (break internal JSON shape). Saves ~3h custom serde work. |
 | Q-2 | ✅ RESOLVED (Phase 1 iter-1 I4): `IdlePeriod` NOT migrated. `end_time: Option<DateTime<Utc>>` represents ongoing idle. Migration would require either two types or `end = now()` workaround (drift bug). Add NG7. |
-| Q-3 | ✅ RESOLVED (Phase 1 iter-1 I2): `ReportQuery { period: ReportPeriod, window: Option<TimeWindow> }`. `period` enum (Week/Month/Custom) primary; `window` is Some only when `period == Custom`. |
+| Q-3 | ✅ RESOLVED v2 (Phase 2 iter-11 NEW Critical correction): keep `ReportQuery` schema **unchanged** — `from: Option<String>, to: Option<String>` are date-only `%Y-%m-%d` strings (NOT RFC3339), parsed via `NaiveDate::parse_from_str(s, "%Y-%m-%d")`. Plan v9/v10 originally prescribed `#[serde(flatten)] time_range: TimeRangeQuery + to_time_window` — but `TimeRangeQuery::to_time_window` parses RFC3339 via `DateTime::parse_from_rfc3339`, which would FAIL on date-only inputs and BREAK the reports endpoint. Instead, update `resolve_report_window` in `reports_query_support.rs` to construct TimeWindow from existing NaiveDate parse logic + return `Result<(TimeWindow, String), ApiError>`. **Original Phase 1 iter-1 I2 resolution was wrong** — caught by iter-11 audit. |
 | Q-4 | ✅ RESOLVED (Phase 1 iter-2): TimeWindow is always constructed at the **handler boundary** (REST handler calls `q.to_time_window(default)?` once). Storage layer ONLY accepts `&TimeWindow` (never `&str` pair or `(DateTime, DateTime)` pair). Domain models (FocusMetrics, SessionMetrics) embed `period: TimeWindow` field. Single canonical construction site enforces validation discipline. |
 | Q-5 | ✅ RESOLVED: yes, migrate `flag_noise_range`. Per Phase 1 iter-1 N3, also update port trait at `oneshim-core/src/ports/calibration_store.rs`. |
 | Q-6 | ✅ RESOLVED (Phase 1 iter-2): `start == end` (zero-duration window) is valid per §5.1 — represents single-instant query. Handlers pass through to SQL `WHERE timestamp >= start AND timestamp <= end` which correctly returns events at exactly that instant. No special case needed in any handler. |
 | Q-7 | ✅ RESOLVED (Phase 1 iter-2): keep `pub start, pub end` for convenient pattern matching (Rust idiom for value types like `chrono::DateTime`). Document in module rustdoc: "`TimeWindow::new` is the validation-safe constructor; direct struct literal construction bypasses bound validation — use only when both bounds are known to satisfy `start <= end`." |
-| Q-8 | ⚠ Pending iter-3: alphabetical position of `time_window.*` codes in snapshot — must verify at impl time after computing actual baseline (see C1 + §7.2 recompute note). |
+| Q-8 | ✅ RESOLVED (PF3 captured 2026-04-25): wire-code baseline = **42** (worktree base, pre-PR-B1). Alphabetical block: `storage.failed → ui.element_missing → validation.*`. After insertion: `storage.failed → time_window.inverted_bounds → time_window.parse_failed → ui.element_missing`. If PR-B1 merges first (+5 tracking_schedule.* codes): `storage.failed → time_window.* (2 codes) → tracking_schedule.* (5 codes) → ui.*` (since `ti` < `tr` lexicographically). Plan PF3 procedure recomputes at impl time. |
 | Q-9 | ✅ RESOLVED: gRPC `MetricBucket` excluded (NG2). Verified. |
-| Q-10 (NEW iter-1) | ⚠ `DeleteRangeRequest` external JSON shape preservation strategy: option (a) update DataSection.tsx (~30min) or option (b) custom serde (rename start→from, end→to). Spec recommends (b) — minimal frontend churn + preserves API contract. Verify in iter-2. |
+| Q-10 (NEW iter-1) | ✅ RESOLVED (Phase 2 iter-1 C9): **Option C accessor pattern** — keep `from: String, to: String` fields untouched + add `period() -> Result<TimeWindow, TimeWindowError>` accessor. Preserves frontend `DataSection.tsx` JSON shape exactly. NO custom serde module (the `flatten + with` combo proposed in option (b) is invalid serde syntax). DataSection.tsx requires ZERO changes. |
 
 ---
 
@@ -717,10 +717,10 @@ These are internal — no external consumers (this is a desktop client, not a li
 
 | Branch | Status | Files | Conflict |
 |--------|--------|-------|----------|
-| `feature/phase9-autostart-foundation` (PR #508) | OPEN, in review | `oneshim-core/config/sections/`, scheduler, frontend autostart | **Hard dep** for impl gate (rebase risk) |
-| `feature/phase9-autostart-linux-deep` | Local plan ready, BLOCKED | Same as PR-B1 | After PR-B1 merge |
-| `refactor/serve-external-inner-extraction` (PR #506) | OPEN | `oneshim-web/src/grpc/external/` | Disjoint |
-| `ci/clippy-195-field-reassign-detection` (PR #509) | OPEN | `lefthook.yml` + scripts | Disjoint |
+| `feature/phase9-autostart-foundation` (PR #508) | **OPEN — clippy FAILURE + BEHIND main** (verified 2026-04-25 17:00) | `oneshim-core/config/sections/`, scheduler, frontend autostart | **Hard dep** for impl gate (rebase risk). Phase 3 cannot start until #508 reaches MERGED state per plan ABORT GUARD at PF1. |
+| `feature/phase9-autostart-linux-deep` (PR-B2) | Local plan ready, BLOCKED on PR-B1 merge | Same as PR-B1 | After PR-B1 merge |
+| `refactor/serve-external-inner-extraction` (PR #506) | ✅ **MERGED** (commit `89ab7910` on origin/main) | `oneshim-web/src/grpc/external/` | Disjoint — already in worktree base |
+| `ci/clippy-195-field-reassign-detection` (PR #509) | ✅ **MERGED** (commit `54c894d5` on origin/main) | `lefthook.yml` + scripts | Disjoint — already in worktree base |
 
 ### 13.1 Recommended merge order
 
@@ -732,36 +732,60 @@ These are internal — no external consumers (this is a desktop client, not a li
 
 ---
 
-## 14. Spec Self-Review (v1)
+## 14. Spec Self-Review (v9)
 
 ### 14.1 Placeholder scan
-- ⚠ Q-1 through Q-9 are intentional open questions for Phase 1 iter-1
-- ⚠ §13 wire code count baseline assumes current state — adjust during impl based on actual merge timing
+- ✅ All Q-1 through Q-10 RESOLVED (Q-1, Q-2, Q-4, Q-5, Q-6, Q-7, Q-9 in Phase 1; Q-3 corrected in Phase 2 iter-11; Q-8 captured at PF3; Q-10 resolved Phase 2 iter-1 C9)
+- ✅ §7.2 wire code count baseline → dynamic via PF3 procedure
 - ✅ No "TBD" in spec body
 
-### 14.2 Internal consistency
+### 14.2 Internal consistency (v9 audit)
 - ✅ U1-U5 decisions consistently applied across §3, §4, §5
-- ✅ Closed-closed semantic preserved in `to_sql_pair` (§5.1) and SQL pattern (§5.3)
+- ✅ Closed-closed semantic preserved in `to_sql_pair` (§5.1) and SQL pattern (§5.3a)
+- ✅ Half-open boundary preserved in work_sessions (§5.3 PRESERVE-BODY) per NG6
+- ✅ Containment semantic preserved in calibration list_segment_time_ranges per Phase 2 iter-8
+- ✅ Service-layer architecture across §5.5 + §6.1 + §9.1
+- ✅ Option C accessor for DeleteRangeRequest across §5.6 + §6.3 + §10.1 + Q-10
+- ✅ ReportQuery date-only across §9.1 Task 7 + Q-3
+- ✅ FocusMetrics Pattern A/B distinction across §5.4 + §9.1 Task 8
 
 ### 14.3 Scope check
 - ✅ Single PR scope (Big-bang per U2)
-- ⚠ §11 Q-2 (IdlePeriod) could expand scope if `OngoingIdlePeriod` separate type chosen — defer to iter-1 decision
+- ✅ Q-2 IdlePeriod NOT migrated per NG7 (no scope expansion)
 
 ### 14.4 Ambiguity check
-- ⚠ §5.4 "Option Y custom serde" — exact serde derive macro syntax not shown. iter-1 should specify (e.g., `#[serde(rename = "period_start")]`)
-- ⚠ §10.2 "Frontend update needed" for DeleteRangeRequest — verify if frontend actually has GDPR UI (Q-1 supplement)
+- ✅ §5.4 FocusMetrics — Pattern A/B explicitly distinguishes constructor vs struct-literal preservation
+- ✅ §10.1 DeleteRangeRequest — Option C accessor pattern; frontend zero-change verified
+- ✅ §5.5 service-layer migration explicit (handlers thin pass-through)
+
+### 14.5 Phase 2 corrections summary
+
+After 13 plan iterations + spec v3→v9 alignments, the following were caught beyond Phase 1's initial review:
+- iter-1 (9C+11I): CoreError struct-variant pattern, ApiError chain, port scope expansion (8 methods + 14 callers)
+- iter-2 (6 NEW C + 5 NEW I): Default derive, hand-computed timestamps, list_segment_time_ranges 3-tuple, sync flag_noise_range, Vec<(String, i64)> return
+- iter-3 (2 NEW C + 1 NEW I): FailingStorage delegation pattern, ?-vs-.expect() in `()` returning fns
+- iter-4-8 (cleanup): MockCalibration→Noop names, DeletedRangeCounts field names, half-open boundary preservation, containment semantic
+- iter-9 (NEW C): Service-layer architectural correction
+- iter-10 (NEW C): Default lookback preservation (24h NOT 7d/30d)
+- iter-11 (NEW C): ReportQuery date-only NOT RFC3339
+- iter-12 (NEW C): FocusMetrics struct-literal preservation (Pattern A vs B)
+- iter-13: Pattern A/B definitive verification
+
+Cumulative: 23 Critical + 28 Important + 2 Suggestion fixes integrated into spec v4-v9 + plan v2-v13.
 
 ---
 
-## 15. Implementation Status
+## 15. Implementation Status (v9 — 2026-04-25)
 
-- **Spec v1**: 2026-04-25 (this document)
-- **Phase 1 deep review**: PENDING (next ralph-loop iteration)
-- **Phase 2 plan creation**: PENDING (after Phase 1 closes)
-- **Phase 3 implementation**: BLOCKED on PR-B1 (#508) merge
+- **Spec v9**: ALIGNED with plan v13 (this document — 9 spec versions iteratively corrected)
+- **Phase 1 deep review**: ✅ CLOSED (3 iter, spec v1 → v3)
+- **Phase 2 plan creation + deep review**: ✅ CLOSED (13 iter, plan v1 → v13; spec v3 → v9 alignment)
+- **Phase 3 implementation**: 🔒 BLOCKED on PR-B1 (#508) merge — currently OPEN with clippy FAILURE + BEHIND main
 - **Worktree**: `.claude/worktrees/timewindow-primitive` on `refactor/timewindow-primitive`
-- **Base**: `2ba38cf5` (origin/main)
+- **Base**: `2ba38cf5` (origin/main, pre-PR-B1)
+- **Drift audit (post-iter-13)**: 0 unmigrated TimeWindow consumers in src-tauri/src/commands/, oneshim-web/src/grpc/, oneshim-network/src/ — bounded scope
+- **PF5 dep verification**: 5/5 PASS (oneshim-core dep + CoreError struct-variant + From<CoreError> for ApiError + define_code_enum! macro + ErrorResponse no `code` field)
 
 ---
 
-**End of spec v1.**
+**End of spec v9.**
