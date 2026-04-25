@@ -82,6 +82,16 @@ impl IpBan {
     }
 
     /// Record a failure. Returns the new ban state (if any).
+    ///
+    /// Holds the write guard for the full critical section because
+    /// `LruCache::get_or_insert_mut` returns a `&mut V` that is mutated
+    /// across sliding-window + threshold-scan logic before being cloned.
+    /// The guard cannot be released mid-function without invalidating
+    /// the borrow; atomicity is intentional.
+    #[allow(
+        clippy::significant_drop_tightening,
+        reason = "atomic sliding-window + threshold update on the cache entry requires single contiguous write guard"
+    )]
     pub(crate) fn record_failure(&self, addr: SocketAddr) -> Option<BanState> {
         let key = BanKey::from_socket(addr);
         let now = Instant::now();
