@@ -63,11 +63,25 @@ After Phase 2 EXIT, surfaced spec drift via spec coverage audit. Resulted in 12 
 
 ---
 
-## Cumulative Issue Counts (final)
+## Cumulative Issue Counts (final, by phase)
 
-- **Critical**: 23+ (Phase 1: 4, Phase 2 iter-1/2/3/6/9/10/11/12: 19+ across 8 iter, plus spec alignment ~10+)
-- **Important**: 28+ (Phase 1: 5, Phase 2 iter-1/2/3/4/5/10: 23+ across 6 iter, plus spec alignment ~15+)
-- **Suggestion**: ~6
+| Phase | Critical | Important | Suggestion |
+|-------|---------:|----------:|-----------:|
+| Phase 1 (3 iter) | 4 | 5 | 4 |
+| Phase 2 iter-1 | 9 | 11 | 6 |
+| Phase 2 iter-2 (NEW) | 6 | 5 | 0 |
+| Phase 2 iter-3 (NEW) | 2 | 1 | 0 |
+| Phase 2 iter-4 | 0 | 4 | 2 |
+| Phase 2 iter-5 (NEW) | 0 | 2 | 0 |
+| Phase 2 iter-6 (NEW) | 1 | 0 | 0 |
+| Phase 2 iter-9 (NEW) | 1 | 0 | 0 |
+| Phase 2 iter-10 (NEW) | 2 | 2 | 0 |
+| Phase 2 iter-11 (NEW) | 1 | 0 | 0 |
+| Phase 2 iter-12 (NEW) | 1 | 0 | 0 |
+| Phase 2.5 spec alignment v4-v15 | ~10 | ~15 | 0 |
+| **Total** | **~37** | **~45** | **~12** |
+
+(Spec alignment counts are approximate — include drifts in §1.2 catalog, §4.1 Component Layout (10 corrections), §5.5 service-layer + 24h default, §5.6 + §6.1-6.3 DeleteRangeRequest, §7.2 wire baseline, §8.4 dynamic test count, §9.1 commit table rewrite, §11 Q-3/Q-8/Q-10 corrections, §12 Risk Register, §13 PR status, §14-15 stale references, §2.2 NG9-12, §3 U5.)
 
 ---
 

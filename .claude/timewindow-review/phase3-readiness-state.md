@@ -25,9 +25,9 @@
 
 Across **28 documentation iterations** (15 spec versions + 13 plan versions):
 
-- **Critical**: 23+ across Phase 1 (4) + Phase 2 iter-1 (9) + iter-2 (6 NEW) + iter-3 (2 NEW) + iter-6 (1 NEW) + iter-9 (1 NEW) + iter-10 (2 NEW) + iter-11 (1 NEW) + iter-12 (1 NEW) + spec v4-v15 alignment (~10+)
-- **Important**: 28+ across Phase 1 (5) + Phase 2 iter-1 (11) + iter-2 (5 NEW) + iter-3 (1 NEW) + iter-4 (4) + iter-5 (2 NEW) + iter-10 (2 NEW) + spec v4-v15 alignment (~15+)
-- **Suggestion / Nice-to-have**: ~6 (4 Phase 1 + 2 Phase 2 iter-4 + Pattern A/B verification)
+- **Critical**: ~37 — 4 (Phase 1) + 9 (P2-iter1) + 6 (P2-iter2) + 2 (P2-iter3) + 1 (P2-iter6) + 1 (P2-iter9) + 2 (P2-iter10) + 1 (P2-iter11) + 1 (P2-iter12) + ~10 (spec v4-v15 alignment)
+- **Important**: ~45 — 5 (Phase 1) + 11 (P2-iter1) + 5 (P2-iter2) + 1 (P2-iter3) + 4 (P2-iter4) + 2 (P2-iter5) + 2 (P2-iter10) + ~15 (spec v4-v15 alignment)
+- **Suggestion / Nice-to-have**: ~12 — 4 (Phase 1) + 6 (P2-iter1) + 2 (P2-iter4)
 
 Plan grew from 1392 lines (v1) to ~2885 lines (v13).
 Spec grew from 666 lines (v1) to ~770 lines (v15).
