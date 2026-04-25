@@ -65,6 +65,10 @@ Investigation of the codebase identified **5 main + 4 supporting sites** where t
 - **NG6**: SQL `BETWEEN` semantic changes — current closed-closed `WHERE timestamp >= ?1 AND timestamp <= ?2` preserved
 - **NG7** (per Phase 1 iter-1 I4): `IdlePeriod` is NOT migrated. `IdlePeriod.end_time: Option<DateTime<Utc>>` represents ongoing idle (renewed each poll). Migrating to `TimeWindow` (always-bounded) would require either fragmenting into 2 types (overkill) or `end = now()` workaround (drift bug — values changes per poll, breaks equality + serialization stability). Left as-is.
 - **NG8** (per Phase 1 iter-1 I1): `FocusMetrics` JSON shape change is internal-only. The REST contract serializes `FocusMetricsDto` (in `oneshim-api-contracts/src/focus.rs`) which has `date: String` + scalars — NO `period_start/period_end` fields. Verified frontend has zero references to `period_start/period_end`. **Option Z (break internal model JSON shape) is safe**. Q-1 resolved. Saves ~3h custom serde work.
+- **NG9** (per Phase 2 iter-9 NEW-C1): REST handlers are NOT migrated. Migration happens at the **service layer** (`crates/oneshim-web/src/services/`). Handlers stay thin pass-through (`Service::new(ctx).method(&params)?`). 7 service files migrate (frames/events/metrics/focus/idle/processes/timeline_service); handlers/{frames,events,metrics,focus,idle,processes,data,reports}.rs require ZERO changes.
+- **NG10** (per Phase 2 iter-10 NEW-C1): Default lookback in `to_time_window()` calls **preserved at `Duration::hours(24)`** to match existing `TimeRangeQuery::from_datetime()` fallback exactly. Plan v9 originally prescribed 7d/30d defaults — that would 7×/30× widen payloads when frontend sends no bounds. Any deliberate widening must be a separate PR with frontend coordination.
+- **NG11** (per Phase 2 iter-11 NEW Critical): `ReportQuery` schema **preserved as-is** — `from: Option<String>, to: Option<String>` are date-only `%Y-%m-%d` strings (NOT RFC3339), parsed via `NaiveDate::parse_from_str`. NO `#[serde(flatten)] time_range: TimeRangeQuery` (would break Custom period parse since `to_time_window` expects RFC3339). Migration updates `resolve_report_window` in `reports_query_support.rs` to construct TimeWindow from existing NaiveDate parse logic.
+- **NG12** (per Phase 2 iter-9 + iter-10 decision): `TimeRangeQuery` helper methods (`from_datetime`, `to_datetime`, `limit_or_default`, `offset_or_default`) **retained non-deprecated**. Useful for non-validating use cases (test fixtures, demos, internal tooling). New code uses `to_time_window` for validating conversion. Future deprecation is a separate concern.
 
 ---
 
@@ -78,7 +82,7 @@ These decisions were made interactively during brainstorming and are FIXED.
 | **U2** | Migration = Big-bang (single PR) | Deep review process (3-loop ralph-loop) absorbs large-PR risk. Avoids type-alias deprecation churn from gradual approach. |
 | **U3** | Location = `oneshim-core` (`crates/oneshim-core/src/types/time_window.rs`) | Domain primitive home. SQL storage already depends on oneshim-core. Layering clean. |
 | **U4** | Boundary = Closed-closed `[start, end]` | ONESHIM is event-driven business API (Stripe-style), not continuous time-series (Prometheus-style). User-facing date queries dominate. Existing SQL `BETWEEN` semantic preserved → migration risk zero. |
-| **U5** | Optional bounds handling = `TimeRangeQuery::to_time_window(default_lookback)` adapter | Domain-specific defaults possible (frames 7d, reports 30d, GDPR no default). TimeWindow type stays simple (always bounded). REST contract unchanged. |
+| **U5** | Optional bounds handling = `TimeRangeQuery::to_time_window(default_lookback)` adapter | Domain-specific defaults configurable per call site. **Per Phase 2 iter-10 NEW-C1: default value preserved at `Duration::hours(24)` everywhere** to match existing `from_datetime()` 24h fallback (see NG10). TimeWindow type stays simple (always bounded). REST contract unchanged. |
 
 ---
 
