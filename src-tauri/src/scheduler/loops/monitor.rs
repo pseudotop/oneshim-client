@@ -34,6 +34,7 @@ impl Scheduler {
         shared_regime: Arc<SharedRegimeState>,
         focus_mode: Arc<FocusModeState>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> tokio::task::JoinHandle<()> {
         let act_mon = self.activity_monitor.clone();
         let trigger = self.capture_trigger.clone();
@@ -66,6 +67,7 @@ impl Scheduler {
             let mut prev_window_title: Option<String> = None;
             let mut prev_idle_secs: u64 = 0;
             let mut interval = tokio::time::interval(poll);
+            let mut focus_block = super::autostart_helper::FocusBlockState::default();
             let mut idle_tracker = IdleTracker::new(Some(idle_threshold));
             let mut adaptive_trigger_state = adaptive_trigger_state;
             let window_tracker = WindowLayoutTracker::new();
@@ -99,7 +101,7 @@ impl Scheduler {
                             }
                             info!("Focus mode expired — auto-deactivated");
                         }
-                        prev_idle_secs = handle_idle_tick(
+                        let new_idle_secs = handle_idle_tick(
                             &mut idle_tracker,
                             &sqlite1,
                             &notif1,
@@ -112,6 +114,8 @@ impl Scheduler {
                         // A.18: TS window enter/exit → desktop notify (60s debounce)
                         super::tracking_schedule_helper::tick_ts_notifications(&config_manager1, notif1.as_deref(), &mut ts_notify_state.0, &mut ts_notify_state.1).await;
 
+                        // PR-B1 §5.5: productive-session detection (Idle↔Active transitions, idempotent counter)
+                        focus_block.tick(&mut prev_idle_secs, new_idle_secs, idle_threshold, app_handle.as_ref(), config_manager1.as_ref());
                         match act_mon.collect_context().await {
                             Ok(ctx) => {
                                 let app_name = ctx.active_window.as_ref()

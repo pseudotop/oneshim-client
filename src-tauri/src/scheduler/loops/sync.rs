@@ -311,6 +311,7 @@ impl Scheduler {
             shared_regime.clone(),
             self.focus_mode.clone(),
             shutdown_rx.clone(),
+            app_handle.clone(),
         );
 
         let metrics_task = self.spawn_metrics_loop(metrics_interval, shutdown_rx.clone());
