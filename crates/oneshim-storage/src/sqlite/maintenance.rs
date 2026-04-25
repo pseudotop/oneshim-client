@@ -1439,4 +1439,69 @@ mod tests {
         assert_eq!(links[0].frame_id, 1);
         assert_eq!(links[0].tag_id, 10);
     }
+
+    // ── Closed-closed boundary regression tests (Phase 3 Task 5) ─────
+    //
+    // Per spec §5.1 and NG6: TimeWindow is closed-closed [start, end] —
+    // both bounds are INCLUDED. These tests guard against accidental drift
+    // to half-open semantics during future refactors.
+    //
+    // Note: Test fixture timestamps use the canonical `+00:00` form
+    // because `TimeWindow::to_sql_pair()` uses `chrono::DateTime::to_rfc3339()`
+    // which emits `+00:00` (not `Z`) for UTC. Lexicographic SQL comparison
+    // requires matching formats at the exact boundary. Production code goes
+    // through the same `to_rfc3339()` path on insert, so this fixture choice
+    // mirrors real-world data.
+
+    #[test]
+    fn count_frames_in_range_includes_both_boundaries() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let t1 = "2026-04-01T00:00:00+00:00";
+        let t2 = "2026-04-25T00:00:00+00:00";
+        insert_frame(&storage, 1, t1); // exactly at start
+        insert_frame(&storage, 2, "2026-04-15T00:00:00+00:00"); // middle
+        insert_frame(&storage, 3, t2); // exactly at end
+        let window = TimeWindow::from_rfc3339_pair(t1, t2).expect("trusted test bounds");
+        assert_eq!(storage.count_frames_in_range(&window).unwrap(), 3);
+    }
+
+    #[test]
+    fn count_events_in_range_includes_both_boundaries() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let t1 = "2026-04-01T00:00:00+00:00";
+        let t2 = "2026-04-25T00:00:00+00:00";
+        insert_events(&storage, &[t1, "2026-04-15T00:00:00+00:00", t2]);
+        let window = TimeWindow::from_rfc3339_pair(t1, t2).expect("trusted test bounds");
+        assert_eq!(storage.count_events_in_range(&window).unwrap(), 3);
+    }
+
+    #[test]
+    fn delete_data_in_range_respects_delete_flags() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let t1 = "2026-04-01T00:00:00+00:00";
+        let t2 = "2026-04-25T00:00:00+00:00";
+        let middle = "2026-04-15T00:00:00+00:00";
+        // Seed one of each: event + frame + metric (process and idle have
+        // no convenient sync helper here; their delete flags are still
+        // exercised via unrelated tests above).
+        insert_events(&storage, &[middle]);
+        insert_frame(&storage, 1, middle);
+        insert_metric(&storage, middle);
+
+        let window = TimeWindow::from_rfc3339_pair(t1, t2).expect("trusted test bounds");
+        // delete_events=true, all others false
+        let counts = storage
+            .delete_data_in_range(&window, true, false, false, false, false)
+            .unwrap();
+
+        assert_eq!(counts.events_deleted, 1);
+        assert_eq!(counts.frames_deleted, 0);
+        assert_eq!(counts.metrics_deleted, 0);
+        assert_eq!(counts.process_snapshots_deleted, 0);
+        assert_eq!(counts.idle_periods_deleted, 0);
+
+        // Frames + metrics should remain
+        let remaining_frames = storage.count_frames_in_range(&window).unwrap();
+        assert_eq!(remaining_frames, 1);
+    }
 }
