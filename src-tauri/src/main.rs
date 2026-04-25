@@ -219,6 +219,18 @@ fn main() {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Callback runs in 1st instance when 2nd instance launches.
+            // Must be cheap + synchronous (no async, no DB calls).
+            // Order matters per spec §5.2 mitigation #1: show() → unminimize() → set_focus().
+            // Reverse order can leave window unfocused on Linux/X11.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            // _args, _cwd reserved for future CLI command extension (NG3).
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -350,6 +362,12 @@ fn main() {
             commands::audio::reload_stt_engine,
             commands::audio::start_vad_listening,
             commands::audio::stop_vad_listening,
+            commands::autostart::autostart_capabilities,
+            commands::autostart::disable_autostart,
+            commands::autostart::enable_autostart,
+            commands::autostart::get_autostart_config,
+            commands::autostart::is_autostart_enabled,
+            commands::autostart::mark_autostart_prompt_state,
             commands::bug_report::export_bug_report,
             commands::error_report::report_frontend_error,
             commands::tracking_schedule::get_tracking_schedule,

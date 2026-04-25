@@ -175,3 +175,17 @@ The implementation spans 21 commits across the full client stack: `TrackingSched
 
 - Scope: `oneshim-core` config types, `oneshim-network` uploader, `src-tauri` scheduler + IPC + tray, `oneshim-web` REST handlers + React frontend
 - Design + plan: `docs/reviews/2026-04-24-phase9-tracking-schedule-{spec,plan}.md`
+
+## Phase 9 PR-B1: Autostart Foundation (v0.4.40-rc.1, 2026-04-25)
+
+- **Cross-platform autostart IPC commands**: macOS `LaunchAgent`, Windows Registry `HKCU\...\Run`, Linux systemd user service + XDG autostart desktop file — wired to Settings UI toggle (`StartupSection` in `GeneralTab.tsx` between Language and Web Dashboard cards)
+- **Single-instance enforcement**: `tauri-plugin-single-instance` v2 with D-Bus name `com.oneshim.client.SingleInstance` (Linux), named pipe (Windows), Unix socket (macOS); focus-grab callback (show → unminimize → set_focus); D-Bus presence check warn log on Linux for headless degradation
+- **Opt-in onboarding prompt**: triggers after first 25-minute productive focus session; single-fire per app session via module-level guard; handlers for snooze/dismiss/enable; rendered in `DashboardLayout` above `<Outlet>` (per memory `feedback_shared_chrome_in_layout`)
+- **AutostartConfig in oneshim-core**: zero-cache design — OS state is sole source of truth (Phase 1 review I4 requirement); no in-memory enabled flag; only stores `prompt_state` (Pending/Snoozed/Dismissed) + `productive_session_count` + `last_session_id` UUID for idempotency
+- **Productive-session detection**: monitor.rs `FocusBlockState` integrated with `handle_idle_tick` flow — `Idle→Active` block start, `Active→Idle` block end with increment via `ConfigManager.update_with` (closure-based, idempotent via session_id UUID); Generic Runtime pattern (`<R: Runtime>`) for testability without `tauri::test`
+- **IPC commands**: 6 total — `enable_autostart`, `disable_autostart`, `is_autostart_enabled`, `autostart_capabilities` (PR-B2 will populate real Linux env detection), `mark_autostart_prompt_state`, `get_autostart_config`
+- **Wire codes**: 5 registered via `define_code_enum!` macro (ADR-019) — `autostart.{enable,disable,query,counter_increment,event_emit}_failed`
+- **Tests**: +20 Rust unit tests (AutostartConfig serde/should_prompt 10, autostart_helper 5, IPC commands 2 + 1 ignored round-trip, AutostartCode 3) + 10 Vitest tests (StartupSection 5, AutostartOnboardingPrompt 5) + 1 integration smoke test (single_instance subprocess spawn, ignored)
+- **Implementation**: 13 commits across Tasks 1-13 on branch `feature/phase9-autostart-foundation` + 2 fixes (Task 10 ADR-019 wire code registration + Task 14 i18n test count adjustment) + holistic review polish
+- **Spec + plan**: `docs/superpowers/specs/2026-04-25-phase9-pr-b-autostart-ipc-foundation-design.md` (v3) + `docs/superpowers/plans/2026-04-25-phase9-pr-b1-autostart-foundation.md` (v2.6)
+- **Followup**: PR-B2 (Linux deep — sd-notify Type=notify, Snap/Flatpak/headless detection, capability-aware UI gating, Linux integration tests) on separate branch after PR-B1 merges

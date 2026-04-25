@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::sync::Arc;
 use tauri::{App, Manager};
 use tracing::info;
+#[cfg(target_os = "linux")]
+use tracing::warn;
 
 use crate::app_runtime_launch::{AppRuntimeLaunchBuilder, AppRuntimeLaunchResult};
 use crate::bootstrap_runtime::{BootstrapRuntimeBuilder, BootstrapRuntimeBundle};
@@ -10,6 +12,20 @@ use crate::telemetry;
 
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
 pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    // Per spec §5.2 mitigation #2 / I7: log warn if D-Bus session bus is
+    // unavailable on Linux. Single-instance plugin will silently fail in
+    // this case — duplicate processes may launch in headless sessions.
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("DBUS_SESSION_BUS_ADDRESS").is_err() {
+            warn!(
+                err.code = "single_instance_dbus_absent",
+                "DBUS_SESSION_BUS_ADDRESS not set — single-instance enforcement degraded; \
+                 duplicate processes may launch in headless sessions"
+            );
+        }
+    }
+
     info!("Tauri setup: initializing ONESHIM agent");
     let bundle = BootstrapRuntimeBuilder::new().build()?;
 

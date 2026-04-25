@@ -57,6 +57,80 @@ async function invokeDesktop<T>(cmd: string, args?: Record<string, unknown>): Pr
   return invoke<T>(cmd, args)
 }
 
+interface AutostartCapabilities {
+  supported: boolean
+  unsupported_reason?: { kind: string }
+  environment: string
+}
+
+// Exported for unit testing (Vitest).
+export function StartupSection() {
+  const { t } = useTranslation()
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [caps, setCaps] = useState<AutostartCapabilities | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    Promise.all([
+      invokeDesktop<boolean>('is_autostart_enabled'),
+      invokeDesktop<AutostartCapabilities>('autostart_capabilities'),
+    ])
+      .then(([e, c]) => {
+        setEnabled(e)
+        setCaps(c)
+      })
+      .catch((e) => setError(String(e)))
+  }, [])
+
+  const handleToggle = async (next: boolean) => {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      await invokeDesktop(next ? 'enable_autostart' : 'disable_autostart')
+      setEnabled(next)
+    } catch (e) {
+      setError(String(e))
+      const actual = await invokeDesktop<boolean>('is_autostart_enabled').catch(() => null)
+      if (actual !== null) setEnabled(actual)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isDisabled = loading || enabled === null || (caps !== null && !caps.supported)
+
+  return (
+    <Card variant="default" padding="lg">
+      <CardTitle sticky>{t('settings.autostart.title')}</CardTitle>
+      <div className="space-y-3">
+        <p className="text-content-secondary text-sm">{t('settings.autostart.description')}</p>
+        <label className="flex cursor-pointer items-center gap-3">
+          <Checkbox
+            checked={enabled ?? false}
+            onChange={(e) => void handleToggle(e.target.checked)}
+            disabled={isDisabled}
+          />
+          <span className="text-content-strong text-sm">{t('settings.autostart.toggle')}</span>
+        </label>
+        {caps && !caps.supported && (
+          <p className="text-content-secondary text-xs">
+            {t('settings.autostart.unsupported', {
+              context: caps.unsupported_reason?.kind ?? 'unknown',
+            })}
+          </p>
+        )}
+        {error && (
+          <Alert variant="error" title={t('settings.autostart.error', { error })}>
+            <span />
+          </Alert>
+        )}
+      </div>
+    </Card>
+  )
+}
+
 export default function GeneralTab() {
   const { form: settingsForm, data } = useSettingsFormContext()
   const { t } = useTranslation()
@@ -68,6 +142,8 @@ export default function GeneralTab() {
         <CardTitle sticky>{t('settings.language')}</CardTitle>
         <LanguageSelector />
       </Card>
+
+      <StartupSection />
 
       <Card variant="default" padding="lg">
         <CardTitle sticky>{t('settings.webTitle')}</CardTitle>

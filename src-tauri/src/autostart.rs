@@ -1,8 +1,7 @@
 //! - macOS: `~/Library/LaunchAgents/com.oneshim.agent.plist`
 //! - Linux: `~/.config/systemd/user/oneshim.service` (systemd) or `~/.config/autostart/oneshim.desktop` (XDG fallback)
 
-#![allow(dead_code)] // Module ready for IPC command wiring; all public fns used once autostart UI is enabled
-
+#[cfg(target_os = "macos")]
 const APP_LABEL: &str = "com.oneshim.agent";
 
 pub fn enable_autostart() -> Result<(), String> {
@@ -454,6 +453,77 @@ mod linux {
 
         let desk_path = desktop_path()?;
         Ok(desk_path.exists())
+    }
+}
+
+/// Autostart capabilities — used by frontend to gate UI.
+/// PR-B1 skeleton: returns supported=true unconditionally for cross-platform UI parity.
+/// PR-B2 adds real environment detection (Snap/Flatpak/headless).
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct AutostartCapabilities {
+    pub supported: bool,
+    pub unsupported_reason: Option<UnsupportedReason>,
+    pub environment: EnvironmentKind,
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+#[allow(dead_code)] // PR-B2 adds real environment detection; variants reserved for future use
+pub enum UnsupportedReason {
+    SnapSandbox,
+    FlatpakSandbox,
+    HeadlessSession,
+    SystemctlUnavailable,
+    UnsupportedPlatform,
+}
+
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // PR-B2 adds real environment detection; variants reserved for future use
+pub enum EnvironmentKind {
+    MacOs,
+    Windows,
+    LinuxSystemd,
+    LinuxXdg,
+    LinuxSnapSandbox,
+    LinuxFlatpakSandbox,
+    LinuxHeadless,
+    Unknown,
+}
+
+/// PR-B1 stub. PR-B2 replaces with real detection.
+pub fn detect_capabilities() -> AutostartCapabilities {
+    #[cfg(target_os = "macos")]
+    {
+        AutostartCapabilities {
+            supported: true,
+            unsupported_reason: None,
+            environment: EnvironmentKind::MacOs,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        AutostartCapabilities {
+            supported: true,
+            unsupported_reason: None,
+            environment: EnvironmentKind::Windows,
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        AutostartCapabilities {
+            supported: true,
+            unsupported_reason: None,
+            environment: EnvironmentKind::LinuxSystemd,
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        AutostartCapabilities {
+            supported: false,
+            unsupported_reason: Some(UnsupportedReason::UnsupportedPlatform),
+            environment: EnvironmentKind::Unknown,
+        }
     }
 }
 
