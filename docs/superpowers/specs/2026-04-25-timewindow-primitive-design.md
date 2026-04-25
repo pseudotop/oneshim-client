@@ -424,64 +424,78 @@ let TimeWindow { start: from, end: to } = window;
 self.ctx.storage.get_frames(from, to, limit).await?
 ```
 
-### 5.6 GDPR `DeleteRangeRequest` Migration
+### 5.6 GDPR `DeleteRangeRequest` Migration (Option C — accessor pattern)
 
 `DeleteRangeRequest` is special: GDPR requirement says user must explicitly specify range. **No default lookback** — bounds are required.
 
+**Phase 1 iter-1 I3 + Phase 2 iter-1 C9 RESOLVED via Option C** (accessor pattern): keep `from: String, to: String` fields untouched + add `period() -> Result<TimeWindow, TimeWindowError>` accessor. Preserves frontend `DataSection.tsx` JSON shape exactly — NO frontend code changes required. NO custom serde module needed (the `flatten + with` combo is invalid serde syntax anyway).
+
 ```rust
-// Before
+// Before AND After (struct unchanged):
+#[derive(Debug, Deserialize)]
 pub struct DeleteRangeRequest {
-    pub from: String,
-    pub to: String,
+    pub from: String,           // YYYY-MM-DDTHH:MM:SSZ RFC3339
+    pub to: String,             // YYYY-MM-DDTHH:MM:SSZ RFC3339
+    #[serde(default)]
     pub data_types: Vec<String>,
 }
 
-// After
-pub struct DeleteRangeRequest {
-    pub period: TimeWindow,  // required, no Option
-    pub data_types: Vec<String>,
+impl DeleteRangeRequest {
+    /// Construct a TimeWindow from the request's from/to string fields.
+    /// Frontend sends from/to keys — NO change to JSON shape required.
+    pub fn period(&self) -> Result<TimeWindow, TimeWindowError> {
+        TimeWindow::from_rfc3339_pair(&self.from, &self.to)
+    }
 }
 ```
 
-REST handler validates strict parsing (no default applied for unbounded request) — returns 400 Bad Request if `from` or `to` missing.
+Service layer (NOT handler — handler thin-delegates to `DataCommandService::delete_data_range(&request)`) constructs the TimeWindow once via `request.period()?` and passes `&window` to storage methods. Returns 400 Bad Request if from/to malformed. (Spec §6.3 details the data flow.)
 
 ---
 
 ## 6. Data Flow
 
-### 6.1 REST query → Storage path
+### 6.1 REST query → Service → Storage path (Phase 2 iter-9 architectural correction)
 
 ```
 HTTP GET /api/frames?from=2026-04-20T00:00:00Z&to=2026-04-25T00:00:00Z
   → Axum extracts Query<TimeRangeQuery> { from: Some("..."), to: Some("...") }
-  → handler: q.to_time_window(Duration::days(7))?
+  → Handler thin-delegates: FramesQueryService::new(context).get_frames(&params)?
+  → Service: params.to_time_window(Duration::hours(24))?
     → parses RFC3339 strings → DateTime<Utc>
     → constructs TimeWindow::new(start, end)? — validates start <= end
-  → handler calls storage.get_frames(&window, 100)
-    → storage uses window.to_sql_pair() → ("2026-04-20T00:00:00+00:00", "2026-04-25T00:00:00+00:00")
-    → SQL: WHERE timestamp >= ?1 AND timestamp <= ?2 (closed-closed preserved)
+  → Service calls storage.count_frames_in_range(&window) (Task-4-migrated method) directly,
+    OR for non-migrated methods: storage.get_frames(window.start, window.end, limit) with decomposition
+    → migrated storage method uses window.to_sql_pair() → ("2026-04-20T00:00:00+00:00", "...")
+    → SQL: WHERE timestamp >= ?1 AND timestamp <= ?2 (closed-closed preserved per NG6)
   → Returns Vec<FrameDto> → JSON response (frame fields unchanged from before)
 ```
 
-### 6.2 Default lookback application
+### 6.2 Default lookback application (24h preserved per Phase 2 iter-10 NEW-C1)
 
 ```
 HTTP GET /api/events  (no query params)
   → TimeRangeQuery { from: None, to: None }
-  → handler: q.to_time_window(Duration::days(30))?  // events default = 30d
+  → Handler thin-delegates: EventsQueryService::new(context).get_events(&params)?
+  → Service: params.to_time_window(Duration::hours(24))?  // ← preserves existing 24h default
     → end = now()
-    → start = end - 30 days
+    → start = end - 24 hours
     → TimeWindow::new(start, end) — always valid
-  → Storage query
+  → Service → storage query
 ```
 
-### 6.3 GDPR delete (no default applied)
+**Behavior preservation**: 24h default matches existing `from_datetime()` fallback exactly. Plan v9 originally prescribed 7d/30d (would 7×/30× widen payloads); v10 reverted to 24h. Any deliberate widening should be a separate PR with frontend coordination.
+
+### 6.3 GDPR delete (no default applied + accessor pattern)
 
 ```
-HTTP POST /api/data/delete-range  body: { "period": { "start": "...", "end": "..." }, "data_types": ["frames"] }
-  → DeleteRangeRequest { period: TimeWindow, data_types }
-  → handler: ctx.storage.delete_frames_in_range(&req.period)?
-  → If body missing period.start or period.end: serde fails → 400 Bad Request (no silent default applied)
+HTTP POST /api/data/delete-range  body: { "from": "2026-04-20T00:00:00Z", "to": "2026-04-25T00:00:00Z", "data_types": ["frames"] }
+  → DeleteRangeRequest { from: String, to: String, data_types: Vec<String> }   ← Option C (Phase 2 iter-1 C9): unchanged JSON shape
+  → Handler thin-delegates: DataCommandService::new(context).delete_data_range(&request)?
+  → Service: let window = request.period().map_err(|e| ApiError::BadRequest(e.to_string()))?
+    → period() calls TimeWindow::from_rfc3339_pair(&self.from, &self.to)
+    → If from/to malformed: returns Err(TimeWindowError::ParseFailed) → ApiError::BadRequest → 400 Bad Request
+  → Service calls storage.delete_data_in_range(&window, ...flags) once for hoisted window
 ```
 
 ---
