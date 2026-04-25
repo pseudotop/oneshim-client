@@ -50,13 +50,15 @@ impl FocusQueryService {
         &self,
         query: &TimeRangeQuery,
     ) -> Result<Vec<WorkSessionDto>, ApiError> {
-        let from = query.from_datetime();
-        let to = query.to_datetime();
+        let window = query
+            .to_time_window(Duration::hours(24))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let limit = query.limit_or_default();
 
+        // list_work_sessions is out of plan scope (still takes &str): decompose.
         self.ctx
             .storage
-            .list_work_sessions(&from.to_rfc3339(), &to.to_rfc3339(), limit)
+            .list_work_sessions(&window.start.to_rfc3339(), &window.end.to_rfc3339(), limit)
             .map_err(|error| ApiError::Internal(error.to_string()))
             .map(|rows| rows.into_iter().map(assemble_work_session).collect())
     }
@@ -65,13 +67,15 @@ impl FocusQueryService {
         &self,
         query: &TimeRangeQuery,
     ) -> Result<Vec<InterruptionDto>, ApiError> {
-        let from = query.from_datetime();
-        let to = query.to_datetime();
+        let window = query
+            .to_time_window(Duration::hours(24))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let limit = query.limit_or_default();
 
+        // list_interruptions is out of plan scope (still takes &str): decompose.
         self.ctx
             .storage
-            .list_interruptions(&from.to_rfc3339(), &to.to_rfc3339(), limit)
+            .list_interruptions(&window.start.to_rfc3339(), &window.end.to_rfc3339(), limit)
             .map_err(|error| ApiError::Internal(error.to_string()))
             .map(|rows| rows.into_iter().map(assemble_interruption).collect())
     }

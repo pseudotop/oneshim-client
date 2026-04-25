@@ -1,5 +1,6 @@
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
+use chrono::Duration;
 use oneshim_api_contracts::frames::FrameResponse;
 
 use crate::error::ApiError;
@@ -21,8 +22,9 @@ impl FramesQueryService {
         &self,
         params: &TimeRangeQuery,
     ) -> Result<PaginatedResponse<FrameResponse>, ApiError> {
-        let from = params.from_datetime();
-        let to = params.to_datetime();
+        let window = params
+            .to_time_window(Duration::hours(24))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let limit = params.limit_or_default();
         let offset = params.offset_or_default();
 
@@ -30,7 +32,11 @@ impl FramesQueryService {
 
         // Fetch all frames in range (no limit) so we can filter by importance first,
         // then paginate the filtered result for correct total count.
-        let all_frames = self.ctx.storage.get_frames(from, to, usize::MAX)?;
+        // get_frames is out of plan scope (still takes DateTime<Utc>): decompose.
+        let all_frames = self
+            .ctx
+            .storage
+            .get_frames(window.start, window.end, usize::MAX)?;
 
         let filtered: Vec<_> = all_frames
             .into_iter()
