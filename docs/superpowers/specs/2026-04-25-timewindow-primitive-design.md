@@ -620,29 +620,32 @@ For each REST handler:
 
 ## 9. Delivery Plan
 
-### 9.1 PR commit structure (~3-4 day implementation, ~10-12 commits)
+### 9.1 PR commit structure (~30h, ~4 working days, 11 tasks)
 
-| # | Commit | Estimate |
+**Source of truth**: `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md` (v13, 2885 lines). Spec table below summarizes; Plan supersedes for any discrepancy.
+
+| # | Task / Commit (plan v13) | Estimate |
 |---|--------|----------|
-| 1 | `feat(time): add TimeWindow primitive + TimeWindowError + types/ module + lib.rs registration + tests` (per C2 + I5) | 2.5h |
-| 2 | `feat(error-codes): add TimeWindowCode wire codes (inverted_bounds + parse_failed) + register in mod.rs all_codes() aggregator + integrate into CoreError::TimeWindow variant` (per C2 + C3) | 1.5h |
-| 3 | `test(error-codes): wire-error i18n CI gate update for 2 new variants (en+ko)` | 0.5h |
-| 4 | `feat(api): TimeRangeQuery::to_time_window adapter (non-consuming &self per C4) + tests` | 1.5h |
-| 5 | `refactor(storage): migrate SQL helpers (events/frames/calibration/web_storage_impl) to &TimeWindow + port trait CalibrationWriter::flag_noise_range sig change (per N3)` | 3h |
-| 6 | `test(storage): regression tests for migrated helpers` | 1h |
-| 7 | `refactor(handlers): migrate 6-7 REST handlers (frames/events/metrics/focus/idle/processes/sessions) to &TimeWindow` | 4h |
-| 8 | `refactor(handlers): migrate data.rs (GDPR delete-range) + reports.rs to TimeWindow with custom serde for DeleteRangeRequest external shape preservation (per Q-10)` | 1.5h |
-| 9 | `refactor(models): migrate FocusMetrics + SessionMetrics period_* → period: TimeWindow (Option Z — internal model only, NOT in REST DTO)` | 1.5h (was 3h — Option Y custom serde no longer needed per I1) |
-| 10 | `refactor(api-contracts): migrate ReportQuery to { period: ReportPeriod, window: Option<TimeWindow> } per I2` | 1h |
-| 11 | `test(integration): end-to-end TimeWindow flow tests (REST→handler→storage→response)` | 2h |
-| 12 | `docs(time-window): STATUS.md + PHASE-HISTORY entry + module-level rustdoc` | 1h |
+| 1 | `feat(core): TimeWindow primitive + TimeWindowError + TimeWindowCode + CoreError struct-variant + ApiError BadRequest arm + lib.rs/error_codes/mod.rs registration + wire snapshot + 18 tests` (was 2 separate tasks in spec v3 — merged per Phase 2 iter-1 I9 to avoid circular compile dep) | 4.5h |
+| 2 | `test(i18n): wire-error translations for TimeWindow codes (en+ko)` — updates BOTH `toHaveLength()` assertions at lines 30+122 (Phase 2 iter-1 C8) | 0.5h |
+| 3 | `feat(api-contracts): TimeRangeQuery::to_time_window adapter + Default derive (per Phase 2 iter-1 C4) + 8 adapter tests` | 1.5h |
+| 4 | `refactor(storage): migrate 8 SQL range helpers + 14+ caller sites to &TimeWindow` — 3 calibration_store + 5 web_storage port trait sigs + 5 SQLite impls + 5 web_storage_impl wrappers + 5 service callers + 5 FailingStorage mocks + 3 regime.rs callers + ~14 internal SQLite test sites + NoopCalibrationReader/Writer mocks. PRESERVE-BODY for complex methods (Phase 2 iter-6 NEW-C1). | 5h |
+| 5 | `test(storage): boundary regression tests for migrated SQL helpers (closed-closed + delete flag preservation)` — 3 boundary tests with actual `DeletedRangeCounts` field names (`events_deleted` etc.) | 1.5h |
+| 6 | `refactor(web-services): migrate 7 service-layer files to to_time_window adapter` — 7 services: frames/events/metrics/focus/idle/processes/timeline. **Service layer NOT handler layer** (Phase 2 iter-9 NEW-C1). Default lookback `Duration::hours(24)` (Phase 2 iter-10 NEW-C1). Decompose `&window` for non-migrated storage methods. | 5h |
+| 7 | `refactor(api-contracts): DeleteRangeRequest period() accessor + ReportQuery date-only preserved` — Option C accessor (Phase 2 iter-1 C9 + iter-11 NEW Critical: ReportQuery is date-only `%Y-%m-%d`, NOT RFC3339; resolve_report_window in reports_query_support.rs updated to return `Result<(TimeWindow, String), ApiError>`) | 1.5h |
+| 8 | `refactor(core): FocusMetrics + SessionMetrics use TimeWindow primitive (NG8 internal-only)` — 10 sites with explicit Pattern A vs Pattern B classification (Phase 2 iter-12 NEW Critical — struct-literal preservation for sites with custom seeded values like grpc_dashboard_integration.rs:461) | 2h |
+| 9 | `refactor(workspace): sweep remaining absolute-timestamp range pairs to TimeWindow` (if any remain after Tasks 1-8) | 1h |
+| 10 | `test(integration): TimeWindow E2E — closed-closed boundary + 400 error mapping (no code body field per ApiError schema)` — 4 E2E tests (Phase 2 iter-1 C3 — no body["code"] assertion) | 2h |
+| 11 | `docs(time-window): STATUS.md + PHASE-HISTORY entry for TimeWindow refactor` — PHASE-HISTORY documents 1 behavior change + 3 behaviors preserved + helpers retained (Phase 2 iter-10 NEW-I2) | 1h |
 
-**Total**: ~21h → ~21h (Option Y serde savings offset by C2/C3/I5 wire-up + N3 port trait work). ~3-4 working days.
+**Total**: ~30h (~4 working days). Up from spec v3's ~21h estimate due to scope expansions in Phase 2 iter-1 (C6/C7 port scope), iter-9 (NEW-C1 service-layer), iter-10 (NEW-C2 decomposition).
 
 **Notes**:
-- Per Phase 1 iter-1: `IdlePeriod` NOT migrated (NG7). `activity.rs` removed from touched files.
-- Per Phase 1 iter-1: `FocusMetricsDto` not affected (Option Z); only internal `FocusMetrics` changes.
-- Per Phase 1 iter-1: `DeleteRangeRequest` external JSON preserved via custom serde (Q-10 option b).
+- Per Phase 1 iter-1 NG7: `IdlePeriod` NOT migrated. `activity.rs` removed from touched files.
+- Per Phase 1 iter-1 NG8: `FocusMetricsDto` not affected (Option Z); only internal `FocusMetrics` changes.
+- Per Phase 2 iter-1 C9: `DeleteRangeRequest` external JSON preserved via Option C accessor pattern (NOT custom serde — `flatten + with` combo is invalid serde syntax).
+- Per Phase 2 iter-11: ReportQuery date-only `%Y-%m-%d` preserved (no flatten of TimeRangeQuery — would break Custom period parse).
+- Per Phase 2 iter-12: FocusMetrics has 2 migration patterns (A constructor / B struct-literal) — Pattern B sites MUST preserve struct literal to avoid silent custom-field zero-out.
 
 ### 9.2 Branch naming
 
@@ -660,7 +663,7 @@ After merge → `0.4.42-rc.1` (or batch with PR-B2 into single RC).
 
 - **REST API query strings** (`?from=X&to=Y`) — UNCHANGED
 - **REST API response JSON** for `FocusMetrics` — internal model JSON shape changes (`period_start/period_end → period: {start, end}`); REST DTO (`FocusMetricsDto` in api-contracts) is NOT affected. Frontend unaffected per NG8.
-- **REST API response JSON** for `DeleteRangeRequest` — preserved via custom serde (per Q-10 option (b): rename `start → from`, `end → to` in serde attributes). Frontend `DataSection.tsx` unchanged. External API contract preserved.
+- **REST API request JSON** for `DeleteRangeRequest` — preserved via Option C accessor pattern (Phase 2 iter-1 C9): keeps `from: String, to: String` fields untouched + adds `period() -> Result<TimeWindow, TimeWindowError>` accessor. NO custom serde module (the `flatten + with` combo is invalid serde syntax anyway). Frontend `DataSection.tsx` unchanged. External API contract preserved.
 - **Tauri IPC** — none affected (no time-range IPC commands identified)
 
 ### 10.2 Internal API (Rust) — breaking changes
