@@ -1491,7 +1491,14 @@
     "next": "Next",
     "back": "Back",
     "skip": "Skip",
-    "complete": "Get Started"
+    "complete": "Get Started",
+    "autostart": {
+      "title": "Start ONESHIM automatically?",
+      "body": "ONESHIM works best when running in the background. Want it to launch when you sign in to your computer?",
+      "enable_button": "Enable",
+      "not_now_button": "Not now",
+      "dismiss_button": "Don't ask again"
+    }
   },
   "chat": {
     "title": "AI Sessions",

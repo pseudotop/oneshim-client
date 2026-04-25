@@ -61,8 +61,7 @@ describe('GeneralTab — Startup section', () => {
   it('renders Startup section with heading', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'is_autostart_enabled') return Promise.resolve(false)
-      if (cmd === 'autostart_capabilities')
-        return Promise.resolve({ supported: true, environment: 'mac_os' })
+      if (cmd === 'autostart_capabilities') return Promise.resolve({ supported: true, environment: 'mac_os' })
       return Promise.resolve(undefined)
     })
 
@@ -77,8 +76,7 @@ describe('GeneralTab — Startup section', () => {
   it('toggle initial state loads from is_autostart_enabled IPC (true → checked)', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'is_autostart_enabled') return Promise.resolve(true)
-      if (cmd === 'autostart_capabilities')
-        return Promise.resolve({ supported: true, environment: 'mac_os' })
+      if (cmd === 'autostart_capabilities') return Promise.resolve({ supported: true, environment: 'mac_os' })
       return Promise.resolve(undefined)
     })
 
@@ -118,8 +116,7 @@ describe('GeneralTab — Startup section', () => {
   it('toggle click invokes enable_autostart when turning on', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'is_autostart_enabled') return Promise.resolve(false)
-      if (cmd === 'autostart_capabilities')
-        return Promise.resolve({ supported: true, environment: 'mac_os' })
+      if (cmd === 'autostart_capabilities') return Promise.resolve({ supported: true, environment: 'mac_os' })
       if (cmd === 'enable_autostart') return Promise.resolve(undefined)
       return Promise.resolve(undefined)
     })
@@ -140,9 +137,7 @@ describe('GeneralTab — Startup section', () => {
       // invokeDesktop passes `args` (undefined when not supplied) as the second
       // argument to the underlying invoke, so the call shape is
       // ('enable_autostart', undefined).  Check by command name only.
-      expect(
-        mockInvoke.mock.calls.some((call) => call[0] === 'enable_autostart'),
-      ).toBe(true)
+      expect(mockInvoke.mock.calls.some((call) => call[0] === 'enable_autostart')).toBe(true)
     })
   })
 
@@ -153,10 +148,8 @@ describe('GeneralTab — Startup section', () => {
         queryCallCount++
         return Promise.resolve(false)
       }
-      if (cmd === 'autostart_capabilities')
-        return Promise.resolve({ supported: true, environment: 'mac_os' })
-      if (cmd === 'enable_autostart')
-        return Promise.reject(new Error('permissions denied'))
+      if (cmd === 'autostart_capabilities') return Promise.resolve({ supported: true, environment: 'mac_os' })
+      if (cmd === 'enable_autostart') return Promise.reject(new Error('permissions denied'))
       return Promise.resolve(undefined)
     })
 

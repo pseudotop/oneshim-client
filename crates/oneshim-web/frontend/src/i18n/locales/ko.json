@@ -1491,7 +1491,14 @@
     "next": "다음",
     "back": "이전",
     "skip": "건너뛰기",
-    "complete": "시작하기"
+    "complete": "시작하기",
+    "autostart": {
+      "title": "ONESHIM을 자동으로 시작할까요?",
+      "body": "ONESHIM은 백그라운드에서 실행될 때 가장 잘 작동합니다. 컴퓨터에 로그인할 때 자동으로 시작하시겠습니까?",
+      "enable_button": "켜기",
+      "not_now_button": "나중에",
+      "dismiss_button": "다시 묻지 않기"
+    }
   },
   "chat": {
     "title": "AI 세션",

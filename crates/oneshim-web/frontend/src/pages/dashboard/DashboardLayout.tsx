@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { fetchSummary } from '../../api/client'
 import type { DailySummary } from '../../api/contracts'
+import { AutostartOnboardingPromptHost } from '../../components/AutostartOnboardingPromptHost'
 import DateRangePicker from '../../components/DateRangePicker'
 import WidgetCustomizer from '../../components/WidgetCustomizer'
 import type { SectionId } from '../../components/widget-registry'
@@ -114,6 +115,7 @@ export default function DashboardLayout() {
         </div>
       </div>
 
+      <AutostartOnboardingPromptHost />
       <Outlet context={ctx} />
     </div>
   )
