@@ -21,7 +21,7 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v4 (Phase 2 iter-4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
+**Plan version:** v5 (Phase 2 iter-5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
 
 ---
 
@@ -185,14 +185,15 @@ Per Phase 2 iter-1 C6 + C7, the migration scope on SQL helpers is:
 | `crates/oneshim-storage/src/sqlite/calibration_store_impl.rs` | `flag_noise_range`, `get_entries`, `list_segment_time_ranges` | port-trait + impl in lockstep |
 | `crates/oneshim-storage/src/sqlite/web_storage_impl.rs` | thin wrappers for ALL of the above + `get_daily_active_secs` | Each wrapper signature must match the new port trait sig |
 
-### Files to be modified — `src-tauri` caller sites (Phase 2 iter-1 C6)
+### Files to be modified — `src-tauri` caller sites (Phase 2 iter-1 C6 + iter-3 NEW-C2 + iter-5 cleanup)
 
 | File | Caller site | Change |
 |------|-------------|--------|
-| `src-tauri/src/scheduler/analysis_pipeline/regime.rs:44` | `calibration.get_entries(from, to, exclude_noise)` | Build `TimeWindow::new(from, to)?` then pass `&window` |
-| `src-tauri/src/scheduler/analysis_pipeline/regime.rs:174` | `calibration.list_segment_time_ranges(from, to)` | Same pattern |
-| `src-tauri/src/scheduler/analysis_pipeline/regime.rs:184` | `calibration.flag_noise_range(from, to)` | Same pattern |
-| `src-tauri/src/scheduler/analysis_pipeline/tests.rs:19` | `MockCalibration` impl | Update mock signatures to match port trait change |
+| `src-tauri/src/scheduler/analysis_pipeline/regime.rs:44` | `reader.get_entries(lookback, now, true)` | Build `TimeWindow::new(lookback, now).expect("lookback < now")` then pass `&window`. Enclosing `run_periodic_regime_detection` returns `()` — use `.expect()`, not `?`. |
+| `src-tauri/src/scheduler/analysis_pipeline/regime.rs:174` | `calibration_reader.list_segment_time_ranges(lookback, now)` | Same `.expect()` pattern. Enclosing `run_constrained_clustering` returns `()`. |
+| `src-tauri/src/scheduler/analysis_pipeline/regime.rs:184` | `calibration_reader.get_entries(lookback, now, true)` (re-fetch — NOT `flag_noise_range`) | Reuse `window` from line 174 (same scope). |
+| `src-tauri/src/scheduler/analysis_pipeline/regime.rs:194` | Destructure `(seg_id, seg_start, seg_end)` | Adapt to new `Vec<(String, TimeWindow)>` return: destructure `(seg_id, seg_window)` + use `seg_window.contains(e.timestamp)`. |
+| `src-tauri/src/scheduler/analysis_pipeline/tests.rs:12-22 + 24-31` | `NoopCalibrationWriter` (sync) + `NoopCalibrationReader` (async) | Update separate impls per Step 4D.2 — NOT a single `MockCalibration`. |
 
 ### Docs
 
@@ -1146,14 +1147,14 @@ let clean = storage.get_entries(wide_from, wide_to, true).await.unwrap();
 let wide_window = TimeWindow::new(wide_from, wide_to).expect("trusted test bounds");
 let clean = storage.get_entries(&wide_window, true).await.unwrap();
 
-// Line 425: .get_entries(wide_from, wide_to, false)
+// Line 425: .get_entries(wide_from, wide_to, false) — actual variable name is `all`, NOT `dirty`
 // Before (from line 424-426 chain):
-let dirty = storage
+let all = storage
     .get_entries(wide_from, wide_to, false)
     .await
     .unwrap();
 // After (reuse wide_window from above):
-let dirty = storage
+let all = storage
     .get_entries(&wide_window, false)
     .await
     .unwrap();
@@ -1237,19 +1238,50 @@ pub fn delete_data_in_range(
             "DELETE FROM events WHERE timestamp >= ?1 AND timestamp <= ?2",
             rusqlite::params![&from, &to],
         )?;
-        counts.events = n as u64;
+        counts.events_deleted = n as u64;
     }
-    if delete_frames { /* similar */ }
-    if delete_metrics { /* similar */ }
-    if delete_processes { /* similar */ }
-    if delete_idle { /* similar */ }
+    if delete_frames {
+        let n = conn.execute(/* DELETE FROM frames WHERE ... */, rusqlite::params![&from, &to])?;
+        counts.frames_deleted = n as u64;
+    }
+    if delete_metrics {
+        let n = conn.execute(/* DELETE FROM metrics WHERE ... */, rusqlite::params![&from, &to])?;
+        counts.metrics_deleted = n as u64;
+    }
+    if delete_processes {
+        let n = conn.execute(/* DELETE FROM process_snapshots WHERE ... */, rusqlite::params![&from, &to])?;
+        counts.process_snapshots_deleted = n as u64;
+    }
+    if delete_idle {
+        let n = conn.execute(/* DELETE FROM idle_periods WHERE ... */, rusqlite::params![&from, &to])?;
+        counts.idle_periods_deleted = n as u64;
+    }
     Ok(counts)
 }
 ```
 
-Note return type is `DeletedRangeCounts` (NOT `DeleteSummary`).
+Note: actual `DeletedRangeCounts` field names per `crates/oneshim-core/src/models/storage_records.rs:88-94`:
+- `events_deleted: u64`
+- `frames_deleted: u64`
+- `metrics_deleted: u64`
+- `process_snapshots_deleted: u64`
+- `idle_periods_deleted: u64`
 
-Internal test sites in maintenance.rs (~9 sites): lines 931, 1019, 1052, 1067, 1083, 1164, 1183, 1308, 1358. For each, build `TimeWindow::from_rfc3339_pair(&from, &to)?` first.
+Return type is `DeletedRangeCounts` (NOT `DeleteSummary`).
+
+Internal test sites in maintenance.rs (~9 sites): lines 931, 1019, 1052, 1067, 1083, 1164, 1183, 1308, 1358. **All these are `#[test] fn name()` returning `()`** — `?` operator does NOT compile. Use `.expect("trusted test bounds")` pattern (mirror Step 4C.2 events.rs example):
+
+```rust
+// Pattern (apply at each maintenance.rs internal test caller):
+// Before:
+let n = storage.delete_data_in_range("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z", ...).unwrap();
+// After:
+let window = TimeWindow::from_rfc3339_pair("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+    .expect("trusted test bounds");
+let n = storage.delete_data_in_range(&window, ...).unwrap();
+```
+
+Same pattern for `count_events_in_range` callers in maintenance test sites (1067, 1164, 1183, 1308) and `list_frame_file_paths_in_range` (1358).
 
 - [ ] **Step 4C.5: Migrate work_sessions.rs inherent get_daily_active_secs**
 
@@ -1413,34 +1445,40 @@ Also update the destructuring at line ~194 to match the new `Vec<(String, TimeWi
 
 Note: `TimeWindow::contains(instant)` is the closed-closed boundary check — replaces explicit `>=` + `<=` per spec §5.1.
 
-- [ ] **Step 4D.2: Update tests.rs MockCalibration (1 mock — sync flag_noise_range)**
+- [ ] **Step 4D.2: Update tests.rs NoopCalibration mocks (Phase 2 iter-4 Pre-existing #1 fix)**
 
-Open `src-tauri/src/scheduler/analysis_pipeline/tests.rs`. Find `MockCalibration` impl. Update method signatures:
+Open `src-tauri/src/scheduler/analysis_pipeline/tests.rs`. Actual mock types are **two separate structs**: `NoopCalibrationWriter` (sync, lines 12-22) and `NoopCalibrationReader` (async, lines 24-31) — NOT a single `MockCalibration`. The Reader does NOT explicitly implement `list_segment_time_ranges` (uses trait default impl).
+
+Update method signatures:
 
 ```rust
 use oneshim_core::types::TimeWindow;
 
-#[async_trait::async_trait]
-impl CalibrationReader for MockCalibration {
-    async fn get_entries(&self, _window: &TimeWindow, _exclude_noise: bool) -> Result<Vec<CalibrationEntry>, CoreError> {
-        Ok(vec![])
-    }
-    async fn enforce_retention(&self, _max_days: u32, _max_rows: u64) -> Result<u64, CoreError> {
-        Ok(0)
-    }
-    async fn list_segment_time_ranges(&self, _window: &TimeWindow) -> Result<Vec<(String, TimeWindow)>, CoreError> {
-        Ok(vec![])
-    }
-}
-
-// CalibrationWriter is SYNC, NOT async (verified at calibration_store.rs:18)
-impl CalibrationWriter for MockCalibration {
+// CalibrationWriter is SYNC (no #[async_trait])
+impl CalibrationWriter for NoopCalibrationWriter {
     fn log_batch(&self, _entries: &[CalibrationEntry]) -> Result<(), CoreError> {
         Ok(())
     }
     fn flag_noise_range(&self, _window: &TimeWindow) -> Result<u64, CoreError> {
         Ok(0)
     }
+}
+
+#[async_trait::async_trait]
+impl CalibrationReader for NoopCalibrationReader {
+    async fn get_entries(
+        &self,
+        _window: &TimeWindow,
+        _exclude_noise: bool,
+    ) -> Result<Vec<CalibrationEntry>, CoreError> {
+        Ok(vec![])
+    }
+    async fn enforce_retention(&self, _max_days: u32, _max_rows: u64) -> Result<u64, CoreError> {
+        Ok(0)
+    }
+    // Note: list_segment_time_ranges NOT explicitly impl'd here — uses trait default
+    // at calibration_store.rs:48-58 which now returns Ok(vec![]) with the new
+    // Vec<(String, TimeWindow)> signature. No change needed in this file for that method.
 }
 ```
 
@@ -1527,7 +1565,13 @@ if let Ok(window) = TimeWindow::from_rfc3339_pair(&from_rfc, &to_rfc) {
 }
 ```
 
-Use `grep -n "fn .*<Utc>.*from\|fn .*reports_query_support" crates/oneshim-web/src/services/reports_query_support.rs` to read the enclosing function signature first; pick A or B accordingly.
+To find the enclosing function signature, scan upward from the caller site:
+
+```bash
+awk 'NR<=86 && /^pub.*fn |^pub\(crate\) fn |^fn /' crates/oneshim-web/src/services/reports_query_support.rs | tail -1
+```
+
+Verified at plan-write time: enclosing fn is `pub(crate) fn build_daily_stats(input: DailyStatsInput<'_>) -> Vec<DailyStat>` (returns plain `Vec<_>`, NOT `Result`). **Use Pattern B** for this caller.
 
 Add `use oneshim_core::types::TimeWindow;` at top of each service file.
 
@@ -1703,13 +1747,15 @@ fn delete_data_in_range_respects_delete_flags() {
         false,  // delete_processes
         false,  // delete_idle
     ).unwrap();
-    assert_eq!(counts.events, 1);
-    assert_eq!(counts.frames, 0);
-    assert_eq!(counts.metrics, 0);
+    assert_eq!(counts.events_deleted, 1);
+    assert_eq!(counts.frames_deleted, 0);
+    assert_eq!(counts.metrics_deleted, 0);
+    assert_eq!(counts.process_snapshots_deleted, 0);
+    assert_eq!(counts.idle_periods_deleted, 0);
 }
 ```
 
-(Adapt to actual `DeletedRangeCounts` struct field names + `test_storage()` / `seed_one_each()` test fixture conventions.)
+(Adapt to actual `test_storage()` / `seed_one_each()` test fixture conventions. `DeletedRangeCounts` field names verified at `crates/oneshim-core/src/models/storage_records.rs:88-94`.)
 
 - [ ] **Step 5.3: Run all storage tests**
 
@@ -2470,6 +2516,17 @@ PR description should summarize:
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
 
+### 5c. Phase 2 iter-4 pre-existing issues disposition (v5 cleanup)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Important | Pre-existing #1 — MockCalibration vs NoopCalibration{Reader,Writer} | ✅ Step 4D.2 rewritten — uses two separate impls (`NoopCalibrationWriter` sync + `NoopCalibrationReader` async); notes default `list_segment_time_ranges` impl from trait |
+| Important | Pre-existing #2 — DeletedRangeCounts field names | ✅ Step 4C.4 uses `events_deleted`/`frames_deleted`/`metrics_deleted`/`process_snapshots_deleted`/`idle_periods_deleted` per actual struct at storage_records.rs:88-94; Step 5.2 boundary test assertions also corrected |
+| Important | Pre-existing #3 — maintenance.rs internal tests `?` | ✅ Step 4C.4 explicit pattern with `.expect("trusted test bounds")` for all 9 sites (mirrors Step 4C.2) |
+| Important | Pre-existing #4 — stale Files-to-be-modified table | ✅ Lines 188-195 corrected: regime.rs:184 = get_entries (re-fetch); use `.expect()` not `?`; tests.rs has TWO Noop impls; added regime.rs:194 destructure adaptation row |
+| Suggestion | Pre-existing #5 — non-functional grep helper | ✅ Step 4D.3 reports_query_support replaced grep with `awk` and pre-resolves to "use Pattern B for build_daily_stats" |
+| Suggestion | Pre-existing #6 — variable name `dirty` vs `all` | ✅ Step 4C.1.5 line 425 example uses `let all = ...` matching actual source |
+
 ### 5b. Phase 2 iter-3 findings disposition (v4 corrections)
 
 | Severity | ID | Disposition |
@@ -2523,7 +2580,7 @@ PR description should summarize:
 
 ## Execution Handoff
 
-**Plan v4 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
+**Plan v5 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
 
 **Two execution options:**
 
@@ -2531,4 +2588,4 @@ PR description should summarize:
 
 **2. Inline Execution** — executing-plans batch with checkpoints.
 
-(For ralph-loop continuation: Phase 2 iter-4 plan v4 complete addressing iter-1 (9C+11I) + iter-2 (6 NEW C + 5 NEW I) + iter-3 (2 NEW C + 1 NEW I) = 17 Critical + 17 Important total across 4 iterations. Next iteration: fresh subagent verification of plan v4. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
+(For ralph-loop continuation: Phase 2 iter-5 plan v5 complete addressing iter-1 (9C+11I) + iter-2 (6 NEW C + 5 NEW I) + iter-3 (2 NEW C + 1 NEW I) + iter-4 (4 Important + 2 Suggestion pre-existing cleanup) = 17 Critical + 21 Important + 2 Suggestion total across 5 iterations. Next iteration: fresh subagent verification of plan v5. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
