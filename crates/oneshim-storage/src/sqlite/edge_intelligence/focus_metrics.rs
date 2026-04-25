@@ -41,6 +41,8 @@ impl SqliteStorage {
         );
 
         let (period_start, period_end) = Self::date_to_period_range(date);
+        let period = oneshim_core::types::TimeWindow::new(period_start, period_end)
+            .expect("date_to_period_range produces valid window");
 
         match result {
             Ok((
@@ -53,8 +55,7 @@ impl SqliteStorage {
                 max_focus_duration_secs,
                 focus_score,
             )) => Ok(FocusMetrics {
-                period_start,
-                period_end,
+                period,
                 total_active_secs,
                 deep_work_secs,
                 communication_secs,
@@ -73,7 +74,11 @@ impl SqliteStorage {
                     StorageError::Internal(format!("Failed to create focus metric: {e}"))
                 })?;
 
-                Ok(FocusMetrics::new(period_start, period_end))
+                FocusMetrics::new(period_start, period_end).map_err(|e| {
+                    StorageError::Internal(format!(
+                        "date_to_period_range produced invalid window: {e}"
+                    ))
+                })
             }
             Err(e) => Err(StorageError::Internal(format!(
                 "Failed to query focus metric: {e}"
@@ -211,12 +216,13 @@ impl SqliteStorage {
             ) = row.map_err(|e| StorageError::Internal(format!("Failed to read row: {e}")))?;
 
             let (period_start, period_end) = Self::date_to_period_range(&date);
+            let period = oneshim_core::types::TimeWindow::new(period_start, period_end)
+                .expect("date_to_period_range produces valid window");
 
             results.push((
                 date,
                 FocusMetrics {
-                    period_start,
-                    period_end,
+                    period,
                     total_active_secs,
                     deep_work_secs,
                     communication_secs,

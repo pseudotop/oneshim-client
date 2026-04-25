@@ -459,8 +459,8 @@ async fn grpc_dashboard_get_focus_stats_aggregates_seeded_days() {
             .expect("seed focus_metrics row");
 
         let metrics = FocusMetrics {
-            period_start: Utc::now(),
-            period_end: Utc::now(),
+            period: oneshim_core::types::TimeWindow::new(Utc::now(), Utc::now())
+                .expect("zero-duration window valid for trusted test fixture"),
             total_active_secs: *active,
             deep_work_secs: *deep,
             communication_secs: *comm,

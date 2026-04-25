@@ -382,8 +382,8 @@ mod tests {
 
         let now = Utc::now();
         let metrics = FocusMetrics {
-            period_start: now,
-            period_end: now + Duration::hours(8),
+            period: oneshim_core::types::TimeWindow::new(now, now + Duration::hours(8))
+                .expect("trusted test bounds: now <= now + 8h"),
             total_active_secs: 3600,  // 1 hour
             deep_work_secs: 2400,     // 40 min
             communication_secs: 1200, // 20 min
@@ -418,8 +418,8 @@ mod tests {
 
         let now = Utc::now();
         let metrics = FocusMetrics {
-            period_start: now,
-            period_end: now + Duration::hours(8),
+            period: oneshim_core::types::TimeWindow::new(now, now + Duration::hours(8))
+                .expect("trusted test bounds: now <= now + 8h"),
             total_active_secs: 0,
             deep_work_secs: 0,
             communication_secs: 0,
@@ -440,8 +440,8 @@ mod tests {
 
         let now = Utc::now();
         let metrics = FocusMetrics {
-            period_start: now,
-            period_end: now + Duration::hours(8),
+            period: oneshim_core::types::TimeWindow::new(now, now + Duration::hours(8))
+                .expect("trusted test bounds: now <= now + 8h"),
             total_active_secs: 3600,
             deep_work_secs: 3600,
             communication_secs: 0,
