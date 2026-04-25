@@ -15,6 +15,7 @@ use oneshim_core::ports::web_storage::{
     FocusQueryStorage, FrameQueryStorage, GuiInteractionStorage, SegmentQueryStorage,
     StorageMaintenanceStorage, SuggestionQueryStorage, TagStorage,
 };
+use oneshim_core::types::TimeWindow;
 
 use super::SqliteStorage;
 
@@ -78,8 +79,8 @@ impl SqliteStorage {
 // ---------------------------------------------------------------------------
 
 impl EventQueryStorage for SqliteStorage {
-    fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
-        SqliteStorage::count_events_in_range(self, from, to).map_err(Into::into)
+    fn count_events_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
+        SqliteStorage::count_events_in_range(self, window).map_err(Into::into)
     }
 
     fn count_search_events(&self, pattern: &str) -> Result<u64, CoreError> {
@@ -101,8 +102,8 @@ impl EventQueryStorage for SqliteStorage {
 // ---------------------------------------------------------------------------
 
 impl FrameQueryStorage for SqliteStorage {
-    fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
-        SqliteStorage::count_frames_in_range(self, from, to).map_err(Into::into)
+    fn count_frames_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
+        SqliteStorage::count_frames_in_range(self, window).map_err(Into::into)
     }
 
     fn get_frames(
@@ -120,10 +121,9 @@ impl FrameQueryStorage for SqliteStorage {
 
     fn list_frame_file_paths_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
     ) -> Result<Vec<String>, CoreError> {
-        SqliteStorage::list_frame_file_paths_in_range(self, from, to).map_err(Into::into)
+        SqliteStorage::list_frame_file_paths_in_range(self, window).map_err(Into::into)
     }
 
     fn count_search_frames(
@@ -158,8 +158,7 @@ impl StorageMaintenanceStorage for SqliteStorage {
     #[allow(clippy::too_many_arguments)]
     fn delete_data_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
         delete_events: bool,
         delete_frames: bool,
         delete_metrics: bool,
@@ -168,8 +167,7 @@ impl StorageMaintenanceStorage for SqliteStorage {
     ) -> Result<DeletedRangeCounts, CoreError> {
         SqliteStorage::delete_data_in_range(
             self,
-            from,
-            to,
+            window,
             delete_events,
             delete_frames,
             delete_metrics,
@@ -242,8 +240,8 @@ impl ActivityStatsStorage for SqliteStorage {
         SqliteStorage::get_app_durations_by_date(self, from, to).map_err(Into::into)
     }
 
-    fn get_daily_active_secs(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError> {
-        SqliteStorage::get_daily_active_secs(self, from, to).map_err(Into::into)
+    fn get_daily_active_secs(&self, window: &TimeWindow) -> Result<Vec<(String, i64)>, CoreError> {
+        SqliteStorage::get_daily_active_secs(self, window).map_err(Into::into)
     }
 
     fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError> {

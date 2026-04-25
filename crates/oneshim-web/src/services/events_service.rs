@@ -4,6 +4,7 @@ use crate::error::ApiError;
 use crate::services::events_assembler::assemble_event_response;
 use crate::services::web_contexts::StorageWebContext;
 use oneshim_api_contracts::common::TimeRangeQuery;
+use oneshim_core::types::TimeWindow;
 
 #[derive(Clone)]
 pub struct EventsQueryService {
@@ -29,10 +30,11 @@ impl EventsQueryService {
         let limit = params.limit_or_default();
         let offset = params.offset_or_default();
 
+        let window = TimeWindow::new(from, to).map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let total = self
             .ctx
             .storage
-            .count_events_in_range(&from.to_rfc3339(), &to.to_rfc3339())
+            .count_events_in_range(&window)
             .map_err(|error| ApiError::Internal(error.to_string()))?;
 
         let fetch_limit = limit + offset;

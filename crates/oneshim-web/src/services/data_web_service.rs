@@ -1,4 +1,5 @@
 use oneshim_api_contracts::data::{DeleteRangeRequest, DeleteResult};
+use oneshim_core::types::TimeWindow;
 
 use crate::error::ApiError;
 use crate::services::web_contexts::StorageWebContext;
@@ -24,6 +25,9 @@ impl DataCommandService {
             ));
         }
 
+        let window = TimeWindow::from_rfc3339_pair(&request.from, &request.to)
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
         let mut result = DeleteResult::empty();
         let delete_all = request.data_types.is_empty();
         let data_types = &request.data_types;
@@ -33,7 +37,7 @@ impl DataCommandService {
                 let paths = self
                     .ctx
                     .storage
-                    .list_frame_file_paths_in_range(&request.from, &request.to)
+                    .list_frame_file_paths_in_range(&window)
                     .map_err(|error| ApiError::Internal(error.to_string()))?;
 
                 for path in paths {
@@ -49,8 +53,7 @@ impl DataCommandService {
             .ctx
             .storage
             .delete_data_in_range(
-                &request.from,
-                &request.to,
+                &window,
                 delete_all || data_types.iter().any(|item| item == "events"),
                 delete_all || data_types.iter().any(|item| item == "frames"),
                 delete_all || data_types.iter().any(|item| item == "metrics"),

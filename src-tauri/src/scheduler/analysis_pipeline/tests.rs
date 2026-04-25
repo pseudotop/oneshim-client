@@ -7,6 +7,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::event::{InputActivityEvent, KeyboardActivity, MouseActivity};
 use oneshim_core::models::tiered_memory::{CalibrationEntry, PresetProfile, ResolvedParams};
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
+use oneshim_core::types::TimeWindow;
 use std::sync::Arc;
 
 // ── Mock CalibrationWriter ──────────────────────────────────────
@@ -16,7 +17,7 @@ impl CalibrationWriter for NoopCalibrationWriter {
     fn log_batch(&self, _entries: &[CalibrationEntry]) -> Result<(), CoreError> {
         Ok(())
     }
-    fn flag_noise_range(&self, _from: DateTime<Utc>, _to: DateTime<Utc>) -> Result<u64, CoreError> {
+    fn flag_noise_range(&self, _window: &TimeWindow) -> Result<u64, CoreError> {
         Ok(0)
     }
 }
@@ -28,8 +29,7 @@ struct NoopCalibrationReader;
 impl CalibrationReader for NoopCalibrationReader {
     async fn get_entries(
         &self,
-        _from: DateTime<Utc>,
-        _to: DateTime<Utc>,
+        _window: &TimeWindow,
         _exclude_noise: bool,
     ) -> Result<Vec<CalibrationEntry>, CoreError> {
         Ok(vec![])

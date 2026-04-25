@@ -107,9 +107,10 @@ pub(crate) fn total_active_secs_for_range(
     to: chrono::DateTime<Utc>,
     fallback_events_logged: u64,
 ) -> u64 {
-    let from_rfc = from.to_rfc3339();
-    let to_rfc = to.to_rfc3339();
-    match ctx.storage.get_daily_active_secs(&from_rfc, &to_rfc) {
+    let Ok(window) = oneshim_core::types::TimeWindow::new(from, to) else {
+        return fallback_events_logged * 5;
+    };
+    match ctx.storage.get_daily_active_secs(&window) {
         Ok(daily) if !daily.is_empty() => daily.iter().map(|(_, seconds)| *seconds as u64).sum(),
         _ => fallback_events_logged * 5,
     }

@@ -2,6 +2,7 @@ use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 #[allow(deprecated)]
 use oneshim_core::models::work_session::{AppCategory, Interruption, SessionState, WorkSession};
+use oneshim_core::types::TimeWindow;
 use tracing::debug;
 
 use super::super::{FocusInterruptionRecord, FocusWorkSessionRecord, SqliteStorage};
@@ -215,14 +216,17 @@ impl SqliteStorage {
 
     pub fn get_daily_active_secs(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
     ) -> Result<Vec<(String, i64)>, StorageError> {
+        let (from, to) = window.to_sql_pair();
         let conn = self
             .conn
             .lock()
             .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
 
+        // NG6: half-open `started_at < ?2` preserved (intentional — work_sessions
+        // started_at is an instant; closing the upper bound would double-count at
+        // day rollovers).
         let mut stmt = conn
             .prepare(
                 "SELECT DATE(started_at) as day, SUM(duration_secs) as total_secs

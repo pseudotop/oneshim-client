@@ -1,4 +1,5 @@
 use crate::error::StorageError;
+use oneshim_core::types::TimeWindow;
 use std::sync::atomic::Ordering;
 use tracing::{debug, info};
 
@@ -252,9 +253,9 @@ impl SqliteStorage {
 
     pub fn list_frame_file_paths_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
     ) -> Result<Vec<String>, StorageError> {
+        let (from, to) = window.to_sql_pair();
         let conn = self
             .conn
             .lock()
@@ -285,14 +286,14 @@ impl SqliteStorage {
     #[allow(clippy::too_many_arguments)]
     pub fn delete_data_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
         delete_events: bool,
         delete_frames: bool,
         delete_metrics: bool,
         delete_processes: bool,
         delete_idle: bool,
     ) -> Result<DeletedRangeCounts, StorageError> {
+        let (from, to) = window.to_sql_pair();
         let conn = self
             .conn
             .lock()
@@ -929,8 +930,8 @@ mod tests {
         }
         storage
             .delete_data_in_range(
-                "2025-01-01T00:00:00Z",
-                "2025-12-31T23:59:59Z",
+                &TimeWindow::from_rfc3339_pair("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+                    .expect("trusted test bounds"),
                 true,
                 false,
                 false,
@@ -1017,8 +1018,8 @@ mod tests {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
         let counts = storage
             .delete_data_in_range(
-                "2025-01-01T00:00:00Z",
-                "2025-12-31T23:59:59Z",
+                &TimeWindow::from_rfc3339_pair("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+                    .expect("trusted test bounds"),
                 true,
                 true,
                 true,
@@ -1050,8 +1051,8 @@ mod tests {
         // Delete only June events
         let counts = storage
             .delete_data_in_range(
-                "2025-06-01T00:00:00Z",
-                "2025-06-30T23:59:59Z",
+                &TimeWindow::from_rfc3339_pair("2025-06-01T00:00:00Z", "2025-06-30T23:59:59Z")
+                    .expect("trusted test bounds"),
                 true,
                 false,
                 false,
@@ -1064,7 +1065,10 @@ mod tests {
 
         // July event should remain — verify via count_events_in_range
         let remaining = storage
-            .count_events_in_range("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .count_events_in_range(
+                &TimeWindow::from_rfc3339_pair("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+                    .expect("trusted test bounds"),
+            )
             .unwrap();
         assert_eq!(remaining, 1);
     }
@@ -1081,8 +1085,8 @@ mod tests {
         // Delete only events, not frames or metrics
         let counts = storage
             .delete_data_in_range(
-                "2025-06-01T00:00:00Z",
-                "2025-06-30T23:59:59Z",
+                &TimeWindow::from_rfc3339_pair("2025-06-01T00:00:00Z", "2025-06-30T23:59:59Z")
+                    .expect("trusted test bounds"),
                 true,
                 false,
                 false,
@@ -1161,7 +1165,10 @@ mod tests {
     fn count_events_in_range_empty() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
         let count = storage
-            .count_events_in_range("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .count_events_in_range(
+                &TimeWindow::from_rfc3339_pair("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+                    .expect("trusted test bounds"),
+            )
             .unwrap();
         assert_eq!(count, 0);
     }
@@ -1180,7 +1187,10 @@ mod tests {
         );
 
         let count = storage
-            .count_events_in_range("2025-06-01T00:00:00Z", "2025-06-30T23:59:59Z")
+            .count_events_in_range(
+                &TimeWindow::from_rfc3339_pair("2025-06-01T00:00:00Z", "2025-06-30T23:59:59Z")
+                    .expect("trusted test bounds"),
+            )
             .unwrap();
         assert_eq!(count, 1);
     }
@@ -1305,7 +1315,10 @@ mod tests {
 
         // Verify the event was persisted via count_events_in_range
         let count = storage
-            .count_events_in_range("2025-08-01T00:00:00Z", "2025-08-01T23:59:59Z")
+            .count_events_in_range(
+                &TimeWindow::from_rfc3339_pair("2025-08-01T00:00:00Z", "2025-08-01T23:59:59Z")
+                    .expect("trusted test bounds"),
+            )
             .unwrap();
         assert_eq!(count, 1);
 
@@ -1355,7 +1368,10 @@ mod tests {
     fn list_frame_file_paths_empty_db() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
         let paths = storage
-            .list_frame_file_paths_in_range("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+            .list_frame_file_paths_in_range(
+                &TimeWindow::from_rfc3339_pair("2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z")
+                    .expect("trusted test bounds"),
+            )
             .unwrap();
         assert!(paths.is_empty());
     }

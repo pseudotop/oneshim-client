@@ -81,12 +81,12 @@ pub(crate) fn build_daily_stats(input: DailyStatsInput<'_>) -> Vec<DailyStat> {
         }
     }
 
-    let from_rfc = input.from.to_rfc3339();
-    let to_rfc = input.to.to_rfc3339();
-    if let Ok(daily_active) = input.ctx.storage.get_daily_active_secs(&from_rfc, &to_rfc) {
-        for (day, secs) in &daily_active {
-            if let Some(stat) = daily_map.get_mut(day) {
-                stat.active_secs = *secs as u64;
+    if let Ok(window) = oneshim_core::types::TimeWindow::new(input.from, input.to) {
+        if let Ok(daily_active) = input.ctx.storage.get_daily_active_secs(&window) {
+            for (day, secs) in &daily_active {
+                if let Some(stat) = daily_map.get_mut(day) {
+                    stat.active_secs = *secs as u64;
+                }
             }
         }
     }

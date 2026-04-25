@@ -4,6 +4,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::event::Event;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::storage::StorageService;
+use oneshim_core::types::TimeWindow;
 use tracing::{debug, info, warn};
 
 use super::edge_intelligence::enum_to_sql_str;
@@ -11,7 +12,8 @@ use super::SqliteStorage;
 use crate::error::StorageError;
 
 impl SqliteStorage {
-    pub fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, StorageError> {
+    pub fn count_events_in_range(&self, window: &TimeWindow) -> Result<u64, StorageError> {
+        let (from, to) = window.to_sql_pair();
         let conn = self
             .conn
             .lock()
@@ -402,8 +404,9 @@ mod tests {
         let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
         let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
         let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let window = TimeWindow::from_rfc3339_pair(&from, &to).expect("trusted test bounds");
         let count = storage
-            .count_events_in_range(&from, &to)
+            .count_events_in_range(&window)
             .expect("count_events_in_range failed");
         assert_eq!(count, 0);
     }
@@ -422,8 +425,9 @@ mod tests {
 
         let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
         let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let window = TimeWindow::from_rfc3339_pair(&from, &to).expect("trusted test bounds");
         let count = storage
-            .count_events_in_range(&from, &to)
+            .count_events_in_range(&window)
             .expect("count_events_in_range failed");
         assert_eq!(count, 2);
     }
@@ -448,8 +452,9 @@ mod tests {
 
         let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
         let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let window = TimeWindow::from_rfc3339_pair(&from, &to).expect("trusted test bounds");
         let count = storage
-            .count_events_in_range(&from, &to)
+            .count_events_in_range(&window)
             .expect("count_events_in_range failed");
         assert_eq!(count, 3);
     }
@@ -467,8 +472,9 @@ mod tests {
 
         let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
         let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let window = TimeWindow::from_rfc3339_pair(&from, &to).expect("trusted test bounds");
         let count = storage
-            .count_events_in_range(&from, &to)
+            .count_events_in_range(&window)
             .expect("count_events_in_range failed");
         assert_eq!(count, 1); // only 1 unique event
     }

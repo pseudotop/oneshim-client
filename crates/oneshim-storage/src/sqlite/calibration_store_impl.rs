@@ -4,6 +4,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::tiered_memory::{CalibrationEntry, TriggerAction};
 use oneshim_core::models::work_session::AppCategory;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
+use oneshim_core::types::TimeWindow;
 use rusqlite::params;
 use tracing::{debug, warn};
 
@@ -117,7 +118,9 @@ impl CalibrationWriter for SqliteStorage {
         Ok(())
     }
 
-    fn flag_noise_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<u64, CoreError> {
+    fn flag_noise_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
+        let from = window.start;
+        let to = window.end;
         let conn = self.conn.lock().map_err(|e| CoreError::Storage {
             code: oneshim_core::error_codes::StorageCode::Failed,
             message: format!("SQLite lock poisoned: {e}"),
@@ -147,12 +150,11 @@ impl CalibrationWriter for SqliteStorage {
 impl CalibrationReader for SqliteStorage {
     async fn get_entries(
         &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
+        window: &TimeWindow,
         exclude_noise: bool,
     ) -> Result<Vec<CalibrationEntry>, CoreError> {
-        let from_str = from.to_rfc3339();
-        let to_str = to.to_rfc3339();
+        let from_str = window.start.to_rfc3339();
+        let to_str = window.end.to_rfc3339();
 
         self.with_conn(move |conn| {
             let sql = if exclude_noise {
@@ -236,11 +238,10 @@ impl CalibrationReader for SqliteStorage {
 
     async fn list_segment_time_ranges(
         &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> Result<Vec<(String, DateTime<Utc>, DateTime<Utc>)>, CoreError> {
-        let from_str = from.to_rfc3339();
-        let to_str = to.to_rfc3339();
+        window: &TimeWindow,
+    ) -> Result<Vec<(String, TimeWindow)>, CoreError> {
+        let from_str = window.start.to_rfc3339();
+        let to_str = window.end.to_rfc3339();
 
         self.with_conn(move |conn| {
             // Check table existence (may not have run V9 migration yet)
@@ -283,7 +284,11 @@ impl CalibrationReader for SqliteStorage {
                 let end = DateTime::parse_from_rfc3339(&end_str)
                     .map(|dt| dt.with_timezone(&Utc))
                     .map_err(|e| StorageError::Internal(format!("invalid segment end: {e}")))?;
-                result.push((id, start, end));
+                // Phase 2 iter-2 N-C4: consolidate two DateTime<Utc> into TimeWindow.
+                // DB-stored segment ranges are trusted (start <= end invariant).
+                let segment_window = TimeWindow::new(start, end)
+                    .expect("DB-stored segment ranges satisfy start <= end invariant");
+                result.push((id, segment_window));
             }
             Ok(result)
         })
@@ -397,7 +402,8 @@ mod tests {
 
         let from = Utc::now() - Duration::hours(1);
         let to = Utc::now() + Duration::hours(1);
-        let loaded = storage.get_entries(from, to, false).await.unwrap();
+        let window = TimeWindow::new(from, to).expect("trusted test bounds");
+        let loaded = storage.get_entries(&window, false).await.unwrap();
         assert_eq!(loaded.len(), 5);
         assert_eq!(loaded[0].app_name, "App0");
     }
@@ -411,20 +417,19 @@ mod tests {
         // Flag entries 0-2 as noise
         let from = entries[0].timestamp - Duration::seconds(1);
         let to = entries[2].timestamp + Duration::seconds(1);
-        let flagged = storage.flag_noise_range(from, to).unwrap();
+        let noise_window = TimeWindow::new(from, to).expect("trusted test bounds");
+        let flagged = storage.flag_noise_range(&noise_window).unwrap();
         assert!(flagged >= 3);
 
         // Exclude noise should return fewer entries
         let wide_from = Utc::now() - Duration::hours(1);
         let wide_to = Utc::now() + Duration::hours(1);
-        let clean = storage.get_entries(wide_from, wide_to, true).await.unwrap();
+        let wide_window = TimeWindow::new(wide_from, wide_to).expect("trusted test bounds");
+        let clean = storage.get_entries(&wide_window, true).await.unwrap();
         assert!(clean.len() < 5);
 
         // Include noise returns all
-        let all = storage
-            .get_entries(wide_from, wide_to, false)
-            .await
-            .unwrap();
+        let all = storage.get_entries(&wide_window, false).await.unwrap();
         assert_eq!(all.len(), 5);
     }
 
@@ -440,7 +445,8 @@ mod tests {
 
         let from = Utc::now() - Duration::hours(1);
         let to = Utc::now() + Duration::hours(1);
-        let remaining = storage.get_entries(from, to, false).await.unwrap();
+        let window = TimeWindow::new(from, to).expect("trusted test bounds");
+        let remaining = storage.get_entries(&window, false).await.unwrap();
         assert_eq!(remaining.len(), 3);
     }
 }

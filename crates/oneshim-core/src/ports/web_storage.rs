@@ -25,6 +25,8 @@ use chrono::{DateTime, Utc};
 
 use crate::error::CoreError;
 use crate::models::activity::SessionStats;
+use crate::types::TimeWindow;
+// (additional imports retained below)
 use crate::models::daily_digest::DailyDigest;
 use crate::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
@@ -63,7 +65,7 @@ pub trait TagStorage: Send + Sync {
 
 /// Read-only frame queries, counts, and full-text search.
 pub trait FrameQueryStorage: Send + Sync {
-    fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError>;
+    fn count_frames_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError>;
     fn get_frames(
         &self,
         from: DateTime<Utc>,
@@ -71,11 +73,8 @@ pub trait FrameQueryStorage: Send + Sync {
         limit: usize,
     ) -> Result<Vec<FrameRecord>, CoreError>;
     fn get_frame_file_path(&self, frame_id: i64) -> Result<Option<String>, CoreError>;
-    fn list_frame_file_paths_in_range(
-        &self,
-        from: &str,
-        to: &str,
-    ) -> Result<Vec<String>, CoreError>;
+    fn list_frame_file_paths_in_range(&self, window: &TimeWindow)
+        -> Result<Vec<String>, CoreError>;
 
     fn count_search_frames(&self, count_sql: &str, pattern: Option<&str>)
         -> Result<u64, CoreError>;
@@ -94,7 +93,7 @@ pub trait FrameQueryStorage: Send + Sync {
 
 /// Read-only event queries, counts, and full-text search.
 pub trait EventQueryStorage: Send + Sync {
-    fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError>;
+    fn count_events_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError>;
     fn count_search_events(&self, pattern: &str) -> Result<u64, CoreError>;
     fn search_events(
         &self,
@@ -115,8 +114,7 @@ pub trait StorageMaintenanceStorage: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     fn delete_data_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
         delete_events: bool,
         delete_frames: bool,
         delete_metrics: bool,
@@ -138,7 +136,7 @@ pub trait ActivityStatsStorage: Send + Sync {
         from: &str,
         to: &str,
     ) -> Result<Vec<(String, i64)>, CoreError>;
-    fn get_daily_active_secs(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError>;
+    fn get_daily_active_secs(&self, window: &TimeWindow) -> Result<Vec<(String, i64)>, CoreError>;
     fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError>;
 }
 

@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use oneshim_core::models::work_session::AppCategory;
+use oneshim_core::types::TimeWindow;
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
@@ -40,8 +41,9 @@ pub(in crate::scheduler) async fn run_periodic_regime_detection(
 
     let reader = ts.calibration_reader.clone();
     let lookback = now - ChronoDuration::days(7);
+    let window = TimeWindow::new(lookback, now).expect("lookback (now - 7d) is always before now");
 
-    match reader.get_entries(lookback, now, true).await {
+    match reader.get_entries(&window, true).await {
         Ok(entries) if !entries.is_empty() => {
             // Build feature vectors from calibration entries
             let features: Vec<oneshim_core::models::tiered_memory::RegimeFeatures> = entries
@@ -169,9 +171,11 @@ async fn run_constrained_clustering(
         vec![]
     } else {
         let lookback = now - ChronoDuration::days(7);
+        let window =
+            TimeWindow::new(lookback, now).expect("lookback (now - 7d) is always before now");
         let segment_ranges = match ts
             .calibration_reader
-            .list_segment_time_ranges(lookback, now)
+            .list_segment_time_ranges(&window)
             .await
         {
             Ok(ranges) => ranges,
@@ -181,7 +185,7 @@ async fn run_constrained_clustering(
             }
         };
 
-        let entries_with_ts = match ts.calibration_reader.get_entries(lookback, now, true).await {
+        let entries_with_ts = match ts.calibration_reader.get_entries(&window, true).await {
             Ok(entries) => entries,
             Err(e) => {
                 warn!("failed to re-fetch calibration entries for index mapping: {e}");
@@ -191,10 +195,10 @@ async fn run_constrained_clustering(
 
         let feature_indices: HashMap<String, usize> = segment_ranges
             .iter()
-            .filter_map(|(seg_id, seg_start, seg_end)| {
+            .filter_map(|(seg_id, seg_window)| {
                 entries_with_ts
                     .iter()
-                    .position(|e| e.timestamp >= *seg_start && e.timestamp <= *seg_end)
+                    .position(|e| seg_window.contains(e.timestamp))
                     .map(|idx| (seg_id.clone(), idx))
             })
             .collect();
