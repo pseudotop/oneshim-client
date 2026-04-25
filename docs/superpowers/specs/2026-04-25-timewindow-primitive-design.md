@@ -161,11 +161,17 @@ crates/oneshim-web/tests/grpc_dashboard_integration.rs:461 ← FocusMetrics test
 
 ### 4.2 What is NOT touched
 
-- `TrackingWindow` in `tracking_schedule.rs` — wall-clock recurrence (different domain)
-- coaching `TimeRange` in `coaching.rs` — wall-clock recurrence
-- All frontend TypeScript code — REST API JSON shape unchanged
-- Tauri IPC commands — no IPC time-range parameters identified in current scope
-- gRPC streaming `MetricBucket` (different concept — bucketed time series, deferred)
+Verified via cross-layer audit (Phase 2 iter-9 + post-iter-13 grep across all caller layers):
+
+- `TrackingWindow` in `tracking_schedule.rs` — wall-clock recurrence (different domain) — NG1
+- coaching `TimeRange` in `coaching.rs` — wall-clock recurrence — NG1
+- All frontend TypeScript code — REST API JSON shape unchanged (NG3+NG4) + DeleteRangeRequest preserves shape via Option C accessor (NG12 helpers retained)
+- **Tauri IPC commands** (`src-tauri/src/commands/`) — verified ZERO TimeRangeQuery / migrated SQL helper consumers via grep audit
+- **gRPC server handlers** (`crates/oneshim-web/src/grpc/`) — verified ZERO TimeRangeQuery / migrated SQL helper consumers via grep audit
+- **Network crate** (`crates/oneshim-network/src/`) — verified ZERO TimeRangeQuery / from_datetime / to_datetime consumers via grep audit
+- gRPC streaming `MetricBucket` (different concept — bucketed time series, deferred per NG2)
+- REST handler files (`crates/oneshim-web/src/handlers/`) — handlers stay thin pass-through per NG9; service layer migrates instead
+- IdlePeriod ongoing-idle model (`activity.rs`) per NG7 — open-ended `Option<DateTime<Utc>>` end_time can't be represented as bounded TimeWindow without semantic drift
 
 ---
 
@@ -307,12 +313,15 @@ impl TimeRangeQuery {
     ///
     /// - If `to` is None: defaults to `now()`
     /// - If `from` is None: defaults to `to - default_lookback`
-    /// - `default_lookback` is domain-specific (frames=7d, reports=30d, etc.)
+    /// - `default_lookback` is the fallback window size when bounds are missing.
+    ///   **Per Phase 2 iter-10 NEW-C1: callers use `Duration::hours(24)` everywhere**
+    ///   to preserve existing `from_datetime()` 24h fallback. NOT 7d/30d.
+    ///   See NG10 for rationale (avoid 7×/30× payload widening).
     ///
     /// Per spec U5: this is the boundary where Optional bounds become
     /// Required bounds. Internal code (storage, models) work with TimeWindow.
     ///
-    /// Per Phase 1 iter-1 C4: takes `&self` (not `self`) so the 6 service sites
+    /// Per Phase 1 iter-1 C4: takes `&self` (not `self`) so the 7 service sites
     /// that pass `&TimeRangeQuery` and continue to use `limit`/`offset`/`min_importance`
     /// fields don't need to clone or restructure.
     pub fn to_time_window(&self, default_lookback: Duration) -> Result<TimeWindow, TimeWindowError> {
