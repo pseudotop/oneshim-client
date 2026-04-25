@@ -21,7 +21,7 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v6 (Phase 2 iter-6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
+**Plan version:** v7 (Phase 2 iter-7 — addresses iter-6 verification: 1 NEW Critical NEW-C1 — Step 4C.1 calibration_store_impl.rs had same class of synthetic-drift errors as Step 4C.4. v7 rewrites Step 4C.1 with PRESERVE-BODY pattern: actual table is `calibration_log` (not `calibration`), column is `is_noise` (not `noise`), uses fallible-lock + `CoreError::Storage { code, message }` mapping, get_entries + list_segment_time_ranges use async `with_conn` pattern with `from_str`/`to_str` String shadowing, list_segment has table_exists guard for V9 migration). v6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
 
 ---
 
@@ -1078,45 +1078,123 @@ Return is `Vec<(String, i64)>` (date string → active seconds tuples for daily 
 
 > **Phase 2 iter-2 N-C3 — Inherent fn lockstep decision**: `SqliteStorage` exposes inherent `pub fn` methods (verified at events.rs:14, frames.rs:10, maintenance.rs:253+286, work_sessions.rs:216) that are duplicated in `WebStorage` trait wrappers (web_storage_impl.rs delegates `SqliteStorage::method(self, from, to)`). **Decision: change inherent `pub fn` signatures TOO** so wrappers don't need impedance conversion. Internal test sites that call inherent methods (events.rs:406+426+452+471, frames.rs:175+192, maintenance.rs:931+1019+1052+1067+1083+1164+1183+1308+1358) must be updated in lockstep.
 
-- [ ] **Step 4C.1: Migrate calibration_store_impl.rs (3 methods — sync flag_noise_range, async get_entries + list_segment_time_ranges)**
+- [ ] **Step 4C.1: Migrate calibration_store_impl.rs (3 methods — Phase 2 iter-6 NEW-C1 PRESERVE-BODY rewrite)**
 
-Open `crates/oneshim-storage/src/sqlite/calibration_store_impl.rs`. Apply each:
+Open `crates/oneshim-storage/src/sqlite/calibration_store_impl.rs`. **PRESERVE-BODY pattern** (mirror Step 4C.4): do NOT rewrite synthetic snippets. Each method has substantial production logic — fallible-lock CoreError mapping, async `with_conn` wrappers, table-existence guards, per-row parse error wrapping. Keep all of it bit-identical and change only the parameter signatures + add a single locals-binding line.
 
+**Method 1: `flag_noise_range` (sync, lines 120-139)**
+
+Actual current body (verified from source):
+```rust
+fn flag_noise_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<u64, CoreError> {
+    let conn = self.conn.lock().map_err(|e| CoreError::Storage {
+        code: oneshim_core::error_codes::StorageCode::Failed,
+        message: format!("SQLite lock poisoned: {e}"),
+    })?;
+
+    let updated = conn
+        .execute(
+            "UPDATE calibration_log SET is_noise = 1
+             WHERE timestamp >= ?1 AND timestamp <= ?2",
+            params![from.to_rfc3339(), to.to_rfc3339()],
+        )
+        .map_err(|e| CoreError::Storage {
+            code: oneshim_core::error_codes::StorageCode::Failed,
+            message: format!("flag noise range: {e}"),
+        })?;
+
+    debug!("flagged {} calibration entries as noise", updated);
+    Ok(updated as u64)
+}
+```
+
+Diff:
+```rust
+- fn flag_noise_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<u64, CoreError> {
++ fn flag_noise_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
++     let from = window.start;
++     let to = window.end;
+      // ... entire body unchanged: lock + execute on calibration_log SET is_noise = 1 + debug! + Ok(updated as u64)
+  }
+```
+
+The `from.to_rfc3339()` calls inside `params!` continue to work because `from`/`to` are now `DateTime<Utc>` from the window's destructured fields (same type as before).
+
+**Method 2: `get_entries` (async, lines 148-194)**
+
+Actual body uses `self.with_conn(move |conn| { ... }).await` async closure pattern with separate `from_str`/`to_str` String locals. SQL queries `calibration_log` (not `calibration`) with conditional `is_noise = 0` filter. Uses `map_calibration_row` helper.
+
+Diff:
+```rust
+- async fn get_entries(
+-     &self,
+-     from: DateTime<Utc>,
+-     to: DateTime<Utc>,
+-     exclude_noise: bool,
+- ) -> Result<Vec<CalibrationEntry>, CoreError> {
+-     let from_str = from.to_rfc3339();
+-     let to_str = to.to_rfc3339();
++ async fn get_entries(
++     &self,
++     window: &TimeWindow,
++     exclude_noise: bool,
++ ) -> Result<Vec<CalibrationEntry>, CoreError> {
++     let from_str = window.start.to_rfc3339();
++     let to_str = window.end.to_rfc3339();
+      // ... rest of body unchanged: self.with_conn(move |conn| { let sql = if exclude_noise { ... } else { ... }; let mut stmt = conn.prepare(sql)...; let rows = stmt.query_map(params![from_str, to_str], map_calibration_row)...; let mut entries = Vec::new(); for row_result in rows { ... entries.push(entry); } Ok(entries) }).await.map_err(Into::into)
+  }
+```
+
+**Method 3: `list_segment_time_ranges` (async, lines 237-292) — return type change too**
+
+Actual body has `table_exists` early-return guard (V9 migration check), per-row `parse_from_rfc3339` with separate error wrapping per field. Returns `Vec<(String, DateTime<Utc>, DateTime<Utc>)>` 3-tuple. Per Phase 2 iter-2 N-C4: change to `Vec<(String, TimeWindow)>` to consolidate the two datetimes — preserves segment_id String.
+
+Diff:
+```rust
+- async fn list_segment_time_ranges(
+-     &self,
+-     from: DateTime<Utc>,
+-     to: DateTime<Utc>,
+- ) -> Result<Vec<(String, DateTime<Utc>, DateTime<Utc>)>, CoreError> {
+-     let from_str = from.to_rfc3339();
+-     let to_str = to.to_rfc3339();
++ async fn list_segment_time_ranges(
++     &self,
++     window: &TimeWindow,
++ ) -> Result<Vec<(String, TimeWindow)>, CoreError> {
++     let from_str = window.start.to_rfc3339();
++     let to_str = window.end.to_rfc3339();
+
+      self.with_conn(move |conn| {
+          // Check table existence (may not have run V9 migration yet) — UNCHANGED
+          let table_exists: bool = conn.query_row(/* ... */, [], |row| row.get(0)).unwrap_or(false);
+          if !table_exists { return Ok(vec![]); }
+
+          let mut stmt = conn.prepare(/* SELECT id, start_time, end_time FROM activity_segments ... */)?;
+          let rows = stmt.query_map(params![from_str, to_str], |row| { /* (id, start_str, end_str) */ })?;
+
+          let mut result = Vec::new();
+          for row_result in rows {
+              let (id, start_str, end_str) = row_result.map_err(...)?;
+              let start = DateTime::parse_from_rfc3339(&start_str).map(|dt| dt.with_timezone(&Utc)).map_err(...)?;
+              let end   = DateTime::parse_from_rfc3339(&end_str).map(|dt| dt.with_timezone(&Utc)).map_err(...)?;
+-             result.push((id, start, end));
++             // Phase 2 iter-2 N-C4: consolidate two DateTime<Utc> into TimeWindow.
++             // Trusted construction (DB-stored values satisfy start <= end by invariant).
++             let segment_window = TimeWindow::new(start, end)
++                 .expect("DB-stored segment ranges are trusted (start <= end invariant)");
++             result.push((id, segment_window));
+          }
+          Ok(result)
+      }).await.map_err(Into::into)
+  }
+```
+
+The `table_exists` guard, parse-error mapping, and async `with_conn` pattern all stay bit-identical. Only the return-type tuple is consolidated.
+
+Add at top of file:
 ```rust
 use oneshim_core::types::TimeWindow;
-
-// flag_noise_range — SYNC, returns Result<u64, CoreError> (rows updated count)
-fn flag_noise_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
-    let conn = self.conn.lock().unwrap();
-    let (from, to) = window.to_sql_pair();
-    let rows = conn.execute(
-        "UPDATE calibration SET noise = 1 WHERE timestamp >= ?1 AND timestamp <= ?2",
-        rusqlite::params![&from, &to],
-    )?;
-    Ok(rows as u64)
-}
-
-async fn get_entries(&self, window: &TimeWindow, exclude_noise: bool) -> Result<Vec<CalibrationEntry>, CoreError> {
-    let conn = self.conn.lock().unwrap();
-    let (from, to) = window.to_sql_pair();
-    // ... existing query body with `&from, &to` substituted via params! macro
-}
-
-// list_segment_time_ranges — preserves segment_id, returns Vec<(String, TimeWindow)>
-async fn list_segment_time_ranges(&self, window: &TimeWindow) -> Result<Vec<(String, TimeWindow)>, CoreError> {
-    let conn = self.conn.lock().unwrap();
-    let (from, to) = window.to_sql_pair();
-    // existing query returns rows of (segment_id, start_ts, end_ts); map:
-    let rows: Vec<(String, DateTime<Utc>, DateTime<Utc>)> = /* existing query body */;
-    let result = rows.into_iter()
-        .map(|(seg_id, start, end)| {
-            let win = TimeWindow::new(start, end)
-                .expect("DB-stored segment ranges are trusted (start <= end invariant)");
-            (seg_id, win)
-        })
-        .collect();
-    Ok(result)
-}
 ```
 
 - [ ] **Step 4C.1.5: Migrate calibration_store_impl.rs internal test sites (Phase 2 iter-3 NEW-I1 — 5 sites)**
@@ -2521,6 +2599,12 @@ PR description should summarize:
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
 
+### 5e. Phase 2 iter-6 findings disposition (v7 cleanup)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Critical | NEW-C1 — Step 4C.1 calibration_store_impl synthetic-drift | ✅ Step 4C.1 rewritten with PRESERVE-BODY pattern (mirrors Step 4C.4 fix). Documents actual source at calibration_log table + is_noise column + fallible-lock CoreError::Storage mapping + async with_conn pattern + table_exists V9 migration guard + per-row parse error wrapping. Diff blocks show only parameter sig swap + locals binding + return-type consolidation for list_segment_time_ranges. All existing SQL/error-handling/control-flow preserved bit-identical. |
+
 ### 5d. Phase 2 iter-5 findings disposition (v6 cleanup)
 
 | Severity | ID | Disposition |
@@ -2592,7 +2676,7 @@ PR description should summarize:
 
 ## Execution Handoff
 
-**Plan v6 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
+**Plan v7 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
 
 **Two execution options:**
 
@@ -2600,4 +2684,4 @@ PR description should summarize:
 
 **2. Inline Execution** — executing-plans batch with checkpoints.
 
-(For ralph-loop continuation: Phase 2 iter-6 plan v6 complete addressing iter-1 (9C+11I) + iter-2 (6 NEW C + 5 NEW I) + iter-3 (2 NEW C + 1 NEW I) + iter-4 (4 Important + 2 Suggestion pre-existing cleanup) + iter-5 (2 NEW Important from v5 over-specification) = 17 Critical + 23 Important + 2 Suggestion total across 6 iterations. Next iteration: fresh subagent verification of plan v6. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
+(For ralph-loop continuation: Phase 2 iter-7 plan v7 complete addressing iter-1 (9C+11I) + iter-2 (6 NEW C + 5 NEW I) + iter-3 (2 NEW C + 1 NEW I) + iter-4 (4 Important + 2 Suggestion pre-existing cleanup) + iter-5 (2 NEW Important from v5 over-specification) + iter-6 (1 NEW Critical from v6 missed PRESERVE-BODY pattern in Step 4C.1) = 18 Critical + 23 Important + 2 Suggestion total across 7 iterations. Next iteration: fresh subagent verification of plan v7. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
