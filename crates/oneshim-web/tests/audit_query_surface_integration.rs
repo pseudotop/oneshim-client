@@ -17,8 +17,9 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::connect_info::MockConnectInfo;
 use axum::http::{Method, Request, StatusCode};
-use oneshim_automation::audit::{AuditLogAdapter, AuditLogger};
-use oneshim_core::models::audit::{AuditEntry, AuditLevel};
+use chrono::Utc;
+use oneshim_automation::audit::{AuditLogAdapter, AuditLogger, AuditQuery};
+use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStatus};
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_storage::sqlite::SqliteStorage;
 use tokio::sync::{broadcast, RwLock};
@@ -85,13 +86,11 @@ fn loopback_app(state: AppState) -> axum::Router {
 ///
 /// Drives the production `AuditLogAdapter` (the wired prod impl) — not a mock.
 ///
-/// NOTE (upstream): Production AuditLogAdapter::entries_by_command_id reads
-/// only the in-memory VecDeque (cap ~1000). Task 0.3.1 will wire
-/// SqliteStorage-backed fall-through so historical lookup beyond the buffer
-/// works. When that lands, this test should be extended to exercise the
-/// fall-through path (e.g., insert via buffer, flush + evict, verify the
-/// query still returns from storage). Today's assertion shape (newest-first
-/// = reverse insertion order) must be preserved in the new impl.
+/// NOTE: This test covers the buffer-only fast path. Storage fall-through
+/// (Task 0.3.1) is exercised by
+/// [`audit_entries_by_command_id_falls_through_to_storage_when_buffer_empty`]
+/// below, which seeds entries directly into SqliteStorage and queries via
+/// the same `AuditLogPort::entries_by_command_id` surface.
 #[tokio::test]
 async fn audit_entries_by_command_id_returns_matching_rows() {
     let adapter = fresh_audit_adapter();
@@ -199,6 +198,96 @@ async fn audit_export_rest_endpoint_filters_by_command_id() {
             entry.command_id, "cmd-target-789",
             "REST response leaked non-matching command_id: {:?}",
             entry.command_id
+        );
+    }
+}
+
+// ── Test 3: Storage fall-through ─────────────────────────────────────────────
+
+/// Task 0.3.1 — `entries_by_command_id` falls through to SqliteStorage
+/// when the in-memory buffer doesn't contain matching rows.
+///
+/// Mirrors the production wiring in `src-tauri::audit_query::SqliteAuditQuery`:
+/// builds an `AuditLogger` whose `with_query` handle delegates directly to
+/// `SqliteStorage::entries_by_command_id`. Seeds 3 audit entries directly into
+/// SQLite (bypassing the in-memory buffer entirely) and verifies the
+/// `AuditLogPort::entries_by_command_id` adapter returns all 3 in
+/// timestamp-DESC order.
+///
+/// This exercises the production fall-through path end-to-end: the adapter
+/// reaches into `AuditLogger::entries_by_command_id`, finds an empty buffer,
+/// queries the attached `AuditQuery` handle (the SqliteStorage wrapper),
+/// re-sorts by timestamp DESC, and returns the merged result.
+#[tokio::test]
+async fn audit_entries_by_command_id_falls_through_to_storage_when_buffer_empty() {
+    // SQLite-backed AuditQuery wrapper for this test — mirrors the production
+    // `SqliteAuditQuery` in `src-tauri::audit_query` (cannot be imported from
+    // the binary crate, so we replicate the trivial 5-line bridge here).
+    struct StorageQuery {
+        storage: Arc<SqliteStorage>,
+    }
+    impl AuditQuery for StorageQuery {
+        fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+            self.storage.entries_by_command_id(command_id, limit)
+        }
+    }
+
+    // In-memory SQLite + 3 entries with target command_id at known offsets.
+    let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory SQLite"));
+    for i in 0..3_i64 {
+        let entry = AuditEntry {
+            entry_id: format!("storage-only-{i}"),
+            // Newer i = larger offset back; results[0] should be i=0.
+            timestamp: Utc::now() - chrono::Duration::milliseconds(i * 100),
+            session_id: "sess-storage".to_string(),
+            command_id: "cmd-storage-fallthrough".to_string(),
+            action_type: format!("storage-act-{i}"),
+            status: AuditStatus::Completed,
+            details: None,
+            execution_time_ms: Some(10),
+        };
+        storage.save_audit_entry(&entry);
+    }
+
+    // AuditLogger with EMPTY buffer + storage-backed query handle. This
+    // mirrors the production wiring in src-tauri (with_persistence +
+    // with_query); we drop with_persistence since this test seeds storage
+    // directly.
+    let query: Arc<dyn AuditQuery> = Arc::new(StorageQuery {
+        storage: storage.clone(),
+    });
+    let logger = AuditLogger::new(100, 10).with_query(query);
+    let adapter = AuditLogAdapter::new(Arc::new(RwLock::new(logger)));
+
+    // Query through the adapter — exercises the full AuditLogPort surface.
+    let results = adapter
+        .entries_by_command_id("cmd-storage-fallthrough", 10)
+        .await;
+
+    // All 3 storage rows surface (buffer is empty so dedup is a no-op).
+    assert_eq!(
+        results.len(),
+        3,
+        "expected 3 entries from storage fall-through, got {}",
+        results.len()
+    );
+
+    // All rows have the target command_id (no leakage from any other rows).
+    for entry in &results {
+        assert_eq!(entry.command_id, "cmd-storage-fallthrough");
+    }
+
+    // Newest-first: results[0] = i=0 (offset 0), results[1] = i=1 (-100ms),
+    // results[2] = i=2 (-200ms). entry_id == "storage-only-{i}".
+    assert_eq!(results[0].entry_id, "storage-only-0");
+    assert_eq!(results[1].entry_id, "storage-only-1");
+    assert_eq!(results[2].entry_id, "storage-only-2");
+
+    // Defensive: assert monotonic timestamp DESC.
+    for w in results.windows(2) {
+        assert!(
+            w[0].timestamp >= w[1].timestamp,
+            "expected newest-first ordering after storage fall-through"
         );
     }
 }
