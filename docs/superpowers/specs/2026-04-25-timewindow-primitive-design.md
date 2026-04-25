@@ -374,32 +374,54 @@ Rationale: `FocusMetrics` is internal domain model only. The REST contract seria
 
 (Removed stale Option X/Y/Z discussion that was here.)
 
-### 5.5 REST Handler Migration Pattern
+### 5.5 REST Handler + Service-Layer Migration Pattern
 
-**Before** (`crates/oneshim-web/src/handlers/frames.rs`):
+**ARCHITECTURE NOTE** (Phase 2 iter-9 NEW-C1 + iter-10 NEW-C1 corrections):
+- ONESHIM REST handlers are THIN pass-through to service layer. They do NOT call storage directly.
+- Migration happens at the **service layer**, not handler layer. Handler files require ZERO changes.
+- Services internally use `params.from_datetime()` / `params.to_datetime()` helpers — these silently swallow parse errors and use a hardcoded **24-hour** fallback (NOT 7d/30d).
+- Migration replaces helper calls with `params.to_time_window(Duration::hours(24))?` — **preserve existing 24h default exactly** to avoid 7×/30× payload widening.
+- BEHAVIOR CHANGE: invalid timestamps now return HTTP 400 (was: silently fall back to default-window data with HTTP 200).
+
+**Handler — UNCHANGED** (`crates/oneshim-web/src/handlers/frames.rs`):
 ```rust
 pub async fn get_frames(
-    Query(q): Query<TimeRangeQuery>,
-    State(ctx): State<...>,
-) -> Result<Json<Vec<FrameDto>>, ApiError> {
-    let q = q.with_defaults(7);  // 7 days
-    let from = q.from.unwrap();   // safe after with_defaults
-    let to = q.to.unwrap();
-    let frames = ctx.storage.get_frames(from.parse()?, to.parse()?, 100)?;
-    Ok(Json(frames))
+    State(context): State<StorageWebContext>,
+    Query(params): Query<TimeRangeQuery>,
+) -> Result<Json<PaginatedResponse<FrameResponse>>, ApiError> {
+    Ok(Json(FramesQueryService::new(context).get_frames(&params)?))
 }
 ```
 
-**After**:
+**Service Before** (`crates/oneshim-web/src/services/frames_service.rs`):
 ```rust
-pub async fn get_frames(
-    Query(q): Query<TimeRangeQuery>,
-    State(ctx): State<...>,
-) -> Result<Json<Vec<FrameDto>>, ApiError> {
-    let window = q.to_time_window(Duration::days(7))?;
-    let frames = ctx.storage.get_frames(&window, 100)?;
-    Ok(Json(frames))
+pub fn get_frames(&self, params: &TimeRangeQuery) -> Result<PaginatedResponse<FrameResponse>, ApiError> {
+    let from = params.from_datetime();  // hardcoded 24h fallback if missing/invalid
+    let to = params.to_datetime();
+    let limit = params.limit_or_default();
+    let offset = params.offset_or_default();
+    // ... uses from, to as DateTime<Utc>
 }
+```
+
+**Service After**:
+```rust
+use chrono::Duration;
+use oneshim_core::types::TimeWindow;
+
+pub fn get_frames(&self, params: &TimeRangeQuery) -> Result<PaginatedResponse<FrameResponse>, ApiError> {
+    let window = params.to_time_window(Duration::hours(24))   // ← preserves existing 24h default
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let limit = params.limit_or_default();
+    let offset = params.offset_or_default();
+    // ... pass &window to storage methods (Task 4 already migrated 8 specific methods)
+}
+```
+
+**Storage decomposition for non-migrated methods**: Task 4 only migrated 8 specific storage methods to `&TimeWindow` (count_events_in_range, count_frames_in_range, list_frame_file_paths_in_range, delete_data_in_range, get_daily_active_secs, flag_noise_range, get_entries, list_segment_time_ranges). For OTHER storage methods that still take `DateTime<Utc>` (get_frames, get_events, get_metrics, etc.), service decomposes:
+```rust
+let TimeWindow { start: from, end: to } = window;
+self.ctx.storage.get_frames(from, to, limit).await?
 ```
 
 ### 5.6 GDPR `DeleteRangeRequest` Migration
