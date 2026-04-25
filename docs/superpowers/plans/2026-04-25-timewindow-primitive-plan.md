@@ -1149,6 +1149,8 @@ Diff:
 
 Actual body has `table_exists` early-return guard (V9 migration check), per-row `parse_from_rfc3339` with separate error wrapping per field. Returns `Vec<(String, DateTime<Utc>, DateTime<Utc>)>` 3-tuple. Per Phase 2 iter-2 N-C4: change to `Vec<(String, TimeWindow)>` to consolidate the two datetimes — preserves segment_id String.
 
+**⚠ Containment semantic (preserve)**: The query at line 262 uses `WHERE start_time >= ?1 AND end_time <= ?2` — DIFFERENT columns on each side. This is a "fully contained" semantic: returns segments whose entire `[start_time, end_time]` falls within the requested `[from, to]` window. Migration must preserve this — do NOT change to `start_time >= ?1 AND start_time <= ?2` (which would be "starts within window" semantic). The `from_str`/`to_str` String shadowing keeps `params![from_str, to_str]` working unchanged.
+
 Diff:
 ```rust
 - async fn list_segment_time_ranges(
