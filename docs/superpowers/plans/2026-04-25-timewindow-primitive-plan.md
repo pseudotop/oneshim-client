@@ -21,7 +21,7 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v11 (Phase 2 iter-11 — addresses NEW Critical: ReportQuery.from/to use date-only `%Y-%m-%d` parsing via NaiveDate (NOT RFC3339 timestamps). Plan v10 Step 7.3 prescribed `#[serde(flatten)] time_range: TimeRangeQuery` + `time_range.to_time_window(...)` — but to_time_window parses RFC3339 via `parse_from_rfc3339`, which would FAIL on date-only inputs and break the reports endpoint. Plan v11 keeps ReportQuery's date-only schema intact, updates `resolve_report_window` in reports_query_support.rs to construct TimeWindow from existing NaiveDate parse logic). v10 cleanup — addresses 2 NEW Critical + 2 NEW Important from iter-9 verification:
+**Plan version:** v12 (Phase 2 iter-12 — addresses NEW Critical: Task 8.3 prescribes `FocusMetrics::new(...)` for `grpc_dashboard_integration.rs:461` test fixture, but actual test uses STRUCT LITERAL with 10+ custom field values per seeded row (`total_active_secs: *active`, `deep_work_secs: *deep`, etc.). Constructor would zero those fields out → seeded data lost → test silently passes with wrong values. v12 distinguishes between fixtures that need ALL fields (use renamed struct literal `FocusMetrics { period: TimeWindow::new(...).unwrap(), other_field: ..., ... }`) vs trusted-default sites (use `FocusMetrics::new(start, end).unwrap()`). Step 8.3 enumerated explicitly per fixture.). v11 — addresses NEW Critical: ReportQuery.from/to use date-only `%Y-%m-%d` parsing via NaiveDate (NOT RFC3339 timestamps). Plan v10 Step 7.3 prescribed `#[serde(flatten)] time_range: TimeRangeQuery` + `time_range.to_time_window(...)` — but to_time_window parses RFC3339 via `parse_from_rfc3339`, which would FAIL on date-only inputs and break the reports endpoint. Plan v11 keeps ReportQuery's date-only schema intact, updates `resolve_report_window` in reports_query_support.rs to construct TimeWindow from existing NaiveDate parse logic). v10 cleanup — addresses 2 NEW Critical + 2 NEW Important from iter-9 verification:
 - NEW-C1: default-window-size regression (existing helpers default 24h, plan v9 prescribed 7d/30d which is 7×/30× widening). v10 changes default to `Duration::hours(24)` everywhere to preserve existing behavior; future PR can deliberately change.
 - NEW-C2: Service-layer migration must decompose `&window` for non-migrated storage methods (get_frames/get_events/get_metrics/etc. still take `DateTime<Utc>`, NOT `&TimeWindow`). Documented decomposition pattern.
 - NEW-I1: Step 6.2-6.7 add explicit "continues Task 4D.3" framing per Step 7.4 model.
@@ -2369,28 +2369,66 @@ let elapsed = (self.period_end - self.period_start).num_seconds();
 let elapsed = self.period.duration().num_seconds();
 ```
 
-- [ ] **Step 8.3: Migrate FocusMetrics call sites (4 sites enumerated in Step 8.1)**
+- [ ] **Step 8.3: Migrate FocusMetrics call sites (10 sites — Phase 2 iter-12 enumeration with per-fixture pattern)**
 
-For `focus_metrics.rs` callers using `date_to_period_range` (trusted construction):
+Two distinct migration patterns based on fixture intent:
+
+**Pattern A — Constructor-default sites** (only period matters; other fields default-acceptable):
 ```rust
 // Before:
 let (period_start, period_end) = date_to_period_range(date)?;
-let metrics = FocusMetrics { period_start, period_end, /* ... */ };
+let metrics = FocusMetrics { period_start, period_end, /* defaults for everything else */ };
 // After:
 let (period_start, period_end) = date_to_period_range(date)?;
 let metrics = FocusMetrics::new(period_start, period_end)
     .expect("date_to_period_range produces valid start <= end");
 ```
 
-For test fixtures (e.g., `tests.rs:76`, `grpc_dashboard_integration.rs:461`):
+**Pattern B — Custom-field struct-literal sites** (test seeds CUSTOM values for non-period fields — MUST preserve via renamed struct literal):
 ```rust
-// Before:
-FocusMetrics::new(updated.period_start, updated.period_end)
-// After:
-FocusMetrics::new(updated.period.start, updated.period.end).unwrap()
-// or if updated is itself FocusMetrics:
-FocusMetrics::new(updated.period.start, updated.period.end).unwrap()
+// Before (grpc_dashboard_integration.rs:461 — sets 10+ custom field values):
+let metrics = FocusMetrics {
+    period_start: Utc::now(),
+    period_end: Utc::now(),
+    total_active_secs: *active,            // ← CUSTOM seeded value
+    deep_work_secs: *deep,                  // ← CUSTOM seeded value
+    communication_secs: *comm,              // ← CUSTOM seeded value
+    interruption_count: *interruptions,
+    max_focus_duration_secs: *longest,
+    focus_score: *score,
+    /* + other fields with defaults */
+};
+// After — keep struct literal, just rename period_start/period_end → period:
+use oneshim_core::types::TimeWindow;
+let metrics = FocusMetrics {
+    period: TimeWindow::new(Utc::now(), Utc::now())
+        .expect("zero-duration window valid for trusted test fixture"),
+    total_active_secs: *active,
+    deep_work_secs: *deep,
+    communication_secs: *comm,
+    interruption_count: *interruptions,
+    max_focus_duration_secs: *longest,
+    focus_score: *score,
+    /* + other fields */
+};
 ```
+
+**DO NOT** use `FocusMetrics::new(Utc::now(), Utc::now())` for Pattern B — it would zero out the custom-seeded fields silently.
+
+**Per-site enumeration**:
+
+| # | File:Line | Pattern | Notes |
+|---|-----------|---------|-------|
+| 1 | `crates/oneshim-core/src/models/work_session.rs:317` | N/A — internal duration calc | Replace `(self.period_end - self.period_start).num_seconds()` with `self.period.duration().num_seconds()` |
+| 2 | `crates/oneshim-core/src/models/work_session.rs:446` | A — `FocusMetrics::new(now, now + 1h).unwrap()` | Test fixture, default fields OK |
+| 3 | `crates/oneshim-storage/src/sqlite/edge_intelligence/focus_metrics.rs:55` | B — struct literal | Verify if custom fields used |
+| 4 | `crates/oneshim-storage/src/sqlite/edge_intelligence/focus_metrics.rs:76` | A — `FocusMetrics::new(period_start, period_end)` already | Just `.expect()` instead of `?` if needed |
+| 5 | `crates/oneshim-storage/src/sqlite/edge_intelligence/focus_metrics.rs:217` | B — struct literal | Verify if custom fields used |
+| 6 | `crates/oneshim-storage/src/sqlite/edge_intelligence/tests.rs:76` | A — `FocusMetrics::new(updated.period.start, updated.period.end).unwrap()` | Test fixture |
+| 7 | `crates/oneshim-web/tests/grpc_dashboard_integration.rs:461` | **B** — struct literal with 10+ custom seeded fields (`total_active_secs`, `deep_work_secs`, `communication_secs`, `interruption_count`, `max_focus_duration_secs`, `focus_score`) | **MUST use renamed struct literal pattern**. Constructor would zero seeded values. |
+| 8 | `src-tauri/src/focus_analyzer/mod.rs:384` | B (probable — verify) | Test fixture struct literal — check if seeds custom values |
+| 9 | `src-tauri/src/focus_analyzer/mod.rs:420` | B (probable — verify) | Same |
+| 10 | `src-tauri/src/focus_analyzer/mod.rs:442` | B (probable — verify) | Same |
 
 Also update any direct field access like `metrics.period_start` → `metrics.period.start`. Search:
 ```bash
@@ -2731,6 +2769,12 @@ PR description should summarize:
 - Q-8 baseline count: PF3 captures actual count at impl time (NOT trusted from spec)
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
+
+### 5i. Phase 2 iter-12 findings disposition (v12 FocusMetrics struct-literal preservation)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Critical | NEW-C1 — FocusMetrics::new() would zero out custom seeded test fields | ✅ Step 8.3 distinguishes Pattern A (constructor-default sites) vs Pattern B (struct-literal with custom seeded fields). grpc_dashboard_integration.rs:461 explicitly classified as Pattern B with 10+ custom field values that MUST be preserved via renamed struct literal `FocusMetrics { period: TimeWindow::new(...).unwrap(), other_field: ..., ... }`. focus_analyzer/mod.rs:384/420/442 marked "probable B (verify)". |
 
 ### 5h. Phase 2 iter-11 findings disposition (v11 ReportQuery date-only fix)
 
