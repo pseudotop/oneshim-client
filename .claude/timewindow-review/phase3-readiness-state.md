@@ -8,26 +8,32 @@
 
 ---
 
-## Phase Tracker
+## Phase Tracker (updated 2026-04-25 final)
 
 | Phase | Status | Iterations | Final Commit |
 |-------|--------|------------|--------------|
-| 0 — Spec extraction | ✅ COMPLETE | 1 | `1c38cabd` (v1) |
-| 1 — Spec Deep Review | ✅ CLOSED | 3 | `f495dfbd` (v3) |
-| 2 — Plan Deep Review | ✅ CLOSED | 8 | `8dcad4c0` (v7) |
+| 0 — Spec extraction | ✅ COMPLETE | 1 | `1c38cabd` (spec v1) |
+| 1 — Spec Deep Review | ✅ CLOSED | 3 | `f495dfbd` (spec v3) |
+| 2 — Plan Deep Review | ✅ CLOSED | 13 | `80d8d7bd` (plan v13) |
 | 2 — Plan EXIT recorded | ✅ APPROVED | 1 | `40701ebd` |
+| 2 — Spec↔Plan alignment audit (v4-v15) | ✅ CLOSED | 12 | `e226e0e5` (spec v15) |
 | 3 — Implementation | 🔒 **BLOCKED on PR #508 merge** | 0 | — |
 
 ---
 
-## Cumulative Issues Addressed
+## Cumulative Issues Addressed (final tally)
 
-Across 11 iterations (3 spec + 8 plan):
-- **Critical**: 18 (4 Phase 1 + 9+6+2+1 Phase 2 across iter-1/2/3/6)
-- **Important**: 23 (5 Phase 1 + 5+5+1+4+2 Phase 2 across iter-1/2/3/4/5)
-- **Suggestion / Nice-to-have**: 6 (4 Phase 1 + 2 Phase 2 iter-4)
+Across **28 documentation iterations** (15 spec versions + 13 plan versions):
 
-Plan grew from 1392 lines (v1) to 2687 lines (v7). All findings docs stored in `.claude/timewindow-review/`.
+- **Critical**: 23+ across Phase 1 (4) + Phase 2 iter-1 (9) + iter-2 (6 NEW) + iter-3 (2 NEW) + iter-6 (1 NEW) + iter-9 (1 NEW) + iter-10 (2 NEW) + iter-11 (1 NEW) + iter-12 (1 NEW) + spec v4-v15 alignment (~10+)
+- **Important**: 28+ across Phase 1 (5) + Phase 2 iter-1 (11) + iter-2 (5 NEW) + iter-3 (1 NEW) + iter-4 (4) + iter-5 (2 NEW) + iter-10 (2 NEW) + spec v4-v15 alignment (~15+)
+- **Suggestion / Nice-to-have**: ~6 (4 Phase 1 + 2 Phase 2 iter-4 + Pattern A/B verification)
+
+Plan grew from 1392 lines (v1) to ~2885 lines (v13).
+Spec grew from 666 lines (v1) to ~770 lines (v15).
+Findings docs: 8 review/verification docs (~2370 lines) + Phase 3 readiness + handoff card.
+
+**Total work product**: ~6700 lines of design + plan + verification documentation across `docs/superpowers/specs/` + `docs/superpowers/plans/` + `.claude/timewindow-review/`.
 
 ---
 

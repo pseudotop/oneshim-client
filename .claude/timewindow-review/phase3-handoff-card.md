@@ -3,7 +3,7 @@
 **Goal**: Replace 9+ divergent absolute-timestamp time-range types with single `TimeWindow { start: DateTime<Utc>, end: DateTime<Utc> }` primitive.
 
 **Plan**: `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md` (v13, 2885 lines)
-**Spec**: `docs/superpowers/specs/2026-04-25-timewindow-primitive-design.md` (v3, 666 lines)
+**Spec**: `docs/superpowers/specs/2026-04-25-timewindow-primitive-design.md` (v15 — fully aligned with plan v13 across all sections; commit `e226e0e5`)
 **Estimated**: ~30h across 11 tasks (~4 working days)
 **Method**: `superpowers:subagent-driven-development` (fresh subagent per task + 2-stage review)
 
