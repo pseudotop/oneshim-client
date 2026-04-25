@@ -1703,7 +1703,7 @@ fn parse_status_from_details(details: &str) -> AuditStatus {
             "ok" => AuditStatus::Completed,
             "denied" => AuditStatus::Denied,
             "timeout" => AuditStatus::Timeout,
-            "error" | "failed" => AuditStatus::Failed,
+            "error" | "failed" | "auth_failed" => AuditStatus::Failed,
             _ => AuditStatus::Completed,
         })
         .unwrap_or(AuditStatus::Completed)
@@ -2141,10 +2141,10 @@ async fn external_grpc_request_id_preserved_across_auth_reject() {
     // "invalid_jwt"`) — this is the row whose command_id must equal the client's
     // x-request-id per U5/D14.
     //
-    // NOTE: CapturingAudit's `parse_status_from_details` maps `"auth_failed"`
-    // into the default `Completed` bucket (it only recognizes "ok" / "denied" /
-    // "timeout" / "error" / "failed"), which is why we filter by details
-    // content rather than by `AuditStatus`.
+    // We filter by details content rather than `AuditStatus::Failed` because
+    // `Failed` also covers "error"/"failed" results from non-auth paths, while
+    // the substring match pins down the exact `failure_reason: "invalid_jwt"`
+    // path under test.
     //
     // The `!e.command_id.is_empty()` predicate disambiguates the two audit rows
     // that share the same details JSON: `log_complete_with_time` (L1657 in
