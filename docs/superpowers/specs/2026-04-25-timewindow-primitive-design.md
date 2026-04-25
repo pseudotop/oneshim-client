@@ -398,7 +398,21 @@ The `TimeWindow` serde struct produces `{"start": "...", "end": "..."}`. If `Foc
 
 Rationale: `FocusMetrics` is internal domain model only. The REST contract serializes `FocusMetricsDto` (in `oneshim-api-contracts/src/focus.rs`) which has DIFFERENT fields (`date: String` + scalars, NO `period_start/period_end`). Verified frontend has zero references to `period_start`/`period_end`. Internal JSON shape change has no external impact. **No custom serde needed**. Saves ~3h of unnecessary work.
 
-(Removed stale Option X/Y/Z discussion that was here.)
+**Pattern A vs B distinction** (Phase 2 iter-12 NEW Critical fix): FocusMetrics has 10+ call sites with TWO migration patterns:
+
+- **Pattern A (constructor-default)**: caller cares only about `period`; other fields can default to zeros. Use `FocusMetrics::new(start, end).expect("...") -> Result<Self, TimeWindowError>` constructor.
+- **Pattern B (struct-literal-with-custom-fields)**: caller seeds custom values for non-period fields (e.g., `total_active_secs: 3600, deep_work_secs: 2400`). MUST use renamed struct literal:
+  ```rust
+  FocusMetrics {
+      period: TimeWindow::new(start, end).unwrap(),
+      total_active_secs: *active,
+      deep_work_secs: *deep,
+      // ... other custom values
+  }
+  ```
+- **DO NOT use constructor for Pattern B sites** — it would zero out the custom values silently.
+
+Of the 10 call sites: 7 are Pattern B (production SQL row mapping at focus_metrics.rs:55+217 + 4 test fixtures at focus_analyzer/mod.rs:384/420/442 + 1 at grpc_dashboard_integration.rs:461 with 10+ custom seeded values), 3 are Pattern A (work_session.rs:317 internal duration calc + work_session.rs:446 test + tests.rs:76 test). Plan v13 enumerates all 10 with explicit Pattern classification.
 
 ### 5.5 REST Handler + Service-Layer Migration Pattern
 
@@ -596,11 +610,11 @@ For each REST handler:
 
 ### 8.4 Pass criteria
 
-- All unit tests GREEN
+- All unit tests GREEN (~37 NEW tests per plan v13: 13 TimeWindow unit + 3 TimeWindowCode + 8 TimeRangeQuery adapter + 3 SQL boundary regression + 4 E2E + 2 ApiError mapping + 4 api-contracts roundtrip)
 - All existing integration tests still pass (no regression)
-- `cargo check/test/clippy/fmt --workspace` GREEN
-- Wire snapshot test GREEN (53 codes)
-- i18n CI GREEN (53 codes per locale)
+- `cargo check/test/clippy/fmt --workspace` GREEN (clippy run ONCE at PC1 per Phase 2 iter-1 I6 — not per-task)
+- Wire snapshot test GREEN — count is **BASELINE_AT_IMPL_TIME + 2** (not hardcoded; recompute via `wc -l crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` per Plan PF3)
+- i18n CI GREEN (`bash scripts/check-wire-error-i18n-coverage.sh`) — same count both locales
 
 ---
 
