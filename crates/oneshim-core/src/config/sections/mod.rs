@@ -9,6 +9,9 @@
 //   privacy       — 개인정보/샌드박스/자동화 설정
 //   storage       — 스토리지/무결성/알림/업데이트/텔레메트리 설정
 
+pub mod autostart;
+pub use autostart::{should_prompt, AutostartConfig, AutostartPromptState};
+
 pub mod external_grpc;
 pub use external_grpc::{AuthMode, ExternalGrpcConfig, ExternalGrpcConfigError, JwtAlgorithm};
 
