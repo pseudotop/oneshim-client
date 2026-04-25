@@ -21,7 +21,7 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v5 (Phase 2 iter-5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
+**Plan version:** v6 (Phase 2 iter-6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
 
 ---
 
@@ -1219,45 +1219,50 @@ pub fn delete_data_in_range(
     delete_idle: bool,
 ) -> Result<DeletedRangeCounts, StorageError>;
 
-// After:
-#[allow(clippy::too_many_arguments)]
-pub fn delete_data_in_range(
-    &self,
-    window: &TimeWindow,
-    delete_events: bool,
-    delete_frames: bool,
-    delete_metrics: bool,
-    delete_processes: bool,
-    delete_idle: bool,
-) -> Result<DeletedRangeCounts, StorageError> {
-    let (from, to) = window.to_sql_pair();
-    let mut counts = DeletedRangeCounts::default();
-    let conn = self.conn.lock().unwrap();
-    if delete_events {
-        let n = conn.execute(
-            "DELETE FROM events WHERE timestamp >= ?1 AND timestamp <= ?2",
-            rusqlite::params![&from, &to],
-        )?;
-        counts.events_deleted = n as u64;
-    }
-    if delete_frames {
-        let n = conn.execute(/* DELETE FROM frames WHERE ... */, rusqlite::params![&from, &to])?;
-        counts.frames_deleted = n as u64;
-    }
-    if delete_metrics {
-        let n = conn.execute(/* DELETE FROM metrics WHERE ... */, rusqlite::params![&from, &to])?;
-        counts.metrics_deleted = n as u64;
-    }
-    if delete_processes {
-        let n = conn.execute(/* DELETE FROM process_snapshots WHERE ... */, rusqlite::params![&from, &to])?;
-        counts.process_snapshots_deleted = n as u64;
-    }
-    if delete_idle {
-        let n = conn.execute(/* DELETE FROM idle_periods WHERE ... */, rusqlite::params![&from, &to])?;
-        counts.idle_periods_deleted = n as u64;
-    }
-    Ok(counts)
-}
+// After (PRESERVE-BODY pattern — Phase 2 iter-6 NEW-I2 fix):
+//
+// Do NOT rewrite the function body from scratch. The existing body (lines 285-360
+// at plan-write time) handles 5 different tables (events, frames, system_metrics
+// + companion system_metrics_hourly, process_snapshots, idle_periods) with their
+// own column names ("timestamp" for most, "start_time" for idle_periods, "hour"
+// for system_metrics_hourly), and uses fallible lock + .map_err(...)? error
+// wrapping that produces specific error messages.
+//
+// Minimal change: replace ONLY the parameter declaration `from: &str, to: &str`
+// with `window: &TimeWindow`. Inside the function, add a single line at the top:
+//     let (from, to) = window.to_sql_pair();
+// This binds `from` and `to` as local `String` vars with the same SHADOW as the
+// pre-refactor parameter names — every existing `rusqlite::params![from, to]`
+// invocation continues to work unchanged.
+//
+// Diff (conceptual):
+//
+//     #[allow(clippy::too_many_arguments)]
+//     pub fn delete_data_in_range(
+//         &self,
+// -       from: &str,
+// -       to: &str,
+// +       window: &TimeWindow,
+//         delete_events: bool,
+//         delete_frames: bool,
+//         delete_metrics: bool,
+//         delete_processes: bool,
+//         delete_idle: bool,
+//     ) -> Result<DeletedRangeCounts, StorageError> {
+// +       let (from, to) = window.to_sql_pair();
+//         let conn = self.conn.lock()
+//             .map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+//         let mut counts = DeletedRangeCounts::default();
+//         if delete_events { /* unchanged body — uses params![from, to] */ }
+//         if delete_frames { /* unchanged */ }
+//         if delete_metrics { /* unchanged — TWO executes: system_metrics + system_metrics_hourly */ }
+//         if delete_processes { /* unchanged */ }
+//         if delete_idle { /* unchanged — uses start_time column, NOT timestamp */ }
+//         Ok(counts)
+//     }
+//
+// The internal SQL strings, column names, lock-error wrapping, and per-execute
+// .map_err formatting all remain bit-identical to the existing implementation.
 ```
 
 Note: actual `DeletedRangeCounts` field names per `crates/oneshim-core/src/models/storage_records.rs:88-94`:
@@ -1375,7 +1380,7 @@ Expected ~30 hits across these categories (verified at plan-write time):
 | Internal SQLite tests (calibration_store_impl.rs) — Phase 2 iter-3 NEW-I1 | lines 400, 414, 420, 425, 443 (storage.get_entries × 4 + storage.flag_noise_range × 1) | 5 |
 | web_storage_impl.rs wrappers | lines 82, 105, 126, 169, 246 | 5 (covered by Step 4C.6) |
 | src-tauri regime.rs | lines 44, 174, 184 | 3 |
-| src-tauri tests.rs MockCalibration | line ~19 | 1 |
+| src-tauri tests.rs Noop mocks (Phase 2 iter-5/6 corrected) | `NoopCalibrationWriter` lines 12-22 + `NoopCalibrationReader` lines 24-31 | 2 (no `MockCalibration` — separate sync/async impls) |
 
 If grep finds MORE than these, expand scope inline.
 
@@ -1673,7 +1678,7 @@ Per Phase 2 iter-1 C6/C7 + iter-2 N-C1/N-C2/N-C3 scope expansion. Touches:
 - 3 src-tauri/scheduler/analysis_pipeline/regime.rs caller sites
   - lines 44, 184 = get_entries (re-fetch); line 174 = list_segment_time_ranges
   - regime.rs:194 destructure adapted to (seg_id, seg_window) using TimeWindow::contains
-- 1 MockCalibration in src-tauri/scheduler/analysis_pipeline/tests.rs (sync flag_noise_range)
+- 2 mocks in src-tauri/scheduler/analysis_pipeline/tests.rs (NoopCalibrationWriter sync + NoopCalibrationReader async — list_segment_time_ranges relies on trait default impl)
 - ~15 internal SQLite test sites in events.rs, frames.rs, maintenance.rs
 
 All changes done in lockstep — port trait + impl + inherent fn + wrappers + callers + mocks.
@@ -2516,6 +2521,13 @@ PR description should summarize:
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
 
+### 5d. Phase 2 iter-5 findings disposition (v6 cleanup)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Important | NEW-I1 — stale MockCalibration labels | ✅ Step 4D.0 inventory row updated to "NoopCalibrationWriter + NoopCalibrationReader" (2 mocks); Step 4E.1 commit body updated to mention BOTH Noop impls |
+| Important | NEW-I2 — Step 4C.4 wrong table/column names + missing system_metrics_hourly DELETE | ✅ Step 4C.4 rewritten as PRESERVE-BODY pattern: only swap parameter `from: &str, to: &str` → `window: &TimeWindow` + add `let (from, to) = window.to_sql_pair();` line. All existing SQL strings (system_metrics + system_metrics_hourly companion + idle_periods.start_time + lock error wrapping) preserved bit-identical |
+
 ### 5c. Phase 2 iter-4 pre-existing issues disposition (v5 cleanup)
 
 | Severity | ID | Disposition |
@@ -2580,7 +2592,7 @@ PR description should summarize:
 
 ## Execution Handoff
 
-**Plan v5 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
+**Plan v6 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
 
 **Two execution options:**
 
@@ -2588,4 +2600,4 @@ PR description should summarize:
 
 **2. Inline Execution** — executing-plans batch with checkpoints.
 
-(For ralph-loop continuation: Phase 2 iter-5 plan v5 complete addressing iter-1 (9C+11I) + iter-2 (6 NEW C + 5 NEW I) + iter-3 (2 NEW C + 1 NEW I) + iter-4 (4 Important + 2 Suggestion pre-existing cleanup) = 17 Critical + 21 Important + 2 Suggestion total across 5 iterations. Next iteration: fresh subagent verification of plan v5. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
+(For ralph-loop continuation: Phase 2 iter-6 plan v6 complete addressing iter-1 (9C+11I) + iter-2 (6 NEW C + 5 NEW I) + iter-3 (2 NEW C + 1 NEW I) + iter-4 (4 Important + 2 Suggestion pre-existing cleanup) + iter-5 (2 NEW Important from v5 over-specification) = 17 Critical + 23 Important + 2 Suggestion total across 6 iterations. Next iteration: fresh subagent verification of plan v6. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
