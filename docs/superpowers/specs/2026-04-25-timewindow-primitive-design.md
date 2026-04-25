@@ -1,7 +1,10 @@
 # TimeWindow Primitive Refactor Design Spec
 
 **Date:** 2026-04-25
-**Version:** v1 (initial — awaiting Phase 1 deep review)
+**Version:** v2 (Phase 1 iter-1 review fixes applied: 4 Critical + 5 Important + 4 Nice-to-have)
+**Review history:**
+- v1 (2026-04-25): initial design
+- v2 (2026-04-25): incorporates `.claude/timewindow-review/phase1-iter1-findings.md` fixes
 **Baseline:** main `2ba38cf5` (post-PR #510 docs naturalize)
 **Target release:** v0.4.42-rc.1 (after PR-B1 #508 + PR-B2 land)
 **Implementation gate:** PR-B1 (#508) MUST merge before Phase 3 starts (rebase pain on `oneshim-core/config/sections/`)
@@ -59,6 +62,8 @@ Investigation of the codebase identified **5 main + 4 supporting sites** where t
 - **NG4**: Frontend type changes — TypeScript types unchanged (boundary remains JSON ISO8601 strings)
 - **NG5**: Time-zone handling overhaul — `TimeWindow` always uses `DateTime<Utc>` internally (existing convention preserved)
 - **NG6**: SQL `BETWEEN` semantic changes — current closed-closed `WHERE timestamp >= ?1 AND timestamp <= ?2` preserved
+- **NG7** (per Phase 1 iter-1 I4): `IdlePeriod` is NOT migrated. `IdlePeriod.end_time: Option<DateTime<Utc>>` represents ongoing idle (renewed each poll). Migrating to `TimeWindow` (always-bounded) would require either fragmenting into 2 types (overkill) or `end = now()` workaround (drift bug — values changes per poll, breaks equality + serialization stability). Left as-is.
+- **NG8** (per Phase 1 iter-1 I1): `FocusMetrics` JSON shape change is internal-only. The REST contract serializes `FocusMetricsDto` (in `oneshim-api-contracts/src/focus.rs`) which has `date: String` + scalars — NO `period_start/period_end` fields. Verified frontend has zero references to `period_start/period_end`. **Option Z (break internal model JSON shape) is safe**. Q-1 resolved. Saves ~3h custom serde work.
 
 ---
 
@@ -85,20 +90,28 @@ These decisions were made interactively during brainstorming and are FIXED.
 crates/oneshim-core/src/types/                  ← NEW directory (currently no `types/` dir)
   ├── mod.rs                                     ← `pub mod time_window;`
   └── time_window.rs                             ← TimeWindow struct + impl + tests
+
+[MODIFIED — registration]
+crates/oneshim-core/src/lib.rs                  ← add `pub mod types;` (per Phase 1 iter-1 I5)
+crates/oneshim-core/src/error_codes/mod.rs      ← `pub mod time_window;` + `pub use TimeWindowCode;` + `for c in TimeWindowCode::all() ...` in `all_codes()` (per Phase 1 iter-1 C3)
+crates/oneshim-core/src/error.rs (or wherever CoreError lives) ← add `TimeWindow(TimeWindowError)` variant + `From<TimeWindowError>` impl (per Phase 1 iter-1 C2)
+crates/oneshim-core/src/ports/calibration_store.rs ← `flag_noise_range(window: &TimeWindow)` port trait sig change (per Phase 1 iter-1 N3)
+
                 ▲
                 │ (consumed by)
                 │
 [MODIFIED — domain models]
 crates/oneshim-core/src/models/
-  ├── work_session.rs:287-299                   ← FocusMetrics: period_* → period: TimeWindow
-  ├── activity.rs:20-24                          ← IdlePeriod: start_time + Option<end_time> → period: TimeWindow (with `is_completed` flag if needed)
+  ├── work_session.rs:287-299                   ← FocusMetrics: period_* → period: TimeWindow (Option Z per NG8 — internal model only, NOT in REST DTO)
   └── telemetry.rs:16-17                         ← SessionMetrics: period_* → period: TimeWindow
+
+  (activity.rs IdlePeriod is NOT migrated per NG7)
 
 [MODIFIED — API contracts]
 crates/oneshim-api-contracts/src/
   ├── common.rs:5-11                             ← TimeRangeQuery: + to_time_window(default_lookback) adapter
-  ├── data.rs:4-9                                ← DeleteRangeRequest: from/to → period: TimeWindow
-  └── reports.rs:13-18                           ← ReportQuery: from/to → period: Option<TimeWindow> (period field stays as ReportPeriod enum override)
+  ├── data.rs:4-9                                ← DeleteRangeRequest: from/to → keep external JSON shape via custom serde (per Phase 1 iter-1 I3 option (b)); internal field `period: TimeWindow` with `#[serde(rename = "from")]` on start, `#[serde(rename = "to")]` on end via custom Serialize/Deserialize. Frontend DataSection.tsx unchanged.
+  └── reports.rs:13-18                           ← ReportQuery → `{ period: ReportPeriod, window: Option<TimeWindow> }` per Phase 1 iter-1 I2. `ReportPeriod` enum (Week/Month/Custom) is primary; `window` is Some only when `period == Custom`
 
 [MODIFIED — REST handlers in oneshim-web]
 crates/oneshim-web/src/handlers/
@@ -154,7 +167,9 @@ use thiserror::Error;
 ///
 /// Validates `start <= end` at construction. Internally always uses `DateTime<Utc>`.
 /// External serialization round-trips via RFC3339 ISO8601 strings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// Per Phase 1 iter-1 N1: `Hash` derive removed (no current use case as HashMap key).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimeWindow {
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
@@ -167,6 +182,30 @@ pub enum TimeWindowError {
     #[error("failed to parse RFC3339 timestamp: {0}")]
     ParseFailed(String),
 }
+
+impl TimeWindowError {
+    /// Wire code for ADR-019 observability grouping.
+    pub fn code(&self) -> TimeWindowCode {
+        match self {
+            Self::InvertedBounds { .. } => TimeWindowCode::InvertedBounds,
+            Self::ParseFailed(_) => TimeWindowCode::ParseFailed,
+        }
+    }
+}
+
+// Per Phase 1 iter-1 C2: integrate TimeWindowError into CoreError chain so handlers
+// can use `?` operator with existing `From<CoreError> for ApiError` impl.
+// Add to `crates/oneshim-core/src/error.rs`:
+//
+// ```rust
+// impl From<TimeWindowError> for CoreError {
+//     fn from(err: TimeWindowError) -> Self {
+//         CoreError::TimeWindow(err)  // new variant
+//     }
+// }
+// ```
+//
+// Add `TimeWindow(TimeWindowError)` variant to CoreError enum + map to `code()` in CoreError::code().
 
 impl TimeWindow {
     /// Construct a TimeWindow with bound validation.
@@ -224,16 +263,20 @@ impl TimeRangeQuery {
     ///
     /// Per spec U5: this is the boundary where Optional bounds become
     /// Required bounds. Internal code (storage, models) work with TimeWindow.
-    pub fn to_time_window(self, default_lookback: Duration) -> Result<TimeWindow, TimeWindowError> {
+    ///
+    /// Per Phase 1 iter-1 C4: takes `&self` (not `self`) so the 6 service sites
+    /// that pass `&TimeRangeQuery` and continue to use `limit`/`offset`/`min_importance`
+    /// fields don't need to clone or restructure.
+    pub fn to_time_window(&self, default_lookback: Duration) -> Result<TimeWindow, TimeWindowError> {
         let now = Utc::now();
-        let end = match self.to {
-            Some(s) => DateTime::parse_from_rfc3339(&s)
+        let end = match self.to.as_deref() {
+            Some(s) => DateTime::parse_from_rfc3339(s)
                 .map_err(|e| TimeWindowError::ParseFailed(e.to_string()))?
                 .with_timezone(&Utc),
             None => now,
         };
-        let start = match self.from {
-            Some(s) => DateTime::parse_from_rfc3339(&s)
+        let start = match self.from.as_deref() {
+            Some(s) => DateTime::parse_from_rfc3339(s)
                 .map_err(|e| TimeWindowError::ParseFailed(e.to_string()))?
                 .with_timezone(&Utc),
             None => end - default_lookback,
@@ -425,7 +468,12 @@ define_code_enum! {
 }
 ```
 
-Total wire codes after PR: current 51 (post-PR-B2) + 2 = **53**.
+Total wire codes after PR (per Phase 1 iter-1 C1): current **42** (worktree base `2ba38cf5`, pre-PR-B1) + 2 = **44**. If PR-B1 (#508, +5 codes) and PR-B2 (+4 codes) merge before TimeWindow PR, recompute baseline at impl time (could be 51 + 2 = 53). Verify with `wc -l crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` immediately before commit 2.
+
+**Per Phase 1 iter-1 C3**: `error_codes/mod.rs` requires 3 wire-up steps for `TimeWindowCode`:
+1. `pub mod time_window;`
+2. `pub use time_window::TimeWindowCode;`
+3. Add `for c in TimeWindowCode::all() { codes.push(c.as_str()); }` to `all_codes()` aggregator
 
 ---
 
@@ -478,20 +526,25 @@ For each REST handler:
 
 | # | Commit | Estimate |
 |---|--------|----------|
-| 1 | `feat(time): add TimeWindow primitive type + TimeWindowError + tests in oneshim-core::types` | 2h |
-| 2 | `feat(error-codes): add TimeWindowCode wire codes (inverted_bounds + parse_failed)` | 1h |
+| 1 | `feat(time): add TimeWindow primitive + TimeWindowError + types/ module + lib.rs registration + tests` (per C2 + I5) | 2.5h |
+| 2 | `feat(error-codes): add TimeWindowCode wire codes (inverted_bounds + parse_failed) + register in mod.rs all_codes() aggregator + integrate into CoreError::TimeWindow variant` (per C2 + C3) | 1.5h |
 | 3 | `test(error-codes): wire-error i18n CI gate update for 2 new variants (en+ko)` | 0.5h |
-| 4 | `feat(api): TimeRangeQuery::to_time_window adapter + tests` | 1.5h |
-| 5 | `refactor(storage): migrate SQL helpers (events/frames/calibration/web_storage_impl) to TimeWindow` | 3h |
+| 4 | `feat(api): TimeRangeQuery::to_time_window adapter (non-consuming &self per C4) + tests` | 1.5h |
+| 5 | `refactor(storage): migrate SQL helpers (events/frames/calibration/web_storage_impl) to &TimeWindow + port trait CalibrationWriter::flag_noise_range sig change (per N3)` | 3h |
 | 6 | `test(storage): regression tests for migrated helpers` | 1h |
-| 7 | `refactor(handlers): migrate REST handlers (frames/events/metrics/focus/sessions/interruptions) to TimeWindow` | 4h |
-| 8 | `refactor(handlers): migrate data.rs (GDPR delete-range) + reports.rs to TimeWindow` | 1.5h |
-| 9 | `refactor(models): migrate FocusMetrics + IdlePeriod + SessionMetrics + custom serde for FocusMetrics JSON compat` | 3h |
-| 10 | `refactor(api-contracts): migrate DeleteRangeRequest period field` | 1h |
+| 7 | `refactor(handlers): migrate 6-7 REST handlers (frames/events/metrics/focus/idle/processes/sessions) to &TimeWindow` | 4h |
+| 8 | `refactor(handlers): migrate data.rs (GDPR delete-range) + reports.rs to TimeWindow with custom serde for DeleteRangeRequest external shape preservation (per Q-10)` | 1.5h |
+| 9 | `refactor(models): migrate FocusMetrics + SessionMetrics period_* → period: TimeWindow (Option Z — internal model only, NOT in REST DTO)` | 1.5h (was 3h — Option Y custom serde no longer needed per I1) |
+| 10 | `refactor(api-contracts): migrate ReportQuery to { period: ReportPeriod, window: Option<TimeWindow> } per I2` | 1h |
 | 11 | `test(integration): end-to-end TimeWindow flow tests (REST→handler→storage→response)` | 2h |
 | 12 | `docs(time-window): STATUS.md + PHASE-HISTORY entry + module-level rustdoc` | 1h |
 
-**Total**: ~21h ≈ 3 working days. Add buffer for unexpected issues = ~4 days.
+**Total**: ~21h → ~21h (Option Y serde savings offset by C2/C3/I5 wire-up + N3 port trait work). ~3-4 working days.
+
+**Notes**:
+- Per Phase 1 iter-1: `IdlePeriod` NOT migrated (NG7). `activity.rs` removed from touched files.
+- Per Phase 1 iter-1: `FocusMetricsDto` not affected (Option Z); only internal `FocusMetrics` changes.
+- Per Phase 1 iter-1: `DeleteRangeRequest` external JSON preserved via custom serde (Q-10 option b).
 
 ### 9.2 Branch naming
 
@@ -531,15 +584,16 @@ These are internal — no external consumers (this is a desktop client, not a li
 
 | # | Question | Resolution path |
 |---|----------|-----------------|
-| Q-1 | `FocusMetrics` JSON shape compat — Option X (flatten), Y (custom serde), or Z (break)? | Spec recommends Y. iter-1 review verifies whether frontend actually consumes `period_start`/`period_end` keys — if not used, Z is simpler. |
-| Q-2 | `IdlePeriod` is currently `start_time + Option<end_time>` (open-ended for ongoing idle). TimeWindow always bounded. | Choose: (a) keep open-ended via separate `OngoingIdlePeriod` type, or (b) use TimeWindow with `end = now` for ongoing (renewed every poll). iter-1 review decides. |
-| Q-3 | `ReportQuery` has `period: ReportPeriod` enum (Weekly/Monthly) AS WELL as from/to. Migration approach? | iter-1 review: does ReportPeriod enum override or supplement from/to? Possibly: `ReportQuery { window: Option<TimeWindow>, period_preset: Option<ReportPeriod> }`. |
-| Q-4 | Some SQL helpers use `&str` (RFC3339) and others use `DateTime<Utc>` directly. Do we standardize call sites or keep both via `from_rfc3339_pair` / direct construction? | iter-1 review: prefer storage layer takes `&TimeWindow` (consistent), constructed at handler boundary. Detail commit-by-commit. |
-| Q-5 | `flag_noise_range` in calibration_store_impl uses `(from: DateTime<Utc>, to: DateTime<Utc>)`. Migrate to `&TimeWindow`? | Yes per spec. iter-1 review confirms no test breakage. |
-| Q-6 | Should `TimeWindow::new` accept `start == end` (zero-duration window)? | Spec says yes (single-instant query). Verify with iter-1 — any handler that would be confused by zero-duration? |
-| Q-7 | `TimeWindow` field visibility: `pub start, pub end` vs accessor methods (`.start()`, `.end()`). | Spec uses `pub`. Trade-off: pub allows direct match but bypasses validation if someone constructs `TimeWindow { start: ..., end: ... }` directly without `new()`. Verify if needed. |
-| Q-8 | Wire code prefix `time_window.*` — alphabetical position in `wire_contract_snapshot.expected.txt`? | Goes between `tag.*` and `update.*` (if those exist). Verify with current snapshot during impl. |
-| Q-9 | gRPC `MetricBucket` (in src-tauri/src/grpc/) is bucketing primitive — explicitly NG2 (NOT in scope). Verify NG2 is correctly noted. | Document in §2.2 NG2 (already done). |
+| Q-1 | ✅ RESOLVED (Phase 1 iter-1 I1): `FocusMetrics` is internal model only — REST serializes `FocusMetricsDto` (different fields). Frontend has zero references to `period_start/period_end`. Use **Option Z** (break internal JSON shape). Saves ~3h custom serde work. |
+| Q-2 | ✅ RESOLVED (Phase 1 iter-1 I4): `IdlePeriod` NOT migrated. `end_time: Option<DateTime<Utc>>` represents ongoing idle. Migration would require either two types or `end = now()` workaround (drift bug). Add NG7. |
+| Q-3 | ✅ RESOLVED (Phase 1 iter-1 I2): `ReportQuery { period: ReportPeriod, window: Option<TimeWindow> }`. `period` enum (Week/Month/Custom) primary; `window` is Some only when `period == Custom`. |
+| Q-4 | ⚠ Pending iter-2: prefer storage layer takes `&TimeWindow` (consistent); construction at handler boundary. Detail per-commit. |
+| Q-5 | ✅ RESOLVED: yes, migrate `flag_noise_range`. Per Phase 1 iter-1 N3, also update port trait at `oneshim-core/src/ports/calibration_store.rs`. |
+| Q-6 | ⚠ Pending iter-2: `start == end` (zero-duration) allowed per spec §5.1. Verify no handler confusion. |
+| Q-7 | ⚠ Pending iter-2: `pub start, pub end` allows bypassing `new()` validation. Trade-off vs convenient pattern matching. Decide. |
+| Q-8 | ⚠ Pending iter-2: alphabetical position of `time_window.*` codes in snapshot — verify at impl time. |
+| Q-9 | ✅ RESOLVED: gRPC `MetricBucket` excluded (NG2). Verified. |
+| Q-10 (NEW iter-1) | ⚠ `DeleteRangeRequest` external JSON shape preservation strategy: option (a) update DataSection.tsx (~30min) or option (b) custom serde (rename start→from, end→to). Spec recommends (b) — minimal frontend churn + preserves API contract. Verify in iter-2. |
 
 ---
 
