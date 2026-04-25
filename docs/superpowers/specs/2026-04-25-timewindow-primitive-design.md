@@ -94,48 +94,69 @@ These decisions were made interactively during brainstorming and are FIXED.
 [NEW]
 crates/oneshim-core/src/types/                  ← NEW directory (currently no `types/` dir)
   ├── mod.rs                                     ← `pub mod time_window;`
-  └── time_window.rs                             ← TimeWindow struct + impl + tests
+  └── time_window.rs                             ← TimeWindow struct + impl + 13 tests
+crates/oneshim-core/src/error_codes/time_window.rs ← TimeWindowCode enum + 3 tests
+crates/oneshim-web/tests/timewindow_integration.rs ← 4 E2E tests
 
-[MODIFIED — registration]
-crates/oneshim-core/src/lib.rs                  ← add `pub mod types;` (per Phase 1 iter-1 I5)
-crates/oneshim-core/src/error_codes/mod.rs      ← `pub mod time_window;` + `pub use TimeWindowCode;` + `for c in TimeWindowCode::all() ...` in `all_codes()` (per Phase 1 iter-1 C3)
-crates/oneshim-core/src/error.rs (or wherever CoreError lives) ← add `TimeWindow(TimeWindowError)` variant + `From<TimeWindowError>` impl (per Phase 1 iter-1 C2)
-crates/oneshim-core/src/ports/calibration_store.rs ← `flag_noise_range(window: &TimeWindow)` port trait sig change (per Phase 1 iter-1 N3)
+[MODIFIED — registration in oneshim-core (Phase 1 iter-1 C2/C3/I5 + Phase 2 iter-1 C1)]
+crates/oneshim-core/src/lib.rs                  ← add `pub mod types;`
+crates/oneshim-core/src/error_codes/mod.rs      ← `pub mod time_window;` + `pub use TimeWindowCode;` + `for c in TimeWindowCode::all() ...` in `all_codes()`
+crates/oneshim-core/src/error.rs                ← add **struct-variant** `TimeWindow { code: TimeWindowCode, message: String }` to CoreError (NOT `#[from]` tuple — matches ADR-019 §4.6 majority pattern) + manual `From<TimeWindowError>` impl + `Self::TimeWindow { code, .. } => code.as_str()` arm in code()
+crates/oneshim-core/tests/wire_contract_snapshot.expected.txt ← +2 entries (`time_window.inverted_bounds`, `time_window.parse_failed`)
 
-                ▲
-                │ (consumed by)
-                │
-[MODIFIED — domain models]
+[MODIFIED — port traits in oneshim-core (Phase 2 iter-1 C6 + iter-2 N-C4/N-C5)]
+crates/oneshim-core/src/ports/calibration_store.rs ← 3 methods: flag_noise_range (sync, Result<u64>), get_entries (async), list_segment_time_ranges (async, returns Vec<(String, TimeWindow)> preserving segment_id)
+crates/oneshim-core/src/ports/web_storage.rs ← 5 methods: count_frames_in_range, list_frame_file_paths_in_range, count_events_in_range, delete_data_in_range (5 bool flags preserved), get_daily_active_secs (returns Vec<(String, i64)>)
+
+[MODIFIED — domain models (NG7/NG8 + Phase 2 iter-12 Pattern A/B)]
 crates/oneshim-core/src/models/
-  ├── work_session.rs:287-299                   ← FocusMetrics: period_* → period: TimeWindow (Option Z per NG8 — internal model only, NOT in REST DTO)
-  └── telemetry.rs:16-17                         ← SessionMetrics: period_* → period: TimeWindow
+  ├── work_session.rs:273-284 (FocusMetrics struct), 286+ (impl block) ← period_* → period: TimeWindow (Option Z per NG8 — internal model only, NOT in REST DTO). 10 call sites with Pattern A (constructor) vs Pattern B (struct-literal preserves custom seeded fields) per Phase 2 iter-12.
+  └── telemetry.rs:14 (struct), 16-17 (fields) ← SessionMetrics: period_* → period: TimeWindow (possibly dead code per Phase 2 iter-1 I1)
 
   (activity.rs IdlePeriod is NOT migrated per NG7)
 
-[MODIFIED — API contracts]
+[MODIFIED — API contracts (Phase 2 iter-1 C4/C9 + iter-11)]
 crates/oneshim-api-contracts/src/
-  ├── common.rs:5-11                             ← TimeRangeQuery: + to_time_window(default_lookback) adapter
-  ├── data.rs:4-9                                ← DeleteRangeRequest: from/to → keep external JSON shape via custom serde (per Phase 1 iter-1 I3 option (b)); internal field `period: TimeWindow` with `#[serde(rename = "from")]` on start, `#[serde(rename = "to")]` on end via custom Serialize/Deserialize. Frontend DataSection.tsx unchanged.
-  └── reports.rs:13-18                           ← ReportQuery → `{ period: ReportPeriod, window: Option<TimeWindow> }` per Phase 1 iter-1 I2. `ReportPeriod` enum (Week/Month/Custom) is primary; `window` is Some only when `period == Custom`
+  ├── common.rs:5-11                             ← TimeRangeQuery: add `Default` derive (per Phase 2 iter-1 C4) + `to_time_window(&self, Duration)` adapter (Phase 1 iter-1 C4: non-consuming `&self`)
+  ├── data.rs:4-9                                ← DeleteRangeRequest: keep `from: String, to: String` UNCHANGED + add `period() -> Result<TimeWindow, TimeWindowError>` accessor (Option C per Phase 2 iter-1 C9). NO custom serde. Frontend DataSection.tsx unchanged.
+  └── reports.rs:13                              ← ReportQuery: keep date-only `%Y-%m-%d` schema UNCHANGED per NG11 (Phase 2 iter-11 NEW Critical — flatten of TimeRangeQuery would break Custom period parse)
 
-[MODIFIED — REST handlers in oneshim-web]
-crates/oneshim-web/src/handlers/
-  ├── frames.rs                                  ← get_frames(window: &TimeWindow)
-  ├── events.rs                                  ← count_events_in_range(window: &TimeWindow)
-  ├── metrics.rs                                 ← daily aggregates by TimeWindow
-  ├── focus.rs                                   ← focus session queries
-  ├── sessions.rs                                ← session listings
-  ├── interruptions.rs                           ← interruption queries
-  ├── data.rs                                    ← GDPR delete using period: TimeWindow
-  └── reports.rs                                 ← weekly/monthly aggregates
+[MODIFIED — REST handlers UNCHANGED per NG9; service layer migrates (Phase 2 iter-9 NEW-C1)]
+crates/oneshim-web/src/services/                 ← 7 service-layer files migrate (Phase 2 iter-9):
+  ├── frames_service.rs                          ← get_frames uses params.to_time_window(Duration::hours(24))
+  ├── events_service.rs                          ← get_events same pattern (also covers Step 4D.3 events_service.rs:35)
+  ├── metrics_service.rs                         ← daily aggregates same pattern
+  ├── focus_service.rs                           ← 4 sites (get_work_sessions + get_interruptions)
+  ├── idle_service.rs                            ← idle queries (model NOT migrated per NG7)
+  ├── processes_service.rs                       ← process queries
+  ├── timeline_service.rs                        ← timeline queries
+  ├── data_web_service.rs                        ← uses request.period()? accessor (Option C), 2 caller sites at lines 36+51
+  ├── reports_service.rs:30                      ← consumes resolve_report_window result
+  ├── reports_query_support.rs:14-44             ← resolve_report_window updated (Phase 2 iter-11): returns Result<(TimeWindow, String), ApiError>; preserves NaiveDate parse logic
+  ├── stats_query_support.rs:112                 ← total_active_secs_for_range uses let-else (returns u64, no Result)
+  └── (handlers themselves: ZERO changes per NG9 — thin pass-through to services)
 
-[MODIFIED — SQL storage]
+[MODIFIED — SQL storage (Phase 2 iter-1 C6/C7 expanded; PRESERVE-BODY for complex methods)]
 crates/oneshim-storage/src/sqlite/
-  ├── events.rs:14                               ← count_events_in_range(window: &TimeWindow)
-  ├── frames.rs:10                               ← count_frames_in_range(window: &TimeWindow)
-  ├── calibration_store_impl.rs:120-130          ← flag_noise_range(window: &TimeWindow)
-  └── web_storage_impl.rs:245                    ← get_daily_active_secs(window: &TimeWindow)
-                                                   plus 5-6 other range query helpers identified during impl
+  ├── events.rs:14                               ← count_events_in_range (SAFE-SYNTHETIC) + 4 internal test sites
+  ├── frames.rs:10                               ← count_frames_in_range (SAFE-SYNTHETIC) + 2 internal test sites
+  ├── maintenance.rs:253, 286                    ← list_frame_file_paths_in_range, delete_data_in_range (PRESERVE-BODY: 5 bool flags + system_metrics_hourly companion DELETE + idle_periods.start_time column) + ~9 internal test sites
+  ├── calibration_store_impl.rs:120, 148, 237    ← flag_noise_range (sync) + get_entries (async with_conn) + list_segment_time_ranges (async with_conn + table_exists guard) PRESERVE-BODY + 5 internal test sites at lines 400/414/420/425/443
+  ├── web_storage_impl.rs:82, 105, 126, 169, 246 ← 5 thin wrappers (delegate to inherent pub fn)
+  └── edge_intelligence/work_sessions.rs:216     ← get_daily_active_secs PRESERVE-BODY (half-open `started_at < ?2` per NG6)
+
+[MODIFIED — src-tauri scheduler caller sites (Phase 2 iter-1 C6 + iter-2 N-C2)]
+src-tauri/src/scheduler/analysis_pipeline/
+  ├── regime.rs:44                               ← get_entries call (run_periodic_regime_detection, () return → use .expect())
+  ├── regime.rs:174                              ← list_segment_time_ranges call (run_constrained_clustering, () return)
+  ├── regime.rs:184                              ← second get_entries call (re-fetch for index mapping; reuses window from line 174)
+  ├── regime.rs:194                              ← destructure (seg_id, seg_window) using TimeWindow::contains(e.timestamp)
+  └── tests.rs:12-31                             ← NoopCalibrationWriter (sync flag_noise_range) + NoopCalibrationReader (async get_entries; list_segment_time_ranges uses trait default)
+
+[MODIFIED — test mocks]
+crates/oneshim-web/tests/support/failing_storage.rs ← 5 sites (delegation pattern preserved per Phase 2 iter-3 NEW-C1): each method delegates to self.inner.method(window).map_err(Into::into)
+src-tauri/src/focus_analyzer/mod.rs:384, 420, 442 ← 3 FocusMetrics test fixtures (Pattern B per Phase 2 iter-12)
+crates/oneshim-web/tests/grpc_dashboard_integration.rs:461 ← FocusMetrics test fixture with 10+ custom seeded values (Pattern B — MUST preserve struct literal)
 ```
 
 ### 4.2 What is NOT touched
