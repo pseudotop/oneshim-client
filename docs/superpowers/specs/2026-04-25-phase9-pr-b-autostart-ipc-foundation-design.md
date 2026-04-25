@@ -1,15 +1,16 @@
 # Phase 9 PR-B — Autostart IPC + Single-Instance + Linux Robustness Design Spec (v2)
 
 **Date:** 2026-04-25
-**Version:** v2 (rev-1 incorporates Phase 1 iter-1 review findings)
+**Version:** v3 (rev-2 incorporates Phase 1 iter-2 review findings)
 **Baseline:** main `5618558c` (post-PR #486 d13-task13 merge)
 **Target release:** v0.4.40 (PR-B1) → v0.4.41 (PR-B2)
 **Scope:** Phase 9 PR-B (split into PR-B1 foundation + PR-B2 Linux deep)
-**Estimated effort:** ~23h (PR-B1) + ~15h (PR-B2) = **~38h total**
+**Estimated effort:** ~22h (PR-B1) + ~15h (PR-B2) = **~37h total**
 **Authoring source:** Brainstorming session 2026-04-25 (5 user-locked decisions U1-U5)
 **Review history:**
 - v1 (2026-04-25): initial spec from brainstorming
 - v2 (2026-04-25): incorporates 5 Critical + 8 Important fixes from `/.claude/pr-b-review/phase1-iter1-findings.md`
+- v3 (2026-04-25): incorporates 1 Critical + 3 Important + 3 Nice-to-have fixes from `/.claude/pr-b-review/phase1-iter2-findings.md`. Q7-Q9 resolved. Phase 1 deemed complete pending iter-3 verification.
 
 ---
 
@@ -211,8 +212,8 @@ Uses real `ConfigManager` API (sync `update_with` closure) and Tauri command par
 use tauri::command;
 use oneshim_core::config::{AutostartPromptState, AutostartConfig};
 use crate::autostart;
+use crate::ipc_error::IpcError;
 use crate::runtime_state::ConfigRuntimeState;
-use crate::commands::IpcError;
 
 /// Enable autostart at OS level.
 ///
@@ -221,20 +222,20 @@ use crate::commands::IpcError;
 #[command]
 pub async fn enable_autostart() -> Result<(), IpcError> {
     autostart::enable_autostart()
-        .map_err(|e| IpcError::from_string(format!("autostart enable failed: {e}")))
+        .map_err(|e| IpcError::new("autostart.enable_failed", format!("autostart enable failed: {e}")))
 }
 
 #[command]
 pub async fn disable_autostart() -> Result<(), IpcError> {
     autostart::disable_autostart()
-        .map_err(|e| IpcError::from_string(format!("autostart disable failed: {e}")))
+        .map_err(|e| IpcError::new("autostart.disable_failed", format!("autostart disable failed: {e}")))
 }
 
 /// Read autostart state from OS (source of truth).
 #[command]
 pub async fn is_autostart_enabled() -> Result<bool, IpcError> {
     autostart::is_autostart_enabled()
-        .map_err(|e| IpcError::from_string(format!("autostart query failed: {e}")))
+        .map_err(|e| IpcError::new("autostart.query_failed", format!("autostart query failed: {e}")))
 }
 
 /// PR-B1: skeleton — always returns supported=true for non-Linux,
@@ -273,6 +274,7 @@ pub async fn mark_autostart_prompt_state(
 - `src-tauri/src/commands/mod.rs`: add `pub mod autostart;`
 - `src-tauri/src/main.rs`: register all 5 in `.invoke_handler(tauri::generate_handler![...])` chain
 - **No `ALLOWED_KEYS` change in `commands/settings.rs`** — autostart commands are dedicated, not routed through the generic `update_setting` JSON-patch path. Verified pattern via `commands/settings.rs:92-95`.
+- **Wire code registration required** (per ADR-019 + `check-wire-error-i18n-coverage.sh` CI gate): add `autostart.enable_failed`, `autostart.disable_failed`, `autostart.query_failed` to `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` AND add corresponding entries to `crates/oneshim-web/frontend/src/i18n/wire-errors.en.json` + `wire-errors.ko.json`. Failure to add will fail CI.
 
 **Edge cases**:
 - **OS enable fails**: error propagates, UI shows error banner, toggle reverts visually (UI re-fetches OS state via `is_autostart_enabled`)
@@ -613,6 +615,8 @@ function AutostartOnboardingPromptHost() {
 ```
 
 **Single-fire guarantee**: `hasShownThisSession` module-level flag prevents re-show on re-mount (e.g., navigating away and back to Dashboard). Reset only on app restart.
+
+**Dev-only quirk** (per Phase 1 iter-2 N-I2): Vite/React HMR resets module-level `let` bindings on hot reload. In `pnpm dev` mode with HMR enabled, the prompt may re-fire after code edits even after the user has acted on it. This does NOT affect production builds (no HMR). Optional hardening if it becomes annoying during dev: gate reset via `if (import.meta.env.DEV) hasShownThisSession = false`. Not worth implementing for PR-B1 — accept as known dev quirk.
 
 **Modal UI** (unchanged from v1):
 - Title: `t('onboarding.autostart.title')` — "Start ONESHIM automatically?"
@@ -1242,19 +1246,22 @@ warn!(
 | 3 | `test(autostart): AutostartConfig serde + should_prompt + idempotency unit tests` | 1.5h | `autostart.rs` (tests submodule) |
 | 4 | `feat(autostart): IPC commands (5 commands incl. capabilities skeleton)` | 2.5h | `src-tauri/src/commands/autostart.rs`, `commands/mod.rs`, `main.rs` invoke_handler |
 | 5 | `test(autostart): IPC command unit tests` | 1.5h | `commands/autostart.rs` tests + `tests/autostart_ipc_integration.rs` |
-| 6 | `feat(autostart): single-instance plugin in main builder + focus-grab callback` | 1.5h | `src-tauri/src/main.rs` |
-| 7 | `feat(autostart): D-Bus presence check + warn log at startup (per I7)` | 0.5h | `src-tauri/src/main.rs` startup hook |
-| 8 | `test(autostart): single-instance integration smoke test` | 1.5h | `src-tauri/tests/single_instance_integration.rs` |
-| 9 | `feat(autostart): GeneralTab Startup section + toggle wiring + capabilities-aware UI` | 2.5h | `GeneralTab.tsx`, i18n |
-| 10 | `test(autostart): GeneralTab Vitest coverage` | 1h | `GeneralTab.test.tsx` |
-| 11 | `feat(autostart): productive-session detection + Rust-side counter increment in monitor.rs` | 2.5h | `src-tauri/src/scheduler/loops/monitor.rs` (or new helper) |
-| 12 | `test(autostart): productive-session detection unit tests (idempotency, threshold)` | 1.5h | corresponding tests |
-| 13 | `feat(autostart): AutostartOnboardingPrompt + ShowPromptCoordinator + Dashboard integration` | 2.5h | `AutostartOnboardingPrompt.tsx`, `Dashboard.tsx`, i18n |
-| 14 | `test(autostart): AutostartOnboardingPrompt Vitest coverage incl. single-fire` | 1.5h | corresponding `.test.tsx` |
-| 15 | `docs(autostart): STATUS.md + PHASE-HISTORY entry for PR-B1` | 0.5h | `docs/STATUS.md`, `docs/PHASE-HISTORY.md` |
-| 16 | `chore(autostart): manual smoke test matrix per platform + checklist (PR body)` | 1h | manual session, no commit |
+| 6 | `feat(autostart): single-instance plugin in main builder + focus-grab callback + D-Bus presence check (per I3+I7)` | 2h | `src-tauri/src/main.rs` |
+| 7 | `test(autostart): single-instance integration smoke test` | 1.5h | `src-tauri/tests/single_instance_integration.rs` |
+| 8 | `feat(autostart): GeneralTab Startup section + toggle wiring + capabilities-aware UI` | 2.5h | `GeneralTab.tsx`, i18n |
+| 9 | `test(autostart): GeneralTab Vitest coverage` | 1h | `GeneralTab.test.tsx` |
+| 10 | `feat(autostart): productive-session detection + Rust-side counter increment in monitor.rs` | 2.5h | `src-tauri/src/scheduler/loops/monitor.rs` (or new helper) |
+| 11 | `test(autostart): productive-session detection unit tests (idempotency, threshold)` | 1.5h | corresponding tests |
+| 12 | `feat(autostart): AutostartOnboardingPrompt + ShowPromptCoordinator + Dashboard integration` | 2.5h | `AutostartOnboardingPrompt.tsx`, `Dashboard.tsx`, i18n |
+| 13 | `test(autostart): AutostartOnboardingPrompt Vitest coverage incl. single-fire` | 1.5h | corresponding `.test.tsx` |
+| 14 | `docs(autostart): STATUS.md + PHASE-HISTORY entry for PR-B1` | 0.5h | `docs/STATUS.md`, `docs/PHASE-HISTORY.md` |
+| 15 | `chore(autostart): manual smoke test matrix per platform + checklist (PR body)` | 1h | manual session, no commit |
 
-**Total**: ~23h. Commits 13-14 are bundled per `feedback_lefthook_clippy_cost`.
+**Total**: ~22h (per Phase 1 iter-3: bundled D-Bus check into commit 6 to remove redundant standalone commit per N-I3).
+
+**Commit dependency graph** (per Phase 1 iter-2 N-N1):
+- Hard ordering: `2 → 3` (type before tests), `2 → 4` (type before commands), `4 → 5` (commands before tests), `2 → 10` (type before scheduler), `4 → 12` (mark_prompt_state IPC before frontend), `10 → 12` (event emitter before listener)
+- Wire codes (`autostart.enable_failed/disable_failed/query_failed`) added to `wire_contract_snapshot.expected.txt` + `wire-errors.{en,ko}.json` as part of commit 4 (alongside IPC commands; otherwise CI fails)
 
 ### 10.2 PR-B2 commit structure (~15h, unchanged from v1)
 
@@ -1358,11 +1365,11 @@ The reconciler is informational only — no auto-correct. Users can re-toggle fr
 - **Q5 (sd-notify 0.4 acceptable)**: ✅ Not currently in workspace. Adding as optional Linux-only dep with feature flag `systemd-notify`. Workspace policy: confirmed acceptable per recent additions (e.g., chrono-tz in PR-A).
 - **Q6 (smoke matrix recording)**: ✅ Per-PR description body as checklist table. Optional historical archive to `.claude/manual-smoke-tests/<release>.md`.
 
-### 12.2 New open questions from Phase 1 review (for iteration 2)
+### 12.2 Resolved in iter-2 (Q7-Q9)
 
-- **Q7**: Verify `tauri-plugin-single-instance` v2 D-Bus name source in plugin source code (not yet vendored). Confirm it's `<identifier>` exactly, no transformation.
-- **Q8**: Does the existing `i18next-parser` or equivalent CI lint check en/ko key parity? If not, add a script in PR-B1 commit 9.
-- **Q9**: Should the reconciler (§11.4) also check XDG `.desktop` file existence on Linux when systemd is unavailable? Current impl assumes single OS state path.
+- **Q7**: ✅ Resolved. Plugin source verified at `tauri-apps/plugins-workspace v2/plugins/single-instance/src/platform_impl/linux.rs:31-49` — D-Bus well-known name = `<identifier>.SingleInstance` = **`com.oneshim.client.SingleInstance`**. Object path = `/com/oneshim/client/SingleInstance`. Interface = `org.SingleInstance.DBus`. No identifier transformation; suffix only. (`.SingleInstance_<semver>` if `semver` feature enabled — we do NOT enable it.)
+- **Q8**: ✅ Resolved. Existing `scripts/check-wire-error-i18n-coverage.sh` ONLY checks wire-error keys (`wire-errors.{en,ko}.json` against the snapshot registry). NO general i18n key parity lint exists. Recommendation: keep manual review for `settings.general.autostart.*` and `onboarding.autostart.*` — adding a general parity script is out of PR-B1 scope. If parity drift becomes an issue post-launch, add as separate PR.
+- **Q9**: ✅ Resolved. `autostart::linux::is_enabled()` already checks BOTH `service_path()` AND `desktop_path()` (verified `autostart.rs:449-457`). The reconciler (§11.4) calls `autostart::is_autostart_enabled()` which routes to `is_enabled()` for Linux — automatically gets the union. No spec change needed.
 
 ### 12.3 Future work explicitly deferred
 
@@ -1387,7 +1394,7 @@ The reconciler is informational only — no auto-correct. Users can re-toggle fr
 | Productive session counter has scheduler-restart double-count | Low | Low | Idempotency via session_id UUID |
 | Frontend i18n key drift between en.json and ko.json | Low | Low | CI lint (Q8 verifies exists) |
 | Plugin init failure on headless Linux | Low | Medium | Log warn at startup, accept duplicate-process behavior (per I7) |
-| Wayland kept-hidden window unmappable on focus | Medium | Medium | Manual smoke test (per I1), fallback if observed |
+| Wayland kept-hidden window unmappable on focus | Medium | Medium | **Accepted as known limitation in PR-B1** (per Phase 1 iter-2 N-I4). Manual smoke test in §9.5 surfaces the case. If broken: documented in PR-B2 `docs/guides/autostart.ko.md` user runbook. Concrete fallback (e.g., `window.create()` if `is_visible()` returns false post-`set_focus()`) is a follow-up PR if smoke test reveals breakage. |
 | Two-phase commit revert fails (no longer applicable) | N/A | N/A | Removed two-phase commit (per C3) |
 | `cargo build` size increase from `tauri-plugin-single-instance` | Low | Low | Plugin is small |
 | Cross-consumer merge conflicts with features2/grpc-stress branches | Medium | Medium | Coordinate merge order (see §17) |
@@ -1507,10 +1514,12 @@ The reconciler is informational only — no auto-correct. Users can re-toggle fr
 |--------|------------------------------|-------------------|------------|
 | `feature/external-grpc-audit-liveconfig` (features2) | `crates/oneshim-core/src/config/mod.rs` (AppConfig), `GeneralTab.tsx`, `commands/settings.rs` | **CRITICAL** | features2 merges first per memory; PR-B1 rebases onto features2-merged main |
 | `feature/grpc-stress-test-suite` | `Cargo.toml`, AppConfig, `commands/mod.rs`, `commands/settings.rs` | Important | Whichever merges second rebases; conflict resolution mechanical (additive) |
-| `fix/phase9-pr-a-followup-cleanup` | `tracking_schedule` related, AppConfig | **CRITICAL** | Should merge BEFORE PR-B1 (continuation of PR-A) |
+| `fix/phase9-pr-a-followup-cleanup` | `tracking_schedule` related, AppConfig | **CRITICAL** | PR-A itself (`feature/phase9-tracking-schedule` #487) is **already merged** to main per memory `project_next_tasks`. Only `fix/phase9-pr-a-followup-cleanup` remains as a separate cleanup branch. Merge before PR-B1 to avoid tracking_schedule conflicts. |
 | `feature/d13-v2b-pr-b2-subscribe-metrics` | `crates/oneshim-core/src/config/mod.rs` (REMOVES `external_grpc`) | **CRITICAL SEMANTIC** | Coordinate with v2b owner; likely merges before PR-B1 |
 
 ### 17.2 Recommended merge order
+
+(PR-A `feature/phase9-tracking-schedule` #487 already in main HEAD `5618558c`; not in this list)
 
 1. `fix/phase9-pr-a-followup-cleanup` (cleanup of merged PR-A)
 2. `feature/d13-v2b-pr-b2-subscribe-metrics` (semantic field removal)

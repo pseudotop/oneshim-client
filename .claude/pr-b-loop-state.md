@@ -1,71 +1,76 @@
 # PR-B Ralph-Loop State Tracking
 
 **Created**: 2026-04-25
-**Spec**: `docs/superpowers/specs/2026-04-25-phase9-pr-b-autostart-ipc-foundation-design.md`
+**Spec**: `docs/superpowers/specs/2026-04-25-phase9-pr-b-autostart-ipc-foundation-design.md` (v3)
 **Worktree**: `.claude/worktrees/phase9-autostart-foundation`
 **Branch**: `feature/phase9-autostart-foundation`
 
 ## Phase Tracker
 
-| Phase | Status | Start | Complete | Iterations |
-|-------|--------|-------|----------|------------|
-| 1 — Spec Deep Review | **iter-1 complete, awaiting iter-2 verify** | 2026-04-25 | - | 1 (more needed) |
-| 2 — Plan Creation + Review | pending | - | - | - |
-| 3 — Implementation + Review | pending | - | - | - |
+| Phase | Status | Iterations | Notes |
+|-------|--------|------------|-------|
+| 1 — Spec Deep Review | **iter-2 complete (v3 spec), Phase 1 deemed exit-ready pending iter-3 verify** | 2 | All Critical/Important resolved |
+| 2 — Plan Creation + Review | pending — start in next iteration | 0 | Use writing-plans skill |
+| 3 — Implementation + Review | pending | 0 | Use subagent-driven-development |
 
 ## Phase 1 — Spec Deep Review
 
 ### iter-1 (2026-04-25) — COMPLETE
+- 5 Critical (C1-C5) + 8 Important (I1-I8) + 4 cross-consumer conflicts found
+- All fixed in spec v2 (commit `5f1add95`)
 
-**Output**: spec v2 (replaces v1) + `phase1-iter1-findings.md`
+### iter-2 (2026-04-25) — COMPLETE
+- 1 NEW Critical (N-C1: IpcError::from_string nonexistent) + 3 Important + 3 Nice-to-have
+- Q7-Q9 all resolved
+- All fixed in spec v3 (commit pending — current iter)
+- See `.claude/pr-b-review/phase1-iter2-findings.md`
 
-**Subagents dispatched**: 3 (correctness reviewer + cross-consumer auditor + feasibility verifier)
-
-**Issues found** (see `pr-b-review/phase1-iter1-findings.md` for full text):
-- Critical: 5 (C1 ConfigManager API, C2 identifier, C3 two-phase commit, C4 Type=notify migration, C5 productive session counter)
-- Important: 8 (I1-I8)
-- Nice-to-have: 5 (N1-N5)
-- Cross-consumer conflicts: 4 (CC1-CC4)
-
-**Issues fixed in v2**: All 5 Critical + I1-I8 Important + most Nice-to-have. Spec rewritten substantially.
-
-**Open Questions Status**:
-
-| Q | Question | Status |
-|---|----------|--------|
-| Q1 | Tauri identifier match | ✅ Resolved — `com.oneshim.client` (Tauri) vs `com.oneshim.agent` (autostart) intentional separation |
-| Q2 | ConfigManager API | ✅ Resolved — real API is sync `update_with` closure, no async, no `Handle` |
-| Q3 | `deny_unknown_fields` | ✅ Resolved — NOT set, downgrade safe |
-| Q4 | Productive-session event | ✅ Resolved — does NOT exist, must add to monitor.rs (commit 11) |
-| Q5 | sd-notify 0.4 | ✅ Resolved — acceptable, optional Linux-only feature flag |
-| Q6 | Smoke matrix recording | ✅ Resolved — per-PR description body checklist |
-| Q7 | tauri-plugin-single-instance D-Bus name source | ⚠ NEW — verify in iter-2 |
-| Q8 | i18n key parity CI lint exists? | ⚠ NEW — verify in iter-2 |
-| Q9 | Reconciler XDG fallback path | ⚠ NEW — verify in iter-2 |
-
-### iter-2 (planned) — Spec Verification
+### iter-3 (next iteration) — Final Verification
 
 **Goals**:
-1. Re-review spec v2 (fresh subagent perspective) — verify fixes are correct, no NEW issues introduced
-2. Verify revised IPC command code blocks compile against actual `ConfigManager` API
-3. Resolve Q7-Q9
-4. If clean: advance to Phase 2
-5. If issues remain: iter-3
+1. Fresh subagent re-review of spec v3 — confirm v2 → v3 fixes are correct
+2. Confirm zero new Critical/Important issues
+3. If clean → advance to Phase 2 (start writing-plans)
+4. If issues remain → iter-4
 
 ### Phase 1 Exit Criteria
 
-- All Critical + Important issues = 0
-- Q7-Q9 resolved
-- Spec re-committed with any further updates
-- This file updated to reflect Phase 2 start
+- ✅ All Critical issues fixed (6 total: C1-C5 + N-C1)
+- ✅ All Important issues fixed (11 total: I1-I8 + N-I1 to N-I4 minus overlaps)
+- ✅ Q1-Q9 all resolved
+- ✅ Spec v3 committed (pending — current iter)
+- ✅ Cross-consumer audit captured (§17)
+- ⏳ iter-3 verification (next iteration)
 
-## Files Created (Phase 1)
+## Phase 2 (planned) — Plan Creation
 
-- `docs/superpowers/specs/2026-04-25-phase9-pr-b-autostart-ipc-foundation-design.md` (spec v1 → v2)
+**Trigger**: iter-3 confirms Phase 1 clean.
+
+**Skill**: `superpowers:writing-plans` invoked with the spec v3 as input.
+
+**Output**: `docs/superpowers/plans/2026-04-25-phase9-pr-b-autostart-ipc-foundation-plan.md`
+
+**Phase 2 review process**: similar deep review until Critical+Important = 0.
+
+## Phase 3 (planned) — Implementation
+
+**Trigger**: Phase 2 plan zero-issue gate.
+
+**Skill**: `superpowers:subagent-driven-development` for implementation execution.
+
+**Output**: actual commits implementing PR-B1 then PR-B2.
+
+**Phase 3 review process**: ongoing per-task 2-stage review (per `feedback_subagent_driven_catches_stale_plans`).
+
+## Files Created (Phase 1 to date)
+
+- `docs/superpowers/specs/2026-04-25-phase9-pr-b-autostart-ipc-foundation-design.md` (v1 → v2 → v3)
 - `.claude/pr-b-review/phase1-iter1-findings.md`
+- `.claude/pr-b-review/phase1-iter2-findings.md`
 - `.claude/pr-b-loop-state.md` (this file)
 
 ## Commits
 
 - `fd8f64cf` docs(spec): Phase 9 PR-B autostart IPC + single-instance + Linux deep design (v1)
-- (next) docs(spec): v2 rev-1 incorporating 5 Critical + 8 Important fixes from Phase 1 iter-1 review
+- `5f1add95` docs(spec): v2 rev-1 incorporates 5 Critical + 8 Important Phase 1 review fixes
+- (next) docs(spec): v3 rev-2 incorporates Phase 1 iter-2 review fixes (1 Critical + 3 Important + 3 Nice-to-have, Q7-Q9 resolved)
