@@ -210,4 +210,36 @@ mod tests {
         let cfg = mgr.get();
         assert_eq!(cfg.autostart.productive_session_count, 3);
     }
+
+    #[test]
+    fn dismissed_state_skips_event_emission() {
+        let (mgr, _dir) = make_config_mgr();
+        // Set state to Dismissed — should_prompt() returns false regardless of count
+        mgr.update_with(|c| {
+            c.autostart.prompt_state = oneshim_core::config::AutostartPromptState::Dismissed;
+            Ok(())
+        })
+        .expect("update");
+
+        let called = Arc::new(AtomicBool::new(false));
+        let called2 = called.clone();
+
+        handle_focus_block_completed_inner(
+            &mgr,
+            move || {
+                called2.store(true, Ordering::SeqCst);
+            },
+            Uuid::new_v4(),
+            30 * 60, // long block — would normally trigger event
+        );
+
+        let cfg = mgr.get();
+        // Counter still increments (idempotency tracking is separate from event emission)
+        assert_eq!(cfg.autostart.productive_session_count, 1);
+        // But event must NOT fire because prompt_state is Dismissed
+        assert!(
+            !called.load(Ordering::SeqCst),
+            "event should NOT emit when prompt_state == Dismissed"
+        );
+    }
 }
