@@ -2952,6 +2952,32 @@ impl LiveReloadHarness {
         let _ = self.server_handle.await;
         let _ = self.reload_handle.await;
     }
+
+    /// Poll `live.snapshot().streaming_enabled` until it equals `expected`,
+    /// or panic with `msg` if `timeout` elapses first. Tick interval is
+    /// 25 ms — matches the cadence used across pre-extraction sites and
+    /// keeps wake-ups bounded under the 1 s convergence cap commonly used
+    /// by Task 9.4 / 9.6 tests.
+    ///
+    /// The panic message is auto-suffixed with the last observed value, the
+    /// expected value, and the configured cap, so callers only need to
+    /// describe the high-level invariant being violated.
+    async fn wait_for_streaming(&self, expected: bool, timeout: Duration, msg: &str) {
+        let start = std::time::Instant::now();
+        loop {
+            let snap = self.live.snapshot().streaming_enabled;
+            if snap == expected {
+                return;
+            }
+            if start.elapsed() >= timeout {
+                panic!(
+                    "{msg} (waited {timeout:?}, last observed streaming_enabled={snap}, \
+                     expected={expected})"
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
 }
 
 /// Builder for [`LiveReloadHarness`].
@@ -3354,22 +3380,13 @@ async fn external_grpc_live_reload_coalesces_rapid_updates() {
     // Replace fixed sleep with convergence poll — waits for the reload task
     // to drain up to the final update without relying on a fixed timeout.
     // i=99 is odd → final update set streaming_enabled = Some(false).
-    let expected_final_streaming = false;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        let snap = harness.live.snapshot();
-        if snap.streaming_enabled == expected_final_streaming {
-            break;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            panic!(
-                "reload task did not converge to final update within 2s; \
-                 current streaming_enabled={}, expected={}",
-                snap.streaming_enabled, expected_final_streaming
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    harness
+        .wait_for_streaming(
+            false,
+            Duration::from_secs(2),
+            "reload task did not converge to final update",
+        )
+        .await;
 
     // Defensive re-read: guards against the reload task doing one more
     // update between the convergence break and this assertion.
@@ -3683,17 +3700,13 @@ async fn loopback_streaming_enabled_is_not_live_reloaded() {
         .expect("update_with apply");
 
     // Wait for the ConfigReloadTask to converge (mirrors Task 9.4 cap).
-    let timeout = Duration::from_secs(1);
-    let start = std::time::Instant::now();
-    loop {
-        if !harness.live.snapshot().streaming_enabled {
-            break;
-        }
-        if start.elapsed() > timeout {
-            panic!("convergence timeout: external streaming did not flip to false within 1s");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    harness
+        .wait_for_streaming(
+            false,
+            Duration::from_secs(1),
+            "convergence timeout: external streaming did not flip to false",
+        )
+        .await;
 
     // Assert NG1: external is now disabled, but loopback config field is untouched.
     assert!(
@@ -3764,19 +3777,13 @@ async fn external_streaming_falls_back_to_web_field_when_external_none() {
         .expect("update_with apply");
 
     // Wait for ConfigReloadTask to converge.
-    let timeout = Duration::from_secs(1);
-    let start = std::time::Instant::now();
-    loop {
-        if !harness.live.snapshot().streaming_enabled {
-            break;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "fall-through timeout: live.streaming_enabled did not converge to false within 1s"
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    harness
+        .wait_for_streaming(
+            false,
+            Duration::from_secs(1),
+            "fall-through timeout: live.streaming_enabled did not converge to false",
+        )
+        .await;
 
     // Assert resolution: external=None + web=false → resolved=false.
     assert!(
@@ -3857,20 +3864,14 @@ async fn external_streaming_override_wins_over_web_field_when_some() {
         .expect("update_with apply");
 
     // Wait for ConfigReloadTask to converge.
-    let timeout = Duration::from_secs(1);
-    let start = std::time::Instant::now();
-    loop {
-        if harness.live.snapshot().streaming_enabled {
-            break;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "override-beats-parent timeout: live.streaming_enabled did not converge to true \
-                 within 1s (web=false but external=Some(true) should win)"
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    harness
+        .wait_for_streaming(
+            true,
+            Duration::from_secs(1),
+            "override-beats-parent timeout: live.streaming_enabled did not converge to true \
+             (web=false but external=Some(true) should win)",
+        )
+        .await;
 
     // Assert NV4: even though web=false, the Some(true) override wins.
     assert!(
