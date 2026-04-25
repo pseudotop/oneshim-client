@@ -21,7 +21,11 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v9 (Phase 2 iter-9 NEW Critical fix — plan v1-v8 missed the SERVICE LAYER migration. Reality: handlers thin-delegate via `FramesQueryService::get_frames(&params)` etc.; services internally call `params.from_datetime()` / `params.to_datetime()` (silently swallow parse errors with hardcoded 24h fallback). Plan Task 6 example showed handler going direct to storage — architecturally wrong. v9 updates Task 6 to migrate at SERVICE layer (services internally convert via `to_time_window()?` for proper error propagation). 7 service files + tests added to scope. Old `from_datetime()` / `to_datetime()` helpers documented as legacy / non-validating). v8 cleanup — addresses iter-7 verifier's flagged "minor weakness" in Step 4C.5: missing locals-binding prescription for work_sessions.rs `get_daily_active_secs`. v8 adds PRESERVE-BODY diff PLUS surfaces a meaningful semantic finding: this query uses half-open `started_at < ?2` (NOT closed-closed like other helpers). Per NG6 the `<` operator must be preserved verbatim. v8 documents the half-open boundary so implementer doesn't accidentally "fix" it to `<=`). v7 — addresses iter-6 verification: 1 NEW Critical NEW-C1 — Step 4C.1 calibration_store_impl.rs had same class of synthetic-drift errors as Step 4C.4. v7 rewrites Step 4C.1 with PRESERVE-BODY pattern: actual table is `calibration_log` (not `calibration`), column is `is_noise` (not `noise`), uses fallible-lock + `CoreError::Storage { code, message }` mapping, get_entries + list_segment_time_ranges use async `with_conn` pattern with `from_str`/`to_str` String shadowing, list_segment has table_exists guard for V9 migration). v6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
+**Plan version:** v10 (Phase 2 iter-10 cleanup — addresses 2 NEW Critical + 2 NEW Important from iter-9 verification:
+- NEW-C1: default-window-size regression (existing helpers default 24h, plan v9 prescribed 7d/30d which is 7×/30× widening). v10 changes default to `Duration::hours(24)` everywhere to preserve existing behavior; future PR can deliberately change.
+- NEW-C2: Service-layer migration must decompose `&window` for non-migrated storage methods (get_frames/get_events/get_metrics/etc. still take `DateTime<Utc>`, NOT `&TimeWindow`). Documented decomposition pattern.
+- NEW-I1: Step 6.2-6.7 add explicit "continues Task 4D.3" framing per Step 7.4 model.
+- NEW-I2: Step 11.3 PHASE-HISTORY adds two behavior-change bullets.). v9 NEW Critical fix — plan v1-v8 missed the SERVICE LAYER migration. Reality: handlers thin-delegate via `FramesQueryService::get_frames(&params)` etc.; services internally call `params.from_datetime()` / `params.to_datetime()` (silently swallow parse errors with hardcoded 24h fallback). Plan Task 6 example showed handler going direct to storage — architecturally wrong. v9 updates Task 6 to migrate at SERVICE layer (services internally convert via `to_time_window()?` for proper error propagation). 7 service files + tests added to scope. Old `from_datetime()` / `to_datetime()` helpers documented as legacy / non-validating). v8 cleanup — addresses iter-7 verifier's flagged "minor weakness" in Step 4C.5: missing locals-binding prescription for work_sessions.rs `get_daily_active_secs`. v8 adds PRESERVE-BODY diff PLUS surfaces a meaningful semantic finding: this query uses half-open `started_at < ?2` (NOT closed-closed like other helpers). Per NG6 the `<` operator must be preserved verbatim. v8 documents the half-open boundary so implementer doesn't accidentally "fix" it to `<=`). v7 — addresses iter-6 verification: 1 NEW Critical NEW-C1 — Step 4C.1 calibration_store_impl.rs had same class of synthetic-drift errors as Step 4C.4. v7 rewrites Step 4C.1 with PRESERVE-BODY pattern: actual table is `calibration_log` (not `calibration`), column is `is_noise` (not `noise`), uses fallible-lock + `CoreError::Storage { code, message }` mapping, get_entries + list_segment_time_ranges use async `with_conn` pattern with `from_str`/`to_str` String shadowing, list_segment has table_exists guard for V9 migration). v6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
 
 ---
 
@@ -1901,8 +1905,9 @@ git commit -m "test(storage): boundary regression tests for migrated SQL helpers
 >
 > **New behavior after migration** via `to_time_window(default_lookback)`:
 > - Returns `Result<TimeWindow, TimeWindowError>` — propagates parse errors as 400 BadRequest
-> - Domain-specific `default_lookback` parameter (frames=7d, focus=30d, etc.)
-> - **THIS IS A BEHAVIOR CHANGE**: invalid timestamps now → 400 (was 200 with default window). User-facing API contract becomes stricter / more correct.
+> - **DEFAULT LOOKBACK PRESERVED at `Duration::hours(24)` everywhere** (Phase 2 iter-9 NEW-C1 fix). Plan v9 originally prescribed 7d/30d defaults — that would be a 7×/30× widening of payloads when frontend sends no bounds. v10 reverts to 24h to preserve current behavior; any deliberate widening should be a separate PR with frontend coordination.
+> - **ONE BEHAVIOR CHANGE**: invalid timestamps now → 400 (was 200 with default window). User-facing API contract becomes stricter / more correct.
+> - **NO behavior change for missing-bounds case**: `to_time_window(Duration::hours(24))` matches existing `from_datetime()` / `to_datetime()` semantics exactly.
 
 - [ ] **Step 6.0: Verify ACTUAL caller scope (handlers + services)**
 
@@ -1934,29 +1939,47 @@ pub fn get_frames(&self, params: &TimeRangeQuery) -> Result<PaginatedResponse<Fr
 }
 ```
 
-Change to:
+Change to (default lookback preserved at 24h per NEW-C1):
 ```rust
 use chrono::Duration;
 use oneshim_core::types::TimeWindow;
 
 pub fn get_frames(&self, params: &TimeRangeQuery) -> Result<PaginatedResponse<FrameResponse>, ApiError> {
-    let window = params.to_time_window(Duration::days(7))
+    let window = params.to_time_window(Duration::hours(24))   // ← matches existing 24h fallback
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let limit = params.limit_or_default();
     let offset = params.offset_or_default();
-    // ... pass &window to storage methods (Task 4 already updated their signatures)
+    // ... use window — see decomposition pattern below
 }
 ```
 
+**Storage method decomposition (Phase 2 iter-9 NEW-C2 fix)**: Task 4 only migrated 8 specific methods to `&TimeWindow`. The 7 services use OTHER storage methods that still take `DateTime<Utc>` or `&str`. For those, decompose `&window`:
+
+| Storage method | Migrated by Task 4? | Decomposition pattern in service |
+|----------------|---------------------|----------------------------------|
+| `count_events_in_range(&TimeWindow)` | ✅ | `.count_events_in_range(&window)` |
+| `count_frames_in_range(&TimeWindow)` | ✅ | `.count_frames_in_range(&window)` |
+| `get_daily_active_secs(&TimeWindow)` | ✅ | `.get_daily_active_secs(&window)` |
+| `delete_data_in_range(&TimeWindow, ...)` | ✅ | `.delete_data_in_range(&window, ...)` |
+| `list_frame_file_paths_in_range(&TimeWindow)` | ✅ | `.list_frame_file_paths_in_range(&window)` |
+| `flag_noise_range(&TimeWindow)` | ✅ | `.flag_noise_range(&window)` |
+| `get_entries(&TimeWindow, bool)` | ✅ | `.get_entries(&window, exclude_noise)` |
+| `list_segment_time_ranges(&TimeWindow)` | ✅ | `.list_segment_time_ranges(&window)` |
+| `get_frames(DateTime<Utc>, DateTime<Utc>, usize)` | ❌ | `.get_frames(window.start, window.end, limit)` |
+| `get_events(DateTime<Utc>, DateTime<Utc>, usize)` | ❌ (out of plan scope) | `.get_events(window.start, window.end, limit)` |
+| `get_metrics`, `get_process_snapshots`, `get_idle_periods`, `list_work_sessions`, `list_interruptions`, `list_hourly_metrics_since` | ❌ (out of plan scope) | Pass `window.start, window.end` (decompose) |
+
+**Out-of-scope methods stay on `DateTime<Utc>` signatures** — migrating them is future work (separate PR). For this PR, services destructure `&window` to `(window.start, window.end)` when calling them. Use the destructure pattern: `let TimeWindow { start, end } = window;` if Copy-derived (it is).
+
 **No handler change needed** — handler still calls `FramesQueryService::new(context).get_frames(&params)?`. The handler-level `?` propagates `ApiError::BadRequest` → HTTP 400 automatically.
 
-- [ ] **Step 6.2: Update EventsQueryService**
+- [ ] **Step 6.2: Update EventsQueryService (CONTINUES Task 4D.3 events_service.rs:35 migration)**
 
-Same pattern. Default lookback `Duration::days(7)`. Note `count_events_in_range` on storage (Task 4) now takes `&TimeWindow` — caller passes `&window` directly.
+Default lookback `Duration::hours(24)` (preserve existing behavior per NEW-C1). Task 4D.3 already migrated `events_service.rs:35` to use `TimeWindow::new(from, to)` inline — Step 6.2 refactors that inline conversion to `params.to_time_window(Duration::hours(24))?` for consistency with the rest of Task 6. Net change vs Task 4D.3: same TimeWindow construction, but error mapping uses `BadRequest` instead of `From<TimeWindowError> for CoreError` chain.
 
 - [ ] **Step 6.3: Update MetricsService**
 
-Same pattern. `Duration::days(7)`.
+Same pattern. `Duration::hours(24)`.
 
 - [ ] **Step 6.4: Update FocusQueryService (4 helper-call sites — verify ALL migrated)**
 
@@ -1965,7 +1988,7 @@ Open `crates/oneshim-web/src/services/focus_service.rs`. **Has 4 `from_datetime(
 grep -n "from_datetime\|to_datetime\|to_time_window\|fn " crates/oneshim-web/src/services/focus_service.rs
 ```
 
-Migrate each method's usage. Use `Duration::days(30)` (focus_metrics is daily aggregate).
+Migrate each method's usage. Use `Duration::hours(24)` (preserve existing behavior — was 30d in v9 but flagged as default-window-size widening per NEW-C1).
 
 - [ ] **Step 6.5: Update IdleService (handler-only migration, NG7 — IdlePeriod model NOT migrated)**
 
@@ -1973,11 +1996,11 @@ Service layer migrates the query window construction. The `IdlePeriod` model fie
 
 - [ ] **Step 6.6: Update ProcessesService**
 
-Same pattern.
+Same pattern. `Duration::hours(24)`.
 
 - [ ] **Step 6.7: Update TimelineService**
 
-Open `crates/oneshim-web/src/services/timeline_service.rs`. Apply same pattern. Default lookback context-dependent (likely `Duration::days(7)`).
+Open `crates/oneshim-web/src/services/timeline_service.rs`. Apply same pattern. `Duration::hours(24)`.
 
 - [ ] **Step 6.8: Decision — what to do with from_datetime/to_datetime helpers?**
 
@@ -2617,7 +2640,11 @@ Add new section after the latest Phase 9 entries:
 - **Migration scope**: TimeRangeQuery::to_time_window adapter + 6 REST handlers + 8 SQL port-trait methods + 4 caller sites + FocusMetrics + SessionMetrics + DeleteRangeRequest (period() accessor — Option C) + ReportQuery (flatten TimeRangeQuery)
 - **2 new wire codes**: time_window.inverted_bounds + time_window.parse_failed (ADR-019 define_code_enum! macro)
 - **Tests**: +13 TimeWindow unit + 3 TimeWindowCode + 8 TimeRangeQuery adapter + 3 SQL boundary regression + 4 E2E + 2 ApiError mapping + 4 api-contracts roundtrip (DeleteRangeRequest×3 + ReportQuery×1) = **37 new tests total**
-- **External API contract preserved**: REST query strings unchanged; DeleteRangeRequest JSON shape preserved via accessor pattern (no custom serde required)
+- **External API contract — query string shape preserved**: REST query strings unchanged (`?from=...&to=...&limit=...`); DeleteRangeRequest JSON shape preserved via accessor pattern (no custom serde required)
+- **Behavior change #1 — invalid timestamp handling**: requests with malformed `from` / `to` query strings now return HTTP 400 BadRequest with parse error message. Previously: silently fell back to defaults (`from = Utc::now() - 24h`, `to = Utc::now()`) and returned 200 OK with default-window data. Strict API contract improvement.
+- **Behavior preserved — default-window size**: `to_time_window(Duration::hours(24))` matches existing `from_datetime()` 24h fallback exactly. NO change for missing-bounds requests. (Plan v9 originally prescribed 7d/30d defaults — corrected in v10 per Phase 2 iter-9 NEW-C1.)
+- **Behavior preserved — half-open vs closed-closed boundaries**: NG6 honored. SQL `BETWEEN` queries unchanged (closed-closed); work_sessions `started_at < ?2` half-open preserved (per NG6); calibration `start_time >= ?1 AND end_time <= ?2` containment semantic preserved.
+- **Helpers retained**: `TimeRangeQuery::from_datetime()` / `to_datetime()` / `limit_or_default()` / `offset_or_default()` kept (non-deprecated) for non-validating use cases (test fixtures, demos, internal tooling). New code uses `to_time_window` for validating conversion.
 - Spec + plan: `docs/superpowers/specs/2026-04-25-timewindow-primitive-design.md` (v3) + `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md` (v2)
 ```
 
@@ -2703,6 +2730,15 @@ PR description should summarize:
 - Q-8 baseline count: PF3 captures actual count at impl time (NOT trusted from spec)
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
+
+### 5g. Phase 2 iter-10 findings disposition (v10 cleanup)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Critical | NEW-C1 — default-window-size 24h→7d/30d widening | ✅ All 7 services use `Duration::hours(24)` (matches existing `from_datetime()` 24h fallback). Behavior preserved exactly. Phase 11.3 PHASE-HISTORY documents "Behavior preserved — default-window size" as explicit non-change. |
+| Critical | NEW-C2 — non-migrated storage methods need decomposition | ✅ Step 6.1 adds explicit decomposition table: 8 storage methods migrated to `&TimeWindow` (Task 4); 6+ others (`get_frames`, `get_events`, `get_metrics`, etc.) stay on `DateTime<Utc>` and services destructure `&window` to `(window.start, window.end)` when calling them. Out-of-scope methods explicitly listed. |
+| Important | NEW-I1 — Step 6.2 missing continuation framing | ✅ Step 6.2 explicitly says "CONTINUES Task 4D.3 events_service.rs:35 migration" + clarifies net change vs Task 4D.3 (same TimeWindow construction, different error mapping path). |
+| Important | NEW-I2 — PHASE-HISTORY behavior change incomplete | ✅ Step 11.3 PHASE-HISTORY adds 5 new bullets: behavior change (invalid timestamp → 400), behavior preserved (default-window-size), behavior preserved (boundary semantics), helpers retained. Discoverable for frontend / integrators. |
 
 ### 5f. Phase 2 iter-9 findings disposition (v9 architectural correction)
 
