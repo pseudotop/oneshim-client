@@ -1,5 +1,4 @@
 use oneshim_api_contracts::data::{DeleteRangeRequest, DeleteResult};
-use oneshim_core::types::TimeWindow;
 
 use crate::error::ApiError;
 use crate::services::web_contexts::StorageWebContext;
@@ -25,7 +24,8 @@ impl DataCommandService {
             ));
         }
 
-        let window = TimeWindow::from_rfc3339_pair(&request.from, &request.to)
+        let window = request
+            .period()
             .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
         let mut result = DeleteResult::empty();
