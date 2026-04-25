@@ -63,7 +63,8 @@ interface AutostartCapabilities {
   environment: string
 }
 
-function StartupSection() {
+// Exported for unit testing (Vitest).
+export function StartupSection() {
   const { t } = useTranslation()
   const [enabled, setEnabled] = useState<boolean | null>(null)
   const [caps, setCaps] = useState<AutostartCapabilities | null>(null)
