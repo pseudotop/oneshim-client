@@ -31,13 +31,13 @@ Investigation of the codebase identified **5 main + 4 supporting sites** where t
 |---|------|-----------|--------|--------|
 | 1 | `TrackingWindow` | `crates/oneshim-core/src/config/sections/tracking_schedule.rs:97-108` | HH:MM strings + days_of_week | Wall-clock recurrence (PR-A) |
 | 2 | `TimeRange` (coaching quiet hours) | `crates/oneshim-core/src/config/sections/coaching.rs:120-125` | HH:MM strings | Wall-clock recurrence |
-| 3 | `TimeRangeQuery` | `crates/oneshim-api-contracts/src/common.rs:5-11` | RFC3339 ISO8601 strings, optional bounds | REST API params (8+ handlers) |
-| 4 | `FocusMetrics period_*` | `crates/oneshim-core/src/models/work_session.rs:287-299` | `DateTime<Utc>` pair | Daily/weekly aggregates |
-| 5 | `DeleteRangeRequest` | `crates/oneshim-api-contracts/src/data.rs:4-9` | ISO8601 strings | GDPR data purge |
-| 6 | `IdlePeriod` | `crates/oneshim-core/src/models/activity.rs:20-24` | `DateTime<Utc>` + `Option<DateTime<Utc>>` | Idle session tracking |
-| 7 | `SessionMetrics period_*` | `crates/oneshim-core/src/models/telemetry.rs:16-17` | `DateTime<Utc>` pair | Telemetry window |
-| 8 | `ReportQuery` | `crates/oneshim-api-contracts/src/reports.rs:13-18` | ISO8601 strings + `period: ReportPeriod` enum | Weekly/monthly reports |
-| 9 | SQL storage helpers | `crates/oneshim-storage/src/sqlite/{events,frames,calibration,web_storage_impl}.rs` (10+ methods) | mixed: `&str` pair (RFC3339) or `DateTime<Utc>` pair | Range queries |
+| 3 | `TimeRangeQuery` | `crates/oneshim-api-contracts/src/common.rs:5-11` | RFC3339 ISO8601 strings, optional bounds | REST API params (6 production handlers per Phase 2 iter-1 I3 — events/metrics/idle/focus/processes/frames; mod.rs is test fixture only; sessions/interruptions don't use TimeRangeQuery) |
+| 4 | `FocusMetrics period_*` | `crates/oneshim-core/src/models/work_session.rs:273-284` (struct), 286+ (impl block) | `DateTime<Utc>` pair | Daily/weekly aggregates. 10 call sites total per Phase 2 iter-12 enumeration. |
+| 5 | `DeleteRangeRequest` | `crates/oneshim-api-contracts/src/data.rs:4-9` | ISO8601 strings (RFC3339) | GDPR data purge — Phase 2 iter-1 C9 resolves via Option C accessor pattern (NO custom serde) |
+| 6 | `IdlePeriod` | `crates/oneshim-core/src/models/activity.rs:20-24` | `DateTime<Utc>` + `Option<DateTime<Utc>>` | Idle session tracking — NOT migrated per NG7 |
+| 7 | `SessionMetrics period_*` | `crates/oneshim-core/src/models/telemetry.rs:14` (struct), 16-17 (fields) | `DateTime<Utc>` pair | Telemetry window. **Possibly dead code** — Phase 2 iter-1 I1 found zero production callers; migrating for consistency only. |
+| 8 | `ReportQuery` | `crates/oneshim-api-contracts/src/reports.rs:13` (struct), 14-18 (fields) | **Date-only `%Y-%m-%d` strings** (NOT RFC3339) per Phase 2 iter-11 finding | Weekly/monthly reports — schema preserved per NG11 |
+| 9 | SQL storage helpers | `crates/oneshim-storage/src/sqlite/{events,frames,calibration_store_impl,web_storage_impl,maintenance,edge_intelligence/work_sessions}.rs` | 8 specific port methods migrated (Task 4 enumeration); ~30 caller sites total (Step 4D.0 enumeration) including services + tests + mocks | Range queries — Phase 2 iter-1 C6/C7 expanded scope |
 
 ### 1.3 Why now
 
