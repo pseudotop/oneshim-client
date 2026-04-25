@@ -32,6 +32,16 @@ impl<F: Fn(&AuditEntry) + Send + Sync> AuditPersistence for F {
 /// Used by [`AuditLogger::entries_by_command_id`] to fall through from the
 /// in-memory `VecDeque` buffer (~1000-row cap) to persistent storage when
 /// the buffer doesn't have enough matching entries.
+///
+/// # Invariant
+///
+/// Implementations MUST return entries with stable, unique `entry_id`. The
+/// dedupe step in [`AuditLogger::entries_by_command_id`] keys on `entry_id`
+/// to merge buffer + storage results — the same `entry_id` MUST always carry
+/// the same logical entry (same timestamp, same details). The production
+/// `SqliteAuditQuery` satisfies this via the V25 schema's
+/// `UNIQUE(entry_id)` constraint. Custom implementations that violate
+/// this invariant may silently drop legitimate entries during dedup.
 pub trait AuditQuery: Send + Sync {
     /// Return audit entries whose `command_id` exactly matches.
     /// Ordered by `timestamp DESC`. Empty vec if none match.
@@ -1110,6 +1120,55 @@ mod query_tests {
         assert_eq!(results.len(), 2);
         for r in &results {
             assert_eq!(r.command_id, "cmd-X");
+        }
+    }
+
+    #[test]
+    fn large_limit_returns_all_merged_no_truncation() {
+        // 5 buffer entries for cmd-target + 5 different entries in storage,
+        // limit = 100 → expect 10 returned, newest-first, no truncation,
+        // no dedup loss (all entry_ids are distinct).
+        let mut logger = AuditLogger::new(100, 10);
+        // Seed buffer with 5 entries for the target command_id.
+        for i in 0..5_u32 {
+            logger.log_start_if(
+                AuditLevel::Basic,
+                "cmd-target",
+                "s",
+                &format!("buf-action-{i}"),
+            );
+        }
+
+        // Build 5 storage entries with distinct entry_ids, older than the
+        // buffer entries (offsets 500–900 ms back so they sort after buffer).
+        let storage_entries: Vec<AuditEntry> = (0..5_i64)
+            .map(|i| make_entry(&format!("storage-id-{i}"), "cmd-target", 500 + i * 100))
+            .collect();
+
+        let logger = logger.with_query(Arc::new(MockQuery {
+            entries: storage_entries,
+        }));
+
+        let results = logger.entries_by_command_id("cmd-target", 100);
+        assert_eq!(
+            results.len(),
+            10,
+            "10 unique entries should all return when limit > total"
+        );
+
+        // All must belong to the requested command_id.
+        for r in &results {
+            assert_eq!(r.command_id, "cmd-target");
+        }
+
+        // Verify monotonic ordering: newest-first (timestamps DESC).
+        for w in results.windows(2) {
+            assert!(
+                w[0].timestamp >= w[1].timestamp,
+                "results must be newest-first; got {:?} before {:?}",
+                w[0].timestamp,
+                w[1].timestamp,
+            );
         }
     }
 }
