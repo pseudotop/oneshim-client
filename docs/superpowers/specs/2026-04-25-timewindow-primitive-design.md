@@ -1,10 +1,11 @@
 # TimeWindow Primitive Refactor Design Spec
 
 **Date:** 2026-04-25
-**Version:** v2 (Phase 1 iter-1 review fixes applied: 4 Critical + 5 Important + 4 Nice-to-have)
+**Version:** v3 (Phase 1 iter-2 cleanup: 1 Critical + 3 Important stale-reference fixes)
 **Review history:**
 - v1 (2026-04-25): initial design
-- v2 (2026-04-25): incorporates `.claude/timewindow-review/phase1-iter1-findings.md` fixes
+- v2 (2026-04-25): Phase 1 iter-1 review fixes (4 Critical + 5 Important + 4 Nice-to-have)
+- v3 (2026-04-25): Phase 1 iter-2 stale-reference cleanup + Q-4/Q-6/Q-7 resolution
 **Baseline:** main `2ba38cf5` (post-PR #510 docs naturalize)
 **Target release:** v0.4.42-rc.1 (after PR-B1 #508 + PR-B2 land)
 **Implementation gate:** PR-B1 (#508) MUST merge before Phase 3 starts (rebase pain on `oneshim-core/config/sections/`)
@@ -345,12 +346,11 @@ pub struct FocusMetrics {
 **JSON serialization compatibility** — Critical:
 The `TimeWindow` serde struct produces `{"start": "...", "end": "..."}`. If `FocusMetrics` is serialized as part of API response, the JSON shape changes from `period_start/period_end` to nested `period: {start, end}`. This affects frontend consumers!
 
-**Mitigation options** (Phase 1 deep review must decide):
-- Option X: Use `#[serde(flatten)]` on `period: TimeWindow` field → JSON keys become `start`/`end` (still different from `period_start`/`period_end`) — partial compat
-- Option Y: Custom serde with `period_start`/`period_end` external names — preserves JSON shape exactly
-- Option Z: Accept JSON shape change + update frontend types
+**RESOLVED via NG8** (Phase 1 iter-1 I1): **Option Z** chosen — accept JSON shape change on internal `FocusMetrics` model.
 
-**Tentative recommendation**: Option Y (preserve JSON shape via custom serde). Avoid frontend churn. Defer Z to a future API versioning effort.
+Rationale: `FocusMetrics` is internal domain model only. The REST contract serializes `FocusMetricsDto` (in `oneshim-api-contracts/src/focus.rs`) which has DIFFERENT fields (`date: String` + scalars, NO `period_start/period_end`). Verified frontend has zero references to `period_start`/`period_end`. Internal JSON shape change has no external impact. **No custom serde needed**. Saves ~3h of unnecessary work.
+
+(Removed stale Option X/Y/Z discussion that was here.)
 
 ### 5.5 REST Handler Migration Pattern
 
@@ -507,7 +507,7 @@ For each migrated SQL helper:
 - Use existing test fixtures where available
 
 For each REST handler:
-- Verify response JSON shape unchanged (especially for `FocusMetrics` if Option Y serde used)
+- Verify response JSON shape unchanged (`FocusMetricsDto` REST contract — internal `FocusMetrics` shape change is OK per NG8)
 - Verify default lookback values match prior code
 
 ### 8.4 Pass criteria
@@ -561,8 +561,8 @@ After merge → `0.4.42-rc.1` (or batch with PR-B2 into single RC).
 ### 10.1 External API contracts
 
 - **REST API query strings** (`?from=X&to=Y`) — UNCHANGED
-- **REST API response JSON** for `FocusMetrics` — preserved via Option Y serde (custom field names `period_start`/`period_end`)
-- **REST API response JSON** for `DeleteRangeRequest` — CHANGED (new `period: { start, end }` shape vs old `from/to` flat). Frontend update needed.
+- **REST API response JSON** for `FocusMetrics` — internal model JSON shape changes (`period_start/period_end → period: {start, end}`); REST DTO (`FocusMetricsDto` in api-contracts) is NOT affected. Frontend unaffected per NG8.
+- **REST API response JSON** for `DeleteRangeRequest` — preserved via custom serde (per Q-10 option (b): rename `start → from`, `end → to` in serde attributes). Frontend `DataSection.tsx` unchanged. External API contract preserved.
 - **Tauri IPC** — none affected (no time-range IPC commands identified)
 
 ### 10.2 Internal API (Rust) — breaking changes
@@ -587,11 +587,11 @@ These are internal — no external consumers (this is a desktop client, not a li
 | Q-1 | ✅ RESOLVED (Phase 1 iter-1 I1): `FocusMetrics` is internal model only — REST serializes `FocusMetricsDto` (different fields). Frontend has zero references to `period_start/period_end`. Use **Option Z** (break internal JSON shape). Saves ~3h custom serde work. |
 | Q-2 | ✅ RESOLVED (Phase 1 iter-1 I4): `IdlePeriod` NOT migrated. `end_time: Option<DateTime<Utc>>` represents ongoing idle. Migration would require either two types or `end = now()` workaround (drift bug). Add NG7. |
 | Q-3 | ✅ RESOLVED (Phase 1 iter-1 I2): `ReportQuery { period: ReportPeriod, window: Option<TimeWindow> }`. `period` enum (Week/Month/Custom) primary; `window` is Some only when `period == Custom`. |
-| Q-4 | ⚠ Pending iter-2: prefer storage layer takes `&TimeWindow` (consistent); construction at handler boundary. Detail per-commit. |
+| Q-4 | ✅ RESOLVED (Phase 1 iter-2): TimeWindow is always constructed at the **handler boundary** (REST handler calls `q.to_time_window(default)?` once). Storage layer ONLY accepts `&TimeWindow` (never `&str` pair or `(DateTime, DateTime)` pair). Domain models (FocusMetrics, SessionMetrics) embed `period: TimeWindow` field. Single canonical construction site enforces validation discipline. |
 | Q-5 | ✅ RESOLVED: yes, migrate `flag_noise_range`. Per Phase 1 iter-1 N3, also update port trait at `oneshim-core/src/ports/calibration_store.rs`. |
-| Q-6 | ⚠ Pending iter-2: `start == end` (zero-duration) allowed per spec §5.1. Verify no handler confusion. |
-| Q-7 | ⚠ Pending iter-2: `pub start, pub end` allows bypassing `new()` validation. Trade-off vs convenient pattern matching. Decide. |
-| Q-8 | ⚠ Pending iter-2: alphabetical position of `time_window.*` codes in snapshot — verify at impl time. |
+| Q-6 | ✅ RESOLVED (Phase 1 iter-2): `start == end` (zero-duration window) is valid per §5.1 — represents single-instant query. Handlers pass through to SQL `WHERE timestamp >= start AND timestamp <= end` which correctly returns events at exactly that instant. No special case needed in any handler. |
+| Q-7 | ✅ RESOLVED (Phase 1 iter-2): keep `pub start, pub end` for convenient pattern matching (Rust idiom for value types like `chrono::DateTime`). Document in module rustdoc: "`TimeWindow::new` is the validation-safe constructor; direct struct literal construction bypasses bound validation — use only when both bounds are known to satisfy `start <= end`." |
+| Q-8 | ⚠ Pending iter-3: alphabetical position of `time_window.*` codes in snapshot — must verify at impl time after computing actual baseline (see C1 + §7.2 recompute note). |
 | Q-9 | ✅ RESOLVED: gRPC `MetricBucket` excluded (NG2). Verified. |
 | Q-10 (NEW iter-1) | ⚠ `DeleteRangeRequest` external JSON shape preservation strategy: option (a) update DataSection.tsx (~30min) or option (b) custom serde (rename start→from, end→to). Spec recommends (b) — minimal frontend churn + preserves API contract. Verify in iter-2. |
 
@@ -601,7 +601,7 @@ These are internal — no external consumers (this is a desktop client, not a li
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| `FocusMetrics` JSON shape break crashes frontend Dashboard | Medium | High | Spec Option Y (custom serde) — preserve `period_start`/`period_end` keys. Verified in Phase 1 iter-1. |
+| `FocusMetrics` JSON shape break crashes frontend Dashboard | RESOLVED | n/a | Per NG8 + Q-1 RESOLVED: `FocusMetrics` not serialized to REST. `FocusMetricsDto` (different shape) is the REST contract. Frontend zero references to `period_start/period_end`. Option Z safe. No mitigation needed. |
 | `DeleteRangeRequest` JSON shape change breaks frontend GDPR UI | Low | Medium | Frontend likely doesn't have GDPR UI yet (or trivial migration). Document in PR description. |
 | `IdlePeriod` `Option<end_time>` for ongoing idle — TimeWindow can't represent | Medium | Medium | Per Q-2: use `OngoingIdlePeriod` separate type OR use TimeWindow with `end = now` (renewed each poll). Decide in iter-1. |
 | Big-bang PR cognitive load for reviewer | Medium | Low | Commit structure splits by domain (storage / handlers / models / GDPR). Reviewer can commit-by-commit. Deep review process catches issues. |
