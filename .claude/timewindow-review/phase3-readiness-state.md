@@ -99,6 +99,28 @@ PF2 rebase will be trivial when Phase 3 starts. After PR #508 merges, baseline j
 
 ---
 
+## Cross-Layer Scope Audit (2026-04-25 ~17:00, post plan v9)
+
+After plan v9 added service-layer migration scope (NEW-C1), an independent grep against ALL adapter layers confirms **plan scope is COMPLETE — no additional unmigrated callers exist**:
+
+```bash
+grep -rln "TimeRangeQuery\|count_events_in_range\|count_frames_in_range\|delete_data_in_range\|get_daily_active_secs\|list_frame_file_paths_in_range\|flag_noise_range\|\.from_datetime()\|\.to_datetime()" \
+  src-tauri/src/commands/ \
+  crates/oneshim-web/src/grpc/ \
+  crates/oneshim-network/src/
+```
+
+Result: **zero matches**. No Tauri IPC commands, no gRPC handlers, no network-layer code consumes any of the migrated APIs.
+
+Migration scope bounded to:
+- ✅ Service layer (`crates/oneshim-web/src/services/` — 9 files in plan v9 Task 6 + 7)
+- ✅ REST handlers (`crates/oneshim-web/src/handlers/` — thin pass-through, no changes needed)
+- ✅ Storage SQLite impls + internal tests (`crates/oneshim-storage/src/sqlite/` — Task 4)
+- ✅ src-tauri scheduler (`src-tauri/src/scheduler/analysis_pipeline/` — Task 4D.1+4D.2)
+- ✅ FocusMetrics call sites (10 sites enumerated — Task 8)
+
+---
+
 ## External Blocker Detail (PR #508)
 
 ```
