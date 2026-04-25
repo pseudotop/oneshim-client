@@ -304,7 +304,7 @@ impl AuditLogger {
         // Re-sort by timestamp DESC. Buffer rows are inserted-newest-first
         // (VecDeque + .rev()), and storage rows arrive in timestamp DESC. After
         // merge they may interleave, so re-sort to maintain newest-first.
-        results.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        results.sort_by_key(|e| std::cmp::Reverse(e.timestamp));
         results.truncate(limit);
         results
     }
@@ -930,7 +930,7 @@ mod query_tests {
                 .filter(|e| e.command_id == command_id)
                 .cloned()
                 .collect();
-            matching.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            matching.sort_by_key(|e| std::cmp::Reverse(e.timestamp));
             matching.truncate(limit);
             matching
         }
