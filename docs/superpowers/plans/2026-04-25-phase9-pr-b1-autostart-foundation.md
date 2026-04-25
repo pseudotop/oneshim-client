@@ -18,7 +18,7 @@
 
 **Worktree:** `/Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/Documents/vscode/__INDIVISUAL__/oneshim/client-rust/.claude/worktrees/phase9-autostart-foundation` on branch `feature/phase9-autostart-foundation`
 
-**Total estimate:** ~22h across 15 tasks.
+**Total estimate:** ~22.5h across 15 tasks (per Addendum A8 — original 22h + 0.5h for wire-code enum + monitor.rs AppHandle plumbing corrections).
 
 ---
 
@@ -1747,9 +1747,10 @@ git add crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.tsx
          crates/oneshim-web/frontend/src/components/AutostartOnboardingPromptHost.tsx \
          crates/oneshim-web/frontend/src/i18n/locales/en.json \
          crates/oneshim-web/frontend/src/i18n/locales/ko.json \
-         crates/oneshim-web/frontend/src/pages/Dashboard.tsx
-# Include any get_app_config IPC additions if needed
-git commit -m "feat(autostart): AutostartOnboardingPrompt + ShowPromptCoordinator + Dashboard integration"
+         crates/oneshim-web/frontend/src/pages/dashboard/DashboardLayout.tsx
+# Note: get_autostart_config IPC was already added in Task 4 per Addendum A5;
+# its source is in src-tauri/src/commands/autostart.rs (already committed by Task 4).
+git commit -m "feat(autostart): AutostartOnboardingPrompt + ShowPromptCoordinator + DashboardLayout integration"
 ```
 
 ---
