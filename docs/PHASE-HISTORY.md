@@ -189,3 +189,35 @@ The implementation spans 21 commits across the full client stack: `TrackingSched
 - **Implementation**: 13 commits across Tasks 1-13 on branch `feature/phase9-autostart-foundation` + 2 fixes (Task 10 ADR-019 wire code registration + Task 14 i18n test count adjustment) + holistic review polish
 - **Spec + plan**: `docs/superpowers/specs/2026-04-25-phase9-pr-b-autostart-ipc-foundation-design.md` (v3) + `docs/superpowers/plans/2026-04-25-phase9-pr-b1-autostart-foundation.md` (v2.6)
 - **Followup**: PR-B2 (Linux deep — sd-notify Type=notify, Snap/Flatpak/headless detection, capability-aware UI gating, Linux integration tests) on separate branch after PR-B1 merges
+
+## TimeWindow Primitive Refactor (v0.4.42-rc.1, 2026-04-26)
+
+Consolidated 9+ divergent absolute-timestamp time-range types — REST `from`/`to` query strings, SQL `from: &str, to: &str` parameter pairs, `(DateTime<Utc>, DateTime<Utc>)` tuples in `FocusMetrics` and `SessionMetrics`, ad-hoc `from_datetime()`/`to_datetime()` helpers — into a single canonical `TimeWindow { start: DateTime<Utc>, end: DateTime<Utc> }` primitive at `oneshim_core::types`. Closed-closed `[start, end]` semantic (matches existing SQL `BETWEEN` and Stripe-style business API expectations per spec U4).
+
+**Migration scope (8 commits across 11 plan tasks, 2 atomic merges)**:
+- `TimeRangeQuery::to_time_window(default_lookback)` + `TimelineQuery::to_time_window(default_lookback)` adapters bridging optional REST bounds → required `TimeWindow`
+- `DeleteRangeRequest::period()` accessor (Option C — preserves frontend JSON shape trivially, no custom serde)
+- 8 SQL port-trait methods migrated to `&TimeWindow` (`count_events_in_range`, `count_frames_in_range`, `list_frame_file_paths_in_range`, `delete_data_in_range`, `get_daily_active_secs`, `flag_noise_range`, `get_entries`, `list_segment_time_ranges` — last one consolidates 3-tuple `(String, DateTime, DateTime)` → 2-tuple `(String, TimeWindow)`)
+- 5 SQLite impl files updated PRESERVE-BODY (sig swap + `let (from, to) = window.to_sql_pair();` only — SQL strings, lock-error wrapping, half-open `started_at < ?2` per NG6, calibration containment `start_time >= ?1 AND end_time <= ?2` all preserved bit-identical)
+- 7 service layer files migrated (frames/events/metrics/focus/idle/processes/timeline) from `from_datetime()`+`to_datetime()` helpers to `params.to_time_window(default_lookback)?` validating conversion; 2 service files (data/reports) refactored to use accessor pattern
+- `FocusMetrics` + `SessionMetrics` domain models: replaced `(period_start, period_end)` pair with `period: TimeWindow`; constructor returns `Result<Self, TimeWindowError>`; 10 caller sites migrated per per-fixture pattern (Pattern A constructor for default-fields sites, Pattern B renamed struct literal for custom-seeded test fixtures to preserve non-period values)
+- `resolve_report_window` returns `Result<(TimeWindow, String), ApiError>`; downstream caller decomposes via `let TimeWindow { start: from, end: to } = window;` for out-of-plan-scope storage methods
+- 30+ caller sites migrated lockstep (services, mocks, regime detection scheduler, internal SQLite tests)
+
+**Wire codes (ADR-019)**: 2 new typed codes — `time_window.inverted_bounds` + `time_window.parse_failed` via `define_code_enum!` macro. Wire snapshot 47 → 49. i18n `wire-errors.{en,ko}.json` updated with both translations; `translateError.test.ts` `toHaveLength(47) → toHaveLength(49)` at lines 31 + 123 + describe titles. `CoreError::TimeWindow { code: TimeWindowCode, message: String }` follows ADR-019 §4.6 majority struct-variant pattern with manual `From<TimeWindowError>` impl. `ApiError::From<CoreError>` arm: `TimeWindow → 400 BadRequest`.
+
+**Tests (+37)**: 13 TimeWindow primitive unit + 3 TimeWindowCode + 8 TimeRangeQuery adapter + 3 SQL boundary regression (closed-closed inclusion via canonical `+00:00` format because `chrono::DateTime::to_rfc3339()` emits `+00:00` not `Z`) + 4 E2E (closed-closed inclusion + DeleteRangeRequest external shape + inverted bounds → 400 + invalid RFC3339 → 400) + 2 ApiError mapping (InvertedBounds + ParseFailed → 400) + 4 api-contracts roundtrip (DeleteRangeRequest external_shape + period accessor variants).
+
+**External API contract — query string shape preserved**: REST query strings unchanged (`?from=...&to=...&limit=...`); DeleteRangeRequest JSON shape preserved via accessor pattern; ReportQuery date-only `%Y-%m-%d` schema preserved per Phase 2 iter-11 corrected approach (TimeRangeQuery `to_time_window` would fail on date-only input).
+
+**Behavior change #1 — invalid timestamp handling**: requests with malformed `from`/`to` query strings now return HTTP 400 BadRequest with parse error message. Previously: silently fell back to defaults (`from = Utc::now() - 24h`, `to = Utc::now()`) and returned 200 OK with default-window data. Strict API contract improvement (frontend should receive validation errors instead of empty results).
+
+**Behavior preserved — default-window size**: `to_time_window(Duration::hours(24))` matches existing `from_datetime()` 24h fallback exactly. `TimelineQuery` uses `Duration::hours(1)` matching its existing 1h fallback. NO change for missing-bounds requests.
+
+**Behavior preserved — half-open vs closed-closed boundaries (NG6)**: SQL `BETWEEN`-style queries use closed-closed; `work_sessions::get_daily_active_secs` half-open `started_at < ?2` preserved (intentional — work_sessions started_at is an instant; closing upper bound would double-count at day rollovers); `calibration::list_segment_time_ranges` containment semantic `start_time >= ?1 AND end_time <= ?2` (different columns) preserved per spec v15 §5.3.
+
+**Helpers retained**: `TimeRangeQuery::from_datetime()` / `to_datetime()` / `limit_or_default()` / `offset_or_default()` kept (non-deprecated) for non-validating use cases (test fixtures, demos, internal tooling). New code uses `to_time_window` for validating conversion.
+
+**Workspace sweep evaluation**: `ExportQuery` (export.rs) + `ListOverridesQuery` (recalibration.rs) retain `from`/`to: Option<String>` shape — their service callers use out-of-plan-scope storage methods (backup queries, override lists). Future PR can add `to_time_window`/`period()` accessors when those storage methods migrate. `ReportQuery` (date-only schema) intentionally not flattened. `RegimeChanged.from/to` are regime IDs not timestamps.
+
+**Spec + plan**: `docs/superpowers/specs/2026-04-25-timewindow-primitive-design.md` (v15 — 28 documentation iterations: 15 spec versions + 13 plan versions; ~37 Critical + ~45 Important + ~12 Suggestion findings addressed via Phase 1 + Phase 2 deep reviews). `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md` (v13, ~2885 lines).
