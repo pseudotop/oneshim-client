@@ -239,6 +239,9 @@ mod tests {
     use super::*;
 
     /// Build a minimal valid `TrackingScheduleConfig` for roundtrip tests.
+    ///
+    /// Uses all 7 days so tests that assert `active_now == true` pass on any
+    /// day of the week (including weekends in CI).
     fn schedule_with_window(start: &str, end: &str, label: &str) -> TrackingScheduleConfig {
         let json = format!(
             r#"{{
@@ -246,7 +249,7 @@ mod tests {
                 "windows": [{{
                     "start": "{start}",
                     "end": "{end}",
-                    "days_of_week": ["Mon","Tue","Wed","Thu","Fri"],
+                    "days_of_week": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
                     "label": "{label}"
                 }}],
                 "timezone": "Asia/Seoul"
