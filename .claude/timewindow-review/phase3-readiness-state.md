@@ -84,6 +84,21 @@ Full `cargo check --workspace` + `cargo test --workspace` deferred to PF4 (Phase
 
 ---
 
+## Drift Audit vs origin/main (re-checked 2026-04-25 ~16:30)
+
+Worktree is 12 ahead / 2 behind `origin/main`. The 2 new commits since `2ba38cf5`:
+- `89ab7910` refactor(external-grpc): extract serve_external_inner shared core (#506)
+- `54c894d5` ci(lefthook): expand clippy 1.95 scan with field_reassign_with_default (#509)
+
+**Drift impact on TimeWindow refactor**: ZERO.
+- Wire-code baseline on origin/main: still **42** (no new codes added)
+- i18n test count assertions on origin/main: still both `toHaveLength(42)` at lines 30 + 122
+- File diff in TimeWindow-touched paths: only `crates/oneshim-web/src/grpc/external/{mod,test_support}.rs` changed (PR #506). These files are NOT in TimeWindow scope — no path conflict with plan v7.
+
+PF2 rebase will be trivial when Phase 3 starts. After PR #508 merges, baseline jumps to ~47 (PR-B1 adds tracking_schedule.* codes); TimeWindow then adds 2 more → 49.
+
+---
+
 ## External Blocker Detail (PR #508)
 
 ```
