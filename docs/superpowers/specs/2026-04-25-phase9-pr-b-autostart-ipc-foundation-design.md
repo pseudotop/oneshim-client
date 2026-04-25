@@ -1,11 +1,15 @@
-# Phase 9 PR-B — Autostart IPC + Single-Instance + Linux Robustness Design Spec
+# Phase 9 PR-B — Autostart IPC + Single-Instance + Linux Robustness Design Spec (v2)
 
 **Date:** 2026-04-25
+**Version:** v2 (rev-1 incorporates Phase 1 iter-1 review findings)
 **Baseline:** main `5618558c` (post-PR #486 d13-task13 merge)
 **Target release:** v0.4.40 (PR-B1) → v0.4.41 (PR-B2)
 **Scope:** Phase 9 PR-B (split into PR-B1 foundation + PR-B2 Linux deep)
-**Estimated effort:** ~22h (PR-B1) + ~15h (PR-B2) = **~37h total**
+**Estimated effort:** ~23h (PR-B1) + ~15h (PR-B2) = **~38h total**
 **Authoring source:** Brainstorming session 2026-04-25 (5 user-locked decisions U1-U5)
+**Review history:**
+- v1 (2026-04-25): initial spec from brainstorming
+- v2 (2026-04-25): incorporates 5 Critical + 8 Important fixes from `/.claude/pr-b-review/phase1-iter1-findings.md`
 
 ---
 
@@ -25,7 +29,23 @@ The module top-level comment explicitly says (`autostart.rs:4`):
 
 This signals that the **wiring layer (IPC commands + UI + lifecycle integration) is the missing piece**, not the platform-specific implementations.
 
-### 1.2 What is missing
+### 1.2 Two-identifier design (clarified per v2 review)
+
+ONESHIM uses two distinct identifiers by design:
+
+| Identifier | Purpose | Source of truth |
+|------------|---------|-----------------|
+| `com.oneshim.client` | Main app bundle ID | `tauri.conf.json:4` `identifier` |
+| `com.oneshim.agent` | Autostart service name (LaunchAgent plist filename, future systemd unit) | `autostart.rs:6` `APP_LABEL` constant |
+
+This separation matches the standard pattern used by Slack (`com.slack.Slack` app + `com.slack.launcher` agent), Spotify, and other commercial apps. The split allows the autostart entry to have a distinct identity from the main app for OS-level service registration.
+
+**Implications for PR-B**:
+- `tauri-plugin-single-instance` derives D-Bus name (Linux) / lock identifier (Windows/macOS) from the **Tauri identifier** (`com.oneshim.client`). Verified against plugin docs in §12.1 Q1.
+- LaunchAgent + systemd service files continue using `com.oneshim.agent`. Existing user installations are not broken.
+- No identifier renaming in PR-B.
+
+### 1.3 What is missing
 
 | Missing piece | Impact |
 |---------------|--------|
@@ -35,11 +55,11 @@ This signals that the **wiring layer (IPC commands + UI + lifecycle integration)
 | Single-instance enforcement | autostart + manual launch = duplicate processes |
 | systemd Type=notify integration | Service marked READY before init complete |
 | Snap/Flatpak/headless Linux detection | Toggle attempts on unsupported envs → broken errors |
-| AppConfig persistence of user intent | OS state alone can drift from user expectation |
+| AppConfig persistence of onboarding state | Cannot remember "user dismissed prompt" |
 | i18n strings | en/ko coverage missing |
 | Cross-platform test matrix | macOS/Windows/Linux smoke tests + Linux-deep integration |
 
-### 1.3 Why split into PR-B1 + PR-B2
+### 1.4 Why split into PR-B1 + PR-B2
 
 The work has two natural axes:
 - **Cross-platform UX surface** (IPC, UI, single-instance, onboarding, config) — uniform across macOS/Windows/Linux
@@ -61,31 +81,32 @@ Splitting yields:
 3. **G3**: Duplicate launches (autostart fires + manual launch) result in focus on existing window, not 2nd process
 4. **G4**: Linux systemd service signals readiness only after app is fully initialized (PR-B2)
 5. **G5**: Linux Snap/Flatpak/headless environments show clear UI feedback ("not supported here") instead of broken errors (PR-B2)
-6. **G6**: AppConfig records user intent (enabled/dismissed) for cross-session persistence and prompt logic
+6. **G6**: AppConfig records onboarding state (prompt_state + productive_session_count) for cross-session persistence and prompt logic
 7. **G7**: All changes are additive — existing users upgrading don't see behavior changes until they interact with the new UI
 
 ### 2.2 Non-Goals (explicitly out of scope)
 
 - **NG1**: Implementing autostart for platforms beyond macOS/Windows/Linux
-- **NG2**: D-Bus method exposure for external tools to control ONESHIM (only `tauri-plugin-single-instance` D-Bus name registration is in scope)
-- **NG3**: CLI commands like `oneshim --quit` or `oneshim --status` that talk to running instance via IPC (deferred to future PR)
+- **NG2**: D-Bus method exposure for external tools to control ONESHIM
+- **NG3**: CLI commands like `oneshim --quit` or `oneshim --status` that talk to running instance
 - **NG4**: MPRIS / freedesktop notifications integration
-- **NG5**: Snap/Flatpak best-effort autostart (we detect-and-refuse cleanly; sandbox-aware autostart deferred)
-- **NG6**: Migrating existing users automatically (no auto-enable on upgrade — requires explicit user consent via prompt or toggle)
+- **NG5**: Snap/Flatpak best-effort autostart (we detect-and-refuse cleanly)
+- **NG6**: Migrating existing users automatically (no auto-enable on upgrade)
 - **NG7**: Custom IPC protocol for inter-instance communication beyond what `tauri-plugin-single-instance` provides
 - **NG8**: macOS LaunchAgent KeepAlive=true behavior (current `false` retained — autostart ≠ auto-restart)
+- **NG9**: Caching `enabled` state in AppConfig (v1 had this; v2 removed per review I4 — OS state is sole source of truth)
 
 ---
 
 ## 3. User-Locked Decisions (U1-U5)
 
-These decisions were made interactively during brainstorming and are FIXED. Implementation must honor them.
+These decisions were made interactively during brainstorming and are FIXED.
 
 | ID | Decision | Rationale |
 |----|----------|-----------|
 | **U1** | Scope = B (full robustness) + basic IPC additions (single-instance + systemd notify) | User explicitly wanted basic IPC features included; declined CLI/D-Bus method exposure |
 | **U2** | Single-instance via `tauri-plugin-single-instance` (Tauri ecosystem plugin) | Plugin uses D-Bus on Linux (matches "기본 IPC" intent), maintained by Tauri team, ~4-5h saved vs custom impl |
-| **U3** | Default = Opt-in + onboarding prompt after first productive session | Privacy-friendly + discoverability; matches macOS/Windows app store guidelines |
+| **U3** | Default = Opt-in + onboarding prompt after first productive session | Privacy-friendly + discoverability; matches macOS/Windows app store guidelines (App Store Review Guideline 5.4.1 Login Items requires explicit opt-in; Microsoft Store Policy 10.2.4 prohibits silent background task enrollment) |
 | **U4** | Linux env matrix = Detect + clean refusal (Snap/Flatpak/headless) | ROI on Detect-and-attempt is low; we don't publish Snap/Flatpak ourselves |
 | **U5** | Delivery = 2-PR split (PR-B1 foundation + PR-B2 Linux deep) | Independent value, balanced review load, learns from features2 (65 commits stalling risk) |
 
@@ -105,6 +126,7 @@ These decisions were made interactively during brainstorming and are FIXED. Impl
                                                      │  ┌───────▼────────┐  │
                                                      │  │ Onboarding     │  │
                                                      │  │ Prompt Modal   │  │
+                                                     │  │ (single-fire)  │  │
                                                      │  └────────────────┘  │
                                                      └──────────┬───────────┘
                                                                 │ invoke()
@@ -116,14 +138,12 @@ These decisions were made interactively during brainstorming and are FIXED. Impl
               ┌──────────────────────────┐    │  │ enable_autostart       │  │
               │ tauri-plugin-single-     │    │  │ disable_autostart      │  │
               │ instance                 │◀───┤  │ is_autostart_enabled   │  │
-              │ - Linux: D-Bus           │    │  │ autostart_capabilities │  │ ◀ B2
+              │ - Linux: D-Bus           │    │  │ autostart_capabilities │  │ (skeleton in B1)
               │ - Win: NamedPipe         │    │  │ mark_autostart_prompt  │  │
               │ - macOS: Unix socket     │    │  │   _state               │  │
-              │ args+cwd callback        │    │  │ increment_productive   │  │
-              │ → focus existing window  │    │  │   _session             │  │
-              └──────────────────────────┘    │  └───────────┬────────────┘  │
-                                              └──────────────┼───────────────┘
-                                                             ▼
+              │ args+cwd callback        │    │  └───────────┬────────────┘  │
+              │ → focus existing window  │    └──────────────┼───────────────┘
+              └──────────────────────────┘                   ▼
                                               ┌────────────────────────────────┐
                                               │  src-tauri/src/autostart.rs    │
                                               │  ┌──────────────────────────┐  │
@@ -135,134 +155,134 @@ These decisions were made interactively during brainstorming and are FIXED. Impl
                                               │  └──────────────────────────┘  │
                                               └─────────────┬──────────────────┘
                                                             ▼
-                                              ┌────────────────────────────────┐
-                                              │ AppConfig.autostart            │
-                                              │ AutostartConfig {              │
-                                              │   enabled: bool                │
-                                              │   prompt_state: enum           │
-                                              │   productive_session_count: u32│
-                                              │ }                              │
-                                              └────────────────────────────────┘
+                                              ┌─────────────────────────────────┐
+                                              │  scheduler/loops/monitor.rs     │
+                                              │   directly mutates              │
+                                              │   AppConfig.autostart counter   │
+                                              │   via ConfigManager.update_with │
+                                              │   (no Tauri event round-trip)   │
+                                              └─────────────┬───────────────────┘
+                                                            ▼
+                                              ┌─────────────────────────────────┐
+                                              │ AppConfig.autostart             │
+                                              │ AutostartConfig {               │
+                                              │   prompt_state: enum            │
+                                              │   productive_session_count: u32 │
+                                              │   last_session_id: Option<Uuid> │ (idempotency)
+                                              │ }                               │
+                                              └─────────────────────────────────┘
 ```
 
 ### 4.2 PR-B1 / PR-B2 Boundary
 
 | Layer | PR-B1 | PR-B2 |
 |-------|-------|-------|
-| `src-tauri/src/commands/autostart.rs` | 5 commands (NEW file) | +1 command (`autostart_capabilities`) |
+| `src-tauri/src/commands/autostart.rs` | 5 commands (NEW file). `autostart_capabilities` returns `{supported: true}` skeleton on all platforms | Real env detection in `autostart_capabilities` |
 | `src-tauri/src/main.rs` | `tauri-plugin-single-instance` plugin | sd_notify init hook |
 | `src-tauri/src/autostart.rs` | **untouched** | Linux mod adds `notify_ready()`, `detect_environment()` |
-| `crates/oneshim-core/src/config/sections/autostart.rs` | NEW (3 fields) | unchanged |
-| Frontend `GeneralTab.tsx` | Startup section + toggle | +disabled state with tooltip |
-| Frontend `AutostartOnboardingPrompt.tsx` | NEW component | unchanged |
+| `crates/oneshim-core/src/config/sections/autostart.rs` | NEW (3 fields, no `enabled` cache per I4) | unchanged |
+| `src-tauri/src/scheduler/loops/monitor.rs` | Add productive-session detection + counter increment | unchanged |
+| Frontend `GeneralTab.tsx` | Startup section + toggle + capabilities-aware disabled state | Tooltip text refinements per env |
+| Frontend `AutostartOnboardingPrompt.tsx` | NEW component with single-fire coordinator | unchanged |
 | Frontend i18n | autostart base keys | +capability tooltip keys |
-| Tests | smoke tests on 3 platforms | Linux integration in CI container |
+| Tests | smoke tests on 3 platforms + Vitest + Wayland kept-hidden manual | Linux integration in CI (rootless systemd) |
 | Docs | README/PHASE-HISTORY | Korean operations guide |
 | Cargo.toml | `tauri-plugin-single-instance = "2"` | `sd-notify = "0.4"` (Linux only) |
 
-PR-B2 depends on PR-B1 (extends `commands/autostart.rs`, depends on `AutostartConfig` schema).
+PR-B2 depends on PR-B1.
 
 ---
 
 ## 5. PR-B1 Components — Cross-Platform Foundation
 
-### 5.1 Tauri IPC Commands
+### 5.1 Tauri IPC Commands (revised per C1)
 
-**File**: `src-tauri/src/commands/autostart.rs` (NEW; flat file, will be promoted to directory module per ADR-003 if it exceeds 500 lines)
+**File**: `src-tauri/src/commands/autostart.rs` (NEW)
+
+Uses real `ConfigManager` API (sync `update_with` closure) and Tauri command parameter state injection.
 
 ```rust
 //! Tauri IPC commands for autostart management.
 //!
-//! Source-of-truth strategy: OS state authoritative for `is_autostart_enabled`;
-//! AppConfig.autostart caches user intent for UI display + onboarding logic.
+//! Source-of-truth: OS state is authoritative for `is_autostart_enabled`.
+//! AppConfig.autostart stores ONLY onboarding state (prompt_state, counter).
+//! Per Phase 1 review I4: removed AutostartConfig.enabled cache field.
 
-use std::sync::Arc;
-use tauri::AppHandle;
-use oneshim_core::config::AutostartPromptState;
-
+use tauri::command;
+use oneshim_core::config::{AutostartPromptState, AutostartConfig};
 use crate::autostart;
-use crate::runtime_state::ConfigManagerHandle;
+use crate::runtime_state::ConfigRuntimeState;
+use crate::commands::IpcError;
 
-/// Enable autostart at OS level + persist intent to AppConfig.
+/// Enable autostart at OS level.
 ///
-/// Two-phase commit: OS enable first, then config update. If config update fails
-/// after OS enable succeeded, OS state is reverted to keep them in sync.
-#[tauri::command]
-pub async fn enable_autostart(app: AppHandle) -> Result<(), String> {
-    autostart::enable_autostart()?;
-    let config = app.state::<Arc<ConfigManagerHandle>>();
-    if let Err(e) = config.update(|c| c.autostart.enabled = true).await {
-        // Revert OS state to maintain consistency
-        let _ = autostart::disable_autostart();
-        return Err(format!("Config update failed (OS state reverted): {e}"));
-    }
-    Ok(())
+/// On failure, returns Err. UI must re-fetch OS state to verify.
+/// Does NOT write to AppConfig — OS state is sole source of truth.
+#[command]
+pub async fn enable_autostart() -> Result<(), IpcError> {
+    autostart::enable_autostart()
+        .map_err(|e| IpcError::from_string(format!("autostart enable failed: {e}")))
 }
 
-#[tauri::command]
-pub async fn disable_autostart(app: AppHandle) -> Result<(), String> {
-    autostart::disable_autostart()?;
-    let config = app.state::<Arc<ConfigManagerHandle>>();
-    if let Err(e) = config.update(|c| c.autostart.enabled = false).await {
-        // Best-effort re-enable on revert; log but don't fail
-        let _ = autostart::enable_autostart();
-        return Err(format!("Config update failed (OS state reverted): {e}"));
-    }
-    Ok(())
+#[command]
+pub async fn disable_autostart() -> Result<(), IpcError> {
+    autostart::disable_autostart()
+        .map_err(|e| IpcError::from_string(format!("autostart disable failed: {e}")))
 }
 
 /// Read autostart state from OS (source of truth).
-#[tauri::command]
-pub async fn is_autostart_enabled() -> Result<bool, String> {
+#[command]
+pub async fn is_autostart_enabled() -> Result<bool, IpcError> {
     autostart::is_autostart_enabled()
+        .map_err(|e| IpcError::from_string(format!("autostart query failed: {e}")))
+}
+
+/// PR-B1: skeleton — always returns supported=true for non-Linux,
+/// supported=true for Linux without env detection. PR-B2: real detection.
+///
+/// Frontend code path is identical between B1 and B2 — UI gating logic
+/// works in both cases (in B1 the gate is always pass).
+#[command]
+pub async fn autostart_capabilities() -> Result<AutostartCapabilities, IpcError> {
+    Ok(autostart::detect_capabilities())  // PR-B1 returns {supported: true} unconditionally
+                                          // PR-B2 implements real detection
 }
 
 /// Update onboarding prompt state.
 ///
 /// Called by frontend after user answers the prompt (Enable/NotNow/DontAsk).
-#[tauri::command]
+#[command]
 pub async fn mark_autostart_prompt_state(
-    app: AppHandle,
     new_state: AutostartPromptState,
-) -> Result<(), String> {
-    let config = app.state::<Arc<ConfigManagerHandle>>();
-    config
-        .update(|c| c.autostart.prompt_state = new_state)
-        .await
-        .map_err(|e| format!("Config update failed: {e}"))
-}
-
-/// Increment productive session counter.
-///
-/// Called by scheduler when a focus session ≥25 min completes.
-/// Drives onboarding prompt eligibility.
-#[tauri::command]
-pub async fn increment_productive_session(app: AppHandle) -> Result<u32, String> {
-    let config = app.state::<Arc<ConfigManagerHandle>>();
-    let new_count = config
-        .update_returning(|c| {
-            c.autostart.productive_session_count = c.autostart.productive_session_count.saturating_add(1);
-            c.autostart.productive_session_count
+    state: tauri::State<'_, ConfigRuntimeState>,
+) -> Result<(), IpcError> {
+    state
+        .config_manager()
+        .update_with(|c| {
+            c.autostart.prompt_state = new_state;
+            Ok(())
         })
-        .await
-        .map_err(|e| format!("Config update failed: {e}"))?;
-    Ok(new_count)
+        .map(|_| ())
+        .map_err(IpcError::from)
 }
 ```
 
+**Note: `increment_productive_session` IPC command REMOVED** (per C5 — counter increment moves to scheduler Rust-side, no frontend round-trip). Frontend instead listens for `autostart:eligible-for-prompt` event.
+
 **Wiring**:
 - `src-tauri/src/commands/mod.rs`: add `pub mod autostart;`
-- `src-tauri/src/commands/settings.rs`: add 5 command names to allowlist (existing pattern from PR-A)
-- `src-tauri/src/main.rs`: register all 5 in `.invoke_handler(tauri::generate_handler![...])`
+- `src-tauri/src/main.rs`: register all 5 in `.invoke_handler(tauri::generate_handler![...])` chain
+- **No `ALLOWED_KEYS` change in `commands/settings.rs`** — autostart commands are dedicated, not routed through the generic `update_setting` JSON-patch path. Verified pattern via `commands/settings.rs:92-95`.
 
 **Edge cases**:
-- **OS enable succeeds, config update fails (disk full / IO error)**: revert OS to maintain bidirectional consistency. User sees clear error.
-- **`autostart::enable_autostart` returns Err on Linux without systemctl AND XDG path also fails**: surface error; UI must not toggle to "on" state.
-- **Concurrent enable + disable from rapid double-click**: ConfigManagerHandle.update is async-serialized internally (existing pattern). UI debounces toggle click for 500ms.
+- **OS enable fails**: error propagates, UI shows error banner, toggle reverts visually (UI re-fetches OS state via `is_autostart_enabled`)
+- **No two-phase commit needed** (per C3): config no longer caches OS state, so no consistency to maintain across two writes
+- **Concurrent enable + disable**: UI debounces toggle click for 500ms (existing pattern)
+- **Reconciler**: see §11.4 for startup-time reconciliation (logs warn if any inconsistency observed; no auto-correct)
 
 ---
 
-### 5.2 `tauri-plugin-single-instance` Integration
+### 5.2 `tauri-plugin-single-instance` Integration (revised per C2, I7)
 
 **Files**:
 - `src-tauri/Cargo.toml`: add `tauri-plugin-single-instance = "2"`
@@ -282,59 +302,67 @@ pub async fn increment_productive_session(app: AppHandle) -> Result<u32, String>
 }))
 ```
 
+**D-Bus name**: derives from Tauri identifier `com.oneshim.client` (verified per §12.1 Q1). This is intentional and separate from autostart's `com.oneshim.agent` (see §1.2).
+
 **Critical considerations**:
 
-1. **D-Bus name resolution**: Plugin derives D-Bus name from `tauri.conf.json` `identifier`. Verify current identifier is `com.oneshim.agent` (matches `autostart.rs::APP_LABEL`). If mismatched, fix `tauri.conf.json` or rely on plugin's auto-derivation.
-
-2. **Tray-only mode interaction**: ONESHIM hides main window to system tray. When 2nd instance fires:
-   - `show()` → `unminimize()` → `set_focus()` order is **mandatory**
+1. **Tray-only mode interaction**: ONESHIM hides main window to system tray. When 2nd instance fires:
+   - `show()` → `unminimize()` → `set_focus()` order is mandatory
    - Reverse order can leave window unfocused on Linux/X11
    - `unminimize()` is no-op if window isn't minimized but harmless
 
-3. **Headless Linux fail-mode**: D-Bus session bus may be absent (e.g., SSH session, headless server). Plugin init errors in this case.
-   - **PR-B1 stance**: fail-open. Wrap plugin init in `match` and log warning. App still launches without single-instance protection. This is acceptable because headless servers don't typically have a "double-launch from tray icon" scenario.
-   - **PR-B2 follow-up**: capability check at startup logs which IPC features are degraded.
+2. **D-Bus absence on headless Linux** (per I7):
+   - Plugin is added unconditionally — `Builder::plugin()` does NOT return Result, so no `match` wrap is possible
+   - On headless Linux (no `DBUS_SESSION_BUS_ADDRESS`): plugin's IPC mechanism fails to find existing instance → 2nd instance launches as standalone (no focus-grab)
+   - User experience: 2 windows open. App still launches.
+   - **Mitigation**: at startup, log warn if `DBUS_SESSION_BUS_ADDRESS` env var absent: `"single-instance enforcement degraded — focus-grab may not work in headless session"`. Document as known limitation in §13.
 
-4. **Plugin ordering**: must be registered BEFORE other plugins that may exit early on init failure (e.g., webview registration). Place at top of builder chain.
+3. **Wayland kept-hidden window** (per I1):
+   - First-launch scenario: autostart fires, app starts in tray (window never shown). User clicks dock icon → 2nd instance fires → callback runs `show()` on never-mapped surface
+   - Wayland compositors require xdg-toplevel mapping events that may not fire on previously-unmapped surface
+   - **Mitigation**: explicit smoke test in §9.5 — verify behavior on GNOME Wayland, KDE Wayland, sway. If broken: add fallback (e.g., `window.create()` if mapping fails)
 
-5. **Crash recovery**: Plugin handles stale lock files / orphaned D-Bus names automatically per its docs. Verify behavior with manual SIGKILL test (see §10).
+4. **Plugin ordering**: register BEFORE other plugins that may exit on init failure. Top of builder chain.
+
+5. **Crash recovery**: Plugin handles stale lock files / orphaned D-Bus names automatically per its docs. Verify behavior with manual SIGKILL test in §9.5.
 
 ---
 
-### 5.3 AppConfig — `AutostartConfig`
+### 5.3 AppConfig — `AutostartConfig` (revised per I4)
 
 **File**: `crates/oneshim-core/src/config/sections/autostart.rs` (NEW per ADR-003 sections pattern)
 
 ```rust
 //! Autostart-related configuration.
 //!
-//! See ADR-003 for the directory module pattern this file follows.
+//! Per Phase 1 review I4: removed `enabled` cache field. OS state is sole source
+//! of truth. This struct stores ONLY onboarding-related state.
 
 use serde::{Deserialize, Serialize};
 
 /// Per-user autostart configuration.
 ///
-/// Note: `enabled` is a CACHE of user intent. The OS state (LaunchAgent file
-/// existence, Registry entry, systemd unit file) is the source of truth for
-/// "is autostart actually active right now?". `enabled` exists for UI
-/// instant-response (avoids round-trip to OS on every render) and for
-/// onboarding logic (when did user last opt in?).
+/// IMPORTANT: This struct does NOT store the autostart enabled/disabled state.
+/// That state lives in OS-native locations (LaunchAgents plist, Registry,
+/// systemd service file). Use `autostart::is_autostart_enabled()` to query.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutostartConfig {
-    /// User's last expressed intent (true if they enabled, false if disabled or never enabled).
-    pub enabled: bool,
-
     /// State machine for one-time onboarding prompt.
     pub prompt_state: AutostartPromptState,
 
     /// Monotonic counter of completed productive sessions (≥25 min focus blocks).
-    /// Drives prompt eligibility per `prompt_state` transitions.
+    /// Incremented by scheduler in monitor.rs (NOT by frontend round-trip).
     pub productive_session_count: u32,
+
+    /// Last observed productive session UUID — provides idempotency for
+    /// counter increments. Scheduler increments only when current_session_id
+    /// differs from last_session_id.
+    pub last_session_id: Option<String>,
 }
 
 /// State machine for the onboarding prompt.
 ///
-/// Transitions:
+/// Transitions (per §5.5 ShowPromptCoordinator):
 /// - Pending → Dismissed   (user clicks Enable or DontAsk)
 /// - Pending → Snoozed     (user clicks NotNow)
 /// - Snoozed → Dismissed   (user clicks Enable or DontAsk on re-prompt)
@@ -357,9 +385,21 @@ pub enum AutostartPromptState {
 impl Default for AutostartConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
             prompt_state: AutostartPromptState::Pending,
             productive_session_count: 0,
+            last_session_id: None,
+        }
+    }
+}
+
+/// Eligibility helper — pure function, used by scheduler to decide when to
+/// emit `autostart:eligible-for-prompt` Tauri event for frontend.
+pub fn should_prompt(config: &AutostartConfig) -> bool {
+    match &config.prompt_state {
+        AutostartPromptState::Dismissed => false,
+        AutostartPromptState::Pending => config.productive_session_count >= 1,
+        AutostartPromptState::Snoozed { remind_after_session_count } => {
+            config.productive_session_count >= *remind_after_session_count
         }
     }
 }
@@ -374,37 +414,24 @@ impl Default for AutostartConfig {
 pub autostart: AutostartConfig,
 ```
 
-**Migration semantics**:
-- Existing users (config file pre-PR-B1): `#[serde(default)]` applies `AutostartConfig::default()` automatically on first load
-- Result: `enabled = false`, `prompt_state = Pending`, `productive_session_count = 0`
-- Behavior: existing users see no autostart change, get prompted after their first ≥25 min session post-upgrade
+**Migration semantics** (existing users upgrading):
+- Pre-PR-B1 config file has no `autostart` field
+- `#[serde(default)]` applies `AutostartConfig::default()` automatically on first load
+- Result: `prompt_state = Pending`, `productive_session_count = 0`, `last_session_id = None`
+- Behavior: existing users see no autostart change, get prompted after their first ≥25 min focus session post-upgrade
 
-**JSON serialization shape** (for existing config compat tests):
+**JSON serialization shape**:
 ```json
 {
   "autostart": {
-    "enabled": false,
     "prompt_state": { "kind": "pending" },
-    "productive_session_count": 0
+    "productive_session_count": 0,
+    "last_session_id": null
   }
 }
 ```
-Note: `tag = "kind"` with `rename_all = "snake_case"` chosen for JSON ergonomics (vs untagged enum that breaks `Snoozed` field deserialization).
 
-**Eligibility logic** (consumed by frontend Dashboard):
-```rust
-pub fn should_prompt(config: &AutostartConfig) -> bool {
-    match &config.prompt_state {
-        AutostartPromptState::Dismissed => false,
-        AutostartPromptState::Pending => config.productive_session_count >= 1,
-        AutostartPromptState::Snoozed { remind_after_session_count } => {
-            config.productive_session_count >= *remind_after_session_count
-        }
-    }
-}
-```
-
-This helper lives in `crates/oneshim-core/src/config/sections/autostart.rs` and is unit-tested.
+**`AppConfig` `deny_unknown_fields` check** (per §12.1 Q3): verified NOT set on AppConfig (line 20 of `crates/oneshim-core/src/config/mod.rs` derives only `Debug, Clone, Serialize, Deserialize`). Downgrade is safe — extra `autostart` field is silently dropped if user downgrades.
 
 ---
 
@@ -412,24 +439,33 @@ This helper lives in `crates/oneshim-core/src/config/sections/autostart.rs` and 
 
 **File**: `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx`
 
-**Location in tab**: New "Startup" section between "Theme" and "Language" sections (high-visibility but not at top — matches Settings convention of personalization-first ordering).
+**Location**: New "Startup" section between "Theme" and "Language" sections.
 
-**Component shape**:
+**Component**:
 ```tsx
 import { invoke } from '@tauri-apps/api/core'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+interface AutostartCapabilities {
+  supported: boolean
+  unsupported_reason?: { kind: string }
+  environment: string  // discriminator string from Rust enum
+}
+
 function StartupSection() {
   const { t } = useTranslation()
   const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [caps, setCaps] = useState<AutostartCapabilities | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initial fetch from OS state (source of truth)
   useEffect(() => {
-    invoke<boolean>('is_autostart_enabled')
-      .then(setEnabled)
+    Promise.all([
+      invoke<boolean>('is_autostart_enabled'),
+      invoke<AutostartCapabilities>('autostart_capabilities'),
+    ])
+      .then(([e, c]) => { setEnabled(e); setCaps(c) })
       .catch((e) => setError(String(e)))
   }, [])
 
@@ -442,13 +478,15 @@ function StartupSection() {
       setEnabled(next)
     } catch (e) {
       setError(String(e))
-      // Re-fetch OS state to ensure UI matches reality
+      // Re-fetch OS state to ensure UI matches reality (no two-phase commit needed)
       const actual = await invoke<boolean>('is_autostart_enabled').catch(() => null)
       if (actual !== null) setEnabled(actual)
     } finally {
       setLoading(false)
     }
   }
+
+  const isDisabled = loading || enabled === null || (caps !== null && !caps.supported)
 
   return (
     <section>
@@ -457,48 +495,127 @@ function StartupSection() {
       <Toggle
         checked={enabled ?? false}
         onChange={handleToggle}
-        disabled={loading || enabled === null}
+        disabled={isDisabled}
         label={t('settings.general.autostart.toggle')}
       />
+      {caps && !caps.supported && (
+        <Tooltip>
+          {t('settings.general.autostart.unsupported', { context: caps.unsupported_reason?.kind ?? 'unknown' })}
+        </Tooltip>
+      )}
       {error && <ErrorBanner>{t('settings.general.autostart.error', { error })}</ErrorBanner>}
     </section>
   )
 }
 ```
 
-**State management notes**:
-- `enabled === null` means "still loading initial state" → toggle disabled
-- On error, re-fetch OS state to re-sync UI (defensive against partial-success)
-- No drift indicator UI — drift handled by always trusting OS state on render
-- Per `feedback_color_consistency`: toggle uses semantic primary token, not named color
+**i18n context pattern** (per I3): uses `t(key, { context: ... })` instead of template-literal key building. i18next resolves to `unsupported_snap_sandbox`, `unsupported_flatpak_sandbox`, etc. — keys explicitly enumerated in en.json/ko.json for parity lint coverage.
 
 ---
 
-### 5.5 Onboarding Prompt Component
+### 5.5 Onboarding Prompt — ShowPromptCoordinator (revised per C5, I2)
 
 **Files**:
 - `crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.tsx` (NEW)
 - `crates/oneshim-web/frontend/src/pages/Dashboard.tsx`: render conditionally
-- `src-tauri/src/scheduler/loops/focus.rs` or similar: emit `productive-session-completed` Tauri event when ≥25 min focus block ends → frontend listener calls `increment_productive_session` IPC
+- `src-tauri/src/scheduler/loops/monitor.rs` (or new helper): emit `autostart:eligible-for-prompt` event AFTER counter incremented in `ConfigManager`
 
-**Productive session definition**:
-- **Source**: existing `focus_metrics` table records focus blocks. A "productive session" = single focus block of ≥25 minutes (1 pomodoro equivalent)
-- **Boundary**: session ends when (a) user becomes idle ≥5 min OR (b) app changes to non-productive category
-- **Counter**: `productive_session_count` incremented exactly once per qualifying session — by scheduler emitting an event, frontend invoking IPC. Server-side counter chosen (not derived from query) to keep prompt logic deterministic and avoid retroactive counting
-- **Edge case**: if session crosses prompt threshold at 25:00 and user hits 25:01, counter increments once. Subsequent ms-level events are debounced server-side.
+**Productive session detection (Rust-side, per C5)**:
+- Monitor loop tracks current focus block start time + cumulative focus duration
+- When focus block reaches 25+ minutes: generate UUID for this session → call `ConfigManager::update_with` to:
+  - Compare `current_session_id` vs `c.autostart.last_session_id`
+  - If different: increment `productive_session_count`, set `last_session_id = current_session_id`
+  - If same: no-op (idempotent)
+- After config update: if `should_prompt(&config.autostart)` returns true AND last emit was different session → emit `app.emit("autostart:eligible-for-prompt", &payload)`
 
-**Trigger eligibility** (Dashboard render):
-```tsx
-const shouldShowPrompt = (
-  promptState.kind === 'pending' && productiveCount >= 1
-) || (
-  promptState.kind === 'snoozed' && productiveCount >= promptState.remind_after_session_count
-)
+```rust
+// Pseudo-code in monitor.rs
+async fn handle_focus_block_completed(
+    config_mgr: &ConfigManager,
+    app_handle: &AppHandle,
+    session_id: String,
+    duration_secs: u64,
+) {
+    if duration_secs < 25 * 60 {
+        return;
+    }
+
+    let snapshot = match config_mgr.update_with(|c| {
+        // Idempotency check
+        if c.autostart.last_session_id.as_deref() == Some(&session_id) {
+            return Ok(()); // already counted
+        }
+        c.autostart.productive_session_count = c.autostart.productive_session_count.saturating_add(1);
+        c.autostart.last_session_id = Some(session_id.clone());
+        Ok(())
+    }) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(err.code = "autostart_counter_increment_failed", "{e}");
+            return;
+        }
+    };
+
+    if should_prompt(&snapshot.autostart) {
+        let _ = app_handle.emit("autostart:eligible-for-prompt", ());
+    }
+}
 ```
-Polled from AppConfig on Dashboard mount + on `productive-session-completed` event.
 
-**UI** (modal):
-- Title: `t('onboarding.autostart.title')` ("Start ONESHIM automatically?")
+**Race conditions handled**:
+- **Scheduler restart mid-session**: in-memory session state lost → counter doesn't increment for that session. Acceptable: missed increments are harmless (worst case: prompt fires later)
+- **Rapid event burst**: idempotency via `last_session_id` UUID comparison
+- **Window closed**: counter increments regardless; event emit may be lost but next Dashboard mount re-evaluates eligibility from fresh config read
+
+**Frontend ShowPromptCoordinator**:
+```tsx
+// Singleton state for "have we shown the prompt this session"
+let hasShownThisSession = false
+
+function AutostartOnboardingPromptHost() {
+  const [shouldShow, setShouldShow] = useState(false)
+  const [config, setConfig] = useState<AutostartConfig | null>(null)
+  const timerRef = useRef<number | null>(null)
+
+  // Re-evaluate eligibility from fresh config read
+  const evaluate = useCallback(async () => {
+    if (hasShownThisSession) return
+    const cfg = await invoke<AutostartConfig>('get_app_config').then(c => c.autostart)
+    setConfig(cfg)
+    if (shouldShowPrompt(cfg)) {
+      // 500ms delay only on first eligibility — single-fire
+      if (timerRef.current === null) {
+        timerRef.current = window.setTimeout(() => {
+          if (!hasShownThisSession) {
+            setShouldShow(true)
+            hasShownThisSession = true
+          }
+        }, 500)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    evaluate()  // on mount
+    const unlisten = listen('autostart:eligible-for-prompt', evaluate)
+    return () => {
+      unlisten.then(f => f())
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [evaluate])
+
+  if (!shouldShow || !config) return null
+  return <AutostartOnboardingPrompt config={config} onClose={() => setShouldShow(false)} />
+}
+```
+
+**Single-fire guarantee**: `hasShownThisSession` module-level flag prevents re-show on re-mount (e.g., navigating away and back to Dashboard). Reset only on app restart.
+
+**Modal UI** (unchanged from v1):
+- Title: `t('onboarding.autostart.title')` — "Start ONESHIM automatically?"
 - Body: `t('onboarding.autostart.body')`
 - 3 buttons: Enable / Not now / Don't ask again
 
@@ -507,39 +624,33 @@ Polled from AppConfig on Dashboard mount + on `productive-session-completed` eve
 async function handleEnable() {
   await invoke('enable_autostart')
   await invoke('mark_autostart_prompt_state', { newState: { kind: 'dismissed' } })
-  closeModal()
+  onClose()
 }
 
 async function handleNotNow() {
   await invoke('mark_autostart_prompt_state', {
-    newState: { kind: 'snoozed', remind_after_session_count: productiveCount + 5 }
+    newState: { kind: 'snoozed', remind_after_session_count: config.productive_session_count + 5 }
   })
-  closeModal()
+  onClose()
 }
 
 async function handleDismiss() {
   await invoke('mark_autostart_prompt_state', { newState: { kind: 'dismissed' } })
-  closeModal()
+  onClose()
 }
 ```
 
-**UX details**:
-- Modal appears 500ms after Dashboard mount (avoids feeling jarring on fresh load)
-- Clicking outside = same as "Not now" (snoozed)
-- Pressing Escape = same as "Not now"
-- Snooze interval: +5 sessions (~5 productive work blocks ≈ 1 work day for active users)
-- Single instance: once dismissed in this session, no re-show even if state somehow becomes eligible again
-- Focus trap: standard modal a11y (per existing modal components in codebase)
+**UX**: Escape key + outside click = "Not now" (snoozed +5).
 
 ---
 
-### 5.6 i18n Strings
+### 5.6 i18n Strings (revised per I3)
 
 **Files**:
 - `crates/oneshim-web/frontend/src/i18n/en.json`
 - `crates/oneshim-web/frontend/src/i18n/ko.json`
 
-**Keys** (added at appropriate nested locations):
+**Keys**:
 ```json
 {
   "settings": {
@@ -548,7 +659,13 @@ async function handleDismiss() {
         "title": "Startup",
         "description": "Automatically start ONESHIM when you sign in to your computer.",
         "toggle": "Start ONESHIM at login",
-        "error": "Failed to update autostart: {{error}}"
+        "error": "Failed to update autostart: {{error}}",
+        "unsupported_snap_sandbox": "Use Snap's built-in autostart settings",
+        "unsupported_flatpak_sandbox": "Use Flatpak's built-in autostart settings",
+        "unsupported_headless_session": "Autostart requires a desktop session",
+        "unsupported_systemctl_unavailable": "systemctl not available — using XDG autostart fallback",
+        "unsupported_unsupported_platform": "Autostart not supported on this platform",
+        "unsupported_unknown": "Autostart unavailable in this environment"
       }
     }
   },
@@ -573,7 +690,13 @@ async function handleDismiss() {
         "title": "시작 프로그램",
         "description": "컴퓨터에 로그인할 때 ONESHIM을 자동으로 시작합니다.",
         "toggle": "로그인 시 ONESHIM 시작",
-        "error": "자동 시작 설정 실패: {{error}}"
+        "error": "자동 시작 설정 실패: {{error}}",
+        "unsupported_snap_sandbox": "Snap의 내장 자동 시작 설정을 사용하세요",
+        "unsupported_flatpak_sandbox": "Flatpak의 내장 자동 시작 설정을 사용하세요",
+        "unsupported_headless_session": "자동 시작은 데스크톱 세션이 필요합니다",
+        "unsupported_systemctl_unavailable": "systemctl 사용 불가 — XDG 자동 시작 fallback 사용 중",
+        "unsupported_unsupported_platform": "이 플랫폼에서는 자동 시작을 지원하지 않습니다",
+        "unsupported_unknown": "이 환경에서는 자동 시작을 사용할 수 없습니다"
       }
     }
   },
@@ -589,57 +712,30 @@ async function handleDismiss() {
 }
 ```
 
-i18n key parity: enforced by existing CI lint that diffs en.json vs ko.json key sets.
+i18n key parity: enforced by existing CI lint that diffs en.json vs ko.json key sets (verify per §12.1 Q3-supplement).
 
 ---
 
 ## 6. PR-B2 Components — Linux Deep Robustness
 
-### 6.1 systemd Type=notify Integration
+### 6.1 systemd Type=notify Integration (revised per C4)
 
-**Goal**: Service marked READY only after app initialization completes, not at process spawn.
+**Goal**: Service marked READY only after app initialization completes.
 
 **Files**:
 - `src-tauri/Cargo.toml`: add Linux-only dep `sd-notify = { version = "0.4", optional = true }` + feature flag `systemd-notify = ["dep:sd-notify"]`
-- `src-tauri/src/autostart.rs`: change `linux::generate_service_file` `Type=simple` → `Type=notify` and add `NotifyAccess=main`
+- `src-tauri/src/autostart.rs`: change `linux::generate_service_file` `Type=simple` → `Type=notify` and add `NotifyAccess=main`, `TimeoutStartSec=30`
 - `src-tauri/src/main.rs`: after init complete, call `sd_notify_ready()` helper
 - `src-tauri/src/lifecycle/sd_notify.rs` (NEW): wrapper module
 
-```rust
-// src-tauri/src/lifecycle/sd_notify.rs
-//! systemd Type=notify integration.
-//!
-//! No-op on non-Linux or when `sd-notify` feature is disabled.
-
-#[cfg(all(target_os = "linux", feature = "systemd-notify"))]
-pub fn notify_ready() {
-    if let Err(e) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {
-        tracing::debug!("sd_notify READY skipped (not run under systemd): {e}");
-    }
-}
-
-#[cfg(not(all(target_os = "linux", feature = "systemd-notify")))]
-pub fn notify_ready() {
-    // No-op on non-Linux or when systemd-notify feature disabled
-}
-
-#[cfg(all(target_os = "linux", feature = "systemd-notify"))]
-pub fn notify_stopping() {
-    let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Stopping]);
-}
-
-#[cfg(not(all(target_os = "linux", feature = "systemd-notify")))]
-pub fn notify_stopping() {}
-```
-
-**Service file change**:
+**Service file template change**:
 ```ini
 [Unit]
 Description=ONESHIM Desktop Agent
 After=graphical-session.target
 
 [Service]
-Type=notify              # changed from simple
+Type=notify              # changed from simple in PR-B2
 NotifyAccess=main        # NEW: only main process can send notify
 ExecStart={binary_path}
 Restart=on-failure
@@ -651,50 +747,79 @@ Environment=DISPLAY=:0
 WantedBy=default.target
 ```
 
+**Migration policy** (revised per C4):
+
+The dangerous v1 approach (overwrite + immediate `daemon-reload`) is **rejected** because:
+1. Overwriting + reloading while service is currently running causes systemd to expect READY notification on already-running unit → `TimeoutStartSec=30` fail → restart loop
+2. Blind overwrite destroys user customizations (e.g., custom `Environment=`)
+
+**Revised migration** (deferred + hash-checked):
+1. **At startup, scan**: read existing `~/.config/systemd/user/oneshim.service` if exists
+2. **Hash check**: compute SHA-256 of current file
+3. **Match against known prior-version hashes** (we maintain a list in `src-tauri/src/lifecycle/migration_hashes.rs`)
+4. **Decision**:
+   - File matches known PR-B1-era template (Type=simple): safe to overwrite. Write new file, log info, **DO NOT** call `daemon-reload`. Document in user notification: "Restart ONESHIM next session for systemd integration to take effect."
+   - File doesn't match any known hash: user customized. Log warn: `"Skipping autostart unit migration — file appears customized. Manual update required (see docs/guides/autostart.ko.md)"`. Do not overwrite.
+   - File doesn't exist (autostart was never enabled): no migration needed
+5. **Next-session activation**: on next user login, systemd loads the new file. Service starts under new Type=notify protocol normally.
+
 **Init hook placement** (`src-tauri/src/main.rs`):
 - Call `sd_notify::notify_ready()` AFTER:
-  - Tauri builder finishes setup
+  - Tauri builder.setup() finishes
   - All scheduler loops spawned
   - SQLite migrations applied
   - WebView main window shown (or hidden-to-tray confirmed)
 
-**Failure modes**:
-- Process not run under systemd (e.g., user double-clicks binary) → `sd_notify::notify` returns Err → logged at debug, app continues normally
-- `NOTIFY_SOCKET` env var missing → same as above
-- systemd timeout (>30s init) → systemd kills process → user sees "Service failed to start" in logs. Mitigation: ensure init path is fast (<5s typical)
+```rust
+// src-tauri/src/lifecycle/sd_notify.rs
+//! systemd Type=notify integration. No-op on non-Linux.
 
-**Backward compatibility for existing service files**:
-- Users who upgraded from older ONESHIM with `Type=simple` service file already installed:
-  - On first launch post-upgrade, if config.autostart.enabled is true and OS state still has old `Type=simple` file → automatic regeneration via `autostart::enable_autostart()` no-op (file content already matches new template after PR-B2)
-  - **Action needed**: PR-B2 includes a one-time migration check at startup: if Linux + `service_path().exists()` + reading file shows `Type=simple` → call `linux::enable()` to overwrite + `systemctl --user daemon-reload`. Logged as info.
+#[cfg(all(target_os = "linux", feature = "systemd-notify"))]
+pub fn notify_ready() {
+    if let Err(e) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {
+        tracing::debug!(err.code = "sd_notify_skipped", "sd_notify READY skipped: {e}");
+    }
+}
+
+#[cfg(not(all(target_os = "linux", feature = "systemd-notify")))]
+pub fn notify_ready() {}
+
+#[cfg(all(target_os = "linux", feature = "systemd-notify"))]
+pub fn notify_stopping() {
+    let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Stopping]);
+}
+
+#[cfg(not(all(target_os = "linux", feature = "systemd-notify")))]
+pub fn notify_stopping() {}
+```
+
+**Failure modes**:
+- Process not run under systemd: `sd_notify::notify` returns Err → logged at debug, app continues
+- `NOTIFY_SOCKET` env var missing: same as above
+- systemd timeout (>30s init): systemd kills process → user sees "Service failed to start" in logs. Mitigation: ensure init path is fast (<5s typical). If init is slow, increase TimeoutStartSec in template.
 
 ---
 
 ### 6.2 Environment Detection — `autostart_capabilities` IPC
 
-**File**: `src-tauri/src/commands/autostart.rs` (extend PR-B1 file)
+**File**: `src-tauri/src/commands/autostart.rs` (extend PR-B1 file's skeleton)
 
 ```rust
 #[derive(serde::Serialize)]
 pub struct AutostartCapabilities {
-    /// Whether autostart toggle should be enabled in UI
     pub supported: bool,
-
-    /// Reason if not supported (for UI tooltip)
     pub unsupported_reason: Option<UnsupportedReason>,
-
-    /// Detected environment classification
     pub environment: EnvironmentKind,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum UnsupportedReason {
-    SnapSandbox,                    // SNAP env var set
-    FlatpakSandbox,                 // FLATPAK_ID env var set
-    HeadlessSession,                // No DISPLAY/WAYLAND_DISPLAY
-    SystemctlUnavailable,           // PATH lookup failed
-    UnsupportedPlatform,            // Future-proof for non-mac/win/linux
+    SnapSandbox,
+    FlatpakSandbox,
+    HeadlessSession,
+    SystemctlUnavailable,
+    UnsupportedPlatform,
 }
 
 #[derive(serde::Serialize)]
@@ -703,133 +828,151 @@ pub enum EnvironmentKind {
     MacOs,
     Windows,
     LinuxSystemd,
-    LinuxXdg,                       // systemctl missing → XDG fallback supported
+    LinuxXdg,
     LinuxSnapSandbox,
     LinuxFlatpakSandbox,
     LinuxHeadless,
     Unknown,
 }
-
-#[tauri::command]
-pub async fn autostart_capabilities() -> Result<AutostartCapabilities, String> {
-    Ok(autostart::detect_capabilities())
-}
 ```
 
-**Detection logic** (`src-tauri/src/autostart.rs::linux` mod, PR-B2 additions):
+**Detection logic** (Linux mod additions in PR-B2, expanding on `autostart::detect_capabilities()` which exists as skeleton in PR-B1):
 
 ```rust
 #[cfg(target_os = "linux")]
-pub fn detect_environment() -> (EnvironmentKind, Option<UnsupportedReason>) {
-    // Sandbox detection (highest priority — overrides everything else)
+pub fn detect_capabilities() -> AutostartCapabilities {
+    // Sandbox detection (highest priority)
     if std::env::var("SNAP").is_ok() {
-        return (EnvironmentKind::LinuxSnapSandbox, Some(UnsupportedReason::SnapSandbox));
+        return AutostartCapabilities {
+            supported: false,
+            unsupported_reason: Some(UnsupportedReason::SnapSandbox),
+            environment: EnvironmentKind::LinuxSnapSandbox,
+        };
     }
     if std::env::var("FLATPAK_ID").is_ok() {
-        return (EnvironmentKind::LinuxFlatpakSandbox, Some(UnsupportedReason::FlatpakSandbox));
+        return AutostartCapabilities {
+            supported: false,
+            unsupported_reason: Some(UnsupportedReason::FlatpakSandbox),
+            environment: EnvironmentKind::LinuxFlatpakSandbox,
+        };
     }
 
-    // Headless detection
     let has_display = std::env::var("DISPLAY").is_ok()
         || std::env::var("WAYLAND_DISPLAY").is_ok();
     if !has_display {
-        return (EnvironmentKind::LinuxHeadless, Some(UnsupportedReason::HeadlessSession));
+        return AutostartCapabilities {
+            supported: false,
+            unsupported_reason: Some(UnsupportedReason::HeadlessSession),
+            environment: EnvironmentKind::LinuxHeadless,
+        };
     }
 
-    // systemctl availability
     if has_systemctl() {
-        (EnvironmentKind::LinuxSystemd, None)
+        AutostartCapabilities {
+            supported: true,
+            unsupported_reason: None,
+            environment: EnvironmentKind::LinuxSystemd,
+        }
     } else {
-        (EnvironmentKind::LinuxXdg, None)  // XDG fallback supported
+        AutostartCapabilities {
+            supported: true,  // XDG fallback supported
+            unsupported_reason: None,
+            environment: EnvironmentKind::LinuxXdg,
+        }
     }
 }
-```
 
-For non-Linux:
-```rust
 #[cfg(target_os = "macos")]
-pub fn detect_environment() -> (EnvironmentKind, Option<UnsupportedReason>) {
-    (EnvironmentKind::MacOs, None)
+pub fn detect_capabilities() -> AutostartCapabilities {
+    AutostartCapabilities {
+        supported: true,
+        unsupported_reason: None,
+        environment: EnvironmentKind::MacOs,
+    }
 }
 
 #[cfg(target_os = "windows")]
-pub fn detect_environment() -> (EnvironmentKind, Option<UnsupportedReason>) {
-    (EnvironmentKind::Windows, None)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-pub fn detect_environment() -> (EnvironmentKind, Option<UnsupportedReason>) {
-    (EnvironmentKind::Unknown, Some(UnsupportedReason::UnsupportedPlatform))
-}
+pub fn detect_capabilities() -> AutostartCapabilities { /* ... Windows ... */ }
 ```
 
-**UI gating** (PR-B2 update to `GeneralTab.tsx`):
-```tsx
-const [caps, setCaps] = useState<AutostartCapabilities | null>(null)
-useEffect(() => {
-  invoke<AutostartCapabilities>('autostart_capabilities').then(setCaps)
-}, [])
-
-<Toggle
-  checked={enabled ?? false}
-  onChange={handleToggle}
-  disabled={loading || enabled === null || !caps?.supported}
-  label={t('settings.general.autostart.toggle')}
-/>
-{caps && !caps.supported && (
-  <Tooltip>{t(`settings.general.autostart.unsupported.${caps.unsupported_reason?.kind}`)}</Tooltip>
-)}
+**PR-B1 skeleton** (placeholder in PR-B1, real impl in PR-B2):
+```rust
+// PR-B1 — returns supported=true unconditionally on Linux (no env detection)
+#[cfg(target_os = "linux")]
+pub fn detect_capabilities() -> AutostartCapabilities {
+    AutostartCapabilities {
+        supported: true,
+        unsupported_reason: None,
+        environment: EnvironmentKind::LinuxSystemd,  // assume systemd path
+    }
+}
 ```
 
 **Onboarding prompt gating**: also check `caps.supported` — don't show prompt if can't honor it.
 
 ---
 
-### 6.3 Linux Integration Tests
+### 6.3 Linux Integration Tests (revised per I5)
 
-**CI infrastructure**: GitHub Actions matrix add `ubuntu-latest` job that runs in a systemd-enabled container.
+**CI infrastructure** (revised — no `--privileged`):
+
+Two-job split:
+1. **Unit tests** (always-on, all PRs): service file generation, hash check, env detection logic with mocked env vars. No systemd needed. Run on `ubuntu-latest`.
+2. **Live systemd integration** (manual trigger, PR-B2 only): use rootless systemd via `systemd-run --user --scope` or dedicated branch-protected workflow.
 
 ```yaml
-# .github/workflows/ci.yml — new job
-linux-systemd-integration:
+# .github/workflows/ci.yml — unit tests (always-on)
+linux-autostart-unit:
   runs-on: ubuntu-latest
-  container:
-    image: ubuntu:24.04
-    options: --privileged --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw
   steps:
     - uses: actions/checkout@v4
-    - run: apt-get update && apt-get install -y systemd dbus-user-session libsystemd-dev
-    - run: # bootstrap systemd in container
-    - run: cargo test -p oneshim-app --features systemd-notify --test linux_autostart_integration
+    - run: cargo test -p oneshim-app --features systemd-notify --test linux_autostart_unit
+
+# .github/workflows/linux-systemd-integration.yml — manual trigger
+on:
+  workflow_dispatch:
+linux-systemd-integration:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - name: Run rootless systemd
+      run: |
+        # Use systemd-run --user inside the runner's existing user session
+        sudo apt-get install -y systemd dbus-user-session
+        systemctl --user start dbus
+        cargo test -p oneshim-app --features systemd-notify --test linux_autostart_systemd_live
 ```
 
-**Tests covered** (`src-tauri/tests/linux_autostart_integration.rs`):
-- T1: `enable_autostart` writes service file with `Type=notify`
-- T2: `disable_autostart` removes service file + reloads daemon
-- T3: `is_autostart_enabled` returns true after enable
-- T4: `detect_environment` returns `LinuxSystemd` in clean container
-- T5: `detect_environment` returns `LinuxSnapSandbox` when SNAP env var set
-- T6: `detect_environment` returns `LinuxFlatpakSandbox` when FLATPAK_ID set
-- T7: `detect_environment` returns `LinuxHeadless` when DISPLAY/WAYLAND_DISPLAY absent
-- T8: Existing `Type=simple` service file is migrated to `Type=notify` on first run
-- T9: `sd_notify::notify_ready()` returns Ok when `NOTIFY_SOCKET` is set, Err (logged) when absent
+**Tests covered** (`src-tauri/tests/linux_autostart_unit.rs`):
+- T1: `generate_service_file` produces `Type=notify`
+- T2: `generate_service_file` includes `NotifyAccess=main`, `TimeoutStartSec=30`
+- T3: `detect_capabilities` returns `LinuxSnapSandbox` when SNAP env var set
+- T4: `detect_capabilities` returns `LinuxFlatpakSandbox` when FLATPAK_ID set
+- T5: `detect_capabilities` returns `LinuxHeadless` when DISPLAY/WAYLAND_DISPLAY absent
+- T6: `migration_hash_check` matches known PR-B1-era template
+- T7: `migration_hash_check` skips when file doesn't match (user customization)
 
-**Skipped on non-Linux**: `#[cfg(target_os = "linux")]` gate on entire integration test file.
+**Tests covered** (`src-tauri/tests/linux_autostart_systemd_live.rs`, manual):
+- T8: Real `systemctl --user enable oneshim.service` + verify file written
+- T9: `sd_notify::notify_ready()` returns Ok when run under `systemd-run --user`
+- T10: Service file migration end-to-end (write Type=simple, app start, verify defer + next-launch behavior)
 
 ---
 
 ### 6.4 Korean Operations Documentation
 
-**File**: `docs/guides/autostart.ko.md` (NEW; English companion deferred unless reviewer requests)
+**File**: `docs/guides/autostart.ko.md` (NEW)
 
 Structure:
 - 개요: autostart 기능 소개
 - 플랫폼별 동작: macOS/Windows/Linux
 - Linux 환경별 지원: systemd, XDG, Snap/Flatpak, headless
+- 마이그레이션: PR-B2 service file 변경 사항 + 사용자 customization 가이드 (per C4)
 - 트러블슈팅:
   - "토글이 회색이에요" → 환경 매트릭스 설명
   - "활성화했는데 시작 안 돼요" → 로그 위치 + systemctl status 확인 방법
   - "Snap/Flatpak에서 안 돼요" → OS-native autostart 설정 안내
+  - "service 파일이 customize되어 마이그레이션 스킵됨" → 수동 마이그레이션 단계
 - 단일 인스턴스 동작: 설명 + 알려진 한계 (headless에서 미동작)
 
 ---
@@ -845,42 +988,36 @@ User clicks toggle ON in GeneralTab
   → invoke('enable_autostart')
     → Tauri IPC → enable_autostart command
     → autostart::enable_autostart() (writes plist/registry/service file)
-    → ConfigManagerHandle.update(|c| c.autostart.enabled = true)
-      → AppConfig persisted to disk via JSON serialize
     → Returns Ok(())
   → setEnabled(true), setLoading(false)
   → Toggle visually reflects ON state
+  
+(NO config write — OS state is sole source of truth per I4)
 ```
 
-### 7.2 Onboarding prompt full lifecycle
+### 7.2 Productive session counter increment (revised per C5)
 
 ```
-First launch after upgrade
-  → AppConfig loads with autostart = AutostartConfig::default()
-  → Dashboard mounts, no prompt (productive_session_count = 0)
-
 User completes 25-min focus block
-  → scheduler emits productive-session-completed Tauri event
-  → frontend listener: invoke('increment_productive_session')
-  → IPC: config.autostart.productive_session_count += 1 (= 1)
-  → returns 1
+  → scheduler/loops/monitor.rs detects threshold
+  → generates session_id UUID (fresh per session)
+  → calls config_mgr.update_with(|c| {
+      if c.autostart.last_session_id == Some(session_id) { return Ok(()); }  // idempotent
+      c.autostart.productive_session_count += 1;
+      c.autostart.last_session_id = Some(session_id);
+      Ok(())
+    })
+  → if should_prompt(snapshot.autostart): app.emit("autostart:eligible-for-prompt", ())
 
-Dashboard re-evaluates eligibility
-  → should_prompt() = (Pending && count >= 1) → true
-  → 500ms delay → AutostartOnboardingPrompt modal appears
+Frontend (Dashboard mounted with AutostartOnboardingPromptHost):
+  → listener fires for autostart:eligible-for-prompt
+  → re-evaluates eligibility from fresh config
+  → if eligible AND !hasShownThisSession: setTimeout 500ms → show modal
 
 User clicks "Not now"
-  → invoke('mark_autostart_prompt_state', { newState: { kind: 'snoozed', remind_after_session_count: 6 } })
+  → invoke('mark_autostart_prompt_state', { newState: { kind: 'snoozed', remind_after_session_count: count + 5 } })
   → Modal closes
-
-User completes 5 more focus blocks (count = 2, 3, 4, 5, 6)
-  → On count=6 event, Dashboard re-evaluates
-  → should_prompt() = (Snoozed{6} && count >= 6) → true
-  → Modal re-appears
-
-User clicks "Don't ask again"
-  → mark_autostart_prompt_state({ kind: 'dismissed' })
-  → Modal closes, never appears again
+  → hasShownThisSession = true (single-fire — no re-show until app restart)
 ```
 
 ### 7.3 Single-instance via tauri-plugin-single-instance
@@ -899,6 +1036,8 @@ User double-clicks ONESHIM icon in dock/taskbar
     → window.set_focus()
   → 2nd process exits cleanly with code 0
   → User sees: existing window comes to foreground
+
+(Headless Linux fallback per I7: 2nd process launches as standalone, log warn)
 ```
 
 ### 7.4 Linux systemd Type=notify (PR-B2)
@@ -910,10 +1049,14 @@ systemd starts ONESHIM via user service unit (autostart enabled)
   → systemd waits for READY notification (timeout: 30s per unit file)
 
 ONESHIM init:
+  → migration check: read existing service file, hash check
+    - matches old template → write new template, log info, NO daemon-reload
+    - matches new template → no-op
+    - doesn't match → log warn, skip (user customization)
   → Tauri builder.setup() runs
   → All scheduler loops spawn (16 loops)
   → SQLite migrations applied
-  → Main window shown (or hidden-to-tray)
+  → Main window shown (or hidden-to-tray confirmed)
   → main.rs calls lifecycle::sd_notify::notify_ready()
     → sd_notify::notify(false, &[NotifyState::Ready])
     → systemd marks unit "active (running)"
@@ -933,134 +1076,147 @@ systemd shutdown signals (SIGTERM):
 
 | Failure mode | Detection | User-facing behavior | Code path |
 |--------------|-----------|----------------------|-----------|
-| OS enable fails (e.g., LaunchAgents dir not writable) | `autostart::enable_autostart()` returns Err | Error banner in Settings: "Failed to enable: {{error}}". Toggle reverts to OFF. | `enable_autostart` IPC propagates Err |
-| Config save fails after OS enable | ConfigManagerHandle.update Err | Two-phase commit reverts OS state, surfaces combined error message | `enable_autostart` IPC reverts then errors |
-| systemctl missing on Linux | `has_systemctl()` returns false | (PR-B1) Falls back to XDG `.desktop` file silently. (PR-B2) `autostart_capabilities` returns `LinuxXdg` env, toggle still works | `autostart::linux::enable` |
-| D-Bus unavailable for single-instance | Plugin init returns Err | Plugin disabled, app launches without single-instance protection. Warning logged. | main.rs match block on plugin init |
-| sd_notify NOTIFY_SOCKET missing | `sd_notify::notify` returns Err | Logged at debug, app continues. Only matters when run under systemd. | lifecycle::sd_notify |
-| User on Snap/Flatpak attempts toggle | (PR-B2) `autostart_capabilities` returns unsupported | Toggle disabled with tooltip "Use Snap/Flatpak's built-in autostart settings" | UI gating + IPC validation |
-| User on headless Linux attempts toggle | (PR-B2) capabilities returns LinuxHeadless | Toggle disabled with tooltip "Autostart requires a desktop session" | UI gating |
-| Existing user's service file is `Type=simple` after PR-B2 deploys | Startup migration check | Service file regenerated to `Type=notify`, daemon-reload, info logged | PR-B2 init migration |
-| 2nd instance fires while 1st is hidden in tray | Plugin callback runs | Window unhidden + focused via show()→unminimize()→set_focus() | Plugin callback |
-| User's config.autostart.enabled=true but OS state is false (drift) | `is_autostart_enabled` returns false on UI mount | UI shows OFF (OS truth), no automatic re-enable. User can re-toggle to fix. | UI defensive re-fetch |
-| Productive session counter overflow (u32 max) | `saturating_add` | Counter caps at u32::MAX, prompt logic still works (Snoozed comparison) | `increment_productive_session` IPC |
-| Concurrent enable/disable via rapid double-click | UI loading state guards | First click locks toggle, second click ignored until first completes | `if (loading) return` in handleToggle |
-| sd-notify feature disabled (build without `--features systemd-notify`) | `cfg` gate | `notify_ready()` is no-op stub, no error | Build-time |
+| OS enable fails (permissions, disk full) | `autostart::enable_autostart()` returns Err | Error banner. Toggle reverts (UI re-fetches OS) | `enable_autostart` IPC propagates Err |
+| systemctl missing on Linux | (PR-B1) `has_systemctl()` returns false → XDG fallback. (PR-B2) capabilities returns `LinuxXdg`, toggle still works | XDG `.desktop` file written instead | `autostart::linux::enable` |
+| D-Bus unavailable for single-instance | Plugin's IPC silently fails. (No init Result.) | 2nd instance launches as standalone. Log warn at startup if `DBUS_SESSION_BUS_ADDRESS` absent | main.rs startup check |
+| sd_notify NOTIFY_SOCKET missing | `sd_notify::notify` returns Err | Logged at debug, app continues | lifecycle::sd_notify |
+| User on Snap/Flatpak attempts toggle | (PR-B2) `autostart_capabilities` returns unsupported | Toggle disabled with tooltip | UI gating |
+| User on headless Linux attempts toggle | (PR-B2) capabilities returns LinuxHeadless | Toggle disabled with tooltip | UI gating |
+| Existing user's service file is `Type=simple` after PR-B2 deploys | Startup migration check | If hash matches: write new file, log info, defer reload to next session. If hash mismatches: log warn, skip | PR-B2 init migration |
+| 2nd instance fires while 1st is hidden in tray (Wayland kept-hidden) | Plugin callback runs | window.show() may not surface on Wayland — fallback: log + manual fallback | Manual smoke test verifies |
+| Productive session counter overflow (u32 max) | `saturating_add` | Counter caps at u32::MAX, prompt logic still works | scheduler/loops/monitor.rs |
+| Concurrent enable/disable via rapid double-click | UI loading state guards | First click locks toggle | `if (loading) return` |
+| Counter increment write fails (config disk full) | `update_with` returns Err | Logged at warn (`autostart_counter_increment_failed`), no user impact | scheduler emit |
+| Migration to Type=notify breaks running service (despite hash check) | systemd marks unit failed after timeout | Service restart loop. User sees "Service failed to start" in logs. Recovery: re-toggle from Settings UI | PR-B2 docs/guides/autostart.ko.md user runbook |
 
-### 8.2 Logging conventions
+### 8.2 Logging conventions (wire codes for Loki/Grafana grouping)
 
-Per CLAUDE.md `feedback_observability` and ADR-019 follow-up:
+- `autostart_enable_failed`
+- `autostart_disable_failed`
+- `autostart_counter_increment_failed`
+- `autostart_capability_check_failed`
+- `single_instance_dbus_absent`
+- `sd_notify_skipped`
+- `autostart_service_migrated`
+- `autostart_service_migration_skipped` (user customization)
 
+Example:
 ```rust
-// In autostart enable/disable
-tracing::warn!(
+warn!(
     err.code = "autostart_enable_failed",
     platform = std::env::consts::OS,
     "autostart enable failed: {e}"
 );
 ```
 
-Wire codes for Loki/Grafana grouping:
-- `autostart_enable_failed`
-- `autostart_disable_failed`
-- `autostart_config_persist_failed`
-- `autostart_os_state_revert`
-- `single_instance_plugin_init_failed`
-- `sd_notify_failed`
-- `autostart_capability_check_failed`
-
 ---
 
 ## 9. Testing Strategy
 
-### 9.1 Unit tests (per crate)
+### 9.1 Unit tests
 
 **`crates/oneshim-core/src/config/sections/autostart.rs`** (new):
-- `default_config_is_pending`: `AutostartConfig::default()` matches expected JSON shape
-- `prompt_state_serde_roundtrip`: each variant (Pending/Snoozed/Dismissed) serde-roundtrips correctly with `tag = "kind"` discriminator
-- `should_prompt_pending_with_zero_count`: returns false
-- `should_prompt_pending_with_one_count`: returns true
-- `should_prompt_snoozed_below_threshold`: returns false
-- `should_prompt_snoozed_at_threshold`: returns true
-- `should_prompt_dismissed_always_false`: regardless of count
-- `migration_from_old_config_uses_default`: deserialize old config without `autostart` field → AutostartConfig::default applied via `#[serde(default)]`
+- `default_config_is_pending`
+- `prompt_state_serde_roundtrip` (each variant)
+- `should_prompt_pending_with_zero_count` → false
+- `should_prompt_pending_with_one_count` → true
+- `should_prompt_snoozed_below_threshold` → false
+- `should_prompt_snoozed_at_threshold` → true
+- `should_prompt_dismissed_always_false`
+- `migration_from_old_config_uses_default` (no `autostart` field → default)
+- `idempotency_via_session_id` — same session_id called twice doesn't double-increment
 
-**`src-tauri/src/commands/autostart.rs`** (new — using mock ConfigManagerHandle):
-- `enable_autostart_two_phase_commit_success`: OS enable + config update both succeed
-- `enable_autostart_reverts_on_config_failure`: OS enable succeeds, config fails → OS reverted, error returned
-- `disable_autostart_reverts_on_config_failure`: same pattern in reverse
-- `is_autostart_enabled_uses_os_truth`: returns OS state, not config cache
-- `mark_prompt_state_persists`: state correctly written to config
-- `increment_productive_session_returns_new_count`: counter increments and returns new value
-- `increment_productive_session_saturates_at_max`: u32::MAX cap
+**`src-tauri/src/commands/autostart.rs`** (new):
+- `enable_autostart_propagates_os_error`
+- `disable_autostart_propagates_os_error`
+- `is_autostart_enabled_returns_os_state`
+- `mark_prompt_state_persists` (Pending/Snoozed/Dismissed each)
+- `autostart_capabilities_returns_skeleton_in_b1` (PR-B1)
+
+**`src-tauri/src/scheduler/loops/monitor.rs`** (extended):
+- `productive_session_increments_counter`
+- `productive_session_idempotent_via_session_id`
+- `productive_session_below_25_min_no_increment`
+- `productive_session_emits_event_when_eligible`
+- `productive_session_no_event_when_dismissed`
 
 **`src-tauri/src/autostart.rs`** (existing tests preserved + extended):
-- existing tests on plist/service/desktop file generation: unchanged
-- (PR-B2) `detect_environment_macos`: returns `MacOs` on macOS
-- (PR-B2) `detect_environment_windows`: returns `Windows` on Windows
-- (PR-B2) `detect_environment_linux_systemd`: returns `LinuxSystemd` (assuming default test env)
-- (PR-B2) `detect_environment_snap`: with `SNAP` env set, returns `LinuxSnapSandbox`
-- (PR-B2) `detect_environment_flatpak`: with `FLATPAK_ID` env set
-- (PR-B2) `detect_environment_headless`: with no `DISPLAY`/`WAYLAND_DISPLAY`
-- (PR-B2) `service_file_uses_type_notify`: generated service file contains `Type=notify`
-- (PR-B2) `service_file_includes_notify_access_main`: contains `NotifyAccess=main`
-- (PR-B2) `service_file_includes_timeout_start_sec`: contains `TimeoutStartSec=30`
+- (PR-B2) `detect_capabilities_macos`
+- (PR-B2) `detect_capabilities_windows`
+- (PR-B2) `detect_capabilities_linux_systemd`
+- (PR-B2) `detect_capabilities_snap`
+- (PR-B2) `detect_capabilities_flatpak`
+- (PR-B2) `detect_capabilities_headless`
+- (PR-B2) `service_file_uses_type_notify`
+- (PR-B2) `service_file_includes_notify_access_main`
+- (PR-B2) `service_file_includes_timeout_start_sec`
+- (PR-B2) `migration_hash_matches_known_template`
+- (PR-B2) `migration_skips_on_unknown_hash`
 
 **`src-tauri/src/lifecycle/sd_notify.rs`** (new, PR-B2):
-- `notify_ready_no_op_on_non_linux`: compiles + runs to completion on macOS/Windows
-- `notify_ready_returns_ok_with_socket`: with `NOTIFY_SOCKET` set, succeeds
-- `notify_ready_logs_when_socket_missing`: without NOTIFY_SOCKET, logged at debug
+- `notify_ready_no_op_on_non_linux`
+- `notify_ready_returns_ok_with_socket`
+- `notify_ready_logs_when_socket_missing`
 
 ### 9.2 Frontend tests (Vitest)
 
 **`crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.test.tsx`**:
-- `startup_section_renders`: section visible
-- `toggle_initial_state_loads_from_ipc`: invokes `is_autostart_enabled` on mount
-- `toggle_click_invokes_enable_or_disable`: correct IPC called per direction
-- `toggle_error_re_fetches_os_state`: error path triggers re-fetch
-- `toggle_disabled_during_loading`: prevents double-click
+- `startup_section_renders`
+- `toggle_initial_state_loads_from_ipc`
+- `toggle_loads_capabilities`
+- `toggle_disabled_when_capabilities_unsupported`
+- `toggle_click_invokes_enable_or_disable`
+- `toggle_error_re_fetches_os_state`
+- `toggle_disabled_during_loading`
+- `unsupported_tooltip_uses_i18n_context`
 
 **`crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.test.tsx`** (new):
-- `prompt_visible_when_eligible`: pending + count >= 1 shows modal
-- `prompt_hidden_when_dismissed`: dismissed never shows
-- `prompt_hidden_when_snoozed_below_threshold`: snoozed{N} + count<N hides
-- `enable_button_invokes_correct_ipcs`: `enable_autostart` then `mark_..._state(dismissed)`
-- `not_now_button_sets_snoozed`: marks state with current_count + 5
-- `dismiss_button_sets_dismissed`: marks state as dismissed
-- `escape_key_treated_as_not_now`: a11y compliance
-- `outside_click_treated_as_not_now`: a11y compliance
+- `prompt_visible_when_eligible`
+- `prompt_hidden_when_dismissed`
+- `prompt_hidden_when_snoozed_below_threshold`
+- `single_fire_per_session` — once shown, never re-shown until restart
+- `enable_button_invokes_correct_ipcs`
+- `not_now_button_sets_snoozed_with_count_plus_5`
+- `dismiss_button_sets_dismissed`
+- `escape_key_treated_as_not_now`
+- `outside_click_treated_as_not_now`
+- `event_listener_re_evaluates_eligibility`
 
 ### 9.3 Integration tests (PR-B1)
 
 **`src-tauri/tests/autostart_ipc_integration.rs`** (new):
-- IPC → real `autostart::*` → real ConfigManager (temp dir) round-trip on host platform
-- Smoke test: `enable_autostart` → `is_autostart_enabled` returns true → `disable_autostart` → returns false
-- Cleanup: test always disables on tear-down to avoid polluting host
+- IPC → real `autostart::*` round-trip on host platform
+- Smoke test: enable → is_enabled = true → disable → is_enabled = false
+- Cleanup: always disable on tear-down
 
 **`src-tauri/tests/single_instance_integration.rs`** (new):
 - Spawn 2nd binary as child process → expect exit code 0 within 2s
-- Verify 1st instance receives callback (via Tauri event mock)
-- Skip in CI on Linux without D-Bus session bus (set `OS_TEST_SKIP_SINGLE_INSTANCE=1`)
+- Skip on Linux without D-Bus session bus
 
 ### 9.4 Integration tests (PR-B2)
 
-**`src-tauri/tests/linux_autostart_integration.rs`** (new, `#[cfg(target_os = "linux")]`):
-- T1-T9 as listed in §6.3
-- Run in CI under systemd-enabled container
+**`src-tauri/tests/linux_autostart_unit.rs`** (new, `#[cfg(target_os = "linux")]`):
+- T1-T7 as listed in §6.3 (no real systemd needed)
 
-### 9.5 Manual smoke test matrix (per PR)
+**`src-tauri/tests/linux_autostart_systemd_live.rs`** (manual trigger only):
+- T8-T10 with rootless systemd-run
 
-**PR-B1 sign-off requires manual verification on**:
+### 9.5 Manual smoke test matrix
+
+**PR-B1 sign-off**:
 - macOS (latest): toggle, autostart at login, single-instance focus-grab
 - Windows 11: same
-- Linux (Ubuntu 24.04 with systemd): same
+- Linux Ubuntu 24.04 (X11 GNOME): same
+- Linux Wayland (Fedora 40 GNOME): single-instance focus-grab on kept-hidden window — **per I1, explicit case**
+- Linux Wayland (sway): same
 
-**PR-B2 sign-off requires additional**:
-- Linux Snap (toggle disabled with tooltip)
-- Linux Flatpak (toggle disabled with tooltip)
-- Linux headless SSH session (toggle disabled with tooltip)
-- Linux Wayland session (Fedora 40 GNOME): autostart works
-- Linux X11 session (Ubuntu 22.04 GNOME): autostart works
+**PR-B2 sign-off** (additional):
+- Linux Snap: toggle disabled with tooltip
+- Linux Flatpak: toggle disabled with tooltip
+- Linux headless SSH: toggle disabled with tooltip
+- Linux service file migration: install PR-B1 → enable autostart → upgrade to PR-B2 → verify file written, daemon-reload deferred, next login starts cleanly
+
+**Recording location** (per §12.1 Q6): each PR description includes a "Manual Smoke Test Results" section as a checklist with one row per platform. Persisted in PR body (markdown table). Optional: copy to `.claude/manual-smoke-tests/<release>.md` for historical record.
 
 ### 9.6 Pass criteria
 
@@ -1068,60 +1224,57 @@ Wire codes for Loki/Grafana grouping:
 - All Vitest tests GREEN
 - All integration tests GREEN (host platform only for non-Linux integration)
 - `cargo check/test/clippy/fmt --workspace` GREEN (per ADR-001)
-- Frontend `pnpm lint` GREEN (Biome + useExhaustiveDependencies)
+- Frontend `pnpm lint` GREEN
 - Manual smoke test matrix per phase (above)
 - No new clippy warnings
-- i18n key parity en.json ↔ ko.json (CI lint)
+- i18n key parity en.json ↔ ko.json
 
 ---
 
 ## 10. Delivery Plan
 
-### 10.1 PR-B1 commit structure (~22h)
-
-Following PR-A pattern (`feature/phase9-tracking-schedule`, atomic per-concern commits):
+### 10.1 PR-B1 commit structure (~23h, +1h vs v1 for capabilities skeleton per I8)
 
 | # | Commit | Estimate | Files |
 |---|--------|----------|-------|
 | 1 | `chore(autostart): add tauri-plugin-single-instance dep` | 0.5h | `src-tauri/Cargo.toml`, `Cargo.lock` |
-| 2 | `feat(autostart): AutostartConfig + AutostartPromptState in core` | 2h | `crates/oneshim-core/src/config/sections/autostart.rs`, `mod.rs`, `crates/oneshim-core/src/config/mod.rs` |
-| 3 | `test(autostart): AutostartConfig serde + should_prompt unit tests` | 1.5h | `crates/oneshim-core/src/config/sections/autostart.rs` (tests submodule) |
-| 4 | `feat(autostart): IPC commands (enable/disable/is_enabled/mark_prompt/increment)` | 3h | `src-tauri/src/commands/autostart.rs`, `commands/mod.rs`, `commands/settings.rs`, `main.rs` invoke_handler |
-| 5 | `test(autostart): IPC command unit tests + two-phase commit coverage` | 2h | `src-tauri/src/commands/autostart.rs` tests submodule + `tests/autostart_ipc_integration.rs` |
+| 2 | `feat(autostart): AutostartConfig + AutostartPromptState in core (no enabled cache)` | 1.5h | `crates/oneshim-core/src/config/sections/autostart.rs`, `mod.rs`, `crates/oneshim-core/src/config/mod.rs` |
+| 3 | `test(autostart): AutostartConfig serde + should_prompt + idempotency unit tests` | 1.5h | `autostart.rs` (tests submodule) |
+| 4 | `feat(autostart): IPC commands (5 commands incl. capabilities skeleton)` | 2.5h | `src-tauri/src/commands/autostart.rs`, `commands/mod.rs`, `main.rs` invoke_handler |
+| 5 | `test(autostart): IPC command unit tests` | 1.5h | `commands/autostart.rs` tests + `tests/autostart_ipc_integration.rs` |
 | 6 | `feat(autostart): single-instance plugin in main builder + focus-grab callback` | 1.5h | `src-tauri/src/main.rs` |
-| 7 | `test(autostart): single-instance integration smoke test` | 1.5h | `src-tauri/tests/single_instance_integration.rs` |
-| 8 | `feat(autostart): GeneralTab Startup section + toggle wiring` | 2h | `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx`, `i18n/en.json`, `i18n/ko.json` |
-| 9 | `test(autostart): GeneralTab Vitest coverage` | 1h | `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.test.tsx` |
-| 10 | `feat(autostart): productive session event emission from scheduler` | 1.5h | `src-tauri/src/scheduler/loops/focus.rs` (or analysis loop), `commands/autostart.rs` (event listener) |
-| 11 | `feat(autostart): AutostartOnboardingPrompt component + Dashboard integration` | 2.5h | `crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.tsx`, `pages/Dashboard.tsx`, `i18n/*.json` |
-| 12 | `test(autostart): AutostartOnboardingPrompt Vitest coverage` | 1.5h | corresponding `.test.tsx` |
-| 13 | `docs(autostart): STATUS.md + PHASE-HISTORY entry for PR-B1` | 0.5h | `docs/STATUS.md`, `docs/PHASE-HISTORY.md`, `crates/oneshim-web/src/handlers` if new endpoint added |
-| 14 | `chore(autostart): manual smoke test matrix per platform + checklist` | 1h | manual session, no commit unless issues found |
+| 7 | `feat(autostart): D-Bus presence check + warn log at startup (per I7)` | 0.5h | `src-tauri/src/main.rs` startup hook |
+| 8 | `test(autostart): single-instance integration smoke test` | 1.5h | `src-tauri/tests/single_instance_integration.rs` |
+| 9 | `feat(autostart): GeneralTab Startup section + toggle wiring + capabilities-aware UI` | 2.5h | `GeneralTab.tsx`, i18n |
+| 10 | `test(autostart): GeneralTab Vitest coverage` | 1h | `GeneralTab.test.tsx` |
+| 11 | `feat(autostart): productive-session detection + Rust-side counter increment in monitor.rs` | 2.5h | `src-tauri/src/scheduler/loops/monitor.rs` (or new helper) |
+| 12 | `test(autostart): productive-session detection unit tests (idempotency, threshold)` | 1.5h | corresponding tests |
+| 13 | `feat(autostart): AutostartOnboardingPrompt + ShowPromptCoordinator + Dashboard integration` | 2.5h | `AutostartOnboardingPrompt.tsx`, `Dashboard.tsx`, i18n |
+| 14 | `test(autostart): AutostartOnboardingPrompt Vitest coverage incl. single-fire` | 1.5h | corresponding `.test.tsx` |
+| 15 | `docs(autostart): STATUS.md + PHASE-HISTORY entry for PR-B1` | 0.5h | `docs/STATUS.md`, `docs/PHASE-HISTORY.md` |
+| 16 | `chore(autostart): manual smoke test matrix per platform + checklist (PR body)` | 1h | manual session, no commit |
 
-Total: ~22h. Bundle related test commits per `feedback_lefthook_clippy_cost`.
+**Total**: ~23h. Commits 13-14 are bundled per `feedback_lefthook_clippy_cost`.
 
-### 10.2 PR-B2 commit structure (~15h)
-
-After PR-B1 merges to main:
+### 10.2 PR-B2 commit structure (~15h, unchanged from v1)
 
 | # | Commit | Estimate |
 |---|--------|----------|
 | 1 | `chore(autostart): add sd-notify dep with feature flag` | 0.5h |
 | 2 | `feat(autostart): lifecycle::sd_notify wrapper module` | 1.5h |
-| 3 | `test(autostart): sd_notify unit coverage (Linux + non-Linux)` | 1h |
-| 4 | `feat(autostart): change Linux service file to Type=notify + NotifyAccess=main + TimeoutStartSec` | 1.5h |
-| 5 | `feat(autostart): one-time migration of Type=simple service files at startup` | 1.5h |
-| 6 | `feat(autostart): wire sd_notify::notify_ready/stopping in main lifecycle` | 1h |
-| 7 | `feat(autostart): detect_environment + EnvironmentKind/UnsupportedReason types` | 2h |
-| 8 | `test(autostart): detect_environment unit coverage per env (Snap/Flatpak/headless/X11/Wayland)` | 1.5h |
-| 9 | `feat(autostart): autostart_capabilities IPC + UI gating in GeneralTab` | 2h |
-| 10 | `feat(autostart): onboarding prompt respects capabilities (no prompt if unsupported)` | 0.5h |
-| 11 | `feat(autostart): i18n keys for capability tooltips (en + ko)` | 0.5h |
-| 12 | `test(autostart): linux_autostart_integration.rs (T1-T9) + CI workflow` | 3h |
-| 13 | `docs(autostart): docs/guides/autostart.ko.md operations guide` | 1h |
-| 14 | `docs(autostart): STATUS.md + PHASE-HISTORY for PR-B2` | 0.5h |
+| 3 | `test(autostart): sd_notify unit coverage` | 1h |
+| 4 | `feat(autostart): change Linux service file template to Type=notify + NotifyAccess + TimeoutStartSec` | 1.5h |
+| 5 | `feat(autostart): hash-based service file migration (defer reload, skip user customization)` | 2h |
+| 6 | `test(autostart): migration hash check + defer behavior` | 1.5h |
+| 7 | `feat(autostart): wire sd_notify::notify_ready/stopping in main lifecycle` | 1h |
+| 8 | `feat(autostart): real detect_capabilities replacing PR-B1 skeleton` | 2h |
+| 9 | `test(autostart): detect_capabilities unit coverage per env` | 1.5h |
+| 10 | `feat(autostart): linux_autostart_unit.rs CI integration (no --privileged)` | 1.5h |
+| 11 | `feat(autostart): manual-trigger linux_autostart_systemd_live.rs workflow` | 1h |
+| 12 | `docs(autostart): docs/guides/autostart.ko.md operations + migration guide` | 1h |
+| 13 | `docs(autostart): STATUS.md + PHASE-HISTORY for PR-B2` | 0.5h |
 
-Total: ~15h.
+**Total**: ~15h.
 
 ### 10.3 Branch naming
 
@@ -1130,9 +1283,8 @@ Total: ~15h.
 
 ### 10.4 Release plan
 
-- PR-B1 merges → release `0.4.40-rc.1` (alongside features2 + Phase 9 PR-A already on main)
+- PR-B1 merges → release `0.4.40-rc.1`
 - PR-B2 merges → release `0.4.41-rc.1`
-- Stable promotion per `release.sh` + `promote-stable.sh` workflow (per memory `feedback_release_process`)
 
 ---
 
@@ -1142,62 +1294,103 @@ Total: ~15h.
 
 | Pre-PR-B1 state | Post-PR-B1 behavior |
 |-----------------|---------------------|
-| autostart never enabled, config has no `autostart` field | `AutostartConfig::default()` applied. Settings shows OFF. Onboarding prompt fires after first 25-min session. |
-| autostart manually enabled via OS (e.g., user added LaunchAgent themselves) | `is_autostart_enabled` returns true. Settings toggle reflects ON. `config.autostart.enabled` may be false (drift) — UI trusts OS. |
+| autostart never enabled, no `autostart` field in config | `AutostartConfig::default()` applied. Settings shows OFF (per OS). Onboarding prompt fires after first 25-min session. |
+| autostart manually enabled via OS (user added LaunchAgent themselves) | `is_autostart_enabled` returns true. Settings toggle reflects ON. Config has no `enabled` cache (per I4). |
 
-### 11.2 Service file migration (PR-B2)
+### 11.2 Service file migration (PR-B2, revised per C4)
 
-- Detection: on startup, read existing service file (if exists), check if contains `Type=simple`
-- Action: regenerate file with new template (`Type=notify` + `NotifyAccess=main` + `TimeoutStartSec=30`), run `systemctl --user daemon-reload`
-- Idempotent: if file already matches new template, no-op
-- Logged: `tracing::info!(err.code = "autostart_service_migrated", "Migrated systemd unit file from Type=simple to Type=notify")`
+- Detection: on startup, read existing service file (if exists), compute SHA-256
+- Hash matrix (maintained in `src-tauri/src/lifecycle/migration_hashes.rs`):
+  - `KNOWN_PRIOR_HASHES`: list of hashes of all prior templates (currently 1: PR-B1-era Type=simple)
+- Decision tree:
+  1. File doesn't exist → no-op (autostart wasn't enabled)
+  2. File hash matches `KNOWN_PRIOR_HASHES`: safe to overwrite. Write new file, log info `autostart_service_migrated`, **DO NOT** call `daemon-reload`. systemd loads new file on next user login session.
+  3. File hash matches NEW PR-B2 template: already migrated, no-op
+  4. File hash doesn't match anything: user customized. Log warn `autostart_service_migration_skipped`. Document in `docs/guides/autostart.ko.md` how user can manually update.
 
 ### 11.3 Downgrade safety
 
-- If user installs PR-B1 then downgrades to pre-PR-B1: config file has unknown `autostart` field. Existing serde will tolerate (extra field ignored unless `deny_unknown_fields` is set on AppConfig). **Verification**: check `AppConfig` derive macros for `deny_unknown_fields` — if present, downgrade requires manual config edit. Document this in PR description.
-- If user installs PR-B2 then downgrades to PR-B1: service file has `Type=notify` but PR-B1 doesn't call `sd_notify::notify_ready()`. Behavior: systemd will mark unit as failed after `TimeoutStartSec=30`. Mitigation: PR-B2 release notes recommend disable+re-enable on downgrade, or pre-B2 migration script.
+- Pre-PR-B1 → install PR-B1: forward-compatible (default config)
+- PR-B1 → downgrade to pre-PR-B1: `autostart` field unknown but `AppConfig` doesn't have `deny_unknown_fields` (verified §12.1 Q3). Field silently dropped. Safe.
+- PR-B2 → downgrade to PR-B1: service file has `Type=notify` but PR-B1 doesn't call `sd_notify_ready()`. systemd marks unit failed after `TimeoutStartSec=30`. **Recovery**: PR-B2 release notes recommend disable+re-enable on downgrade, or document manual edit of service file back to `Type=simple`.
 
-### 11.4 No breaking API changes
+### 11.4 Reconciler — startup-time consistency check (NEW per C3)
 
-All IPC commands are additive. No existing commands modified. `AppConfig` field added is additive (existing serializations unchanged).
+On app startup, reconcile observed OS state vs prior config snapshot:
+
+```rust
+// src-tauri/src/lifecycle/reconciler.rs (NEW, called from main.rs setup hook)
+async fn reconcile_autostart_state(config_mgr: &ConfigManager) {
+    let os_state = match autostart::is_autostart_enabled() {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(err.code = "autostart_reconcile_query_failed", "{e}");
+            return;
+        }
+    };
+
+    // No config-side autostart enabled cache to compare against (per I4).
+    // Reconciler instead checks: does this user have prompt_state == Dismissed
+    // AND OS state is false? If so, log info — user previously dismissed but
+    // never explicitly disabled at OS level. Could indicate manual revert.
+    let cfg = config_mgr.get();
+    if matches!(cfg.autostart.prompt_state, AutostartPromptState::Dismissed) && !os_state {
+        info!(
+            err.code = "autostart_reconcile_state",
+            "User previously dismissed prompt; OS autostart is currently disabled"
+        );
+    }
+}
+```
+
+The reconciler is informational only — no auto-correct. Users can re-toggle from Settings UI to fix any drift.
 
 ---
 
 ## 12. Open Questions / Future Work
 
-### 12.1 Open questions for ralph-loop spec review to resolve
+### 12.1 Resolved questions (Q1-Q6)
 
-- **Q1**: Does Tauri 2's `tauri.conf.json` `identifier` field auto-derive D-Bus name as `<identifier>` directly, or with a transformation? Verify against plugin docs to ensure it matches `com.oneshim.agent`.
-- **Q2**: Is the existing `ConfigManagerHandle` API (`update`, `update_returning`) capable of returning a value from the closure? If not, refactor needed (small, in PR-B1 commit 2).
-- **Q3**: Does the existing `AppConfig` derive `#[serde(deny_unknown_fields)]`? Affects downgrade story (§11.3).
-- **Q4**: Does the existing scheduler emit a "focus session ended ≥25 min" event we can hook into, or do we need to add one? Affects PR-B1 commit 10 estimate.
-- **Q5**: Is `sd-notify` 0.4 the latest stable / acceptable to add? Check workspace Cargo policy on adding deps.
-- **Q6**: Where does the manual smoke test matrix get recorded? PR description? Separate doc? Per-PR checklist file?
+- **Q1 (Tauri identifier match)**: ✅ Identifier is `com.oneshim.client` (`tauri.conf.json:4`). Plugin uses this as D-Bus name. APP_LABEL `com.oneshim.agent` is intentionally separate (LaunchAgent service name). See §1.2.
+- **Q2 (ConfigManager API)**: ✅ Real API is `update_with<F: FnOnce(&mut AppConfig) -> Result<(), String>> -> Result<AppConfig, CoreError>` (sync, returns whole config snapshot). Spec §5.1 rewritten to use this.
+- **Q3 (`deny_unknown_fields`)**: ✅ NOT set on `AppConfig` (verified `crates/oneshim-core/src/config/mod.rs:20`). Downgrade-safe. **Supplement**: i18n key parity CI lint name TBD — verify exists or add to NICE-TO-HAVE.
+- **Q4 (productive-session event)**: ✅ Does NOT exist in current scheduler. PR-B1 adds Rust-side detection in `monitor.rs` (per §5.5 + commit 11). focus_metrics is daily aggregate; per-session detection requires new in-memory state in scheduler.
+- **Q5 (sd-notify 0.4 acceptable)**: ✅ Not currently in workspace. Adding as optional Linux-only dep with feature flag `systemd-notify`. Workspace policy: confirmed acceptable per recent additions (e.g., chrono-tz in PR-A).
+- **Q6 (smoke matrix recording)**: ✅ Per-PR description body as checklist table. Optional historical archive to `.claude/manual-smoke-tests/<release>.md`.
 
-### 12.2 Future work explicitly deferred
+### 12.2 New open questions from Phase 1 review (for iteration 2)
 
-- **F1**: CLI commands (`oneshim --quit`, `oneshim --status`) using `tauri-plugin-single-instance` args+cwd callback (NG3 — future PR)
-- **F2**: D-Bus method exposure for external automation tools (NG2 — future PR if requested)
+- **Q7**: Verify `tauri-plugin-single-instance` v2 D-Bus name source in plugin source code (not yet vendored). Confirm it's `<identifier>` exactly, no transformation.
+- **Q8**: Does the existing `i18next-parser` or equivalent CI lint check en/ko key parity? If not, add a script in PR-B1 commit 9.
+- **Q9**: Should the reconciler (§11.4) also check XDG `.desktop` file existence on Linux when systemd is unavailable? Current impl assumes single OS state path.
+
+### 12.3 Future work explicitly deferred
+
+- **F1**: CLI commands (`oneshim --quit`, `oneshim --status`) using `tauri-plugin-single-instance` args+cwd callback (NG3)
+- **F2**: D-Bus method exposure for external automation tools (NG2)
 - **F3**: Snap/Flatpak best-effort autostart (NG5 — only if we publish those packages ourselves)
-- **F4**: macOS LaunchAgent KeepAlive=true (auto-restart on crash) — requires UX consideration: do we want crash-loop behavior for a productivity app?
-- **F5**: Windows scheduled task with `LogonType=Interactive` as alternative to Run key (more robust, supports delays). Current Run key sufficient for v1.
+- **F4**: macOS LaunchAgent KeepAlive=true
+- **F5**: Windows scheduled task with LogonType=Interactive as alternative to Run key
+- **F6**: `update_with_returning<F, T>` API in ConfigManager for value-returning closures (per I6)
 
 ---
 
-## 13. Risk Register
+## 13. Risk Register (re-rated per N4)
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| `tauri-plugin-single-instance` Linux D-Bus implementation incompatible with our hide-to-tray pattern | Low | Medium | Manual smoke test on macOS/Windows/Linux required; if fails, fall back to custom Unix socket impl (B-approach in brainstorm) |
-| systemd Type=notify with 30s timeout too tight for slow init (large DB migration) | Medium | Medium | Bench init time on dev machines + slowest target hardware. Increase TimeoutStartSec if needed. |
-| User's existing `Type=simple` service file migration fails partial (file overwritten but daemon-reload fails) | Low | Low | Idempotent migration: re-runs on next startup. Logged as warn. |
-| Onboarding prompt feels intrusive after first 25-min session | Medium | Low | UX studies post-launch. Snooze interval (5 sessions) provides escape valve. |
-| Productive session event emission has bugs (counter increments wrong) | Medium | Medium | Unit tests + manual verification during PR-B1 manual smoke. |
-| Frontend i18n key drift between en.json and ko.json | Low | Low | Existing CI lint catches this |
-| Plugin init failure on headless Linux blocks app launch entirely | Low | High | PR-B1: wrap plugin init in match, log warn, continue without single-instance protection (fail-open). |
-| Existing `tauri.conf.json` identifier doesn't match `com.oneshim.agent` | Medium | Low | PR-B1 commit 1 includes verification + fix if mismatched |
-| Two-phase commit revert in `enable_autostart` itself fails (plist removed but config update keeps trying) | Low | Low | Best-effort revert with warn log; user can manually toggle to recover |
-| `cargo build` size increase from `tauri-plugin-single-instance` is significant | Low | Low | Plugin is small; verify with `cargo bloat` post-add. Acceptable tradeoff for ~5h dev savings. |
+| `tauri-plugin-single-instance` D-Bus name doesn't match Tauri identifier exactly | Low | Medium | Verify Q7 in iter-2 |
+| systemd Type=notify with 30s timeout too tight for slow init | Medium | Medium | Bench init time, increase if needed |
+| Type=simple → Type=notify migration corrupts running service | Low | **Medium** ⬆️ | Hash check + defer reload (per C4) |
+| User customization clobbered by migration | Low | **Medium** ⬆️ | Hash check skips unknown files (per C4) |
+| Onboarding prompt feels intrusive | Medium | Low | UX studies post-launch |
+| Productive session counter has scheduler-restart double-count | Low | Low | Idempotency via session_id UUID |
+| Frontend i18n key drift between en.json and ko.json | Low | Low | CI lint (Q8 verifies exists) |
+| Plugin init failure on headless Linux | Low | Medium | Log warn at startup, accept duplicate-process behavior (per I7) |
+| Wayland kept-hidden window unmappable on focus | Medium | Medium | Manual smoke test (per I1), fallback if observed |
+| Two-phase commit revert fails (no longer applicable) | N/A | N/A | Removed two-phase commit (per C3) |
+| `cargo build` size increase from `tauri-plugin-single-instance` | Low | Low | Plugin is small |
+| Cross-consumer merge conflicts with features2/grpc-stress branches | Medium | Medium | Coordinate merge order (see §17) |
 
 ---
 
@@ -1210,16 +1403,16 @@ All IPC commands are additive. No existing commands modified. `AppConfig` field 
 - `crates/oneshim-core/src/config/sections/autostart.rs`
 - `crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.tsx`
 - `crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.test.tsx`
-- `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.test.tsx` (if not already exists)
+- `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.test.tsx` (or extension if exists)
 - `src-tauri/tests/autostart_ipc_integration.rs`
 - `src-tauri/tests/single_instance_integration.rs`
+- `src-tauri/src/lifecycle/reconciler.rs` (per §11.4)
 
 **PR-B1 modified files**:
 - `src-tauri/Cargo.toml`
 - `src-tauri/src/commands/mod.rs`
-- `src-tauri/src/commands/settings.rs` (allowlist)
-- `src-tauri/src/main.rs` (plugin + invoke_handler)
-- `src-tauri/src/scheduler/loops/focus.rs` (or wherever session-end is emitted)
+- `src-tauri/src/main.rs`
+- `src-tauri/src/scheduler/loops/monitor.rs` (productive-session detection)
 - `crates/oneshim-core/src/config/mod.rs`
 - `crates/oneshim-core/src/config/sections/mod.rs`
 - `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx`
@@ -1231,80 +1424,109 @@ All IPC commands are additive. No existing commands modified. `AppConfig` field 
 
 **PR-B2 new files**:
 - `src-tauri/src/lifecycle/sd_notify.rs`
-- `src-tauri/tests/linux_autostart_integration.rs`
+- `src-tauri/src/lifecycle/migration_hashes.rs`
+- `src-tauri/tests/linux_autostart_unit.rs`
+- `src-tauri/tests/linux_autostart_systemd_live.rs` (manual)
 - `docs/guides/autostart.ko.md`
-- `.github/workflows/ci.yml` (job addition)
+- `.github/workflows/linux-systemd-integration.yml` (manual trigger)
 
 **PR-B2 modified files**:
 - `src-tauri/Cargo.toml` (sd-notify dep)
-- `src-tauri/src/commands/autostart.rs` (capabilities command)
-- `src-tauri/src/autostart.rs` (Linux mod: sd_notify integration, detect_environment, service file template)
-- `src-tauri/src/main.rs` (sd_notify ready/stopping hooks, lifecycle module wiring)
-- `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx` (capabilities-aware UI)
-- `crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.tsx` (capabilities check)
-- `crates/oneshim-web/frontend/src/i18n/en.json`, `ko.json` (capability tooltip keys)
+- `src-tauri/src/commands/autostart.rs` (real capabilities)
+- `src-tauri/src/autostart.rs` (Linux mod: notify, env detect, service file template)
+- `src-tauri/src/main.rs` (sd_notify hooks, lifecycle wiring)
+- `crates/oneshim-web/frontend/src/i18n/en.json`, `ko.json` (capability tooltips)
+- `.github/workflows/ci.yml` (linux-autostart-unit job)
 - `docs/STATUS.md`, `docs/PHASE-HISTORY.md`
 
 ### 14.2 New dependencies
 
 | Crate | Version | PR | Purpose |
 |-------|---------|----|---------|
-| `tauri-plugin-single-instance` | `2` | PR-B1 | Cross-platform single-instance enforcement with focus-grab |
-| `sd-notify` | `0.4` (Linux only, optional via feature flag) | PR-B2 | systemd Type=notify protocol implementation |
+| `tauri-plugin-single-instance` | `2` | PR-B1 | Cross-platform single-instance enforcement |
+| `sd-notify` | `0.4` (Linux only, optional via feature flag) | PR-B2 | systemd Type=notify protocol |
 
 ### 14.3 ADRs referenced
 
-- **ADR-001** (Rust Client Architecture Patterns): Async trait pattern, DI, error strategy
-- **ADR-003** (Directory Module Pattern): `commands/autostart.rs` may be promoted to directory if grows beyond 500 LoC
-- **ADR-004** (Tauri v2 Migration): Builder chain pattern for plugin registration
-- **ADR-019** (Error Code Infrastructure): Wire codes for autostart failure modes (§8.2)
+- **ADR-001** (Rust Client Architecture Patterns)
+- **ADR-003** (Directory Module Pattern)
+- **ADR-004** (Tauri v2 Migration)
+- **ADR-019** (Error Code Infrastructure)
 
 ### 14.4 Alignment with project memory
 
-- `feedback_3loop_quality_gate`: spec → plan → impl, each with deep review per ralph-loop
-- `feedback_color_consistency`: toggle uses semantic primary token
+- `feedback_3loop_quality_gate`: spec → plan → impl, each with deep review (current Phase 1)
+- `feedback_industry_convention_check`: U3 cites App Store 5.4.1 + Microsoft Store 10.2.4
+- `feedback_subagent_driven_catches_stale_plans`: Phase 1 review caught 5 Critical issues
+- `feedback_cross_consumer_audit`: §17 enumerates conflicts
 - `feedback_release_process`: release.sh / promote-stable.sh
-- `feedback_route_refactor_e2e_completeness`: PR-B1 frontend changes include corresponding test updates in same PR
-- `feedback_industry_convention_check`: opt-in with onboarding prompt matches macOS/Windows app store guidelines (cited)
-- `feedback_subagent_driven_catches_stale_plans`: implementation will use subagent-driven-development with 2-stage review
-- `feedback_test_forwarding_and_source`: scheduler emission of productive-session event has unit test on producer side, separate from frontend integration
+- `feedback_test_forwarding_and_source`: scheduler emission has unit test on producer side
+- `feedback_pipelined_reviews_pattern`: Phase 1 used 3 parallel subagent reviewers
 
 ---
 
-## 15. Spec Self-Review (Inline Issues Found & Fixed)
-
-Per the brainstorming skill's spec review step:
+## 15. Spec Self-Review (v2)
 
 ### 15.1 Placeholders / TODOs scan
-- ✅ No "TBD" or "TODO" in spec body
-- ⚠ Open Questions §12.1 (Q1-Q6) intentionally listed — to be resolved during ralph-loop spec deep review
+- ✅ No "TBD" in spec body
+- ⚠ Q7-Q9 (§12.2) intentionally listed for iter-2 verification
 
 ### 15.2 Internal consistency
-- ✅ PR-B1/B2 boundary in §4.2 matches detail in §5/§6
-- ✅ AutostartPromptState transitions in §5.3 match button handlers in §5.5
-- ✅ Migration story in §11 consistent with `#[serde(default)]` in §5.3
+- ✅ Removal of `enabled` field consistently applied across §5.3, §5.1, §11.1, §11.4
+- ✅ Counter increment moved to Rust-side consistently in §5.5, §7.2, §10.1 commit 11
+- ✅ Migration hash check consistently applied in §6.1, §11.2, commit 5
 
 ### 15.3 Scope check
-- ✅ Single implementation plan: 2 PRs are sequential, both within 14 crates this client owns
-- ⚠ Some Open Questions (§12.1) require minor refactoring of existing code (e.g., `update_returning` in ConfigManagerHandle) — acceptable scope inclusion per "improvements you'd make as a good developer working in this code"
+- ✅ 2 PRs sequential, both within client-rust
+- Reconciler (§11.4) is small addition, included in scope
 
 ### 15.4 Ambiguity check
-- ✅ "First productive session" defined as ≥25 min focus block
-- ✅ "Snooze interval" defined as +5 sessions
-- ✅ "Source of truth" for autostart state defined as OS state, not config
-- ⚠ "Tauri identifier matches APP_LABEL" assumed but not verified — added to Q1
+- ✅ "First productive session" defined as ≥25 min focus block detected by scheduler
+- ✅ "Single-fire" defined as `hasShownThisSession` module flag, reset on app restart
+- ✅ "Hash check" defined as SHA-256 against `KNOWN_PRIOR_HASHES` list
 
 ---
 
 ## 16. Implementation Status
 
-- **Spec authored**: 2026-04-25 (this document)
-- **Worktree created**: `/Volumes/.../client-rust/.claude/worktrees/phase9-autostart-foundation` on `feature/phase9-autostart-foundation`
-- **Spec deep review**: TBD via `/ralph-loop:ralph-loop` (per user workflow)
-- **Plan deep review**: TBD via `/ralph-loop:ralph-loop` after spec approved
-- **Implementation deep review**: TBD via `/ralph-loop:ralph-loop` after plan approved
-- **Target merge**: PR-B1 first, PR-B2 after
+- **Spec v1**: 2026-04-25 (commit `fd8f64cf`)
+- **Spec v2**: 2026-04-25 (this document — incorporates 5 Critical + 8 Important fixes)
+- **Worktree**: `/Volumes/.../client-rust/.claude/worktrees/phase9-autostart-foundation` on `feature/phase9-autostart-foundation`
+- **Phase 1 review iter-1**: complete (`/.claude/pr-b-review/phase1-iter1-findings.md`)
+- **Phase 1 review iter-2**: TBD — verify v2 fixes are correct, address Q7-Q9
+- **Phase 2 (writing-plans)**: TBD — only after Phase 1 zero-issue gate
+- **Phase 3 (subagent-driven impl)**: TBD
 
 ---
 
-**End of spec.**
+## 17. Cross-Consumer Dependencies (NEW per Phase 1 audit)
+
+### 17.1 Active branches modifying overlapping files
+
+| Branch | Files in conflict with PR-B1 | Conflict severity | Mitigation |
+|--------|------------------------------|-------------------|------------|
+| `feature/external-grpc-audit-liveconfig` (features2) | `crates/oneshim-core/src/config/mod.rs` (AppConfig), `GeneralTab.tsx`, `commands/settings.rs` | **CRITICAL** | features2 merges first per memory; PR-B1 rebases onto features2-merged main |
+| `feature/grpc-stress-test-suite` | `Cargo.toml`, AppConfig, `commands/mod.rs`, `commands/settings.rs` | Important | Whichever merges second rebases; conflict resolution mechanical (additive) |
+| `fix/phase9-pr-a-followup-cleanup` | `tracking_schedule` related, AppConfig | **CRITICAL** | Should merge BEFORE PR-B1 (continuation of PR-A) |
+| `feature/d13-v2b-pr-b2-subscribe-metrics` | `crates/oneshim-core/src/config/mod.rs` (REMOVES `external_grpc`) | **CRITICAL SEMANTIC** | Coordinate with v2b owner; likely merges before PR-B1 |
+
+### 17.2 Recommended merge order
+
+1. `fix/phase9-pr-a-followup-cleanup` (cleanup of merged PR-A)
+2. `feature/d13-v2b-pr-b2-subscribe-metrics` (semantic field removal)
+3. `feature/external-grpc-audit-liveconfig` (features2)
+4. `feature/grpc-stress-test-suite`
+5. **`feature/phase9-autostart-foundation` (PR-B1)**
+6. `feature/phase9-autostart-linux-deep` (PR-B2 — off main after PR-B1)
+
+### 17.3 Pre-PR-B1 actions
+
+Before opening PR-B1:
+- Verify queue position: confirm 1-4 above are merged
+- Rebase `feature/phase9-autostart-foundation` onto current main
+- Re-run cargo check/test/clippy/fmt to catch any drift
+- Update §17 in this spec with actual merge outcomes
+
+---
+
+**End of spec v2.**
