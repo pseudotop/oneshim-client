@@ -21,7 +21,7 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v3 (Phase 2 iter-3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
+**Plan version:** v4 (Phase 2 iter-4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
 
 ---
 
@@ -1118,6 +1118,54 @@ async fn list_segment_time_ranges(&self, window: &TimeWindow) -> Result<Vec<(Str
 }
 ```
 
+- [ ] **Step 4C.1.5: Migrate calibration_store_impl.rs internal test sites (Phase 2 iter-3 NEW-I1 — 5 sites)**
+
+In the same file `crates/oneshim-storage/src/sqlite/calibration_store_impl.rs`, find the `#[cfg(test)] mod tests` block. Update 5 caller sites:
+
+```rust
+use oneshim_core::types::TimeWindow;
+
+// Line 400: storage.get_entries(from, to, false).await
+// Before:
+let loaded = storage.get_entries(from, to, false).await.unwrap();
+// After:
+let window = TimeWindow::new(from, to).expect("trusted test bounds");
+let loaded = storage.get_entries(&window, false).await.unwrap();
+
+// Line 414: storage.flag_noise_range(from, to)  (sync, returns u64)
+// Before:
+let flagged = storage.flag_noise_range(from, to).unwrap();
+// After:
+let window = TimeWindow::new(from, to).expect("trusted test bounds");
+let flagged = storage.flag_noise_range(&window).unwrap();
+
+// Line 420: storage.get_entries(wide_from, wide_to, true).await
+// Before:
+let clean = storage.get_entries(wide_from, wide_to, true).await.unwrap();
+// After:
+let wide_window = TimeWindow::new(wide_from, wide_to).expect("trusted test bounds");
+let clean = storage.get_entries(&wide_window, true).await.unwrap();
+
+// Line 425: .get_entries(wide_from, wide_to, false)
+// Before (from line 424-426 chain):
+let dirty = storage
+    .get_entries(wide_from, wide_to, false)
+    .await
+    .unwrap();
+// After (reuse wide_window from above):
+let dirty = storage
+    .get_entries(&wide_window, false)
+    .await
+    .unwrap();
+
+// Line 443: storage.get_entries(from, to, false).await
+// Before:
+let remaining = storage.get_entries(from, to, false).await.unwrap();
+// After:
+let window = TimeWindow::new(from, to).expect("trusted test bounds");
+let remaining = storage.get_entries(&window, false).await.unwrap();
+```
+
 - [ ] **Step 4C.2: Migrate events.rs inherent fn + 4 internal test sites**
 
 Open `crates/oneshim-storage/src/sqlite/events.rs`. Update inherent fn signature:
@@ -1292,47 +1340,58 @@ Expected ~30 hits across these categories (verified at plan-write time):
 | Internal SQLite tests (events.rs) | lines 406, 426, 452, 471 | 4 |
 | Internal SQLite tests (frames.rs) | lines 175, 192 | 2 |
 | Internal SQLite tests (maintenance.rs) | lines 931, 1019, 1052, 1067, 1083, 1164, 1183, 1308, 1358 | ~9 |
+| Internal SQLite tests (calibration_store_impl.rs) — Phase 2 iter-3 NEW-I1 | lines 400, 414, 420, 425, 443 (storage.get_entries × 4 + storage.flag_noise_range × 1) | 5 |
 | web_storage_impl.rs wrappers | lines 82, 105, 126, 169, 246 | 5 (covered by Step 4C.6) |
 | src-tauri regime.rs | lines 44, 174, 184 | 3 |
 | src-tauri tests.rs MockCalibration | line ~19 | 1 |
 
 If grep finds MORE than these, expand scope inline.
 
-- [ ] **Step 4D.1: Update regime.rs callers (3 sites — N-C2 corrected)**
+- [ ] **Step 4D.1: Update regime.rs callers (3 sites — N-C2 corrected, NEW-C2 `()` return fix)**
 
 Open `src-tauri/src/scheduler/analysis_pipeline/regime.rs`. Add at top:
 ```rust
 use oneshim_core::types::TimeWindow;
 ```
 
+**NEW-C2 (Phase 2 iter-3) fix**: Both enclosing functions return `()` (no Result):
+- `run_periodic_regime_detection(ts, now)` — `()` return at line 16
+- `run_constrained_clustering(ts, features, now)` — `()` return at line 140
+
+The `?` operator on `TimeWindow::new(...)?` won't compile. Use `.expect("...")` since `lookback`/`now` are trusted (lookback = `now - 7d` always satisfies `start <= end`).
+
 Update each caller:
 
 ```rust
-// Line 44: get_entries call (first usage)
+// Line 44: get_entries call (first usage, in run_periodic_regime_detection — () return)
 // Before:
 match reader.get_entries(lookback, now, true).await {
 // After:
-let window = TimeWindow::new(lookback, now)?;
+let window = TimeWindow::new(lookback, now)
+    .expect("lookback (now - 7d) is always before now");
 match reader.get_entries(&window, true).await {
 ```
 
 ```rust
-// Line 174: list_segment_time_ranges
+// Line 174: list_segment_time_ranges (in run_constrained_clustering — () return)
 // Before:
 let segment_ranges = match ts.calibration_reader.list_segment_time_ranges(lookback, now).await {
 // After:
-let window = TimeWindow::new(lookback, now)?;
+let window = TimeWindow::new(lookback, now)
+    .expect("lookback (now - 7d) is always before now");
 let segment_ranges = match ts.calibration_reader.list_segment_time_ranges(&window).await {
 ```
 
 ```rust
-// Line 184: SECOND get_entries call (re-fetch for index mapping — NOT flag_noise_range as v2 wrongly stated)
+// Line 184: SECOND get_entries call (re-fetch for index mapping; same function as line 174)
 // Before:
 let entries_with_ts = match ts.calibration_reader.get_entries(lookback, now, true).await {
 // After:
-// Note: window already constructed above at line 174 — reuse it
+// Reuse window constructed at line 174 (same scope — both in run_constrained_clustering)
 let entries_with_ts = match ts.calibration_reader.get_entries(&window, true).await {
 ```
+
+Verify line 44 (`run_periodic_regime_detection`) and lines 174+184 (`run_constrained_clustering`) are in DIFFERENT functions — lines 174+184 share `window` scope, line 44 needs its own `window` binding.
 
 Also update the destructuring at line ~194 to match the new `Vec<(String, TimeWindow)>` return:
 ```rust
@@ -1391,11 +1450,23 @@ Update each:
 
 ```rust
 // crates/oneshim-web/src/services/stats_query_support.rs:112
+// Function signature: total_active_secs_for_range(...) -> u64 — NO Result return
+// (NEW-C2 fix: cannot use ? operator)
 // Before:
+let from_rfc = from.to_rfc3339();
+let to_rfc = to.to_rfc3339();
 match ctx.storage.get_daily_active_secs(&from_rfc, &to_rfc) {
+    Ok(daily) if !daily.is_empty() => daily.iter().map(|(_, seconds)| *seconds as u64).sum(),
+    _ => fallback_events_logged * 5,
+}
 // After:
-let window = TimeWindow::from_rfc3339_pair(&from_rfc, &to_rfc)?;
+let Ok(window) = TimeWindow::new(from, to) else {
+    return fallback_events_logged * 5;
+};
 match ctx.storage.get_daily_active_secs(&window) {
+    Ok(daily) if !daily.is_empty() => daily.iter().map(|(_, seconds)| *seconds as u64).sum(),
+    _ => fallback_events_logged * 5,
+}
 ```
 
 ```rust
@@ -1426,18 +1497,29 @@ let window = TimeWindow::from_rfc3339_pair(&request.from, &request.to)?;
 
 ```rust
 // crates/oneshim-web/src/services/events_service.rs:35
+// Function: get_events(&self, params: &TimeRangeQuery) -> Result<EventPage, ApiError> — Result return ✓
 // Before:
-.count_events_in_range(&from.to_rfc3339(), &to.to_rfc3339())
+let total = self.ctx.storage
+    .count_events_in_range(&from.to_rfc3339(), &to.to_rfc3339())
+    .map_err(|error| ApiError::Internal(error.to_string()))?;
 // After:
-let window = TimeWindow::new(from, to)?;
-.count_events_in_range(&window)
+let window = TimeWindow::new(from, to)
+    .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+let total = self.ctx.storage
+    .count_events_in_range(&window)
+    .map_err(|error| ApiError::Internal(error.to_string()))?;
 ```
 
 ```rust
 // crates/oneshim-web/src/services/reports_query_support.rs:86
-// Before:
-if let Ok(daily_active) = input.ctx.storage.get_daily_active_secs(&from_rfc, &to_rfc) {
-// After:
+// (Verify enclosing function return type before patching — adapt to either Result or non-Result form below)
+// Pattern A — if function returns Result<_, ApiError>:
+let window = TimeWindow::from_rfc3339_pair(&from_rfc, &to_rfc)
+    .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+if let Ok(daily_active) = input.ctx.storage.get_daily_active_secs(&window) {
+    // ... existing body
+}
+// Pattern B — if function returns plain value (no Result):
 if let Ok(window) = TimeWindow::from_rfc3339_pair(&from_rfc, &to_rfc) {
     if let Ok(daily_active) = input.ctx.storage.get_daily_active_secs(&window) {
         // ... existing body
@@ -1445,49 +1527,73 @@ if let Ok(window) = TimeWindow::from_rfc3339_pair(&from_rfc, &to_rfc) {
 }
 ```
 
+Use `grep -n "fn .*<Utc>.*from\|fn .*reports_query_support" crates/oneshim-web/src/services/reports_query_support.rs` to read the enclosing function signature first; pick A or B accordingly.
+
 Add `use oneshim_core::types::TimeWindow;` at top of each service file.
 
-- [ ] **Step 4D.4: Update tests/support/failing_storage.rs MockStorage trait impls (5 sites)**
+- [ ] **Step 4D.4: Update tests/support/failing_storage.rs delegation impls (5 sites — Phase 2 iter-3 NEW-C1 fix)**
 
-Open `crates/oneshim-web/tests/support/failing_storage.rs`. The mock `FailingStorage` implements `WebStorage` sub-traits — its method signatures must match new port-trait sigs. Update 5 sites at lines 278, 301, 333, 371, 403:
+Open `crates/oneshim-web/tests/support/failing_storage.rs`. **`FailingStorage` is a delegation harness** — every method delegates to `self.inner` (a real `SqliteStorage`) except for the specific failure scenarios under test. Preserve the delegation pattern. Update 5 sites at lines 278, 301, 333, 371, 403:
 
 ```rust
 use oneshim_core::types::TimeWindow;
 
-// Line 278:
-fn count_frames_in_range(&self, _window: &TimeWindow) -> Result<u64, CoreError> {
-    Err(self.failure_error("count_frames_in_range"))
+// Line 278 — delegate to inner
+fn count_frames_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
+    self.inner
+        .count_frames_in_range(window)
+        .map_err(Into::into)
 }
 
-// Line 301:
-fn list_frame_file_paths_in_range(&self, _window: &TimeWindow) -> Result<Vec<String>, CoreError> {
-    Err(self.failure_error("list_frame_file_paths_in_range"))
+// Line 301 — delegate to inner
+fn list_frame_file_paths_in_range(
+    &self,
+    window: &TimeWindow,
+) -> Result<Vec<String>, CoreError> {
+    self.inner
+        .list_frame_file_paths_in_range(window)
+        .map_err(Into::into)
 }
 
-// Line 333:
-fn count_events_in_range(&self, _window: &TimeWindow) -> Result<u64, CoreError> {
-    Err(self.failure_error("count_events_in_range"))
+// Line 333 — delegate to inner
+fn count_events_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
+    self.inner
+        .count_events_in_range(window)
+        .map_err(Into::into)
 }
 
-// Line 371: preserve all 5 bool flags
+// Line 371 — delegate to inner; preserve all 5 bool flags + #[allow]
 #[allow(clippy::too_many_arguments)]
 fn delete_data_in_range(
     &self,
-    _window: &TimeWindow,
-    _delete_events: bool,
-    _delete_frames: bool,
-    _delete_metrics: bool,
-    _delete_processes: bool,
-    _delete_idle: bool,
+    window: &TimeWindow,
+    delete_events: bool,
+    delete_frames: bool,
+    delete_metrics: bool,
+    delete_processes: bool,
+    delete_idle: bool,
 ) -> Result<DeletedRangeCounts, CoreError> {
-    Err(self.failure_error("delete_data_in_range"))
+    self.inner
+        .delete_data_in_range(
+            window,
+            delete_events,
+            delete_frames,
+            delete_metrics,
+            delete_processes,
+            delete_idle,
+        )
+        .map_err(Into::into)
 }
 
-// Line 403:
-fn get_daily_active_secs(&self, _window: &TimeWindow) -> Result<Vec<(String, i64)>, CoreError> {
-    Err(self.failure_error("get_daily_active_secs"))
+// Line 403 — delegate to inner
+fn get_daily_active_secs(&self, window: &TimeWindow) -> Result<Vec<(String, i64)>, CoreError> {
+    self.inner
+        .get_daily_active_secs(window)
+        .map_err(Into::into)
 }
 ```
+
+These methods preserve the production delegation behavior — only methods that the test specifically targets for failure (e.g., `start_idle_period`) replace `self.inner` calls with synthetic `Err(...)`. The 5 range-helper methods just need their signatures updated to take `&TimeWindow` while still delegating.
 
 - [ ] **Step 4D.5: Verify full compile**
 
@@ -2364,6 +2470,14 @@ PR description should summarize:
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
 
+### 5b. Phase 2 iter-3 findings disposition (v4 corrections)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Critical | NEW-C1 — FailingStorage delegation pattern | ✅ Step 4D.4 rewritten — all 5 methods delegate to `self.inner.method(window).map_err(Into::into)` (was wrongly using `self.failure_error(...)` which doesn't exist) |
+| Critical | NEW-C2 — `?` operator in `()`/u64-returning callers | ✅ Step 4D.1 uses `.expect("lookback (now-7d) is always before now")` for regime.rs (both functions return `()`); Step 4D.3 stats_query_support uses `let Ok(window) = ... else { return fallback }` for `u64` return; events_service uses `.map_err(|e| ApiError::BadRequest(...))?` for Result return; reports_query_support documents Pattern A vs B selection |
+| Important | NEW-I1 — calibration_store_impl test callers missing | ✅ Step 4D.0 enumeration table adds row for 5 sites (lines 400, 414, 420, 425, 443); New Step 4C.1.5 migrates them with full code blocks |
+
 ### 5a. Phase 2 iter-2 findings disposition (v3 corrections)
 
 | Severity | ID | Disposition |
@@ -2409,7 +2523,7 @@ PR description should summarize:
 
 ## Execution Handoff
 
-**Plan v3 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
+**Plan v4 complete and saved to** `docs/superpowers/plans/2026-04-25-timewindow-primitive-plan.md`.
 
 **Two execution options:**
 
@@ -2417,4 +2531,4 @@ PR description should summarize:
 
 **2. Inline Execution** — executing-plans batch with checkpoints.
 
-(For ralph-loop continuation: Phase 2 iter-3 plan v3 complete addressing 9 Critical + 11 Important from iter-1 + 6 Critical + 5 Important from iter-2 = 17 Critical + 16 Important total. Next iteration: fresh subagent verification of plan v3. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
+(For ralph-loop continuation: Phase 2 iter-4 plan v4 complete addressing iter-1 (9C+11I) + iter-2 (6 NEW C + 5 NEW I) + iter-3 (2 NEW C + 1 NEW I) = 17 Critical + 17 Important total across 4 iterations. Next iteration: fresh subagent verification of plan v4. If clean → Phase 2 EXIT. Phase 3 implementation BLOCKED on PR-B1 #508 merge.)
