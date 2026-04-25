@@ -69,3 +69,58 @@ pub async fn get_autostart_config(
 ) -> Result<oneshim_core::config::AutostartConfig, IpcError> {
     Ok(state.config_manager().get().autostart)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn is_autostart_enabled_returns_bool() {
+        let result = is_autostart_enabled().await;
+        assert!(
+            result.is_ok(),
+            "is_autostart_enabled should not error: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn autostart_capabilities_returns_supported_in_b1_skeleton() {
+        let result = autostart_capabilities().await.unwrap();
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        assert!(
+            result.supported,
+            "PR-B1 skeleton must return supported=true on supported platforms"
+        );
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        assert!(!result.supported);
+    }
+
+    /// Integration test: enable → is_enabled = true → disable → is_enabled = false.
+    /// Modifies OS state (LaunchAgents/Registry/systemd unit) — run manually.
+    /// Per Addendum A3: inline here instead of tests/ because src-tauri has no [lib].
+    #[tokio::test]
+    #[ignore = "modifies OS state — run manually"]
+    async fn enable_then_disable_round_trip() {
+        let initial = is_autostart_enabled().await.unwrap_or(false);
+
+        enable_autostart().await.expect("enable failed");
+        let after_enable = is_autostart_enabled().await.expect("query failed");
+        assert!(
+            after_enable,
+            "is_autostart_enabled should return true after enable"
+        );
+
+        disable_autostart().await.expect("disable failed");
+        let after_disable = is_autostart_enabled().await.expect("query failed");
+        assert!(
+            !after_disable,
+            "is_autostart_enabled should return false after disable"
+        );
+
+        // Restore initial state
+        if initial {
+            let _ = enable_autostart().await;
+        }
+    }
+}
