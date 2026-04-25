@@ -37,6 +37,7 @@ pub mod provider_surface;
 pub mod quantization;
 pub mod sanitized_display;
 pub mod sync;
+pub mod types;
 
 pub use sanitized_display::{sanitized, SanitizedDisplay};
 

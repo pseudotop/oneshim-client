@@ -43,6 +43,8 @@
   "service.circuit_open": "Network issue — we're pausing requests to let it recover",
   "service.unavailable": "Service temporarily unavailable: {message}",
   "storage.failed": "Local storage operation failed: {message}",
+  "time_window.inverted_bounds": "Invalid time range — start must be before end",
+  "time_window.parse_failed": "Invalid timestamp format: {message}",
   "ui.element_missing": "UI element not found: {message}",
   "validation.invalid_arguments": "Invalid arguments: {message}",
   "validation.invalid_field": "Invalid field value: {message}"
