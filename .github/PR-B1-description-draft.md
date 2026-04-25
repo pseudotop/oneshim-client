@@ -51,7 +51,7 @@ Wires the existing platform autostart implementations (macOS LaunchAgent + Windo
 ## Test results
 
 - **Rust workspace**: 3,771 passed / 0 failed / 21 ignored
-- **Frontend Vitest**: 270+ passed / 0 failed (after wire-code count fix)
+- **Frontend Vitest**: 272 passed / 0 failed across 42 test files (after wire-code count fix)
 - **Wire-contract snapshot**: GREEN (47 codes match enum)
 - **i18n CI**: GREEN (all 47 wire codes have en + ko translations)
 - **cargo check/test/clippy/fmt**: all GREEN

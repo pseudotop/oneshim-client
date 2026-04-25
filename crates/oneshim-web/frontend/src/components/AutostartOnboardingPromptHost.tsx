@@ -62,6 +62,10 @@ export function AutostartOnboardingPromptHost() {
   useEffect(() => {
     void evaluate()
     let unlisten: (() => void) | null = null
+    // Listener registration race (spec §5.5 accepted): if the Tauri event fires
+    // between evaluate() resolving and listenDesktop() resolving (~1-2ms window),
+    // it is missed. The initial evaluate() above serves as the primary trigger
+    // for the first eligible session; subsequent sessions use the listener.
     void listenDesktop('autostart:eligible-for-prompt', () => void evaluate()).then((fn) => {
       unlisten = fn
     })
