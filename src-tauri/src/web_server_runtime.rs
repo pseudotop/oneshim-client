@@ -338,7 +338,10 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         self
     }
 
-    pub(crate) fn build_and_spawn(self) -> WebServerLaunchResult {
+    // `mut` is required when `grpc-dashboard-external` is enabled (calls `.take()` on two
+    // Option fields); without that feature the binding is unused, so allow it.
+    #[cfg_attr(not(feature = "grpc-dashboard-external"), allow(unused_mut))]
+    pub(crate) fn build_and_spawn(mut self) -> WebServerLaunchResult {
         let web_shutdown_rx = self.launch_context.shutdown_tx.subscribe();
         let storage_for_audit = self.storage.clone();
         let persistence_cb: std::sync::Arc<dyn oneshim_automation::audit::AuditPersistence> =
