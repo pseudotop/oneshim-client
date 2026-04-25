@@ -194,19 +194,41 @@ impl TimeWindowError {
     }
 }
 
-// Per Phase 1 iter-1 C2: integrate TimeWindowError into CoreError chain so handlers
-// can use `?` operator with existing `From<CoreError> for ApiError` impl.
+// Per Phase 1 iter-1 C2 + Phase 2 iter-1 C1: integrate TimeWindowError into CoreError
+// chain so handlers can use `?` operator with existing `From<CoreError> for ApiError` impl.
+//
+// **CoreError uses STRUCT-VARIANT pattern** matching ADR-019 §4.6 majority style
+// (`Storage { code, message }`, `Network { code, message }`, etc.) — NOT `#[from]` tuple.
+//
 // Add to `crates/oneshim-core/src/error.rs`:
 //
 // ```rust
-// impl From<TimeWindowError> for CoreError {
-//     fn from(err: TimeWindowError) -> Self {
-//         CoreError::TimeWindow(err)  // new variant
+// // In CoreError enum (alphabetical position between Storage and Validation):
+// #[error("Time window error [{code}]: {message}")]
+// TimeWindow {
+//     code: crate::error_codes::TimeWindowCode,
+//     message: String,
+// },
+//
+// // In CoreError::code() method:
+// Self::TimeWindow { code, .. } => code.as_str(),
+//
+// // Manual From impl that maps each TimeWindowError variant to its wire code:
+// impl From<crate::types::TimeWindowError> for CoreError {
+//     fn from(err: crate::types::TimeWindowError) -> Self {
+//         Self::TimeWindow {
+//             code: err.code(),
+//             message: err.to_string(),
+//         }
 //     }
 // }
 // ```
 //
-// Add `TimeWindow(TimeWindowError)` variant to CoreError enum + map to `code()` in CoreError::code().
+// Then in `crates/oneshim-web/src/error.rs` `From<CoreError> for ApiError`, add the
+// explicit BadRequest arm BEFORE the wildcard `_ => ApiError::Internal`:
+// ```rust
+// CoreError::TimeWindow { message, .. } => ApiError::BadRequest(message),
+// ```
 
 impl TimeWindow {
     /// Construct a TimeWindow with bound validation.
