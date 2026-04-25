@@ -48,7 +48,7 @@ use oneshim_web::storage_port::WebStorage;
 // Bring in the test_support helpers from the external module.
 use oneshim_web::grpc::external::test_support::{
     install_rustls_crypto_provider, spawn_server_with_config_manager, test_ca_and_client_cert,
-    test_cert_pair, test_jwt_keypair, test_mint_jwt,
+    test_cert_pair, test_jwt_keypair, test_mint_jwt, TestJwt,
 };
 
 // ── Shutdown pair helper ─────────────────────────────────────────────────────
@@ -2896,6 +2896,200 @@ fn make_jwt_spawn_config_for_reload(
     }
 }
 
+// ─── LiveReloadHarness ───────────────────────────────────────────────────────
+//
+// Bundles the 9-step scaffolding that every Task 9.4 live-reload test repeats:
+// tempfile → ConfigManager → seed AppConfig → LiveExternalConfig → metrics →
+// shutdown pair → port → ExternalGrpcSpawnConfig → spawn_server_with_config_manager.
+//
+// Each call site shrinks from ~30 LoC to ~5-10 LoC and the construction order
+// is centralized so future changes (e.g. new ExternalGrpcSpawnConfig fields)
+// flow through one helper instead of 9 hand-edited blocks.
+
+/// Boxed `FnOnce` for seeding the initial `AppConfig` after the harness has
+/// applied `test_cfg_with_external_enabled`. Aliased to keep the
+/// `LiveReloadHarnessBuilder` field type readable (clippy::type_complexity).
+type SeedFn = Box<dyn FnOnce(&mut oneshim_core::config::AppConfig)>;
+
+/// Test fixture that owns a running external gRPC server + ConfigReloadTask
+/// + their backing ConfigManager and LiveExternalConfig snapshot.
+struct LiveReloadHarness {
+    /// Real ConfigManager — call `update_with` to mutate config and trigger
+    /// the watch-channel reload.
+    cfg_mgr: Arc<oneshim_core::config_manager::ConfigManager>,
+    /// LiveExternalConfig snapshot — read via `live.snapshot()`.
+    live: Arc<LiveExternalConfig>,
+    #[allow(dead_code)] // surfaced for tests that need to read counters; not
+    // every test does, but the field is public-by-convention so adding new
+    // metrics-aware tests doesn't require a struct edit.
+    metrics: Arc<ExternalMetrics>,
+    /// JWT keypair (held so `enc_key` stays valid for token minting via
+    /// `harness.jwt_kp.enc_key`).
+    jwt_kp: TestJwt,
+    /// The bound port returned by the spawn helper.
+    port: u16,
+    /// Shutdown sender — clone of the one wired into the spawn config.
+    /// Tests that need graceful-exit verification (vs `shutdown()`'s abort
+    /// semantics) call `shutdown_tx.send_replace(true)` and then await the
+    /// `reload_handle` directly via destructuring.
+    shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    server_handle: tokio::task::JoinHandle<()>,
+    reload_handle: tokio::task::JoinHandle<()>,
+    /// Tempfile holding the on-disk config; drop closes it.
+    _tmp: tempfile::NamedTempFile,
+}
+
+impl LiveReloadHarness {
+    fn builder() -> LiveReloadHarnessBuilder {
+        LiveReloadHarnessBuilder::default()
+    }
+
+    /// Abort the server + reload task and await them. Idempotent enough for
+    /// test teardown — always safe to call once at the end of a test.
+    async fn shutdown(self) {
+        self.server_handle.abort();
+        self.reload_handle.abort();
+        let _ = self.server_handle.await;
+        let _ = self.reload_handle.await;
+    }
+
+    /// Poll `live.snapshot().streaming_enabled` until it equals `expected`,
+    /// or panic with `msg` if `timeout` elapses first. Tick interval is
+    /// 25 ms — matches the cadence used across pre-extraction sites and
+    /// keeps wake-ups bounded under the 1 s convergence cap commonly used
+    /// by Task 9.4 / 9.6 tests.
+    ///
+    /// The panic message is auto-suffixed with the last observed value, the
+    /// expected value, and the configured cap, so callers only need to
+    /// describe the high-level invariant being violated.
+    async fn wait_for_streaming(&self, expected: bool, timeout: Duration, msg: &str) {
+        let start = std::time::Instant::now();
+        loop {
+            let snap = self.live.snapshot().streaming_enabled;
+            if snap == expected {
+                return;
+            }
+            if start.elapsed() >= timeout {
+                panic!(
+                    "{msg} (waited {timeout:?}, last observed streaming_enabled={snap}, \
+                     expected={expected})"
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+}
+
+/// Builder for [`LiveReloadHarness`].
+///
+/// The defaults (`streaming_enabled = true`, fresh `LoadPolicy::new` with
+/// default thresholds, no extra config seeding) match the most common live-
+/// reload test setup. Override any field via the builder methods before
+/// calling [`LiveReloadHarnessBuilder::build`].
+struct LiveReloadHarnessBuilder {
+    seed: Option<SeedFn>,
+    initial_streaming_enabled: bool,
+    initial_load_policy: Option<Arc<LoadPolicy>>,
+}
+
+impl Default for LiveReloadHarnessBuilder {
+    fn default() -> Self {
+        Self {
+            seed: None,
+            initial_streaming_enabled: true,
+            initial_load_policy: None,
+        }
+    }
+}
+
+impl LiveReloadHarnessBuilder {
+    /// Mutate the seeded `AppConfig` after `test_cfg_with_external_enabled`
+    /// has set the JWT/TLS scaffolding. Use this to flip `web.grpc_*` or
+    /// `external_grpc.*` fields to specific initial values.
+    fn seed<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce(&mut oneshim_core::config::AppConfig) + 'static,
+    {
+        self.seed = Some(Box::new(f));
+        self
+    }
+
+    /// Initial `LiveSnapshot.streaming_enabled` value (default: `true`).
+    /// Should match the resolved value of the seeded config so the first
+    /// request observes a coherent state.
+    fn initial_streaming(mut self, on: bool) -> Self {
+        self.initial_streaming_enabled = on;
+        self
+    }
+
+    /// Initial `LiveSnapshot.load_policy` (default: `LoadPolicy::new(default
+    /// thresholds)`). Pass a policy built via
+    /// `LoadPolicy::try_new_with_started_at(.., past_anchor)` to bypass the
+    /// 30-second WARMUP for D27 tests.
+    fn initial_load_policy(mut self, p: Arc<LoadPolicy>) -> Self {
+        self.initial_load_policy = Some(p);
+        self
+    }
+
+    async fn build(self) -> LiveReloadHarness {
+        let jwt_kp = test_jwt_keypair();
+        let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+        let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+        let cfg_mgr = Arc::new(
+            oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+                .expect("ConfigManager::with_path"),
+        );
+        let seed = self.seed;
+        cfg_mgr
+            .update_with(|c| {
+                *c = test_cfg_with_external_enabled(&pub_key_path);
+                if let Some(f) = seed {
+                    f(c);
+                }
+                Ok(())
+            })
+            .expect("seed initial config");
+
+        let port = next_test_port();
+        let load_policy = self.initial_load_policy.unwrap_or_else(|| {
+            Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            ))
+        });
+        let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: self.initial_streaming_enabled,
+            load_policy,
+        }));
+        let metrics = Arc::new(ExternalMetrics::new());
+        let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+        let shutdown_tx_for_harness = shutdown_tx.clone();
+
+        let cfg = make_jwt_spawn_config_for_reload(
+            &pub_key_path,
+            port,
+            live.clone(),
+            metrics.clone(),
+            shutdown_tx,
+            shutdown_rx,
+        );
+        let (server_handle, reload_handle, port) =
+            spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+        LiveReloadHarness {
+            cfg_mgr,
+            live,
+            metrics,
+            jwt_kp,
+            port,
+            shutdown_tx: shutdown_tx_for_harness,
+            server_handle,
+            reload_handle,
+            _tmp: tmp,
+        }
+    }
+}
+
 /// G3 gate test — streaming toggle reflects within 1 second.
 ///
 /// Spec §9.2 L1407, D33 (CI convergence bound). Seeds the config with
@@ -2907,58 +3101,25 @@ fn make_jwt_spawn_config_for_reload(
 async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
     use std::time::Instant;
 
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    // Real-API ConfigManager backed by a tempfile (CI-safe per ADR-016).
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
-    // Seed the initial config: streaming enabled via the shared web field;
-    // external override left as `None` so the fallback path is exercised.
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
+    // Seed: web=true, external=None — exercise fallback path.
+    let harness = LiveReloadHarness::builder()
+        .seed(|c| {
             c.web.grpc_streaming_enabled = true;
             c.external_grpc.streaming_enabled = None;
-            Ok(())
         })
-        .expect("seed initial config");
-
-    // Allocate port + pre-populate the live snapshot to match the seeded config.
-    let port = next_test_port();
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: Arc::new(LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
-
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics,
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+        .build()
+        .await;
 
     // Mint a JWT + build a TLS channel (external server requires both).
     let token = test_mint_jwt(
-        &jwt_kp.enc_key,
+        &harness.jwt_kp.enc_key,
         "user-g3",
         "test-issuer",
         "test-audience",
         3600,
     );
     let cert_pem = server_cert_pem();
-    let channel = make_tls_channel(port, &cert_pem, None).await;
+    let channel = make_tls_channel(harness.port, &cert_pem, None).await;
 
     // Sanity: initial subscribe_metrics succeeds (streaming_enabled = true).
     let mut req =
@@ -2981,7 +3142,8 @@ async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
     // change and swaps the LiveSnapshot atomically. The per-request entry
     // in `subscribe_metrics` will see the new snapshot next.
     let start = Instant::now();
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.external_grpc.streaming_enabled = Some(false);
             Ok(())
@@ -3008,10 +3170,7 @@ async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
                     elapsed < timeout,
                     "G3 violation: convergence {elapsed:?} >= 1s cap"
                 );
-                server_handle.abort();
-                reload_handle.abort();
-                let _ = server_handle.await;
-                let _ = reload_handle.await;
+                harness.shutdown().await;
                 return; // PASS
             }
         }
@@ -3031,54 +3190,27 @@ async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
 /// policy without waiting 30s of real time.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_live_load_thresholds_applied_without_warmup_reset() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
-    // Seed initial config with default thresholds.
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
-            Ok(())
-        })
-        .expect("seed initial config");
-
     // Build an initial load_policy whose started_at is 60s in the past —
     // well beyond the 30s WARMUP. `try_new_with_started_at` is the API
     // that ConfigReloadTask uses internally to preserve warmup across
     // reloads (D27); we use it here to bootstrap the test snapshot.
     let past_anchor = std::time::Instant::now() - std::time::Duration::from_secs(60);
-    let initial_thresholds = oneshim_core::config::LoadThresholds::default();
     let initial_policy = Arc::new(
-        LoadPolicy::try_new_with_started_at(initial_thresholds, past_anchor)
-            .expect("valid initial thresholds"),
+        LoadPolicy::try_new_with_started_at(
+            oneshim_core::config::LoadThresholds::default(),
+            past_anchor,
+        )
+        .expect("valid initial thresholds"),
     );
     assert!(
         !initial_policy.is_in_warmup(),
         "precondition: initial policy must already be out of warmup"
     );
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: initial_policy.clone(),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
 
-    let port = next_test_port();
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics,
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, _port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+    let harness = LiveReloadHarness::builder()
+        .initial_load_policy(initial_policy)
+        .build()
+        .await;
 
     // Reload with new (still valid) thresholds. ConfigReloadTask must
     // preserve the original `started_at` per D27.
@@ -3088,7 +3220,8 @@ async fn external_grpc_live_load_thresholds_applied_without_warmup_reset() {
         cpu_medium_pct: 55.0,
         cpu_high_pct: 80.0,
     };
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.web.grpc_load_thresholds = Some(new_thresholds.clone());
             Ok(())
@@ -3098,7 +3231,7 @@ async fn external_grpc_live_load_thresholds_applied_without_warmup_reset() {
     // Give the reload task a moment to observe the watch change + apply.
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let snap = live.snapshot();
+    let snap = harness.live.snapshot();
     let post_thresholds = snap.load_policy.thresholds();
     assert!(
         (post_thresholds.cpu_low_pct - 25.0).abs() < f32::EPSILON,
@@ -3120,10 +3253,7 @@ async fn external_grpc_live_load_thresholds_applied_without_warmup_reset() {
         "D27: started_at must be bit-identical to the pre-reload anchor"
     );
 
-    server_handle.abort();
-    reload_handle.abort();
-    let _ = server_handle.await;
-    let _ = reload_handle.await;
+    harness.shutdown().await;
 }
 
 /// Partial-apply invariant — a malformed thresholds reload is rejected and
@@ -3133,59 +3263,31 @@ async fn external_grpc_live_load_thresholds_applied_without_warmup_reset() {
 /// errors.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
-            c.web.grpc_streaming_enabled = true;
-            c.external_grpc.streaming_enabled = Some(true);
-            // Seed explicit valid thresholds so we can assert they survive.
-            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
-                min_free_mem_gb: 1.0,
-                cpu_low_pct: 30.0,
-                cpu_medium_pct: 60.0,
-                cpu_high_pct: 85.0,
-            });
-            Ok(())
-        })
-        .expect("seed initial config");
-
-    let initial_policy = Arc::new(LoadPolicy::new(oneshim_core::config::LoadThresholds {
+    let initial_thresholds = oneshim_core::config::LoadThresholds {
         min_free_mem_gb: 1.0,
         cpu_low_pct: 30.0,
         cpu_medium_pct: 60.0,
         cpu_high_pct: 85.0,
-    }));
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: initial_policy.clone(),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+    };
+    let initial_policy = Arc::new(LoadPolicy::new(initial_thresholds.clone()));
 
-    let port = next_test_port();
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics.clone(),
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, _port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+    let seed_thresholds = initial_thresholds.clone();
+    let harness = LiveReloadHarness::builder()
+        .seed(move |c| {
+            c.web.grpc_streaming_enabled = true;
+            c.external_grpc.streaming_enabled = Some(true);
+            // Seed explicit valid thresholds so we can assert they survive.
+            c.web.grpc_load_thresholds = Some(seed_thresholds);
+        })
+        .initial_load_policy(initial_policy.clone())
+        .build()
+        .await;
 
     // Reload with invalid thresholds (low > medium violates ordering) AND
     // flip streaming_enabled. Partial-apply: streaming flips, policy does
     // NOT.
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.external_grpc.streaming_enabled = Some(false);
             c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
@@ -3200,7 +3302,7 @@ async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() 
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let snap = live.snapshot();
+    let snap = harness.live.snapshot();
     assert!(
         !snap.streaming_enabled,
         "streaming_enabled update MUST apply despite malformed thresholds (partial-apply)"
@@ -3221,7 +3323,8 @@ async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() 
         "invalid policy rejected; Arc identity must equal the initial policy"
     );
     assert!(
-        metrics
+        harness
+            .metrics
             .config_reload_task_alive
             .load(std::sync::atomic::Ordering::Relaxed),
         "reload task must remain alive after rejecting a malformed update"
@@ -3229,7 +3332,8 @@ async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() 
 
     // Follow-up valid reload must still apply — the task survived the
     // invalid one and keeps draining events.
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.external_grpc.streaming_enabled = Some(true);
             Ok(())
@@ -3237,14 +3341,11 @@ async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() 
         .expect("follow-up valid reload");
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(
-        live.snapshot().streaming_enabled,
+        harness.live.snapshot().streaming_enabled,
         "follow-up valid reload must still apply after the rejected one"
     );
 
-    server_handle.abort();
-    reload_handle.abort();
-    let _ = server_handle.await;
-    let _ = reload_handle.await;
+    harness.shutdown().await;
 }
 
 /// Watch coalescing — 100 rapid `update_with` calls must not panic the
@@ -3254,42 +3355,12 @@ async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() 
 /// final observed state must equal the final sent state.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_live_reload_coalesces_rapid_updates() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
+    let harness = LiveReloadHarness::builder()
+        .seed(|c| {
             c.external_grpc.streaming_enabled = Some(true);
-            Ok(())
         })
-        .expect("seed initial config");
-
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: Arc::new(LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
-
-    let port = next_test_port();
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics.clone(),
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, _port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+        .build()
+        .await;
 
     // Fire 100 updates as fast as `update_with` will accept them. Alternate
     // streaming_enabled so every call genuinely mutates state — the last
@@ -3297,7 +3368,8 @@ async fn external_grpc_live_reload_coalesces_rapid_updates() {
     // final streaming_enabled = false).
     for i in 0..100 {
         let enabled = i % 2 == 0;
-        cfg_mgr
+        harness
+            .cfg_mgr
             .update_with(move |c| {
                 c.external_grpc.streaming_enabled = Some(enabled);
                 Ok(())
@@ -3308,42 +3380,35 @@ async fn external_grpc_live_reload_coalesces_rapid_updates() {
     // Replace fixed sleep with convergence poll — waits for the reload task
     // to drain up to the final update without relying on a fixed timeout.
     // i=99 is odd → final update set streaming_enabled = Some(false).
-    let expected_final_streaming = false;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        let snap = live.snapshot();
-        if snap.streaming_enabled == expected_final_streaming {
-            break;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            panic!(
-                "reload task did not converge to final update within 2s; \
-                 current streaming_enabled={}, expected={}",
-                snap.streaming_enabled, expected_final_streaming
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    harness
+        .wait_for_streaming(
+            false,
+            Duration::from_secs(2),
+            "reload task did not converge to final update",
+        )
+        .await;
 
     // Defensive re-read: guards against the reload task doing one more
     // update between the convergence break and this assertion.
     assert!(
-        !live.snapshot().streaming_enabled,
+        !harness.live.snapshot().streaming_enabled,
         "final snapshot must match the last update (streaming_enabled=false)"
     );
     assert!(
-        !reload_handle.is_finished(),
+        !harness.reload_handle.is_finished(),
         "reload task must still be running after coalescing 100 rapid updates"
     );
     assert!(
-        metrics
+        harness
+            .metrics
             .config_reload_task_alive
             .load(std::sync::atomic::Ordering::Relaxed),
         "reload task liveness flag must still be set"
     );
     // Coalescing invariant: reload_total is bounded by 100 (≤ sends) and
     // must be ≥ 1 (at least one apply observed the final state).
-    let total = metrics
+    let total = harness
+        .metrics
         .config_reload_total
         .load(std::sync::atomic::Ordering::Relaxed);
     assert!(
@@ -3351,10 +3416,7 @@ async fn external_grpc_live_reload_coalesces_rapid_updates() {
         "config_reload_total must be within [1, 100] after coalescing; got {total}"
     );
 
-    server_handle.abort();
-    reload_handle.abort();
-    let _ = server_handle.await;
-    let _ = reload_handle.await;
+    harness.shutdown().await;
 }
 
 /// Live reload affects the next per-request decision after the reload
@@ -3368,74 +3430,42 @@ async fn external_grpc_live_reload_coalesces_rapid_updates() {
 /// is what a fresh RPC entry would observe per D21.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn live_reload_affects_long_running_stream() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
-            c.external_grpc.streaming_enabled = Some(true);
-            // Seed wide thresholds — "no shed" baseline.
-            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
-                min_free_mem_gb: 1.0,
-                cpu_low_pct: 30.0,
-                cpu_medium_pct: 60.0,
-                cpu_high_pct: 85.0,
-            });
-            Ok(())
-        })
-        .expect("seed initial config");
-
     // Past-warmup policy so the classify branch isn't forced-Medium (WARMUP=30s).
     let past_anchor = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    let baseline_thresholds = oneshim_core::config::LoadThresholds {
+        min_free_mem_gb: 1.0,
+        cpu_low_pct: 30.0,
+        cpu_medium_pct: 60.0,
+        cpu_high_pct: 85.0,
+    };
     let initial_policy = Arc::new(
-        LoadPolicy::try_new_with_started_at(
-            oneshim_core::config::LoadThresholds {
-                min_free_mem_gb: 1.0,
-                cpu_low_pct: 30.0,
-                cpu_medium_pct: 60.0,
-                cpu_high_pct: 85.0,
-            },
-            past_anchor,
-        )
-        .expect("valid initial thresholds"),
+        LoadPolicy::try_new_with_started_at(baseline_thresholds.clone(), past_anchor)
+            .expect("valid initial thresholds"),
     );
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: initial_policy.clone(),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
 
-    let port = next_test_port();
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics,
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+    let seed_thresholds = baseline_thresholds.clone();
+    let harness = LiveReloadHarness::builder()
+        .seed(move |c| {
+            c.external_grpc.streaming_enabled = Some(true);
+            // Seed wide thresholds — "no shed" baseline.
+            c.web.grpc_load_thresholds = Some(seed_thresholds);
+        })
+        .initial_load_policy(initial_policy.clone())
+        .build()
+        .await;
 
     // Open a SubscribeMetrics stream. The real handler in
     // `DashboardServiceImpl` stays alive and emits periodically; we don't
     // need to drain — we just need the stream call to have been made.
     let token = test_mint_jwt(
-        &jwt_kp.enc_key,
+        &harness.jwt_kp.enc_key,
         "user-longstream",
         "test-issuer",
         "test-audience",
         3600,
     );
     let cert_pem = server_cert_pem();
-    let channel = make_tls_channel(port, &cert_pem, None).await;
+    let channel = make_tls_channel(harness.port, &cert_pem, None).await;
     let mut req =
         tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
     req.metadata_mut().insert(
@@ -3460,7 +3490,8 @@ async fn live_reload_affects_long_running_stream() {
         cpu_medium_pct: 2.0,
         cpu_high_pct: 3.0,
     };
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.web.grpc_load_thresholds = Some(shed_thresholds.clone());
             Ok(())
@@ -3472,7 +3503,7 @@ async fn live_reload_affects_long_running_stream() {
     // A fresh `live.snapshot()` (what a new RPC entry would observe) must
     // reflect the tight shed thresholds — this is the "next per-request
     // decision" observability point per D21.
-    let post_snap = live.snapshot();
+    let post_snap = harness.live.snapshot();
     let post_thresholds = post_snap.load_policy.thresholds();
     assert!(
         (post_thresholds.cpu_high_pct - 3.0).abs() < f32::EPSILON,
@@ -3541,7 +3572,7 @@ async fn live_reload_affects_long_running_stream() {
     // Verify the snapshot substrate is stable across the 2nd entry (identity,
     // not rebuild) — proves the fresh Arc assembled during apply_config is
     // what the new RPC would observe.
-    let post_2nd_snap = live.snapshot();
+    let post_2nd_snap = harness.live.snapshot();
     assert!(
         Arc::ptr_eq(&post_2nd_snap.load_policy, &post_snap.load_policy),
         "snapshot stable across 2nd RPC entry; live.snapshot() should return \
@@ -3551,10 +3582,7 @@ async fn live_reload_affects_long_running_stream() {
     drop(second_open.unwrap().into_inner());
 
     drop(_keep_stream_alive);
-    server_handle.abort();
-    reload_handle.abort();
-    let _ = server_handle.await;
-    let _ = reload_handle.await;
+    harness.shutdown().await;
 }
 
 /// Shutdown — the `ConfigReloadTask` must exit within 5 seconds of the
@@ -3563,53 +3591,30 @@ async fn live_reload_affects_long_running_stream() {
 /// queued concurrently.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_config_reload_task_exits_on_shutdown() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
-            Ok(())
-        })
-        .expect("seed initial config");
-
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: Arc::new(LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
-
-    let port = next_test_port();
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live,
-        metrics.clone(),
-        shutdown_tx.clone(),
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, _port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+    let harness = LiveReloadHarness::builder().build().await;
 
     // Sanity: reload task alive-flag is set after startup.
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert!(
-        metrics
+        harness
+            .metrics
             .config_reload_task_alive
             .load(std::sync::atomic::Ordering::Relaxed),
         "reload task must be alive before shutdown"
     );
 
     // Signal shutdown.
-    shutdown_tx.send_replace(true);
+    harness.shutdown_tx.send_replace(true);
+
+    // Destructure to take ownership of the handles for the graceful-exit
+    // verification (await consumes JoinHandle, which can't be done through
+    // `harness.shutdown()`'s abort path).
+    let LiveReloadHarness {
+        metrics,
+        server_handle,
+        reload_handle,
+        ..
+    } = harness;
 
     // The reload task MUST complete within 5s of the signal landing.
     let joined = tokio::time::timeout(Duration::from_secs(5), reload_handle)
@@ -3664,60 +3669,30 @@ async fn external_grpc_config_reload_task_exits_on_shutdown() {
 /// not the NG1 invariant on external live-reload.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn loopback_streaming_enabled_is_not_live_reloaded() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
     // Seed: loopback streaming enabled (web.grpc_streaming_enabled=true);
     // external override left at None so external falls through to the same
     // value (initial sanity = enabled on both sides).
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
+    let harness = LiveReloadHarness::builder()
+        .seed(|c| {
             c.web.grpc_streaming_enabled = true;
             c.external_grpc.streaming_enabled = None;
-            Ok(())
         })
-        .expect("seed initial config");
-
-    // Pre-populate live snapshot to match the seeded resolution.
-    let port = next_test_port();
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: Arc::new(LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
-
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics,
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, _port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+        .build()
+        .await;
 
     // Sanity: external streaming initially resolves to true.
     assert!(
-        live.snapshot().streaming_enabled,
+        harness.live.snapshot().streaming_enabled,
         "sanity: live snapshot must start with streaming_enabled=true"
     );
     assert!(
-        cfg_mgr.snapshot().web.grpc_streaming_enabled,
+        harness.cfg_mgr.snapshot().web.grpc_streaming_enabled,
         "sanity: web.grpc_streaming_enabled must start at true"
     );
 
     // Flip the EXTERNAL override; loopback config must remain untouched.
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.external_grpc.streaming_enabled = Some(false);
             Ok(())
@@ -3725,39 +3700,32 @@ async fn loopback_streaming_enabled_is_not_live_reloaded() {
         .expect("update_with apply");
 
     // Wait for the ConfigReloadTask to converge (mirrors Task 9.4 cap).
-    let timeout = Duration::from_secs(1);
-    let start = std::time::Instant::now();
-    loop {
-        if !live.snapshot().streaming_enabled {
-            break;
-        }
-        if start.elapsed() > timeout {
-            panic!("convergence timeout: external streaming did not flip to false within 1s");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    harness
+        .wait_for_streaming(
+            false,
+            Duration::from_secs(1),
+            "convergence timeout: external streaming did not flip to false",
+        )
+        .await;
 
     // Assert NG1: external is now disabled, but loopback config field is untouched.
     assert!(
-        !live.snapshot().streaming_enabled,
+        !harness.live.snapshot().streaming_enabled,
         "external override must disable external streaming"
     );
     assert!(
-        cfg_mgr.snapshot().web.grpc_streaming_enabled,
+        harness.cfg_mgr.snapshot().web.grpc_streaming_enabled,
         "NG1 violation: external toggle must NOT mutate web.grpc_streaming_enabled \
          (loopback config must remain untouched)"
     );
     // And the override field is now Some(false), confirming the toggle landed.
     assert_eq!(
-        cfg_mgr.snapshot().external_grpc.streaming_enabled,
+        harness.cfg_mgr.snapshot().external_grpc.streaming_enabled,
         Some(false),
         "external override must reflect the operator's flip"
     );
 
-    server_handle.abort();
-    reload_handle.abort();
-    let _ = server_handle.await;
-    let _ = reload_handle.await;
+    harness.shutdown().await;
 }
 
 /// Test 2 (D22 fall-through) — when `external_grpc.streaming_enabled = None`,
@@ -3770,66 +3738,37 @@ async fn loopback_streaming_enabled_is_not_live_reloaded() {
 /// took effect end-to-end through the running server.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_streaming_falls_back_to_web_field_when_external_none() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
     // Seed initial config with override enabled so external is initially streaming.
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
+    let harness = LiveReloadHarness::builder()
+        .seed(|c| {
             c.web.grpc_streaming_enabled = true;
             c.external_grpc.streaming_enabled = Some(true);
-            Ok(())
         })
-        .expect("seed initial config");
-
-    let port = next_test_port();
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: true,
-        load_policy: Arc::new(LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
-
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics,
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+        .build()
+        .await;
 
     // Sanity: seed landed — external override of Some(true) → streaming enabled.
     assert!(
-        live.snapshot().streaming_enabled,
+        harness.live.snapshot().streaming_enabled,
         "sanity: seed → external streaming initially true (external=Some(true))"
     );
 
     // Mint a JWT + TLS channel for end-to-end verification via subscribe_metrics.
     let token = test_mint_jwt(
-        &jwt_kp.enc_key,
+        &harness.jwt_kp.enc_key,
         "user-9-6-fallback",
         "test-issuer",
         "test-audience",
         3600,
     );
     let cert_pem = server_cert_pem();
-    let channel = make_tls_channel(port, &cert_pem, None).await;
+    let channel = make_tls_channel(harness.port, &cert_pem, None).await;
 
     // Apply the fall-through scenario: external=None, web=false.
     // Since `apply_config` resolves `streaming_enabled = external.unwrap_or(web)`,
     // the resolved value should now be `false`.
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.external_grpc.streaming_enabled = None;
             c.web.grpc_streaming_enabled = false;
@@ -3838,23 +3777,17 @@ async fn external_streaming_falls_back_to_web_field_when_external_none() {
         .expect("update_with apply");
 
     // Wait for ConfigReloadTask to converge.
-    let timeout = Duration::from_secs(1);
-    let start = std::time::Instant::now();
-    loop {
-        if !live.snapshot().streaming_enabled {
-            break;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "fall-through timeout: live.streaming_enabled did not converge to false within 1s"
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    harness
+        .wait_for_streaming(
+            false,
+            Duration::from_secs(1),
+            "fall-through timeout: live.streaming_enabled did not converge to false",
+        )
+        .await;
 
     // Assert resolution: external=None + web=false → resolved=false.
     assert!(
-        !live.snapshot().streaming_enabled,
+        !harness.live.snapshot().streaming_enabled,
         "fall-through: external=None + web=false must resolve to streaming_enabled=false"
     );
 
@@ -3878,10 +3811,7 @@ async fn external_streaming_falls_back_to_web_field_when_external_none() {
         ),
     }
 
-    server_handle.abort();
-    reload_handle.abort();
-    let _ = server_handle.await;
-    let _ = reload_handle.await;
+    harness.shutdown().await;
 }
 
 /// Test 3 (D22 / NV4 — override-beats-parent) — when
@@ -3895,65 +3825,37 @@ async fn external_streaming_falls_back_to_web_field_when_external_none() {
 /// `subscribe_metrics` RPC must succeed (not return Unavailable).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_streaming_override_wins_over_web_field_when_some() {
-    let jwt_kp = test_jwt_keypair();
-    let pub_key_path = jwt_kp.pub_pem_path.clone();
-
-    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
-    let cfg_mgr = Arc::new(
-        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
-            .expect("ConfigManager::with_path"),
-    );
     // Seed: web=false and external=Some(false) — initial resolved=false.
-    cfg_mgr
-        .update_with(|c| {
-            *c = test_cfg_with_external_enabled(&pub_key_path);
+    let harness = LiveReloadHarness::builder()
+        .seed(|c| {
             c.web.grpc_streaming_enabled = false;
             c.external_grpc.streaming_enabled = Some(false);
-            Ok(())
         })
-        .expect("seed initial config");
-
-    let port = next_test_port();
-    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
-        streaming_enabled: false,
-        load_policy: Arc::new(LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-    }));
-    let metrics = Arc::new(ExternalMetrics::new());
-    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
-
-    let cfg = make_jwt_spawn_config_for_reload(
-        &pub_key_path,
-        port,
-        live.clone(),
-        metrics,
-        shutdown_tx,
-        shutdown_rx,
-    );
-    let (server_handle, reload_handle, port) =
-        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+        .initial_streaming(false)
+        .build()
+        .await;
 
     // Sanity: seed landed — both flags false, resolved streaming disabled.
     assert!(
-        !live.snapshot().streaming_enabled,
+        !harness.live.snapshot().streaming_enabled,
         "sanity: seed → external streaming initially false (external=Some(false), web=false)"
     );
 
     let token = test_mint_jwt(
-        &jwt_kp.enc_key,
+        &harness.jwt_kp.enc_key,
         "user-9-6-override",
         "test-issuer",
         "test-audience",
         3600,
     );
     let cert_pem = server_cert_pem();
-    let channel = make_tls_channel(port, &cert_pem, None).await;
+    let channel = make_tls_channel(harness.port, &cert_pem, None).await;
 
     // Apply the override-beats-parent scenario: external=Some(true), web=false.
     // `apply_config` resolves `streaming_enabled = external.unwrap_or(web) = true`
     // even though web stays false — proving NV4.
-    cfg_mgr
+    harness
+        .cfg_mgr
         .update_with(|c| {
             c.external_grpc.streaming_enabled = Some(true);
             // web.grpc_streaming_enabled deliberately stays false.
@@ -3962,28 +3864,22 @@ async fn external_streaming_override_wins_over_web_field_when_some() {
         .expect("update_with apply");
 
     // Wait for ConfigReloadTask to converge.
-    let timeout = Duration::from_secs(1);
-    let start = std::time::Instant::now();
-    loop {
-        if live.snapshot().streaming_enabled {
-            break;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "override-beats-parent timeout: live.streaming_enabled did not converge to true \
-                 within 1s (web=false but external=Some(true) should win)"
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    harness
+        .wait_for_streaming(
+            true,
+            Duration::from_secs(1),
+            "override-beats-parent timeout: live.streaming_enabled did not converge to true \
+             (web=false but external=Some(true) should win)",
+        )
+        .await;
 
     // Assert NV4: even though web=false, the Some(true) override wins.
     assert!(
-        live.snapshot().streaming_enabled,
+        harness.live.snapshot().streaming_enabled,
         "NV4 violation: external=Some(true) must override web=false"
     );
     assert!(
-        !cfg_mgr.snapshot().web.grpc_streaming_enabled,
+        !harness.cfg_mgr.snapshot().web.grpc_streaming_enabled,
         "sanity: web.grpc_streaming_enabled must remain false (override is the only enabler)"
     );
 
@@ -4004,8 +3900,5 @@ async fn external_streaming_override_wins_over_web_field_when_some() {
     );
     drop(result);
 
-    server_handle.abort();
-    reload_handle.abort();
-    let _ = server_handle.await;
-    let _ = reload_handle.await;
+    harness.shutdown().await;
 }

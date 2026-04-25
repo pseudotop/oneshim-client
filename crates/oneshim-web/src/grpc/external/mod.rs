@@ -110,12 +110,32 @@ impl std::fmt::Display for ServeExternalError {
 ///
 /// Returns when the shutdown signal in `cfg.shutdown_rx` fires or on a fatal error.
 pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExternalError> {
+    // `integration_auth_token: None` is enforced by `from_external_spawn_config`
+    // (Task 13 spec §2.5 threat model).
+    let service = crate::grpc::DashboardServiceImpl::from_external_spawn_config(&cfg);
+    serve_external_inner(cfg, service, "external_grpc").await
+}
+
+/// Shared core of [`serve_external`] and the test-only
+/// `serve_external_with_service`. Production and test entries diverge only in
+/// (a) which `DashboardService` impl is wired, and (b) the log tag used to
+/// distinguish prod vs test bind/shutdown lines. TLS, accept loop, layer
+/// stack, HTTP/2 hardening, and shutdown handling are bit-for-bit identical
+/// — keeping them in one place ensures lint coverage and behavior parity.
+async fn serve_external_inner<T>(
+    cfg: ExternalGrpcSpawnConfig,
+    service: T,
+    log_tag: &'static str,
+) -> Result<(), ServeExternalError>
+where
+    T: crate::proto::dashboard::v1::dashboard_service_server::DashboardService,
+{
     let shutdown = cfg.shutdown_rx.clone();
     let listener = tokio::net::TcpListener::bind(cfg.bind_addr)
         .await
         .map_err(ServeExternalError::Bind)?;
     let bound_addr = listener.local_addr().map_err(ServeExternalError::Bind)?;
-    info!(%bound_addr, "external_grpc: server bound");
+    info!(%bound_addr, "{log_tag}: server bound");
 
     // Load mTLS CA bytes if needed.
     let mtls_ca_bytes: Option<Vec<u8>> = if cfg.config.auth_mode.is_some_and(|m| m.includes_mtls())
@@ -152,9 +172,7 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
         shutdown.clone(),
     ));
 
-    // Build the real DashboardServiceImpl + auth + audit layer stack.
-    // `integration_auth_token: None` is enforced by `from_external_spawn_config`.
-    let service_impl = crate::grpc::DashboardServiceImpl::from_external_spawn_config(&cfg_arc);
+    // Build the auth + audit layer stack.
     let auth_mode = cfg_arc
         .config
         .auth_mode
@@ -203,12 +221,12 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
         .layer(request_id_layer::RequestIdLayer) // OUTERMOST per D14 revised / U5
         .layer(auth_layer) // runs SECOND on request ingress
         .layer(audit_layer) // innermost — runs AFTER auth
-        .add_service(DashboardServiceServer::new(service_impl).max_decoding_message_size(1_048_576))
+        .add_service(DashboardServiceServer::new(service).max_decoding_message_size(1_048_576))
         .serve_with_incoming_shutdown(stream, shutdown_signal)
         .await
         .map_err(ServeExternalError::Tonic)?;
 
-    info!("external_grpc: server shut down cleanly");
+    info!("{log_tag}: server shut down cleanly");
     Ok(())
 }
 
