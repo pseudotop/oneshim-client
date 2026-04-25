@@ -23,6 +23,7 @@
 
 pub mod ai_providers;
 pub mod annotations;
+pub mod audit_export;
 pub mod automation;
 pub mod automation_gui;
 pub mod backup;
@@ -35,6 +36,7 @@ pub mod digests;
 pub mod error;
 pub mod events;
 pub mod export;
+pub mod external_grpc;
 pub mod focus;
 pub mod frames;
 pub mod idle;

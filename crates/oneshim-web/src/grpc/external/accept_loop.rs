@@ -287,10 +287,14 @@ mod tests {
             shutdown_tx: Arc::new(shutdown_tx_inner),
             pii_sanitizer: None,
             ai_runtime_status_snapshot: None,
-            load_policy: std::sync::Arc::new(crate::grpc::load_policy::LoadPolicy::new(
-                oneshim_core::config::LoadThresholds::default(),
+            live: std::sync::Arc::new(crate::grpc::external::live_config::LiveExternalConfig::new(
+                crate::grpc::external::live_config::LiveSnapshot {
+                    streaming_enabled: true,
+                    load_policy: std::sync::Arc::new(crate::grpc::load_policy::LoadPolicy::new(
+                        oneshim_core::config::LoadThresholds::default(),
+                    )),
+                },
             )),
-            streaming_enabled: true,
         })
     }
 

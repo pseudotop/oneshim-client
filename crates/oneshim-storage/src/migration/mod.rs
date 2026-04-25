@@ -14,6 +14,8 @@
 //! - `v30.rs` — frame_annotations table for user-created highlights, memos, arrows
 //! - `v31_regime_manager_state.rs` — regime_manager_state singleton for
 //!   RegimeManager persistence across restart (Phase 3 C3c/X6)
+//! - `v32_audit_log_command_id_index.rs` — partial index on audit_log.command_id
+//!   for O(log n) entries_by_command_id lookups (D25)
 
 #[cfg(test)]
 mod tests;
@@ -29,11 +31,12 @@ mod v28;
 mod v29;
 mod v30;
 mod v31_regime_manager_state;
+mod v32_audit_log_command_id_index;
 
 use rusqlite::Connection;
 use tracing::{error, info, warn};
 
-pub(crate) const CURRENT_VERSION: u32 = 31;
+pub(crate) const CURRENT_VERSION: u32 = 32;
 
 /// Back up the database file before running schema migrations.
 fn backup_if_needed(conn: &Connection, current_version: u32) -> Option<std::path::PathBuf> {
@@ -200,6 +203,9 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
     if current < 31 {
         run_migration_step(conn, 31, v31_regime_manager_state::migrate_v31)?;
+    }
+    if current < 32 {
+        run_migration_step(conn, 32, v32_audit_log_command_id_index::migrate_v32)?;
     }
 
     Ok(())

@@ -168,33 +168,202 @@ ingress:
 - `entries_by_status(AuditStatus::Completed, N)` — 성공한 RPC.
 - `entries_by_status(AuditStatus::Failed, N)` — 인증 거부.
 - `entries_by_action_prefix("external_grpc_", N)` — 모든 외부 행
-  (`external_grpc_started`, `external_grpc_completed`, `external_grpc_failed`,
-  `external_grpc_denied`, `external_grpc_timeout`).
+  (`external_grpc_started`, `external_grpc_completed`, `external_grpc_failed`).
+- `entries_by_command_id(command_id, N)` — 단일 클라이언트 요청과 상관관계가 있는
+  모든 행 (Started + Completed + Failed). `command_id`는 `x-request-id` 헤더
+  값과 일치합니다 (아래 "Request-ID 상관관계" 섹션 참조).
 
-모든 외부 gRPC 요청은 다음 세부 정보로 에이전트의 로컬 감사 데이터베이스에 기록됩니다:
+### gRPC 상태 → AuditStatus 매핑 (D28)
 
-- `timestamp` — 요청 도착 시간(UTC).
-- `peer_ip` — 클라이언트 IP 주소 및 포트.
-- `peer_cert_cn` — 인증서 일반 이름(mTLS인 경우).
-- `peer_cert_fingerprint` — 피어 인증서의 SHA-256(mTLS인 경우).
-- `jwt_issuer` — JWT `iss` 클레임.
-- `jwt_subject` — JWT `sub` 클레임.
-- `request_type` — gRPC 메서드 이름(예: `/oneshim.v1.DashboardService/GetSessionStats`).
-- `status_code` — gRPC 상태(OK, Unauthenticated, PermissionDenied 등).
-- `error_detail` — 거부 사유(해당하는 경우).
+`AuditLayer`는 트레일러 프레임의 `grpc-status`를 관찰하고 (트레일러가 초기 HEADERS
+프레임에 함께 전송될 경우 — 예: trailers-only 응답 — 헤더 우선 관찰), 이를
+`AuditStatus`로 매핑합니다. 동시에 원시 숫자 코드를 함께 영속화하여, 동일한 상태로
+collapse되는 코드들을 보안 대시보드에서 구분할 수 있게 합니다.
 
-감사 로그를 내보내려면:
+| `grpc-status` (숫자)         | tonic `Code`         | `AuditStatus` |
+|-----------------------------|----------------------|---------------|
+| 0                           | `Ok`                 | `Completed`   |
+| 1                           | `Cancelled`          | `Timeout`     |
+| 4                           | `DeadlineExceeded`   | `Timeout`     |
+| 7                           | `PermissionDenied`   | `Denied`      |
+| 16                          | `Unauthenticated`    | `Denied`      |
+| 그 외 0이 아닌 값          | (예: `Internal`)     | `Failed`      |
+| 부재 (트레일러 전 클라이언트 종료, OQ6-A) | —      | `Completed`   |
+
+감사 상세 필드 (`ExternalGrpcAuditDetails`를 통해 `AuditEntry.details`에 JSON으로
+직렬화):
+
+- `transport` — 항상 `"external"`.
+- `remote_addr` — 피어 소켓 주소(IP 및 포트).
+- `auth_type` — `"jwt"`, `"mtls"`, 또는 `"jwt+mtls"`.
+- `operation` — gRPC 메서드 이름(예: `/oneshim.v1.DashboardService/GetSessionStats`).
+- `result` — 성공/실패 라벨.
+- `request_size_bytes` / `response_size_bytes` — 페이로드 크기 (가용 시).
+- `failure_reason` — 거부 사유 문자열 (예: `invalid_jwt`).
+- `jti` — JWT `jti` 클레임 (JWT 인증인 경우).
+- `response_message_count` — 서버 스트림 메시지 수 (스트리밍 RPC만).
+- `grpc_status_code` — `tonic::Code`의 원시 `u32` 값. Completed/Denied 행에
+  채워지므로 `PermissionDenied` (7)와 `Unauthenticated` (16)을 대시보드에서
+  구분할 수 있습니다 — 두 코드 모두 그렇지 않으면 `AuditStatus::Denied`로
+  collapse됩니다. Started 행에서는 생략됩니다.
+
+로컬 REST API를 통해 감사 로그를 내보내려면 (loopback 전용):
 
 ```bash
-# REST API 엔드포인트(로컬 전용, 인증 불필요)
-curl http://localhost:10090/api/audit/export?days=7 > audit-7d.json
+# 모든 최근 항목 (기본 limit 100, 최대 1000)
+curl http://localhost:10090/api/audit/export | jq
+
+# command_id로 필터 (원래 요청의 x-request-id와 일치)
+curl "http://localhost:10090/api/audit/export?command_id=<uuid>&limit=50" | jq
 ```
+
+이 엔드포인트의 자세한 명세는 아래 "REST 엔드포인트 — `GET /api/audit/export`"를
+참조하십시오.
 
 CLI를 통해 쿼리하려면:
 
 ```bash
 sqlite3 ~/.oneshim/oneshim.db "SELECT * FROM audit_log WHERE timestamp > datetime('now', '-7 days') ORDER BY timestamp DESC LIMIT 100;"
 ```
+
+## Request-ID 상관관계
+
+모든 외부 gRPC 요청에는 `x-request-id` 헤더가 포함되며, 이 값은 레이어 스택을 통해
+end-to-end로 전파되어, 해당 요청에서 생성된 모든 감사 행의 `command_id`로 기록됩니다.
+이 헤더는 정보성이므로, 잘못된 값이나 부재가 요청을 거부시키지 않습니다 — 서버는
+대신 새로운 UUIDv4로 폴백합니다.
+
+### 헤더 시맨틱
+
+- **헤더 이름**: `x-request-id` (HTTP/2 와이어 컨벤션을 따라 소문자).
+- **검증 규칙**: ASCII graphic 바이트만 (`0x21..=0x7E`), 길이 1..=128.
+  공백, 제어 문자, 비-ASCII는 거부됩니다.
+- **유효한 수신 값**: 서버는 그대로 보존하고 응답에 그대로 echo합니다.
+- **잘못되거나 부재한 값**: 서버는 `warn` 로그를 기록 (거부된 입력의 처음 32자
+  + `reason="validation_failed"`) 후 새로운 UUIDv4를 생성합니다. 생성된 ID가
+  감사와 응답에 전파됩니다.
+- **응답 echo**: 응답에는 항상 내부에서 사용된 값(수신-허용된 값 또는 생성된 값)과
+  일치하는 `x-request-id` 헤더가 포함됩니다. D31 조건부 덮어쓰기: 핸들러가 같은
+  값을 설정한 경우 그대로 보존됩니다.
+
+### 레이어 스택 (D14 revised / U5)
+
+요청 수신 시 외곽에서 내부로:
+
+```
+RequestIdLayer  →  AuthLayer  →  AuditLayer  →  핸들러
+```
+
+- `RequestIdLayer`는 request-ID를 검증/생성하고, `AuthLayer`가 실행되기 **이전에**
+  `RequestId` extension을 `http::Request::extensions()`에 삽입합니다.
+- `AuthLayer`의 Failed 경로(인증 거부)는 이 extension을 읽어 감사 행의
+  `command_id`를 emit하므로, 인증 거부된 요청도 클라이언트의 `x-request-id`와
+  상관관계를 유지합니다.
+- `AuditLayer`(세 레이어 중 가장 안쪽)는 Completed/Denied 행에서 같은 extension을
+  읽습니다.
+
+순효과: 단일 클라이언트 요청에서 생성된 모든 감사 행 — Started, Completed, 인증
+Failed 모두 — 동일한 `command_id`를 공유합니다. 전체 추적을 가져오려면
+`entries_by_command_id` (또는 `GET /api/audit/export`의 `?command_id=` 쿼리)를
+사용하십시오.
+
+## Live config reload
+
+외부 gRPC는 `AppConfig`의 일부를 live-mutable 상태로 추적합니다. `ConfigReloadTask`가
+`ConfigManager`의 변경을 감시하고, 새 `LiveSnapshot`을 atomic 하게 swap하여
+재시작 없이도 실행 중 서버를 갱신합니다.
+
+### Watched 필드
+
+| `AppConfig` 경로                          | 변경 시 효과                                            |
+|-------------------------------------------|---------------------------------------------------------|
+| `external_grpc.streaming_enabled` (Option<bool>) | external 전용 스트리밍 override. `Some(true/false)`은 override; `None`은 `web.grpc_streaming_enabled`로 폴스루(fall-through, 상위 필드로 전이) (D22). |
+| `external_grpc.load_thresholds` / `web.grpc_load_thresholds` | 적응형 부하 정책 임계값 (CPU low/medium/high, 최소 free 메모리). `LoadPolicy::try_new`이 검증; 거부된 값은 이전 정책을 유지 (D23). |
+
+### 시맨틱
+
+- **D22 폴백 해석**: `external_grpc.streaming_enabled = Some(v)`은 공유 web 플래그를
+  override합니다. `= None`이면 `web.grpc_streaming_enabled`로 폴스루합니다 — 즉
+  loopback과 external이 공통 기본값을 공유하면서도 external만 opt-out 할 수
+  있습니다.
+- **D27 warmup 보존**: `LoadPolicy.started_at` (warmup 앵커)는 reload 간에
+  보존됩니다. 임계값을 reload하더라도 30초 warmup 윈도우는 **리셋되지 않습니다** —
+  운영자가 임계값을 토글하다가 실수로 warmup에 재진입하지 않도록 보호합니다.
+- **부분 적용**: 잘못된 `load_thresholds`는 `error!` 로그와 함께 거부되지만,
+  `streaming_enabled`(자명하게 유효)는 동일 swap에서 그대로 적용됩니다.
+  D21의 단일 atomic store가 전이를 일관된 한 상태로 관찰되도록 보장합니다.
+- **G3 수렴 한계**: `ConfigManager` 쓰기에서 live 스냅샷 가시성까지 ≤1s
+  (`external_grpc_live_streaming_toggle_reflects_within_1s` 테스트로 CI 강제).
+- **Coalescing**: 빠른 연속 업데이트는 마지막 상태로 collapse됩니다 —
+  `tokio::sync::watch` 채널은 항상 최신 값만 노출합니다.
+
+## REST 엔드포인트
+
+아래 두 엔드포인트는 모두 로컬 웹 대시보드 (기본 `http://localhost:10090`)에서
+제공되며, `require_loopback_client` 미들웨어로 보호됩니다 — `127.0.0.1` 출처
+요청만 수락됩니다.
+
+### `GET /api/external-grpc/live-config`
+
+외부 gRPC 설정의 현재 live 스냅샷을 조회합니다. 사양 §5.11 / D29.
+
+**응답** (`200 OK`, `application/json`) — `LiveConfigResponse`:
+
+```json
+{
+  "streaming_enabled": true,
+  "load_policy_snapshot": {
+    "cpu_low_pct": 30.0,
+    "cpu_medium_pct": 60.0,
+    "cpu_high_pct": 85.0,
+    "min_free_mem_gb": 1.0,
+    "started_at_elapsed_ms": 42150,
+    "in_warmup": false
+  },
+  "config_reload_task_alive": true
+}
+```
+
+- `streaming_enabled` — 현재 적용 중인 값 (D22 폴백 해석 후).
+- `load_policy_snapshot.cpu_*_pct` / `min_free_mem_gb` — 현재 `LoadPolicy`
+  임계값.
+- `load_policy_snapshot.started_at_elapsed_ms` — `LoadPolicy::started_at` 이후
+  경과한 밀리초 (D27에 따라 reload 간 보존).
+- `load_policy_snapshot.in_warmup` — 서버 시작 후 30초 warm-up 윈도우 동안
+  `true`.
+- `config_reload_task_alive` — `ConfigReloadTask`가 메인 루프에 진입한 후
+  `true`; task가 종료되면 `false`로 돌아옵니다.
+
+다음 경우 **`503 Service Unavailable`**을 반환합니다:
+
+- 외부 gRPC가 컴파일에는 포함되어 있으나 런타임에 비활성화된 경우
+  (`DiagnosticsState.external_grpc_live`가 `None`).
+- 바이너리가 `grpc-dashboard-external` feature flag 없이 빌드된 경우 (핸들러가
+  무조건 503 stub으로 대체됩니다).
+
+### `GET /api/audit/export`
+
+감사 항목을 JSON으로 내보냅니다. 사양 §5.9 / D25 / NV1.
+
+**쿼리 파라미터**:
+
+| 파라미터       | 타입    | 기본값  | 설명                                                 |
+|---------------|---------|---------|------------------------------------------------------|
+| `command_id`  | string  | 없음    | 존재하고 비어있지 않을 때, `command_id`가 정확히 일치하는 항목으로 필터링. 빈 문자열은 부재로 처리. |
+| `status`      | string  | 없음    | 미래 사용 예약; 현재 no-op.                          |
+| `limit`       | integer | 100     | 반환되는 최대 항목 수. `1000`으로 clamp (DoS 가드).  |
+
+**응답** (`200 OK`, `application/json`): `Vec<AuditEntry>`, 최신순.
+
+```bash
+curl "http://localhost:10090/api/audit/export?command_id=550e8400-e29b-41d4-a716-446655440000&limit=20"
+```
+
+`automation.audit_logger`가 설정되지 않은 경우 (런타임에 감사 로깅 비활성화)
+**`503 Service Unavailable`**을 반환합니다.
+
+> **참고**: 현재 `entries_by_command_id`는 인메모리 감사 버퍼에서 읽습니다.
+> SQLite 영속성 기반 lookup은 후속 Task 0.3.1에서 처리됩니다.
 
 ## 문제 해결
 

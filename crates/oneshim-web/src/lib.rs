@@ -186,6 +186,31 @@ impl WebServer {
         self
     }
 
+    /// Wire the `LiveExternalConfig` Arc into `DiagnosticsState` so the
+    /// `GET /api/external-grpc/live-config` endpoint can serve live snapshots.
+    /// Only available when the `grpc-dashboard-external` feature is enabled.
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub fn with_external_grpc_live(
+        mut self,
+        live: Arc<crate::grpc::external::live_config::LiveExternalConfig>,
+    ) -> Self {
+        self.state.diagnostics.external_grpc_live = Some(live);
+        self
+    }
+
+    /// Wire the `ExternalMetrics` Arc into `DiagnosticsState` so the
+    /// `GET /api/external-grpc/live-config` endpoint can report
+    /// `config_reload_task_alive`.
+    /// Only available when the `grpc-dashboard-external` feature is enabled.
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub fn with_external_grpc_metrics(
+        mut self,
+        metrics: Arc<crate::grpc::external::metrics::ExternalMetrics>,
+    ) -> Self {
+        self.state.diagnostics.external_grpc_metrics = Some(metrics);
+        self
+    }
+
     pub fn with_integration_runtime_status(
         mut self,
         status: IntegrationOutboundRuntimeStatus,

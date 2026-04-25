@@ -215,6 +215,19 @@ impl AuditLogger {
             .collect()
     }
 
+    /// In-memory buffer lookup by command_id (newest first).
+    /// Storage-backed historical lookup is a follow-up — current impl serves
+    /// only entries still in the VecDeque buffer (capacity ~1000 by default).
+    pub fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+        self.buffer
+            .iter()
+            .rev()
+            .filter(|e| e.command_id == command_id)
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
     pub fn stats(&self) -> AuditStats {
         let mut completed = 0;
         let mut failed = 0;
@@ -352,6 +365,13 @@ impl oneshim_core::ports::audit_log::AuditLogPort for AuditLogAdapter {
             .read()
             .await
             .entries_by_action_prefix(prefix, limit)
+    }
+
+    async fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+        self.inner
+            .read()
+            .await
+            .entries_by_command_id(command_id, limit)
     }
 
     async fn stats(&self) -> AuditStats {
@@ -712,6 +732,36 @@ mod tests {
             0,
             "persistence should NOT be called when level is None"
         );
+    }
+
+    #[tokio::test]
+    async fn audit_logger_entries_by_command_id_walks_buffer() {
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s1", "act1");
+        logger.log_start_if(AuditLevel::Basic, "cmd-Y", "s2", "act1");
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s3", "act2");
+
+        let results = logger.entries_by_command_id("cmd-X", 10);
+        assert_eq!(results.len(), 2);
+        for r in &results {
+            assert_eq!(r.command_id, "cmd-X");
+        }
+    }
+
+    #[tokio::test]
+    async fn audit_log_adapter_entries_by_command_id_delegates_to_logger() {
+        use oneshim_core::ports::audit_log::AuditLogPort;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+        let logger = Arc::new(RwLock::new(AuditLogger::new(100, 10)));
+        logger
+            .write()
+            .await
+            .log_start_if(AuditLevel::Basic, "cmd-A", "s1", "act");
+        let adapter = AuditLogAdapter::new(logger);
+        let results = adapter.entries_by_command_id("cmd-A", 10).await;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command_id, "cmd-A");
     }
 
     #[test]

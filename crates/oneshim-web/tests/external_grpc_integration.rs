@@ -31,12 +31,14 @@ use tonic::Code;
 use oneshim_web::grpc::external::cert_resolver::HotReloadCertResolver;
 use oneshim_web::grpc::external::ip_ban::IpBan;
 use oneshim_web::grpc::external::jwt_verifier::JwtVerifier;
+use oneshim_web::grpc::external::live_config::{LiveExternalConfig, LiveSnapshot};
 use oneshim_web::grpc::external::metrics::ExternalMetrics;
 use oneshim_web::grpc::external::mtls_verifier::MtlsVerifier;
 use oneshim_web::grpc::external::serve_external;
 use oneshim_web::grpc::external::spawn_config::ExternalGrpcSpawnConfig;
 use oneshim_web::grpc::external::tls_config::load_certified_key;
 use oneshim_web::grpc::test_support::mock_system_monitor::MockSystemMonitor;
+use oneshim_web::grpc::LoadPolicy;
 use oneshim_web::proto::dashboard::v1::dashboard_service_client::DashboardServiceClient;
 use oneshim_web::proto::dashboard::v1::{
     GetAgentInfoRequest, GetSessionStatsRequest, SubscribeEventsRequest,
@@ -45,8 +47,8 @@ use oneshim_web::storage_port::WebStorage;
 
 // Bring in the test_support helpers from the external module.
 use oneshim_web::grpc::external::test_support::{
-    install_rustls_crypto_provider, test_ca_and_client_cert, test_cert_pair, test_jwt_keypair,
-    test_mint_jwt,
+    install_rustls_crypto_provider, spawn_server_with_config_manager, test_ca_and_client_cert,
+    test_cert_pair, test_jwt_keypair, test_mint_jwt,
 };
 
 // ── Shutdown pair helper ─────────────────────────────────────────────────────
@@ -103,6 +105,9 @@ impl AuditLogPort for NoopAudit {
         vec![]
     }
     async fn entries_by_action_prefix(&self, _prefix: &str, _limit: usize) -> Vec<AuditEntry> {
+        vec![]
+    }
+    async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
         vec![]
     }
     async fn stats(&self) -> AuditStats {
@@ -190,10 +195,12 @@ fn make_jwt_config(jwt_pub_key_path: &std::path::Path) -> (ExternalGrpcSpawnConf
         shutdown_tx,
         pii_sanitizer: None,
         ai_runtime_status_snapshot: None,
-        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-        streaming_enabled: true,
+        live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: true,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+        })),
     };
     (cfg, bind_addr)
 }
@@ -233,10 +240,12 @@ fn make_mtls_config(ca_pem_path: &std::path::Path) -> (ExternalGrpcSpawnConfig, 
         shutdown_tx,
         pii_sanitizer: None,
         ai_runtime_status_snapshot: None,
-        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-        streaming_enabled: true,
+        live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: true,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+        })),
     };
     (cfg, bind_addr)
 }
@@ -479,10 +488,12 @@ async fn external_grpc_jwt_plus_mtls_both_valid() {
         shutdown_tx,
         pii_sanitizer: None,
         ai_runtime_status_snapshot: None,
-        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-        streaming_enabled: true,
+        live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: true,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+        })),
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -554,10 +565,12 @@ async fn external_grpc_jwt_plus_mtls_mtls_only() {
         shutdown_tx,
         pii_sanitizer: None,
         ai_runtime_status_snapshot: None,
-        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-        streaming_enabled: true,
+        live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: true,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+        })),
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -635,10 +648,12 @@ async fn external_grpc_jwt_plus_mtls_cert_valid_jwt_expired() {
         shutdown_tx,
         pii_sanitizer: None,
         ai_runtime_status_snapshot: None,
-        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-        streaming_enabled: true,
+        live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: true,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+        })),
     };
 
     let (handle, port) = spawn_server(cfg).await;
@@ -921,15 +936,15 @@ async fn loopback_server_unaffected_when_external_disabled() {
     let _ = server_task.await;
 }
 
-/// Test 10: x-request-id header is returned in response metadata.
+/// R1 — Test 10: RequestIdLayer preserves a valid client-supplied x-request-id.
 ///
-/// Smoke test: a JWT-authenticated request reaches the real
-/// DashboardServiceImpl (Task 9) and receives an Ok response.
+/// Per spec §5.2 / D31: when the client sends a valid `x-request-id` header
+/// (ASCII graphic, 1..=128 chars), `RequestIdLayer` echoes that EXACT value in
+/// the response — it does NOT overwrite a matching value.
 ///
-/// Note: the planned `x-request-id` response header carrying the audit
-/// command_id is not yet emitted by tonic — that is tracked as a
-/// post-Task-13 follow-up (spec §8). This test covers the auth-to-service
-/// smoke path only; the header assertion returns when implemented.
+/// Assertion: the response metadata carries `x-request-id: test-req-123`
+/// exactly as supplied, proving the conditional-overwrite path (D31) works
+/// end-to-end through the real `serve_external` stack.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_request_id_header_returned() {
     let jwt_kp = test_jwt_keypair();
@@ -946,19 +961,122 @@ async fn external_grpc_request_id_header_returned() {
     let cert_pem = server_cert_pem();
     let channel = make_tls_channel(port, &cert_pem, None).await;
 
+    // Attach both authorization AND a valid x-request-id header.
     let mut req = tonic::Request::new(GetAgentInfoRequest {});
     req.metadata_mut().insert(
         "authorization",
-        format!("Bearer {token}").parse().expect("valid header"),
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "x-request-id",
+        tonic::metadata::MetadataValue::try_from("test-req-123").expect("valid x-request-id value"),
     );
     let resp = DashboardServiceClient::new(channel)
         .get_agent_info(req)
         .await
         .expect("auth should succeed and yield AgentInfoResponse");
+
+    // The x-request-id that the server echoed must be the exact client value.
+    let returned_id = resp
+        .metadata()
+        .get("x-request-id")
+        .expect("x-request-id must be present in response metadata")
+        .to_str()
+        .expect("x-request-id must be valid ASCII");
+    assert_eq!(
+        returned_id, "test-req-123",
+        "RequestIdLayer (D31) must preserve the client-supplied x-request-id unchanged"
+    );
+
+    // Also verify the handler returned real business data (smoke).
     let info = resp.into_inner();
     assert!(
         !info.build_profile.is_empty(),
         "AgentInfoResponse.build_profile must be populated"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+/// R2 — Test: AuditLayer records Denied + grpc_status_code=7 for PermissionDenied.
+///
+/// `subscribe_events` calls `validate_authority(host_header)` which returns
+/// `Status::permission_denied("authority not allowlisted")` (code 7) for any
+/// host not in ["localhost", "127.0.0.1", "::1", "::ffff:127.0.0.1"].
+///
+/// The AuditLayer observes code 7 via the header-first path (D28), maps it to
+/// `AuditStatus::Denied`, and records `grpc_status_code: Some(7)` in the details
+/// blob (D26).  The CapturingAudit mock extracts this from the JSON details.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_denied_for_permission_denied() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server(cfg).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-pd-audit",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Set a "host" metadata header to a non-allowlisted authority — this is the
+    // trigger for validate_authority → Err(Status::permission_denied(...)).
+    // The AuditLayer's deferred task sees grpc-status 7 in the response headers.
+    let mut req = tonic::Request::new(SubscribeEventsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "host",
+        tonic::metadata::MetadataValue::try_from("evil.example.com:443")
+            .expect("valid host header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .subscribe_events(req)
+        .await;
+    // The call must fail with PermissionDenied (code 7).
+    let status = result.expect_err("expected PermissionDenied error from subscribe_events");
+    assert_eq!(
+        status.code(),
+        tonic::Code::PermissionDenied,
+        "authority not in allowlist must yield PermissionDenied; got {status:?}"
+    );
+
+    // Give the tokio::spawn'd AuditLayer deferred task time to flush.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Extract Denied entry with grpc_status_code — drop lock before any await.
+    let (denied_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let denied: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Denied))
+            .collect();
+        let code = denied.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (denied.len(), code, dbg)
+    };
+    assert!(
+        denied_count >= 1,
+        "expected ≥1 Denied audit row; got {denied_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(7),
+        "Denied row must carry grpc_status_code=7 (PermissionDenied); entries: {entries_debug}"
     );
 
     handle.abort();
@@ -1023,10 +1141,12 @@ async fn external_grpc_jwt_plus_mtls_jwt_only() {
         shutdown_tx,
         pii_sanitizer: None,
         ai_runtime_status_snapshot: None,
-        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-        streaming_enabled: true,
+        live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: true,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+        })),
     };
     let (handle, port) = spawn_server(cfg).await;
 
@@ -1146,10 +1266,12 @@ async fn external_grpc_jwt_plus_mtls_cert_invalid_jwt_valid() {
         shutdown_tx,
         pii_sanitizer: None,
         ai_runtime_status_snapshot: None,
-        load_policy: std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(
-            oneshim_core::config::LoadThresholds::default(),
-        )),
-        streaming_enabled: true,
+        live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+            streaming_enabled: true,
+            load_policy: Arc::new(LoadPolicy::new(
+                oneshim_core::config::LoadThresholds::default(),
+            )),
+        })),
     };
     let (handle, port) = spawn_server(cfg).await;
 
@@ -1429,10 +1551,36 @@ async fn external_grpc_real_handler_returns_business_data() {
     let _ = handle.await;
 }
 
-// Mock audit log that retains every `log_complete_with_time` entry so the
-// e2e tests below can inspect what AuditLayer recorded.
+// Mock audit log that retains every `log_complete_with_time` and `log_event`
+// entry so the e2e tests below can inspect what AuditLayer recorded.
+//
+// Structural rewrite (Task 9.0, CR4 / R2-NI1): replaces the previous
+// action_type-as-command_id conflation with real command_id preservation and
+// grpc_status_code JSON extraction from the details blob.  Unblocks Phase 9
+// Tasks 9.1+ which assert command_id correlation and D26 raw-code visibility.
+#[derive(Default)]
 struct CapturingAudit {
-    entries: std::sync::Mutex<Vec<AuditEntry>>,
+    entries: std::sync::Mutex<Vec<CapturedEntry>>,
+}
+
+/// A lightweight capture record used by Phase 9 integration tests to assert
+/// on command_id, action_type, status, grpc_status_code, and execution timing.
+///
+/// `details` preserves the raw JSON blob from `log_complete_with_time` so that
+/// tests can inspect operation names (e.g. "SubscribeEvents") without re-parsing
+/// the struct.
+#[derive(Clone, Debug)]
+#[allow(dead_code)] // fields consumed by Phase 9.1+ assertion helpers
+struct CapturedEntry {
+    command_id: String,
+    action_type: String,
+    status: AuditStatus,
+    grpc_status_code: Option<u32>,
+    execution_time_ms: u64,
+    /// Raw `details` string passed by the audit bridge (JSON blob or empty).
+    /// Populated by `log_complete_with_time` and `log_event`; `None` for
+    /// entries that have no details context.
+    details: Option<String>,
 }
 
 impl CapturingAudit {
@@ -1441,10 +1589,80 @@ impl CapturingAudit {
             entries: std::sync::Mutex::new(vec![]),
         })
     }
+
+    /// Return a snapshot of all captured entries.  Used by Phase 9.1+ tests
+    /// to assert command_id correlation and grpc_status_code visibility.
+    #[allow(dead_code)] // used by Phase 9.1+ tests
+    fn snapshot(&self) -> Vec<CapturedEntry> {
+        self.entries.lock().unwrap().clone()
+    }
 }
 
 #[async_trait::async_trait]
 impl AuditLogPort for CapturingAudit {
+    async fn log_event(&self, action_type: &str, _session_id: &str, details: &str) {
+        // AuditBridge emits action_type "external_grpc_started" etc.
+        // alongside log_complete_with_time; use this to capture Started rows.
+        let status = match action_type {
+            "external_grpc_started" => AuditStatus::Started,
+            "external_grpc_completed" => AuditStatus::Completed,
+            "external_grpc_failed" | "external_grpc_denied" | "external_grpc_timeout" => {
+                AuditStatus::Failed
+            }
+            _ => AuditStatus::Completed,
+        };
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: String::new(),
+            action_type: action_type.to_string(),
+            status,
+            grpc_status_code: None,
+            execution_time_ms: 0,
+            details: Some(details.to_string()),
+        });
+    }
+
+    async fn log_start_if(
+        &self,
+        _level: AuditLevel,
+        command_id: &str,
+        _session_id: &str,
+        action_type: &str,
+    ) {
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: command_id.to_string(),
+            action_type: action_type.to_string(),
+            status: AuditStatus::Started,
+            grpc_status_code: None,
+            execution_time_ms: 0,
+            details: None,
+        });
+    }
+
+    async fn log_complete_with_time(
+        &self,
+        _level: AuditLevel,
+        command_id: &str,
+        _session_id: &str,
+        details: &str,
+        execution_time_ms: u64,
+    ) {
+        let status = parse_status_from_details(details);
+        let grpc_status_code: Option<u32> = serde_json::from_str::<serde_json::Value>(details)
+            .ok()
+            .and_then(|v| {
+                v.get("grpc_status_code")
+                    .and_then(|n| n.as_u64().map(|u| u as u32))
+            });
+        self.entries.lock().unwrap().push(CapturedEntry {
+            command_id: command_id.to_string(),
+            action_type: String::new(),
+            status,
+            grpc_status_code,
+            execution_time_ms,
+            details: Some(details.to_string()),
+        });
+    }
+
     async fn pending_count(&self) -> usize {
         0
     }
@@ -1457,63 +1675,14 @@ impl AuditLogPort for CapturingAudit {
     async fn entries_by_action_prefix(&self, _p: &str, _l: usize) -> Vec<AuditEntry> {
         vec![]
     }
+    async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
+        vec![]
+    }
     async fn stats(&self) -> AuditStats {
         AuditStats::default()
     }
     async fn has_pending_batch(&self) -> bool {
         false
-    }
-    async fn log_start_if(
-        &self,
-        _level: AuditLevel,
-        _command_id: &str,
-        _session_id: &str,
-        _action_type: &str,
-    ) {
-    }
-    async fn log_complete_with_time(
-        &self,
-        _level: AuditLevel,
-        command_id: &str,
-        session_id: &str,
-        details: &str,
-        execution_time_ms: u64,
-    ) {
-        self.entries.lock().unwrap().push(AuditEntry {
-            entry_id: ulid::Ulid::new().to_string(),
-            timestamp: chrono::Utc::now(),
-            action_type: "external_grpc".to_string(),
-            command_id: command_id.to_string(),
-            session_id: session_id.to_string(),
-            // Status derived later from action_type (captured via log_event).
-            status: AuditStatus::Completed,
-            details: Some(details.to_string()),
-            execution_time_ms: Some(execution_time_ms),
-        });
-    }
-
-    async fn log_event(&self, action_type: &str, session_id: &str, details: &str) {
-        // AuditBridge emits action_type "external_grpc_started" vs
-        // "external_grpc_completed" alongside log_complete_with_time; use
-        // this to disambiguate Started vs Completed rows.
-        let status = match action_type {
-            "external_grpc_started" => AuditStatus::Started,
-            "external_grpc_completed" => AuditStatus::Completed,
-            "external_grpc_failed" | "external_grpc_denied" | "external_grpc_timeout" => {
-                AuditStatus::Failed
-            }
-            _ => AuditStatus::Completed,
-        };
-        self.entries.lock().unwrap().push(AuditEntry {
-            entry_id: ulid::Ulid::new().to_string(),
-            timestamp: chrono::Utc::now(),
-            action_type: action_type.to_string(),
-            command_id: action_type.to_string(), // distinctive key
-            session_id: session_id.to_string(),
-            status,
-            details: Some(details.to_string()),
-            execution_time_ms: None,
-        });
     }
     async fn drain_batch(&self) -> Vec<AuditEntry> {
         vec![]
@@ -1524,9 +1693,31 @@ impl AuditLogPort for CapturingAudit {
     async fn record_session_event(&self, _e: SessionAuditEntry) {}
 }
 
-/// E2E-2: After a successful RPC, the audit trail contains both Started
+/// Derive `AuditStatus` from the JSON `result` field in the details blob emitted
+/// by `AuditBridge::record`.  Returns `Completed` for any unrecognized value.
+fn parse_status_from_details(details: &str) -> AuditStatus {
+    serde_json::from_str::<serde_json::Value>(details)
+        .ok()
+        .and_then(|v| v.get("result").and_then(|r| r.as_str().map(String::from)))
+        .map(|s| match s.as_str() {
+            "ok" => AuditStatus::Completed,
+            "denied" => AuditStatus::Denied,
+            "timeout" => AuditStatus::Timeout,
+            "error" | "failed" => AuditStatus::Failed,
+            _ => AuditStatus::Completed,
+        })
+        .unwrap_or(AuditStatus::Completed)
+}
+
+/// E1 / E2E-2: After a successful RPC, the audit trail contains both Started
 /// and Completed rows with the same command_id. This proves AuditLayer's
 /// Started+Completed pairing works end-to-end.
+///
+/// Extended (Task 9.1 E1): also asserts:
+/// - The Completed row's `command_id` is a valid UUIDv4 (36 chars, 4 hyphens) —
+///   generated by RequestIdLayer since no client-supplied x-request-id was sent.
+/// - The Completed row's `grpc_status_code` is `Some(0)` (gRPC Ok / Code::Ok),
+///   proving D26 raw-code persistence for the success path.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_grpc_audit_completed_entry_written_after_ok_response() {
     let jwt_kp = test_jwt_keypair();
@@ -1549,6 +1740,7 @@ async fn external_grpc_audit_completed_entry_written_after_ok_response() {
         "authorization",
         format!("Bearer {token}").parse().expect("valid header"),
     );
+    // No x-request-id header — RequestIdLayer generates a UUIDv4.
     DashboardServiceClient::new(channel)
         .get_agent_info(req)
         .await
@@ -1557,20 +1749,29 @@ async fn external_grpc_audit_completed_entry_written_after_ok_response() {
     // Give the tokio::spawn'd record() calls time to flush to the mock.
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Copy counts into locals + drop the lock BEFORE any `await` to avoid
+    // Copy all needed data into locals + drop the lock BEFORE any `await` to avoid
     // `await_holding_lock` clippy — std::sync::MutexGuard is not `Send`.
-    let (started_count, completed_count, entries_debug) = {
+    let (started_count, completed_count, completed_cmd_id, completed_grpc_code, entries_debug) = {
         let entries = capturing.entries.lock().unwrap();
         let started = entries
             .iter()
             .filter(|e| matches!(e.status, AuditStatus::Started))
             .count();
-        let completed = entries
+        // log_complete_with_time sets grpc_status_code; find the Completed row
+        // that has it populated (the deferred AuditLayer task).
+        let completed_row = entries
+            .iter()
+            .find(|e| matches!(e.status, AuditStatus::Completed) && e.grpc_status_code.is_some());
+        let cmd_id = completed_row
+            .map(|e| e.command_id.clone())
+            .unwrap_or_default();
+        let grpc_code = completed_row.and_then(|e| e.grpc_status_code);
+        let completed_any = entries
             .iter()
             .filter(|e| matches!(e.status, AuditStatus::Completed))
             .count();
         let dbg = format!("{entries:?}");
-        (started, completed, dbg)
+        (started, completed_any, cmd_id, grpc_code, dbg)
     };
     assert!(
         started_count >= 1,
@@ -1579,6 +1780,30 @@ async fn external_grpc_audit_completed_entry_written_after_ok_response() {
     assert!(
         completed_count >= 1,
         "expected ≥1 Completed row; got {completed_count} (entries: {entries_debug})"
+    );
+
+    // E1 extension: command_id must be a UUIDv4 (36-char string, 4 hyphens).
+    // RequestIdLayer generates it when the client omits x-request-id, and
+    // AuditLayer's `request_id override (U5)` propagates it to command_id.
+    assert_eq!(
+        completed_cmd_id.len(),
+        36,
+        "command_id must be a 36-char UUIDv4 string; got {completed_cmd_id:?}"
+    );
+    assert_eq!(
+        completed_cmd_id.chars().filter(|c| *c == '-').count(),
+        4,
+        "UUIDv4 command_id must have 4 hyphens; got {completed_cmd_id:?}"
+    );
+    uuid::Uuid::parse_str(&completed_cmd_id).unwrap_or_else(|e| {
+        panic!("command_id {completed_cmd_id:?} must be parseable as UUID: {e}")
+    });
+
+    // E1 extension: grpc_status_code=Some(0) for the Ok path (D26).
+    assert_eq!(
+        completed_grpc_code,
+        Some(0),
+        "Completed row must carry grpc_status_code=0 (Code::Ok); entries: {entries_debug}"
     );
 
     handle.abort();
@@ -1647,4 +1872,2140 @@ async fn external_grpc_streaming_audit_records_message_count() {
 
     handle.abort();
     let _ = handle.await;
+}
+
+/// N1 — RequestIdLayer generates a UUIDv4 when the client omits x-request-id.
+///
+/// When no `x-request-id` header is sent, `RequestIdLayer` (spec §5.2 / None
+/// branch) generates a fresh UUIDv4 and inserts it into the response.  The
+/// CapturingAudit's Completed row carries that same UUID as `command_id` via
+/// AuditLayer's request_id override (U5), proving end-to-end propagation.
+///
+/// Assertions:
+/// 1. Response metadata has `x-request-id` (server-generated).
+/// 2. The value is a valid 36-char UUIDv4 (4 hyphens, parseable by `uuid`).
+/// 3. The CapturingAudit Completed row's `command_id` matches the response header.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_request_id_generated_when_missing() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server(cfg).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-gen-id",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // No x-request-id header — RequestIdLayer must generate a UUIDv4.
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    let resp = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await
+        .expect("auth + real handler → Ok");
+
+    // 1. Response must carry a server-generated x-request-id.
+    let generated_id = resp
+        .metadata()
+        .get("x-request-id")
+        .expect("server must insert x-request-id when client omits it")
+        .to_str()
+        .expect("x-request-id must be valid ASCII");
+
+    // 2. Must be a valid UUIDv4 (36 chars, 4 hyphens).
+    assert_eq!(
+        generated_id.len(),
+        36,
+        "generated x-request-id must be 36 chars; got {generated_id:?}"
+    );
+    assert_eq!(
+        generated_id.chars().filter(|c| *c == '-').count(),
+        4,
+        "generated x-request-id must have 4 hyphens (UUIDv4); got {generated_id:?}"
+    );
+    let parsed_uuid = uuid::Uuid::parse_str(generated_id).expect("x-request-id must parse as UUID");
+    // UUIDv4: version nibble == 4, variant == 0b10xx.
+    assert_eq!(
+        parsed_uuid.get_version_num(),
+        4,
+        "generated ID must be UUIDv4; got version {}",
+        parsed_uuid.get_version_num()
+    );
+
+    // Give AuditLayer's deferred task time to flush to the mock.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // 3. CapturingAudit's Completed row must carry the same UUID as command_id.
+    // Drop the lock before any `.await`.
+    let (audit_cmd_id, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let completed = entries
+            .iter()
+            .find(|e| matches!(e.status, AuditStatus::Completed) && e.grpc_status_code.is_some())
+            .map(|e| e.command_id.clone())
+            .unwrap_or_default();
+        let dbg = format!("{entries:?}");
+        (completed, dbg)
+    };
+    assert_eq!(
+        audit_cmd_id, generated_id,
+        "AuditLayer command_id must equal the x-request-id echoed in the response; \
+         entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+/// N2 — RequestIdLayer discards a malformed client x-request-id and substitutes
+/// a fresh UUIDv4.
+///
+/// Per spec §5.2 / L307: when the client sends an `x-request-id` that fails
+/// `is_valid()` (ASCII graphic 0x21..=0x7E, 1..=128 chars), `RequestIdLayer`
+/// emits a `tracing::warn!` and generates a fresh UUIDv4.  The warn+regenerate
+/// path proves that a malicious / malformed client cannot inject arbitrary
+/// bytes into the response-header / downstream audit trail.
+///
+/// The malformed payload used here is `"bad\tid"` — the tab byte (0x09) is a
+/// valid HeaderValue byte (HTAB is permitted by `http::HeaderValue::from_str`)
+/// but falls outside the `is_valid()` 0x21..=0x7E range, so the server-side
+/// validator will reject it and substitute a UUIDv4.  Mirrors the in-crate
+/// `rejects_invalid_characters_generates_new` unit test (request_id_layer.rs L189).
+///
+/// Assertions:
+/// 1. Response metadata carries a valid 36-char UUIDv4 (4 hyphens, parses as UUID v4).
+/// 2. Response's `x-request-id` does NOT equal the malformed client input.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_request_id_invalid_replaced() {
+    let jwt_kp = test_jwt_keypair();
+    let (cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let (handle, port) = spawn_server(cfg).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-bad-reqid",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Malformed x-request-id: tab (0x09) is valid as an http HeaderValue byte
+    // but fails the is_valid(0x21..=0x7E) range, forcing the warn+regenerate path.
+    let malformed_id = "bad\tid";
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "x-request-id",
+        tonic::metadata::MetadataValue::try_from(malformed_id)
+            .expect("tab (0x09) is a valid HeaderValue byte"),
+    );
+    let resp = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await
+        .expect("auth + real handler → Ok");
+
+    // 1. Response must carry a server-substituted x-request-id.
+    let returned_id = resp
+        .metadata()
+        .get("x-request-id")
+        .expect("x-request-id must be present (server substitutes on invalid input)")
+        .to_str()
+        .expect("substituted x-request-id must be valid ASCII");
+
+    // 2. Value must NOT be the malformed client input.
+    assert_ne!(
+        returned_id, malformed_id,
+        "server must discard malformed x-request-id and substitute a UUID"
+    );
+
+    // 3. Value must be a valid UUIDv4 (36 chars, 4 hyphens, version 4).
+    assert_eq!(
+        returned_id.len(),
+        36,
+        "substituted x-request-id must be 36 chars; got {returned_id:?}"
+    );
+    assert_eq!(
+        returned_id.chars().filter(|c| *c == '-').count(),
+        4,
+        "substituted x-request-id must have 4 hyphens (UUIDv4); got {returned_id:?}"
+    );
+    let parsed_uuid = uuid::Uuid::parse_str(returned_id).expect("x-request-id must parse as UUID");
+    assert_eq!(
+        parsed_uuid.get_version_num(),
+        4,
+        "substituted x-request-id must be UUIDv4; got version {}",
+        parsed_uuid.get_version_num()
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+/// N3 — x-request-id is preserved across the auth-rejection boundary (U5 / D14).
+///
+/// Per spec §5.2 / §9.2 L1393: `RequestIdLayer` is the outermost layer and runs
+/// BEFORE `AuthLayer`, so it inserts the `RequestId` extension with the client's
+/// header value before any auth gate fires.  When `AuthLayer` subsequently
+/// rejects the request (invalid JWT → Unauthenticated), its Failed-path
+/// `bridge.record(...)` reads the extension and passes it as `command_id`
+/// (commit `7bd7c944`, Task 6.1).  This closes the correlation gap at the
+/// security boundary — security dashboards can still trace which client call
+/// produced each auth rejection.
+///
+/// Flow:
+/// 1. Client sends `x-request-id: req-abc-123` + a JWT signed with a wrong issuer.
+/// 2. Server's `RequestIdLayer` validates the header (passes) and inserts
+///    `RequestId("req-abc-123")` into request extensions.
+/// 3. `AuthLayer`'s JWT gate calls `verifier.verify(tok)`, which fails (wrong
+///    issuer), and takes the `invalid_jwt` Failed-path.
+/// 4. The Failed-path reads the `RequestId` extension and calls
+///    `bridge.record(..., Some("req-abc-123"))`, which persists the Failed
+///    audit row with `command_id = "req-abc-123"`.
+///
+/// Assertions:
+/// 1. RPC returns `Err(Status)` with code `Unauthenticated` (16).
+/// 2. CapturingAudit captures ≥1 Failed audit row.
+/// 3. That Failed row's `command_id` equals `"req-abc-123"`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_request_id_preserved_across_auth_reject() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server(cfg).await;
+
+    // Invalid JWT — wrong issuer → JwtVerifier::verify() fails → invalid_jwt path.
+    let bad_token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-auth-reject",
+        "wrong-issuer", // mismatch with verifier's "test-issuer" → verify fails
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Valid x-request-id — passes is_valid() (all ASCII graphic chars).
+    let client_req_id = "req-abc-123";
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {bad_token}")
+            .parse()
+            .expect("valid auth header"),
+    );
+    req.metadata_mut().insert(
+        "x-request-id",
+        tonic::metadata::MetadataValue::try_from(client_req_id).expect("valid x-request-id value"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await;
+
+    // 1. RPC must fail with Unauthenticated (invalid_jwt path).
+    let status = result.expect_err("wrong-issuer JWT must yield Err");
+    assert_eq!(
+        status.code(),
+        Code::Unauthenticated,
+        "invalid JWT must yield Unauthenticated (code 16); got {status:?}"
+    );
+
+    // Give the tokio::spawn'd AuthLayer Failed-path record() time to flush.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // 2 + 3. The auth-rejection audit row must carry the client's x-request-id
+    // as command_id. AuthLayer's Failed-path calls both `log_complete_with_time`
+    // (writes command_id + details JSON) and `log_event("external_grpc_failed")`
+    // (prefix-queryable marker).  We locate the authoritative auth-rejection
+    // row by its details payload (`"result":"auth_failed"` + `"failure_reason":
+    // "invalid_jwt"`) — this is the row whose command_id must equal the client's
+    // x-request-id per U5/D14.
+    //
+    // NOTE: CapturingAudit's `parse_status_from_details` maps `"auth_failed"`
+    // into the default `Completed` bucket (it only recognizes "ok" / "denied" /
+    // "timeout" / "error" / "failed"), which is why we filter by details
+    // content rather than by `AuditStatus`.
+    //
+    // The `!e.command_id.is_empty()` predicate disambiguates the two audit rows
+    // that share the same details JSON: `log_complete_with_time` (L1657 in
+    // CapturingAudit) populates `command_id` from the forwarded request-id,
+    // whereas `log_event` (L1615) hard-codes `String::new()`.  If
+    // CapturingAudit is ever refactored so that `log_event` also populates
+    // `command_id`, this filter will match both rows and `auth_failed.first()`
+    // will non-deterministically return either one.  In that case tighten the
+    // predicate (e.g., match on the event type string) or assert
+    // `auth_failed_count == 1` to catch the ambiguity at test time.
+    //
+    // Drop the lock before any `.await`.
+    let (auth_failed_count, auth_failed_cmd_id, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let auth_failed: Vec<_> = entries
+            .iter()
+            .filter(|e| {
+                e.details
+                    .as_deref()
+                    .map(|d| {
+                        d.contains("\"result\":\"auth_failed\"")
+                            && d.contains("\"failure_reason\":\"invalid_jwt\"")
+                    })
+                    .unwrap_or(false)
+                    && !e.command_id.is_empty()
+            })
+            .collect();
+        let cmd_id = auth_failed
+            .first()
+            .map(|e| e.command_id.clone())
+            .unwrap_or_default();
+        let dbg = format!("{entries:?}");
+        (auth_failed.len(), cmd_id, dbg)
+    };
+    assert!(
+        auth_failed_count >= 1,
+        "expected ≥1 auth-rejection audit row with populated command_id + \
+         details.result='auth_failed' + failure_reason='invalid_jwt'; \
+         got {auth_failed_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        auth_failed_cmd_id, client_req_id,
+        "auth-rejection audit row's command_id must equal the client's x-request-id \
+         (U5/D14 correlation preserved at security boundary); entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Task 9.2 — Audit status mapping integration tests (4 tests)
+//
+// Spec §9.2 L1395-1401. Each test exercises `AuditLayer::map_code_to_audit_status`
+// (task 1.3 commit 8efbe91f) end-to-end via a fixture handler that returns a
+// canned `tonic::Status`. The fixture is wired into the real layer stack via
+// `serve_external_with_service` (test_support helper added by this task), so
+// the request_id → auth → audit → handler flow matches production exactly.
+//
+// Test 1 is the PRIMARY CR1-regression-catch: handler-returned PermissionDenied
+// must produce `AuditStatus::Denied` + `grpc_status_code=7`. This is distinct
+// from `external_grpc_audit_denied_for_permission_denied` (L1014) which goes
+// through `validate_authority` (an interceptor-emitted status, not a handler-
+// emitted status) — the handler-return path is the one CR1 was about.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Pre-programmed scenario for the test fixture's handlers.  Each test selects
+/// exactly one variant; un-used RPCs return `unimplemented!()` so a wiring
+/// mistake (test calling the wrong RPC) surfaces as a panic instead of silent
+/// success.
+#[derive(Clone, Copy, Debug)]
+enum FixtureScenario {
+    /// `get_agent_info` returns `Err(Status::permission_denied(...))`.
+    PermissionDenied,
+    /// `subscribe_metrics` returns `Err(Status::cancelled(...))` BEFORE opening
+    /// the stream — produces a trailers-only HTTP/2 response (no data frames).
+    /// Exercises the §5.5 header-first observation branch (NV6).
+    StreamCancelled,
+    /// `get_agent_info` returns `Err(Status::internal(...))`.
+    Internal,
+    /// `subscribe_metrics` opens a stream, sends ≥1 message, then sleeps
+    /// briefly (5s — far longer than the client lives).  Client drops
+    /// mid-stream → no trailer observed → AuditLayer falls back to
+    /// `Completed` (OQ6-Option-A behavior).
+    StreamSendThenIdle,
+}
+
+/// Wrap a `Stream` and bump `counter` on every yielded item.  Local equivalent
+/// of the production `CountingStream` (`crates/oneshim-web/src/grpc/counting_stream.rs`,
+/// `pub(crate)`) — needed so the streaming-RPC fixture can populate the audit
+/// row's `response_message_count` field via the `msg_counter` extension that
+/// `AuditLayer` inserts before the handler runs.
+fn count_yielded_stream<S, T>(
+    inner: S,
+    counter: std::sync::Arc<std::sync::atomic::AtomicU64>,
+) -> impl tokio_stream::Stream<Item = T> + Send
+where
+    S: tokio_stream::Stream<Item = T> + Send + 'static,
+    T: Send + 'static,
+{
+    use std::sync::atomic::Ordering;
+    use tokio_stream::StreamExt as _;
+    inner.map(move |item| {
+        counter.fetch_add(1, Ordering::Relaxed);
+        item
+    })
+}
+
+/// Test-only `DashboardService` impl that returns canned `tonic::Status` values
+/// driven by a `FixtureScenario`.  Only the RPCs invoked by Task 9.2 tests are
+/// implemented; the rest panic with `unimplemented!()` so misuse is loud.
+struct FixtureDashboardService {
+    scenario: FixtureScenario,
+}
+
+impl FixtureDashboardService {
+    fn new(scenario: FixtureScenario) -> Self {
+        Self { scenario }
+    }
+}
+
+#[tonic::async_trait]
+impl oneshim_web::proto::dashboard::v1::dashboard_service_server::DashboardService
+    for FixtureDashboardService
+{
+    async fn get_agent_info(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetAgentInfoRequest>,
+    ) -> Result<tonic::Response<oneshim_web::proto::dashboard::v1::AgentInfoResponse>, tonic::Status>
+    {
+        match self.scenario {
+            FixtureScenario::PermissionDenied => Err(tonic::Status::permission_denied(
+                "fixture: permission denied",
+            )),
+            FixtureScenario::Internal => Err(tonic::Status::internal("fixture: internal error")),
+            other => unimplemented!(
+                "FixtureDashboardService::get_agent_info called with scenario {other:?}; \
+                 unexpected — only PermissionDenied / Internal route here",
+            ),
+        }
+    }
+
+    async fn health_check(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::HealthCheckRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::HealthCheckResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("health_check not used by Task 9.2 tests");
+    }
+
+    async fn get_session_stats(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetSessionStatsRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::SessionStatsResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("get_session_stats not used by Task 9.2 tests");
+    }
+
+    async fn get_recent_frames(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetRecentFramesRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::RecentFramesResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("get_recent_frames not used by Task 9.2 tests");
+    }
+
+    async fn get_productivity_metrics(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetProductivityMetricsRequest>,
+    ) -> Result<
+        tonic::Response<oneshim_web::proto::dashboard::v1::ProductivityMetricsResponse>,
+        tonic::Status,
+    > {
+        unimplemented!("get_productivity_metrics not used by Task 9.2 tests");
+    }
+
+    async fn get_focus_stats(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::GetFocusStatsRequest>,
+    ) -> Result<tonic::Response<oneshim_web::proto::dashboard::v1::FocusStatsResponse>, tonic::Status>
+    {
+        unimplemented!("get_focus_stats not used by Task 9.2 tests");
+    }
+
+    type SubscribeMetricsStream = std::pin::Pin<
+        Box<
+            dyn tokio_stream::Stream<
+                    Item = Result<
+                        oneshim_web::proto::dashboard::v1::SubscribeMetricsResponse,
+                        tonic::Status,
+                    >,
+                > + Send
+                + 'static,
+        >,
+    >;
+
+    async fn subscribe_metrics(
+        &self,
+        req: tonic::Request<oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest>,
+    ) -> Result<tonic::Response<Self::SubscribeMetricsStream>, tonic::Status> {
+        match self.scenario {
+            FixtureScenario::StreamCancelled => {
+                // 0-message-fixture per spec L1398 (NV6): return Err BEFORE any
+                // stream is opened.  Tonic emits trailers-only HTTP/2 response
+                // (grpc-status=1 in initial HEADERS, no body data) — exercises
+                // the §5.5 header-first audit observation branch.
+                Err(tonic::Status::cancelled("fixture: handler cancelled"))
+            }
+            FixtureScenario::StreamSendThenIdle => {
+                // Mirror production: extract the `msg_counter` extension that
+                // AuditLayer inserted before the handler ran, so the Completed
+                // audit row carries `response_message_count`.  The production
+                // `CountingStream` is `pub(crate)` and not reachable from an
+                // integration test crate — `count_yielded_stream` below is a
+                // minimal local equivalent.
+                let msg_counter: Option<std::sync::Arc<std::sync::atomic::AtomicU64>> =
+                    req.extensions().get().cloned();
+
+                // Open the stream, send 1 message synchronously, then never
+                // emit another frame.  Client drops mid-stream → no trailer
+                // observed → AuditLayer falls back to Completed (OQ6-A).
+                let (tx, rx) = tokio::sync::mpsc::channel(4);
+                tokio::spawn(async move {
+                    let payload = oneshim_web::proto::dashboard::v1::SubscribeMetricsResponse {
+                        payload: None,
+                    };
+                    let _ = tx.send(Ok(payload)).await;
+                    // Hold the sender open until the client drops.  Cleanup is
+                    // via runtime drop (test end), not handle.abort() propagation
+                    // to this orphan task.  5s bound prevents hung runtimes if
+                    // a future refactor reuses runtimes across tests.
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                });
+                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+                let counted: Self::SubscribeMetricsStream = match msg_counter {
+                    Some(counter) => Box::pin(count_yielded_stream(stream, counter)),
+                    None => Box::pin(stream),
+                };
+                Ok(tonic::Response::new(counted))
+            }
+            other => unimplemented!(
+                "FixtureDashboardService::subscribe_metrics called with scenario {other:?}; \
+                 unexpected — only StreamCancelled / StreamSendThenIdle route here",
+            ),
+        }
+    }
+
+    type SubscribeEventsStream = std::pin::Pin<
+        Box<
+            dyn tokio_stream::Stream<
+                    Item = Result<
+                        oneshim_web::proto::dashboard::v1::SubscribeEventsResponse,
+                        tonic::Status,
+                    >,
+                > + Send
+                + 'static,
+        >,
+    >;
+
+    async fn subscribe_events(
+        &self,
+        _req: tonic::Request<oneshim_web::proto::dashboard::v1::SubscribeEventsRequest>,
+    ) -> Result<tonic::Response<Self::SubscribeEventsStream>, tonic::Status> {
+        unimplemented!("subscribe_events not used by Task 9.2 tests");
+    }
+}
+
+/// Sibling of [`spawn_server`] that injects a [`FixtureDashboardService`] in
+/// place of the real `DashboardServiceImpl`.  Reuses the production layer
+/// stack (request_id → auth → audit) via `serve_external_with_service`.
+async fn spawn_server_with_fixture_service(
+    cfg: ExternalGrpcSpawnConfig,
+    scenario: FixtureScenario,
+) -> (tokio::task::JoinHandle<()>, u16) {
+    install_rustls_crypto_provider();
+    let port = next_test_port();
+
+    let real_cfg = ExternalGrpcSpawnConfig {
+        bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+        ..cfg
+    };
+
+    let handle = tokio::spawn(async move {
+        let svc = FixtureDashboardService::new(scenario);
+        match oneshim_web::grpc::external::test_support::serve_external_with_service(real_cfg, svc)
+            .await
+        {
+            Ok(()) => {}
+            Err(e) => eprintln!("serve_external_with_service error: {e:?}"),
+        }
+    });
+
+    // Wait for TCP listen.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!("external gRPC fixture server did not start on port {port} within 5s");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    (handle, port)
+}
+
+// ── Test 1 — PRIMARY CR1-REGRESSION-CATCH ────────────────────────────────────
+/// Spec §9.2 L1397: handler returns `Err(Status::permission_denied(...))` →
+/// AuditLayer must record `AuditStatus::Denied` + `grpc_status_code=7`.
+///
+/// The existing `external_grpc_audit_denied_for_permission_denied` (L1014)
+/// covers the `validate_authority` interceptor path (host-header gate).
+/// THIS test covers the handler-return path — the one CR1 was actually about.
+/// Without the §5.5 header-first observation in AuditLayer, a handler `Err`
+/// produces trailers-only HTTP/2 (grpc-status in HEADERS, no body) and the
+/// previous body-trailer-only observation defaulted to `Completed`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_denied_when_handler_returns_permission_denied() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) =
+        spawn_server_with_fixture_service(cfg, FixtureScenario::PermissionDenied).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-pd-handler",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await;
+    let status = result.expect_err("fixture handler must return PermissionDenied");
+    assert_eq!(
+        status.code(),
+        Code::PermissionDenied,
+        "fixture-handler error must propagate as PermissionDenied; got {status:?}"
+    );
+
+    // Give the deferred AuditLayer task time to flush.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let (denied_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let denied: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Denied))
+            .collect();
+        let code = denied.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (denied.len(), code, dbg)
+    };
+    assert!(
+        denied_count >= 1,
+        "expected ≥1 Denied audit row from handler-return PermissionDenied; \
+         got {denied_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(7),
+        "Denied row must carry grpc_status_code=7 (PermissionDenied); \
+         entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ── Test 2 — Cancelled / 0-message-fixture ────────────────────────────────────
+/// Spec §9.2 L1398 (NV6): handler returns `Err(Status::cancelled(...))` from a
+/// streaming RPC BEFORE any data frame is emitted → trailers-only response →
+/// AuditLayer's §5.5 header-first branch must observe the code, mapping it to
+/// `AuditStatus::Timeout` + `grpc_status_code=1`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_timeout_when_handler_returns_cancelled() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) =
+        spawn_server_with_fixture_service(cfg, FixtureScenario::StreamCancelled).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-cancelled",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .subscribe_metrics(req)
+        .await;
+    let status = result.expect_err("fixture handler must return Cancelled");
+    assert_eq!(
+        status.code(),
+        Code::Cancelled,
+        "fixture-handler error must propagate as Cancelled; got {status:?}"
+    );
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let (timeout_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let timeout: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Timeout))
+            .collect();
+        let code = timeout.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (timeout.len(), code, dbg)
+    };
+    assert!(
+        timeout_count >= 1,
+        "expected ≥1 Timeout audit row from handler-return Cancelled; \
+         got {timeout_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(1),
+        "Timeout row must carry grpc_status_code=1 (Cancelled); \
+         entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ── Test 3 — Internal → Failed ───────────────────────────────────────────────
+/// Spec §9.2 L1399: handler returns `Err(Status::internal(...))` →
+/// AuditLayer records `AuditStatus::Failed` + `grpc_status_code=13`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_audit_failed_when_handler_returns_internal() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) = spawn_server_with_fixture_service(cfg, FixtureScenario::Internal).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-internal",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req = tonic::Request::new(GetAgentInfoRequest {});
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let result = DashboardServiceClient::new(channel)
+        .get_agent_info(req)
+        .await;
+    let status = result.expect_err("fixture handler must return Internal");
+    assert_eq!(
+        status.code(),
+        Code::Internal,
+        "fixture-handler error must propagate as Internal; got {status:?}"
+    );
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let (failed_count, grpc_code, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let failed: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.status, AuditStatus::Failed))
+            .collect();
+        let code = failed.first().and_then(|e| e.grpc_status_code);
+        let dbg = format!("{entries:?}");
+        (failed.len(), code, dbg)
+    };
+    assert!(
+        failed_count >= 1,
+        "expected ≥1 Failed audit row from handler-return Internal; \
+         got {failed_count} (entries: {entries_debug})"
+    );
+    assert_eq!(
+        grpc_code,
+        Some(13),
+        "Failed row must carry grpc_status_code=13 (Internal); \
+         entries: {entries_debug}"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ── Test 4 — Client drops mid-stream → Completed (OQ6-Option-A fallback) ─────
+/// Spec §9.2 L1400: client establishes a streaming RPC, receives ≥1 message,
+/// then drops the stream.  No trailer is observed by the server-side
+/// `TrailerCapturingBody` → AuditLayer falls back to `AuditStatus::Completed`
+/// (OQ6-Option-A).  The Completed audit row also carries `msg_count > 0`
+/// because the streaming handler's `CountingStream` (via `msg_counter`
+/// extension) bumped on the data frame the client drained.
+///
+/// Note on the wired flow: the fixture sends 1 message then sleeps 5s (longer
+/// than the client lives); the client receives that message (assert ≥1) and
+/// drops the stream.  The server-side body is dropped without emitting a
+/// trailer frame; the AuditLayer's oneshot `Drop` handler fires `None`
+/// (mapped to `Completed`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn external_grpc_audit_completed_when_client_drops_before_trailer() {
+    let jwt_kp = test_jwt_keypair();
+    let (mut cfg, _) = make_jwt_config(&jwt_kp.pub_pem_path);
+    let capturing = CapturingAudit::new();
+    cfg.audit_port = capturing.clone() as Arc<dyn AuditLogPort>;
+    let (handle, port) =
+        spawn_server_with_fixture_service(cfg, FixtureScenario::StreamSendThenIdle).await;
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-clientdrop",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+
+    let mut stream = DashboardServiceClient::new(channel)
+        .subscribe_metrics(req)
+        .await
+        .expect("stream must open before client-drop")
+        .into_inner();
+
+    // Drain ≥1 message so the streaming handler's msg_counter bumps.
+    let first = tokio::time::timeout(Duration::from_secs(2), stream.message())
+        .await
+        .expect("first message arrives within 2s")
+        .expect("first message must be Ok")
+        .expect("stream must yield a payload before client drops");
+    // Sanity — the fixture's payload field is empty but the response struct
+    // is well-formed.
+    assert!(
+        first.payload.is_none(),
+        "fixture sends an empty SubscribeMetricsResponse — payload must be None"
+    );
+
+    // Drop mid-stream.  The server's TrailerCapturingBody is dropped without
+    // a trailer; AuditLayer's oneshot Drop fires None → Completed (OQ6-A).
+    drop(stream);
+
+    // Give the deferred audit task time to record.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // We assert against the row produced by AuditLayer's deferred
+    // `record_completion(...)` task — distinguishable from the Started
+    // row's `record(...)` call by the presence of the `response_message_count`
+    // field in the JSON details (`record` always passes None and serde
+    // skip_serializing_if drops the field).  Both rows would otherwise share
+    // `result:"ok"` and the `Completed` status (CapturingAudit infers from
+    // `result`), so this is the load-bearing disambiguation.
+    //
+    // INVARIANT: depends on `#[serde(skip_serializing_if = "Option::is_none")]`
+    // on `ExternalGrpcAuditDetails::response_message_count`
+    // (audit_bridge.rs:29).  If that attribute is ever removed, this filter
+    // silently matches both Started+Completed rows; the msg_count assertion
+    // would fail with 0 because Started rows have no count to extract.
+    let (completion_row_count, msg_count, entries_debug) = {
+        let entries = capturing.entries.lock().unwrap();
+        let completion_rows: Vec<_> = entries
+            .iter()
+            .filter(|e| {
+                e.details
+                    .as_deref()
+                    .map(|d| {
+                        d.contains("\"operation\":\"/oneshim.dashboard.v1.DashboardService/SubscribeMetrics\"")
+                            && d.contains("\"response_message_count\"")
+                    })
+                    .unwrap_or(false)
+            })
+            .collect();
+        let mc: u64 = completion_rows
+            .first()
+            .and_then(|e| e.details.as_deref())
+            .and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
+            .and_then(|v| v.get("response_message_count").and_then(|n| n.as_u64()))
+            .unwrap_or(0);
+        // Sanity — every completion row claims `result:"ok"` (OQ6-A fallback to
+        // Completed when no trailer fired), so AuditStatus mapping is Completed.
+        let all_completed = completion_rows
+            .iter()
+            .all(|e| matches!(e.status, AuditStatus::Completed));
+        let dbg = format!("{entries:?}");
+        assert!(
+            all_completed,
+            "every SubscribeMetrics completion row must map to Completed; \
+             entries: {dbg}"
+        );
+        (completion_rows.len(), mc, dbg)
+    };
+    assert!(
+        completion_row_count >= 1,
+        "expected ≥1 SubscribeMetrics completion audit row after client drop \
+         (OQ6-Option-A: trailer-absent → Completed fallback); \
+         got {completion_row_count} (entries: {entries_debug})"
+    );
+    assert!(
+        msg_count >= 1,
+        "Completed row must carry response_message_count ≥ 1 (client drained ≥1 msg); \
+         got {msg_count} (entries: {entries_debug})"
+    );
+
+    handle.abort();
+    let _ = handle.await;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Task 9.4 — Live config reload integration tests (spec §9.2 L1407-1413)
+//
+// Each test uses `spawn_server_with_config_manager` (test_support.rs) to run
+// BOTH the tonic server AND a `ConfigReloadTask` wired to a real
+// `ConfigManager`. Mutations via `cfg_mgr.update_with(..)` propagate through
+// `watch::Sender::send_replace` → `run_config_reload::apply_config` →
+// `LiveExternalConfig::store` → next request sees the new snapshot.
+//
+// `ConfigManager::with_path` persists to disk on every update, so all tests
+// use `tempfile::NamedTempFile` to keep the writes out of the user's config
+// directory.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Build an initial `AppConfig` that boots the external gRPC server with
+/// JWT auth, streaming enabled (via `web.grpc_streaming_enabled`), and the
+/// TLS cert/key paths pointing at the shared `test_cert_pair` fixture.
+///
+/// Leaves `external_grpc.streaming_enabled = None` so the shared
+/// `web.grpc_streaming_enabled` fallback applies (mirrors how
+/// `apply_config` resolves the live `streaming_enabled` value).
+fn test_cfg_with_external_enabled(
+    jwt_pub_key_path: &std::path::Path,
+) -> oneshim_core::config::AppConfig {
+    let (cert_path, key_path) = test_cert_pair();
+    let mut cfg = oneshim_core::config::AppConfig::default_config();
+    cfg.web.grpc_streaming_enabled = true;
+    cfg.external_grpc = ExternalGrpcConfig {
+        enabled: true,
+        auth_mode: Some(AuthMode::Jwt),
+        tls_cert_path: Some(cert_path),
+        tls_key_path: Some(key_path),
+        jwt_algorithm: Some(JwtAlgorithm::Es256),
+        jwt_public_key_path: Some(jwt_pub_key_path.to_path_buf()),
+        jwt_expected_issuer: Some("test-issuer".to_string()),
+        jwt_expected_audience: Some("test-audience".to_string()),
+        max_connections: 64,
+        max_concurrent_streams: 16,
+        streaming_enabled: None, // fall through to web.grpc_streaming_enabled
+        ..Default::default()
+    };
+    cfg
+}
+
+/// Build a JWT-mode `ExternalGrpcSpawnConfig` whose `live` / `metrics` are
+/// pre-allocated so Task 9.4 tests can inspect them both before and after
+/// a reload. The caller owns the returned `Arc<ExternalMetrics>` and
+/// `Arc<LiveExternalConfig>`; the spawn config also holds `Arc` clones.
+fn make_jwt_spawn_config_for_reload(
+    jwt_pub_key_path: &std::path::Path,
+    port: u16,
+    live: Arc<LiveExternalConfig>,
+    metrics: Arc<ExternalMetrics>,
+    shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) -> ExternalGrpcSpawnConfig {
+    let (cert_path, key_path) = test_cert_pair();
+    let certified_key = load_certified_key(&cert_path, &key_path).expect("load certified key");
+    let cert_resolver = Arc::new(HotReloadCertResolver::new(certified_key));
+
+    let (event_tx, _) = tokio::sync::broadcast::channel(16);
+    let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+
+    let pub_key_bytes = std::fs::read(jwt_pub_key_path).expect("read jwt pub key");
+    let jwt_verifier = Arc::new(
+        JwtVerifier::new(
+            JwtAlgorithm::Es256,
+            &pub_key_bytes,
+            "test-issuer",
+            "test-audience",
+        )
+        .expect("JwtVerifier"),
+    );
+
+    ExternalGrpcSpawnConfig {
+        bind_addr,
+        config: ExternalGrpcConfig {
+            enabled: true,
+            auth_mode: Some(AuthMode::Jwt),
+            max_connections: 64,
+            max_concurrent_streams: 16,
+            ..Default::default()
+        },
+        storage: in_memory_storage(),
+        system_monitor: MockSystemMonitor::new(20.0, 2048, 8192),
+        event_tx,
+        audit_port: Arc::new(NoopAudit) as Arc<dyn AuditLogPort>,
+        cert_resolver,
+        jwt_verifier: Some(jwt_verifier),
+        mtls_verifier: None,
+        ip_ban: Arc::new(IpBan::new()),
+        metrics,
+        shutdown_rx,
+        shutdown_tx,
+        pii_sanitizer: None,
+        ai_runtime_status_snapshot: None,
+        live,
+    }
+}
+
+/// G3 gate test — streaming toggle reflects within 1 second.
+///
+/// Spec §9.2 L1407, D33 (CI convergence bound). Seeds the config with
+/// `streaming_enabled = true`, verifies a sanity `subscribe_metrics` call
+/// succeeds, then flips `external_grpc.streaming_enabled = Some(false)`
+/// and polls until the next `subscribe_metrics` returns `Unavailable`.
+/// Panics if convergence takes ≥ 1s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_streaming_toggle_reflects_within_1s() {
+    use std::time::Instant;
+
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    // Real-API ConfigManager backed by a tempfile (CI-safe per ADR-016).
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    // Seed the initial config: streaming enabled via the shared web field;
+    // external override left as `None` so the fallback path is exercised.
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.web.grpc_streaming_enabled = true;
+            c.external_grpc.streaming_enabled = None;
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    // Allocate port + pre-populate the live snapshot to match the seeded config.
+    let port = next_test_port();
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Mint a JWT + build a TLS channel (external server requires both).
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-g3",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Sanity: initial subscribe_metrics succeeds (streaming_enabled = true).
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+    let sanity = DashboardServiceClient::new(channel.clone())
+        .subscribe_metrics(req)
+        .await;
+    assert!(
+        sanity.is_ok(),
+        "initial subscribe must succeed with streaming_enabled=true; got {:?}",
+        sanity.as_ref().err()
+    );
+    drop(sanity);
+
+    // Flip streaming_enabled to false; ConfigReloadTask observes the watch
+    // change and swaps the LiveSnapshot atomically. The per-request entry
+    // in `subscribe_metrics` will see the new snapshot next.
+    let start = Instant::now();
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(false);
+            Ok(())
+        })
+        .expect("update_with apply");
+
+    // Poll until subscribe_metrics returns Unavailable. Cap at 1s (G3).
+    let timeout = Duration::from_secs(1);
+    loop {
+        let mut req = tonic::Request::new(
+            oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default(),
+        );
+        req.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {token}").parse().expect("valid header"),
+        );
+        let result = DashboardServiceClient::new(channel.clone())
+            .subscribe_metrics(req)
+            .await;
+        if let Err(status) = &result {
+            if status.code() == Code::Unavailable {
+                let elapsed = start.elapsed();
+                assert!(
+                    elapsed < timeout,
+                    "G3 violation: convergence {elapsed:?} >= 1s cap"
+                );
+                server_handle.abort();
+                reload_handle.abort();
+                let _ = server_handle.await;
+                let _ = reload_handle.await;
+                return; // PASS
+            }
+        }
+        if start.elapsed() > timeout {
+            panic!("G3 violation: streaming toggle did not reflect within 1s (D33 CI bound)");
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+/// D27 — warmup preservation. Seeds an initial `LiveSnapshot` whose
+/// `started_at` is 60s in the past (well out of the 30s warmup window),
+/// then reloads with new thresholds. After reload, `is_in_warmup()` must
+/// remain `false` AND the new thresholds must be visible.
+///
+/// Uses `LoadPolicy::try_new_with_started_at` to construct the past-warmup
+/// policy without waiting 30s of real time.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_load_thresholds_applied_without_warmup_reset() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    // Seed initial config with default thresholds.
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    // Build an initial load_policy whose started_at is 60s in the past —
+    // well beyond the 30s WARMUP. `try_new_with_started_at` is the API
+    // that ConfigReloadTask uses internally to preserve warmup across
+    // reloads (D27); we use it here to bootstrap the test snapshot.
+    let past_anchor = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    let initial_thresholds = oneshim_core::config::LoadThresholds::default();
+    let initial_policy = Arc::new(
+        LoadPolicy::try_new_with_started_at(initial_thresholds, past_anchor)
+            .expect("valid initial thresholds"),
+    );
+    assert!(
+        !initial_policy.is_in_warmup(),
+        "precondition: initial policy must already be out of warmup"
+    );
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: initial_policy.clone(),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Reload with new (still valid) thresholds. ConfigReloadTask must
+    // preserve the original `started_at` per D27.
+    let new_thresholds = oneshim_core::config::LoadThresholds {
+        min_free_mem_gb: 1.5,
+        cpu_low_pct: 25.0,
+        cpu_medium_pct: 55.0,
+        cpu_high_pct: 80.0,
+    };
+    cfg_mgr
+        .update_with(|c| {
+            c.web.grpc_load_thresholds = Some(new_thresholds.clone());
+            Ok(())
+        })
+        .expect("reload new thresholds");
+
+    // Give the reload task a moment to observe the watch change + apply.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let snap = live.snapshot();
+    let post_thresholds = snap.load_policy.thresholds();
+    assert!(
+        (post_thresholds.cpu_low_pct - 25.0).abs() < f32::EPSILON,
+        "new cpu_low_pct must apply; got {}",
+        post_thresholds.cpu_low_pct
+    );
+    assert!(
+        (post_thresholds.cpu_medium_pct - 55.0).abs() < f32::EPSILON,
+        "new cpu_medium_pct must apply; got {}",
+        post_thresholds.cpu_medium_pct
+    );
+    assert!(
+        !snap.load_policy.is_in_warmup(),
+        "D27: warmup anchor must carry over across reloads"
+    );
+    assert_eq!(
+        snap.load_policy.started_at(),
+        past_anchor,
+        "D27: started_at must be bit-identical to the pre-reload anchor"
+    );
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Partial-apply invariant — a malformed thresholds reload is rejected and
+/// the previous policy is preserved, while `streaming_enabled` (trivially
+/// valid) still updates. Task 2.1 commit db1d1252 guarantees this via
+/// `apply_config` keeping `current.load_policy` when `try_new_with_started_at`
+/// errors.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_reload_rejects_malformed_thresholds_and_continues() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.web.grpc_streaming_enabled = true;
+            c.external_grpc.streaming_enabled = Some(true);
+            // Seed explicit valid thresholds so we can assert they survive.
+            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 30.0,
+                cpu_medium_pct: 60.0,
+                cpu_high_pct: 85.0,
+            });
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let initial_policy = Arc::new(LoadPolicy::new(oneshim_core::config::LoadThresholds {
+        min_free_mem_gb: 1.0,
+        cpu_low_pct: 30.0,
+        cpu_medium_pct: 60.0,
+        cpu_high_pct: 85.0,
+    }));
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: initial_policy.clone(),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics.clone(),
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Reload with invalid thresholds (low > medium violates ordering) AND
+    // flip streaming_enabled. Partial-apply: streaming flips, policy does
+    // NOT.
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(false);
+            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 90.0, // invalid: low > medium
+                cpu_medium_pct: 50.0,
+                cpu_high_pct: 85.0,
+            });
+            Ok(())
+        })
+        .expect("update_with (malformed thresholds)");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let snap = live.snapshot();
+    assert!(
+        !snap.streaming_enabled,
+        "streaming_enabled update MUST apply despite malformed thresholds (partial-apply)"
+    );
+    let post_thresholds = snap.load_policy.thresholds();
+    assert!(
+        (post_thresholds.cpu_low_pct - 30.0).abs() < f32::EPSILON,
+        "invalid thresholds rejected; previous cpu_low_pct must survive; got {}",
+        post_thresholds.cpu_low_pct
+    );
+    assert!(
+        (post_thresholds.cpu_medium_pct - 60.0).abs() < f32::EPSILON,
+        "invalid thresholds rejected; previous cpu_medium_pct must survive; got {}",
+        post_thresholds.cpu_medium_pct
+    );
+    assert!(
+        Arc::ptr_eq(&snap.load_policy, &initial_policy),
+        "invalid policy rejected; Arc identity must equal the initial policy"
+    );
+    assert!(
+        metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task must remain alive after rejecting a malformed update"
+    );
+
+    // Follow-up valid reload must still apply — the task survived the
+    // invalid one and keeps draining events.
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(true);
+            Ok(())
+        })
+        .expect("follow-up valid reload");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        live.snapshot().streaming_enabled,
+        "follow-up valid reload must still apply after the rejected one"
+    );
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Watch coalescing — 100 rapid `update_with` calls must not panic the
+/// reload task AND the live snapshot must match the LAST update's value.
+/// `tokio::sync::watch` has latest-wins semantics: the reload task's
+/// `changed().await` may coalesce intermediate transitions, but the
+/// final observed state must equal the final sent state.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_live_reload_coalesces_rapid_updates() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.external_grpc.streaming_enabled = Some(true);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics.clone(),
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Fire 100 updates as fast as `update_with` will accept them. Alternate
+    // streaming_enabled so every call genuinely mutates state — the last
+    // update wins (even iterations flip true, odd false; i=99 is odd →
+    // final streaming_enabled = false).
+    for i in 0..100 {
+        let enabled = i % 2 == 0;
+        cfg_mgr
+            .update_with(move |c| {
+                c.external_grpc.streaming_enabled = Some(enabled);
+                Ok(())
+            })
+            .expect("rapid update");
+    }
+
+    // Replace fixed sleep with convergence poll — waits for the reload task
+    // to drain up to the final update without relying on a fixed timeout.
+    // i=99 is odd → final update set streaming_enabled = Some(false).
+    let expected_final_streaming = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let snap = live.snapshot();
+        if snap.streaming_enabled == expected_final_streaming {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!(
+                "reload task did not converge to final update within 2s; \
+                 current streaming_enabled={}, expected={}",
+                snap.streaming_enabled, expected_final_streaming
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    // Defensive re-read: guards against the reload task doing one more
+    // update between the convergence break and this assertion.
+    assert!(
+        !live.snapshot().streaming_enabled,
+        "final snapshot must match the last update (streaming_enabled=false)"
+    );
+    assert!(
+        !reload_handle.is_finished(),
+        "reload task must still be running after coalescing 100 rapid updates"
+    );
+    assert!(
+        metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task liveness flag must still be set"
+    );
+    // Coalescing invariant: reload_total is bounded by 100 (≤ sends) and
+    // must be ≥ 1 (at least one apply observed the final state).
+    let total = metrics
+        .config_reload_total
+        .load(std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        (1..=100).contains(&total),
+        "config_reload_total must be within [1, 100] after coalescing; got {total}"
+    );
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Live reload affects the next per-request decision after the reload
+/// lands. Already-open streams snapshot `load_policy` at call entry
+/// (spec D21) — this is intentional — so we verify the *next* RPC's
+/// entry-point sees the new policy via `live.snapshot()`.
+///
+/// Opens a `SubscribeMetrics` stream (which stays alive using the
+/// fixture's 1-msg-then-idle handler), mutates thresholds mid-stream,
+/// then asserts the live snapshot reflects the new thresholds — which
+/// is what a fresh RPC entry would observe per D21.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn live_reload_affects_long_running_stream() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.external_grpc.streaming_enabled = Some(true);
+            // Seed wide thresholds — "no shed" baseline.
+            c.web.grpc_load_thresholds = Some(oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 30.0,
+                cpu_medium_pct: 60.0,
+                cpu_high_pct: 85.0,
+            });
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    // Past-warmup policy so the classify branch isn't forced-Medium (WARMUP=30s).
+    let past_anchor = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    let initial_policy = Arc::new(
+        LoadPolicy::try_new_with_started_at(
+            oneshim_core::config::LoadThresholds {
+                min_free_mem_gb: 1.0,
+                cpu_low_pct: 30.0,
+                cpu_medium_pct: 60.0,
+                cpu_high_pct: 85.0,
+            },
+            past_anchor,
+        )
+        .expect("valid initial thresholds"),
+    );
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: initial_policy.clone(),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Open a SubscribeMetrics stream. The real handler in
+    // `DashboardServiceImpl` stays alive and emits periodically; we don't
+    // need to drain — we just need the stream call to have been made.
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-longstream",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+    let stream_response = DashboardServiceClient::new(channel.clone())
+        .subscribe_metrics(req)
+        .await
+        .expect("initial stream open");
+    // Keep the inner stream alive for the rest of the test — dropping it
+    // would release the server's per-stream guard; we want the stream to
+    // be concurrent with the reload.
+    let _keep_stream_alive = stream_response.into_inner();
+
+    // Mid-stream: reload with tight "shed" thresholds. The existing stream
+    // keeps its captured policy per D21; new per-request decisions observe
+    // the new policy via `live.snapshot()`.
+    let shed_thresholds = oneshim_core::config::LoadThresholds {
+        min_free_mem_gb: 100.0, // require ≥100 GB free — always Critical
+        cpu_low_pct: 1.0,
+        cpu_medium_pct: 2.0,
+        cpu_high_pct: 3.0,
+    };
+    cfg_mgr
+        .update_with(|c| {
+            c.web.grpc_load_thresholds = Some(shed_thresholds.clone());
+            Ok(())
+        })
+        .expect("mid-stream reload");
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // A fresh `live.snapshot()` (what a new RPC entry would observe) must
+    // reflect the tight shed thresholds — this is the "next per-request
+    // decision" observability point per D21.
+    let post_snap = live.snapshot();
+    let post_thresholds = post_snap.load_policy.thresholds();
+    assert!(
+        (post_thresholds.cpu_high_pct - 3.0).abs() < f32::EPSILON,
+        "post-reload cpu_high_pct must reflect shed thresholds; got {}",
+        post_thresholds.cpu_high_pct
+    );
+    assert!(
+        (post_thresholds.min_free_mem_gb - 100.0).abs() < f32::EPSILON,
+        "post-reload min_free_mem_gb must reflect shed thresholds; got {}",
+        post_thresholds.min_free_mem_gb
+    );
+    // Classify a realistic-load metrics snapshot under the new policy —
+    // it MUST come back Critical (cpu > 3 and free_mem_gb < 100).
+    let mk_metrics =
+        |cpu: f32, used_gib: u64, total_gib: u64| oneshim_core::models::system::SystemMetrics {
+            timestamp: chrono::Utc::now(),
+            cpu_usage: cpu,
+            memory_used: used_gib * 1_073_741_824,
+            memory_total: total_gib * 1_073_741_824,
+            disk_used: 0,
+            disk_total: 0,
+            network: None,
+            typing_wpm: 0.0,
+        };
+    let shed_level = post_snap.load_policy.classify(&mk_metrics(50.0, 8, 16));
+    assert_eq!(
+        shed_level,
+        oneshim_web::grpc::LoadLevel::Critical,
+        "under shed thresholds, moderate metrics must classify as Critical"
+    );
+
+    // D21: already-open streams keep their captured policy reference —
+    // represented here by the `initial_policy` Arc that preceded the
+    // reload. That Arc must be a DIFFERENT instance from the live
+    // snapshot's current `load_policy` (the ConfigReloadTask built a
+    // fresh Arc in `apply_config`). The initial policy's thresholds
+    // must also still be the pre-reload values.
+    assert!(
+        !Arc::ptr_eq(&initial_policy, &post_snap.load_policy),
+        "D21: post-reload live policy must be a distinct Arc from the pre-reload one"
+    );
+    let initial_thresholds = initial_policy.thresholds();
+    assert!(
+        (initial_thresholds.cpu_high_pct - 85.0).abs() < f32::EPSILON,
+        "already-captured initial policy must still carry pre-reload cpu_high_pct=85.0; got {}",
+        initial_thresholds.cpu_high_pct
+    );
+
+    // End-to-end: a 2nd RPC entering the server observes the new policy via
+    // streaming_source.load_policy() at subscribe_metrics.rs:72-75 (D21
+    // snapshot-at-call-entry). Opening a fresh stream proves the server-stack
+    // propagation works — not just the ArcSwap substrate.
+    let mut req2 =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req2.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("auth header"),
+    );
+    let second_open = DashboardServiceClient::new(channel.clone())
+        .subscribe_metrics(req2)
+        .await;
+    assert!(
+        second_open.is_ok(),
+        "2nd RPC must still open post-reload; shed affects tick cadence not the gate"
+    );
+    // Verify the snapshot substrate is stable across the 2nd entry (identity,
+    // not rebuild) — proves the fresh Arc assembled during apply_config is
+    // what the new RPC would observe.
+    let post_2nd_snap = live.snapshot();
+    assert!(
+        Arc::ptr_eq(&post_2nd_snap.load_policy, &post_snap.load_policy),
+        "snapshot stable across 2nd RPC entry; live.snapshot() should return \
+         the same Arc until the next reload"
+    );
+    // Drop the 2nd stream to release its per-stream guard.
+    drop(second_open.unwrap().into_inner());
+
+    drop(_keep_stream_alive);
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Shutdown — the `ConfigReloadTask` must exit within 5 seconds of the
+/// shutdown signal. The task's `tokio::select!` biases on `shutdown_rx`
+/// (spec §5.4) so it will notice the flip even when a config update is
+/// queued concurrently.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_grpc_config_reload_task_exits_on_shutdown() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let port = next_test_port();
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live,
+        metrics.clone(),
+        shutdown_tx.clone(),
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Sanity: reload task alive-flag is set after startup.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task must be alive before shutdown"
+    );
+
+    // Signal shutdown.
+    shutdown_tx.send_replace(true);
+
+    // The reload task MUST complete within 5s of the signal landing.
+    let joined = tokio::time::timeout(Duration::from_secs(5), reload_handle)
+        .await
+        .expect("reload task must exit within 5s of shutdown signal");
+    assert!(
+        joined.is_ok(),
+        "reload task should complete cleanly on shutdown; got {joined:?}"
+    );
+    assert!(
+        !metrics
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed),
+        "reload task liveness flag must clear on exit"
+    );
+
+    // Server may still be draining in-flight work; abort to end the test.
+    server_handle.abort();
+    let _ = server_handle.await;
+}
+
+// ── Task 9.6 — Fallback semantics integration tests (D22) ───────────────────
+//
+// Spec §9.2 L1419-1422 mandates three integration tests pinning the
+// `external_grpc.streaming_enabled` override semantics introduced by D22:
+//   1. NG1: external toggle does NOT mutate the loopback `web.grpc_streaming_enabled`
+//      field — they remain independent at the AppConfig level.
+//   2. Fall-through: when `external_grpc.streaming_enabled = None`, the resolved
+//      external streaming value comes from `web.grpc_streaming_enabled`.
+//   3. Override-beats-parent (NV4): when `external_grpc.streaming_enabled = Some(_)`,
+//      the override wins regardless of `web.grpc_streaming_enabled`.
+//
+// Tests use real `ConfigReloadTask` wiring (via `spawn_server_with_config_manager`)
+// to exercise the resolution code path in `config_reload::apply_config` end-to-end.
+
+/// Test 1 (D22 / NG1) — toggling `external_grpc.streaming_enabled = Some(false)`
+/// disables external streaming WITHOUT mutating `web.grpc_streaming_enabled`.
+///
+/// The loopback gRPC server captures `web.grpc_streaming_enabled` at boot via
+/// `StreamingSource::Fixed` (boot-time captured value, no live reload — see
+/// `streaming_source.rs`). The external server uses `StreamingSource::Live`,
+/// which reads from `LiveSnapshot.streaming_enabled` resolved by `apply_config`.
+///
+/// NG1 mandates that external live-reload must not mutate the shared
+/// `web.grpc_streaming_enabled` field. We verify NG1 at the configuration
+/// layer: after the toggle, `cfg_mgr.snapshot().web.grpc_streaming_enabled`
+/// must remain unchanged. Since the loopback server reads its `streaming_enabled`
+/// from this AppConfig field at boot AND has no live-reload pathway, an
+/// unchanged AppConfig field is equivalent to "loopback streaming is unaffected".
+/// We don't spawn a separate loopback server here — that would test the
+/// `StreamingSource::Fixed` capture (covered in `streaming_source.rs` unit tests),
+/// not the NG1 invariant on external live-reload.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn loopback_streaming_enabled_is_not_live_reloaded() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    // Seed: loopback streaming enabled (web.grpc_streaming_enabled=true);
+    // external override left at None so external falls through to the same
+    // value (initial sanity = enabled on both sides).
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.web.grpc_streaming_enabled = true;
+            c.external_grpc.streaming_enabled = None;
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    // Pre-populate live snapshot to match the seeded resolution.
+    let port = next_test_port();
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, _port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Sanity: external streaming initially resolves to true.
+    assert!(
+        live.snapshot().streaming_enabled,
+        "sanity: live snapshot must start with streaming_enabled=true"
+    );
+    assert!(
+        cfg_mgr.snapshot().web.grpc_streaming_enabled,
+        "sanity: web.grpc_streaming_enabled must start at true"
+    );
+
+    // Flip the EXTERNAL override; loopback config must remain untouched.
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(false);
+            Ok(())
+        })
+        .expect("update_with apply");
+
+    // Wait for the ConfigReloadTask to converge (mirrors Task 9.4 cap).
+    let timeout = Duration::from_secs(1);
+    let start = std::time::Instant::now();
+    loop {
+        if !live.snapshot().streaming_enabled {
+            break;
+        }
+        if start.elapsed() > timeout {
+            panic!("convergence timeout: external streaming did not flip to false within 1s");
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    // Assert NG1: external is now disabled, but loopback config field is untouched.
+    assert!(
+        !live.snapshot().streaming_enabled,
+        "external override must disable external streaming"
+    );
+    assert!(
+        cfg_mgr.snapshot().web.grpc_streaming_enabled,
+        "NG1 violation: external toggle must NOT mutate web.grpc_streaming_enabled \
+         (loopback config must remain untouched)"
+    );
+    // And the override field is now Some(false), confirming the toggle landed.
+    assert_eq!(
+        cfg_mgr.snapshot().external_grpc.streaming_enabled,
+        Some(false),
+        "external override must reflect the operator's flip"
+    );
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Test 2 (D22 fall-through) — when `external_grpc.streaming_enabled = None`,
+/// the resolved external streaming value comes from `web.grpc_streaming_enabled`.
+///
+/// Seeds initial state with the override enabled, then mutates to the
+/// fall-through scenario (`None` + `web=false`). After convergence, the
+/// `LiveSnapshot.streaming_enabled` must reflect the shared `web` field, and
+/// `subscribe_metrics` must return `Unavailable` to confirm the resolution
+/// took effect end-to-end through the running server.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_streaming_falls_back_to_web_field_when_external_none() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    // Seed initial config with override enabled so external is initially streaming.
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.web.grpc_streaming_enabled = true;
+            c.external_grpc.streaming_enabled = Some(true);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let port = next_test_port();
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: true,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Sanity: seed landed — external override of Some(true) → streaming enabled.
+    assert!(
+        live.snapshot().streaming_enabled,
+        "sanity: seed → external streaming initially true (external=Some(true))"
+    );
+
+    // Mint a JWT + TLS channel for end-to-end verification via subscribe_metrics.
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-9-6-fallback",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Apply the fall-through scenario: external=None, web=false.
+    // Since `apply_config` resolves `streaming_enabled = external.unwrap_or(web)`,
+    // the resolved value should now be `false`.
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = None;
+            c.web.grpc_streaming_enabled = false;
+            Ok(())
+        })
+        .expect("update_with apply");
+
+    // Wait for ConfigReloadTask to converge.
+    let timeout = Duration::from_secs(1);
+    let start = std::time::Instant::now();
+    loop {
+        if !live.snapshot().streaming_enabled {
+            break;
+        }
+        if start.elapsed() > timeout {
+            panic!(
+                "fall-through timeout: live.streaming_enabled did not converge to false within 1s"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    // Assert resolution: external=None + web=false → resolved=false.
+    assert!(
+        !live.snapshot().streaming_enabled,
+        "fall-through: external=None + web=false must resolve to streaming_enabled=false"
+    );
+
+    // End-to-end check: subscribe_metrics must return Unavailable.
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+    let result = DashboardServiceClient::new(channel)
+        .subscribe_metrics(req)
+        .await;
+    match result {
+        Err(s) if s.code() == Code::Unavailable => {
+            // Expected: streaming disabled via fall-through.
+        }
+        other => panic!(
+            "expected Unavailable from subscribe_metrics under fall-through; got {:?}",
+            other
+        ),
+    }
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
+}
+
+/// Test 3 (D22 / NV4 — override-beats-parent) — when
+/// `external_grpc.streaming_enabled = Some(true)` and
+/// `web.grpc_streaming_enabled = false`, the override wins and the external
+/// server keeps streaming.
+///
+/// Seeds initial state with both fields false (external matches), then
+/// mutates external to `Some(true)` while leaving web at false. After
+/// convergence, `LiveSnapshot.streaming_enabled` must be `true` and a real
+/// `subscribe_metrics` RPC must succeed (not return Unavailable).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_streaming_override_wins_over_web_field_when_some() {
+    let jwt_kp = test_jwt_keypair();
+    let pub_key_path = jwt_kp.pub_pem_path.clone();
+
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile create");
+    let cfg_mgr = Arc::new(
+        oneshim_core::config_manager::ConfigManager::with_path(tmp.path().to_path_buf())
+            .expect("ConfigManager::with_path"),
+    );
+    // Seed: web=false and external=Some(false) — initial resolved=false.
+    cfg_mgr
+        .update_with(|c| {
+            *c = test_cfg_with_external_enabled(&pub_key_path);
+            c.web.grpc_streaming_enabled = false;
+            c.external_grpc.streaming_enabled = Some(false);
+            Ok(())
+        })
+        .expect("seed initial config");
+
+    let port = next_test_port();
+    let live = Arc::new(LiveExternalConfig::new(LiveSnapshot {
+        streaming_enabled: false,
+        load_policy: Arc::new(LoadPolicy::new(
+            oneshim_core::config::LoadThresholds::default(),
+        )),
+    }));
+    let metrics = Arc::new(ExternalMetrics::new());
+    let (shutdown_tx, shutdown_rx) = make_test_shutdown_pair();
+
+    let cfg = make_jwt_spawn_config_for_reload(
+        &pub_key_path,
+        port,
+        live.clone(),
+        metrics,
+        shutdown_tx,
+        shutdown_rx,
+    );
+    let (server_handle, reload_handle, port) =
+        spawn_server_with_config_manager(cfg, cfg_mgr.clone()).await;
+
+    // Sanity: seed landed — both flags false, resolved streaming disabled.
+    assert!(
+        !live.snapshot().streaming_enabled,
+        "sanity: seed → external streaming initially false (external=Some(false), web=false)"
+    );
+
+    let token = test_mint_jwt(
+        &jwt_kp.enc_key,
+        "user-9-6-override",
+        "test-issuer",
+        "test-audience",
+        3600,
+    );
+    let cert_pem = server_cert_pem();
+    let channel = make_tls_channel(port, &cert_pem, None).await;
+
+    // Apply the override-beats-parent scenario: external=Some(true), web=false.
+    // `apply_config` resolves `streaming_enabled = external.unwrap_or(web) = true`
+    // even though web stays false — proving NV4.
+    cfg_mgr
+        .update_with(|c| {
+            c.external_grpc.streaming_enabled = Some(true);
+            // web.grpc_streaming_enabled deliberately stays false.
+            Ok(())
+        })
+        .expect("update_with apply");
+
+    // Wait for ConfigReloadTask to converge.
+    let timeout = Duration::from_secs(1);
+    let start = std::time::Instant::now();
+    loop {
+        if live.snapshot().streaming_enabled {
+            break;
+        }
+        if start.elapsed() > timeout {
+            panic!(
+                "override-beats-parent timeout: live.streaming_enabled did not converge to true \
+                 within 1s (web=false but external=Some(true) should win)"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    // Assert NV4: even though web=false, the Some(true) override wins.
+    assert!(
+        live.snapshot().streaming_enabled,
+        "NV4 violation: external=Some(true) must override web=false"
+    );
+    assert!(
+        !cfg_mgr.snapshot().web.grpc_streaming_enabled,
+        "sanity: web.grpc_streaming_enabled must remain false (override is the only enabler)"
+    );
+
+    // End-to-end check: subscribe_metrics must succeed (auth returns the stream).
+    let mut req =
+        tonic::Request::new(oneshim_web::proto::dashboard::v1::SubscribeMetricsRequest::default());
+    req.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().expect("valid header"),
+    );
+    let result = DashboardServiceClient::new(channel)
+        .subscribe_metrics(req)
+        .await;
+    assert!(
+        result.is_ok(),
+        "subscribe_metrics must succeed when override forces streaming on; got {:?}",
+        result.as_ref().err()
+    );
+    drop(result);
+
+    server_handle.abort();
+    reload_handle.abort();
+    let _ = server_handle.await;
+    let _ = reload_handle.await;
 }

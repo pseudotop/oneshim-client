@@ -144,6 +144,13 @@ pub(crate) mod tests {
         ) -> Vec<oneshim_core::models::audit::AuditEntry> {
             vec![]
         }
+        async fn entries_by_command_id(
+            &self,
+            _cmd_id: &str,
+            _limit: usize,
+        ) -> Vec<oneshim_core::models::audit::AuditEntry> {
+            vec![]
+        }
         async fn stats(&self) -> oneshim_core::models::audit::AuditStats {
             Default::default()
         }

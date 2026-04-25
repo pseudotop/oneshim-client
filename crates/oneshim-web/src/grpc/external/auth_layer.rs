@@ -98,6 +98,12 @@ where
                 }
             };
 
+            // Read RequestId extension once; moved into each spawn that needs it.
+            let request_id: Option<String> = req
+                .extensions()
+                .get::<super::request_id_layer::RequestId>()
+                .map(|r| r.0.clone());
+
             let mut client_id: Option<String> = None;
             let mut jti: Option<String> = None;
 
@@ -126,6 +132,7 @@ where
                             };
                             let bridge = audit_bridge.clone();
                             let remote = peer.remote_addr.to_string();
+                            let cmd_id = request_id.clone();
                             tokio::spawn(async move {
                                 bridge
                                     .record(
@@ -138,6 +145,7 @@ where
                                         None,
                                         None,
                                         Some("invalid_jwt"),
+                                        cmd_id,
                                     )
                                     .await;
                             });
@@ -155,6 +163,7 @@ where
                         };
                         let bridge = audit_bridge.clone();
                         let remote = peer.remote_addr.to_string();
+                        let cmd_id = request_id.clone();
                         tokio::spawn(async move {
                             bridge
                                 .record(
@@ -167,6 +176,7 @@ where
                                     None,
                                     None,
                                     Some("missing_token"),
+                                    cmd_id,
                                 )
                                 .await;
                         });
@@ -197,6 +207,7 @@ where
                             };
                             let bridge = audit_bridge.clone();
                             let remote = peer.remote_addr.to_string();
+                            let cmd_id = request_id.clone();
                             tokio::spawn(async move {
                                 bridge
                                     .record(
@@ -209,6 +220,7 @@ where
                                         None,
                                         None,
                                         Some("fingerprint_mismatch"),
+                                        cmd_id,
                                     )
                                     .await;
                             });
@@ -226,6 +238,7 @@ where
                         };
                         let bridge = audit_bridge.clone();
                         let remote = peer.remote_addr.to_string();
+                        let cmd_id = request_id.clone();
                         tokio::spawn(async move {
                             bridge
                                 .record(
@@ -238,6 +251,7 @@ where
                                     None,
                                     None,
                                     Some("missing_cert"),
+                                    cmd_id,
                                 )
                                 .await;
                         });
@@ -339,6 +353,9 @@ mod tests {
                 vec![]
             }
             async fn entries_by_action_prefix(&self, _: &str, _: usize) -> Vec<AuditEntry> {
+                vec![]
+            }
+            async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
                 vec![]
             }
             async fn stats(&self) -> AuditStats {
@@ -570,6 +587,65 @@ mod tests {
             metrics.get_request_count("external|jwt|ok"),
             1,
             "successful JWT auth must bump requests_total[external|jwt|ok]"
+        );
+    }
+
+    /// Failed audit rows carry the client's x-request-id as command_id.
+    ///
+    /// Spec §5.2 / U5 / D14 revised: RequestIdLayer inserts the extension before
+    /// AuthLayer runs. Auth-rejected audit entries must include the client's
+    /// x-request-id so security dashboards can correlate rejections to the
+    /// originating client call.
+    #[tokio::test]
+    async fn failed_audit_reads_request_id_from_extensions() {
+        use crate::grpc::external::jwt_verifier::tests::rsa_keypair_pem;
+        use crate::grpc::external::request_id_layer::RequestId;
+        use crate::grpc::external::test_support::{fixture_bridge, fixture_metrics};
+        use oneshim_core::config::JwtAlgorithm;
+        use oneshim_core::models::audit::AuditStatus;
+
+        // Build a verifier with a fresh key pair; we will send a token signed
+        // by a *different* key so verify() fails → invalid_jwt → AuditStatus::Failed.
+        let (_, pub_pem) = rsa_keypair_pem();
+        let verifier =
+            Arc::new(JwtVerifier::new(JwtAlgorithm::Rs256, &pub_pem, "iss-1", "aud-1").unwrap());
+
+        let (bridge, recorder) = fixture_bridge();
+        let layer = AuthLayer {
+            auth_mode: AuthMode::Jwt,
+            jwt_verifier: Some(verifier),
+            mtls_verifier: None,
+            ip_ban: Arc::new(IpBan::new()),
+            metrics: fixture_metrics(),
+            audit_bridge: Arc::new(bridge),
+        };
+        let mut svc = layer.layer(echo_service());
+
+        let mut req = Request::builder()
+            .uri("/Service/Method")
+            .body(vec![])
+            .unwrap();
+        // Manually insert RequestId extension (in production, RequestIdLayer does this).
+        req.extensions_mut()
+            .insert(RequestId("req-auth-fail".into()));
+        req.extensions_mut().insert(mk_peer(None));
+        // Invalid token → JwtVerifier::verify fails → invalid_jwt failure path.
+        req.headers_mut()
+            .insert("authorization", "Bearer invalid-token".parse().unwrap());
+
+        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // Give the spawned audit record time to complete.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let entries = recorder.snapshot();
+        let failed = entries
+            .iter()
+            .find(|e| e.status == AuditStatus::Failed)
+            .expect("auth-rejected audit row must be present");
+        assert_eq!(
+            failed.command_id, "req-auth-fail",
+            "auth-rejected audit row must carry client's x-request-id"
         );
     }
 }

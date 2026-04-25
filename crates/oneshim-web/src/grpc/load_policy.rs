@@ -29,37 +29,92 @@ pub enum LoadLevel {
 
 /// Load classifier + enforcement ladder. Stateless except for the `started_at`
 /// timestamp used to detect the 30s warm-up window.
+#[derive(Debug)]
 pub struct LoadPolicy {
     thresholds: LoadThresholds,
     started_at: Instant,
 }
 
+/// Error returned by `LoadPolicy::try_new` when threshold ordering is violated.
+#[derive(Debug, thiserror::Error)]
+pub enum LoadPolicyError {
+    #[error("invalid LoadThresholds: {reason}")]
+    InvalidThresholds { reason: String },
+}
+
 impl LoadPolicy {
-    /// Construct a new policy. Panics if thresholds are not strictly increasing
-    /// in `cpu_low < cpu_medium < cpu_high <= 100.0` — callers must validate
-    /// config before construction.
-    pub fn new(thresholds: LoadThresholds) -> Self {
-        assert!(
-            thresholds.cpu_low_pct < thresholds.cpu_medium_pct,
-            "LoadThresholds: cpu_low_pct ({}) must be < cpu_medium_pct ({})",
-            thresholds.cpu_low_pct,
-            thresholds.cpu_medium_pct,
-        );
-        assert!(
-            thresholds.cpu_medium_pct < thresholds.cpu_high_pct,
-            "LoadThresholds: cpu_medium_pct ({}) must be < cpu_high_pct ({})",
-            thresholds.cpu_medium_pct,
-            thresholds.cpu_high_pct,
-        );
-        assert!(
-            thresholds.cpu_high_pct <= 100.0,
-            "LoadThresholds: cpu_high_pct ({}) must be <= 100.0",
-            thresholds.cpu_high_pct,
-        );
-        Self {
-            thresholds,
-            started_at: Instant::now(),
+    /// Fallible constructor — validates `cpu_low < cpu_medium < cpu_high <= 100.0`.
+    ///
+    /// Used by `ConfigReloadTask` where validation failure is recoverable
+    /// (log + keep previous policy). Boot-path callers should use `new`
+    /// which wraps this with `expect` since config is already validated
+    /// by `ConfigManager::update_with`.
+    pub fn try_new(thresholds: LoadThresholds) -> Result<Self, LoadPolicyError> {
+        Self::try_new_with_started_at(thresholds, Instant::now())
+    }
+
+    /// Same as `try_new` but caller supplies the warmup anchor. Used by
+    /// `ConfigReloadTask` to preserve original `started_at` across reloads
+    /// (prevents 30s forced `Medium` on every reload per D27).
+    pub fn try_new_with_started_at(
+        thresholds: LoadThresholds,
+        started_at: Instant,
+    ) -> Result<Self, LoadPolicyError> {
+        if !thresholds.cpu_low_pct.is_finite()
+            || !thresholds.cpu_medium_pct.is_finite()
+            || !thresholds.cpu_high_pct.is_finite()
+        {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "thresholds must be finite (non-NaN, non-infinite): low={}, medium={}, high={}",
+                    thresholds.cpu_low_pct, thresholds.cpu_medium_pct, thresholds.cpu_high_pct,
+                ),
+            });
         }
+        if thresholds.cpu_low_pct >= thresholds.cpu_medium_pct {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "cpu_low_pct ({}) must be < cpu_medium_pct ({})",
+                    thresholds.cpu_low_pct, thresholds.cpu_medium_pct
+                ),
+            });
+        }
+        if thresholds.cpu_medium_pct >= thresholds.cpu_high_pct {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "cpu_medium_pct ({}) must be < cpu_high_pct ({})",
+                    thresholds.cpu_medium_pct, thresholds.cpu_high_pct
+                ),
+            });
+        }
+        if thresholds.cpu_high_pct > 100.0 {
+            return Err(LoadPolicyError::InvalidThresholds {
+                reason: format!(
+                    "cpu_high_pct ({}) must be <= 100.0",
+                    thresholds.cpu_high_pct
+                ),
+            });
+        }
+        Ok(Self {
+            thresholds,
+            started_at,
+        })
+    }
+
+    /// Read accessor — needed by `ConfigReloadTask::apply_config` to preserve
+    /// the warmup anchor across reloads.
+    pub fn started_at(&self) -> Instant {
+        self.started_at
+    }
+
+    /// Boot-time entry point — panics on invalid thresholds (config is
+    /// assumed pre-validated by ConfigManager). Use `try_new` for
+    /// runtime-fallible construction.
+    pub fn new(thresholds: LoadThresholds) -> Self {
+        Self::try_new(thresholds).expect(
+            "LoadPolicy::new: thresholds must be validated before construction; \
+             use try_new for runtime-fallible construction",
+        )
     }
 
     pub fn thresholds(&self) -> &LoadThresholds {
@@ -213,6 +268,114 @@ mod tests {
         assert_eq!(
             p.enforced_metrics_interval(LoadLevel::Medium, 3),
             Duration::from_secs(3),
+        );
+    }
+
+    #[test]
+    fn try_new_accepts_valid_thresholds() {
+        let t = LoadThresholds {
+            cpu_low_pct: 30.0,
+            cpu_medium_pct: 60.0,
+            cpu_high_pct: 85.0,
+            min_free_mem_gb: 1.0,
+        };
+        let result = LoadPolicy::try_new(t);
+        assert!(result.is_ok(), "valid thresholds must succeed");
+    }
+
+    #[test]
+    fn try_new_rejects_low_not_less_than_medium() {
+        let t = LoadThresholds {
+            cpu_low_pct: 70.0,
+            cpu_medium_pct: 60.0, // violates low < medium
+            cpu_high_pct: 85.0,
+            min_free_mem_gb: 1.0,
+        };
+        let err = LoadPolicy::try_new(t).unwrap_err();
+        match err {
+            LoadPolicyError::InvalidThresholds { reason } => {
+                assert!(
+                    reason.contains("cpu_low_pct") && reason.contains("cpu_medium_pct"),
+                    "error must name the violated fields; got: {reason}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn try_new_rejects_medium_not_less_than_high() {
+        let t = LoadThresholds {
+            cpu_low_pct: 30.0,
+            cpu_medium_pct: 90.0,
+            cpu_high_pct: 85.0,
+            min_free_mem_gb: 1.0,
+        };
+        assert!(matches!(
+            LoadPolicy::try_new(t),
+            Err(LoadPolicyError::InvalidThresholds { .. })
+        ));
+    }
+
+    #[test]
+    fn try_new_rejects_high_above_100() {
+        let t = LoadThresholds {
+            cpu_low_pct: 30.0,
+            cpu_medium_pct: 60.0,
+            cpu_high_pct: 110.0,
+            min_free_mem_gb: 1.0,
+        };
+        assert!(matches!(
+            LoadPolicy::try_new(t),
+            Err(LoadPolicyError::InvalidThresholds { .. })
+        ));
+    }
+
+    #[test]
+    fn new_backward_compat_panics_on_invalid() {
+        // LoadPolicy::new retained as try_new(...).expect(...) — panic on invalid preserved for boot-path callers.
+        let t = LoadThresholds {
+            cpu_low_pct: 99.0,
+            cpu_medium_pct: 50.0,
+            cpu_high_pct: 85.0,
+            min_free_mem_gb: 1.0,
+        };
+        let result = std::panic::catch_unwind(|| LoadPolicy::new(t));
+        assert!(
+            result.is_err(),
+            "new() must panic on invalid thresholds (backward compat)"
+        );
+    }
+
+    #[test]
+    fn try_new_rejects_nan_threshold() {
+        let t = LoadThresholds {
+            cpu_low_pct: f32::NAN,
+            cpu_medium_pct: 60.0,
+            cpu_high_pct: 85.0,
+            min_free_mem_gb: 1.0,
+        };
+        let err = LoadPolicy::try_new(t).unwrap_err();
+        match err {
+            LoadPolicyError::InvalidThresholds { reason } => {
+                assert!(
+                    reason.contains("finite"),
+                    "NaN threshold must be rejected with a finite-check error; got: {reason}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn try_new_accepts_high_exactly_100() {
+        let t = LoadThresholds {
+            cpu_low_pct: 30.0,
+            cpu_medium_pct: 60.0,
+            cpu_high_pct: 100.0,
+            min_free_mem_gb: 1.0,
+        };
+        assert!(
+            LoadPolicy::try_new(t).is_ok(),
+            "high==100.0 must be accepted (inclusive upper bound)"
         );
     }
 }

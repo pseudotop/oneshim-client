@@ -75,6 +75,12 @@ pub struct ExternalGrpcConfig {
     /// Rate limiter burst capacity.
     #[serde(default = "default_external_burst_capacity")]
     pub burst_capacity: usize,
+
+    /// Per-external override for streaming. When `Some(v)`, external server honors `v`.
+    /// When `None`, falls back to `AppConfig.web.grpc_streaming_enabled` (the shared field).
+    /// Enables operators to disable external-only streaming without affecting loopback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streaming_enabled: Option<bool>,
 }
 
 impl Default for ExternalGrpcConfig {
@@ -96,6 +102,7 @@ impl Default for ExternalGrpcConfig {
             max_concurrent_streams: default_external_max_streams(),
             max_connections: default_external_max_connections(),
             burst_capacity: default_external_burst_capacity(),
+            streaming_enabled: None,
         }
     }
 }
@@ -328,5 +335,35 @@ mod tests {
         let mut cfg = cfg_enabled_jwt();
         cfg.auth_mode = None;
         assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn external_grpc_streaming_enabled_option_defaults_to_none() {
+        let cfg = ExternalGrpcConfig::default();
+        assert_eq!(cfg.streaming_enabled, None,
+            "streaming_enabled must default to None for backward compat (falls back to web.grpc_streaming_enabled)");
+    }
+
+    #[test]
+    fn external_grpc_streaming_enabled_serde_default_when_absent() {
+        let json = r#"{"enabled": true, "bind_address": "127.0.0.1", "port": 10092}"#;
+        let cfg: ExternalGrpcConfig = serde_json::from_str(json).expect("parse");
+        assert_eq!(
+            cfg.streaming_enabled, None,
+            "missing streaming_enabled field must deserialize as None, not error"
+        );
+    }
+
+    #[test]
+    fn external_grpc_streaming_enabled_serde_skipped_when_none() {
+        let cfg = ExternalGrpcConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&cfg).expect("serialize");
+        assert!(
+            !json.contains("streaming_enabled"),
+            "None value must skip serialization to avoid polluting saved config files: got {json}"
+        );
     }
 }

@@ -6,14 +6,18 @@ pub mod audit_bridge;
 pub(crate) mod audit_layer;
 pub mod auth_layer;
 pub mod cert_resolver;
+pub mod config_reload;
 pub mod conn_info;
 pub mod ip_ban;
 pub mod jwt_verifier;
+pub mod live_config;
 pub mod metrics;
 pub mod mtls_verifier;
 pub mod port_collision;
+pub(crate) mod request_id_layer;
 pub mod spawn_config;
 pub mod tls_config;
+pub(crate) mod trailer_body;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
@@ -189,12 +193,15 @@ pub async fn serve_external(cfg: ExternalGrpcSpawnConfig) -> Result<(), ServeExt
     // call becomes the OUTERMOST and runs first on ingress. Verified at
     // runtime via an AuditLayer debug print: with `auth` first and `audit`
     // second, AuditLayer saw AuthContext=Some (auth had already run).
-    // Ordering below gives request flow: `auth → audit → handler`.
+    // Ordering below gives request flow: `request_id → auth → audit → handler`.
+    // RequestIdLayer is OUTERMOST per D14 revised / U5 so auth-rejected audit
+    // rows correlate with client's x-request-id.
     let concurrency = cfg_arc.config.max_concurrent_streams;
     tonic::transport::Server::builder()
         .concurrency_limit_per_connection(concurrency)
         .timeout(Duration::from_secs(60))
-        .layer(auth_layer) // outermost — runs FIRST on request ingress
+        .layer(request_id_layer::RequestIdLayer) // OUTERMOST per D14 revised / U5
+        .layer(auth_layer) // runs SECOND on request ingress
         .layer(audit_layer) // innermost — runs AFTER auth
         .add_service(DashboardServiceServer::new(service_impl).max_decoding_message_size(1_048_576))
         .serve_with_incoming_shutdown(stream, shutdown_signal)
@@ -355,10 +362,14 @@ mod tests {
             shutdown_tx: shutdown_tx.clone(),
             pii_sanitizer: None,
             ai_runtime_status_snapshot: None,
-            load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
-                oneshim_core::config::LoadThresholds::default(),
+            live: Arc::new(crate::grpc::external::live_config::LiveExternalConfig::new(
+                crate::grpc::external::live_config::LiveSnapshot {
+                    streaming_enabled: true,
+                    load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
+                        oneshim_core::config::LoadThresholds::default(),
+                    )),
+                },
             )),
-            streaming_enabled: true,
         };
 
         // Start the server in a task. It will bind and then wait for shutdown.
@@ -437,10 +448,14 @@ mod tests {
             shutdown_tx: Arc::new(supervisor_shutdown_tx),
             pii_sanitizer: None,
             ai_runtime_status_snapshot: None,
-            load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
-                oneshim_core::config::LoadThresholds::default(),
+            live: Arc::new(crate::grpc::external::live_config::LiveExternalConfig::new(
+                crate::grpc::external::live_config::LiveSnapshot {
+                    streaming_enabled: true,
+                    load_policy: Arc::new(crate::grpc::load_policy::LoadPolicy::new(
+                        oneshim_core::config::LoadThresholds::default(),
+                    )),
+                },
             )),
-            streaming_enabled: true,
         };
 
         // Arm the panic injector.

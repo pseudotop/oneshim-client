@@ -28,9 +28,16 @@ pub(crate) struct ExternalGrpcAuditDetails<'a> {
     /// `CountingStream` via request extensions (spec §2.4).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) response_message_count: Option<u64>,
+    /// Raw tonic::Code as u32. Populated by AuditBridge completion paths so
+    /// security dashboards can disambiguate Unauthenticated (16) vs
+    /// PermissionDenied (7) — both otherwise collapse into AuditStatus::Denied.
+    /// None for Success paths (status already conveys success). Task 0.6 wires
+    /// the producer; this field is None at all construction sites until then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) grpc_status_code: Option<u32>,
 }
 
-pub(crate) struct AuditBridge {
+pub struct AuditBridge {
     port: Arc<dyn AuditLogPort>,
 }
 
@@ -44,6 +51,10 @@ impl AuditBridge {
     /// Uses `log_complete_with_time` so that `command_id`, `session_id`,
     /// `details`, and `execution_time_ms` are all preserved in the stored entry.
     /// The `status` and `failure_reason` are encoded inside the JSON details blob.
+    ///
+    /// # Parameters (new in Task 0.6, per spec §5.5 + U5)
+    /// - `command_id`: when `Some`, overrides `ctx.command_id` in the stored entry
+    ///   and the return value. Pass `None` to fall back to `ctx.command_id`.
     #[allow(clippy::too_many_arguments)]
     pub async fn record(
         &self,
@@ -56,7 +67,9 @@ impl AuditBridge {
         request_size: Option<u64>,
         response_size: Option<u64>,
         failure_reason: Option<&str>,
+        command_id: Option<String>, // NEW per spec §5.5 + U5
     ) -> String {
+        let effective_cmd_id: &str = command_id.as_deref().unwrap_or(&ctx.command_id);
         let details = ExternalGrpcAuditDetails {
             transport: "external",
             remote_addr,
@@ -72,6 +85,7 @@ impl AuditBridge {
             failure_reason,
             jti: ctx.jti.as_deref(),
             response_message_count: None,
+            grpc_status_code: None, // unused in Started/Failed paths (AuditLayer record_completion populates)
         };
         let details_json =
             serde_json::to_string(&details).unwrap_or_else(|e| format!("{{\"err\":\"{e}\"}}"));
@@ -87,7 +101,7 @@ impl AuditBridge {
         self.port
             .log_complete_with_time(
                 AuditLevel::Full,
-                &ctx.command_id,
+                effective_cmd_id,
                 &ctx.client_id,
                 &details_json,
                 duration.as_millis() as u64,
@@ -98,7 +112,7 @@ impl AuditBridge {
         self.port
             .log_event(action_type, &ctx.client_id, &details_json)
             .await;
-        ctx.command_id.clone()
+        command_id.unwrap_or_else(|| ctx.command_id.clone())
     }
 
     /// Record a completion audit entry. Complements `record(Started/Failed)`.
@@ -108,6 +122,13 @@ impl AuditBridge {
     /// - Cancelled/DeadlineExceeded → `AuditStatus::Timeout`
     /// - Other error → `AuditStatus::Failed` (+ failure_reason = status message)
     /// - Panic → `AuditStatus::Failed` (+ failure_reason = "handler_panic")
+    ///
+    /// # Parameters (new in Task 0.6, per spec §5.5 + U5 + D26)
+    /// - `command_id`: when `Some`, overrides `ctx.command_id` in the stored entry
+    ///   and the return value. Pass `None` to fall back to `ctx.command_id`.
+    /// - `grpc_status_code`: raw `tonic::Code` as `u32`. Stored in the JSON details
+    ///   blob so dashboards can disambiguate Unauthenticated (16) vs PermissionDenied (7).
+    ///   Pass `None` for success paths (status already conveys success).
     #[allow(clippy::too_many_arguments)]
     pub async fn record_completion(
         &self,
@@ -118,7 +139,10 @@ impl AuditBridge {
         duration: Duration,
         response_message_count: Option<u64>,
         failure_reason: Option<&str>,
+        command_id: Option<String>,    // NEW per spec §5.5 + U5
+        grpc_status_code: Option<u32>, // NEW per spec §5.5 + D26
     ) -> String {
+        let effective_cmd_id: &str = command_id.as_deref().unwrap_or(&ctx.command_id);
         let result = match status {
             AuditStatus::Completed => "ok",
             AuditStatus::Denied => "denied",
@@ -141,6 +165,7 @@ impl AuditBridge {
             failure_reason,
             jti: ctx.jti.as_deref(),
             response_message_count,
+            grpc_status_code,
         };
         let details_json =
             serde_json::to_string(&details).unwrap_or_else(|e| format!("{{\"err\":\"{e}\"}}"));
@@ -154,7 +179,7 @@ impl AuditBridge {
         self.port
             .log_complete_with_time(
                 AuditLevel::Full,
-                &ctx.command_id,
+                effective_cmd_id,
                 &ctx.client_id,
                 &details_json,
                 duration.as_millis() as u64,
@@ -163,7 +188,7 @@ impl AuditBridge {
         self.port
             .log_event(action_type, &ctx.client_id, &details_json)
             .await;
-        ctx.command_id.clone()
+        command_id.unwrap_or_else(|| ctx.command_id.clone())
     }
 }
 
@@ -208,6 +233,9 @@ mod tests {
             vec![]
         }
         async fn entries_by_action_prefix(&self, _prefix: &str, _limit: usize) -> Vec<AuditEntry> {
+            vec![]
+        }
+        async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
             vec![]
         }
         async fn stats(&self) -> AuditStats {
@@ -301,6 +329,7 @@ mod tests {
                 Some(100),
                 None,
                 None,
+                None,
             )
             .await;
         assert_eq!(cid, ctx.command_id);
@@ -330,6 +359,7 @@ mod tests {
                 Some(0),
                 None,
                 Some("invalid_jwt"),
+                None,
             )
             .await;
         let entries = mock.entries.lock().unwrap();
@@ -356,6 +386,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await;
         let entries = mock.entries.lock().unwrap();
@@ -377,6 +408,8 @@ mod tests {
                 AuditStatus::Completed,
                 Duration::from_millis(12),
                 Some(5),
+                None,
+                None,
                 None,
             )
             .await;
@@ -402,6 +435,8 @@ mod tests {
                 Duration::from_millis(3),
                 None,
                 Some("not authorized"),
+                None,
+                None,
             )
             .await;
         let entries = mock.entries.lock().unwrap();
@@ -425,6 +460,8 @@ mod tests {
                 Duration::from_millis(60_000),
                 None,
                 Some("deadline_exceeded"),
+                None,
+                None,
             )
             .await;
         let entries = mock.entries.lock().unwrap();
@@ -447,6 +484,8 @@ mod tests {
                 Duration::from_millis(15),
                 None,
                 Some("internal"),
+                None,
+                None,
             )
             .await;
         let entries = mock.entries.lock().unwrap();
@@ -469,6 +508,8 @@ mod tests {
                 Duration::from_millis(1),
                 None,
                 None,
+                None,
+                None,
             )
             .await;
         let entries = mock.entries.lock().unwrap();
@@ -476,5 +517,161 @@ mod tests {
             serde_json::from_str(entries[0].details.as_ref().unwrap()).unwrap();
         // skip_serializing_if None → absent key
         assert!(d.get("response_message_count").is_none());
+    }
+
+    // ── Task 0.6: command_id override + grpc_status_code propagation ────────
+
+    /// Verifies that `record_completion` accepts `command_id` (Option<String>) and
+    /// `grpc_status_code` (Option<u32>) and propagates them correctly.
+    ///
+    /// Spec §5.5 + D26 + U5: command_id arg overrides ctx.command_id; grpc_status_code
+    /// flows into ExternalGrpcAuditDetails and is serialized into the JSON details blob.
+    #[tokio::test]
+    async fn record_completion_accepts_command_id_and_grpc_status_code() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        let explicit_cmd_id = "req-abc-123".to_string();
+        bridge
+            .record_completion(
+                &ctx,
+                "127.0.0.1:1234".to_string(),
+                "/Service/Method",
+                AuditStatus::Denied,
+                Duration::from_millis(42),
+                Some(5u64),                    // response_message_count
+                None,                          // failure_reason
+                Some(explicit_cmd_id.clone()), // command_id (NEW §5.5 + U5)
+                Some(7u32), // grpc_status_code (NEW §5.5 + D26) — PermissionDenied
+            )
+            .await;
+
+        let entries = mock.entries.lock().unwrap();
+        let entry = entries.last().expect("one record captured");
+        // grpc_status_code must be serialized into the details JSON blob.
+        let details: serde_json::Value =
+            serde_json::from_str(entry.details.as_deref().unwrap_or("{}"))
+                .expect("parse details JSON");
+        assert_eq!(
+            details["grpc_status_code"], 7,
+            "grpc_status_code must propagate into details JSON"
+        );
+        // command_id arg must override ctx.command_id in the stored entry.
+        assert_eq!(
+            entry.command_id, explicit_cmd_id,
+            "command_id arg must override ctx.command_id"
+        );
+    }
+
+    /// Verifies that `record` accepts the new `command_id` (Option<String>) trailing arg.
+    ///
+    /// Spec §5.5 + U5: when Some, overrides ctx.command_id in the stored entry and
+    /// return value; when None, falls back to ctx.command_id.
+    #[tokio::test]
+    async fn record_accepts_command_id_override() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        let explicit_cmd_id = "override-cmd-456".to_string();
+        let returned = bridge
+            .record(
+                &ctx,
+                "127.0.0.1:9999".to_string(),
+                "/Svc/Op",
+                "ok",
+                AuditStatus::Completed,
+                Duration::from_millis(5),
+                None,
+                None,
+                None,
+                Some(explicit_cmd_id.clone()), // command_id (NEW §5.5 + U5)
+            )
+            .await;
+        // Return value reflects the override.
+        assert_eq!(returned, explicit_cmd_id);
+        let entries = mock.entries.lock().unwrap();
+        assert_eq!(entries.last().unwrap().command_id, explicit_cmd_id);
+    }
+
+    /// Verifies that passing `None` for command_id in `record` falls back to ctx.command_id.
+    #[tokio::test]
+    async fn record_command_id_none_falls_back_to_ctx() {
+        let mock = MockAuditLog::new();
+        let bridge = AuditBridge::new(mock.clone());
+        let ctx = mk_ctx();
+        let returned = bridge
+            .record(
+                &ctx,
+                "127.0.0.1:9999".to_string(),
+                "/Svc/Op",
+                "ok",
+                AuditStatus::Completed,
+                Duration::from_millis(5),
+                None,
+                None,
+                None,
+                None, // command_id None → fallback to ctx.command_id
+            )
+            .await;
+        assert_eq!(returned, ctx.command_id);
+        let entries = mock.entries.lock().unwrap();
+        assert_eq!(entries.last().unwrap().command_id, ctx.command_id);
+    }
+
+    // ── grpc_status_code field tests (Task 0.5 / spec §5.5 / D26 OQ15) ────
+
+    // NOTE on deserialization tests:
+    // Plan §5.5 / D26 template included tests for:
+    //   - Deserializing older audit rows (without grpc_status_code field)
+    //   - Tolerating future unknown fields
+    // These cannot be exercised on ExternalGrpcAuditDetails directly because the
+    // struct is Serialize-only (has lifetime-parameterized &str fields; deriving
+    // Deserialize would require owning strings via String or Cow). In practice
+    // nothing deserializes this struct — audit rows are stored as opaque JSON
+    // in audit_log.details. Backward-compat concerns are therefore moot.
+    //
+    // If a future task introduces a read-path that deserializes audit details
+    // (e.g. a `OwnedAuditDetails` type for DB reads), deserialization tests
+    // should be added against THAT type.
+
+    #[test]
+    fn external_grpc_audit_details_serializes_grpc_status_code_when_some() {
+        let d = ExternalGrpcAuditDetails {
+            transport: "external",
+            remote_addr: "127.0.0.1:1234".to_string(),
+            auth_type: "jwt",
+            operation: "/dashboard.v1.Foo/Bar",
+            result: "denied",
+            request_size_bytes: None,
+            response_size_bytes: None,
+            failure_reason: None,
+            jti: None,
+            response_message_count: None,
+            grpc_status_code: Some(7), // PermissionDenied
+        };
+        let json = serde_json::to_value(&d).expect("serialize");
+        assert_eq!(json["grpc_status_code"], 7);
+    }
+
+    #[test]
+    fn external_grpc_audit_details_none_grpc_status_code_skipped_in_serialization() {
+        let d = ExternalGrpcAuditDetails {
+            transport: "external",
+            remote_addr: "127.0.0.1:1234".to_string(),
+            auth_type: "jwt",
+            operation: "/dashboard.v1.Foo/Bar",
+            result: "ok",
+            request_size_bytes: None,
+            response_size_bytes: None,
+            failure_reason: None,
+            jti: None,
+            response_message_count: None,
+            grpc_status_code: None,
+        };
+        let json = serde_json::to_string(&d).expect("serialize");
+        assert!(
+            !json.contains("grpc_status_code"),
+            "None must skip; backward-compat for older audit rows: got {json}"
+        );
     }
 }

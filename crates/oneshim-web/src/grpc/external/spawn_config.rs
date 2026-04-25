@@ -14,12 +14,12 @@ use oneshim_core::ports::monitor::SystemMonitor;
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use tokio::sync::{broadcast, watch};
 
-use crate::grpc::load_policy::LoadPolicy;
 use crate::storage_port::WebStorage;
 
 use super::cert_resolver::HotReloadCertResolver;
 use super::ip_ban::IpBan;
 use super::jwt_verifier::JwtVerifier;
+use super::live_config::LiveExternalConfig;
 use super::metrics::ExternalMetrics;
 use super::mtls_verifier::MtlsVerifier;
 
@@ -69,18 +69,23 @@ pub struct ExternalGrpcSpawnConfig {
     pub pii_sanitizer: Option<Arc<dyn PiiSanitizer>>,
     /// AiRuntimeStatus snapshot (build-time). Passed through from loopback.
     pub ai_runtime_status_snapshot: Option<AiRuntimeStatus>,
-    /// Server load-shedding policy. Passed through from loopback.
-    pub load_policy: Arc<LoadPolicy>,
-    /// Mirror of loopback `streaming_enabled`. External server honors the same flag.
-    pub streaming_enabled: bool,
+    /// Runtime-tunable config (streaming_enabled + load_policy). Atomic snapshot
+    /// via ArcSwap — readers call `live.snapshot()` once per request entry.
+    pub live: Arc<LiveExternalConfig>,
 }
 
 /// Custom `Debug` impl — redacts cert key material and verifier contents.
 /// The `jwt_verifier` and `mtls_verifier` contain public-key bytes; we emit
 /// boolean-presence flags only, mirroring `GrpcSpawnConfig`'s redaction of
 /// `integration_auth_token`.
+///
+/// Takes a single `live.snapshot()` to print both `streaming_enabled_live` and
+/// `load_policy_snapshot_summary` atomically — avoids torn reads within one Debug
+/// print (though concurrent prints remain racy by design; documented and accepted).
 impl std::fmt::Debug for ExternalGrpcSpawnConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let snap = self.live.snapshot();
+        let t = snap.load_policy.thresholds();
         f.debug_struct("ExternalGrpcSpawnConfig")
             .field("bind_addr", &self.bind_addr)
             .field("auth_mode", &self.config.auth_mode)
@@ -97,7 +102,14 @@ impl std::fmt::Debug for ExternalGrpcSpawnConfig {
                 "ai_runtime_status_present",
                 &self.ai_runtime_status_snapshot.is_some(),
             )
-            .field("streaming_enabled", &self.streaming_enabled)
+            .field("streaming_enabled_live", &snap.streaming_enabled)
+            .field(
+                "load_policy_snapshot_summary",
+                &format_args!(
+                    "cpu {:.0}/{:.0}/{:.0}, mem_gb {:.1}",
+                    t.cpu_low_pct, t.cpu_medium_pct, t.cpu_high_pct, t.min_free_mem_gb
+                ),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -105,10 +117,13 @@ impl std::fmt::Debug for ExternalGrpcSpawnConfig {
 #[cfg(all(test, feature = "test-support", feature = "external-grpc-tools"))]
 mod tests {
     use super::*;
+    use oneshim_core::config::LoadThresholds;
     use oneshim_core::models::ai_session::SessionAuditEntry;
     use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
     use oneshim_storage::sqlite::SqliteStorage;
 
+    use crate::grpc::external::live_config::{LiveExternalConfig, LiveSnapshot};
+    use crate::grpc::load_policy::LoadPolicy;
     use crate::grpc::test_support::mock_system_monitor::MockSystemMonitor;
 
     struct NoopAudit;
@@ -124,6 +139,9 @@ mod tests {
             vec![]
         }
         async fn entries_by_action_prefix(&self, _prefix: &str, _limit: usize) -> Vec<AuditEntry> {
+            vec![]
+        }
+        async fn entries_by_command_id(&self, _cmd_id: &str, _limit: usize) -> Vec<AuditEntry> {
             vec![]
         }
         async fn stats(&self) -> AuditStats {
@@ -198,10 +216,10 @@ mod tests {
             shutdown_tx: Arc::new(shutdown_tx),
             pii_sanitizer: None,
             ai_runtime_status_snapshot: None,
-            load_policy: Arc::new(LoadPolicy::new(
-                oneshim_core::config::LoadThresholds::default(),
-            )),
-            streaming_enabled: true,
+            live: Arc::new(LiveExternalConfig::new(LiveSnapshot {
+                streaming_enabled: true,
+                load_policy: Arc::new(LoadPolicy::new(LoadThresholds::default())),
+            })),
         }
     }
 
@@ -220,6 +238,15 @@ mod tests {
         assert!(
             dbg.contains("mtls_verifier_present"),
             "Debug must show mtls_verifier_present; got: {dbg}"
+        );
+        // Live config fields must appear
+        assert!(
+            dbg.contains("streaming_enabled_live"),
+            "Debug must show live field: {dbg}"
+        );
+        assert!(
+            dbg.contains("load_policy_snapshot_summary"),
+            "Debug must show policy summary: {dbg}"
         );
         // Must NOT leak key material
         assert!(
@@ -247,5 +274,6 @@ mod tests {
         assert!(Arc::ptr_eq(&cfg.ip_ban, &clone.ip_ban));
         assert!(Arc::ptr_eq(&cfg.cert_resolver, &clone.cert_resolver));
         assert!(Arc::ptr_eq(&cfg.metrics, &clone.metrics));
+        assert!(Arc::ptr_eq(&cfg.live, &clone.live));
     }
 }

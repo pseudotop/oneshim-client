@@ -3,7 +3,7 @@
 //! as a follow-up (see spec §5.2 and Task 11a).
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize};
 
 use parking_lot::RwLock;
 
@@ -30,6 +30,20 @@ pub struct ExternalMetrics {
     pub cert_reloads_failed: AtomicU64,
     /// Cumulative connections rejected by the IP ban list.
     pub ip_bans_blocked_total: AtomicU64,
+
+    // ── D32: audit observability + config-reload observability (spec §8.6) ──
+    /// Currently running deferred-audit completion futures (fire-and-forget).
+    /// Incremented when AuditLayer spawns a completion task; decremented when
+    /// the task finishes. Read-only via `GET /api/external-grpc/live-config`.
+    pub deferred_audit_in_flight: AtomicUsize,
+
+    /// Cumulative config reload attempts (success + failure combined).
+    /// Incremented by ConfigReloadTask on every tick that applies a snapshot.
+    pub config_reload_total: AtomicU64,
+
+    /// True once ConfigReloadTask has started its main loop; false until then
+    /// (and in test/config-disabled paths). Observability-only — no enforcement.
+    pub config_reload_task_alive: AtomicBool,
 }
 
 impl ExternalMetrics {
@@ -116,5 +130,47 @@ mod tests {
             m.active_streams.load(std::sync::atomic::Ordering::Relaxed),
             0
         );
+    }
+
+    #[test]
+    fn external_metrics_has_d32_fields() {
+        let m = ExternalMetrics::new();
+        m.deferred_audit_in_flight
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            m.deferred_audit_in_flight
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        m.config_reload_total
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            m.config_reload_total
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        m.config_reload_task_alive
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(m
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    #[test]
+    fn external_metrics_d32_fields_default_to_zero_and_false() {
+        let m = ExternalMetrics::new();
+        assert_eq!(
+            m.deferred_audit_in_flight
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert_eq!(
+            m.config_reload_total
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert!(!m
+            .config_reload_task_alive
+            .load(std::sync::atomic::Ordering::Relaxed));
     }
 }
