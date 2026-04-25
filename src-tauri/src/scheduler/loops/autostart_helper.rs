@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use oneshim_core::config::should_prompt;
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::error_codes::AutostartCode;
 
 const PRODUCTIVE_SESSION_THRESHOLD_SECS: u64 = 25 * 60;
 
@@ -70,7 +71,7 @@ pub fn handle_focus_block_completed<R: Runtime>(
         || {
             if let Err(e) = app_handle.emit("autostart:eligible-for-prompt", ()) {
                 warn!(
-                    err.code = "autostart_event_emit_failed",
+                    err.code = AutostartCode::EventEmitFailed.as_str(),
                     "failed to emit autostart:eligible-for-prompt: {e}"
                 );
             }
@@ -107,7 +108,10 @@ pub(crate) fn handle_focus_block_completed_inner<F>(
     }) {
         Ok(s) => s,
         Err(e) => {
-            warn!(err.code = "autostart_counter_increment_failed", "{e}");
+            warn!(
+                err.code = AutostartCode::CounterIncrementFailed.as_str(),
+                "{e}"
+            );
             return;
         }
     };

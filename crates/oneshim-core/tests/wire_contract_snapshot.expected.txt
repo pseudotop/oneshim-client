@@ -1,8 +1,10 @@
 audio.capture_failed
 audio.stt_failed
 auth.failed
+autostart.counter_increment_failed
 autostart.disable_failed
 autostart.enable_failed
+autostart.event_emit_failed
 autostart.query_failed
 config.invalid
 config.missing

@@ -3,10 +3,14 @@
 define_code_enum! {
     /// Autostart 카테고리 에러 코드.
     pub enum AutostartCode {
-        /// 자동 시작 활성화 실패.
-        EnableFailed => "autostart.enable_failed",
+        /// 자동 시작 카운터 증가 실패.
+        CounterIncrementFailed => "autostart.counter_increment_failed",
         /// 자동 시작 비활성화 실패.
         DisableFailed => "autostart.disable_failed",
+        /// 자동 시작 활성화 실패.
+        EnableFailed => "autostart.enable_failed",
+        /// autostart Tauri 이벤트 emit 실패.
+        EventEmitFailed => "autostart.event_emit_failed",
         /// 자동 시작 상태 조회 실패.
         QueryFailed => "autostart.query_failed",
     }
