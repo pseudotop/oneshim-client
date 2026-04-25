@@ -84,10 +84,10 @@
 
 | Task | Status | Notes |
 |------|--------|-------|
-| 1: tauri-plugin-single-instance dep | pending | 0.5h, ~30 min subagent |
-| 2: AutostartConfig + AutostartPromptState in core | pending | 1.5h |
-| 3: AutostartConfig unit tests | pending | 1.5h |
-| 4: IPC commands + wire codes (per A1+A2+A5) | pending | 3h, large task — may split |
+| 1: tauri-plugin-single-instance dep | ✅ COMPLETE | commit `f4a4e30a` (sonnet impl + haiku 2-stage review, all green) |
+| 2: AutostartConfig + AutostartPromptState in core | ✅ COMPLETE | commit `0c9ac38d` (sonnet impl, haiku 2-stage review, all green) |
+| 3: AutostartConfig unit tests | ✅ COMPLETE | commit `eecc5e00` (10 tests pass, clippy struct-literal fix applied) |
+| 4: IPC commands + wire codes (per A1+A2+A5) | ✅ COMPLETE | commit `c3e8685a` (sonnet impl + haiku spec review ✅, code-quality review blocked by session cwd issue but auto-gates all GREEN: cargo test 551 pass, wire snapshot pass, i18n CI pass, clippy/fmt clean). Implementer caught my ordering error: `auth.failed` < `autostart.*` lexicographically — codes correctly placed AFTER `auth.failed`. |
 | 5: IPC command tests (per A3 inline) | pending | 1h |
 | 6: Single-instance plugin + D-Bus check | pending | 2h |
 | 7: Single-instance integration smoke test | pending | 1.5h |
