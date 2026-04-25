@@ -2184,43 +2184,58 @@ mod tests {
 }
 ```
 
-- [ ] **Step 7.4: Update data.rs handler**
+- [ ] **Step 7.4: Update DataCommandService (NOT handler — Phase 2 iter-9 NEW-C1 architectural correction)**
 
-Open `crates/oneshim-web/src/handlers/data.rs`. Find handler using `req.from`/`req.to` for SQL deletion. Replace with:
+Reality (verified at `crates/oneshim-web/src/handlers/data.rs:9-16`): handler is thin pass-through to `DataCommandService::delete_data_range(&request)?`. The SQL deletion happens inside the service.
+
+Since Task 4D.3 already migrated `data_web_service.rs:36+51` to build TimeWindow inline via `TimeWindow::from_rfc3339_pair(&request.from, &request.to)?`, this step **simplifies the call sites** to use the new `period()` accessor (defined in Task 7.1):
+
+Open `crates/oneshim-web/src/services/data_web_service.rs`. Refactor the Task 4D.3 inline conversions:
 
 ```rust
-let window = req.period()?;  // Result<TimeWindow, TimeWindowError> → ApiError::BadRequest via chain
-ctx.storage.delete_data_in_range(
-    &window,
-    req.data_types.contains(&"events".to_string()),
-    req.data_types.contains(&"frames".to_string()),
-    req.data_types.contains(&"metrics".to_string()),
-    /* preserve other params */
-)?;
+// At data_web_service.rs:36 (list_frame_file_paths_in_range caller) — replace Task 4D.3 inline:
+// Task 4D.3 wrote:
+let window = TimeWindow::from_rfc3339_pair(&request.from, &request.to)?;
+.list_frame_file_paths_in_range(&window)
+// Task 7.4 simplifies to:
+let window = request.period().map_err(|e| ApiError::BadRequest(e.to_string()))?;
+.list_frame_file_paths_in_range(&window)
+
+// Same pattern at data_web_service.rs:51 (delete_data_in_range caller) — reuse the window from above
 ```
 
-(Adapt to actual `DeleteRangeRequest` field semantics for the boolean flags.)
+Hoist the `let window = request.period()?;` to the top of `delete_data_range` method scope so both `list_frame_file_paths_in_range` (line 36) and `delete_data_in_range` (line 51) share the single TimeWindow. The handler stays unchanged (still thin delegate). HTTP 400 propagates via the service `?` chain through `DataCommandService::delete_data_range` → handler.
 
-- [ ] **Step 7.5: Update reports.rs handler**
+**No changes to `crates/oneshim-web/src/handlers/data.rs`** — already correct as thin delegate.
 
-Open `crates/oneshim-web/src/handlers/reports.rs`. Find handler. Update to use `req.time_range.to_time_window(Duration::days(30))?` for Custom period; period-derived computation for Week/Month:
+- [ ] **Step 7.5: Update ReportQueryService (NOT handler — Phase 2 iter-9 NEW-C1 architectural correction)**
+
+Reality (verified at `crates/oneshim-web/src/handlers/reports.rs:11-19`): handler is thin pass-through to `ReportQueryService::generate_report(&params).await?`. The dispatch logic happens inside the service.
+
+Open `crates/oneshim-web/src/services/reports_service.rs`. Inside `generate_report`, find the period dispatch logic and update:
 
 ```rust
 use chrono::Duration;
 use oneshim_core::types::TimeWindow;
 
-let window = match req.period {
-    ReportPeriod::Custom => req.time_range.to_time_window(Duration::days(30))?,
-    ReportPeriod::Week => {
-        let now = Utc::now();
-        TimeWindow::new(now - Duration::days(7), now).expect("valid 7-day window")
-    },
-    ReportPeriod::Month => {
-        let now = Utc::now();
-        TimeWindow::new(now - Duration::days(30), now).expect("valid 30-day window")
-    },
-};
+pub async fn generate_report(&self, params: &ReportQuery) -> Result<ReportResponse, ApiError> {
+    let window = match params.period {
+        ReportPeriod::Custom => params.time_range.to_time_window(Duration::days(30))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?,
+        ReportPeriod::Week => {
+            let now = Utc::now();
+            TimeWindow::new(now - Duration::days(7), now).expect("valid 7-day window")
+        },
+        ReportPeriod::Month => {
+            let now = Utc::now();
+            TimeWindow::new(now - Duration::days(30), now).expect("valid 30-day window")
+        },
+    };
+    // ... rest of report generation uses &window
+}
 ```
+
+**No changes to `crates/oneshim-web/src/handlers/reports.rs`** — already correct as thin delegate.
 
 - [ ] **Step 7.6: Verify compile + tests**
 
@@ -2232,7 +2247,7 @@ cargo test -p oneshim-api-contracts --lib data::tests reports::tests 2>&1 | tail
 - [ ] **Step 7.7: Commit**
 
 ```bash
-git add crates/oneshim-api-contracts/src/{data,reports}.rs crates/oneshim-web/src/handlers/{data,reports}.rs
+git add crates/oneshim-api-contracts/src/{data,reports}.rs crates/oneshim-web/src/services/{data_web_service,reports_service}.rs
 git commit -m "$(cat <<'EOF'
 refactor(api-contracts): DeleteRangeRequest period() accessor + ReportQuery flatten TimeRangeQuery
 
