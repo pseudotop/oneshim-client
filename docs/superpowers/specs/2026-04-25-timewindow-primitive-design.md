@@ -313,13 +313,17 @@ impl TimeRangeQuery {
 
 ### 5.3 SQL Storage Helper Migration Pattern
 
+**Two sub-patterns** based on method complexity:
+
+**(a) SAFE-SYNTHETIC** for simple methods (events.rs, frames.rs body fits in <30 lines, single `query_row` / `prepare` invocation, `lock().unwrap()` shape):
+
 **Before** (`crates/oneshim-storage/src/sqlite/frames.rs`):
 ```rust
 pub fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, StorageError> {
     let conn = self.conn.lock().unwrap();
     let count: u64 = conn.query_row(
         "SELECT COUNT(*) FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2",
-        [from, to],
+        rusqlite::params![from, to],
         |row| row.get(0),
     )?;
     Ok(count)
@@ -335,12 +339,34 @@ pub fn count_frames_in_range(&self, window: &TimeWindow) -> Result<u64, StorageE
     let (from, to) = window.to_sql_pair();
     let count: u64 = conn.query_row(
         "SELECT COUNT(*) FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2",
-        [&from, &to],
+        rusqlite::params![&from, &to],
         |row| row.get(0),
     )?;
     Ok(count)
 }
 ```
+
+(Per Phase 1 iter-1 N4: standardize on `rusqlite::params!` macro across all migrated helpers.)
+
+**(b) PRESERVE-BODY** for complex methods (calibration_store_impl, maintenance.rs `delete_data_in_range`, work_sessions.rs `get_daily_active_secs`):
+- Async `with_conn(move |conn| {...}).await` patterns
+- Fallible `lock().map_err(|e| CoreError::Storage { code, message })?`
+- `table_exists` migration guards
+- Per-row error wrapping with custom `StorageError::Internal(format!(...))`
+- Half-open `< ?2` boundaries (NG6 — work_sessions.rs)
+- Containment `start_time >= ?1 AND end_time <= ?2` (different columns — calibration list_segment_time_ranges)
+- Multiple SQL statements per call (`delete_metrics` triggers DELETE on both system_metrics + system_metrics_hourly)
+
+For these, **DO NOT rewrite** the function body. Plan v6/v7 prescribes minimal-diff:
+```rust
+- pub fn complex_helper(&self, from: &str, to: &str, ...other_params) -> Result<...>
++ pub fn complex_helper(&self, window: &TimeWindow, ...other_params) -> Result<...>
++     let (from, to) = window.to_sql_pair();
+      // ... ENTIRE existing body unchanged: existing SQL, lock-error mapping, parsing, async with_conn, etc.
+  }
+```
+
+The shadowed `from`/`to` String locals match the previous parameter names exactly — every existing `params![from, to]` invocation continues to work unchanged. SQL strings, table names, column names, error messages stay bit-identical.
 
 ### 5.4 Domain Model Migration Pattern
 
@@ -526,7 +552,7 @@ define_code_enum! {
 }
 ```
 
-Total wire codes after PR (per Phase 1 iter-1 C1): current **42** (worktree base `2ba38cf5`, pre-PR-B1) + 2 = **44**. If PR-B1 (#508, +5 codes) and PR-B2 (+4 codes) merge before TimeWindow PR, recompute baseline at impl time (could be 51 + 2 = 53). Verify with `wc -l crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` immediately before commit 2.
+Total wire codes after PR (per Phase 1 iter-1 C1 + PF3 baseline 2026-04-25): current **42** (worktree base `2ba38cf5`, pre-PR-B1, PF3-verified) + 2 = **44** (if both PR-B1 and PR-B2 are still pending). If PR-B1 (#508, expected +5 codes for tracking_schedule.*) merges before TimeWindow PR, baseline becomes 47 + 2 = **49**. If PR-B2 also merges (estimated +4 codes for autostart.*), baseline becomes 51 + 2 = **53**. **DO NOT trust pre-merge estimates** — recompute actual count at impl time via `wc -l crates/oneshim-core/tests/wire_contract_snapshot.expected.txt`. Plan PF3 (`docs/superpowers/plans/...`) captures this baseline procedure.
 
 **Per Phase 1 iter-1 C3**: `error_codes/mod.rs` requires 3 wire-up steps for `TimeWindowCode`:
 1. `pub mod time_window;`
