@@ -48,6 +48,20 @@ cargo check --workspace
 ```
 Expected: clean compile with warnings only. (Skipping full `cargo test` here for time; will run after individual tasks.)
 
+- [ ] **PF4: Read the Plan v2 Corrections Addendum FIRST (CRITICAL)**
+
+Before starting any task, read the **"Plan v2 Corrections Addendum"** section at the bottom of this plan. The addendum SUPERSEDES specific task body steps. Affected steps below are marked with a **⚠ SUPERSEDED — see Addendum** banner pointing to the relevant addendum subsection.
+
+Required reading before starting Phase 3:
+1. `src-tauri/src/scheduler/loops/monitor.rs` (full file, ~300 lines)
+2. `src-tauri/src/scheduler/mod.rs:520-560` (run_scheduler_loops + caller of spawn_monitor_loop)
+3. `src-tauri/src/desktop_permissions.rs:43-75` (Generic Runtime pattern reference)
+4. `crates/oneshim-core/src/error_codes/audio.rs` (define_code_enum! reference)
+5. `crates/oneshim-core/src/error_codes/mod.rs` (all_codes() aggregator pattern)
+6. `crates/oneshim-web/frontend/src/i18n/locales/en.json` (top-level structure)
+7. `crates/oneshim-web/frontend/src/pages/dashboard/DashboardLayout.tsx` (existing layout — `<Outlet>` placement)
+8. `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx:55-58` (invokeDesktop helper)
+
 ---
 
 ## File Structure
@@ -76,7 +90,7 @@ Expected: clean compile with warnings only. (Skipping full `cargo test` here for
 | `src-tauri/src/scheduler/loops/monitor.rs` | Add productive-session detection helper + counter increment + event emission. |
 | `crates/oneshim-web/src/frontend/src/pages/setting-tabs/GeneralTab.tsx` | Add Startup section (between Theme and Language) with toggle, capabilities-aware disabled state, error banner. |
 | `crates/oneshim-web/src/frontend/src/pages/setting-tabs/GeneralTab.test.tsx` | Extend (or create) Vitest coverage for Startup section. |
-| `crates/oneshim-web/src/frontend/src/pages/Dashboard.tsx` | Render `<AutostartOnboardingPromptHost />` at top level. |
+| `crates/oneshim-web/frontend/src/pages/dashboard/DashboardLayout.tsx` | Render `<AutostartOnboardingPromptHost />` ABOVE `<Outlet>` (per Addendum A5; `Dashboard.tsx` does NOT exist). |
 | `crates/oneshim-web/src/frontend/src/i18n/en.json` | Add `settings.general.autostart.*` + `onboarding.autostart.*` keys. |
 | `crates/oneshim-web/src/frontend/src/i18n/ko.json` | Korean translations of same keys. |
 | `crates/oneshim-core/src/error_codes/autostart.rs` | NEW — `AutostartCode` enum via `define_code_enum!` macro per ADR-019 (3 variants: EnableFailed, DisableFailed, QueryFailed) |
@@ -367,17 +381,16 @@ git commit -m "test(autostart): AutostartConfig serde + should_prompt + idempote
 
 **Estimate:** 2.5h | **Spec ref:** §5.1, §10.1 commit 4 | **Files:** Create `src-tauri/src/commands/autostart.rs`, modify `src-tauri/src/commands/mod.rs`, `src-tauri/src/main.rs`, append to `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt`, `crates/oneshim-web/frontend/src/i18n/wire-errors.{en,ko}.json`
 
-- [ ] **Step 4.1: Register wire codes (PRE-REQUISITE — CI fails without this)**
+- [ ] **Step 4.1: Register wire codes via `define_code_enum!` macro**
 
-Append to `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt`:
-
-```
-autostart.enable_failed
-autostart.disable_failed
-autostart.query_failed
-```
-
-(Maintain alphabetical order if the file uses one — check by reading the existing file first. If alphabetical, insert at the proper position.)
+> ⚠ **SUPERSEDED — see Addendum A1 + A2 (bottom of file)** for the correct enum-based procedure. Wire codes are auto-generated from `error_codes::all_codes()` aggregator (per ADR-019); direct text append to expected.txt without enum entry will fail the snapshot test.
+>
+> **Summary of correct procedure (full code in Addendum A1)**:
+> 1. Create `crates/oneshim-core/src/error_codes/autostart.rs` with `define_code_enum!` macro defining `AutostartCode` enum (3 variants: EnableFailed, DisableFailed, QueryFailed)
+> 2. Register `pub mod autostart;` + `pub use autostart::AutostartCode;` in `error_codes/mod.rs`
+> 3. Add `for c in AutostartCode::all() { codes.push(c.as_str()); }` to `all_codes()` aggregator (insert AFTER the `AudioCode` block at lines 60-62)
+> 4. Insert 3 codes in `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` AFTER `audio.stt_failed` and BEFORE `auth.failed` (alphabetical: `autostart.disable_failed` → `autostart.enable_failed` → `autostart.query_failed`)
+> 5. Run `cargo test -p oneshim-core --test wire_contract_snapshot` to verify GREEN
 
 - [ ] **Step 4.2: Add wire-error translations (en)**
 
@@ -484,6 +497,12 @@ Also remove the top-level `#![allow(dead_code)]` line (line 4) since the public 
 
 - [ ] **Step 4.6: Create the IPC commands file**
 
+> ⚠ **SUPERSEDED — see Addendum A2 + A5** for the corrected version. Differences from below:
+> 1. Use `AutostartCode::EnableFailed.as_str()` (etc.) from the enum created in Step 4.1, NOT string literals
+> 2. Add a 6th command `get_autostart_config` (per A5) — required by Task 12 frontend
+>
+> Use the corrected version from Addendum A2 + A5. The body below is RETAINED ONLY for reference of the surrounding structure (use statements, command list); the inner `IpcError::new(...)` calls and the missing `get_autostart_config` command must be updated per addendum.
+
 Create `src-tauri/src/commands/autostart.rs`:
 
 ```rust
@@ -497,46 +516,35 @@ Create `src-tauri/src/commands/autostart.rs`:
 use tauri::command;
 
 use oneshim_core::config::AutostartPromptState;
+use oneshim_core::error_codes::AutostartCode;
 
 use crate::autostart::{self, AutostartCapabilities};
 use crate::ipc_error::IpcError;
 use crate::runtime_state::ConfigRuntimeState;
 
-/// Enable autostart at OS level.
-///
-/// On failure, returns Err. UI must re-fetch OS state to verify.
-/// Does NOT write to AppConfig — OS state is sole source of truth.
 #[command]
 pub async fn enable_autostart() -> Result<(), IpcError> {
     autostart::enable_autostart()
-        .map_err(|e| IpcError::new("autostart.enable_failed", format!("autostart enable failed: {e}")))
+        .map_err(|e| IpcError::new(AutostartCode::EnableFailed.as_str(), format!("autostart enable failed: {e}")))
 }
 
 #[command]
 pub async fn disable_autostart() -> Result<(), IpcError> {
     autostart::disable_autostart()
-        .map_err(|e| IpcError::new("autostart.disable_failed", format!("autostart disable failed: {e}")))
+        .map_err(|e| IpcError::new(AutostartCode::DisableFailed.as_str(), format!("autostart disable failed: {e}")))
 }
 
-/// Read autostart state from OS (source of truth).
 #[command]
 pub async fn is_autostart_enabled() -> Result<bool, IpcError> {
     autostart::is_autostart_enabled()
-        .map_err(|e| IpcError::new("autostart.query_failed", format!("autostart query failed: {e}")))
+        .map_err(|e| IpcError::new(AutostartCode::QueryFailed.as_str(), format!("autostart query failed: {e}")))
 }
 
-/// PR-B1 skeleton — always returns supported=true for non-Linux,
-/// supported=true for Linux without env detection. PR-B2 adds real detection.
-///
-/// Frontend code path is identical between B1 and B2 — UI gating works in both.
 #[command]
 pub async fn autostart_capabilities() -> Result<AutostartCapabilities, IpcError> {
     Ok(autostart::detect_capabilities())
 }
 
-/// Update onboarding prompt state.
-///
-/// Called by frontend after user answers the prompt (Enable/NotNow/DontAsk).
 #[command]
 pub async fn mark_autostart_prompt_state(
     new_state: AutostartPromptState,
@@ -551,7 +559,18 @@ pub async fn mark_autostart_prompt_state(
         .map(|_| ())
         .map_err(IpcError::from)
 }
+
+/// Get autostart-only config (smaller payload than full AppConfig).
+/// Required by AutostartOnboardingPromptHost frontend component (Task 12).
+#[command]
+pub async fn get_autostart_config(
+    state: tauri::State<'_, ConfigRuntimeState>,
+) -> Result<oneshim_core::config::AutostartConfig, IpcError> {
+    Ok(state.config_manager().get().autostart)
+}
 ```
+
+Note: `ConfigManager::get(&self) -> AppConfig` returns owned (verified `config_manager.rs:97`), so `state.config_manager().get().autostart` already extracts the owned `AutostartConfig` field — no `.clone()` needed.
 
 - [ ] **Step 4.7: Register the commands module**
 
@@ -642,7 +661,13 @@ mod tests {
 }
 ```
 
-- [ ] **Step 5.2: Create integration test**
+- [ ] **Step 5.2: Integration test architecture (SUPERSEDED)**
+
+> ⚠ **SUPERSEDED — see Addendum A3.** Do NOT create `src-tauri/tests/autostart_ipc_integration.rs`. `src-tauri/` has only `[[bin]]`, no `[lib]` — tests under `tests/` cannot import from binary-only crate.
+>
+> **Replacement**: Move the integration test logic into `src-tauri/src/commands/autostart.rs`'s existing `#[cfg(test)] mod tests` block (added in Step 5.1). Rename `enable_autostart_calls_underlying` to `enable_then_disable_round_trip` and mark with `#[ignore = "modifies OS state — run manually"]`.
+>
+> The body below is RETAINED for reference of the test logic, but should be inlined as a `#[cfg(test)]` test in `commands/autostart.rs`, NOT created as a separate file.
 
 Create `src-tauri/tests/autostart_ipc_integration.rs`:
 
@@ -1249,7 +1274,22 @@ Open `src-tauri/src/scheduler/loops/mod.rs` and add (alphabetically):
 pub mod autostart_helper;
 ```
 
-- [ ] **Step 10.4: Wire into monitor.rs**
+- [ ] **Step 10.4: Wire into monitor.rs (SUPERSEDED — see Addendum A4)**
+
+> ⚠ **SUPERSEDED — see Addendum A4.** The body below references a fictional `SystemMonitorLoop` struct + assumes existing focus-block detection. Reality:
+> - `monitor.rs:26-90` has NO `SystemMonitorLoop` struct — it's a free `spawn_monitor_loop` function with closure-captured locals
+> - NO existing focus-block completion detection (focus_metrics is daily aggregate per spec Q4)
+> - `spawn_monitor_loop` does NOT currently take `AppHandle` — must be plumbed through
+>
+> **Concrete procedure (full detail in Addendum A4)**:
+> 1. Read `monitor.rs` end-to-end first
+> 2. Add `app_handle: Option<tauri::AppHandle>` to `spawn_monitor_loop` signature; propagate from `scheduler/mod.rs:run_scheduler_loops` caller
+> 3. In the spawn closure, add stack-captured locals `current_focus_block_start: Option<Instant>` and `current_focus_block_id: Option<Uuid>`
+> 4. After `handle_idle_tick(...)` (line ~101), compare new vs `prev_idle_secs`:
+>    - **Idle → Active transition**: set both Options to fresh values
+>    - **Active → Idle transition**: compute duration, call `autostart_helper::handle_focus_block_completed(...)` (only if `app_handle.is_some()` — guard the unwrap), reset Options to None
+>
+> The body below is RETAINED for reference of the helper invocation pattern only.
 
 In `src-tauri/src/scheduler/loops/monitor.rs`, find where focus-block completion is detected (look for existing focus_metrics writes or session-end events). Add a call to the helper:
 
@@ -1320,7 +1360,13 @@ git commit -m "feat(autostart): productive-session detection + Rust-side counter
 
 **Estimate:** 1.5h | **Spec ref:** §9.1, §10.1 commit 11 | **Files:** Append to `src-tauri/src/scheduler/loops/autostart_helper.rs`
 
-- [ ] **Step 11.1: Write tests**
+- [ ] **Step 11.1: Write tests (SUPERSEDED — see Addendum A4 closure-test pattern)**
+
+> ⚠ **SUPERSEDED — see Addendum A4 (`Task 11 testing approach`).** Do NOT use `tauri::test::mock_app()` — Tauri 2's `test` feature is not enabled in workspace and adding it brings runtime overhead + generic-runtime mismatches.
+>
+> **Replacement**: Refactor `handle_focus_block_completed<R: Runtime>` (created in Step 10.2) to delegate to `handle_focus_block_completed_inner<F: FnOnce()>` which takes a closure for event emission. Test the inner function with `Cell<bool>` capturing whether the closure was called. Eliminates the Tauri test runtime dependency entirely.
+>
+> The body below is RETAINED for reference of the test scenarios (5 tests) — those scenario names + assertions remain valid, but adapt to the closure-based inner function per A4.
 
 Append to `src-tauri/src/scheduler/loops/autostart_helper.rs`:
 
@@ -1557,7 +1603,13 @@ export function AutostartOnboardingPrompt({ config, onClose }: Props) {
 }
 ```
 
-- [ ] **Step 12.4: Create AutostartOnboardingPromptHost.tsx**
+- [ ] **Step 12.4: Create AutostartOnboardingPromptHost.tsx (SUPERSEDED — see Addendum A5 + A6)**
+
+> ⚠ **SUPERSEDED — see Addendum A5 + A6.** Two changes:
+> 1. **A5**: Use `get_autostart_config` IPC (created in Task 4 per A2) NOT `get_app_config`. Smaller scoped payload. The IPC returns `AutostartConfig` directly (no nested unwrap of full AppConfig).
+> 2. **A6**: Use dynamic `await import('@tauri-apps/api/core')` and `await import('@tauri-apps/api/event')` for graceful degradation outside Tauri (matches existing `GeneralTab.tsx:55-58` pattern). Either reuse `invokeDesktop` helper or replicate inline.
+>
+> The body below is RETAINED for reference of component structure + state machine; update IPC name + import pattern per addendum.
 
 Create `crates/oneshim-web/frontend/src/components/AutostartOnboardingPromptHost.tsx`:
 
@@ -1659,18 +1711,23 @@ pub async fn get_app_config(
 ```
 And register in `main.rs` invoke_handler.
 
-- [ ] **Step 12.5: Render the host in Dashboard.tsx**
+- [ ] **Step 12.5: Render the host in DashboardLayout.tsx (SUPERSEDED — see Addendum A5)**
 
-Open `crates/oneshim-web/frontend/src/pages/Dashboard.tsx`. Add import:
+> ⚠ **SUPERSEDED — see Addendum A5.** `Dashboard.tsx` does NOT exist. Actual host = `crates/oneshim-web/frontend/src/pages/dashboard/DashboardLayout.tsx`. Render `<AutostartOnboardingPromptHost />` ABOVE the `<Outlet>` (line ~117) so it's visible across all dashboard sub-routes (Insights/Monitoring/Overview).
+>
+> Per memory `feedback_layout_outlet_empty_state`: do NOT early-return above `<Outlet>`. The PromptHost component returns `null` when not eligible, so unconditional rendering is safe.
+
+Open `crates/oneshim-web/frontend/src/pages/dashboard/DashboardLayout.tsx`. Add import:
 
 ```tsx
-import { AutostartOnboardingPromptHost } from '../components/AutostartOnboardingPromptHost'
+import { AutostartOnboardingPromptHost } from '../../components/AutostartOnboardingPromptHost'
 ```
 
-Inside the Dashboard component's return JSX, add at top level (before other content):
+Inside the DashboardLayout component's return JSX, add ABOVE the existing `<Outlet>`:
 
 ```tsx
 <AutostartOnboardingPromptHost />
+<Outlet context={ctx} />
 ```
 
 - [ ] **Step 12.6: Verify lint + types**
