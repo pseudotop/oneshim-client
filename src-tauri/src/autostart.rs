@@ -1,6 +1,7 @@
 //! - macOS: `~/Library/LaunchAgents/com.oneshim.agent.plist`
 //! - Linux: `~/.config/systemd/user/oneshim.service` (systemd) or `~/.config/autostart/oneshim.desktop` (XDG fallback)
 
+#[cfg(target_os = "macos")]
 const APP_LABEL: &str = "com.oneshim.agent";
 
 pub fn enable_autostart() -> Result<(), String> {
