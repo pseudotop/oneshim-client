@@ -17,11 +17,11 @@
 
 **Worktree:** `/Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/Documents/vscode/__INDIVISUAL__/oneshim/client-rust/.claude/worktrees/timewindow-primitive` on branch `refactor/timewindow-primitive`
 
-**Total estimate:** ~28h across 11 tasks (~3.5-4 working days). Revised upward from v1 (was ~21h/12 tasks) to absorb Phase 2 iter-1 C6/C7 scope expansion (port trait + maintenance.rs caller enumeration).
+**Total estimate:** ~30h across 11 tasks (~4 working days). Revised again at v9 (was ~28h) to absorb iter-9 NEW-C1 service-layer migration (+2h for 7 service files + tests).
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v8 (Phase 2 iter-8 cleanup — addresses iter-7 verifier's flagged "minor weakness" in Step 4C.5: missing locals-binding prescription for work_sessions.rs `get_daily_active_secs`. v8 adds PRESERVE-BODY diff PLUS surfaces a meaningful semantic finding: this query uses half-open `started_at < ?2` (NOT closed-closed like other helpers). Per NG6 the `<` operator must be preserved verbatim. v8 documents the half-open boundary so implementer doesn't accidentally "fix" it to `<=`). v7 — addresses iter-6 verification: 1 NEW Critical NEW-C1 — Step 4C.1 calibration_store_impl.rs had same class of synthetic-drift errors as Step 4C.4. v7 rewrites Step 4C.1 with PRESERVE-BODY pattern: actual table is `calibration_log` (not `calibration`), column is `is_noise` (not `noise`), uses fallible-lock + `CoreError::Storage { code, message }` mapping, get_entries + list_segment_time_ranges use async `with_conn` pattern with `from_str`/`to_str` String shadowing, list_segment has table_exists guard for V9 migration). v6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
+**Plan version:** v9 (Phase 2 iter-9 NEW Critical fix — plan v1-v8 missed the SERVICE LAYER migration. Reality: handlers thin-delegate via `FramesQueryService::get_frames(&params)` etc.; services internally call `params.from_datetime()` / `params.to_datetime()` (silently swallow parse errors with hardcoded 24h fallback). Plan Task 6 example showed handler going direct to storage — architecturally wrong. v9 updates Task 6 to migrate at SERVICE layer (services internally convert via `to_time_window()?` for proper error propagation). 7 service files + tests added to scope. Old `from_datetime()` / `to_datetime()` helpers documented as legacy / non-validating). v8 cleanup — addresses iter-7 verifier's flagged "minor weakness" in Step 4C.5: missing locals-binding prescription for work_sessions.rs `get_daily_active_secs`. v8 adds PRESERVE-BODY diff PLUS surfaces a meaningful semantic finding: this query uses half-open `started_at < ?2` (NOT closed-closed like other helpers). Per NG6 the `<` operator must be preserved verbatim. v8 documents the half-open boundary so implementer doesn't accidentally "fix" it to `<=`). v7 — addresses iter-6 verification: 1 NEW Critical NEW-C1 — Step 4C.1 calibration_store_impl.rs had same class of synthetic-drift errors as Step 4C.4. v7 rewrites Step 4C.1 with PRESERVE-BODY pattern: actual table is `calibration_log` (not `calibration`), column is `is_noise` (not `noise`), uses fallible-lock + `CoreError::Storage { code, message }` mapping, get_entries + list_segment_time_ranges use async `with_conn` pattern with `from_str`/`to_str` String shadowing, list_segment has table_exists guard for V9 migration). v6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
 
 ---
 
@@ -1886,95 +1886,155 @@ git commit -m "test(storage): boundary regression tests for migrated SQL helpers
 
 ---
 
-## Task 6: REST Handler Migration (frames/events/metrics/focus/idle/processes)
+## Task 6: REST Handler + Service Layer Migration (Phase 2 iter-9 SCOPE EXPANSION)
 
-**Estimate:** 3h | **Spec ref:** §5.5 + Phase 2 iter-1 I3 | **Files:** `crates/oneshim-web/src/handlers/{frames,events,metrics,focus,idle,processes}.rs`
+**Estimate:** 5h (was 3h pre-iter-9 — +2h for service-layer migration) | **Spec ref:** §5.5 + Phase 2 iter-1 I3 + iter-9 NEW-C1 | **Files:** `crates/oneshim-web/src/handlers/{frames,events,metrics,focus,idle,processes}.rs` + `crates/oneshim-web/src/services/{frames,events,metrics,focus,idle,processes,timeline}_service.rs` + their `#[cfg(test)] mod tests` blocks
 
-> **Phase 2 iter-1 I3**: spec §4.1 listed 8 handlers (`frames`/`events`/`metrics`/`focus`/`sessions`/`interruptions`/`data`/`reports`). Reality from `grep -rn "TimeRangeQuery" crates/oneshim-web/src/handlers/`: only 6 handlers use `TimeRangeQuery` directly (`frames`, `events`, `metrics`, `focus`, `idle`, `processes`). `sessions.rs` and `interruptions.rs` use typed query structs, not `TimeRangeQuery`. `data.rs` + `reports.rs` are covered in Task 7. Plan limited to actual usage.
+> **Phase 2 iter-1 I3**: 6 handlers use `TimeRangeQuery` directly.
+>
+> **Phase 2 iter-9 NEW-C1 — ARCHITECTURAL CORRECTION**: Reality is that **handlers thin-delegate to service layer** (`FramesQueryService::get_frames(&params)?` etc.). v8 example showing handler going direct to storage was WRONG. Migration must happen at the **service layer**, not handler layer.
+>
+> **Existing helpers behavior** (verified `crates/oneshim-api-contracts/src/common.rs:28-50`):
+> - `from_datetime()`: silently parses `self.from` or returns `Utc::now() - Duration::hours(24)` (HARDCODED 24h fallback)
+> - `to_datetime()`: silently parses `self.to` or returns `Utc::now()`
+> - **Both swallow parse errors** — invalid timestamps fall back to defaults, return 200 OK with default-window data
+>
+> **New behavior after migration** via `to_time_window(default_lookback)`:
+> - Returns `Result<TimeWindow, TimeWindowError>` — propagates parse errors as 400 BadRequest
+> - Domain-specific `default_lookback` parameter (frames=7d, focus=30d, etc.)
+> - **THIS IS A BEHAVIOR CHANGE**: invalid timestamps now → 400 (was 200 with default window). User-facing API contract becomes stricter / more correct.
 
-- [ ] **Step 6.0: Verify the actual handler list**
+- [ ] **Step 6.0: Verify ACTUAL caller scope (handlers + services)**
 
 ```bash
+# Handler files using TimeRangeQuery
 grep -rln "TimeRangeQuery" crates/oneshim-web/src/handlers/
+
+# Service files using from_datetime/to_datetime helpers
+grep -rln "\.from_datetime()\|\.to_datetime()" crates/oneshim-web/src/services/
 ```
-Expected: 6 files. **If the grep finds additional files** (e.g., new handlers added since plan write): expand scope inline and migrate each before commit.
 
-- [ ] **Step 6.1: Migrate frames.rs handler**
+Expected (verified at plan-write time):
+- 6 handler files: `frames`, `events`, `metrics`, `focus`, `idle`, `processes` (sessions/interruptions don't use TimeRangeQuery directly)
+- 7 service files: `frames_service`, `focus_service`, `idle_service`, `metrics_service`, `events_service`, `processes_service`, `timeline_service`
 
-Open `crates/oneshim-web/src/handlers/frames.rs`. Find handler using `TimeRangeQuery::with_defaults`:
+The handler layer is THIN — most just call `ServiceName::method(&params)?`. Migration happens in services.
+
+- [ ] **Step 6.1: Update FramesQueryService to use to_time_window adapter (ARCHITECTURE-CORRECT pattern)**
+
+Open `crates/oneshim-web/src/services/frames_service.rs`. Find method using `params.from_datetime()` + `params.to_datetime()`:
 
 ```rust
-pub async fn list_frames(
-    Query(q): Query<TimeRangeQuery>,
-    State(ctx): State<...>,
-) -> Result<Json<Vec<FrameDto>>, ApiError> {
-    let q = q.with_defaults(7);
-    let from = q.from.unwrap();
-    let to = q.to.unwrap();
-    let frames = ctx.storage.get_frames(from.parse()?, to.parse()?, 100)?;
-    Ok(Json(frames))
+pub fn get_frames(&self, params: &TimeRangeQuery) -> Result<PaginatedResponse<FrameResponse>, ApiError> {
+    let from = params.from_datetime();
+    let to = params.to_datetime();
+    let limit = params.limit_or_default();
+    let offset = params.offset_or_default();
+    // ... uses from, to, limit, offset
 }
 ```
 
 Change to:
 ```rust
 use chrono::Duration;
+use oneshim_core::types::TimeWindow;
 
-pub async fn list_frames(
-    Query(q): Query<TimeRangeQuery>,
-    State(ctx): State<...>,
-) -> Result<Json<Vec<FrameDto>>, ApiError> {
-    let window = q.to_time_window(Duration::days(7))?;
-    let frames = ctx.storage.get_frames(&window, q.limit.unwrap_or(100))?;
-    Ok(Json(frames))
+pub fn get_frames(&self, params: &TimeRangeQuery) -> Result<PaginatedResponse<FrameResponse>, ApiError> {
+    let window = params.to_time_window(Duration::days(7))
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let limit = params.limit_or_default();
+    let offset = params.offset_or_default();
+    // ... pass &window to storage methods (Task 4 already updated their signatures)
 }
 ```
 
-The `?` operator works through this chain (all wired in Task 1):
-- `to_time_window` returns `Result<TimeWindow, TimeWindowError>`
-- `From<TimeWindowError> for CoreError` (manual impl in Task 1.8)
-- `From<CoreError> for ApiError` with explicit `TimeWindow → BadRequest` arm (Task 1.9)
+**No handler change needed** — handler still calls `FramesQueryService::new(context).get_frames(&params)?`. The handler-level `?` propagates `ApiError::BadRequest` → HTTP 400 automatically.
 
-Result: invalid timestamps → HTTP 400 with parse error message. Inverted bounds → HTTP 400 with "start ... must be <= end ..." message.
+- [ ] **Step 6.2: Update EventsQueryService**
 
-- [ ] **Step 6.2: Migrate events.rs**
+Same pattern. Default lookback `Duration::days(7)`. Note `count_events_in_range` on storage (Task 4) now takes `&TimeWindow` — caller passes `&window` directly.
 
-Same pattern. Use `Duration::days(7)`.
+- [ ] **Step 6.3: Update MetricsService**
 
-- [ ] **Step 6.3: Migrate metrics.rs**
+Same pattern. `Duration::days(7)`.
 
-Same pattern. Use `Duration::days(7)`.
+- [ ] **Step 6.4: Update FocusQueryService (4 helper-call sites — verify ALL migrated)**
 
-- [ ] **Step 6.4: Migrate focus.rs**
+Open `crates/oneshim-web/src/services/focus_service.rs`. **Has 4 `from_datetime()` / `to_datetime()` calls** (lines 53-54, 68-69 per audit). Each method:
+```bash
+grep -n "from_datetime\|to_datetime\|to_time_window\|fn " crates/oneshim-web/src/services/focus_service.rs
+```
 
-Use `Duration::days(30)` (focus_metrics is daily aggregate, longer default lookback).
+Migrate each method's usage. Use `Duration::days(30)` (focus_metrics is daily aggregate).
 
-- [ ] **Step 6.5: Migrate idle.rs (handler only — IdlePeriod model NOT migrated per NG7)**
+- [ ] **Step 6.5: Update IdleService (handler-only migration, NG7 — IdlePeriod model NOT migrated)**
 
-Same pattern for handler. The model `IdlePeriod` retains its current `start_time + Option<end_time>` shape (per NG7 — open-ended ongoing idle period incompatible with TimeWindow's required `end`).
+Service layer migrates the query window construction. The `IdlePeriod` model fields stay untouched (per NG7 — ongoing idle requires `Option<end_time>`).
 
-- [ ] **Step 6.6: Migrate processes.rs**
+- [ ] **Step 6.6: Update ProcessesService**
 
-Same pattern. Use `Duration::days(7)`.
+Same pattern.
 
-- [ ] **Step 6.7: Verify compile**
+- [ ] **Step 6.7: Update TimelineService**
+
+Open `crates/oneshim-web/src/services/timeline_service.rs`. Apply same pattern. Default lookback context-dependent (likely `Duration::days(7)`).
+
+- [ ] **Step 6.8: Decision — what to do with from_datetime/to_datetime helpers?**
+
+Two options:
+
+**(a) DEPRECATE in this PR**: Add `#[deprecated(note = "Use to_time_window for validating conversion")]` to `from_datetime` + `to_datetime`. Allows transitional period — existing test callers + handlers/mod.rs:80-style callers continue to work but emit warnings. Removed in follow-up cleanup PR.
+
+**(b) KEEP as-is**: Helpers remain non-deprecated; they're useful for non-validating contexts (test fixtures, demos). New code uses `to_time_window`; old code can migrate gradually.
+
+**Recommend (b)** — surgical scope. Don't expand this PR with deprecation churn. Document in PHASE-HISTORY that `to_time_window` is the new preferred path for validating conversion; old helpers retained for non-validating use.
+
+- [ ] **Step 6.9: Verify compile + service tests**
 
 ```bash
 cargo check -p oneshim-web 2>&1 | tail -10
+cargo test -p oneshim-web --lib services 2>&1 | tail -20
 ```
 
-- [ ] **Step 6.8: Run handler tests**
+- [ ] **Step 6.10: Commit**
 
 ```bash
-cargo test -p oneshim-web --lib handlers 2>&1 | tail -15
+git add crates/oneshim-web/src/services/{frames,events,metrics,focus,idle,processes,timeline}_service.rs
+git commit -m "$(cat <<'EOF'
+refactor(web-services): migrate 7 service-layer files to to_time_window adapter
+
+Per Phase 2 iter-9 NEW-C1 (architectural correction). Plan v1-v8 example showed
+handler going direct to storage — wrong. Reality: handlers thin-delegate to
+service layer. Migration happens at service layer.
+
+Affected services (7 files, ~16 helper-call sites):
+- frames_service::get_frames (2 sites)
+- focus_service get_work_sessions + get_interruptions (4 sites)
+- idle_service (2 sites)
+- metrics_service (2 sites)
+- events_service (2 sites)
+- processes_service (2 sites)
+- timeline_service (2 sites)
+
+Each service replaces params.from_datetime() + params.to_datetime() with
+let window = params.to_time_window(default_lookback).map_err(BadRequest)?
+then passes &window to storage methods (Task 4 already updated their sigs).
+
+Behavior change: invalid timestamps now propagate as HTTP 400 BadRequest
+(previously fell through to hardcoded 24h fallback in from_datetime() and
+returned 200 OK with default-window data). This is a strict API contract
+improvement — documented in PHASE-HISTORY.
+
+from_datetime() / to_datetime() helpers retained (non-deprecated) for
+non-validating uses (test fixtures, demos, internal tooling). New code uses
+to_time_window for validating conversion.
+EOF
+)"
 ```
 
-- [ ] **Step 6.9: Commit**
+- [ ] **Step 6.11: Handler-layer note (no changes needed)**
 
-```bash
-git add crates/oneshim-web/src/handlers/{frames,events,metrics,focus,idle,processes}.rs
-git commit -m "refactor(web-handlers): migrate 6 REST handlers to TimeRangeQuery::to_time_window adapter"
-```
+Handlers `crates/oneshim-web/src/handlers/{frames,events,metrics,focus,idle,processes}.rs` are thin pass-through to services. No handler changes required for this migration — error propagation flows through service `?` chain.
 
 ---
 
@@ -2628,6 +2688,12 @@ PR description should summarize:
 - Q-8 baseline count: PF3 captures actual count at impl time (NOT trusted from spec)
 - delete_data_in_range 7+ params: only `from`/`to` migrated; preserve all bool flags (Phase 2 iter-1 C7)
 - Subagent-driven implementation may need to grep for additional callers if `cargo check` fails after Task 4D — expand inline
+
+### 5f. Phase 2 iter-9 findings disposition (v9 architectural correction)
+
+| Severity | ID | Disposition |
+|----------|-----|-------------|
+| Critical | NEW-C1 — Service layer migration missing | ✅ Task 6 RENAMED to "REST Handler + Service Layer Migration" + completely rewritten with Steps 6.1-6.11. Audits 7 service files (frames/focus/idle/metrics/events/processes/timeline_service) using `from_datetime()`/`to_datetime()` helpers (silent error swallowing + hardcoded 24h fallback). Migration moves to service layer (handlers stay thin pass-through). Documents BEHAVIOR CHANGE: invalid timestamps now → HTTP 400 (was 200 with default-window data). Decision documented: keep `from_datetime()`/`to_datetime()` non-deprecated for non-validating uses. Estimate +2h (28h → 30h). |
 
 ### 5e. Phase 2 iter-6 findings disposition (v7 cleanup)
 
