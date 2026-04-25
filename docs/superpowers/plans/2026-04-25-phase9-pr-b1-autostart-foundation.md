@@ -79,9 +79,11 @@ Expected: clean compile with warnings only. (Skipping full `cargo test` here for
 | `crates/oneshim-web/src/frontend/src/pages/Dashboard.tsx` | Render `<AutostartOnboardingPromptHost />` at top level. |
 | `crates/oneshim-web/src/frontend/src/i18n/en.json` | Add `settings.general.autostart.*` + `onboarding.autostart.*` keys. |
 | `crates/oneshim-web/src/frontend/src/i18n/ko.json` | Korean translations of same keys. |
-| `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` | Append `autostart.enable_failed`, `autostart.disable_failed`, `autostart.query_failed`. |
-| `crates/oneshim-web/frontend/src/i18n/wire-errors.en.json` | Add 3 new wire error translation entries. |
-| `crates/oneshim-web/frontend/src/i18n/wire-errors.ko.json` | Korean translations of 3 wire errors. |
+| `crates/oneshim-core/src/error_codes/autostart.rs` | NEW — `AutostartCode` enum via `define_code_enum!` macro per ADR-019 (3 variants: EnableFailed, DisableFailed, QueryFailed) |
+| `crates/oneshim-core/src/error_codes/mod.rs` | Register `pub mod autostart;` and add `AutostartCode` to `all_codes()` aggregator |
+| `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` | Insert `autostart.disable_failed`, `autostart.enable_failed`, `autostart.query_failed` in alphabetical position (between `auth.failed` and `config.invalid` — actually they sort BEFORE `audio.*`) |
+| `crates/oneshim-web/frontend/src/i18n/wire-errors.en.json` | Add 3 new wire error translation entries (alphabetical position) |
+| `crates/oneshim-web/frontend/src/i18n/wire-errors.ko.json` | Korean translations of 3 wire errors |
 | `docs/STATUS.md` | Update test counts + autostart line in feature matrix. |
 | `docs/PHASE-HISTORY.md` | Add PR-B1 entry. |
 
@@ -786,7 +788,7 @@ fn second_instance_exits_cleanly_within_2s() {
     // and exit without hanging or panicking.
 
     let bin_path = std::env::var("ONESHIM_BIN")
-        .unwrap_or_else(|_| "target/release/oneshim-app".to_string());
+        .unwrap_or_else(|_| "target/release/oneshim".to_string());
 
     let start = Instant::now();
     let mut child = Command::new(&bin_path)
@@ -843,11 +845,11 @@ git commit -m "test(autostart): single-instance integration smoke test"
 
 ## Task 8: GeneralTab Startup Section + i18n
 
-**Estimate:** 2.5h | **Spec ref:** §5.4, §5.6, §10.1 commit 8 | **Files:** Modify `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx`, `crates/oneshim-web/frontend/src/i18n/en.json`, `crates/oneshim-web/frontend/src/i18n/ko.json`
+**Estimate:** 2.5h | **Spec ref:** §5.4, §5.6, §10.1 commit 8 | **Files:** Modify `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx`, `crates/oneshim-web/frontend/src/i18n/locales/en.json`, `crates/oneshim-web/frontend/src/i18n/locales/ko.json`
 
 - [ ] **Step 8.1: Add i18n keys (en)**
 
-Open `crates/oneshim-web/frontend/src/i18n/en.json`. Find the `settings.general` section. Add `autostart` subsection:
+Open `crates/oneshim-web/frontend/src/i18n/locales/en.json`. Find the `settings.general` section. Add `autostart` subsection:
 
 ```json
 {
@@ -874,7 +876,7 @@ Open `crates/oneshim-web/frontend/src/i18n/en.json`. Find the `settings.general`
 
 - [ ] **Step 8.2: Add i18n keys (ko)**
 
-Same in `crates/oneshim-web/frontend/src/i18n/ko.json`:
+Same in `crates/oneshim-web/frontend/src/i18n/locales/ko.json`:
 
 ```json
 {
@@ -1003,8 +1005,8 @@ Expected: no errors. Fix any reported issues.
 
 ```bash
 cd /Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/Documents/vscode/__INDIVISUAL__/oneshim/client-rust/.claude/worktrees/phase9-autostart-foundation
-git add crates/oneshim-web/frontend/src/i18n/en.json \
-         crates/oneshim-web/frontend/src/i18n/ko.json \
+git add crates/oneshim-web/frontend/src/i18n/locales/en.json \
+         crates/oneshim-web/frontend/src/i18n/locales/ko.json \
          crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx
 git commit -m "feat(autostart): GeneralTab Startup section + capabilities-aware UI + i18n"
 ```
@@ -1023,7 +1025,7 @@ Open or create `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.te
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { I18nextProvider } from 'react-i18next'
-import i18n from '../../i18n/i18n'
+import i18n from '../../i18n'
 import { GeneralTab } from './GeneralTab'
 
 // Mock @tauri-apps/api/core invoke
@@ -1427,7 +1429,7 @@ git commit -m "test(autostart): productive-session detection unit tests (idempot
 
 - [ ] **Step 12.1: Add onboarding i18n keys (en)**
 
-Append to `crates/oneshim-web/frontend/src/i18n/en.json` (under existing root or merge into `onboarding`):
+Append to `crates/oneshim-web/frontend/src/i18n/locales/en.json` (under existing root or merge into `onboarding`):
 
 ```json
 {
@@ -1445,7 +1447,7 @@ Append to `crates/oneshim-web/frontend/src/i18n/en.json` (under existing root or
 
 - [ ] **Step 12.2: Add onboarding i18n keys (ko)**
 
-Same in `crates/oneshim-web/frontend/src/i18n/ko.json`:
+Same in `crates/oneshim-web/frontend/src/i18n/locales/ko.json`:
 
 ```json
 {
@@ -1686,8 +1688,8 @@ Expected: no errors.
 cd /Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/Documents/vscode/__INDIVISUAL__/oneshim/client-rust/.claude/worktrees/phase9-autostart-foundation
 git add crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.tsx \
          crates/oneshim-web/frontend/src/components/AutostartOnboardingPromptHost.tsx \
-         crates/oneshim-web/frontend/src/i18n/en.json \
-         crates/oneshim-web/frontend/src/i18n/ko.json \
+         crates/oneshim-web/frontend/src/i18n/locales/en.json \
+         crates/oneshim-web/frontend/src/i18n/locales/ko.json \
          crates/oneshim-web/frontend/src/pages/Dashboard.tsx
 # Include any get_app_config IPC additions if needed
 git commit -m "feat(autostart): AutostartOnboardingPrompt + ShowPromptCoordinator + Dashboard integration"
@@ -1707,7 +1709,7 @@ Create `crates/oneshim-web/frontend/src/components/AutostartOnboardingPrompt.tes
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { I18nextProvider } from 'react-i18next'
-import i18n from '../i18n/i18n'
+import i18n from '../i18n'
 import { AutostartOnboardingPrompt } from './AutostartOnboardingPrompt'
 
 const mockInvoke = vi.fn()
@@ -1979,6 +1981,312 @@ gh pr create --title "feat(autostart): Phase 9 PR-B1 cross-platform foundation" 
 - `AutostartCapabilities` fields consistent: `supported`, `unsupported_reason`, `environment`
 - IPC command names consistent: `enable_autostart`, `disable_autostart`, `is_autostart_enabled`, `autostart_capabilities`, `mark_autostart_prompt_state`
 - Wire codes consistent: `autostart.enable_failed`, `autostart.disable_failed`, `autostart.query_failed`
+
+---
+
+## Plan v2 Corrections Addendum (2026-04-25 iter-2 review)
+
+**These corrections SUPERSEDE the corresponding sections above.** Phase 2 iter-2 reviewer found 8 Critical + 8 Important issues in plan v1. Path/binary/Vitest-import fixes are applied inline above via Edit. Larger architectural corrections are below — implementer MUST follow this addendum, not the original task body, for the affected steps.
+
+### A1 — Task 4 Step 4.1: Wire codes via `define_code_enum!` (NOT direct expected.txt append)
+
+**Original step 4.1 instruction is WRONG.** Wire codes are auto-generated from `oneshim_core::error_codes::all_codes()` — `wire_contract_snapshot.expected.txt` is a snapshot reference, NOT the source of truth. Adding to expected.txt without adding to enum will fail the snapshot test.
+
+**Correct procedure**:
+
+1. Create `crates/oneshim-core/src/error_codes/autostart.rs`:
+
+```rust
+//! AutostartCode — Autostart 카테고리 에러 코드. `autostart.*` 접두사.
+
+define_code_enum! {
+    /// Autostart 카테고리 에러 코드.
+    pub enum AutostartCode {
+        /// 자동 시작 활성화 실패.
+        EnableFailed => "autostart.enable_failed",
+        /// 자동 시작 비활성화 실패.
+        DisableFailed => "autostart.disable_failed",
+        /// 자동 시작 상태 조회 실패.
+        QueryFailed => "autostart.query_failed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn as_str_round_trip_unique() {
+        let codes: Vec<&str> = AutostartCode::all().iter().map(|c| c.as_str()).collect();
+        let unique: HashSet<_> = codes.iter().collect();
+        assert_eq!(codes.len(), unique.len());
+    }
+
+    #[test]
+    fn naming_convention() {
+        for c in AutostartCode::all() {
+            let s = c.as_str();
+            assert!(s.chars().all(|ch| ch.is_ascii_lowercase() || ch == '.' || ch == '_'));
+            assert!(s.contains('.'));
+            assert!(s.starts_with("autostart."));
+        }
+    }
+
+    #[test]
+    fn display_matches_as_str() {
+        for c in AutostartCode::all() {
+            assert_eq!(format!("{c}"), c.as_str());
+        }
+    }
+}
+```
+
+2. Register in `crates/oneshim-core/src/error_codes/mod.rs`:
+   - Add `pub mod autostart;` (alphabetical position, after `audio`)
+   - Add `AutostartCode::all().iter().map(|c| c.as_str())` to the `all_codes()` aggregator (find the existing pattern in mod.rs and add a similar branch)
+
+3. Insert the 3 codes in `crates/oneshim-core/tests/wire_contract_snapshot.expected.txt` at the alphabetically correct position. The codes sort as `autostart.disable_failed`, `autostart.enable_failed`, `autostart.query_failed` — these come BEFORE `audio.*` (since 'a-u-t' < 'a-u' is false; actually `audio` < `autostart` since 'd' < 't'), so insert AFTER `audio.stt_failed` and BEFORE `auth.failed`.
+
+4. Run snapshot test:
+```bash
+cargo test -p oneshim-core --test wire_contract_snapshot 2>&1 | tail -10
+```
+Expected: GREEN.
+
+5. THEN proceed with Step 4.2 (translations) using the same code strings.
+
+### A2 — Task 4 Step 4.6: IPC commands use the enum's `.as_str()`
+
+Update IPC command code to import + use the enum:
+
+```rust
+use oneshim_core::error_codes::AutostartCode;
+
+#[command]
+pub async fn enable_autostart() -> Result<(), IpcError> {
+    autostart::enable_autostart()
+        .map_err(|e| IpcError::new(AutostartCode::EnableFailed.as_str(), format!("autostart enable failed: {e}")))
+}
+// ... similarly for disable_autostart and is_autostart_enabled
+```
+
+### A3 — Task 5 Step 5.2: Integration test architecture (C4 fix)
+
+`src-tauri/` has no `lib.rs` — only `[[bin]] name = "oneshim"`. Tests under `tests/` cannot import from a binary-only crate. **DELETE the original Step 5.2** and replace with:
+
+**Move integration test logic into `src-tauri/src/commands/autostart.rs`'s `#[cfg(test)] mod tests` block** (the one already added in Task 5 Step 5.1). The `enable_autostart_calls_underlying` test there already exercises the round-trip; rename to `enable_then_disable_round_trip` and mark with `#[ignore = "modifies OS state — run manually"]`.
+
+The standalone `tests/autostart_ipc_integration.rs` file is NOT created.
+
+(Same architectural constraint applies to Task 7's `single_instance_integration.rs` — but that test legitimately needs to spawn the binary as a subprocess, so it CAN remain in `tests/` since it doesn't `use` any binary-internal types. Keep Task 7 as-is, just confirm binary name `oneshim` per C5 fix already applied.)
+
+### A4 — Task 10 + 11: Generic Runtime + concrete monitor.rs hook + AppHandle plumbing (C6, C7)
+
+**Task 10 Step 10.2** — autostart_helper signature must be generic over Runtime per existing pattern in `src-tauri/src/desktop_permissions.rs`:
+
+```rust
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Runtime};
+use tracing::warn;
+use uuid::Uuid;
+
+use oneshim_core::config::{should_prompt, AutostartConfig};
+use oneshim_core::config_manager::ConfigManager;
+
+const PRODUCTIVE_SESSION_THRESHOLD_SECS: u64 = 25 * 60;
+
+pub fn handle_focus_block_completed<R: Runtime>(
+    config_mgr: &ConfigManager,
+    app_handle: &AppHandle<R>,
+    session_id: Uuid,
+    duration_secs: u64,
+) {
+    if duration_secs < PRODUCTIVE_SESSION_THRESHOLD_SECS {
+        return;
+    }
+    let session_id_str = session_id.to_string();
+    let snapshot = match config_mgr.update_with(|c| {
+        if c.autostart.last_session_id.as_deref() == Some(&session_id_str) {
+            return Ok(());
+        }
+        c.autostart.productive_session_count =
+            c.autostart.productive_session_count.saturating_add(1);
+        c.autostart.last_session_id = Some(session_id_str.clone());
+        Ok(())
+    }) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(err.code = "autostart_counter_increment_failed", "{e}");
+            return;
+        }
+    };
+    if should_prompt(&snapshot.autostart) {
+        if let Err(e) = app_handle.emit("autostart:eligible-for-prompt", ()) {
+            warn!(err.code = "autostart_event_emit_failed", "failed to emit: {e}");
+        }
+    }
+}
+```
+
+**Task 10 Step 10.4** — concrete monitor.rs hook point:
+
+`monitor.rs` does NOT currently track per-block focus completion (focus_metrics table is daily aggregate). The `handle_idle_tick` function (line ~101) is the integration point — it observes idle/active transitions.
+
+Implementer steps:
+1. Read `src-tauri/src/scheduler/loops/monitor.rs` end-to-end first.
+2. Read `src-tauri/src/scheduler/mod.rs:528` for `run_scheduler_loops` signature: `app_handle: Option<tauri::AppHandle>`. AppHandle is already plumbed.
+3. Locate `spawn_monitor_loop` signature in `monitor.rs`. It does NOT currently take `AppHandle`. **Add `app_handle: Option<tauri::AppHandle>` parameter** + propagate from `scheduler/mod.rs::run_scheduler_loops` (caller).
+4. In the spawn closure, add stack-captured state:
+   ```rust
+   let mut current_focus_block_start: Option<std::time::Instant> = None;
+   let mut current_focus_block_id: Option<Uuid> = None;
+   ```
+5. After `handle_idle_tick(...)` returns the new idle state, compare with `prev_idle_secs`:
+   - **Idle → Active transition**: `current_focus_block_start = Some(Instant::now())`; `current_focus_block_id = Some(Uuid::new_v4())`
+   - **Active → Idle transition**: if start exists, compute `duration_secs = start.elapsed().as_secs()`, call `autostart_helper::handle_focus_block_completed(config_mgr, app_handle.as_ref().unwrap(), id, duration_secs)`, then reset both Options to None
+6. The unwrap is safe IF you guard the call with `if app_handle.is_some()`. Otherwise (e.g., in headless tests) skip the call.
+
+**Task 11 testing approach** (C6 fix):
+
+`tauri::test::mock_app` requires the `test` feature which adds runtime overhead. Better approach: **don't test the helper through Tauri at all**. Refactor the helper to take a closure for event emission:
+
+```rust
+pub fn handle_focus_block_completed_inner<F>(
+    config_mgr: &ConfigManager,
+    emit_event: F,
+    session_id: Uuid,
+    duration_secs: u64,
+) where F: FnOnce() {
+    // ... same body, but call emit_event() instead of app_handle.emit(...)
+    if should_prompt(&snapshot.autostart) {
+        emit_event();
+    }
+}
+
+pub fn handle_focus_block_completed<R: Runtime>(
+    config_mgr: &ConfigManager,
+    app_handle: &AppHandle<R>,
+    session_id: Uuid,
+    duration_secs: u64,
+) {
+    handle_focus_block_completed_inner(
+        config_mgr,
+        || {
+            if let Err(e) = app_handle.emit("autostart:eligible-for-prompt", ()) {
+                warn!(err.code = "autostart_event_emit_failed", "{e}");
+            }
+        },
+        session_id,
+        duration_secs,
+    );
+}
+```
+
+Tests target `handle_focus_block_completed_inner` with a `Cell<bool>` capturing the emit call:
+
+```rust
+#[test]
+fn at_25_min_increments_counter() {
+    let (mgr, _tmp) = make_config_mgr();
+    let emitted = std::cell::Cell::new(false);
+    handle_focus_block_completed_inner(
+        &mgr,
+        || emitted.set(true),
+        Uuid::new_v4(),
+        25 * 60,
+    );
+    assert_eq!(mgr.get().autostart.productive_session_count, 1);
+    assert!(emitted.get(), "should emit when eligible");
+}
+```
+
+This eliminates the `tauri::test` dependency entirely.
+
+**`ConfigManager::with_path` constructor**: verify by reading `crates/oneshim-core/src/config_manager.rs`. If `with_path` doesn't exist, the actual constructor for tests is whatever the `new()` fn calls internally. Check existing test patterns in `oneshim-core` — tests likely use `tempfile::TempDir` + `ConfigManager::new()` which uses default path. Adapt as needed.
+
+### A5 — Task 12: Mandatory `get_autostart_config` IPC + Dashboard host = DashboardLayout (C3, C8)
+
+**Task 12 Step 12.4** — make `get_autostart_config` IPC creation REQUIRED, not conditional. Add this code to Task 4 (alongside other autostart commands) — it's logically an autostart command:
+
+```rust
+// Add to src-tauri/src/commands/autostart.rs (alongside existing commands)
+#[command]
+pub async fn get_autostart_config(
+    state: tauri::State<'_, ConfigRuntimeState>,
+) -> Result<oneshim_core::config::AutostartConfig, IpcError> {
+    Ok(state.config_manager().get().autostart.clone())
+}
+```
+
+Register in `main.rs invoke_handler!` alongside the other 5 commands (now 6 total).
+
+Update `AutostartOnboardingPromptHost.tsx` to invoke `get_autostart_config` (NOT `get_app_config`):
+
+```tsx
+const cfg = await invoke<AutostartConfig>('get_autostart_config')
+setConfig(cfg)
+```
+
+This is a smaller payload + clearer scope than fetching the entire AppConfig.
+
+**Task 12 Step 12.5** — Dashboard host location:
+
+Open `crates/oneshim-web/frontend/src/pages/dashboard/DashboardLayout.tsx` (NOT `Dashboard.tsx`). Render `<AutostartOnboardingPromptHost />` at the top of the layout JSX, ABOVE `<Outlet>`, so it appears regardless of which dashboard sub-route is active.
+
+Per Memory `feedback_layout_outlet_empty_state`: do NOT early-return above the Outlet. The PromptHost component returns `null` when not eligible, so it's safe to render unconditionally.
+
+### A6 — Tasks 8 + 12: Dynamic Tauri invoke import (I1)
+
+Existing GeneralTab.tsx uses `await import('@tauri-apps/api/core')` dynamic import (graceful degradation outside Tauri). **Apply this pattern to the new components** — replace static `import { invoke } from '@tauri-apps/api/core'` with the existing helper pattern OR inline dynamic imports.
+
+For consistency, reuse the existing `invokeDesktop` helper from `GeneralTab.tsx:55-58` if exporting it makes sense. Otherwise, replicate the pattern in each component:
+
+```tsx
+async function invokeDesktop<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<T>(cmd, args)
+}
+```
+
+(Same applies to `listen` from `@tauri-apps/api/event` — use dynamic import.)
+
+### A7 — Tasks 8 + 12: i18n key merging (I3)
+
+When editing `locales/{en,ko}.json`, do NOT replace the whole file. The files have many top-level keys (`common`, `nav`, `settings`, etc.). Use a JSON-aware merge:
+
+1. Read existing file
+2. Locate `settings.general` (must exist for Task 8) — add `autostart` subkey
+3. Locate top-level `onboarding` (may not exist for Task 12) — add or create
+
+Use jq for verification:
+```bash
+jq '.settings.general.autostart' crates/oneshim-web/frontend/src/i18n/locales/en.json
+```
+Expected: shows the new keys.
+
+### A8 — Estimate update
+
+With these corrections, total task estimate increases slightly:
+- Task 4: +0.5h for wire code enum + tests (now ~3h)
+- Task 5: -0.5h for moving test inline (no new file) (~1h)
+- Task 10: +0.5h for AppHandle plumbing + monitor.rs structural understanding (~3h)
+- Task 11: -0.5h for closure-based testing (no Tauri test runtime needed) (~1h)
+- Task 12: +0.5h for get_autostart_config IPC + DashboardLayout host (~3h)
+
+**Net**: 22h + 0.5h = ~22.5h. Still within budget.
+
+### A9 — Required reading before starting Phase 3
+
+Implementer must read in this order:
+1. `src-tauri/src/scheduler/loops/monitor.rs` (full file)
+2. `src-tauri/src/scheduler/mod.rs:520-560` (run_scheduler_loops + caller of spawn_monitor_loop)
+3. `src-tauri/src/desktop_permissions.rs:43-75` (Generic Runtime pattern reference)
+4. `crates/oneshim-core/src/error_codes/audio.rs` (define_code_enum! reference)
+5. `crates/oneshim-core/src/error_codes/mod.rs` (all_codes() aggregator pattern)
+6. `crates/oneshim-web/frontend/src/i18n/locales/en.json` (top-level structure)
+7. `crates/oneshim-web/frontend/src/pages/dashboard/DashboardLayout.tsx` (existing layout)
+8. `crates/oneshim-web/frontend/src/pages/setting-tabs/GeneralTab.tsx:55-58` (invokeDesktop helper)
 
 ---
 
