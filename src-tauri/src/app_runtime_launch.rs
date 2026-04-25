@@ -666,9 +666,13 @@ impl AppRuntimeLaunchBuilder {
                 Arc::new(move |entry: &oneshim_core::models::audit::AuditEntry| {
                     storage_for_audit.save_audit_entry(entry);
                 });
+            let audit_query: Arc<dyn oneshim_automation::audit::AuditQuery> = Arc::new(
+                crate::audit_query::SqliteAuditQuery::new(sqlite_storage.clone()),
+            );
             let audit_logger = Arc::new(tokio::sync::RwLock::new(
                 oneshim_automation::audit::AuditLogger::new(500, 50)
-                    .with_persistence(persistence_cb),
+                    .with_persistence(persistence_cb)
+                    .with_query(audit_query),
             ));
             let audit_port: Arc<dyn oneshim_core::ports::audit_log::AuditLogPort> = Arc::new(
                 oneshim_automation::audit::AuditLogAdapter::new(audit_logger),
@@ -908,9 +912,15 @@ impl AppRuntimeLaunchBuilder {
                                     storage_for_audit.save_audit_entry(entry);
                                 },
                             );
+                            let audit_query: std::sync::Arc<
+                                dyn oneshim_automation::audit::AuditQuery,
+                            > = std::sync::Arc::new(crate::audit_query::SqliteAuditQuery::new(
+                                sqlite_storage.clone(),
+                            ));
                             let logger = std::sync::Arc::new(tokio::sync::RwLock::new(
                                 oneshim_automation::audit::AuditLogger::new(500, 50)
-                                    .with_persistence(persistence_cb),
+                                    .with_persistence(persistence_cb)
+                                    .with_query(audit_query),
                             ));
                             std::sync::Arc::new(oneshim_automation::audit::AuditLogAdapter::new(
                                 logger,
