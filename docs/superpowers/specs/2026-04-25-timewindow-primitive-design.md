@@ -668,16 +668,19 @@ After merge → `0.4.42-rc.1` (or batch with PR-B2 into single RC).
 
 ### 10.2 Internal API (Rust) — breaking changes
 
-- All SQL helpers signatures change: `(from: &str, to: &str)` → `(window: &TimeWindow)`
-- All REST handlers internal logic changes — but external HTTP API unchanged
-- Domain models field reorganization: 2 fields → 1 nested struct
+- 8 specific SQL helper signatures change: `(from: &str, to: &str)` → `(window: &TimeWindow)` (per plan v13 Task 4 enumeration: count_events_in_range, count_frames_in_range, list_frame_file_paths_in_range, delete_data_in_range, get_daily_active_secs, flag_noise_range, get_entries, list_segment_time_ranges)
+- 7 service-layer files change internal logic (frames/events/metrics/focus/idle/processes/timeline_service) — REST **handlers UNCHANGED** (Phase 2 iter-9 NEW-C1: handlers thin-delegate to services)
+- Other storage methods (get_frames, get_events, get_metrics, etc.) stay on `DateTime<Utc>` signatures — services decompose `&window` to `(window.start, window.end)` for those
+- Domain models field reorganization: `period_start, period_end` → single `period: TimeWindow` (FocusMetrics, SessionMetrics)
 
 These are internal — no external consumers (this is a desktop client, not a library).
 
 ### 10.3 Downgrade safety
 
-- TimeWindow type is internal — downgrade restores old field-pair model.
-- One JSON shape change (DeleteRangeRequest API) requires coordinated frontend rollback.
+- TimeWindow type is internal — downgrade restores old field-pair model
+- **Zero external JSON shape changes** to roll back: REST query strings (?from=&to=) unchanged; DeleteRangeRequest preserved via Option C accessor; FocusMetricsDto (REST contract) was never affected per NG8
+- Database schema unchanged (RFC3339 strings → SQL via `to_sql_pair()`)
+- BEHAVIOR CHANGE: invalid timestamp inputs now return HTTP 400 (was: silently default to 24h-window data with HTTP 200) — frontend should already handle 400 errors gracefully; if not, downgrade restores silent-default behavior
 
 ---
 
@@ -700,16 +703,19 @@ These are internal — no external consumers (this is a desktop client, not a li
 
 ## 12. Risk Register
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| `FocusMetrics` JSON shape break crashes frontend Dashboard | RESOLVED | n/a | Per NG8 + Q-1 RESOLVED: `FocusMetrics` not serialized to REST. `FocusMetricsDto` (different shape) is the REST contract. Frontend zero references to `period_start/period_end`. Option Z safe. No mitigation needed. |
-| `DeleteRangeRequest` JSON shape change breaks frontend GDPR UI | Low | Medium | Frontend likely doesn't have GDPR UI yet (or trivial migration). Document in PR description. |
-| `IdlePeriod` `Option<end_time>` for ongoing idle — TimeWindow can't represent | Medium | Medium | Per Q-2: use `OngoingIdlePeriod` separate type OR use TimeWindow with `end = now` (renewed each poll). Decide in iter-1. |
-| Big-bang PR cognitive load for reviewer | Medium | Low | Commit structure splits by domain (storage / handlers / models / GDPR). Reviewer can commit-by-commit. Deep review process catches issues. |
-| Rebase pain if PR-B1 (#508) lands during impl | High | Medium | Implementation gate: wait for #508 merge before Phase 3 starts. |
-| Wire code count drift if PR-B1/B2 ship between spec and impl | Medium | Low | Spec uses "current 51 (post-PR-B2)" as baseline. Adjust in impl based on actual count at merge time. |
-| Unexpected SQL helper not in §1.2 catalog | Low | Low | iter-1 review sweeps with `grep` confirming all `*_in_range` and similar patterns. |
-| Frontend TypeScript drift on FocusMetrics serde Y option | Medium | Low | If serde Y is correct, frontend types unchanged. Verify in Phase 1 iter-1 by checking frontend code consuming FocusMetrics. |
+| Risk | Likelihood | Impact | Mitigation / Resolution |
+|------|-----------|--------|--------------------------|
+| `FocusMetrics` JSON shape break crashes frontend Dashboard | ✅ RESOLVED | n/a | Per NG8 + Q-1: `FocusMetrics` not serialized to REST. `FocusMetricsDto` (different shape) is the REST contract. Frontend zero references to `period_start/period_end`. Option Z safe. |
+| `DeleteRangeRequest` JSON shape change breaks frontend GDPR UI | ✅ RESOLVED (Phase 2 iter-1 C9) | n/a | Option C accessor pattern: keeps `from: String, to: String` fields untouched. Frontend `DataSection.tsx` requires ZERO changes. NO custom serde needed. |
+| `IdlePeriod` `Option<end_time>` for ongoing idle — TimeWindow can't represent | ✅ RESOLVED (NG7) | n/a | IdlePeriod NOT migrated. Open-ended ongoing idle period stays on `Option<DateTime<Utc>> end_time`. |
+| Big-bang PR cognitive load for reviewer | Medium | Low | Plan v13 commit structure splits by domain (foundation / i18n / adapter / storage / regression / services / data+reports / models / sweep / E2E / docs). Reviewer can commit-by-commit. 13 plan iterations of deep review caught all impl-blocking issues. |
+| Rebase pain if PR-B1 (#508) lands during impl | ✅ MITIGATED | n/a | Plan ABORT GUARD at PF1: implementation cannot start until #508 is MERGED. PF2 does rebase first. Drift audit (post-iter-13) confirms 2 commits behind origin/main both touch only out-of-scope files. |
+| Wire code count drift if PR-B1/B2 ship between spec and impl | ✅ RESOLVED via PF3 | n/a | Plan PF3 captures actual baseline at impl time via `wc -l crates/oneshim-core/tests/wire_contract_snapshot.expected.txt`. Spec §7.2 + Q-8 document dynamic recompute procedure. |
+| Unexpected SQL helper not in §1.2 catalog | ✅ RESOLVED via plan v13 enumeration | n/a | Plan v13 Step 4D.0 enumerates 30 caller sites + cross-layer audit confirms zero unmigrated callers in src-tauri/commands, oneshim-web/grpc, oneshim-network. |
+| Frontend TypeScript drift on FocusMetrics serde | ✅ RESOLVED (NG8) | n/a | FocusMetricsDto (REST contract) is never affected. Internal FocusMetrics → API mapper unchanged. |
+| Service-layer migration scope undercount (caught Phase 2 iter-9) | ✅ RESOLVED | n/a | Plan v9 added 7 service files + decomposition pattern for non-migrated storage methods. Plan v10 preserved 24h default lookback to avoid 7×/30× payload widening. |
+| ReportQuery date-only vs RFC3339 mismatch (caught Phase 2 iter-11) | ✅ RESOLVED | n/a | Plan v11 keeps ReportQuery as-is (date-only %Y-%m-%d) + updates `resolve_report_window` in reports_query_support.rs to construct TimeWindow from existing NaiveDate parse logic. |
+| FocusMetrics struct-literal silent zero-out (caught Phase 2 iter-12) | ✅ RESOLVED | n/a | Plan v12 distinguishes Pattern A (constructor) vs Pattern B (struct literal) per call site. 7 of 10 sites use Pattern B with custom seeded values. Plan v13 enumerates all definitively. |
 
 ---
 
