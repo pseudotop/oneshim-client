@@ -99,6 +99,22 @@ PF2 rebase will be trivial when Phase 3 starts. After PR #508 merges, baseline j
 
 ---
 
+## PF5 Dep Verification (2026-04-25, post plan v13)
+
+All 5 plan-assumed dependencies verified to exist in current worktree source:
+
+| # | Assumption | Verification | Status |
+|---|------------|--------------|--------|
+| 1 | `oneshim-core` workspace dep on `oneshim-api-contracts` | `grep -E "^oneshim-core" crates/oneshim-api-contracts/Cargo.toml` → `oneshim-core = { workspace = true }` | ✅ |
+| 2 | CoreError struct-variant pattern (Phase 2 iter-1 C1) | `Storage { code: StorageCode, message: String }` + `Network { code: NetworkCode, message: String }` at error.rs:16, 120 | ✅ |
+| 3 | `From<CoreError> for ApiError` impl exists with addable arm position (Phase 2 iter-1 C2) | error.rs:56-67 — uses `match` with arms like `CoreError::Validation { field, message, .. } => ApiError::BadRequest(...)`. Plan Step 1.9 can add `CoreError::TimeWindow { message, .. } => ApiError::BadRequest(message)` in same shape | ✅ |
+| 4 | `define_code_enum!` macro available (Plan Step 1.6) | `macro_rules! define_code_enum` defined at `crates/oneshim-core/src/error_codes/macros.rs`. AudioCode example confirms usage pattern matches plan. | ✅ |
+| 5 | ErrorResponse schema has NO `code` field (Phase 2 iter-1 C3) | `pub struct ErrorResponse { pub error: String, pub status: u16, }` at api-contracts/src/error.rs:4-7 | ✅ |
+
+Plan v13 has zero blocking dependency mismatches. Implementer can execute Tasks 1-11 immediately upon PR #508 merge + PF2 rebase.
+
+---
+
 ## Cross-Layer Scope Audit (2026-04-25 ~17:00, post plan v9)
 
 After plan v9 added service-layer migration scope (NEW-C1), an independent grep against ALL adapter layers confirms **plan scope is COMPLETE — no additional unmigrated callers exist**:
