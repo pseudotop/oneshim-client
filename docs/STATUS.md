@@ -53,6 +53,7 @@ v0.4.40-rc.1 (Phase 9 PR-B1 Autostart Foundation shipped on top of Phase 9 PR-A 
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass
+- Frontend Vitest (`pnpm test --run` in `crates/oneshim-web/frontend`): pass — **272 passed across 42 test files** (Phase 9 PR-B1 baseline; +10 new Vitest tests from autostart [GeneralTab Startup section + AutostartOnboardingPrompt]; wire-code count assertion bumped 42 → 47).
 
 ### Phase 2 Telemetry Feature (added 2026-04-17)
 
