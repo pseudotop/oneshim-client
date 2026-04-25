@@ -21,7 +21,7 @@
 
 **⚠ ABORT GUARD**: PR-B1 (#508) MUST merge before Task 1 begins. PR-B1 modifies `oneshim-core/config/sections/` and `oneshim-core/src/error_codes/` — overlapping crate areas. Implementing TimeWindow before #508 merges will cause significant rebase conflicts.
 
-**Plan version:** v7 (Phase 2 iter-7 — addresses iter-6 verification: 1 NEW Critical NEW-C1 — Step 4C.1 calibration_store_impl.rs had same class of synthetic-drift errors as Step 4C.4. v7 rewrites Step 4C.1 with PRESERVE-BODY pattern: actual table is `calibration_log` (not `calibration`), column is `is_noise` (not `noise`), uses fallible-lock + `CoreError::Storage { code, message }` mapping, get_entries + list_segment_time_ranges use async `with_conn` pattern with `from_str`/`to_str` String shadowing, list_segment has table_exists guard for V9 migration). v6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
+**Plan version:** v8 (Phase 2 iter-8 cleanup — addresses iter-7 verifier's flagged "minor weakness" in Step 4C.5: missing locals-binding prescription for work_sessions.rs `get_daily_active_secs`. v8 adds PRESERVE-BODY diff PLUS surfaces a meaningful semantic finding: this query uses half-open `started_at < ?2` (NOT closed-closed like other helpers). Per NG6 the `<` operator must be preserved verbatim. v8 documents the half-open boundary so implementer doesn't accidentally "fix" it to `<=`). v7 — addresses iter-6 verification: 1 NEW Critical NEW-C1 — Step 4C.1 calibration_store_impl.rs had same class of synthetic-drift errors as Step 4C.4. v7 rewrites Step 4C.1 with PRESERVE-BODY pattern: actual table is `calibration_log` (not `calibration`), column is `is_noise` (not `noise`), uses fallible-lock + `CoreError::Storage { code, message }` mapping, get_entries + list_segment_time_ranges use async `with_conn` pattern with `from_str`/`to_str` String shadowing, list_segment has table_exists guard for V9 migration). v6 — addresses iter-5 verification: 2 NEW Important — stale `MockCalibration` references in Step 4D.0 inventory + Step 4E.1 commit body; Step 4C.4 SQL placeholder snippet had wrong table names (`metrics` → `system_metrics`), wrong idle column (`timestamp` → `start_time`), missing `system_metrics_hourly` companion DELETE. v6 rewrites Step 4C.4 as preserve-body-replace-parameter prescription rather than synthetic inline code.). v5 — addresses 6 pre-existing Important issues from iter-4 verification: mock names `NoopCalibrationReader`+`NoopCalibrationWriter` (was `MockCalibration`); `DeletedRangeCounts` field names `events_deleted`/`frames_deleted`/etc. (was `events`/`frames`); maintenance test callers use `.expect()` not `?`; stale Files-to-be-modified table corrected; non-functional grep helper replaced; variable name `all` not `dirty`). v4 — addresses Phase 2 iter-3 verification: 2 NEW Critical + 1 NEW Important regressions from v3 corrections; FailingStorage uses delegation pattern not unconditional Err; regime.rs callers in `()`-returning functions use `.expect()` not `?`; calibration_store_impl test callers added). v3 — addresses Phase 2 iter-2 verification findings: 6 NEW Critical + 5 NEW Important factual mismatches with actual source code, on top of v2's 9C+11I disposition). Key v3 changes: corrected actual port-trait return types (`flag_noise_range` is sync + `Result<u64>`, `list_segment_time_ranges` returns 3-tuple `(String, DateTime, DateTime)` with segment_id, `get_daily_active_secs` returns `Vec<(String, i64)>`); fixed regime.rs caller enumeration (lines 44+174+184 are get_entries+list_segment_time_ranges+get_entries, NOT flag_noise_range); enumerated all 10 FocusMetrics call sites including 3 in src-tauri/focus_analyzer; enumerated 14+ SQL helper caller sites in services/, tests/support/, internal sqlite/* tests; clarified inherent `pub fn` signature change in lockstep with port traits; removed duplicate Step 1.11 lib.rs registration; fixed `crate::common` same-crate import; added `serde_urlencoded` dev-dep step; corrected `TimeRangeQuery::limit/offset` to `Option<usize>`.
 
 ---
 
@@ -1366,15 +1366,43 @@ let n = storage.delete_data_in_range(&window, ...).unwrap();
 
 Same pattern for `count_events_in_range` callers in maintenance test sites (1067, 1164, 1183, 1308) and `list_frame_file_paths_in_range` (1358).
 
-- [ ] **Step 4C.5: Migrate work_sessions.rs inherent get_daily_active_secs**
+- [ ] **Step 4C.5: Migrate work_sessions.rs inherent get_daily_active_secs (PRESERVE-BODY pattern)**
 
-Open `crates/oneshim-storage/src/sqlite/edge_intelligence/work_sessions.rs`. Inherent fn at line 216:
+Open `crates/oneshim-storage/src/sqlite/edge_intelligence/work_sessions.rs`. Inherent fn at line 216.
+
+**⚠ Half-open boundary preserved per NG6**: This query uses `started_at >= ?1 AND started_at < ?2` (half-open `[from, to)` upper bound), NOT closed-closed like the other range helpers. This is intentional — work_sessions started_at represents an instant, and excluding the end-of-day-T+1 boundary prevents double-counting at day rollovers. Migration must preserve `<`, NOT change to `<=`. Spec NG6 explicitly says "SQL BETWEEN preserved" — same principle applies to this query's existing operators.
+
+**PRESERVE-BODY diff** — only swap signature + add locals binding:
+
 ```rust
-// Before:
-pub fn get_daily_active_secs(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, StorageError>
-// After:
-pub fn get_daily_active_secs(&self, window: &TimeWindow) -> Result<Vec<(String, i64)>, StorageError>
+- pub fn get_daily_active_secs(
+-     &self,
+-     from: &str,
+-     to: &str,
+- ) -> Result<Vec<(String, i64)>, StorageError> {
++ pub fn get_daily_active_secs(
++     &self,
++     window: &TimeWindow,
++ ) -> Result<Vec<(String, i64)>, StorageError> {
++     let (from, to) = window.to_sql_pair();
+      let conn = self.conn.lock().map_err(|e| StorageError::Internal(format!("Failed to acquire lock: {e}")))?;
+      let mut stmt = conn.prepare(
+          "SELECT DATE(started_at) as day, SUM(duration_secs) as total_secs
+           FROM work_sessions
+           WHERE state = 'completed'
+             AND started_at >= ?1 AND started_at < ?2     -- ← HALF-OPEN preserved per NG6
+           GROUP BY day
+           ORDER BY day",
+      ).map_err(|e| StorageError::Internal(format!("Failed to prepare SQL: {e}")))?;
+      let rows = stmt.query_map(rusqlite::params![from, to], |row| {
+          Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+      }).map_err(|e| StorageError::Internal(format!("Query failed: {e}")))?;
+      let result: Vec<_> = rows.flatten().collect();
+      Ok(result)
+  }
 ```
+
+The `let (from, to) = window.to_sql_pair();` shadows the previous parameter names — the `params![from, to]` binding continues to work unchanged. SQL string preserved verbatim including the `< ?2` half-open operator. Lock-error wrapping + query_map closure unchanged.
 
 - [ ] **Step 4C.6: Migrate web_storage_impl.rs thin wrappers (5 wrappers)**
 
