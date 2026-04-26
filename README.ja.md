@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./assets/brand/logo-full-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="./assets/brand/logo-full-light.svg">
-    <img alt="ONESHIM Client" src="./assets/brand/logo-full-light.svg" width="400">
+    <img alt="Maekon" src="./assets/brand/logo-full-light.svg" width="400">
   </picture>
 </p>
 
@@ -10,10 +10,10 @@
   <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a> | <a href="./README.ja.md">日本語</a> | <a href="./README.zh-CN.md">简体中文</a> | <a href="./README.es.md">Español</a>
 </p>
 
-# ONESHIM Client
+# Maekon
 
 > **デスクトップの作業活動を、日々のフォーカス成果へ。**
-> ONESHIMはローカルの作業シグナルをリアルタイムのフォーカスタイムラインと実行可能な提案に変換します。
+> Maekonはローカルの作業シグナルをリアルタイムのフォーカスタイムラインと実行可能な提案に変換します。
 
 AI支援によるオフィス生産性向上のためのデスクトップクライアントです。ローカルコンテキストの収集、リアルタイム提案、内蔵ダッシュボードを提供します。RustとTauri v2（Reactフロントエンドを包むWebViewシェル）で構築されており、macOS、Windows、Linuxでネイティブパフォーマンスを発揮します。
 
@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
 - English: [`docs/install.md`](./docs/install.md)
 - Korean: [`docs/install.ko.md`](./docs/install.ko.md)
 
-## ONESHIMを選ぶ理由
+## Maekonを選ぶ理由
 
 - **活動を実行可能なインサイトに変換**: コンテキスト、タイムライン、フォーカスパターン、中断をひとつの場所で追跡します。
 - **軽量なオンデバイス処理**: Edge処理（デルタエンコーディング、サムネイル、OCR）により転送量を削減し、高速なレスポンスを維持します。

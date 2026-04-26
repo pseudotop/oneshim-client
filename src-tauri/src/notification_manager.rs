@@ -186,7 +186,7 @@ impl NotificationManager {
 
     /// Send a coaching notification through the desktop notification system.
     ///
-    /// Uses a "ONESHIM Coach" title prefix to distinguish coaching from system alerts.
+    /// Uses a "Maekon Coach" title prefix to distinguish coaching from system alerts.
     /// Does not enforce its own cooldown — the CoachingEngine already applies per-profile cooldowns.
     pub async fn notify_coaching(&self, body: &str) {
         let config = self.config.read().await;
@@ -194,7 +194,7 @@ impl NotificationManager {
             return;
         }
 
-        if let Err(e) = self.notifier.show_notification("ONESHIM Coach", body).await {
+        if let Err(e) = self.notifier.show_notification("Maekon Coach", body).await {
             debug!("coaching notification failure: {e}");
         }
     }

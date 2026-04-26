@@ -327,14 +327,14 @@
     "permissionSectionTitleMac": "macOS Permissions",
     "permissionSectionTitleLinux": "Linux Session Access",
     "permissionSectionTitleWindows": "Windows Access",
-    "permissionSectionDesc": "Check whether desktop integrations required by ONESHIM are currently reachable.",
-    "permissionSectionDescMac": "Grant the required macOS permissions so ONESHIM can capture context reliably.",
+    "permissionSectionDesc": "Check whether desktop integrations required by Maekon are currently reachable.",
+    "permissionSectionDescMac": "Grant the required macOS permissions so Maekon can capture context reliably.",
     "permissionSectionDescLinux": "Linux usually does not require extra prompts, but session services still need to be reachable.",
     "permissionSectionDescWindows": "Windows access is usually available without separate prompts, but desktop integrations should still be verified.",
     "permissionChecking": "Checking desktop access...",
     "permissionRefreshAction": "Refresh status",
     "permissionCheckFailedTitle": "Desktop access check failed",
-    "permissionCheckFailedDesc": "ONESHIM could not read the current desktop access state. Retry the check after returning from your OS settings.",
+    "permissionCheckFailedDesc": "Maekon could not read the current desktop access state. Retry the check after returning from your OS settings.",
     "permissionStateGranted": "Ready",
     "permissionStateNeedsAttention": "Attention needed",
     "permissionStateNotRequired": "Not required",
@@ -343,14 +343,14 @@
     "permissionScreenRecordingLabel": "Screen Recording",
     "permissionScreenCaptureDesc": "Needed to capture screenshots for timeline and insights.",
     "permissionMacNotificationsDesc": "Notification delivery is managed in macOS System Settings and cannot be verified automatically yet.",
-    "permissionMacNotificationsDescGranted": "Desktop notifications are enabled for ONESHIM.",
-    "permissionMacNotificationsDescPrompt": "ONESHIM has not requested notification permission yet. Request it so reminders and coaching prompts can appear.",
-    "permissionMacNotificationsDescDenied": "Notifications are turned off for ONESHIM in macOS System Settings. Enable them manually if you want reminders and coaching prompts.",
+    "permissionMacNotificationsDescGranted": "Desktop notifications are enabled for Maekon.",
+    "permissionMacNotificationsDescPrompt": "Maekon has not requested notification permission yet. Request it so reminders and coaching prompts can appear.",
+    "permissionMacNotificationsDescDenied": "Notifications are turned off for Maekon in macOS System Settings. Enable them manually if you want reminders and coaching prompts.",
     "permissionMacNotificationsDescProvisional": "Notifications are available, but macOS may deliver them quietly.",
     "permissionMacNotificationsDescEphemeral": "Notifications are temporarily available for this session.",
     "permissionMacNotificationsDescFallback": "Refresh after changing notification settings in macOS System Settings.",
     "permissionMacNotificationsRequestAction": "Request permission",
-    "permissionNotificationRequestGranted": "Notifications are ready for ONESHIM.",
+    "permissionNotificationRequestGranted": "Notifications are ready for Maekon.",
     "permissionNotificationRequestFollowUp": "Check the macOS notification prompt or System Settings, then refresh the status if needed.",
     "permissionNotificationsDesc": "Used for break reminders and coaching prompts.",
     "permissionLinuxAccessibilityLabel": "Accessibility Service",
@@ -362,10 +362,10 @@
     "permissionWindowsDesc": "Windows does not usually require separate OS permissions for accessibility or screen capture. Notifications can still depend on system notification settings.",
     "permissionWindowsAccessibilityLabel": "UI Automation",
     "permissionWindowsAccessibilityDesc": "Windows accessibility APIs are typically available without a separate approval prompt.",
-    "permissionWindowsScreenCaptureDesc": "Screen capture is usually available when ONESHIM can access your active desktop session.",
+    "permissionWindowsScreenCaptureDesc": "Screen capture is usually available when Maekon can access your active desktop session.",
     "permissionWindowsNotificationsDesc": "Notification delivery depends on your Windows notification settings.",
     "permissionAttentionTitle": "Action recommended",
-    "permissionAttentionDesc": "If a service is unavailable, check your desktop session settings and reopen ONESHIM.",
+    "permissionAttentionDesc": "If a service is unavailable, check your desktop session settings and reopen Maekon.",
     "permissionAttentionDescMac": "If a required permission is missing, re-open the setup guide and approve it in System Settings.",
     "permissionManualCheckTitle": "Manual check still required",
     "permissionManualCheckDescMac": "Some macOS settings, such as notifications, must still be reviewed manually in System Settings.",
@@ -431,8 +431,8 @@
     "updateActionSuccess": "Update action requested",
     "autostart": {
       "title": "Startup",
-      "description": "Automatically start ONESHIM when you sign in to your computer.",
-      "toggle": "Start ONESHIM at login",
+      "description": "Automatically start Maekon when you sign in to your computer.",
+      "toggle": "Start Maekon at login",
       "error": "Failed to update autostart: {{error}}",
       "unsupported_snap_sandbox": "Use Snap's built-in autostart settings",
       "unsupported_flatpak_sandbox": "Use Flatpak's built-in autostart settings",
@@ -875,7 +875,7 @@
     "accessModeApiKeyLabel": "Direct endpoints",
     "accessModeApiKeyDescription": "Use direct HTTP endpoints for provider-hosted or self-hosted services. API keys are only required when the selected surface expects them.",
     "accessModeCliLabel": "Installed provider CLI",
-    "accessModeCliDescription": "Preferred for subscription-backed products. ONESHIM will guide users through installed provider-owned CLI flows.",
+    "accessModeCliDescription": "Preferred for subscription-backed products. Maekon will guide users through installed provider-owned CLI flows.",
     "accessModeOAuthLabel": "Direct OAuth (experimental)",
     "accessModeOAuthDescription": "Experimental managed OAuth path for supported provider surfaces. Prefer installed provider CLIs when available.",
     "pathSummaryTitle": "Operational path",
@@ -962,20 +962,20 @@
     "apiKeyStoredHint": "This secret is currently stored in {{backend}}. Enter a new key here to replace it.",
     "noAuthSurfaceDescription": "This surface does not require an API key. Leave the credential field empty and connect to the local or self-hosted endpoint directly.",
     "secretProjectionEnabled": "Allow CLI projection",
-    "secretProjectionEnabledDescription": "Permit ONESHIM-managed CLI and bridge compatibility flows for this stored secret.",
+    "secretProjectionEnabledDescription": "Permit Maekon-managed CLI and bridge compatibility flows for this stored secret.",
     "backendOsSecretStore": "OS secret store",
     "backendFileSecretStore": "file secret store",
     "backendEnv": "environment",
     "backendBridgeManaged": "bridge-managed backend",
     "backendUnavailable": "unavailable backend",
     "model": "Model",
-    "modelSelectionUnsupportedSurface": "This surface does not support selecting a model explicitly. ONESHIM will use the surface's built-in OCR or provider default path.",
+    "modelSelectionUnsupportedSurface": "This surface does not support selecting a model explicitly. Maekon will use the surface's built-in OCR or provider default path.",
     "ocrModelUnsupported": "The selected model is not known to support image-based OCR on this surface. Choose a compatible multimodal model.",
-    "ocrModelCompatibilityUnknown": "ONESHIM could not confirm OCR compatibility for {{model}} on this surface. Use a known multimodal model or verify with model discovery before saving.",
-    "ocrModelCompatibilityUnknownRejected": "ONESHIM requires a known OCR-compatible model for this surface. {{model}} is not catalogued yet, so choose a known multimodal model before saving.",
+    "ocrModelCompatibilityUnknown": "Maekon could not confirm OCR compatibility for {{model}} on this surface. Use a known multimodal model or verify with model discovery before saving.",
+    "ocrModelCompatibilityUnknownRejected": "Maekon requires a known OCR-compatible model for this surface. {{model}} is not catalogued yet, so choose a known multimodal model before saving.",
     "llmModelUnsupported": "The selected model is not known to support this LLM surface. Choose a compatible model for the selected execution path.",
-    "llmModelCompatibilityUnknown": "ONESHIM could not confirm LLM compatibility for {{model}} on this surface. Verify the model or load the catalog before saving.",
-    "llmModelCompatibilityUnknownRejected": "ONESHIM requires a known compatible LLM model for this surface. {{model}} is not catalogued yet, so choose a known supported model before saving.",
+    "llmModelCompatibilityUnknown": "Maekon could not confirm LLM compatibility for {{model}} on this surface. Verify the model or load the catalog before saving.",
+    "llmModelCompatibilityUnknownRejected": "Maekon requires a known compatible LLM model for this surface. {{model}} is not catalogued yet, so choose a known supported model before saving.",
     "selfHostedCustomEndpointStatus": "This self-hosted surface is using a custom endpoint. Readiness was not probed for that endpoint, so verify the local server manually.",
     "timeoutSecs": "Timeout (sec)",
     "providerType": "Provider Type",
@@ -998,7 +998,7 @@
     "noCompatibleProviderSurface": "No compatible provider surface is available for this mode.",
     "ocrStrategyMultimodal": "This OCR surface runs through a multimodal model. Prefer image-capable models and verify compatibility before saving custom model IDs.",
     "ocrStrategyVisionApi": "This OCR surface runs through a dedicated vision API. Model selection may be limited or unavailable depending on the endpoint.",
-    "managedOAuthSurfaceDescription": "This surface uses provider-managed OAuth. ONESHIM does not ask for an API key or editable endpoint here.",
+    "managedOAuthSurfaceDescription": "This surface uses provider-managed OAuth. Maekon does not ask for an API key or editable endpoint here.",
     "subprocessSurfaceDescription": "This surface runs through an installed provider-owned CLI. Authentication and subscription entitlements stay with the provider CLI.",
     "subprocessExecutableHint": "Detected executable candidates: {{executables}}",
     "loadModels": "Load Models",
@@ -1059,17 +1059,17 @@
             "unavailable": "Direct OAuth is unavailable on this device. Desktop keychain support is required."
           },
           "subprocess_cli": {
-            "available": "Codex CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "available": "Codex CLI is installed and authenticated. Maekon can use the provider-owned CLI path for supported workflows on this device.",
             "auth_required": "Codex CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
-            "partially_available": "Codex CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "partially_available": "Codex CLI was detected. Maekon can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
             "unavailable": "Codex CLI is not installed or not available on PATH. Install and sign in through the provider CLI for the preferred product-backed path."
           }
         },
         "anthropic": {
           "subprocess_cli": {
-            "available": "Claude Code CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "available": "Claude Code CLI is installed and authenticated. Maekon can use the provider-owned CLI path for supported workflows on this device.",
             "auth_required": "Claude Code CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
-            "partially_available": "Claude Code CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "partially_available": "Claude Code CLI was detected. Maekon can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
             "unavailable": "Claude Code CLI is not installed or not available on PATH."
           }
         },
@@ -1077,19 +1077,19 @@
           "managed_oauth": {
             "available": "Google OAuth is available on this device. Configure a Desktop OAuth client ID to connect Vision OCR without storing an API key.",
             "unavailable": "Google OAuth is unavailable on this device. Desktop keychain support and a configured Google OAuth client ID are required.",
-            "setup": "Create or supply a Google Desktop OAuth client ID for ONESHIM, then restart the app before starting the Vision OCR sign-in flow."
+            "setup": "Create or supply a Google Desktop OAuth client ID for Maekon, then restart the app before starting the Vision OCR sign-in flow."
           },
           "subprocess_cli": {
-            "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "available": "Gemini CLI is installed and authenticated. Maekon can use the provider-owned CLI path for supported workflows on this device.",
             "auth_required": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
-            "partially_available": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "partially_available": "Gemini CLI was detected. Maekon can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
             "unavailable": "Gemini CLI is not installed or not available on PATH."
           }
         },
         "ollama": {
           "local_http": {
-            "available": "Ollama appears reachable on the configured local HTTP port. ONESHIM can call the self-hosted endpoint directly.",
-            "partially_available": "ONESHIM could not complete the local readiness probe for Ollama. Verify the local server and endpoint configuration.",
+            "available": "Ollama appears reachable on the configured local HTTP port. Maekon can call the self-hosted endpoint directly.",
+            "partially_available": "Maekon could not complete the local readiness probe for Ollama. Verify the local server and endpoint configuration.",
             "unavailable": "Ollama was not reachable on the configured local HTTP port. Start the local server before using this self-hosted surface."
           }
         }
@@ -1101,21 +1101,21 @@
         "unavailable": "Direct OAuth is unavailable on this device. Desktop keychain support is required."
       },
       "openaiSubprocessCli": {
-        "available": "Codex CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+        "available": "Codex CLI is installed and authenticated. Maekon can use the provider-owned CLI path for supported workflows on this device.",
         "authRequired": "Codex CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
-        "partiallyAvailable": "Codex CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+        "partiallyAvailable": "Codex CLI was detected. Maekon can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
         "unavailable": "Codex CLI is not installed or not available on PATH. Install and sign in through the provider CLI for the preferred product-backed path."
       },
       "anthropicSubprocessCli": {
-        "available": "Claude Code CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+        "available": "Claude Code CLI is installed and authenticated. Maekon can use the provider-owned CLI path for supported workflows on this device.",
         "authRequired": "Claude Code CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
-        "partiallyAvailable": "Claude Code CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+        "partiallyAvailable": "Claude Code CLI was detected. Maekon can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
         "unavailable": "Claude Code CLI is not installed or not available on PATH."
       },
       "googleSubprocessCli": {
-        "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+        "available": "Gemini CLI is installed and authenticated. Maekon can use the provider-owned CLI path for supported workflows on this device.",
         "authRequired": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
-        "partiallyAvailable": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+        "partiallyAvailable": "Gemini CLI was detected. Maekon can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
         "unavailable": "Gemini CLI is not installed or not available on PATH."
       }
     }
@@ -1213,7 +1213,7 @@
   "emptyState": {
     "dashboard": {
       "title": "Warming Up",
-      "description": "ONESHIM is collecting activity data in the background. Open any app and keep working — your first metrics usually appear within a minute."
+      "description": "Maekon is collecting activity data in the background. Open any app and keep working — your first metrics usually appear within a minute."
     },
     "timeline": {
       "title": "Screenshot Capture Is Off",
@@ -1222,11 +1222,11 @@
     },
     "timelineWaiting": {
       "title": "Capturing Your First Screenshots",
-      "description": "ONESHIM captures the active window every few seconds. Frames should appear within 2–3 minutes after opening your first app. If nothing shows up after 5 minutes, check Screen Recording permission in Settings."
+      "description": "Maekon captures the active window every few seconds. Frames should appear within 2–3 minutes after opening your first app. If nothing shows up after 5 minutes, check Screen Recording permission in Settings."
     },
     "timelineStandalone": {
       "title": "Desktop Capture Unavailable",
-      "description": "The app is running without live desktop access. Reopen ONESHIM in live desktop mode, then come back to start capturing your activity."
+      "description": "The app is running without live desktop access. Reopen Maekon in live desktop mode, then come back to start capturing your activity."
     },
     "reports": {
       "title": "Building Your First Report",
@@ -1242,22 +1242,22 @@
     },
     "automation": {
       "title": "Automation Inactive",
-      "description": "Automation is turned off. Enable it in Settings to let ONESHIM run approved commands on your behalf.",
+      "description": "Automation is turned off. Enable it in Settings to let Maekon run approved commands on your behalf.",
       "action": "Open Settings"
     },
     "auditLog": {
       "title": "No Audit Entries",
-      "description": "Audit entries will appear once ONESHIM executes automation commands on your behalf.",
+      "description": "Audit entries will appear once Maekon executes automation commands on your behalf.",
       "action": "Open Automation"
     },
     "chat": {
       "title": "Start a Conversation",
-      "description": "Ask ONESHIM about your work patterns, focus history, or how to improve your routine. Create a new session from the sidebar to begin.",
+      "description": "Ask Maekon about your work patterns, focus history, or how to improve your routine. Create a new session from the sidebar to begin.",
       "action": "New Session"
     },
     "playbooksCoaching": {
       "title": "No Coaching Templates",
-      "description": "Coaching templates customize what ONESHIM says and when. New templates will appear here as you or your team add them.",
+      "description": "Coaching templates customize what Maekon says and when. New templates will appear here as you or your team add them.",
       "action": "Coaching Settings"
     },
     "playbooksPresets": {
@@ -1294,10 +1294,10 @@
     "boundaryTitle": "Something went wrong",
     "boundaryRetry": "Try Again",
     "serverOffline": "Server is offline",
-    "serverOfflineDesc": "Could not connect to the ONESHIM agent. Make sure the agent is running.",
+    "serverOfflineDesc": "Could not connect to the Maekon agent. Make sure the agent is running.",
     "retryConnection": "Retry Connection",
     "agentUnreachable": "Network error: unable to reach agent",
-    "agentCheck": "Check that the ONESHIM agent is running",
+    "agentCheck": "Check that the Maekon agent is running",
     "unknownFetchError": "Unknown error fetching metrics",
     "route": {
       "title": "Something went wrong in this section",
@@ -1454,12 +1454,12 @@
     }
   },
   "onboarding": {
-    "step1Title": "Welcome to ONESHIM",
-    "step1Desc": "ONESHIM monitors your desktop activity and provides intelligent suggestions to boost productivity.",
+    "step1Title": "Welcome to Maekon",
+    "step1Desc": "Maekon monitors your desktop activity and provides intelligent suggestions to boost productivity.",
     "step2Title": "Permissions",
-    "step2Desc": "ONESHIM needs some permissions to work effectively.",
-    "step2DescMac": "macOS requires Accessibility, Screen Recording, and notification access for the full ONESHIM experience.",
-    "step2DescWindows": "Windows usually does not require separate permission prompts, but ONESHIM still depends on desktop access, screen capture, and notification delivery being available.",
+    "step2Desc": "Maekon needs some permissions to work effectively.",
+    "step2DescMac": "macOS requires Accessibility, Screen Recording, and notification access for the full Maekon experience.",
+    "step2DescWindows": "Windows usually does not require separate permission prompts, but Maekon still depends on desktop access, screen capture, and notification delivery being available.",
     "step2DescLinux": "Linux usually relies on session services instead of OS prompts. Confirm accessibility, screen capture, and notifications are available in your desktop session.",
     "step2Accessibility": "Accessibility",
     "step2ScreenCapture": "Screen Capture",
@@ -1481,20 +1481,20 @@
     "step2SystemSettingsOpenFailed": "Could not open macOS System Settings.",
     "step2NotificationRequestFailed": "Could not request notification permission.",
     "step3Title": "Features",
-    "step3Desc": "Here's what ONESHIM can do for you.",
+    "step3Desc": "Here's what Maekon can do for you.",
     "step3Capture": "Real-time context capture",
     "step3Analysis": "AI-powered analysis",
     "step3Suggestions": "Smart suggestions",
     "step4Title": "Ready to Go",
-    "step4Desc": "You're all set. Start using ONESHIM now.",
+    "step4Desc": "You're all set. Start using Maekon now.",
     "step4Tip": "Tip: Press {{shortcut}} anytime to open the Command Palette and jump to any page.",
     "next": "Next",
     "back": "Back",
     "skip": "Skip",
     "complete": "Get Started",
     "autostart": {
-      "title": "Start ONESHIM automatically?",
-      "body": "ONESHIM works best when running in the background. Want it to launch when you sign in to your computer?",
+      "title": "Start Maekon automatically?",
+      "body": "Maekon works best when running in the background. Want it to launch when you sign in to your computer?",
       "enable_button": "Enable",
       "not_now_button": "Not now",
       "dismiss_button": "Don't ask again"

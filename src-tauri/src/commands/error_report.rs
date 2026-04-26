@@ -168,7 +168,7 @@ fn maybe_notify(app: &tauri::AppHandle, route: &str, severity: &str, message: &s
         return;
     }
 
-    let title = format!("ONESHIM \u{2014} Route Error: {route}");
+    let title = format!("Maekon - Route Error: {route}");
     // Notification body is naturally short — also clamp to 200 chars to keep
     // the notification visually compact.
     let body: String = message.chars().take(200).collect();

@@ -250,14 +250,14 @@
     "permissionSectionTitleMac": "Permisos de macOS",
     "permissionSectionTitleLinux": "Acceso de sesión en Linux",
     "permissionSectionTitleWindows": "Acceso de Windows",
-    "permissionSectionDesc": "Comprueba si las integraciones de escritorio que necesita ONESHIM están disponibles.",
-    "permissionSectionDescMac": "Concede los permisos necesarios de macOS para que ONESHIM capture contexto de forma fiable.",
+    "permissionSectionDesc": "Comprueba si las integraciones de escritorio que necesita Maekon están disponibles.",
+    "permissionSectionDescMac": "Concede los permisos necesarios de macOS para que Maekon capture contexto de forma fiable.",
     "permissionSectionDescLinux": "Linux normalmente no requiere permisos extra, pero los servicios de sesión deben estar disponibles.",
     "permissionSectionDescWindows": "En Windows el acceso suele estar disponible sin avisos separados, pero las integraciones del escritorio deben seguir verificándose.",
     "permissionChecking": "Comprobando acceso del escritorio...",
     "permissionRefreshAction": "Actualizar estado",
     "permissionCheckFailedTitle": "Falló la comprobación del acceso al escritorio",
-    "permissionCheckFailedDesc": "ONESHIM no pudo leer el estado actual de acceso al escritorio. Inténtalo de nuevo después de volver desde la configuración del sistema.",
+    "permissionCheckFailedDesc": "Maekon no pudo leer el estado actual de acceso al escritorio. Inténtalo de nuevo después de volver desde la configuración del sistema.",
     "permissionStateGranted": "Listo",
     "permissionStateNeedsAttention": "Requiere atención",
     "permissionStateNotRequired": "No requerido",
@@ -276,10 +276,10 @@
     "permissionWindowsDesc": "Windows normalmente no requiere permisos separados del sistema para accesibilidad o captura de pantalla. Las notificaciones aún pueden depender de la configuración del sistema.",
     "permissionWindowsAccessibilityLabel": "UI Automation",
     "permissionWindowsAccessibilityDesc": "Las API de accesibilidad de Windows suelen estar disponibles sin una aprobación separada.",
-    "permissionWindowsScreenCaptureDesc": "La captura de pantalla suele estar disponible cuando ONESHIM puede acceder a tu sesión de escritorio activa.",
+    "permissionWindowsScreenCaptureDesc": "La captura de pantalla suele estar disponible cuando Maekon puede acceder a tu sesión de escritorio activa.",
     "permissionWindowsNotificationsDesc": "La entrega de notificaciones depende de la configuración de notificaciones de Windows.",
     "permissionAttentionTitle": "Acción recomendada",
-    "permissionAttentionDesc": "Si un servicio no está disponible, revisa la configuración de tu sesión de escritorio y vuelve a abrir ONESHIM.",
+    "permissionAttentionDesc": "Si un servicio no está disponible, revisa la configuración de tu sesión de escritorio y vuelve a abrir Maekon.",
     "permissionAttentionDescMac": "Si falta un permiso requerido, vuelve a abrir la guía de configuración y apruébalo en Ajustes del sistema.",
     "permissionManualCheckTitle": "Aún se requiere una comprobación manual",
     "permissionManualCheckDescMac": "Algunos ajustes de macOS, como las notificaciones, todavía deben revisarse manualmente en Ajustes del sistema.",
@@ -414,14 +414,14 @@
     "supportYes": "Sí",
     "supportNo": "No",
     "supportUnknown": "Desconocido",
-    "permissionMacNotificationsDescGranted": "Las notificaciones de escritorio están habilitadas para ONESHIM.",
-    "permissionMacNotificationsDescPrompt": "ONESHIM aún no ha solicitado permiso de notificaciones. Solicítelo para recibir recordatorios.",
-    "permissionMacNotificationsDescDenied": "Las notificaciones están desactivadas para ONESHIM en Configuración del sistema de macOS. Habilítelas manualmente.",
+    "permissionMacNotificationsDescGranted": "Las notificaciones de escritorio están habilitadas para Maekon.",
+    "permissionMacNotificationsDescPrompt": "Maekon aún no ha solicitado permiso de notificaciones. Solicítelo para recibir recordatorios.",
+    "permissionMacNotificationsDescDenied": "Las notificaciones están desactivadas para Maekon en Configuración del sistema de macOS. Habilítelas manualmente.",
     "permissionMacNotificationsDescProvisional": "Las notificaciones están disponibles, pero macOS puede entregarlas de forma silenciosa.",
     "permissionMacNotificationsDescEphemeral": "Las notificaciones están disponibles temporalmente para esta sesión.",
     "permissionMacNotificationsDescFallback": "Actualice después de cambiar la configuración de notificaciones en macOS.",
     "permissionMacNotificationsRequestAction": "Solicitar permiso",
-    "permissionNotificationRequestGranted": "Las notificaciones están listas para ONESHIM.",
+    "permissionNotificationRequestGranted": "Las notificaciones están listas para Maekon.",
     "permissionNotificationRequestFollowUp": "Verifique el aviso de notificaciones de macOS o la Configuración del sistema, luego actualice el estado.",
     "bugReportWizardTitle": "Informe de error",
     "bugReportStepGenerate": "Generar",
@@ -819,7 +819,7 @@
     "apiKeyStoredPlaceholder": "Guardada en {{backend}}",
     "apiKeyStoredHint": "Este secreto está almacenado actualmente en {{backend}}. Ingrese aquí una nueva clave para reemplazarlo.",
     "secretProjectionEnabled": "Permitir proyeccion CLI",
-    "secretProjectionEnabledDescription": "Permite flujos de compatibilidad CLI y bridge gestionados por ONESHIM para este secreto almacenado.",
+    "secretProjectionEnabledDescription": "Permite flujos de compatibilidad CLI y bridge gestionados por Maekon para este secreto almacenado.",
     "backendOsSecretStore": "almacén secreto del sistema",
     "backendFileSecretStore": "almacén secreto en archivo",
     "backendEnv": "entorno",
@@ -854,7 +854,7 @@
     "accessModeApiKeyLabel": "Endpoints directos",
     "accessModeApiKeyDescription": "Usar endpoints HTTP directos para servicios alojados por el proveedor o autoalojados. Las claves API solo se requieren cuando la superficie seleccionada las espera.",
     "accessModeCliLabel": "CLI del proveedor instalado",
-    "accessModeCliDescription": "Preferido para productos con suscripción. ONESHIM guiará a los usuarios a través de los flujos de CLI del proveedor instalado.",
+    "accessModeCliDescription": "Preferido para productos con suscripción. Maekon guiará a los usuarios a través de los flujos de CLI del proveedor instalado.",
     "accessModeOAuthLabel": "OAuth directo (experimental)",
     "accessModeOAuthDescription": "Ruta OAuth gestionada experimental para superficies de proveedores compatibles. Prefiera los CLIs del proveedor instalados cuando estén disponibles.",
     "pathSummaryTitle": "Ruta operativa",
@@ -896,19 +896,19 @@
     "dataPolicyStandard": "Filtro PII estándar",
     "dataPolicyAllowFiltered": "Permitir filtrados",
     "noAuthSurfaceDescription": "Esta superficie no requiere una clave API. Deje el campo de credenciales vacío y conéctese directamente al endpoint local o autoalojado.",
-    "modelSelectionUnsupportedSurface": "Esta superficie no admite la selección explícita de modelos. ONESHIM usará la ruta predeterminada de OCR o del proveedor.",
+    "modelSelectionUnsupportedSurface": "Esta superficie no admite la selección explícita de modelos. Maekon usará la ruta predeterminada de OCR o del proveedor.",
     "ocrModelUnsupported": "No se ha confirmado que el modelo seleccionado sea compatible con OCR basado en imágenes en esta superficie. Elija un modelo multimodal compatible.",
-    "ocrModelCompatibilityUnknown": "ONESHIM no pudo confirmar la compatibilidad de OCR para {{model}} en esta superficie. Use un modelo multimodal conocido o verifique con el descubrimiento de modelos antes de guardar.",
-    "ocrModelCompatibilityUnknownRejected": "ONESHIM requiere un modelo compatible con OCR conocido para esta superficie. {{model}} aún no está catalogado; elija un modelo multimodal conocido antes de guardar.",
+    "ocrModelCompatibilityUnknown": "Maekon no pudo confirmar la compatibilidad de OCR para {{model}} en esta superficie. Use un modelo multimodal conocido o verifique con el descubrimiento de modelos antes de guardar.",
+    "ocrModelCompatibilityUnknownRejected": "Maekon requiere un modelo compatible con OCR conocido para esta superficie. {{model}} aún no está catalogado; elija un modelo multimodal conocido antes de guardar.",
     "llmModelUnsupported": "No se ha confirmado que el modelo seleccionado sea compatible con esta superficie LLM. Elija un modelo compatible para la ruta de ejecución seleccionada.",
-    "llmModelCompatibilityUnknown": "ONESHIM no pudo confirmar la compatibilidad LLM para {{model}} en esta superficie. Verifique el modelo o cargue el catálogo antes de guardar.",
-    "llmModelCompatibilityUnknownRejected": "ONESHIM requiere un modelo LLM compatible conocido para esta superficie. {{model}} aún no está catalogado; elija un modelo compatible conocido antes de guardar.",
+    "llmModelCompatibilityUnknown": "Maekon no pudo confirmar la compatibilidad LLM para {{model}} en esta superficie. Verifique el modelo o cargue el catálogo antes de guardar.",
+    "llmModelCompatibilityUnknownRejected": "Maekon requiere un modelo LLM compatible conocido para esta superficie. {{model}} aún no está catalogado; elija un modelo compatible conocido antes de guardar.",
     "selfHostedCustomEndpointStatus": "Esta superficie autoalojada utiliza un endpoint personalizado. No se probó el estado de preparación para ese endpoint; verifique el servidor local manualmente.",
     "providerSurfaceLabel": "Superficie del proveedor",
     "noCompatibleProviderSurface": "No hay una superficie de proveedor compatible disponible para este modo.",
     "ocrStrategyMultimodal": "Esta superficie OCR funciona a través de un modelo multimodal. Prefiera modelos con capacidad de imagen y verifique la compatibilidad antes de guardar IDs de modelos personalizados.",
     "ocrStrategyVisionApi": "Esta superficie OCR funciona a través de una API de visión dedicada. La selección de modelos puede estar limitada según el endpoint.",
-    "managedOAuthSurfaceDescription": "Esta superficie utiliza OAuth gestionado por el proveedor. ONESHIM no solicita una clave API ni un endpoint editable aquí.",
+    "managedOAuthSurfaceDescription": "Esta superficie utiliza OAuth gestionado por el proveedor. Maekon no solicita una clave API ni un endpoint editable aquí.",
     "subprocessSurfaceDescription": "Esta superficie se ejecuta a través de un CLI del proveedor instalado. La autenticación y los derechos de suscripción permanecen con el CLI del proveedor.",
     "subprocessExecutableHint": "Candidatos de ejecutables detectados: {{executables}}",
     "modelDiscoveryUnsupportedSurface": "El descubrimiento de modelos no está disponible para la superficie del proveedor seleccionada."
@@ -1006,7 +1006,7 @@
   "emptyState": {
     "dashboard": {
       "title": "Recopilando datos",
-      "description": "ONESHIM está recopilando datos de actividad en segundo plano. Abra cualquier aplicación y siga trabajando: sus primeras métricas suelen aparecer en un minuto."
+      "description": "Maekon está recopilando datos de actividad en segundo plano. Abra cualquier aplicación y siga trabajando: sus primeras métricas suelen aparecer en un minuto."
     },
     "timeline": {
       "title": "La captura de pantalla está desactivada",
@@ -1027,30 +1027,30 @@
     },
     "automation": {
       "title": "Automatización inactiva",
-      "description": "La automatización está desactivada. Actívela en Configuración para permitir que ONESHIM ejecute comandos aprobados en su nombre.",
+      "description": "La automatización está desactivada. Actívela en Configuración para permitir que Maekon ejecute comandos aprobados en su nombre.",
       "action": "Abrir Configuración"
     },
     "auditLog": {
       "title": "Sin entradas de auditoría",
-      "description": "Las entradas de auditoría aparecerán aquí una vez que ONESHIM ejecute comandos de automatización en su nombre.",
+      "description": "Las entradas de auditoría aparecerán aquí una vez que Maekon ejecute comandos de automatización en su nombre.",
       "action": "Abrir Automatización"
     },
     "timelineWaiting": {
       "title": "Capturando sus primeras capturas de pantalla",
-      "description": "ONESHIM captura la ventana activa cada pocos segundos. Los fotogramas deberían aparecer en 2–3 minutos después de abrir su primera aplicación. Si no aparece nada después de 5 minutos, verifique el permiso de Grabación de pantalla en Configuración."
+      "description": "Maekon captura la ventana activa cada pocos segundos. Los fotogramas deberían aparecer en 2–3 minutos después de abrir su primera aplicación. Si no aparece nada después de 5 minutos, verifique el permiso de Grabación de pantalla en Configuración."
     },
     "timelineStandalone": {
       "title": "Captura de escritorio no disponible",
-      "description": "La aplicación se está ejecutando sin acceso de escritorio en vivo. Reabra ONESHIM en modo de escritorio en vivo y luego regrese para comenzar a capturar su actividad."
+      "description": "La aplicación se está ejecutando sin acceso de escritorio en vivo. Reabra Maekon en modo de escritorio en vivo y luego regrese para comenzar a capturar su actividad."
     },
     "chat": {
       "title": "Iniciar una conversación",
-      "description": "Pregunte a ONESHIM sobre sus patrones de trabajo, historial de concentración o cómo mejorar su rutina. Cree una nueva sesión desde la barra lateral para comenzar.",
+      "description": "Pregunte a Maekon sobre sus patrones de trabajo, historial de concentración o cómo mejorar su rutina. Cree una nueva sesión desde la barra lateral para comenzar.",
       "action": "Nueva sesión"
     },
     "playbooksCoaching": {
       "title": "Sin plantillas de coaching",
-      "description": "Las plantillas de coaching personalizan qué dice ONESHIM y cuándo. Las nuevas plantillas aparecerán aquí a medida que usted o su equipo las agreguen.",
+      "description": "Las plantillas de coaching personalizan qué dice Maekon y cuándo. Las nuevas plantillas aparecerán aquí a medida que usted o su equipo las agreguen.",
       "action": "Configuración de coaching"
     },
     "playbooksPresets": {
@@ -1087,10 +1087,10 @@
     "boundaryTitle": "Algo salió mal",
     "boundaryRetry": "Reintentar",
     "serverOffline": "El servidor está fuera de línea",
-    "serverOfflineDesc": "No se pudo conectar con el agente ONESHIM. Asegúrese de que el agente esté en ejecución.",
+    "serverOfflineDesc": "No se pudo conectar con el agente Maekon. Asegúrese de que el agente esté en ejecución.",
     "retryConnection": "Reintentar conexión",
     "agentUnreachable": "Error de red: no se puede contactar al agente",
-    "agentCheck": "Verifique que el agente ONESHIM esté en ejecución",
+    "agentCheck": "Verifique que el agente Maekon esté en ejecución",
     "unknownFetchError": "Error desconocido al obtener métricas"
   },
   "sidebar": {
@@ -1191,17 +1191,17 @@
             "unavailable": "OAuth directo no está disponible en este dispositivo. Se requiere soporte de llavero de escritorio."
           },
           "subprocess_cli": {
-            "available": "Codex CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+            "available": "Codex CLI está instalado y autenticado. Maekon puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
             "auth_required": "Codex CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
-            "partially_available": "Se detectó Codex CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+            "partially_available": "Se detectó Codex CLI. Maekon puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
             "unavailable": "Codex CLI no está instalado o no está disponible en PATH."
           }
         },
         "anthropic": {
           "subprocess_cli": {
-            "available": "Claude Code CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+            "available": "Claude Code CLI está instalado y autenticado. Maekon puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
             "auth_required": "Claude Code CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
-            "partially_available": "Se detectó Claude Code CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+            "partially_available": "Se detectó Claude Code CLI. Maekon puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
             "unavailable": "Claude Code CLI no está instalado o no está disponible en PATH."
           }
         },
@@ -1209,19 +1209,19 @@
           "managed_oauth": {
             "available": "Google OAuth está disponible en este dispositivo. Configure un ID de cliente OAuth de escritorio para conectar Vision OCR sin almacenar una clave API.",
             "unavailable": "Google OAuth no está disponible en este dispositivo. Se requiere soporte de llavero de escritorio y un ID de cliente Google OAuth configurado.",
-            "setup": "Cree o proporcione un ID de cliente Google Desktop OAuth para ONESHIM, luego reinicie la aplicación antes de iniciar el flujo de inicio de sesión de Vision OCR."
+            "setup": "Cree o proporcione un ID de cliente Google Desktop OAuth para Maekon, luego reinicie la aplicación antes de iniciar el flujo de inicio de sesión de Vision OCR."
           },
           "subprocess_cli": {
-            "available": "Gemini CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+            "available": "Gemini CLI está instalado y autenticado. Maekon puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
             "auth_required": "Gemini CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
-            "partially_available": "Se detectó Gemini CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+            "partially_available": "Se detectó Gemini CLI. Maekon puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
             "unavailable": "Gemini CLI no está instalado o no está disponible en PATH."
           }
         },
         "ollama": {
           "local_http": {
-            "available": "Ollama parece accesible en el puerto HTTP local configurado. ONESHIM puede llamar directamente al endpoint autoalojado.",
-            "partially_available": "ONESHIM no pudo completar la prueba de preparación local para Ollama. Verifique el servidor local y la configuración del endpoint.",
+            "available": "Ollama parece accesible en el puerto HTTP local configurado. Maekon puede llamar directamente al endpoint autoalojado.",
+            "partially_available": "Maekon no pudo completar la prueba de preparación local para Ollama. Verifique el servidor local y la configuración del endpoint.",
             "unavailable": "Ollama no fue accesible en el puerto HTTP local configurado. Inicie el servidor local antes de usar esta superficie autoalojada."
           }
         }
@@ -1233,21 +1233,21 @@
         "unavailable": "OAuth directo no está disponible en este dispositivo. Se requiere soporte de llavero de escritorio."
       },
       "openaiSubprocessCli": {
-        "available": "Codex CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+        "available": "Codex CLI está instalado y autenticado. Maekon puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
         "authRequired": "Codex CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
-        "partiallyAvailable": "Se detectó Codex CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+        "partiallyAvailable": "Se detectó Codex CLI. Maekon puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
         "unavailable": "Codex CLI no está instalado o no está disponible en PATH."
       },
       "anthropicSubprocessCli": {
-        "available": "Claude Code CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+        "available": "Claude Code CLI está instalado y autenticado. Maekon puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
         "authRequired": "Claude Code CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
-        "partiallyAvailable": "Se detectó Claude Code CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+        "partiallyAvailable": "Se detectó Claude Code CLI. Maekon puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
         "unavailable": "Claude Code CLI no está instalado o no está disponible en PATH."
       },
       "googleSubprocessCli": {
-        "available": "Gemini CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+        "available": "Gemini CLI está instalado y autenticado. Maekon puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
         "authRequired": "Gemini CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
-        "partiallyAvailable": "Se detectó Gemini CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+        "partiallyAvailable": "Se detectó Gemini CLI. Maekon puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
         "unavailable": "Gemini CLI no está instalado o no está disponible en PATH."
       }
     }
@@ -1351,11 +1351,11 @@
     }
   },
   "onboarding": {
-    "step1Title": "Bienvenido a ONESHIM",
-    "step1Desc": "ONESHIM monitorea la actividad de su escritorio y ofrece sugerencias inteligentes para aumentar la productividad.",
+    "step1Title": "Bienvenido a Maekon",
+    "step1Desc": "Maekon monitorea la actividad de su escritorio y ofrece sugerencias inteligentes para aumentar la productividad.",
     "step2Title": "Permisos",
-    "step2Desc": "ONESHIM necesita algunos permisos para funcionar correctamente.",
-    "step2DescWindows": "Windows normalmente no requiere permisos separados, pero ONESHIM sigue dependiendo de que el acceso al escritorio, la captura de pantalla y las notificaciones estén disponibles.",
+    "step2Desc": "Maekon necesita algunos permisos para funcionar correctamente.",
+    "step2DescWindows": "Windows normalmente no requiere permisos separados, pero Maekon sigue dependiendo de que el acceso al escritorio, la captura de pantalla y las notificaciones estén disponibles.",
     "step2DescLinux": "Linux normalmente depende de servicios de sesión en lugar de avisos del sistema. Confirma que la accesibilidad, la captura de pantalla y las notificaciones estén disponibles en tu sesión de escritorio.",
     "step2Accessibility": "Accesibilidad",
     "step2ScreenCapture": "Captura de pantalla",
@@ -1365,18 +1365,18 @@
     "step2LinuxAccessibility": "Sesión AT-SPI",
     "step2LinuxScreenCapture": "Captura de escritorio",
     "step3Title": "Funciones",
-    "step3Desc": "Esto es lo que ONESHIM puede hacer por usted.",
+    "step3Desc": "Esto es lo que Maekon puede hacer por usted.",
     "step3Capture": "Captura de contexto en tiempo real",
     "step3Analysis": "Analisis impulsado por IA",
     "step3Suggestions": "Sugerencias inteligentes",
     "step4Title": "Listo para empezar",
-    "step4Desc": "Todo esta configurado. Comience a usar ONESHIM ahora.",
+    "step4Desc": "Todo esta configurado. Comience a usar Maekon ahora.",
     "step4Tip": "Consejo: presione {{shortcut}} en cualquier momento para abrir la Paleta de comandos y saltar a cualquier página.",
     "next": "Siguiente",
     "back": "Atras",
     "skip": "Omitir",
     "complete": "Comenzar",
-    "step2DescMac": "macOS requiere acceso a Accesibilidad, Grabación de pantalla y notificaciones para la experiencia completa de ONESHIM.",
+    "step2DescMac": "macOS requiere acceso a Accesibilidad, Grabación de pantalla y notificaciones para la experiencia completa de Maekon.",
     "step2AccessibilityAction": "Permitir acceso de accesibilidad",
     "step2ScreenCaptureAction": "Permitir grabación de pantalla",
     "step2PermissionEnabled": "Habilitado",

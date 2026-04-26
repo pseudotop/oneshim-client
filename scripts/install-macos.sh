@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# ONESHIM macOS 설치 스크립트
+# Maekon macOS 설치 스크립트
 # 바이너리 복사 + LaunchAgent plist 설치 + launchctl load
 
 set -euo pipefail
 
 BINARY_NAME="oneshim"
 INSTALL_DIR="/usr/local/bin"
-APP_BUNDLE="/Applications/ONESHIM.app"
+APP_BUNDLE="/Applications/Maekon.app"
 PLIST_LABEL="com.oneshim.agent"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST_PATH="$PLIST_DIR/$PLIST_LABEL.plist"
@@ -55,9 +55,9 @@ sudo tee "$APP_BUNDLE/Contents/Info.plist" > /dev/null <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>ONESHIM</string>
+  <string>Maekon</string>
   <key>CFBundleDisplayName</key>
-  <string>ONESHIM</string>
+  <string>Maekon</string>
   <key>CFBundleIdentifier</key>
   <string>com.oneshim.client</string>
   <key>CFBundleVersion</key>
@@ -134,6 +134,6 @@ ok "plist 생성 완료"
 # launchctl load
 info "LaunchAgent 등록"
 launchctl load "$PLIST_PATH" 2>/dev/null || true
-ok "ONESHIM 설치 완료!"
+ok "Maekon 설치 완료!"
 info "실행: open $APP_BUNDLE"
 info "다음 로그인 시 자동 시작됩니다."

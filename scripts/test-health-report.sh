@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== ONESHIM Test Health Report ==="
+echo "=== Maekon Test Health Report ==="
 echo ""
 
 # Layer 1: Rust

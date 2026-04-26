@@ -46,10 +46,10 @@ function renderPrompt(props: { onClose?: () => void; productiveSessionCount?: nu
 describe('AutostartOnboardingPrompt', () => {
   it('renders title and body', () => {
     renderPrompt()
-    // en.json: onboarding.autostart.title = "Start ONESHIM automatically?"
-    expect(screen.getByText('Start ONESHIM automatically?')).toBeInTheDocument()
+    // en.json: onboarding.autostart.title = "Start Maekon automatically?"
+    expect(screen.getByText('Start Maekon automatically?')).toBeInTheDocument()
     // en.json: onboarding.autostart.body
-    expect(screen.getByText(/ONESHIM works best when running in the background/i)).toBeInTheDocument()
+    expect(screen.getByText(/Maekon works best when running in the background/i)).toBeInTheDocument()
   })
 
   it('Enable button invokes enable_autostart then mark_autostart_prompt_state dismissed', async () => {

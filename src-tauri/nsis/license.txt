@@ -48,7 +48,7 @@ or other liability obligations consistent with this License.
 
 ---
 
-Copyright 2024-2026 ONESHIM Contributors
+Copyright 2024-2026 Maekon Contributors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

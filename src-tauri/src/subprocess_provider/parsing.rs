@@ -33,7 +33,7 @@ pub(super) fn build_intent_prompt(
         .unwrap_or("(none)");
 
     Ok(format!(
-        "You are ONESHIM's subprocess-backed UI intent planner.\n\
+        "You are Maekon's subprocess-backed UI intent planner.\n\
 Return only compact JSON matching this schema:\n{schema}\n\n\
 Rules:\n\
 - action_type must be one of: click, type, hotkey, wait, activate.\n\
@@ -55,7 +55,7 @@ Screen context JSON:\n{screen_context_json}",
 
 pub(super) fn build_codex_ocr_prompt(model: &str) -> String {
     format!(
-        "You are ONESHIM's subprocess-backed OCR extractor.\n\
+        "You are Maekon's subprocess-backed OCR extractor.\n\
 Use the attached image as the only source of truth.\n\
 Return strict JSON matching this schema:\n{schema}\n\n\
 Rules:\n\
@@ -72,7 +72,7 @@ Rules:\n\
 
 pub(super) fn build_path_based_ocr_prompt(image_path: &Path, model: &str) -> String {
     format!(
-        "You are ONESHIM's subprocess-backed OCR extractor.\n\
+        "You are Maekon's subprocess-backed OCR extractor.\n\
 Read the local image file at this path:\n{image_path}\n\n\
 Return strict JSON matching this schema:\n{schema}\n\n\
 Rules:\n\

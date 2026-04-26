@@ -67,7 +67,7 @@ impl SessionContextAssembler {
         SessionMessage {
             role: MessageRole::System,
             content: format!(
-                "You are ONESHIM's AI assistant. Here is the current user context:\n\n{content}"
+                "You are Maekon's AI assistant. Here is the current user context:\n\n{content}"
             ),
             attachments: vec![],
             tools: Some(self.build_tool_definitions()),
@@ -377,7 +377,7 @@ mod tests {
         let message = assembler.build_system_message().await;
 
         assert!(matches!(message.role, MessageRole::System));
-        assert!(message.content.contains("ONESHIM's AI assistant"));
+        assert!(message.content.contains("Maekon's AI assistant"));
         assert!(message.content.contains("unknown")); // default regime
         assert!(message.tools.is_some());
         let tools = message.tools.unwrap();

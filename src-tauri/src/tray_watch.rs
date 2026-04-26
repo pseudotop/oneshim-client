@@ -53,9 +53,9 @@ pub(crate) fn tray_diff_detects_tracking_schedule_change(
 /// Q7 / CONS-M12 resolution: reuses Paused icon label wording.
 fn build_tray_tooltip(cfg: &TrackingScheduleConfig) -> String {
     if cfg.enabled && !cfg.windows.is_empty() {
-        "ONESHIM — Tracking Schedule Active".to_string()
+        "Maekon - Tracking Schedule Active".to_string()
     } else {
-        "ONESHIM".to_string()
+        "Maekon".to_string()
     }
 }
 
@@ -177,11 +177,11 @@ mod tests {
         );
     }
 
-    /// build_tray_tooltip: disabled schedule → default "ONESHIM" tooltip.
+    /// build_tray_tooltip: disabled schedule -> default "Maekon" tooltip.
     #[test]
     fn build_tray_tooltip_disabled_returns_default() {
         let cfg = disabled_cfg();
-        assert_eq!(build_tray_tooltip(&cfg), "ONESHIM");
+        assert_eq!(build_tray_tooltip(&cfg), "Maekon");
     }
 
     /// build_tray_tooltip: enabled with window → active schedule tooltip.
@@ -205,7 +205,7 @@ mod tests {
         };
         assert_eq!(
             build_tray_tooltip(&cfg),
-            "ONESHIM",
+            "Maekon",
             "enabled with no windows should still return default tooltip"
         );
     }

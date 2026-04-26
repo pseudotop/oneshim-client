@@ -12,7 +12,7 @@ BINARY_NAME="oneshim"
 
 usage() {
   cat <<'EOF'
-ONESHIM release installer (macOS/Linux)
+Maekon release installer (macOS/Linux)
 
 Usage:
   ./scripts/install.sh [options]
@@ -333,7 +333,7 @@ TARGET_BINARY="$INSTALL_DIR/$BINARY_NAME"
 if [[ "$OS_NAME" == "Darwin" ]]; then
   ICON_SOURCE="$EXTRACT_DIR/icon.icns"
   APP_DIR="${ONESHIM_APP_DIR:-$HOME/Applications}"
-  APP_BUNDLE="$APP_DIR/ONESHIM.app"
+  APP_BUNDLE="$APP_DIR/Maekon.app"
 
   if [[ -f "$ICON_SOURCE" ]]; then
     info "Creating macOS .app bundle: $APP_BUNDLE"
@@ -360,9 +360,9 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>ONESHIM</string>
+  <string>Maekon</string>
   <key>CFBundleDisplayName</key>
-  <string>ONESHIM</string>
+  <string>Maekon</string>
   <key>CFBundleIdentifier</key>
   <string>com.oneshim.client</string>
   <key>CFBundleVersion</key>

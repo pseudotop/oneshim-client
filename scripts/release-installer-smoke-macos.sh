@@ -5,7 +5,7 @@ set -euo pipefail
 ASSETS_DIR="${ONESHIM_SMOKE_INSTALLERS_DIR:-smoke-installers}"
 DMG_NAME="${ONESHIM_SMOKE_DMG_NAME:-oneshim-macos-universal.dmg}"
 PKG_NAME="${ONESHIM_SMOKE_PKG_NAME:-oneshim-macos-universal.pkg}"
-APP_NAME="${ONESHIM_SMOKE_APP_NAME:-ONESHIM.app}"
+APP_NAME="${ONESHIM_SMOKE_APP_NAME:-Maekon.app}"
 
 info() {
   printf '[INSTALLER-SMOKE] %s\n' "$*"
@@ -27,7 +27,7 @@ Options:
   --assets-dir <path>  Directory containing DMG/PKG artifacts
   --dmg-name <name>    DMG file name (default: oneshim-macos-universal.dmg)
   --pkg-name <name>    PKG file name (default: oneshim-macos-universal.pkg)
-  --app-name <name>    Installed app bundle name (default: ONESHIM.app)
+  --app-name <name>    Installed app bundle name (default: Maekon.app)
   -h, --help           Show help
 EOF
 }

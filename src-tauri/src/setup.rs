@@ -26,7 +26,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    info!("Tauri setup: initializing ONESHIM agent");
+    info!("Tauri setup: initializing Maekon agent");
     let bundle = BootstrapRuntimeBuilder::new().build()?;
 
     // Bus-driven telemetry reconcile task. ConfigManager now exists (built
