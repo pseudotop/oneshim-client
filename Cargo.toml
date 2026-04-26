@@ -137,7 +137,7 @@ rustls-pemfile = "2"
 
 # External gRPC binding (D13-v2c)
 arc-swap = "1"
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 notify = "8"
 notify-debouncer-mini = "0.7"
 rustls = "0.23"
