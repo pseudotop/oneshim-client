@@ -57,9 +57,7 @@ impl Scheduler {
         let overlay_ref = self.magic_overlay.clone();
         let coaching_storage_ref = self.coaching_storage.clone();
         let coaching_analysis_provider = self.analysis_provider.clone();
-        let gui_feedback_pii_san: Option<
-            Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>,
-        > = Some(Arc::new(oneshim_vision::privacy::VisionPiiSanitizer));
+        let gui_feedback_pii_san = super::super::gui_pipeline::gui_feedback_pii_sanitizer();
         let coaching_pii_sanitizer = super::coaching_helper::build_pii_sanitizer();
         let capture_paused = self.capture_paused.clone();
         let overlay_driver_ref = self.overlay_driver.clone();
