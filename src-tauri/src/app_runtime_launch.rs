@@ -1174,6 +1174,16 @@ impl AppRuntimeLaunchBuilder {
             None
         };
 
+        // Phase 4 D11: clone the Handle BEFORE the AppState construction
+        // moves `handle` into `runtime_handle`. The scheduler-ready point
+        // below dispatches `spawn_healthy_writer` onto this runtime, which
+        // must work even when this function is called synchronously from
+        // Tauri's `setup` callback — on macOS the callback fires inside
+        // `applicationDidFinishLaunching` BEFORE any tokio context is
+        // current on the main thread, so the previous `tokio::spawn`
+        // panicked with "no reactor running".
+        let runtime_handle_for_writer = handle.clone();
+
         let state_builder = ManagedStateBuilder::new(
             AppState {
                 runtime_handle: handle,
@@ -1237,7 +1247,7 @@ impl AppRuntimeLaunchBuilder {
         if let Some(probe) = health_probe.as_ref() {
             // JoinHandle is fire-and-forget; the writer is a background task
             // that survives past this function's return.
-            let _join_handle = probe.spawn_healthy_writer();
+            let _join_handle = probe.spawn_healthy_writer(&runtime_handle_for_writer);
             tracing::debug!("health probe: spawn_healthy_writer dispatched");
         }
 
