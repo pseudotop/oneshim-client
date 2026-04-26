@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.40-rc.1] - 2026-04-26
+
 ### Added
 
 - **D13 gRPC dashboard server (v1)** (spec: `docs/superpowers/specs/2026-04-21-d13-grpc-web-exposure-design.md`). `oneshim-web` gains an optional gRPC server exposing `DashboardService` for external CLI/integration tools.
