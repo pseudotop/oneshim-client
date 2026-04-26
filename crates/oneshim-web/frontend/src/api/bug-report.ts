@@ -22,7 +22,7 @@ export function formatBundleForClipboard(bundle: BugReportBundle, format: Clipbo
     return JSON.stringify(bundle, null, 2)
   }
   return [
-    '=== ONESHIM Bug Report ===',
+    '=== Maekon Bug Report ===',
     `Bug ID: ${bundle.bug_id}`,
     `Generated: ${bundle.diagnostics.generated_at}`,
     '',

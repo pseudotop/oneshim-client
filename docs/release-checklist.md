@@ -24,6 +24,7 @@
 ## Documentation
 - [ ] CHANGELOG.md updated
 - [ ] Breaking changes documented (if any)
+- [ ] Release notes and install docs explain that Maekon is the app display name while `oneshim-*` artifacts and the `oneshim` CLI command remain compatibility identifiers
 
 ## Sign-off
 - [ ] Maintainer approval

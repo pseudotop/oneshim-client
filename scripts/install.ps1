@@ -23,6 +23,24 @@ function Write-WarnLine {
     Write-Warning $Message
 }
 
+function Write-CompletionBanner {
+    $candidatePaths = @()
+    if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        $candidatePaths += (Join-Path $PSScriptRoot "..\assets\brand\cli-banner.txt")
+    }
+    $candidatePaths += "assets\brand\cli-banner.txt"
+
+    Write-Host ""
+    $bannerPath = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ($bannerPath) {
+        Get-Content -Path $bannerPath | ForEach-Object { Write-Host $_ }
+    } else {
+        Write-Host "Maekon"
+        Write-Host "local context agent"
+    }
+    Write-Host ""
+}
+
 function Get-NormalizedTag {
     param([string]$InputVersion)
     if ($InputVersion -eq "latest") {
@@ -242,6 +260,7 @@ try {
     Add-InstallDirToUserPath -Directory $InstallDir
 
     Write-Info "Installed: $target"
+    Write-CompletionBanner
     Write-Info "Open a new terminal and run: oneshim"
 } finally {
     Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue

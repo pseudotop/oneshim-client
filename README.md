@@ -251,6 +251,9 @@ powershell -ExecutionPolicy Bypass -File $tmp
 
 Download from [Releases](https://github.com/pseudotop/oneshim-client/releases):
 
+Maekon is the app display name. Current release filenames intentionally retain
+`oneshim-*` for installer, updater, and checksum compatibility.
+
 | Platform | File |
 |--------|------|
 | macOS Universal (DMG installer) | `oneshim-macos-universal.dmg` |
@@ -266,6 +269,10 @@ Download from [Releases](https://github.com/pseudotop/oneshim-client/releases):
 ## Configuration
 
 ### Environment Variables
+
+Compatibility note: `ONESHIM_*` environment variables, the `oneshim` CLI command,
+`com.oneshim.client`, and existing config/data paths remain stable technical
+identifiers for this release line.
 
 | Variable | Description | Default |
 |------|------|--------|
@@ -370,6 +377,8 @@ oneshim-client/
 | oneshim-automation | Automation control, policy, audit logging | [Details](./docs/crates/oneshim-automation.md) |
 | oneshim-analysis | LLM analysis pipeline, regime classification | — |
 | oneshim-embedding | Vector embedding, INT8 quantization | — |
+| oneshim-audio | Audio capture, STT pipeline | — |
+| oneshim-sandbox-worker | Sandboxed automation action executor | — |
 | oneshim-api-contracts | Shared API type contracts | — |
 | oneshim-lint | Workspace lint tool (language-check) | — |
 

@@ -2,6 +2,11 @@
 
 Thanks for your interest in Maekon. This document is the Rust-specific guide for contributing to the Cargo workspace.
 
+Brand and compatibility note: Maekon is the user-facing display name. Repository
+URLs, crate/package names, Cargo package names, the `oneshim` CLI command,
+`ONESHIM_*` environment variables, and existing config/data paths remain
+`oneshim` technical identifiers for compatibility.
+
 ## Development Environment Setup
 
 ### Prerequisites
@@ -169,7 +174,7 @@ This project strictly follows **Hexagonal Architecture (Ports & Adapters)**. Ple
 
 ### Core Principle
 
-**`oneshim-core` defines all port traits and domain models.** The other 9 crates are adapters.
+**`oneshim-core` defines all port traits and domain models.** Adapter crates implement those ports, and `src-tauri/` (package name `oneshim-app`) is the composition root.
 
 ```
 oneshim-core  (port definitions, models)
@@ -180,7 +185,7 @@ oneshim-core  (port definitions, models)
     <- oneshim-suggestion <- oneshim-network
     <- src-tauri          <- oneshim-suggestion
     <- oneshim-automation
-    <- oneshim-app        (full DI wiring)
+    <- src-tauri package oneshim-app (full DI wiring)
 ```
 
 ### Prohibited Patterns
@@ -193,7 +198,7 @@ Permitted exceptions:
 
 ### DI Pattern
 
-Use constructor injection with `Arc<dyn T>`. No DI framework is used; all wiring is done manually in `oneshim-app/src/main.rs`.
+Use constructor injection with `Arc<dyn T>`. No DI framework is used; all wiring is done manually in `src-tauri/src/main.rs`.
 
 ```rust
 pub struct Scheduler {
@@ -261,10 +266,10 @@ impl MyService for MyServiceImpl {
 
 ### Step 3: Wire up DI in app
 
-Connect the implementation to its port in `crates/oneshim-app/src/main.rs`.
+Connect the implementation to its port in `src-tauri/src/main.rs`.
 
 ```rust
-// crates/oneshim-app/src/main.rs
+// src-tauri/src/main.rs
 
 let my_service: Arc<dyn MyService> = Arc::new(MyServiceImpl::new());
 let scheduler = Scheduler::new(my_service, /* other dependencies */);

@@ -7,7 +7,7 @@ function StoryReviewWorkflowPage() {
         Story Review Workflow
       </h1>
       <p className="mb-8 text-content-secondary text-sm">
-        ONESHIM Storybook review ladder for atom-to-page composition and theme regression checks.
+        Maekon Storybook review ladder for atom-to-page composition and theme regression checks.
       </p>
 
       <Section title="Review Ladder">

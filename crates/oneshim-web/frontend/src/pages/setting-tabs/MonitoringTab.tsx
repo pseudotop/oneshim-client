@@ -41,16 +41,16 @@ function describeMacNotificationPermission(
 ) {
   switch (statusReason) {
     case 'macos_notifications_granted':
-      return t('settings.permissionMacNotificationsDescGranted', 'Desktop notifications are enabled for ONESHIM.')
+      return t('settings.permissionMacNotificationsDescGranted', 'Desktop notifications are enabled for Maekon.')
     case 'macos_notifications_not_determined':
       return t(
         'settings.permissionMacNotificationsDescPrompt',
-        'ONESHIM has not requested notification permission yet. Request it so reminders and coaching prompts can appear.',
+        'Maekon has not requested notification permission yet. Request it so reminders and coaching prompts can appear.',
       )
     case 'macos_notifications_denied':
       return t(
         'settings.permissionMacNotificationsDescDenied',
-        'Notifications are turned off for ONESHIM in macOS System Settings. Enable them manually if you want reminders and coaching prompts.',
+        'Notifications are turned off for Maekon in macOS System Settings. Enable them manually if you want reminders and coaching prompts.',
       )
     case 'macos_notifications_provisional':
       return t(
@@ -166,7 +166,7 @@ export default function MonitoringTab() {
             label: t('onboarding.step2ScreenCapture'),
             description: t(
               'settings.permissionWindowsScreenCaptureDesc',
-              'Screen capture is usually available when ONESHIM can access your active desktop session.',
+              'Screen capture is usually available when Maekon can access your active desktop session.',
             ),
             state: permissionStatus?.screen_capture.state ?? 'unavailable',
           },
@@ -297,7 +297,7 @@ export default function MonitoringTab() {
                 {isMac
                   ? t(
                       'settings.permissionSectionDescMac',
-                      'Grant the required macOS permissions so ONESHIM can capture context reliably.',
+                      'Grant the required macOS permissions so Maekon can capture context reliably.',
                     )
                   : isLinux
                     ? t(
@@ -311,7 +311,7 @@ export default function MonitoringTab() {
                         )
                       : t(
                           'settings.permissionSectionDesc',
-                          'Check whether desktop integrations required by ONESHIM are currently reachable.',
+                          'Check whether desktop integrations required by Maekon are currently reachable.',
                         )}
               </p>
             </div>
@@ -346,7 +346,7 @@ export default function MonitoringTab() {
               <p>
                 {t(
                   'settings.permissionCheckFailedDesc',
-                  'ONESHIM could not read the current desktop access state. Retry the check after returning from your OS settings.',
+                  'Maekon could not read the current desktop access state. Retry the check after returning from your OS settings.',
                 )}
               </p>
               <p className="mt-2 text-content-tertiary text-xs">{permissionStatusError}</p>
@@ -418,7 +418,7 @@ export default function MonitoringTab() {
                       )
                     : t(
                         'settings.permissionAttentionDesc',
-                        'If a service is unavailable, check your desktop session settings and reopen ONESHIM.',
+                        'If a service is unavailable, check your desktop session settings and reopen Maekon.',
                       )}
                 </Alert>
               )}

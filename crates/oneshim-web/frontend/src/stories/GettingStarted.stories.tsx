@@ -4,10 +4,10 @@ function GettingStartedPage() {
   return (
     <div className="min-h-screen max-w-3xl bg-surface-base p-8">
       <h1 className="mb-6 text-2xl text-content" style={{ fontWeight: 700 }}>
-        ONESHIM Design System
+        Maekon Design System
       </h1>
       <p className="mb-8 text-content-secondary text-sm">
-        Component library for the ONESHIM desktop dashboard application.
+        Component library for the Maekon desktop dashboard application.
       </p>
 
       <Section title="Quick Start">
