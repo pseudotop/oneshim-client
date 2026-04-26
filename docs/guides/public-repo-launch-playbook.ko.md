@@ -37,6 +37,24 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 3. 알려진 P0 이슈 0건
 4. 최신 QA 증적과 workflow 페이지 최신화
 
+## 남은 운영 TODO
+
+아래 항목은 Rust 클라이언트 코드베이스와 독립적으로 처리할 수 있으며, 별도
+source change 없이 진행 가능합니다.
+
+- **Landing 배포 연결**: landing 구현 대상을 정한 뒤 `maekon.dev`를 공개
+  landing host에 연결합니다. `maekon.dev`를 canonical host로 유지하고,
+  `www.maekon.dev`는 apex host로 redirect합니다. Origin 인증서가 정상 제공되면
+  Cloudflare SSL/TLS 모드는 Full (strict)로 올립니다.
+- **Transactional email**: Resend outbound는 `mail.maekon.dev`에 구성하고,
+  SPF/DKIM/DMARC 레코드는 Cloudflare에 DNS-only로 추가합니다.
+  자동 발송 주소는 `noreply@mail.maekon.dev`,
+  `releases@mail.maekon.dev`를 예약합니다. 사람이 보는 연락처인
+  `support@maekon.dev`, `security@maekon.dev`는 Cloudflare Email Routing에
+  유지합니다.
+- **Inbound automation, 추후**: 이메일 답장을 앱 이벤트로 처리해야 할 때만
+  `reply.maekon.dev`를 Resend inbound webhook용으로 추가합니다.
+
 ## Export 절차
 
 ```bash

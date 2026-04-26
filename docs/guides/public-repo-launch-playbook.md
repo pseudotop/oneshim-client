@@ -38,6 +38,23 @@ Use one consistent positioning line across README + repository description.
 3. Known P0 issues are zero.
 4. Latest QA run evidence and workflow pages are up to date.
 
+## Open Operational TODOs
+
+These items are outside the Rust client codebase and can be completed without a
+source change.
+
+- **Landing deployment**: connect `maekon.dev` to the public landing host after
+  the landing implementation is selected. Keep `maekon.dev` as the canonical
+  host, redirect `www.maekon.dev` to the apex host, and move SSL/TLS to Full
+  (strict) once the origin presents a valid certificate.
+- **Transactional email**: configure Resend outbound on `mail.maekon.dev` with
+  DNS-only SPF/DKIM/DMARC records in Cloudflare. Reserve
+  `noreply@mail.maekon.dev` and `releases@mail.maekon.dev` for automated mail.
+  Keep human contact addresses (`support@maekon.dev`, `security@maekon.dev`) on
+  Cloudflare Email Routing.
+- **Inbound automation, later**: add `reply.maekon.dev` for Resend inbound
+  webhooks only if the product needs email replies to become app events.
+
 ## Export Procedure
 
 ```bash

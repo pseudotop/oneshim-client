@@ -73,7 +73,7 @@ sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /path/to/onesh
 
 **Windows(Windows Defender 방화벽):**
 ```powershell
-New-NetFirewallRule -DisplayName "ONESHIM gRPC" -Direction Inbound `
+New-NetFirewallRule -DisplayName "Maekon gRPC" -Direction Inbound `
     -Program "C:\path\to\oneshim-app.exe" -Action Allow -Protocol TCP -LocalPort 10092
 ```
 

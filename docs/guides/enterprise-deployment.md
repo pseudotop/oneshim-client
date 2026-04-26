@@ -1,6 +1,10 @@
 # Enterprise Deployment Guide
 
-This guide covers mass deployment of ONESHIM to managed fleets using MDM, Group Policy, and Linux package managers. It is intended for IT administrators and enterprise architects.
+This guide covers mass deployment of Maekon to managed fleets using MDM, Group Policy, and Linux package managers. It is intended for IT administrators and enterprise architects.
+
+Compatibility note: some installer filenames, binary names, bundle identifiers,
+registry values, and config/data paths still use `oneshim` or `ONESHIM` as
+stable technical identifiers.
 
 See also: [SECURITY.md](../../SECURITY.md)
 
@@ -19,7 +23,7 @@ See also: [SECURITY.md](../../SECURITY.md)
 
 ## Network Requirements
 
-ONESHIM requires outbound access from endpoints to:
+Maekon requires outbound access from endpoints to:
 
 | Port | Protocol | Purpose | Required |
 |------|----------|---------|----------|
@@ -59,18 +63,18 @@ Build a notarized `.dmg` from the release pipeline (see [CI Transparency](ci-tra
 
 ```bash
 pkgbuild \
-  --root /path/to/ONESHIM.app \
+  --root /path/to/Maekon.app \
   --install-location /Applications \
   --identifier com.oneshim.client \
   --version 1.0.0 \
-  ONESHIM-1.0.0.pkg
+  Maekon-1.0.0.pkg
 ```
 
 Sign and notarize the `.pkg` with your Apple Developer ID Installer certificate before distributing via MDM.
 
 ### 2. LaunchAgent for Auto-Start
 
-To start ONESHIM at user login, deploy a `LaunchAgent` plist via MDM:
+To start Maekon at user login, deploy a `LaunchAgent` plist via MDM:
 
 **File path on endpoint**: `~/Library/LaunchAgents/com.oneshim.client.plist`
 
@@ -84,7 +88,7 @@ To start ONESHIM at user login, deploy a `LaunchAgent` plist via MDM:
     <string>com.oneshim.client</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Applications/ONESHIM.app/Contents/MacOS/oneshim</string>
+        <string>/Applications/Maekon.app/Contents/MacOS/oneshim</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -119,7 +123,7 @@ The config file is JSON. Use the per-tenant configuration fields listed in the [
 Build the Windows installer from the release pipeline. The installer is a standard `.msi`. Silent installation via GPO:
 
 ```powershell
-msiexec /i ONESHIM-1.0.0.msi /quiet /norestart ALLUSERS=1
+msiexec /i oneshim-app-1.0.0.msi /quiet /norestart ALLUSERS=1
 ```
 
 Or via Group Policy software deployment:
@@ -149,11 +153,11 @@ An ADMX template is not yet published. Use the registry-based config approach ab
 
 ### 4. Auto-Start via Registry
 
-To start ONESHIM at user login without relying on the built-in autostart, add a Run key via GPO Preferences:
+To start Maekon at user login without relying on the built-in autostart, add a Run key via GPO Preferences:
 
 - **Key**: `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`
 - **Value name**: `ONESHIM`
-- **Value data**: `"C:\Program Files\ONESHIM\oneshim.exe"`
+- **Value data**: `"C:\Program Files\Maekon\oneshim.exe"`
 
 ---
 
@@ -193,7 +197,7 @@ Deploy a systemd user unit to `/etc/skel/.config/systemd/user/oneshim.service` s
 
 ```ini
 [Unit]
-Description=ONESHIM Desktop Agent
+Description=Maekon Desktop Agent
 After=graphical-session.target
 
 [Service]
@@ -217,7 +221,7 @@ systemctl --user enable --now oneshim
 
 ## Per-Tenant Configuration
 
-ONESHIM uses a JSON config file at the platform-specific path above. The following fields can be remotely managed per tenant. All fields use `#[serde(default)]`, so omitting a field applies the built-in default.
+Maekon uses a JSON config file at the platform-specific path above. The following fields can be remotely managed per tenant. All fields use `#[serde(default)]`, so omitting a field applies the built-in default.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -235,7 +239,7 @@ ONESHIM uses a JSON config file at the platform-specific path above. The followi
 ```json
 {
   "server": {
-    "base_url": "https://oneshim.corp.example.com"
+    "base_url": "https://maekon.corp.example.com"
   },
   "grpc": {
     "grpc_endpoint": "https://grpc.corp.example.com:50051",
