@@ -2,12 +2,34 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use oneshim_analysis::CoachingEngine;
+use oneshim_core::config::PiiFilterLevel;
 use oneshim_core::models::coaching;
 use oneshim_core::ports::coaching_storage::CoachingStoragePort;
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+use oneshim_core::sanitized;
 
 use crate::magic_overlay::MagicOverlayHandle;
 
 use super::helpers::{build_personalization_prompt, COACHING_SYSTEM_PROMPT};
+
+/// D5 iter-16: construct the `VisionPiiSanitizer` used for scrubbing LLM
+/// error Display output at the coaching tracing boundary. Returned wrapped
+/// in `Option` so callers can thread `None` for no-sanitize tests.
+pub(super) fn build_pii_sanitizer() -> Option<Arc<dyn PiiSanitizer>> {
+    Some(Arc::new(oneshim_vision::privacy::VisionPiiSanitizer))
+}
+
+/// Resolve the current `PiiFilterLevel` from an optional `ConfigManager`.
+/// Returns the default level (`Standard`) when no manager is configured —
+/// matches the established scheduler pattern (`config_manager1.as_ref()...`).
+pub(super) fn resolve_pii_level(
+    config_manager: &Option<oneshim_core::config_manager::ConfigManager>,
+) -> PiiFilterLevel {
+    config_manager
+        .as_ref()
+        .map(|cm| cm.get().privacy.pii_filter_level)
+        .unwrap_or_default()
+}
 
 /// Mutable state carried across monitor ticks for coaching regime tracking.
 pub(super) struct CoachingTickState {
@@ -37,6 +59,12 @@ pub(super) struct CoachingEvalContext<'a> {
     pub(super) prev_app: Option<&'a str>,
     pub(super) drift_detected: bool,
     pub(super) poll_secs: u64,
+    /// D5 iter-16: sanitizer for LLM coaching personalization error tracing.
+    /// The LLM prompt embeds `template_text` + regime_label + user context,
+    /// and the returned `CoreError` message may carry up to 200 chars of
+    /// echoed response body (per `AnalysisClient` error path).
+    pub(super) pii_sanitizer: &'a Option<Arc<dyn PiiSanitizer>>,
+    pub(super) pii_level: PiiFilterLevel,
 }
 
 /// Evaluate coaching triggers and deliver any resulting message.
@@ -146,6 +174,10 @@ pub(super) async fn evaluate_and_deliver(
         let overlay_clone = ctx.overlay.clone();
         let storage_clone = ctx.coaching_storage.clone();
         let regime = regime_label.to_string();
+        // D5 iter-16: capture sanitizer + level into the spawn closure so
+        // the LLM-error Display can be scrubbed at the tracing boundary.
+        let pii_sanitizer = ctx.pii_sanitizer.clone();
+        let pii_level = ctx.pii_level;
         tokio::spawn(async move {
             let prompt = build_personalization_prompt(&msg_clone.template_text, &regime);
             match provider_clone
@@ -171,7 +203,19 @@ pub(super) async fn evaluate_and_deliver(
                 }
                 Ok(_) => { /* No suggestions returned — template remains */ }
                 Err(e) => {
-                    debug!("LLM coaching personalization failed: {e}");
+                    // D5 iter-16: LLM error body can echo user-context PII
+                    // from the prompt (template_text + regime + prev_app).
+                    // Route Display through `SanitizedDisplay` when attached.
+                    match &pii_sanitizer {
+                        Some(san) => debug!(
+                            err.code = %e.code(),
+                            "LLM coaching personalization failed: {}",
+                            sanitized(&e, &**san, pii_level),
+                        ),
+                        None => {
+                            debug!(err.code = %e.code(), "LLM coaching personalization failed: {e}")
+                        }
+                    }
                 }
             }
         });
