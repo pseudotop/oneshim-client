@@ -48,6 +48,32 @@ fatal() {
   exit 1
 }
 
+print_completion_banner() {
+  local banner_path=""
+  local script_dir=""
+
+  if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  fi
+
+  if [[ -n "$script_dir" && -f "$script_dir/../assets/brand/cli-banner.txt" ]]; then
+    banner_path="$script_dir/../assets/brand/cli-banner.txt"
+  elif [[ -f "assets/brand/cli-banner.txt" ]]; then
+    banner_path="assets/brand/cli-banner.txt"
+  fi
+
+  printf '\n'
+  if [[ -n "$banner_path" ]]; then
+    cat "$banner_path"
+  else
+    cat <<'EOF'
+Maekon
+local context agent
+EOF
+  fi
+  printf '\n\n'
+}
+
 download_file() {
   local url="$1"
   local output="$2"
@@ -434,4 +460,5 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
   warn "  export PATH=\"$INSTALL_DIR:\$PATH\""
 fi
 
+print_completion_banner
 info "Run command: $BINARY_NAME"

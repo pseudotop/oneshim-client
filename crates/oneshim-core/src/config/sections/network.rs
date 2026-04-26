@@ -100,6 +100,12 @@ pub struct WebConfig {
     pub allow_external: bool,
     #[serde(default)]
     pub integration_auth_token: Option<String>,
+    /// Dedicated port for the loopback gRPC Dashboard server.
+    ///
+    /// `0` means "use the default". `ONESHIM_DASHBOARD_GRPC_PORT` can still
+    /// override this at runtime for ops/CI.
+    #[serde(default = "default_grpc_dashboard_port")]
+    pub grpc_port: u16,
     /// D13-v2b: gRPC dashboard streaming LoadPolicy thresholds. None = defaults.
     #[serde(default)]
     pub grpc_load_thresholds: Option<LoadThresholds>,
@@ -121,6 +127,7 @@ impl Default for WebConfig {
             port: default_web_port(),
             allow_external: false,
             integration_auth_token: None,
+            grpc_port: default_grpc_dashboard_port(),
             grpc_load_thresholds: None,
             grpc_streaming_enabled: true,
             grpc_max_concurrent_streams: default_max_concurrent_streams(),
@@ -207,6 +214,16 @@ fn default_web_port() -> u16 {
     DEFAULT_WEB_PORT
 }
 
+/// Default loopback gRPC Dashboard port.
+///
+/// Must match `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT`. `oneshim-core`
+/// cannot depend on `oneshim-web`, so the local unit test pins the contract.
+pub const DEFAULT_GRPC_DASHBOARD_PORT: u16 = 10091;
+
+fn default_grpc_dashboard_port() -> u16 {
+    DEFAULT_GRPC_DASHBOARD_PORT
+}
+
 // ── LoadThresholds defaults (D13-v2b) ──────────────────────────────
 
 fn default_min_free_mem_gb() -> f32 {
@@ -250,6 +267,17 @@ mod tests {
     }
 
     #[test]
+    fn default_grpc_dashboard_port_is_10091() {
+        assert_eq!(DEFAULT_GRPC_DASHBOARD_PORT, 10091);
+    }
+
+    #[test]
+    fn web_config_default_wires_grpc_port() {
+        let cfg = WebConfig::default();
+        assert_eq!(cfg.grpc_port, DEFAULT_GRPC_DASHBOARD_PORT);
+    }
+
+    #[test]
     fn web_config_default_max_concurrent_streams_50() {
         let cfg = WebConfig::default();
         assert_eq!(cfg.grpc_max_concurrent_streams, 50);
@@ -269,5 +297,17 @@ mod tests {
         // Other fields fall back to defaults
         assert_eq!(t.cpu_medium_pct, 70.0);
         assert_eq!(t.min_free_mem_gb, 2.0);
+        assert_eq!(cfg.grpc_port, DEFAULT_GRPC_DASHBOARD_PORT);
+    }
+
+    #[test]
+    fn web_config_grpc_port_roundtrips_via_serde() {
+        let cfg = WebConfig {
+            grpc_port: 55_555,
+            ..WebConfig::default()
+        };
+        let json = serde_json::to_string(&cfg).expect("serialize");
+        let parsed: WebConfig = serde_json::from_str(&json).expect("parse");
+        assert_eq!(parsed.grpc_port, 55_555);
     }
 }

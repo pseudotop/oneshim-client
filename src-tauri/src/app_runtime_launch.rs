@@ -74,85 +74,6 @@ impl AppRuntimeLaunchBuilder {
             config.update.installation_id = Some(new_id);
         }
 
-        // Phase 4 D11: post-install self-healthy probe.
-        //
-        // Runs BEFORE any scheduler loop spawns. If the probe escalates to
-        // RollbackRequired (two consecutive failed boots on this version
-        // without a self-healthy marker), execute_rollback spawns the
-        // restored binary and this process terminates via
-        // ROLLBACK_EXIT_CODE. On Err, we log and continue — the current
-        // (failing) binary is still running; the next boot retries.
-        //
-        // The probe instance is kept alive through build_and_spawn so the
-        // scheduler-ready point near the function's end can invoke
-        // `spawn_healthy_writer` (30s uptime marker, spec §4.5).
-        let health_probe: Option<crate::updater::HealthProbe> = match std::env::current_exe() {
-            Ok(current_exe) => match current_exe.parent().map(|p| p.to_path_buf()) {
-                Some(install_dir) => {
-                    let probe = crate::updater::HealthProbe::new(
-                        install_dir,
-                        crate::updater::CURRENT_VERSION.to_string(),
-                    );
-                    match probe.check_startup_state() {
-                        crate::updater::StartupAction::Normal => {
-                            tracing::debug!("health probe: Normal — proceeding with startup");
-                            Some(probe)
-                        }
-                        crate::updater::StartupAction::RollbackRequired {
-                            from_version,
-                            to_version,
-                            backup_path,
-                            reason,
-                        } => {
-                            tracing::error!(
-                                "health probe escalated to rollback: {from_version} -> {to_version} ({:?})",
-                                reason
-                            );
-                            let contract_reason = match reason {
-                                crate::updater::RollbackReason::RepeatedStartupFailure => {
-                                    oneshim_api_contracts::update::RollbackReason::RepeatedStartupFailure
-                                }
-                            };
-                            match crate::updater::Updater::execute_rollback(
-                                &backup_path,
-                                &current_exe,
-                                &from_version,
-                                &to_version,
-                                contract_reason,
-                                |info| {
-                                    tracing::warn!(
-                                        "rollback event: {} -> {} ({:?})",
-                                        info.from_version,
-                                        info.to_version,
-                                        info.reason
-                                    );
-                                    // Task 9 wires this into UpdateControl for
-                                    // UI broadcast. For now the event is
-                                    // logged only.
-                                },
-                            ) {
-                                Ok(_never) => unreachable!("Infallible success path"),
-                                Err(e) => {
-                                    tracing::error!("rollback failed: {e}");
-                                    // Leave user on the failing binary; next
-                                    // boot retries.
-                                    None
-                                }
-                            }
-                        }
-                    }
-                }
-                None => {
-                    tracing::warn!("health probe skipped: current_exe has no parent");
-                    None
-                }
-            },
-            Err(e) => {
-                tracing::warn!("health probe skipped: std::env::current_exe() failed: {e}");
-                None
-            }
-        };
-
         #[cfg(feature = "server")]
         let server_context = ServerLaunchContext::from_bootstrap(server);
 
@@ -167,77 +88,18 @@ impl AppRuntimeLaunchBuilder {
         let update_control = core_resources.update_runtime.update_control.clone();
         let update_action_tx = core_resources.update_runtime.update_action_tx.clone();
 
-        // Phase 4 D11 / Task 9: consume `.rolled_back_notification_{to_version}`
-        // markers written by the previous (failing) binary just before the
-        // rollback swap. The restored binary surfaces the RolledBack state in
-        // UI on next boot. Fire-and-forget tokio task to avoid blocking launch.
-        //
-        // Holistic-review I-2: scan for any `.rolled_back_notification_*` file
-        // and match its `to_version` against our running version. Files whose
-        // `to_version` matches the current binary are OUR rollback — consume
-        // and delete. Files whose `to_version` does not match are stale from a
-        // prior rollback cycle whose consumer never completed — delete without
-        // surfacing UI, so unrelated launches don't re-render a stale banner.
-        if let Ok(current_exe) = std::env::current_exe() {
-            if let Some(install_dir) = current_exe.parent().map(|p| p.to_path_buf()) {
-                let update_control_clone = update_control.clone();
-                handle.spawn(async move {
-                    let entries = match std::fs::read_dir(&install_dir) {
-                        Ok(it) => it,
-                        Err(e) => {
-                            tracing::warn!(
-                                "rolled_back_notification scan failed ({:?}): {e}",
-                                install_dir
-                            );
-                            return;
-                        }
-                    };
-                    let current_version = env!("CARGO_PKG_VERSION");
-                    for entry in entries.flatten() {
-                        let name = entry.file_name();
-                        let name_str = name.to_string_lossy();
-                        if !name_str.starts_with(".rolled_back_notification_") {
-                            continue;
-                        }
-                        let path = entry.path();
-                        match std::fs::read(&path) {
-                            Ok(bytes) => {
-                                match serde_json::from_slice::<
-                                    oneshim_api_contracts::update::RollbackInfo,
-                                >(&bytes)
-                                {
-                                    Ok(info) => {
-                                        if info.to_version == current_version {
-                                            tracing::warn!(
-                                                "consuming rolled_back_notification: {} -> {}",
-                                                info.from_version,
-                                                info.to_version
-                                            );
-                                            let _ = update_control_clone
-                                                .set_rolled_back(info)
-                                                .await;
-                                        } else {
-                                            tracing::debug!(
-                                                "sweeping stale rolled_back_notification (to_version={}, current={})",
-                                                info.to_version,
-                                                current_version
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!("rolled_back_notification parse failed: {e}")
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!("rolled_back_notification read failed: {e}")
-                            }
-                        }
-                        let _ = std::fs::remove_file(&path);
-                    }
-                });
-            }
-        }
+        // Phase 4 D11: post-install self-healthy probe + rolled-back-notification
+        // scan. Runs BEFORE any scheduler loop spawns. If the probe escalates
+        // to RollbackRequired (two consecutive failed boots on this version
+        // without a self-healthy marker), the helper calls execute_rollback
+        // which terminates this process. The probe instance is kept alive
+        // until the scheduler-ready point near the function's end invokes
+        // `spawn_healthy_writer` (30s uptime marker, spec §4.5).
+        let health_probe = crate::app_runtime_launch_health_probe::execute_startup_probe(
+            &handle,
+            update_control.clone(),
+        );
+
         let sqlite_storage = core_resources.storage_runtime.sqlite_storage.clone();
         let encryption_key = core_resources.storage_runtime.encryption_key.clone();
         let event_tx = core_resources.background_runtime.event_tx();
@@ -823,19 +685,19 @@ impl AppRuntimeLaunchBuilder {
             let web_server_runtime = builder.build_and_spawn();
 
             // D13: spawn gRPC dashboard server alongside Axum REST, when the
-            // `grpc-dashboard` feature is compiled in. Default port 10091;
-            // can be overridden by ONESHIM_DASHBOARD_GRPC_PORT env var. If
-            // the bind fails (port in use, etc.), the server task logs a
+            // `grpc-dashboard` feature is compiled in. Port resolution
+            // priority (highest first):
+            //   1. ONESHIM_DASHBOARD_GRPC_PORT env var (ops/CI override)
+            //   2. `config.web.grpc_port` (user config)
+            //   3. `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT` (10091)
+            // If the bind fails (port in use, etc.), the server task logs a
             // warn and exits — REST continues normally.
             //
             // D13-v2b: pass a GrpcSpawnConfig so streaming RPCs receive
             // SystemMonitor + event_tx + auth token + load_policy + kill switch + cap.
             #[cfg(feature = "grpc-dashboard")]
             {
-                let grpc_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
+                let grpc_port = resolve_loopback_grpc_port(config.web.grpc_port);
                 let grpc_storage = sqlite_storage.clone()
                     as std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>;
                 // Fresh SysInfoMonitor — cheap, sysinfo-backed, independent of
@@ -877,10 +739,7 @@ impl AppRuntimeLaunchBuilder {
                 if ext_cfg.enabled {
                     // F13: read the loopback port the same way the loopback spawn does,
                     // then refuse to start the external server if they collide.
-                    let loopback_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
-                        .ok()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
+                    let loopback_port = resolve_loopback_grpc_port(config.web.grpc_port);
                     if let Err(msg) =
                         oneshim_web::grpc::external::port_collision::check_port_collision(
                             ext_cfg.port,
@@ -1237,25 +1096,31 @@ impl AppRuntimeLaunchBuilder {
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);
 
-        // Phase 4 D11: scheduler is now fully up — spawn the self-healthy
-        // writer. After `healthy_threshold` (default 30s) of continuous
-        // wall-clock uptime without a crash, the writer records
-        // `.self_healthy_{VERSION}`, deletes `.install_pending_{VERSION}` +
-        // all `.boot_count_pid_{VERSION}_*` per-PID markers (+ any legacy
-        // `.boot_count_{VERSION}` single-file residual), and cleans sibling
-        // rollback backups.
-        if let Some(probe) = health_probe.as_ref() {
-            // JoinHandle is fire-and-forget; the writer is a background task
-            // that survives past this function's return.
-            let _join_handle = probe.spawn_healthy_writer(&runtime_handle_for_writer);
-            tracing::debug!("health probe: spawn_healthy_writer dispatched");
-        }
+        // Phase 4 D11: scheduler is up — dispatch the self-healthy writer.
+        crate::app_runtime_launch_health_probe::spawn_healthy_writer(
+            health_probe.as_ref(),
+            &runtime_handle_for_writer,
+        );
 
         Ok(AppRuntimeLaunchResult {
             frontend_web_port,
             state_builder,
         })
     }
+}
+
+#[cfg(any(feature = "grpc-dashboard", feature = "grpc-dashboard-external"))]
+fn resolve_loopback_grpc_port(configured_port: u16) -> u16 {
+    std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| {
+            if configured_port == 0 {
+                oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT
+            } else {
+                configured_port
+            }
+        })
 }
 
 /// Build an `ExternalGrpcSpawnConfig` from the external gRPC section of `AppConfig`.

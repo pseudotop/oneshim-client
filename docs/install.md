@@ -2,7 +2,11 @@
 
 # Installation Guide
 
-This guide provides terminal-first installation for ONESHIM release binaries.
+This guide provides terminal-first installation for Maekon release binaries.
+
+Compatibility note: release filenames, install script names, `ONESHIM_*`
+environment variables, and the `oneshim` CLI command intentionally keep their
+current names for installer, updater, and existing-user compatibility.
 
 ## Quick Install
 

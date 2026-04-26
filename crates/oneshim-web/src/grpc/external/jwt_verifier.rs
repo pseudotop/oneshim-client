@@ -18,9 +18,9 @@ pub struct Claims {
     pub aud: String,
     pub exp: u64,
     pub iat: u64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nbf: Option<u64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jti: Option<String>,
 }
 

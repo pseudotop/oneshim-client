@@ -345,12 +345,12 @@ function StepPermissions({ onReadyChange }: { onReadyChange: (ready: boolean) =>
   const description = IS_MAC
     ? t(
         'onboarding.step2DescMac',
-        'macOS requires Accessibility, Screen Recording, and notification access for the full ONESHIM experience.',
+        'macOS requires Accessibility, Screen Recording, and notification access for the full Maekon experience.',
       )
     : IS_WINDOWS
       ? t(
           'onboarding.step2DescWindows',
-          'Windows usually does not require separate permission prompts, but ONESHIM still depends on desktop access, screen capture, and notification delivery being available.',
+          'Windows usually does not require separate permission prompts, but Maekon still depends on desktop access, screen capture, and notification delivery being available.',
         )
       : IS_LINUX
         ? t(

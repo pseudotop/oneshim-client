@@ -407,7 +407,7 @@ export function useSettingsForm(data: SettingsDataResult): SettingsFormResult {
       if (snapshot.notifications.state === 'granted') {
         showToast(
           'success',
-          t('settings.permissionNotificationRequestGranted', 'Notifications are ready for ONESHIM.'),
+          t('settings.permissionNotificationRequestGranted', 'Notifications are ready for Maekon.'),
           3000,
         )
       } else {

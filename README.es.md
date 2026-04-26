@@ -234,6 +234,10 @@ powershell -ExecutionPolicy Bypass -File $tmp
 
 Descargue desde [Releases](https://github.com/pseudotop/oneshim-client/releases):
 
+Maekon es el nombre visible de la aplicación. Los nombres de archivos de
+lanzamiento conservan intencionalmente el formato `oneshim-*` para mantener la
+compatibilidad con instaladores, actualizadores y checksums.
+
 | Plataforma | Archivo |
 |--------|------|
 | macOS Universal (instalador DMG) | `oneshim-macos-universal.dmg` |
@@ -249,6 +253,10 @@ Descargue desde [Releases](https://github.com/pseudotop/oneshim-client/releases)
 ## Configuración
 
 ### Variables de Entorno
+
+Nota de compatibilidad: las variables `ONESHIM_*`, el comando CLI `oneshim`,
+`com.oneshim.client` y las rutas config/data existentes se mantienen como
+identificadores técnicos estables en esta línea de lanzamiento.
 
 | Variable | Descripción | Valor Predeterminado |
 |------|------|--------|
@@ -307,27 +315,32 @@ Descargue desde [Releases](https://github.com/pseudotop/oneshim-client/releases)
 
 ## Arquitectura
 
-Un workspace de Cargo con crates adapter siguiendo Hexagonal Architecture (Ports & Adapters). Desde la v0.1.5, el punto de entrada binario principal es `src-tauri/` (Tauri v2), que aloja el panel React existente en un shell WebView.
+Un workspace de Cargo con 15 paquetes siguiendo Hexagonal Architecture (Ports & Adapters). Los 14 crates viven bajo `crates/`, y el binario principal/composition root vive en `src-tauri/` (Tauri v2, paquete `oneshim-app`).
 
 ```
 oneshim-client/
-├── src-tauri/              # Punto de entrada binario Tauri v2 (binario principal, v0.1.5+)
+├── src-tauri/              # Punto de entrada binario Tauri v2 + composition root
 │   ├── src/
 │   │   ├── main.rs         # Constructor de la app Tauri + cableado DI
 │   │   ├── tray.rs         # Menú de bandeja del sistema
-│   │   ├── commands.rs     # Comandos IPC de Tauri
-│   │   └── scheduler/      # Scheduler de fondo con 9 bucles
+│   │   ├── commands/       # Comandos IPC de Tauri
+│   │   └── scheduler/      # Scheduler de fondo
 │   └── tauri.conf.json     # Configuración de Tauri
 ├── crates/
-│   ├── oneshim-core/       # Modelos de dominio + traits de port + errores
-│   ├── oneshim-network/    # Adapters HTTP/SSE/WebSocket/gRPC
+│   ├── oneshim-core/       # Modelos de dominio + traits de port + errores + config
+│   ├── oneshim-network/    # HTTP/SSE/WebSocket/gRPC, compresión, auth
 │   ├── oneshim-suggestion/ # Recepción y procesamiento de sugerencias
-│   ├── oneshim-storage/    # Almacenamiento local SQLite
-│   ├── oneshim-monitor/    # Monitoreo del sistema
-│   ├── oneshim-vision/     # Procesamiento de imagen (Edge)
-│   ├── oneshim-web/        # Panel web local (Axum + React)
-│   ├── oneshim-automation/ # Control de automatización
-│   └── oneshim-app/        # Crate adapter legado (entrada CLI, modo autónomo)
+│   ├── oneshim-storage/    # Almacenamiento local SQLite + migraciones de schema
+│   ├── oneshim-monitor/    # Métricas del sistema, ventana activa, seguimiento
+│   ├── oneshim-vision/     # Captura de pantalla, delta encoding, OCR, filtro PII
+│   ├── oneshim-web/        # Panel web local (Axum REST + React)
+│   ├── oneshim-automation/ # Automatización, políticas, auditoría
+│   ├── oneshim-analysis/   # Pipeline de análisis LLM, clasificación de régimen
+│   ├── oneshim-embedding/  # Embeddings vectoriales + cuantización INT8
+│   ├── oneshim-audio/      # Captura de audio + pipeline STT
+│   ├── oneshim-sandbox-worker/ # Ejecutor sandbox out-of-process
+│   ├── oneshim-api-contracts/ # Contratos de tipos API compartidos
+│   └── oneshim-lint/       # Herramienta lint del workspace
 └── docs/
     ├── crates/             # Documentación detallada por crate
     ├── architecture/       # Documentos ADR (ADR-001~ADR-019; ver docs/architecture/ADR-*.md)
@@ -346,8 +359,12 @@ oneshim-client/
 | oneshim-suggestion | Cola de sugerencias, retroalimentación | [Detalles](./docs/crates/oneshim-suggestion.md) |
 | oneshim-web | Panel web local, REST API | [Detalles](./docs/crates/oneshim-web.md) |
 | oneshim-automation | Control de automatización, registro de auditoría | [Detalles](./docs/crates/oneshim-automation.md) |
-| oneshim-app | Entrada CLI legada, modo autónomo | [Detalles](./docs/crates/oneshim-app.md) |
-| ~~oneshim-ui~~ | ~~UI de escritorio (iced)~~ — eliminado en v0.1.5 (Tauri v2) | [Obsoleto](./docs/crates/oneshim-ui.md) |
+| oneshim-analysis | Pipeline de análisis LLM, clasificación de régimen | — |
+| oneshim-embedding | Embeddings vectoriales, cuantización INT8 | — |
+| oneshim-audio | Captura de audio, pipeline STT | — |
+| oneshim-sandbox-worker | Ejecutor de acciones de automatización en sandbox | — |
+| oneshim-api-contracts | Contratos de tipos API compartidos | — |
+| oneshim-lint | Herramienta lint del workspace (language-check) | — |
 
 Índice completo de documentación: [docs/crates/README.md](./docs/crates/README.md)
 

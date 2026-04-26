@@ -234,6 +234,9 @@ powershell -ExecutionPolicy Bypass -File $tmp
 
 从 [Releases](https://github.com/pseudotop/oneshim-client/releases) 下载：
 
+Maekon 是应用显示名称。当前发布文件名会有意保留 `oneshim-*`
+格式，以保持安装器、更新器和校验和兼容性。
+
 | 平台 | 文件 |
 |--------|------|
 | macOS Universal (DMG 安装包) | `oneshim-macos-universal.dmg` |
@@ -249,6 +252,10 @@ powershell -ExecutionPolicy Bypass -File $tmp
 ## 配置
 
 ### 环境变量
+
+兼容性说明：`ONESHIM_*` 环境变量、`oneshim` CLI 命令、
+`com.oneshim.client` 以及现有 config/data 路径在此发布线中仍作为稳定的
+技术标识符保留。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
@@ -307,27 +314,32 @@ powershell -ExecutionPolicy Bypass -File $tmp
 
 ## 架构
 
-基于 Hexagonal Architecture（Ports & Adapters）的 Cargo workspace，由多个 adapter crate 组成。自 v0.1.5 起，主二进制入口为 `src-tauri/`（Tauri v2），将现有 React 仪表盘托管在 WebView 外壳中。
+基于 Hexagonal Architecture（Ports & Adapters）的 15 包 Cargo workspace。14 个 crate 位于 `crates/` 下，主二进制/composition root 位于 `src-tauri/`（Tauri v2，包名 `oneshim-app`）。
 
 ```
 oneshim-client/
-├── src-tauri/              # Tauri v2 二进制入口（主二进制，v0.1.5+）
+├── src-tauri/              # Tauri v2 二进制入口 + composition root
 │   ├── src/
 │   │   ├── main.rs         # Tauri 应用构建 + 依赖注入布线
 │   │   ├── tray.rs         # 系统托盘菜单
-│   │   ├── commands.rs     # Tauri IPC 命令
-│   │   └── scheduler/      # 9 循环后台调度器
+│   │   ├── commands/       # Tauri IPC 命令
+│   │   └── scheduler/      # 后台调度器
 │   └── tauri.conf.json     # Tauri 配置
 ├── crates/
-│   ├── oneshim-core/       # 领域模型 + Port trait + 错误定义
-│   ├── oneshim-network/    # HTTP/SSE/WebSocket/gRPC adapter
+│   ├── oneshim-core/       # 领域模型 + Port trait + 错误定义 + 配置
+│   ├── oneshim-network/    # HTTP/SSE/WebSocket/gRPC、压缩、认证
 │   ├── oneshim-suggestion/ # 建议接收与处理
-│   ├── oneshim-storage/    # SQLite 本地存储
-│   ├── oneshim-monitor/    # 系统监控
-│   ├── oneshim-vision/     # 图像处理（边缘计算）
-│   ├── oneshim-web/        # 本地 Web 仪表盘（Axum + React）
-│   ├── oneshim-automation/ # 自动化控制
-│   └── oneshim-app/        # 旧版 adapter crate（CLI 入口，独立模式）
+│   ├── oneshim-storage/    # SQLite 本地存储 + schema migration
+│   ├── oneshim-monitor/    # 系统指标、活动窗口、活动追踪
+│   ├── oneshim-vision/     # 屏幕捕获、增量编码、OCR、PII 过滤
+│   ├── oneshim-web/        # 本地 Web 仪表盘（Axum REST + React）
+│   ├── oneshim-automation/ # 自动化控制、策略、审计日志
+│   ├── oneshim-analysis/   # LLM 分析流水线、regime 分类
+│   ├── oneshim-embedding/  # 向量 embedding + INT8 量化
+│   ├── oneshim-audio/      # 音频捕获 + STT 流水线
+│   ├── oneshim-sandbox-worker/ # out-of-process 沙箱执行器
+│   ├── oneshim-api-contracts/ # 共享 API 类型契约
+│   └── oneshim-lint/       # workspace lint 工具
 └── docs/
     ├── crates/             # 各 crate 详细文档
     ├── architecture/       # ADR 文档（ADR-001~ADR-019；参见 docs/architecture/ADR-*.md）
@@ -346,8 +358,12 @@ oneshim-client/
 | oneshim-suggestion | 建议队列、反馈 | [详情](./docs/crates/oneshim-suggestion.md) |
 | oneshim-web | 本地 Web 仪表盘、REST API | [详情](./docs/crates/oneshim-web.md) |
 | oneshim-automation | 自动化控制、审计日志 | [详情](./docs/crates/oneshim-automation.md) |
-| oneshim-app | 旧版 CLI 入口、独立模式 | [详情](./docs/crates/oneshim-app.md) |
-| ~~oneshim-ui~~ | ~~桌面 UI (iced)~~ -- 在 v0.1.5 中移除（Tauri v2） | [已弃用](./docs/crates/oneshim-ui.md) |
+| oneshim-analysis | LLM 分析流水线、regime 分类 | — |
+| oneshim-embedding | 向量 embedding、INT8 量化 | — |
+| oneshim-audio | 音频捕获、STT 流水线 | — |
+| oneshim-sandbox-worker | 沙箱自动化动作执行器 | — |
+| oneshim-api-contracts | 共享 API 类型契约 | — |
+| oneshim-lint | workspace lint 工具（language-check） | — |
 
 完整文档索引: [docs/crates/README.md](./docs/crates/README.md)
 

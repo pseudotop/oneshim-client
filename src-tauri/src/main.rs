@@ -18,6 +18,7 @@
 mod agent_runtime;
 mod agent_runtime_support;
 mod app_runtime_launch;
+mod app_runtime_launch_health_probe;
 mod audit_query;
 mod auditing_session;
 mod auth_cli;

@@ -11,7 +11,7 @@ use crate::telemetry::{Handle, Layer};
 use oneshim_core::config::TelemetryConfig;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::trace::{self as sdktrace, TracerProvider};
+use opentelemetry_sdk::trace::{self as sdktrace, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{reload, Registry};
@@ -23,7 +23,7 @@ pub(super) struct Inner {
     reload_handle: reload::Handle<Option<OtelLayer>, Registry>,
     /// Currently-active provider. `None` when disabled. `shutdown()` on
     /// toggle-off; rebuilt via `build_pipeline` on toggle-on.
-    active: Option<TracerProvider>,
+    active: Option<SdkTracerProvider>,
     /// Last config we applied. Used to detect transitions and avoid redundant work.
     last_cfg: TelemetryConfig,
     /// Captured from boot so the off→on transition can regenerate the pipeline
@@ -91,7 +91,7 @@ pub(super) fn build_initial_handle(
 fn build_pipeline(
     cfg: &TelemetryConfig,
     data_dir: &std::path::Path,
-) -> anyhow::Result<(TracerProvider, OtelLayer)> {
+) -> anyhow::Result<(SdkTracerProvider, OtelLayer)> {
     let endpoint = resolve_endpoint(cfg);
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
@@ -104,13 +104,13 @@ fn build_pipeline(
     let instance_id = super::instance_id::ensure_instance_id(data_dir)
         .map_err(|e| anyhow::anyhow!("telemetry_instance_id: {e}"))?;
 
-    let resource = Resource::new(vec![
-        KeyValue::new("service.name", cfg.service_name.clone()),
-        KeyValue::new("service.instance.id", instance_id),
-    ]);
+    let resource = Resource::builder()
+        .with_service_name(cfg.service_name.clone())
+        .with_attribute(KeyValue::new("service.instance.id", instance_id))
+        .build();
 
-    let provider = TracerProvider::builder()
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
         .with_resource(resource)
         .build();
 
@@ -152,7 +152,7 @@ fn append_signal_path(base: &str) -> String {
 /// wedged exporter (collector down, network partition) cannot block the app
 /// on toggle-off or exit. Past the deadline we log a warning and proceed; the
 /// SDK may retain a zombie I/O task but the caller is never blocked.
-fn shutdown(provider: TracerProvider) {
+fn shutdown(provider: SdkTracerProvider) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let _ = provider.shutdown();

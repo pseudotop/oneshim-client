@@ -234,6 +234,9 @@ powershell -ExecutionPolicy Bypass -File $tmp
 
 [Releases](https://github.com/pseudotop/oneshim-client/releases)からダウンロードできます:
 
+Maekon はアプリの表示名です。現在のリリースファイル名は、インストーラー、
+アップデーター、チェックサム互換性のために意図的に `oneshim-*` 形式を維持します。
+
 | プラットフォーム | ファイル |
 |--------|------|
 | macOS Universal（DMGインストーラー） | `oneshim-macos-universal.dmg` |
@@ -249,6 +252,10 @@ powershell -ExecutionPolicy Bypass -File $tmp
 ## 設定
 
 ### 環境変数
+
+互換性メモ: `ONESHIM_*` 環境変数、`oneshim` CLIコマンド、
+`com.oneshim.client`、既存のconfig/dataパスは、このリリースラインで
+安定した技術識別子として維持します。
 
 | 変数 | 説明 | デフォルト |
 |------|------|--------|
@@ -307,27 +314,32 @@ powershell -ExecutionPolicy Bypass -File $tmp
 
 ## アーキテクチャ
 
-Hexagonal Architecture（Ports & Adapters）に従うAdapterクレイトで構成されたCargo workspaceです。v0.1.5以降、メインバイナリのエントリーポイントは`src-tauri/`（Tauri v2）であり、既存のReactダッシュボードをWebViewシェルでホストします。
+Hexagonal Architecture（Ports & Adapters）に従う15パッケージのCargo workspaceです。14個のクレイトは`crates/`配下にあり、メインバイナリ/composition rootは`src-tauri/`（Tauri v2、パッケージ名`oneshim-app`）です。
 
 ```
 oneshim-client/
-├── src-tauri/              # Tauri v2バイナリエントリーポイント（メインバイナリ、v0.1.5以降）
+├── src-tauri/              # Tauri v2バイナリエントリーポイント + composition root
 │   ├── src/
 │   │   ├── main.rs         # Tauriアプリビルダー + DI配線
 │   │   ├── tray.rs         # システムトレイメニュー
-│   │   ├── commands.rs     # Tauri IPCコマンド
-│   │   └── scheduler/      # 9ループバックグラウンドスケジューラー
+│   │   ├── commands/       # Tauri IPCコマンド
+│   │   └── scheduler/      # バックグラウンドスケジューラー
 │   └── tauri.conf.json     # Tauri設定
 ├── crates/
-│   ├── oneshim-core/       # ドメインモデル + Portトレイト + エラー
-│   ├── oneshim-network/    # HTTP/SSE/WebSocket/gRPC Adapter
+│   ├── oneshim-core/       # ドメインモデル + Portトレイト + エラー + 設定
+│   ├── oneshim-network/    # HTTP/SSE/WebSocket/gRPC、圧縮、認証
 │   ├── oneshim-suggestion/ # 提案の受信と処理
-│   ├── oneshim-storage/    # SQLiteローカルストレージ
-│   ├── oneshim-monitor/    # システムモニタリング
-│   ├── oneshim-vision/     # イメージ処理（Edge）
-│   ├── oneshim-web/        # ローカルWebダッシュボード（Axum + React）
-│   ├── oneshim-automation/ # 自動化コントロール
-│   └── oneshim-app/        # レガシーAdapterクレイト（CLIエントリ、Standaloneモード）
+│   ├── oneshim-storage/    # SQLiteローカルストレージ + スキーママイグレーション
+│   ├── oneshim-monitor/    # システム指標、アクティブウィンドウ、活動追跡
+│   ├── oneshim-vision/     # 画面キャプチャ、デルタエンコーディング、OCR、PIIフィルター
+│   ├── oneshim-web/        # ローカルWebダッシュボード（Axum REST + React）
+│   ├── oneshim-automation/ # 自動化コントロール、ポリシー、監査ログ
+│   ├── oneshim-analysis/   # LLM分析パイプライン、regime分類
+│   ├── oneshim-embedding/  # ベクトル埋め込み + INT8量子化
+│   ├── oneshim-audio/      # 音声キャプチャ + STTパイプライン
+│   ├── oneshim-sandbox-worker/ # out-of-processサンドボックス実行器
+│   ├── oneshim-api-contracts/ # 共有API型契約
+│   └── oneshim-lint/       # workspace lintツール
 └── docs/
     ├── crates/             # クレイトごとの詳細ドキュメント
     ├── architecture/       # ADRドキュメント（ADR-001〜ADR-004）
@@ -346,8 +358,12 @@ oneshim-client/
 | oneshim-suggestion | 提案キュー、フィードバック | [詳細](./docs/crates/oneshim-suggestion.md) |
 | oneshim-web | ローカルWebダッシュボード、REST API | [詳細](./docs/crates/oneshim-web.md) |
 | oneshim-automation | 自動化コントロール、監査ログ | [詳細](./docs/crates/oneshim-automation.md) |
-| oneshim-app | レガシーCLIエントリ、Standaloneモード | [詳細](./docs/crates/oneshim-app.md) |
-| ~~oneshim-ui~~ | ~~デスクトップUI（iced）~~ — v0.1.5で削除（Tauri v2） | [非推奨](./docs/crates/oneshim-ui.md) |
+| oneshim-analysis | LLM分析パイプライン、regime分類 | — |
+| oneshim-embedding | ベクトル埋め込み、INT8量子化 | — |
+| oneshim-audio | 音声キャプチャ、STTパイプライン | — |
+| oneshim-sandbox-worker | サンドボックス化された自動化アクション実行器 | — |
+| oneshim-api-contracts | 共有API型契約 | — |
+| oneshim-lint | workspace lintツール（language-check） | — |
 
 ドキュメントの全体索引: [docs/crates/README.md](./docs/crates/README.md)
 

@@ -11,6 +11,10 @@ We take the security of Maekon seriously. If you discover a vulnerability, pleas
 1. **Email**: Send an email to `security@oneshim.dev`. Please use PGP encryption if possible.
 2. **GitHub Security Advisory**: You can report privately by selecting "Report a vulnerability" under the "Security" tab in the repository.
 
+Compatibility note: some crate names, package names, config paths, and release
+artifacts still use `oneshim` as a stable technical identifier. Please include
+the exact identifier or path shown on disk when it helps reproduce a report.
+
 ### Information to Include in Your Report
 
 To enable an effective response, please include as much of the following information as possible.

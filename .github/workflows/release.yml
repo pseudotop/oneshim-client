@@ -1208,6 +1208,9 @@ jobs:
 
           ### Downloads
 
+          Maekon is the app display name. Release filenames intentionally retain
+          \`oneshim-*\` for installer, updater, and checksum compatibility.
+
           | Platform | Architecture | File | Format |
           |----------|-------------|------|--------|
           | macOS | Universal (arm64 + x64) | \`oneshim-macos-universal.dmg\` | DMG Installer (signed) |
