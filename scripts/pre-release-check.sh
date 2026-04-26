@@ -239,9 +239,17 @@ if command -v gh >/dev/null 2>&1; then
   # Check for open security advisories via dependabot alerts.
   # Distinguish genuine "0 open alerts" from "Dependabot disabled / query failed" —
   # the original `|| echo "0"` fallback silently passed in the disabled case.
-  ALERT_RESPONSE=$(gh api repos/{owner}/{repo}/dependabot/alerts 2>&1)
-  ALERT_EXIT=$?
-  if [ $ALERT_EXIT -ne 0 ]; then
+  #
+  # `gh api` exits non-zero when dependabot is disabled (HTTP 403) or when the
+  # endpoint is otherwise unreachable. With `set -euo pipefail` (line 7) at
+  # script scope, a bare `var=$(failing_cmd)` aborts the script before
+  # `ALERT_EXIT=$?` can run, producing a silent exit. Anchor the assignment
+  # in an `|| ALERT_EXIT=$?` clause: bash's errexit is suppressed for the
+  # left side of an `||` list, and the OR captures the substitution's exit
+  # status into `ALERT_EXIT` so the branches below can classify the failure.
+  ALERT_EXIT=0
+  ALERT_RESPONSE=$(gh api repos/{owner}/{repo}/dependabot/alerts 2>&1) || ALERT_EXIT=$?
+  if [ "$ALERT_EXIT" -ne 0 ]; then
     if echo "$ALERT_RESPONSE" | grep -qiE "dependabot.*(disabled|not enabled)|feature.*disabled|is not enabled"; then
       warn "Dependabot alerts not enabled for this repo — security gate cannot run (enable in repo Settings > Code security)"
     else
