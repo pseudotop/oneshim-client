@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 use super::super::config::PlatformEgressPolicy;
+use super::super::gui_pipeline::gui_feedback_pii_level;
 use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
 use super::coaching_helper::{CoachingEvalContext, CoachingTickState};
@@ -56,6 +57,8 @@ impl Scheduler {
         let overlay_ref = self.magic_overlay.clone();
         let coaching_storage_ref = self.coaching_storage.clone();
         let coaching_analysis_provider = self.analysis_provider.clone();
+        let gui_feedback_pii_san = super::super::gui_pipeline::gui_feedback_pii_sanitizer();
+        let coaching_pii_sanitizer = super::coaching_helper::build_pii_sanitizer();
         let capture_paused = self.capture_paused.clone();
         let overlay_driver_ref = self.overlay_driver.clone();
         let detection_active = self.detection_active.clone();
@@ -426,7 +429,7 @@ impl Scheduler {
                                         if gui_state.feedback_tick_counter >= 30 && !gui_state.uncertain_queue.is_empty() {
                                             gui_state.feedback_tick_counter = 0;
                                             if let Some(ref p) = coaching_analysis_provider {
-                                                super::super::gui_pipeline::process_gui_feedback(gui_state, p.as_ref()).await;
+                                                super::super::gui_pipeline::process_gui_feedback(gui_state, p.as_ref(), gui_feedback_pii_san.as_ref(), gui_feedback_pii_level(&config_manager1)).await;
                                             }
                                         }
                                     }
@@ -463,6 +466,8 @@ impl Scheduler {
                                         prev_app: prev_app.as_deref(),
                                         drift_detected,
                                         poll_secs: poll.as_secs(),
+                                        pii_sanitizer: &coaching_pii_sanitizer,
+                                        pii_level: super::coaching_helper::resolve_pii_level(&config_manager1),
                                     };
                                     super::coaching_helper::evaluate_and_deliver(&ctx, &mut coaching_tick_state).await;
                                 }
