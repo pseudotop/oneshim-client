@@ -44,6 +44,15 @@ pub(crate) fn gui_feedback_pii_level(
         .unwrap_or_default()
 }
 
+/// D5 iter-16: build the `PiiSanitizer` used at the GUI-feedback tracing
+/// boundary. Exposed at crate root so the monitor loop can call it inline
+/// without re-stating the multi-line `Option<Arc<dyn ...>>` type — the
+/// `monitor::spawn_monitor_loop` body is hard-capped at 500 lines by the
+/// lefthook guard, so every line counts.
+pub(crate) fn gui_feedback_pii_sanitizer() -> Option<Arc<dyn PiiSanitizer>> {
+    Some(Arc::new(oneshim_vision::privacy::VisionPiiSanitizer))
+}
+
 /// Mutable state for the GUI pipeline, owned by the monitor loop.
 ///
 /// Note: `GuiWorkTypeRefiner` is intentionally NOT included here. The refiner
