@@ -6,13 +6,13 @@
 //! Run with: `cargo test -p oneshim-app --test single_instance_integration -- --ignored`
 //!
 //! Skipped by default because it requires the binary to be built and may
-//! interfere with a running ONESHIM instance on the developer's machine.
+//! interfere with a running Maekon instance on the developer's machine.
 
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 #[test]
-#[ignore = "spawns ONESHIM binary — run manually after build"]
+#[ignore = "spawns Maekon binary - run manually after build"]
 fn second_instance_exits_cleanly_within_2s() {
     // PRE-CONDITION: 1st instance must be running before this test.
     // This test is informational — verifies 2nd instance can spawn + exit

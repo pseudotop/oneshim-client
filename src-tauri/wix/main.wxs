@@ -1,22 +1,22 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <!--
-  ONESHIM Windows Installer (WiX v3)
+  Maekon Windows Installer (WiX v3)
   사용: cargo wix (cargo-wix 설치 필요)
 -->
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
     <Product
         Id='*'
-        Name='ONESHIM'
+        Name='Maekon'
         UpgradeCode='E8F3D2A1-5B4C-4D6E-9F8A-1C2B3D4E5F6A'
-        Manufacturer='ONESHIM Team'
+        Manufacturer='Maekon Team'
         Language='1033'
         Codepage='1252'
         Version='$(var.Version)'>
 
         <Package Id='*'
             Keywords='Installer'
-            Description='ONESHIM AI Office Assistant'
-            Manufacturer='ONESHIM Team'
+            Description='Maekon Local Context Agent'
+            Manufacturer='Maekon Team'
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'
@@ -28,11 +28,11 @@
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='ONESHIM Installation'/>
+        <Property Id='DiskPrompt' Value='Maekon Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='LocalAppDataFolder' Name='AppData'>
-                <Directory Id='APPLICATIONFOLDER' Name='ONESHIM'>
+                <Directory Id='APPLICATIONFOLDER' Name='Maekon'>
                     <Component Id='binary0' Guid='3602020D-F6CA-4B75-9E7B-0B767E2753E2'>
                         <File
                             Id='exe0'
@@ -51,11 +51,11 @@
             </Directory>
 
             <Directory Id='ProgramMenuFolder'>
-                <Directory Id='ApplicationProgramsFolder' Name='ONESHIM'>
+                <Directory Id='ApplicationProgramsFolder' Name='Maekon'>
                     <Component Id='ApplicationShortcut' Guid='*'>
                         <Shortcut Id='ApplicationStartMenuShortcut'
-                            Name='ONESHIM'
-                            Description='AI Office Assistant'
+                            Name='Maekon'
+                            Description='Local Context Agent'
                             Target='[APPLICATIONFOLDER]oneshim.exe'
                             WorkingDirectory='APPLICATIONFOLDER'/>
                         <RemoveFolder Id='CleanUpShortCut' On='uninstall'/>
@@ -72,8 +72,8 @@
 
         <Feature
             Id='MainProgram'
-            Title='ONESHIM'
-            Description='ONESHIM AI Office Assistant.'
+            Title='Maekon'
+            Description='Maekon Local Context Agent.'
             Level='1'
             ConfigurableDirectory='APPLICATIONFOLDER'
             AllowAdvertise='no'

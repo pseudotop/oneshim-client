@@ -250,8 +250,8 @@ jobs:
           IDENTIFIER=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['identifier'])")
           echo "productName: $PRODUCT_NAME"
           echo "identifier:  $IDENTIFIER"
-          if [ "$PRODUCT_NAME" != "ONESHIM" ]; then
-            echo "::error::tauri.conf.json productName must be 'ONESHIM', got '$PRODUCT_NAME'"
+          if [ "$PRODUCT_NAME" != "Maekon" ]; then
+            echo "::error::tauri.conf.json productName must be 'Maekon', got '$PRODUCT_NAME'"
             exit 1
           fi
           if [ "$IDENTIFIER" != "com.oneshim.client" ]; then
@@ -749,7 +749,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${TAG_REF#v}"
-          APP_BUNDLE="dist/ONESHIM.app"
+          APP_BUNDLE="dist/Maekon.app"
           mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
           cp binaries/oneshim "$APP_BUNDLE/Contents/MacOS/oneshim"
           chmod +x "$APP_BUNDLE/Contents/MacOS/oneshim"
@@ -760,9 +760,9 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>CFBundleName</key>
-            <string>ONESHIM</string>
+            <string>Maekon</string>
             <key>CFBundleDisplayName</key>
-            <string>ONESHIM</string>
+            <string>Maekon</string>
             <key>CFBundleIdentifier</key>
             <string>com.oneshim.client</string>
             <key>CFBundleVersion</key>
@@ -805,7 +805,7 @@ jobs:
         shell: bash
         run: |
           EXPECTED_VERSION="${TAG_REF#v}"
-          BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" dist/ONESHIM.app/Contents/Info.plist)
+          BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" dist/Maekon.app/Contents/Info.plist)
           echo "Expected: $EXPECTED_VERSION"
           echo "Bundle:   $BUNDLE_VERSION"
           if [ "$BUNDLE_VERSION" != "$EXPECTED_VERSION" ]; then
@@ -820,8 +820,8 @@ jobs:
             --entitlements src-tauri/assets/oneshim.entitlements \
             --keychain "$KEYCHAIN_PATH" \
             --sign "$MACOS_APP_SIGNING_IDENTITY_RESOLVED" \
-            dist/ONESHIM.app
-          codesign --verify --deep --strict --verbose=2 dist/ONESHIM.app
+            dist/Maekon.app
+          codesign --verify --deep --strict --verbose=2 dist/Maekon.app
 
       - name: Install create-dmg
         run: brew install create-dmg
@@ -833,24 +833,24 @@ jobs:
           rm -rf artifacts binaries
 
           create-dmg \
-            --volname "ONESHIM" \
+            --volname "Maekon" \
             --volicon "src-tauri/icons/icon.icns" \
             --background "src-tauri/dmg-background.png" \
             --window-pos 200 120 \
             --window-size 660 400 \
             --icon-size 80 \
-            --icon "ONESHIM.app" 180 170 \
+            --icon "Maekon.app" 180 170 \
             --app-drop-link 480 170 \
             --no-internet-enable \
             dist/oneshim-macos-universal.dmg \
-            dist/ONESHIM.app
+            dist/Maekon.app
 
       - name: Create and sign PKG installer
         run: |
           VERSION="${TAG_REF#v}"
           UNSIGNED_PKG_TMP="dist/oneshim-macos-universal-pkgbuild-unsigned.pkg"
           pkgbuild \
-            --component dist/ONESHIM.app \
+            --component dist/Maekon.app \
             --identifier com.oneshim.client \
             --version "$VERSION" \
             --install-location /Applications \
@@ -1244,12 +1244,12 @@ jobs:
           DATE=$(date -u +"%B %d, %Y")
           # Use env-sourced RELEASE_TAG (workflow output, not user input) to
           # compose the header; DATE is generated here so no external input.
-          HEADER="## ONESHIM Client $RELEASE_TAG — Released $DATE"
+          HEADER="## Maekon $RELEASE_TAG — Released $DATE"
           # Idempotency guard (Q5 follow-up): skip prepend if a header for
           # this tag is already present on the first line — regardless of
           # its date suffix. Protects against workflow re-runs (same day or
           # cross-day) that would otherwise double-prepend the header.
-          PREFIX="## ONESHIM Client $RELEASE_TAG — Released "
+          PREFIX="## Maekon $RELEASE_TAG — Released "
           FIRST_LINE=$(head -n1 release_notes.md)
           case "$FIRST_LINE" in
             "$PREFIX"*)
@@ -1266,7 +1266,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG_NAME: ${{ needs.verify-version.outputs.release_tag }}
           RELEASE_TARGET_SHA: ${{ needs.verify-version.outputs.release_sha }}
-          RELEASE_NAME: ONESHIM Client ${{ steps.version.outputs.version }}
+          RELEASE_NAME: Maekon ${{ steps.version.outputs.version }}
           RELEASE_IS_PRERELEASE: ${{ contains(steps.version.outputs.version, '-') }}
         shell: bash
         run: |

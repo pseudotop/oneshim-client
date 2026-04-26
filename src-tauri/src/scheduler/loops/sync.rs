@@ -62,7 +62,7 @@ impl Scheduler {
                                     // Body is English-only: i18n is frontend-side; Rust has no locale context.
                                     if let Err(e) = tauri_plugin_notification::NotificationExt::notification(handle)
                                         .builder()
-                                        .title("ONESHIM")
+                                        .title("Maekon")
                                         .body("OAuth re-authentication required — please reconnect in Settings")
                                         .show()
                                     {

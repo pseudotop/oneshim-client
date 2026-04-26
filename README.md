@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./assets/brand/logo-full-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="./assets/brand/logo-full-light.svg">
-    <img alt="ONESHIM Client" src="./assets/brand/logo-full-light.svg" width="400">
+    <img alt="Maekon" src="./assets/brand/logo-full-light.svg" width="400">
   </picture>
 </p>
 
@@ -10,17 +10,17 @@
   <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a> | <a href="./README.ja.md">日本語</a> | <a href="./README.zh-CN.md">简体中文</a> | <a href="./README.es.md">Español</a>
 </p>
 
-# ONESHIM Client
+# Maekon
 
 > **From raw desktop activity to daily focus wins.**  
-> ONESHIM turns local work signals into a real-time focus timeline and actionable suggestions.
+> Maekon turns local work signals into a real-time focus timeline and actionable suggestions.
 
 A desktop client for AI-assisted office productivity — local context capture, real-time suggestions, and a built-in dashboard. Built with Rust and Tauri v2 (WebView shell around a React frontend) for native performance across macOS, Windows, and Linux.
 
 ## Table of Contents
 
 - [Install in 30 Seconds](#install-in-30-seconds)
-- [Why ONESHIM](#why-oneshim)
+- [Why Maekon](#why-maekon)
 - [Who It's For](#who-its-for)
 - [2-Minute Quickstart](#2-minute-quickstart)
 - [Safety and Privacy at a Glance](#safety-and-privacy-at-a-glance)
@@ -56,7 +56,7 @@ For version pinning, signature enforcement, and uninstall:
 - English: [`docs/install.md`](./docs/install.md)
 - Korean: [`docs/install.ko.md`](./docs/install.ko.md)
 
-## Why ONESHIM
+## Why Maekon
 
 - **Turn activity into actionable insight**: Track context, timeline, focus trends, and interruptions in one place.
 - **Stay lightweight on-device**: Edge processing (delta encoding, thumbnailing, OCR) reduces transfer volume and keeps response fast.

@@ -331,7 +331,7 @@ mod linux {
     pub fn generate_service_file(program_path: &str) -> String {
         format!(
             "[Unit]\n\
-             Description=ONESHIM Desktop Agent\n\
+             Description=Maekon Desktop Agent\n\
              After=graphical-session.target\n\
              \n\
              [Service]\n\
@@ -351,8 +351,8 @@ mod linux {
         format!(
             "[Desktop Entry]\n\
              Type=Application\n\
-             Name=ONESHIM\n\
-             Comment=ONESHIM Desktop Agent\n\
+             Name=Maekon\n\
+             Comment=Maekon Desktop Agent\n\
              Exec={program_path}\n\
              Hidden=false\n\
              X-GNOME-Autostart-enabled=true\n\

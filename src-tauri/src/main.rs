@@ -10,7 +10,7 @@
 // P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
 #![deny(clippy::derive_partial_eq_without_eq)]
 
-//! ONESHIM Desktop Agent — Tauri v2 진입점
+//! Maekon Desktop Agent - Tauri v2 entry point
 //!
 //! iced GUI에서 Tauri v2로 마이그레이션된 데스크톱 에이전트.
 //! 시스템 트레이, WebView 대시보드, IPC 커맨드를 통합 관리합니다.
@@ -375,7 +375,7 @@ fn main() {
             commands::tracking_schedule::get_tracking_schedule_status,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building ONESHIM");
+        .expect("error while building Maekon");
 
     app.run(|app_handle, event| match event {
         RunEvent::Exit => {

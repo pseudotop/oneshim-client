@@ -224,7 +224,7 @@ def build_background(scale: int) -> Image.Image:
         draw,
         center_x=330 * scale,
         top_y=262 * scale,
-        text="Drag ONESHIM to Applications",
+        text="Drag Maekon to Applications",
         font=title_font,
         fill=(246, 248, 252, 248),
     )
@@ -241,7 +241,7 @@ def build_background(scale: int) -> Image.Image:
         center_x=330 * scale,
         top_y=347 * scale,
         lines=[
-            "Installed when ONESHIM appears in Applications.",
+            "Installed when Maekon appears in Applications.",
             "Open it from Applications, then eject this disk image.",
         ],
         font=footer_font,

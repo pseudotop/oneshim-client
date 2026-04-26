@@ -7,7 +7,7 @@ BINARY_NAME="oneshim"
 
 usage() {
   cat <<'EOF'
-ONESHIM uninstall script (macOS/Linux)
+Maekon uninstall script (macOS/Linux)
 
 Usage:
   ./scripts/uninstall.sh [options]
@@ -55,11 +55,12 @@ fi
 # macOS: remove .app bundle
 if [[ "$(uname -s)" == "Darwin" ]]; then
   APP_DIR="${ONESHIM_APP_DIR:-$HOME/Applications}"
-  APP_BUNDLE="$APP_DIR/ONESHIM.app"
-  if [[ -d "$APP_BUNDLE" ]]; then
-    rm -rf "$APP_BUNDLE"
-    info "Removed $APP_BUNDLE"
-  fi
+  for APP_BUNDLE in "$APP_DIR/Maekon.app" "$APP_DIR/ONESHIM.app"; do
+    if [[ -d "$APP_BUNDLE" ]]; then
+      rm -rf "$APP_BUNDLE"
+      info "Removed $APP_BUNDLE"
+    fi
+  done
 fi
 
 if [[ -d "$INSTALL_DIR" && -z "$(ls -A "$INSTALL_DIR")" ]]; then

@@ -1,6 +1,6 @@
 //! CLI subscription bridge artifacts.
 //! Generates command/skill files so Codex / Claude Code / Gemini CLI can
-//! consume ONESHIM exported context in provider subscription mode.
+//! consume Maekon exported context in provider subscription mode.
 
 use oneshim_core::error::CoreError;
 use std::path::{Path, PathBuf};
@@ -88,7 +88,7 @@ pub struct BridgeRevokeReport {
     pub errors: Vec<String>,
 }
 
-/// Default path where ONESHIM exports context snapshots for CLI bridge consumers.
+/// Default path where Maekon exports context snapshots for CLI bridge consumers.
 pub fn default_context_export_path(data_dir: &Path) -> PathBuf {
     data_dir.join("exports").join("oneshim-context.json")
 }
@@ -183,10 +183,10 @@ pub fn render_bridge_template(plan: &CliBridgePlan, context_export_path: &Path) 
 fn render_markdown_command_template(client: CliClient, context_export_path: &Path) -> String {
     let client_hint = match client {
         CliClient::Codex => {
-            "Codex command mode: focus on concrete fixes, tests, and docs from ONESHIM context."
+            "Codex command mode: focus on concrete fixes, tests, and docs from Maekon context."
         }
         CliClient::ClaudeCode => {
-            "Claude Code command mode: convert ONESHIM context into actionable engineering steps."
+            "Claude Code command mode: convert Maekon context into actionable engineering steps."
         }
         CliClient::GeminiCli => "Gemini CLI markdown command mode.",
     };
@@ -194,16 +194,16 @@ fn render_markdown_command_template(client: CliClient, context_export_path: &Pat
     format!(
         r#"<!-- {marker} -->
 ---
-description: Use ONESHIM context export for actionable coding support.
+description: Use Maekon context export for actionable coding support.
 ---
 
 {client_hint}
 
-Read ONESHIM context export at `{context_path}`.
+Read Maekon context export at `{context_path}`.
 
 Execution contract:
 1. If the file exists, summarize highest-impact action items first.
-2. If the file is missing, state that ONESHIM context export is unavailable and continue with baseline analysis.
+2. If the file is missing, state that Maekon context export is unavailable and continue with baseline analysis.
 3. Prefer concrete outputs: failing tests, regression risks, implementation steps, and verification commands.
 4. Keep recommendations provider-neutral across OpenAI, Anthropic, and Google workflows.
 "#,
@@ -216,13 +216,13 @@ Execution contract:
 fn render_gemini_command_template(context_export_path: &Path) -> String {
     format!(
         r#"# {marker}
-description = "Use ONESHIM context export for actionable coding support"
+description = "Use Maekon context export for actionable coding support"
 prompt = """
-Read ONESHIM context export at `{context_path}`.
+Read Maekon context export at `{context_path}`.
 
 Execution contract:
 1. If the file exists, summarize highest-impact action items first.
-2. If the file is missing, state that ONESHIM context export is unavailable and continue with baseline analysis.
+2. If the file is missing, state that Maekon context export is unavailable and continue with baseline analysis.
 3. Prefer concrete outputs: failing tests, regression risks, implementation steps, and verification commands.
 4. Keep recommendations provider-neutral across OpenAI, Anthropic, and Google workflows.
 """
@@ -367,8 +367,11 @@ fn is_managed_bridge_content(contents: &str) -> bool {
         return true;
     }
 
-    contents.contains("Use ONESHIM context export for actionable coding support")
-        && contents.contains("Read ONESHIM context export at")
+    // Keep recognizing pre-Maekon generated bridge files so revoke can clean them up.
+    (contents.contains("Use ONESHIM context export for actionable coding support")
+        && contents.contains("Read ONESHIM context export at"))
+        || (contents.contains("Use Maekon context export for actionable coding support")
+            && contents.contains("Read Maekon context export at"))
 }
 
 #[cfg(test)]

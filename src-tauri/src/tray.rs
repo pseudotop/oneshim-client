@@ -198,7 +198,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
         .icon(initial_icon)
         .icon_as_template(true)
         .menu(&menu)
-        .tooltip("ONESHIM")
+        .tooltip("Maekon")
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "toggle-capture" => {

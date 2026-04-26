@@ -83,9 +83,9 @@ describe('GeneralTab — Startup section', () => {
     renderWithProviders(<StartupSection />)
 
     await waitFor(() => {
-      // en.json: settings.autostart.toggle = "Start ONESHIM at login"
+      // en.json: settings.autostart.toggle = "Start Maekon at login"
       const toggle = screen.getByRole('checkbox', {
-        name: /Start ONESHIM at login/i,
+        name: /Start Maekon at login/i,
       })
       expect(toggle).toBeChecked()
     })
@@ -107,7 +107,7 @@ describe('GeneralTab — Startup section', () => {
 
     await waitFor(() => {
       const toggle = screen.getByRole('checkbox', {
-        name: /Start ONESHIM at login/i,
+        name: /Start Maekon at login/i,
       })
       expect(toggle).toBeDisabled()
     })
@@ -126,7 +126,7 @@ describe('GeneralTab — Startup section', () => {
     // Wait until the toggle is enabled (IPC has resolved) before clicking.
     // findByRole returns as soon as the element exists — even disabled —
     // so we must waitFor the enabled state explicitly.
-    const toggle = await screen.findByRole('checkbox', { name: /Start ONESHIM at login/i })
+    const toggle = await screen.findByRole('checkbox', { name: /Start Maekon at login/i })
     await waitFor(() => expect(toggle).not.toBeDisabled())
 
     await act(async () => {
@@ -156,7 +156,7 @@ describe('GeneralTab — Startup section', () => {
     renderWithProviders(<StartupSection />)
 
     const toggle = await screen.findByRole('checkbox', {
-      name: /Start ONESHIM at login/i,
+      name: /Start Maekon at login/i,
     })
     fireEvent.click(toggle)
 

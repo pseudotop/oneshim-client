@@ -1,5 +1,5 @@
-# ONESHIM Windows 설치 스크립트
-# 바이너리 복사 + Registry Run 등록
+# Maekon Windows installer
+# Copies the binary and registers Registry Run autostart.
 
 $ErrorActionPreference = "Stop"
 
@@ -32,4 +32,4 @@ Write-Host "[OK] 바이너리 설치 완료"
 $ExePath = Join-Path $InstallDir $BinaryName
 Write-Host "[INFO] 레지스트리 등록: $RegistryPath\$RegistryName"
 Set-ItemProperty -Path $RegistryPath -Name $RegistryName -Value "`"$ExePath`""
-Write-Host "[OK] ONESHIM 설치 완료! 다음 로그인 시 자동 시작됩니다."
+Write-Host "[OK] Maekon 설치 완료! 다음 로그인 시 자동 시작됩니다."

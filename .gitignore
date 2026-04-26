@@ -46,6 +46,9 @@ wdio-logs/
 docs/superpowers/
 .claude/ralph-loop.local.md
 
+# Local brand exploration drafts; production assets live in assets/brand/*.svg.
+assets/brand/concepts/
+
 # Claude plugins/agents runtime files
 .agents/
 .claude/skills/

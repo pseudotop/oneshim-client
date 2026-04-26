@@ -472,10 +472,10 @@ impl oneshim_core::ports::notifier::DesktopNotifier for TauriNotifier {
         suggestion: &oneshim_core::models::suggestion::Suggestion,
     ) -> Result<(), oneshim_core::error::CoreError> {
         let title = match suggestion.priority {
-            oneshim_core::models::suggestion::Priority::Critical => "ONESHIM \u{2014} Urgent",
-            oneshim_core::models::suggestion::Priority::High => "ONESHIM \u{2014} Important",
-            oneshim_core::models::suggestion::Priority::Medium => "ONESHIM",
-            oneshim_core::models::suggestion::Priority::Low => "ONESHIM \u{2014} Info",
+            oneshim_core::models::suggestion::Priority::Critical => "Maekon - Urgent",
+            oneshim_core::models::suggestion::Priority::High => "Maekon - Important",
+            oneshim_core::models::suggestion::Priority::Medium => "Maekon",
+            oneshim_core::models::suggestion::Priority::Low => "Maekon - Info",
         };
         let body = suggestion.content.chars().take(200).collect::<String>();
         if let Err(e) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
@@ -508,7 +508,7 @@ impl oneshim_core::ports::notifier::DesktopNotifier for TauriNotifier {
     async fn show_error(&self, message: &str) -> Result<(), oneshim_core::error::CoreError> {
         if let Err(e) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
             .builder()
-            .title("ONESHIM \u{2014} Error")
+            .title("Maekon - Error")
             .body(message)
             .show()
         {
