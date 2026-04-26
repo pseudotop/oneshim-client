@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/tauri-v2/crates/tauri-cli/config.schema.json",
-  "productName": "ONESHIM",
+  "productName": "Maekon",
   "identifier": "com.oneshim.client",
   "build": {
     "frontendDist": "../crates/oneshim-web/frontend/dist",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "ONESHIM Dashboard",
+        "title": "Maekon",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
@@ -49,9 +49,9 @@
     ],
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
-    "copyright": "Copyright 2024-2026 ONESHIM Contributors",
-    "shortDescription": "AI-powered autonomous office work support agent",
-    "longDescription": "ONESHIM monitors your work context through a desktop agent and provides intelligent productivity insights. All data stays on your device by default.",
+    "copyright": "Copyright 2024-2026 Maekon Contributors",
+    "shortDescription": "Local context agent for AI-assisted work",
+    "longDescription": "Maekon watches local work context through a desktop agent and turns it into useful, private-by-default assistance.",
     "macOS": {
       "minimumSystemVersion": "10.15",
       "signingIdentity": null,

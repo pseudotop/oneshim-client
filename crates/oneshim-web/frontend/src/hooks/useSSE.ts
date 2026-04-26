@@ -16,6 +16,7 @@ export interface FrameUpdate {
   app_name: string
   window_title: string
   importance: number
+  trigger_type: string
 }
 
 export interface IdleUpdate {

@@ -35,6 +35,7 @@ impl Scheduler {
         shared_regime: Arc<SharedRegimeState>,
         focus_mode: Arc<FocusModeState>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> tokio::task::JoinHandle<()> {
         let act_mon = self.activity_monitor.clone();
         let trigger = self.capture_trigger.clone();
@@ -59,16 +60,19 @@ impl Scheduler {
         let gui_feedback_pii_san: Option<
             Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>,
         > = Some(Arc::new(oneshim_vision::privacy::VisionPiiSanitizer));
+        let coaching_pii_sanitizer = super::coaching_helper::build_pii_sanitizer();
         let capture_paused = self.capture_paused.clone();
         let overlay_driver_ref = self.overlay_driver.clone();
         let detection_active = self.detection_active.clone();
         let scene_finder_ref = self.scene_finder.clone();
+        let event_tx_mon = self.event_tx.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
             let mut prev_window_title: Option<String> = None;
             let mut prev_idle_secs: u64 = 0;
             let mut interval = tokio::time::interval(poll);
+            let mut focus_block = super::autostart_helper::FocusBlockState::default();
             let mut idle_tracker = IdleTracker::new(Some(idle_threshold));
             let mut adaptive_trigger_state = adaptive_trigger_state;
             let window_tracker = WindowLayoutTracker::new();
@@ -90,6 +94,7 @@ impl Scheduler {
                 .as_ref()
                 .map(|cm| cm.get().analysis.text_intelligence.pii_extraction_level)
                 .unwrap_or_default();
+            let mut ts_notify_state = (false, None::<Instant>); // A.18: (prev_active, last_notified)
 
             loop {
                 tokio::select! {
@@ -101,15 +106,21 @@ impl Scheduler {
                             }
                             info!("Focus mode expired — auto-deactivated");
                         }
-                        prev_idle_secs = handle_idle_tick(
+                        let new_idle_secs = handle_idle_tick(
                             &mut idle_tracker,
                             &sqlite1,
                             &notif1,
                             &input_collector,
                             prev_idle_secs,
                             focus_mode.is_active(),
+                            &event_tx_mon,  // reuse clone added by B3-1
                         ).await;
 
+                        // A.18: TS window enter/exit → desktop notify (60s debounce)
+                        super::tracking_schedule_helper::tick_ts_notifications(&config_manager1, notif1.as_deref(), &mut ts_notify_state.0, &mut ts_notify_state.1).await;
+
+                        // PR-B1 §5.5: productive-session detection (Idle↔Active transitions, idempotent counter)
+                        focus_block.tick(&mut prev_idle_secs, new_idle_secs, idle_threshold, app_handle.as_ref(), config_manager1.as_ref());
                         match act_mon.collect_context().await {
                             Ok(ctx) => {
                                 let app_name = ctx.active_window.as_ref()
@@ -199,14 +210,15 @@ impl Scheduler {
                                     input_activity_level: input_collector.peek_activity_level(),
                                 };
 
-                                // Skip capture when outside active hours (schedule config)
-                                let within_active_hours = config_manager1
-                                    .as_ref()
-                                    .map(|cm| crate::scheduler::should_run_now(&cm.get()))
-                                    .unwrap_or(true);
-
-                                // Skip capture/frame processing when paused or outside active hours
-                                if within_active_hours && !capture_paused.load(std::sync::atomic::Ordering::Relaxed) {
+                                // Gate: consent · active_hours · tracking-schedule · tray-pause (A.7)
+                                let consent = consent_manager1.as_ref()
+                                    .and_then(|cm| cm.current_consent().map(|r| r.permissions.clone()))
+                                    .unwrap_or_default();
+                                let paused = capture_paused.load(std::sync::atomic::Ordering::Relaxed);
+                                let permitted = config_manager1.as_ref()
+                                    .map(|cm| crate::scheduler::capture_permitted_now(&cm.snapshot(), &consent, paused))
+                                    .unwrap_or(!paused);
+                                if permitted {
                                 // --- Ring buffer: capture thumbnail every cycle ---
                                 if let Ok(thumb_data) = processor.capture_thumbnail().await {
                                     ring_buffer.push(RingFrame {
@@ -271,7 +283,7 @@ impl Scheduler {
 
                                         // D5 iter-3: pii_level for OCR sanitization at storage boundary.
                                         let capture_pii = config_manager1.as_ref().map(|cm| cm.get().privacy.pii_filter_level).unwrap_or_default();
-                                        let (ocr_hint, regions, frame_rgba) = handle_frame_capture(&capture_req, &processor, &frame_storage1, &sqlite1, &session1, capture_pii).await;
+                                        let (ocr_hint, regions, frame_rgba) = handle_frame_capture(&capture_req, &processor, &frame_storage1, &sqlite1, &session1, capture_pii, &event_tx_mon).await;
                                         focus_ocr_hint = ocr_hint;
                                         if !regions.is_empty() {
                                             last_ocr_regions = regions;
@@ -291,22 +303,19 @@ impl Scheduler {
                                         }
                                     }
                                 }
-                                } // end capture_paused guard
-
                                 let ctx_event = Event::Context(event);
                                 if let Err(e) = storage1.save_event(&ctx_event).await {
                                     warn!(err.code = %e.code(), "event save failure: {e}");
                                 }
-
                                 if let Err(e) = sqlite1.increment_session_counters(&session1, 1, 0, 0).await {
                                     debug!("increment_session_counters failed: {e}");
                                 }
-
                                 if let Some(ref sink) = uploader1 {
                                     if let Some(upload_event) = egress1.prepare_event_for_upload(ctx_event) {
                                         sink.enqueue(upload_event);
                                     }
                                 }
+                                } // end capture gate
 
                                 let app_changed = prev_app.as_ref() != Some(&app_name);
                                 if app_changed {
@@ -459,6 +468,8 @@ impl Scheduler {
                                         prev_app: prev_app.as_deref(),
                                         drift_detected,
                                         poll_secs: poll.as_secs(),
+                                        pii_sanitizer: &coaching_pii_sanitizer,
+                                        pii_level: super::coaching_helper::resolve_pii_level(&config_manager1),
                                     };
                                     super::coaching_helper::evaluate_and_deliver(&ctx, &mut coaching_tick_state).await;
                                 }

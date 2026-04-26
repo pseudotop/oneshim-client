@@ -39,6 +39,12 @@ use crate::services::runtime_log_provider::TauriRuntimeLogProvider;
 
 pub(crate) struct WebServerLaunchResult {
     pub(crate) automation_controller: Option<Arc<AutomationController>>,
+    /// Snapshot captured from automation_build.ai_runtime_status at
+    /// server build time. Consumed by DashboardServiceImpl for
+    /// SubscribeEvents snapshot-on-subscribe emission (spec §A A2).
+    /// Read in app_runtime_launch.rs within `#[cfg(feature = "grpc-dashboard")]`.
+    #[allow(dead_code)]
+    pub(crate) ai_runtime_status: Option<AiRuntimeStatus>,
 }
 
 pub(crate) struct WebServerLaunchContext<'a> {
@@ -246,6 +252,13 @@ pub(crate) struct WebServerRuntimeBuilder<'a> {
     recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
     coaching_engine: Option<Arc<dyn oneshim_core::ports::coaching::CoachingPort>>,
     session_manager: Option<Arc<dyn oneshim_core::ports::conversation_session::SessionManager>>,
+    /// Task 7.1: pre-built LiveExternalConfig Arc shared with the external gRPC server.
+    /// Populated before `build_and_spawn` when `grpc-dashboard-external` is active so the
+    /// web server's `DiagnosticsState` can serve `GET /api/external-grpc/live-config`.
+    #[cfg(feature = "grpc-dashboard-external")]
+    external_grpc_live: Option<Arc<oneshim_web::grpc::external::live_config::LiveExternalConfig>>,
+    #[cfg(feature = "grpc-dashboard-external")]
+    external_grpc_metrics: Option<Arc<oneshim_web::grpc::external::metrics::ExternalMetrics>>,
 }
 
 impl<'a> WebServerRuntimeBuilder<'a> {
@@ -266,7 +279,25 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             recluster_requested: None,
             coaching_engine: None,
             session_manager: None,
+            #[cfg(feature = "grpc-dashboard-external")]
+            external_grpc_live: None,
+            #[cfg(feature = "grpc-dashboard-external")]
+            external_grpc_metrics: None,
         }
+    }
+
+    /// Pass pre-created `LiveExternalConfig` and `ExternalMetrics` Arcs into the web
+    /// server's `DiagnosticsState` so `GET /api/external-grpc/live-config` can serve
+    /// the current live snapshot. Must be called before `build_and_spawn`.
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub(crate) fn with_external_grpc_live_and_metrics(
+        mut self,
+        live: Arc<oneshim_web::grpc::external::live_config::LiveExternalConfig>,
+        metrics: Arc<oneshim_web::grpc::external::metrics::ExternalMetrics>,
+    ) -> Self {
+        self.external_grpc_live = Some(live);
+        self.external_grpc_metrics = Some(metrics);
+        self
     }
 
     #[cfg(feature = "server")]
@@ -307,15 +338,24 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         self
     }
 
-    pub(crate) fn build_and_spawn(self) -> WebServerLaunchResult {
+    // `mut` is required when `grpc-dashboard-external` is enabled (calls `.take()` on two
+    // Option fields); without that feature the binding is unused, so allow it.
+    #[cfg_attr(not(feature = "grpc-dashboard-external"), allow(unused_mut))]
+    pub(crate) fn build_and_spawn(mut self) -> WebServerLaunchResult {
         let web_shutdown_rx = self.launch_context.shutdown_tx.subscribe();
         let storage_for_audit = self.storage.clone();
         let persistence_cb: std::sync::Arc<dyn oneshim_automation::audit::AuditPersistence> =
             std::sync::Arc::new(move |entry: &oneshim_core::models::audit::AuditEntry| {
                 storage_for_audit.save_audit_entry(entry);
             });
+        let audit_query: std::sync::Arc<dyn oneshim_automation::audit::AuditQuery> =
+            std::sync::Arc::new(crate::audit_query::SqliteAuditQuery::new(
+                self.storage.clone(),
+            ));
         let web_audit_logger = Arc::new(tokio::sync::RwLock::new(
-            AuditLogger::default().with_persistence(persistence_cb),
+            AuditLogger::default()
+                .with_persistence(persistence_cb)
+                .with_query(audit_query),
         ));
         let (bound_port_tx, bound_port_rx) = tokio::sync::oneshot::channel::<u16>();
 
@@ -347,6 +387,9 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         };
 
         let ai_runtime_status = automation_build.ai_runtime_status.clone();
+        // Retain a second clone for WebServerLaunchResult so the caller can
+        // pass the snapshot to GrpcSpawnConfig (SubscribeEvents §A A2).
+        let ai_runtime_status_for_result = ai_runtime_status.clone();
         let automation_controller = automation_build.controller;
         let automation_controller_for_state = automation_controller.clone();
         let gui_audit_logger = web_audit_logger.clone();
@@ -373,6 +416,10 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         let web_storage = self.storage.clone();
         let web_config = self.config.web.clone();
         let web_port_state = self.launch_context.web_port_state.clone();
+        #[cfg(feature = "grpc-dashboard-external")]
+        let ext_live_for_web = self.external_grpc_live.take();
+        #[cfg(feature = "grpc-dashboard-external")]
+        let ext_metrics_for_web = self.external_grpc_metrics.take();
         self.launch_context.runtime_handle.spawn(async move {
             if let Some(controller) = automation_controller {
                 runtime_bindings.automation.automation_controller = Some(controller);
@@ -389,6 +436,19 @@ impl<'a> WebServerRuntimeBuilder<'a> {
                 .with_system_info_provider(
                     Arc::new(SysInfoProvider::new()) as Arc<dyn SystemInfoProvider>
                 );
+            // Task 7.1: wire LiveExternalConfig + ExternalMetrics into AppState so the
+            // GET /api/external-grpc/live-config endpoint can serve live snapshots.
+            #[cfg(feature = "grpc-dashboard-external")]
+            let web_server = {
+                let mut ws = web_server;
+                if let Some(live) = ext_live_for_web {
+                    ws = ws.with_external_grpc_live(live);
+                }
+                if let Some(metrics) = ext_metrics_for_web {
+                    ws = ws.with_external_grpc_metrics(metrics);
+                }
+                ws
+            };
             if let Err(error) = web_server.run(web_shutdown_rx).await {
                 error!("WebServer error: {error}");
             }
@@ -405,6 +465,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
 
         WebServerLaunchResult {
             automation_controller: automation_controller_for_state,
+            ai_runtime_status: ai_runtime_status_for_result,
         }
     }
 }

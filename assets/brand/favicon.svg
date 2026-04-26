@@ -1,13 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="8" fill="#0D0022"/>
-  <!-- Body silhouette -->
-  <ellipse cx="16" cy="19" rx="10" ry="10" fill="rgb(85,52,215)"/>
-  <!-- Head plate -->
-  <ellipse cx="16" cy="13" rx="8" ry="6" fill="rgb(85,52,215)"/>
-  <!-- Left eye -->
-  <circle cx="11" cy="11" r="5" fill="rgb(13,224,162)"/>
-  <circle cx="10" cy="10" r="1.5" fill="#0D0022"/>
-  <!-- Right eye -->
-  <circle cx="21" cy="11" r="5" fill="rgb(13,224,162)"/>
-  <circle cx="20" cy="10" r="1.5" fill="#0D0022"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Maekon favicon">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#15043A"/>
+  <rect x="18" y="39" width="28" height="7" rx="3.5" fill="#5534D7"/>
+  <rect x="22" y="32" width="20" height="6" rx="3" fill="#7057EA"/>
+  <circle cx="24" cy="27" r="5.5" fill="#61F4D6"/>
+  <circle cx="40" cy="27" r="5.5" fill="#0DE0A2"/>
 </svg>

@@ -72,7 +72,7 @@ pub(crate) struct InstallPending {
 }
 
 /// Outcome of a startup probe check.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartupAction {
     /// Proceed with normal startup.
     Normal,
@@ -315,12 +315,23 @@ impl HealthProbe {
     /// Takes `&self` (spec Amendment 1) — the probe instance stays owned by
     /// the launch path; the spawned task captures the data it needs by
     /// value at spawn time.
-    pub fn spawn_healthy_writer(&self) -> tokio::task::JoinHandle<()> {
+    ///
+    /// Takes an explicit `&tokio::runtime::Handle` rather than calling
+    /// `tokio::spawn` directly. On macOS the Tauri `setup` callback runs
+    /// synchronously inside `applicationDidFinishLaunching` BEFORE Tauri
+    /// enters the tokio runtime context; calling `tokio::spawn` from there
+    /// panics with "no reactor running". The handle is already plumbed
+    /// through `BootstrapRuntimeBundle::runtime_handle` for exactly this
+    /// kind of cross-runtime spawning.
+    pub fn spawn_healthy_writer(
+        &self,
+        handle: &tokio::runtime::Handle,
+    ) -> tokio::task::JoinHandle<()> {
         let install_dir = self.install_dir.clone();
         let version = self.current_version.clone();
         let threshold = self.healthy_threshold;
 
-        tokio::spawn(async move {
+        handle.spawn(async move {
             tokio::time::sleep(threshold).await;
             if let Err(err) = write_self_healthy_and_cleanup(&install_dir, &version) {
                 tracing::warn!("spawn_healthy_writer: cleanup error — {err}");
@@ -628,8 +639,9 @@ mod tests {
         let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into())
             .with_threshold(Duration::from_millis(50));
 
-        let handle = probe.spawn_healthy_writer();
-        handle.await.unwrap();
+        let runtime_handle = tokio::runtime::Handle::current();
+        let join = probe.spawn_healthy_writer(&runtime_handle);
+        join.await.unwrap();
 
         let marker = dir.path().join(".self_healthy_0.5.0");
         assert!(marker.exists(), "healthy marker should have been written");
@@ -638,6 +650,57 @@ mod tests {
         assert_eq!(probe.boot_count().unwrap(), 0);
         // Backup_path recorded in pending should survive the sweep.
         assert!(backup.exists(), "canonical backup should remain");
+    }
+
+    /// Regression test for the v0.4.40-rc.1 macOS launch panic
+    /// ("there is no reactor running") when the Tauri `setup` callback
+    /// invokes `spawn_healthy_writer` from within
+    /// `applicationDidFinishLaunching`. The callsite is synchronous and
+    /// runs BEFORE Tauri enters the tokio runtime context — so the
+    /// previous `tokio::spawn` call panicked. With the explicit
+    /// `&Handle` parameter, the writer can be dispatched onto the
+    /// pre-built runtime even when no current runtime is entered on the
+    /// thread.
+    ///
+    /// This test deliberately uses `#[test]` (NOT `#[tokio::test]`) so
+    /// `Handle::try_current()` would return `Err` if it were called —
+    /// matching the macOS launch path. The fix must keep working under
+    /// these conditions.
+    #[test]
+    fn spawn_healthy_writer_does_not_panic_outside_async_context() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let handle = runtime.handle().clone();
+
+        // Pre-condition: no tokio runtime is "current" on this thread.
+        assert!(
+            tokio::runtime::Handle::try_current().is_err(),
+            "test must run outside any tokio runtime context to reproduce the panic scenario",
+        );
+
+        let dir = tempdir().unwrap();
+        write_pending(
+            dir.path(),
+            "0.5.0",
+            &Utc::now().to_rfc3339(),
+            "0.4.39",
+            &dir.path().join("oneshim.rollback.1"),
+        );
+
+        let probe = HealthProbe::new(dir.path().to_path_buf(), "0.5.0".into())
+            .with_threshold(Duration::from_millis(50));
+
+        // The previous tokio::spawn-based implementation panicked here.
+        let join = probe.spawn_healthy_writer(&handle);
+
+        runtime.block_on(async {
+            join.await.unwrap();
+        });
+
+        let marker = dir.path().join(".self_healthy_0.5.0");
+        assert!(marker.exists(), "healthy marker should have been written");
     }
 
     #[test]

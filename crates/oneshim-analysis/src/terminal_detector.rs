@@ -5,7 +5,7 @@
 //! the current command line. Simple pattern matching, not shell parsing.
 
 /// Result of terminal command detection.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalCommandInfo {
     /// The detected command (first word after the prompt).
     /// e.g., "cargo", "git", "docker", "npm"

@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::types::TimeWindow;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metric {
     pub name: String,
@@ -13,8 +15,7 @@ pub struct Metric {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionMetrics {
     pub session_id: String,
-    pub period_start: DateTime<Utc>,
-    pub period_end: DateTime<Utc>,
+    pub period: TimeWindow,
     pub suggestions_received: u32,
     pub suggestions_accepted: u32,
     pub suggestions_rejected: u32,

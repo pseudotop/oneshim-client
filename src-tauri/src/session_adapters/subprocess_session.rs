@@ -814,7 +814,7 @@ mod tests {
             tools: None,
             context: Some(MessageContext {
                 regime: Some("focus".to_string()),
-                active_app: Some("ONESHIM".to_string()),
+                active_app: Some("Maekon".to_string()),
             }),
             response_format: Some(serde_json::json!({
                 "type": "json_schema",

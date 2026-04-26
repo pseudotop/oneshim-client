@@ -1,3 +1,4 @@
+pub(super) mod autostart_helper;
 mod coaching_helper;
 pub(super) mod detection_helper;
 mod events;
@@ -11,6 +12,7 @@ mod network;
 pub(crate) mod suggestions;
 mod sync;
 mod system;
+pub(super) mod tracking_schedule_helper;
 mod vision_helper;
 
 // ── Public re-exports ────────────────────────────────────────────────

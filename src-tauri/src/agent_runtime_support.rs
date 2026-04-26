@@ -1,5 +1,6 @@
 use anyhow::Result;
 use oneshim_core::config::AppConfig;
+use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
@@ -75,6 +76,9 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
     /// wires it into the FallbackAnalysisProvider so the IPC `get_analysis_health`
     /// command reflects the actual provider health.
     analysis_health_flag: Option<Arc<AtomicBool>>,
+    /// ConfigManager shared with the composition root. When set, the BatchUploader
+    /// suppression predicate uses `snapshot()` to gate uploads during mute windows.
+    config_manager: Option<ConfigManager>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -94,6 +98,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             shared_capture_services: None,
             few_shot_storage: None,
             analysis_health_flag: None,
+            config_manager: None,
         }
     }
 
@@ -144,6 +149,14 @@ impl<'a> AgentSupportContextBuilder<'a> {
 
     pub(crate) fn with_analysis_health_flag(mut self, flag: Arc<AtomicBool>) -> Self {
         self.analysis_health_flag = Some(flag);
+        self
+    }
+
+    /// Wire the ConfigManager so the BatchUploader suppression predicate can call
+    /// `snapshot()` to check the tracking schedule on every flush (O(1) Arc-clone,
+    /// per CONS-PI13 — not a deep-clone of all 37 config sections).
+    pub(crate) fn with_config_manager(mut self, mgr: ConfigManager) -> Self {
+        self.config_manager = Some(mgr);
         self
     }
 
@@ -201,7 +214,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
         None
     }
 
-    pub(crate) async fn build(self) -> Result<AgentSupportContext> {
+    pub(crate) async fn build(mut self) -> Result<AgentSupportContext> {
         let (
             frame_storage,
             process_monitor,
@@ -247,18 +260,20 @@ impl<'a> AgentSupportContextBuilder<'a> {
         };
 
         let system_monitor = Arc::new(oneshim_monitor::system::SysInfoMonitor::new());
-        let capture_trigger: Arc<dyn oneshim_core::ports::vision::CaptureTrigger> =
-            Arc::new(SmartCaptureTrigger::with_schedule(
-                self.config.vision.capture_throttle_ms,
-                self.config.schedule.clone(),
-            ));
+        let capture_trigger: Arc<dyn oneshim_core::ports::vision::CaptureTrigger> = Arc::new(
+            SmartCaptureTrigger::new(self.config.vision.capture_throttle_ms),
+        );
 
         let session_id = generate_session_id();
+        // Extract config_manager before any later borrows of `self` to avoid
+        // partial-move conflicts (build_context_analyzer borrows self below).
+        let config_manager = self.config_manager.take();
         #[cfg(feature = "server")]
         let (batch_sink_opt, api_client_opt, sse_client_opt) =
-            build_server_transports(self.config, &session_id)?;
+            build_server_transports(self.config, &session_id, config_manager)?;
         #[cfg(not(feature = "server"))]
-        let (batch_sink_opt, api_client_opt) = build_server_transports(self.config, &session_id)?;
+        let (batch_sink_opt, api_client_opt) =
+            build_server_transports(self.config, &session_id, config_manager)?;
 
         let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> =
             if let Some(handle) = self.app_handle.clone() {
@@ -357,7 +372,11 @@ impl<'a> AgentSupportContextBuilder<'a> {
 }
 
 #[cfg(feature = "server")]
-fn build_server_transports(config: &AppConfig, session_id: &str) -> Result<ServerTransportPorts> {
+fn build_server_transports(
+    config: &AppConfig,
+    session_id: &str,
+    config_manager: Option<ConfigManager>,
+) -> Result<ServerTransportPorts> {
     let token_manager = Arc::new(
         TokenManager::new_with_tls(
             &config.server.base_url,
@@ -402,18 +421,26 @@ fn build_server_transports(config: &AppConfig, session_id: &str) -> Result<Serve
         (Arc::new(http_client), Arc::new(sse_stream) as SseClientPort)
     };
 
-    let batch_uploader = Arc::new(BatchUploader::new(
-        api_client.clone(),
-        session_id.to_string(),
-        100,
-        3,
-    ));
+    // Build the suppression predicate: uploads are gated by the tracking schedule.
+    // Uses snapshot() (O(1) Arc-clone) instead of get() (deep-clone of 37 sections)
+    // per CONS-PI13 — the predicate is called on every flush, so hot-path cost matters.
+    let mut uploader = BatchUploader::new(api_client.clone(), session_id.to_string(), 100, 3);
+    if let Some(mgr) = config_manager {
+        let pred: Arc<dyn Fn() -> bool + Send + Sync> =
+            Arc::new(move || crate::scheduler::tracking_schedule_active(&mgr.snapshot()));
+        uploader = uploader.with_suppression_predicate(pred);
+    }
+    let batch_uploader = Arc::new(uploader);
 
     Ok((Some(batch_uploader), Some(api_client), Some(sse_client)))
 }
 
 #[cfg(not(feature = "server"))]
-fn build_server_transports(_config: &AppConfig, _session_id: &str) -> Result<ServerTransportPorts> {
+fn build_server_transports(
+    _config: &AppConfig,
+    _session_id: &str,
+    _config_manager: Option<ConfigManager>,
+) -> Result<ServerTransportPorts> {
     Ok((None, None))
 }
 
@@ -445,10 +472,10 @@ impl oneshim_core::ports::notifier::DesktopNotifier for TauriNotifier {
         suggestion: &oneshim_core::models::suggestion::Suggestion,
     ) -> Result<(), oneshim_core::error::CoreError> {
         let title = match suggestion.priority {
-            oneshim_core::models::suggestion::Priority::Critical => "ONESHIM \u{2014} Urgent",
-            oneshim_core::models::suggestion::Priority::High => "ONESHIM \u{2014} Important",
-            oneshim_core::models::suggestion::Priority::Medium => "ONESHIM",
-            oneshim_core::models::suggestion::Priority::Low => "ONESHIM \u{2014} Info",
+            oneshim_core::models::suggestion::Priority::Critical => "Maekon - Urgent",
+            oneshim_core::models::suggestion::Priority::High => "Maekon - Important",
+            oneshim_core::models::suggestion::Priority::Medium => "Maekon",
+            oneshim_core::models::suggestion::Priority::Low => "Maekon - Info",
         };
         let body = suggestion.content.chars().take(200).collect::<String>();
         if let Err(e) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
@@ -481,7 +508,7 @@ impl oneshim_core::ports::notifier::DesktopNotifier for TauriNotifier {
     async fn show_error(&self, message: &str) -> Result<(), oneshim_core::error::CoreError> {
         if let Err(e) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
             .builder()
-            .title("ONESHIM \u{2014} Error")
+            .title("Maekon - Error")
             .body(message)
             .show()
         {

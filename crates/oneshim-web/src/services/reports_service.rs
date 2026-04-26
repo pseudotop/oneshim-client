@@ -23,7 +23,13 @@ impl ReportQueryService {
 
     pub async fn generate_report(&self, params: &ReportQuery) -> Result<ReportResponse, ApiError> {
         let now = Utc::now();
-        let (from, to, title) = resolve_report_window(params, now)?;
+        let (window, title) = resolve_report_window(params, now)?;
+        // Decompose for downstream out-of-plan-scope storage methods + formatters
+        // that still take DateTime<Utc>.
+        let oneshim_core::types::TimeWindow {
+            start: from,
+            end: to,
+        } = window;
         let days = ((to - from).num_days() as u32).max(1);
 
         let metrics = self.ctx.storage.get_metrics(from, to, 100000).await?;

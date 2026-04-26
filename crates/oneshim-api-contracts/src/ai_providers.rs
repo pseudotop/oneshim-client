@@ -37,7 +37,7 @@ pub enum ProviderModelSupportStatus {
     Unknown,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct ProviderModelCapabilityRules {
     #[serde(default)]
     pub llm: ProviderModelCapabilityProfile,
@@ -49,7 +49,7 @@ pub struct ProviderModelCapabilityRules {
     pub structured_output: ProviderModelCapabilityProfile,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct ProviderModelCapabilityProfile {
     #[serde(default)]
     pub default_support: String,
@@ -92,7 +92,7 @@ pub struct ProviderModelsRequest {
     pub use_saved_secret: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ProviderDiscoveredModel {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -7,8 +7,10 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap
 )]
+// P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
+#![deny(clippy::derive_partial_eq_without_eq)]
 
-//! ONESHIM Desktop Agent — Tauri v2 진입점
+//! Maekon Desktop Agent - Tauri v2 entry point
 //!
 //! iced GUI에서 Tauri v2로 마이그레이션된 데스크톱 에이전트.
 //! 시스템 트레이, WebView 대시보드, IPC 커맨드를 통합 관리합니다.
@@ -16,6 +18,7 @@
 mod agent_runtime;
 mod agent_runtime_support;
 mod app_runtime_launch;
+mod audit_query;
 mod auditing_session;
 mod auth_cli;
 mod automation_controller_builder;
@@ -84,6 +87,7 @@ mod sync_engine;
 mod telemetry;
 mod tray;
 mod tray_icon;
+mod tray_watch;
 mod update_coordinator;
 mod update_runtime;
 mod updater;
@@ -108,6 +112,24 @@ use tracing_subscriber::EnvFilter;
 pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
 
 fn main() {
+    // D13 Task 13: `generate-external-cert` CLI subcommand — dispatched BEFORE
+    // any Tauri initialization so we never spawn the webview runtime for
+    // pure-utility invocations. Tauri itself does not parse CLI args for
+    // arbitrary subcommands; we do it here.
+    #[cfg(feature = "external-grpc-tools")]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if args.get(1).map(|s| s.as_str()) == Some("generate-external-cert") {
+            match crate::commands::generate_external_cert::cli::run(&args[2..]) {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("{e:#}");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
     // Windows DLL search order hardening (Spec Section 9.2):
     // Remove CWD from DLL search path to prevent DLL hijacking.
     #[cfg(target_os = "windows")]
@@ -197,6 +219,18 @@ fn main() {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Callback runs in 1st instance when 2nd instance launches.
+            // Must be cheap + synchronous (no async, no DB calls).
+            // Order matters per spec §5.2 mitigation #1: show() → unminimize() → set_focus().
+            // Reverse order can leave window unfocused on Linux/X11.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            // _args, _cwd reserved for future CLI command extension (NG3).
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -328,11 +362,20 @@ fn main() {
             commands::audio::reload_stt_engine,
             commands::audio::start_vad_listening,
             commands::audio::stop_vad_listening,
+            commands::autostart::autostart_capabilities,
+            commands::autostart::disable_autostart,
+            commands::autostart::enable_autostart,
+            commands::autostart::get_autostart_config,
+            commands::autostart::is_autostart_enabled,
+            commands::autostart::mark_autostart_prompt_state,
             commands::bug_report::export_bug_report,
             commands::error_report::report_frontend_error,
+            commands::tracking_schedule::get_tracking_schedule,
+            commands::tracking_schedule::set_tracking_schedule,
+            commands::tracking_schedule::get_tracking_schedule_status,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building ONESHIM");
+        .expect("error while building Maekon");
 
     app.run(|app_handle, event| match event {
         RunEvent::Exit => {
@@ -364,6 +407,14 @@ fn main() {
                         }
                     }
                 }
+            }
+
+            // A.17: Abort the tray-watch task before the background runtime shuts
+            // down, preventing a spurious "config channel closed" warn log on exit.
+            if let Some(tray_watch) =
+                app_handle.try_state::<crate::tray_watch::TrayWatchHandle>()
+            {
+                tray_watch.0.abort();
             }
 
             if let Some(state) = app_handle.try_state::<runtime_state::AppState>() {

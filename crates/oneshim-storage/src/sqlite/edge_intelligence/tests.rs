@@ -73,7 +73,8 @@ fn focus_metrics_lifecycle() {
     assert_eq!(updated.context_switches, 5);
     assert_eq!(updated.interruption_count, 2);
 
-    let full_metrics = FocusMetrics::new(updated.period_start, updated.period_end);
+    let full_metrics = FocusMetrics::new(updated.period.start, updated.period.end)
+        .expect("trusted test bounds — period from get_or_create_today");
     storage.update_focus_metrics(&today, &full_metrics).unwrap();
 }
 

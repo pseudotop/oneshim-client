@@ -149,7 +149,7 @@ impl MagicOverlayHandle {
             OVERLAY_LABEL,
             WebviewUrl::App(OVERLAY_URL.into()),
         )
-        .title("ONESHIM Overlay")
+        .title("Maekon Overlay")
         .inner_size(size.width as f64, size.height as f64)
         .position(0.0, 0.0)
         .transparent(true)
@@ -609,7 +609,7 @@ pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
         "tracking-panel",
         WebviewUrl::App("tracking-panel.html".into()),
     )
-    .title("ONESHIM Tracking")
+    .title("Maekon Tracking")
     .inner_size(panel_width, panel_height)
     .position(x, y)
     .transparent(true)

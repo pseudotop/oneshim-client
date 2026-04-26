@@ -57,25 +57,31 @@ pub async fn start_pomodoro(
         )));
     }
 
-    let mut guard = state
-        .session
-        .pomodoro
-        .lock()
-        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
+    // Scope the mutex guard so it drops before we hand the response to axum.
+    // P2 PR-A: avoids `clippy::significant_drop_tightening` flag; guard is
+    // only needed during state mutation, not response construction.
+    let response = {
+        let mut guard = state
+            .session
+            .pomodoro
+            .lock()
+            .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
 
-    // Reject if a session is already active
-    if let Some(existing) = guard.as_ref() {
-        let eff = existing.effective_status();
-        if eff == PomodoroStatus::Running || eff == PomodoroStatus::OnBreak {
-            return Err(ApiError::Conflict(
-                "A Pomodoro session is already active".to_string(),
-            ));
+        // Reject if a session is already active
+        if let Some(existing) = guard.as_ref() {
+            let eff = existing.effective_status();
+            if eff == PomodoroStatus::Running || eff == PomodoroStatus::OnBreak {
+                return Err(ApiError::Conflict(
+                    "A Pomodoro session is already active".to_string(),
+                ));
+            }
         }
-    }
 
-    let session = PomodoroSession::new(Uuid::new_v4().to_string(), duration, break_mins);
-    let response = session_to_response(&session);
-    *guard = Some(session);
+        let session = PomodoroSession::new(Uuid::new_v4().to_string(), duration, break_mins);
+        let response = session_to_response(&session);
+        *guard = Some(session);
+        response
+    };
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -86,68 +92,96 @@ pub async fn get_current_pomodoro(
 ) -> Result<Json<Option<PomodoroSessionResponse>>, ApiError> {
     debug!("GET /api/pomodoro/current");
 
-    let guard = state
-        .session
-        .pomodoro
-        .lock()
-        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
-    let response = guard.as_ref().map(session_to_response);
+    // P2 PR-A: scope the guard so it drops before Json construction.
+    let response = {
+        let guard = state
+            .session
+            .pomodoro
+            .lock()
+            .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
+        guard.as_ref().map(session_to_response)
+    };
     Ok(Json(response))
 }
 
 /// POST /api/pomodoro/cancel — cancel the current session.
+///
+/// `#[allow(clippy::significant_drop_tightening)]`: the `session: &mut
+/// PomodoroSession` borrow is derived from the guard; Rust's borrow checker
+/// does not permit dropping the guard before the `&mut` borrow ends. The
+/// block-scoped clone-out pattern below already tightens the lock window
+/// to the minimum possible given the borrow constraint — clippy's suggested
+/// `merge-with-single-usage` rewrite produces invalid Rust (`?.` syntax).
+#[allow(clippy::significant_drop_tightening)]
 pub async fn cancel_pomodoro(
     State(state): State<AppState>,
 ) -> Result<Json<PomodoroSessionResponse>, ApiError> {
     debug!("POST /api/pomodoro/cancel");
 
-    let mut guard = state
-        .session
-        .pomodoro
-        .lock()
-        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
-    let session = guard
-        .as_mut()
-        .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;
+    // P2 PR-A: mutate under the guard, clone the mutated session out, drop
+    // the guard, then format the response. This pattern tightens the lock
+    // window to only the mutation path.
+    let session = {
+        let mut guard = state
+            .session
+            .pomodoro
+            .lock()
+            .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
+        let session = guard
+            .as_mut()
+            .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;
 
-    let eff = session.effective_status();
-    if eff == PomodoroStatus::Completed || eff == PomodoroStatus::Cancelled {
-        return Err(ApiError::Conflict(
-            "Session is already finished".to_string(),
-        ));
-    }
+        let eff = session.effective_status();
+        if eff == PomodoroStatus::Completed || eff == PomodoroStatus::Cancelled {
+            return Err(ApiError::Conflict(
+                "Session is already finished".to_string(),
+            ));
+        }
 
-    session.status = PomodoroStatus::Cancelled;
-    session.completed_at = Some(chrono::Utc::now());
+        session.status = PomodoroStatus::Cancelled;
+        session.completed_at = Some(chrono::Utc::now());
 
-    Ok(Json(session_to_response(session)))
+        session.clone()
+    };
+    Ok(Json(session_to_response(&session)))
 }
 
 /// POST /api/pomodoro/complete — mark session as completed (auto or manual).
+///
+/// `#[allow(clippy::significant_drop_tightening)]`: same rationale as
+/// `cancel_pomodoro` — `session: &mut` borrows from the guard and the
+/// block-scoped clone-out is already the tightest lock window possible.
+#[allow(clippy::significant_drop_tightening)]
 pub async fn complete_pomodoro(
     State(state): State<AppState>,
 ) -> Result<Json<PomodoroSessionResponse>, ApiError> {
     debug!("POST /api/pomodoro/complete");
 
-    let mut guard = state
-        .session
-        .pomodoro
-        .lock()
-        .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
-    let session = guard
-        .as_mut()
-        .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;
+    // P2 PR-A: mutate under the guard, clone the mutated session out, drop
+    // the guard, then format the response. This pattern tightens the lock
+    // window to only the mutation path.
+    let session = {
+        let mut guard = state
+            .session
+            .pomodoro
+            .lock()
+            .map_err(|_| ApiError::Internal("pomodoro lock poisoned".into()))?;
+        let session = guard
+            .as_mut()
+            .ok_or_else(|| ApiError::NotFound("No active Pomodoro session".to_string()))?;
 
-    if session.status == PomodoroStatus::Cancelled {
-        return Err(ApiError::Conflict(
-            "Session was already cancelled".to_string(),
-        ));
-    }
+        if session.status == PomodoroStatus::Cancelled {
+            return Err(ApiError::Conflict(
+                "Session was already cancelled".to_string(),
+            ));
+        }
 
-    session.status = PomodoroStatus::Completed;
-    session.completed_at = Some(chrono::Utc::now());
+        session.status = PomodoroStatus::Completed;
+        session.completed_at = Some(chrono::Utc::now());
 
-    Ok(Json(session_to_response(session)))
+        session.clone()
+    };
+    Ok(Json(session_to_response(&session)))
 }
 
 #[cfg(test)]

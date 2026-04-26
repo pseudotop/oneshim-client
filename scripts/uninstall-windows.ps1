@@ -1,5 +1,5 @@
-# ONESHIM Windows 제거 스크립트
-# Registry 삭제 + 바이너리 삭제
+# Maekon Windows uninstaller
+# Removes Registry Run autostart and the installed binary.
 
 $ErrorActionPreference = "Stop"
 
@@ -32,4 +32,4 @@ if ((Test-Path $InstallDir) -and ((Get-ChildItem $InstallDir | Measure-Object).C
     Write-Host "[OK] 설치 디렉토리 삭제 완료"
 }
 
-Write-Host "[OK] ONESHIM 제거 완료!"
+Write-Host "[OK] Maekon 제거 완료!"

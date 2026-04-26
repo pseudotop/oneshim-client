@@ -121,6 +121,13 @@ pub struct DiagnosticsState {
     pub latest_bug_report: Arc<parking_lot::RwLock<Option<BugReportBundleDto>>>,
     pub runtime_log_provider: Option<Arc<dyn RuntimeLogProvider>>,
     pub system_info_provider: Option<Arc<dyn SystemInfoProvider>>,
+
+    // Task 7.1 — live-config REST endpoint (GET /api/external-grpc/live-config).
+    // Populated from build_external_spawn_config return value when external gRPC is enabled.
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub external_grpc_live: Option<Arc<crate::grpc::external::live_config::LiveExternalConfig>>,
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub external_grpc_metrics: Option<Arc<crate::grpc::external::metrics::ExternalMetrics>>,
 }
 
 impl Default for DiagnosticsState {
@@ -130,6 +137,10 @@ impl Default for DiagnosticsState {
             latest_bug_report: Arc::new(parking_lot::RwLock::new(None)),
             runtime_log_provider: None,
             system_info_provider: None,
+            #[cfg(feature = "grpc-dashboard-external")]
+            external_grpc_live: None,
+            #[cfg(feature = "grpc-dashboard-external")]
+            external_grpc_metrics: None,
         }
     }
 }

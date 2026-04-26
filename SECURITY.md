@@ -1,6 +1,6 @@
 # Security Policy
 
-We take the security of the ONESHIM Rust Client seriously. If you discover a vulnerability, please follow the procedures outlined in this document to report it.
+We take the security of Maekon seriously. If you discover a vulnerability, please follow the procedures outlined in this document to report it.
 
 ## Reporting a Security Vulnerability
 
@@ -25,7 +25,7 @@ To enable an effective response, please include as much of the following informa
 
 ### Security Areas of Particular Concern
 
-The following areas are of particular security importance in the ONESHIM Rust Client.
+The following areas are of particular security importance in Maekon.
 
 - **Screen Capture and PII Filter** (`oneshim-vision`): Bypassing the masking of personally identifiable information on-screen
 - **Local SQLite Storage** (`oneshim-storage`): Unauthorized access to unencrypted data
@@ -61,7 +61,7 @@ For urgent security issues (high-severity vulnerabilities such as remote code ex
 
 ## Responsible Disclosure Policy
 
-The ONESHIM Rust Client follows a **Responsible Disclosure** policy.
+Maekon follows a **Responsible Disclosure** policy.
 
 ### Our Commitments
 

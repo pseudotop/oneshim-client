@@ -271,8 +271,7 @@ impl Interruption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FocusMetrics {
-    pub period_start: DateTime<Utc>,
-    pub period_end: DateTime<Utc>,
+    pub period: crate::types::TimeWindow,
     pub total_active_secs: u64,
     pub deep_work_secs: u64,
     pub communication_secs: u64,
@@ -284,10 +283,21 @@ pub struct FocusMetrics {
 }
 
 impl FocusMetrics {
-    pub fn new(period_start: DateTime<Utc>, period_end: DateTime<Utc>) -> Self {
-        Self {
-            period_start,
-            period_end,
+    /// Construct a FocusMetrics with default scalar fields.
+    ///
+    /// Returns Result because TimeWindow::new validates `start <= end`. Internal
+    /// callers using cron-aligned `date_to_period_range` may use
+    /// `.expect("date_to_period_range produces valid window")`.
+    ///
+    /// # Errors
+    /// Returns [`crate::types::TimeWindowError::InvertedBounds`] if `start > end`.
+    pub fn new(
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Self, crate::types::TimeWindowError> {
+        let period = crate::types::TimeWindow::new(start, end)?;
+        Ok(Self {
+            period,
             total_active_secs: 0,
             deep_work_secs: 0,
             communication_secs: 0,
@@ -296,7 +306,7 @@ impl FocusMetrics {
             avg_focus_duration_secs: 0,
             max_focus_duration_secs: 0,
             focus_score: 0.0,
-        }
+        })
     }
 
     pub fn communication_ratio(&self) -> f32 {
@@ -314,7 +324,7 @@ impl FocusMetrics {
     }
 
     pub fn interruptions_per_hour(&self) -> f32 {
-        let hours = (self.period_end - self.period_start).num_seconds() as f32 / 3600.0;
+        let hours = self.period.duration().num_seconds() as f32 / 3600.0;
         if hours == 0.0 {
             return 0.0;
         }
@@ -443,7 +453,8 @@ mod tests {
     #[test]
     fn focus_metrics_ratios() {
         let now = Utc::now();
-        let mut metrics = FocusMetrics::new(now, now + chrono::Duration::hours(1));
+        let mut metrics = FocusMetrics::new(now, now + chrono::Duration::hours(1))
+            .expect("trusted test bounds: now <= now + 1h");
         metrics.total_active_secs = 3600;
         metrics.deep_work_secs = 2400; // 40 min
         metrics.communication_secs = 1200; // 20 min

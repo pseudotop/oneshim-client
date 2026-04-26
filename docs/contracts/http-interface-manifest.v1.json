@@ -677,6 +677,41 @@
           "path": "/api/pomodoro/complete"
         }
       ]
+    },
+    {
+      "module": "tracking_schedule",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/tracking-schedule"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/tracking-schedule"
+        },
+        {
+          "method": "GET",
+          "path": "/api/tracking-schedule/status"
+        }
+      ]
+    },
+    {
+      "module": "external_grpc_live_config",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/external-grpc/live-config"
+        }
+      ]
+    },
+    {
+      "module": "audit_export",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/audit/export"
+        }
+      ]
     }
   ]
 }

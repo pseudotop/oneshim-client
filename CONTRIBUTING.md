@@ -1,6 +1,6 @@
-# ONESHIM Rust Client Contributing Guide
+# Maekon Contributing Guide
 
-Thanks for your interest in the ONESHIM Rust client. This document is the Rust-specific guide for contributing to the 10-crate Cargo workspace.
+Thanks for your interest in Maekon. This document is the Rust-specific guide for contributing to the Cargo workspace.
 
 ## Development Environment Setup
 

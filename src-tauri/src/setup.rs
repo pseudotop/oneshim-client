@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::sync::Arc;
 use tauri::{App, Manager};
 use tracing::info;
+#[cfg(target_os = "linux")]
+use tracing::warn;
 
 use crate::app_runtime_launch::{AppRuntimeLaunchBuilder, AppRuntimeLaunchResult};
 use crate::bootstrap_runtime::{BootstrapRuntimeBuilder, BootstrapRuntimeBundle};
@@ -10,7 +12,21 @@ use crate::telemetry;
 
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
 pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    info!("Tauri setup: initializing ONESHIM agent");
+    // Per spec §5.2 mitigation #2 / I7: log warn if D-Bus session bus is
+    // unavailable on Linux. Single-instance plugin will silently fail in
+    // this case — duplicate processes may launch in headless sessions.
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("DBUS_SESSION_BUS_ADDRESS").is_err() {
+            warn!(
+                err.code = "single_instance_dbus_absent",
+                "DBUS_SESSION_BUS_ADDRESS not set — single-instance enforcement degraded; \
+                 duplicate processes may launch in headless sessions"
+            );
+        }
+    }
+
+    info!("Tauri setup: initializing Maekon agent");
     let bundle = BootstrapRuntimeBuilder::new().build()?;
 
     // Bus-driven telemetry reconcile task. ConfigManager now exists (built
@@ -20,6 +36,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // RECONCILES: it compares `TelemetryConfig::default()` against the real
     // startup config and applies the user's opt-in if present.
     spawn_telemetry_toggle_task(app, &bundle);
+
+    // Clone ConfigManager before bundle is consumed by AppRuntimeLaunchBuilder.
+    // ConfigManager::clone is cheap — it shares Arc<Inner>.
+    let config_manager_for_tray = bundle.config_manager.clone();
 
     let AppRuntimeLaunchResult {
         frontend_web_port,
@@ -33,6 +53,15 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     DesktopStartupCoordinator::apply(app, frontend_web_port)?;
     crate::setup_windows::prepare(app);
     crate::setup_platform::apply(app);
+
+    // A.17: Spawn tray tooltip propagation task — watches tracking_schedule
+    // sub-tree of ConfigManager and updates the tray tooltip on change.
+    // Spawned AFTER setup_tray (inside DesktopStartupCoordinator::apply) so
+    // the "main-tray" icon exists before the task can call set_tooltip.
+    // JoinHandle is stored as Tauri managed state for teardown on app shutdown.
+    let tray_watch_handle =
+        crate::tray_watch::spawn_tray_watch_task(&config_manager_for_tray, app.handle().clone());
+    app.manage(tray_watch_handle);
 
     info!("Tauri setup complete");
     Ok(())

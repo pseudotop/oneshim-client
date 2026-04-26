@@ -10,9 +10,10 @@
 #[macro_use]
 mod macros;
 
-// 18 code enum submodules grouped by domain.
+// 20 code enum submodules grouped by domain.
 pub mod audio;
 pub mod auth;
+pub mod autostart;
 pub mod config;
 pub mod consent;
 pub mod gui;
@@ -27,11 +28,13 @@ pub mod sandbox;
 pub mod secret;
 pub mod service;
 pub mod storage;
+pub mod time_window;
 pub mod ui;
 pub mod validation;
 
 pub use audio::AudioCode;
 pub use auth::AuthCode;
+pub use autostart::AutostartCode;
 pub use config::ConfigCode;
 pub use consent::ConsentCode;
 pub use gui::GuiCode;
@@ -46,6 +49,7 @@ pub use sandbox::SandboxCode;
 pub use secret::SecretCode;
 pub use service::ServiceCode;
 pub use storage::StorageCode;
+pub use time_window::TimeWindowCode;
 pub use ui::UiCode;
 pub use validation::ValidationCode;
 
@@ -58,6 +62,9 @@ pub use validation::ValidationCode;
 pub fn all_codes() -> Vec<&'static str> {
     let mut codes: Vec<&'static str> = Vec::new();
     for c in AudioCode::all() {
+        codes.push(c.as_str());
+    }
+    for c in AutostartCode::all() {
         codes.push(c.as_str());
     }
     for c in AuthCode::all() {
@@ -103,6 +110,9 @@ pub fn all_codes() -> Vec<&'static str> {
         codes.push(c.as_str());
     }
     for c in StorageCode::all() {
+        codes.push(c.as_str());
+    }
+    for c in TimeWindowCode::all() {
         codes.push(c.as_str());
     }
     for c in UiCode::all() {

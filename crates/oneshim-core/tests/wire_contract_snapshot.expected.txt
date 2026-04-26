@@ -1,6 +1,11 @@
 audio.capture_failed
 audio.stt_failed
 auth.failed
+autostart.counter_increment_failed
+autostart.disable_failed
+autostart.enable_failed
+autostart.event_emit_failed
+autostart.query_failed
 config.invalid
 config.missing
 config.out_of_range
@@ -37,6 +42,8 @@ secret.failed
 service.circuit_open
 service.unavailable
 storage.failed
+time_window.inverted_bounds
+time_window.parse_failed
 ui.element_missing
 validation.invalid_arguments
 validation.invalid_field

@@ -250,14 +250,14 @@
     "permissionSectionTitleMac": "macOS 权限",
     "permissionSectionTitleLinux": "Linux 会话访问",
     "permissionSectionTitleWindows": "Windows 访问状态",
-    "permissionSectionDesc": "检查 ONESHIM 所需的桌面集成功能当前是否可访问。",
-    "permissionSectionDescMac": "请授予所需的 macOS 权限，以便 ONESHIM 能稳定采集上下文。",
+    "permissionSectionDesc": "检查 Maekon 所需的桌面集成功能当前是否可访问。",
+    "permissionSectionDescMac": "请授予所需的 macOS 权限，以便 Maekon 能稳定采集上下文。",
     "permissionSectionDescLinux": "Linux 通常不需要额外授权弹窗，但会话服务仍需可访问。",
     "permissionSectionDescWindows": "Windows 通常不需要单独的权限弹窗，但仍应确认桌面集成功能可正常使用。",
     "permissionChecking": "正在检查桌面访问状态...",
     "permissionRefreshAction": "刷新状态",
     "permissionCheckFailedTitle": "桌面访问检查失败",
-    "permissionCheckFailedDesc": "ONESHIM 无法读取当前桌面访问状态。请在从系统设置返回后重试。",
+    "permissionCheckFailedDesc": "Maekon 无法读取当前桌面访问状态。请在从系统设置返回后重试。",
     "permissionStateGranted": "已就绪",
     "permissionStateNeedsAttention": "需要处理",
     "permissionStateNotRequired": "无需权限",
@@ -276,10 +276,10 @@
     "permissionWindowsDesc": "Windows 通常不需要为辅助功能或屏幕捕获单独授予系统权限。通知仍可能受到系统通知设置影响。",
     "permissionWindowsAccessibilityLabel": "UI Automation",
     "permissionWindowsAccessibilityDesc": "Windows 辅助功能 API 通常无需额外授权即可使用。",
-    "permissionWindowsScreenCaptureDesc": "当 ONESHIM 能访问当前桌面会话时，屏幕捕获通常也可用。",
+    "permissionWindowsScreenCaptureDesc": "当 Maekon 能访问当前桌面会话时，屏幕捕获通常也可用。",
     "permissionWindowsNotificationsDesc": "通知投递取决于 Windows 的通知设置。",
     "permissionAttentionTitle": "建议处理",
-    "permissionAttentionDesc": "如果服务不可用，请检查桌面会话设置后重新打开 ONESHIM。",
+    "permissionAttentionDesc": "如果服务不可用，请检查桌面会话设置后重新打开 Maekon。",
     "permissionAttentionDescMac": "如果缺少必需权限，请重新打开设置向导，并在系统设置中授予该权限。",
     "permissionManualCheckTitle": "仍需手动检查",
     "permissionManualCheckDescMac": "某些 macOS 设置（例如通知）仍需在系统设置中手动确认。",
@@ -414,14 +414,14 @@
     "supportYes": "是",
     "supportNo": "否",
     "supportUnknown": "未知",
-    "permissionMacNotificationsDescGranted": "ONESHIM 的桌面通知已启用。",
-    "permissionMacNotificationsDescPrompt": "ONESHIM 尚未请求通知权限。请求权限以便接收提醒和教练提示。",
-    "permissionMacNotificationsDescDenied": "ONESHIM 的通知在 macOS 系统设置中已关闭。如需提醒请手动启用。",
+    "permissionMacNotificationsDescGranted": "Maekon 的桌面通知已启用。",
+    "permissionMacNotificationsDescPrompt": "Maekon 尚未请求通知权限。请求权限以便接收提醒和教练提示。",
+    "permissionMacNotificationsDescDenied": "Maekon 的通知在 macOS 系统设置中已关闭。如需提醒请手动启用。",
     "permissionMacNotificationsDescProvisional": "通知可用，但 macOS 可能会静默传递。",
     "permissionMacNotificationsDescEphemeral": "通知仅在此会话期间临时可用。",
     "permissionMacNotificationsDescFallback": "在 macOS 系统设置中更改通知设置后请刷新状态。",
     "permissionMacNotificationsRequestAction": "请求权限",
-    "permissionNotificationRequestGranted": "ONESHIM 通知已就绪。",
+    "permissionNotificationRequestGranted": "Maekon 通知已就绪。",
     "permissionNotificationRequestFollowUp": "检查 macOS 通知提示或系统设置，然后根据需要刷新状态。",
     "bugReportWizardTitle": "错误报告",
     "bugReportStepGenerate": "生成",
@@ -819,7 +819,7 @@
     "apiKeyStoredPlaceholder": "已存储在 {{backend}}",
     "apiKeyStoredHint": "此密钥当前存储在 {{backend}} 中。若在此输入新密钥，将会替换现有值。",
     "secretProjectionEnabled": "允许 CLI 投影",
-    "secretProjectionEnabledDescription": "允许 ONESHIM 为此已存储密钥提供 CLI 和桥接兼容流程。",
+    "secretProjectionEnabledDescription": "允许 Maekon 为此已存储密钥提供 CLI 和桥接兼容流程。",
     "backendOsSecretStore": "操作系统密钥存储",
     "backendFileSecretStore": "文件密钥存储",
     "backendEnv": "环境变量",
@@ -854,7 +854,7 @@
     "accessModeApiKeyLabel": "直连端点",
     "accessModeApiKeyDescription": "使用提供商托管或自托管的HTTP端点。仅在所选接口要求时才需要API密钥。",
     "accessModeCliLabel": "已安装的提供商CLI",
-    "accessModeCliDescription": "订阅型产品的推荐路径。ONESHIM将引导用户通过已安装的提供商CLI流程。",
+    "accessModeCliDescription": "订阅型产品的推荐路径。Maekon将引导用户通过已安装的提供商CLI流程。",
     "accessModeOAuthLabel": "直接OAuth（实验性）",
     "accessModeOAuthDescription": "针对支持的提供商接口的实验性托管OAuth路径。可用时请优先使用已安装的提供商CLI。",
     "pathSummaryTitle": "运行路径",
@@ -896,19 +896,19 @@
     "dataPolicyStandard": "PII标准过滤",
     "dataPolicyAllowFiltered": "过滤后允许",
     "noAuthSurfaceDescription": "此接口不需要API密钥。留空凭据字段，直接连接本地或自托管端点。",
-    "modelSelectionUnsupportedSurface": "此接口不支持显式选择模型。ONESHIM将使用接口的默认OCR或提供商默认路径。",
+    "modelSelectionUnsupportedSurface": "此接口不支持显式选择模型。Maekon将使用接口的默认OCR或提供商默认路径。",
     "ocrModelUnsupported": "所选模型未确认支持此接口上的基于图像的OCR。请选择兼容的多模态模型。",
-    "ocrModelCompatibilityUnknown": "ONESHIM无法确认{{model}}在此接口上的OCR兼容性。请使用已知的多模态模型或在保存前通过模型发现进行验证。",
-    "ocrModelCompatibilityUnknownRejected": "ONESHIM要求此接口使用已知的OCR兼容模型。{{model}}尚未编入目录，请在保存前选择已知的多模态模型。",
+    "ocrModelCompatibilityUnknown": "Maekon无法确认{{model}}在此接口上的OCR兼容性。请使用已知的多模态模型或在保存前通过模型发现进行验证。",
+    "ocrModelCompatibilityUnknownRejected": "Maekon要求此接口使用已知的OCR兼容模型。{{model}}尚未编入目录，请在保存前选择已知的多模态模型。",
     "llmModelUnsupported": "所选模型未确认与此LLM接口兼容。请为所选执行路径选择兼容的模型。",
-    "llmModelCompatibilityUnknown": "ONESHIM无法确认{{model}}在此接口上的LLM兼容性。请在保存前验证模型或加载目录。",
-    "llmModelCompatibilityUnknownRejected": "ONESHIM要求此接口使用已知的兼容LLM模型。{{model}}尚未编入目录，请选择已知的支持模型。",
+    "llmModelCompatibilityUnknown": "Maekon无法确认{{model}}在此接口上的LLM兼容性。请在保存前验证模型或加载目录。",
+    "llmModelCompatibilityUnknownRejected": "Maekon要求此接口使用已知的兼容LLM模型。{{model}}尚未编入目录，请选择已知的支持模型。",
     "selfHostedCustomEndpointStatus": "此自托管接口正在使用自定义端点。该端点未进行就绪状态检测，请手动验证本地服务器。",
     "providerSurfaceLabel": "提供商接口",
     "noCompatibleProviderSurface": "此模式下没有可用的提供商接口。",
     "ocrStrategyMultimodal": "此OCR接口通过多模态模型运行。保存自定义模型ID前，请优先选择支持图像的模型并验证兼容性。",
     "ocrStrategyVisionApi": "此OCR接口使用专用视觉API。模型选择可能因端点而受限。",
-    "managedOAuthSurfaceDescription": "此接口使用提供商托管的OAuth。ONESHIM不会在此处要求API密钥或可编辑的端点。",
+    "managedOAuthSurfaceDescription": "此接口使用提供商托管的OAuth。Maekon不会在此处要求API密钥或可编辑的端点。",
     "subprocessSurfaceDescription": "此接口通过已安装的提供商CLI运行。认证和订阅权益由提供商CLI继续管理。",
     "subprocessExecutableHint": "检测到的可执行文件候选: {{executables}}",
     "modelDiscoveryUnsupportedSurface": "所选提供商接口不支持模型发现。"
@@ -1006,7 +1006,7 @@
   "emptyState": {
     "dashboard": {
       "title": "正在收集数据",
-      "description": "ONESHIM 正在后台收集活动数据。打开任意应用继续工作，通常 1 分钟内会出现首批指标。"
+      "description": "Maekon 正在后台收集活动数据。打开任意应用继续工作，通常 1 分钟内会出现首批指标。"
     },
     "timeline": {
       "title": "截图捕获已关闭",
@@ -1027,30 +1027,30 @@
     },
     "automation": {
       "title": "自动化未激活",
-      "description": "自动化已关闭。请在设置中启用，以便 ONESHIM 代您执行已批准的命令。",
+      "description": "自动化已关闭。请在设置中启用，以便 Maekon 代您执行已批准的命令。",
       "action": "打开设置"
     },
     "auditLog": {
       "title": "暂无审计条目",
-      "description": "一旦 ONESHIM 代您执行自动化命令，此处将显示审计条目。",
+      "description": "一旦 Maekon 代您执行自动化命令，此处将显示审计条目。",
       "action": "打开自动化"
     },
     "timelineWaiting": {
       "title": "正在捕获您的首批截图",
-      "description": "ONESHIM 每隔几秒捕获一次活动窗口。打开首个应用后 2–3 分钟内应会出现帧。若 5 分钟后仍无显示，请在设置中检查「屏幕录制」权限。"
+      "description": "Maekon 每隔几秒捕获一次活动窗口。打开首个应用后 2–3 分钟内应会出现帧。若 5 分钟后仍无显示，请在设置中检查「屏幕录制」权限。"
     },
     "timelineStandalone": {
       "title": "桌面捕获不可用",
-      "description": "应用在没有实时桌面访问的情况下运行。请在实时桌面模式下重新打开 ONESHIM，然后再回来开始捕获活动。"
+      "description": "应用在没有实时桌面访问的情况下运行。请在实时桌面模式下重新打开 Maekon，然后再回来开始捕获活动。"
     },
     "chat": {
       "title": "开启一次对话",
-      "description": "向 ONESHIM 询问您的工作模式、专注历史，或如何改进您的例行安排。从侧边栏创建一个新会话即可开始。",
+      "description": "向 Maekon 询问您的工作模式、专注历史，或如何改进您的例行安排。从侧边栏创建一个新会话即可开始。",
       "action": "新会话"
     },
     "playbooksCoaching": {
       "title": "暂无辅导模板",
-      "description": "辅导模板可自定义 ONESHIM 何时如何提示您。新模板添加后将显示在此。",
+      "description": "辅导模板可自定义 Maekon 何时如何提示您。新模板添加后将显示在此。",
       "action": "辅导设置"
     },
     "playbooksPresets": {
@@ -1087,10 +1087,10 @@
     "boundaryTitle": "出现了问题",
     "boundaryRetry": "重试",
     "serverOffline": "服务器离线",
-    "serverOfflineDesc": "无法连接到 ONESHIM 代理。请确认代理正在运行。",
+    "serverOfflineDesc": "无法连接到 Maekon 代理。请确认代理正在运行。",
     "retryConnection": "重试连接",
     "agentUnreachable": "网络错误：无法连接到代理",
-    "agentCheck": "请检查 ONESHIM 代理是否正在运行",
+    "agentCheck": "请检查 Maekon 代理是否正在运行",
     "unknownFetchError": "获取指标时发生未知错误"
   },
   "sidebar": {
@@ -1191,7 +1191,7 @@
             "unavailable": "此设备上无法使用直接OAuth。需要桌面密钥链支持。"
           },
           "subprocess_cli": {
-            "available": "Codex CLI已安装并已认证。ONESHIM可以为支持的工作流使用提供商CLI路径。",
+            "available": "Codex CLI已安装并已认证。Maekon可以为支持的工作流使用提供商CLI路径。",
             "auth_required": "Codex CLI已安装但尚未认证。请先完成CLI登录流程。",
             "partially_available": "检测到Codex CLI。CLI认证后可优先使用提供商CLI路径。",
             "unavailable": "Codex CLI未安装或不在PATH中。"
@@ -1199,7 +1199,7 @@
         },
         "anthropic": {
           "subprocess_cli": {
-            "available": "Claude Code CLI已安装并已认证。ONESHIM可以为支持的工作流使用提供商CLI路径。",
+            "available": "Claude Code CLI已安装并已认证。Maekon可以为支持的工作流使用提供商CLI路径。",
             "auth_required": "Claude Code CLI已安装但尚未认证。请先完成CLI登录流程。",
             "partially_available": "检测到Claude Code CLI。CLI认证后可优先使用提供商CLI路径。",
             "unavailable": "Claude Code CLI未安装或不在PATH中。"
@@ -1209,10 +1209,10 @@
           "managed_oauth": {
             "available": "此设备上可使用Google OAuth。配置桌面OAuth客户端ID可无需API密钥连接Vision OCR。",
             "unavailable": "此设备上无法使用Google OAuth。需要桌面密钥链支持和Google OAuth客户端ID配置。",
-            "setup": "为ONESHIM准备Google Desktop OAuth客户端ID，然后重启应用并开始Vision OCR登录流程。"
+            "setup": "为Maekon准备Google Desktop OAuth客户端ID，然后重启应用并开始Vision OCR登录流程。"
           },
           "subprocess_cli": {
-            "available": "Gemini CLI已安装并已认证。ONESHIM可以为支持的工作流使用提供商CLI路径。",
+            "available": "Gemini CLI已安装并已认证。Maekon可以为支持的工作流使用提供商CLI路径。",
             "auth_required": "Gemini CLI已安装但尚未认证。请先完成CLI登录流程。",
             "partially_available": "检测到Gemini CLI。CLI认证后可优先使用提供商CLI路径。",
             "unavailable": "Gemini CLI未安装或不在PATH中。"
@@ -1220,8 +1220,8 @@
         },
         "ollama": {
           "local_http": {
-            "available": "Ollama在配置的本地HTTP端口上可访问。ONESHIM可以直接调用自托管端点。",
-            "partially_available": "ONESHIM无法完成Ollama的本地就绪状态检测。请检查本地服务器和端点配置。",
+            "available": "Ollama在配置的本地HTTP端口上可访问。Maekon可以直接调用自托管端点。",
+            "partially_available": "Maekon无法完成Ollama的本地就绪状态检测。请检查本地服务器和端点配置。",
             "unavailable": "Ollama在配置的本地HTTP端口上不可访问。请在使用此自托管接口前启动本地服务器。"
           }
         }
@@ -1351,11 +1351,11 @@
     }
   },
   "onboarding": {
-    "step1Title": "欢迎使用 ONESHIM",
-    "step1Desc": "ONESHIM 监控您的桌面活动，并提供智能建议以提高生产力。",
+    "step1Title": "欢迎使用 Maekon",
+    "step1Desc": "Maekon 监控您的桌面活动，并提供智能建议以提高生产力。",
     "step2Title": "权限",
-    "step2Desc": "ONESHIM 需要一些权限才能正常工作。",
-    "step2DescWindows": "Windows 通常不需要单独授权，但 ONESHIM 仍依赖桌面访问、屏幕捕获和通知投递可用。",
+    "step2Desc": "Maekon 需要一些权限才能正常工作。",
+    "step2DescWindows": "Windows 通常不需要单独授权，但 Maekon 仍依赖桌面访问、屏幕捕获和通知投递可用。",
     "step2DescLinux": "Linux 通常依赖会话服务而不是系统权限弹窗。请确认辅助功能、屏幕捕获和通知在当前桌面会话中可用。",
     "step2Accessibility": "辅助功能",
     "step2ScreenCapture": "屏幕捕获",
@@ -1365,18 +1365,18 @@
     "step2LinuxAccessibility": "AT-SPI 会话",
     "step2LinuxScreenCapture": "桌面捕获",
     "step3Title": "功能",
-    "step3Desc": "以下是 ONESHIM 可以为您做的事情。",
+    "step3Desc": "以下是 Maekon 可以为您做的事情。",
     "step3Capture": "实时上下文捕获",
     "step3Analysis": "AI 驱动的分析",
     "step3Suggestions": "智能建议",
     "step4Title": "准备就绪",
-    "step4Desc": "一切就绪，现在开始使用 ONESHIM 吧。",
+    "step4Desc": "一切就绪，现在开始使用 Maekon 吧。",
     "step4Tip": "提示：随时按 {{shortcut}} 打开命令面板，快速跳转到任意页面。",
     "next": "下一步",
     "back": "返回",
     "skip": "跳过",
     "complete": "开始使用",
-    "step2DescMac": "macOS 需要辅助功能、屏幕录制和通知访问权限才能获得完整的 ONESHIM 体验。",
+    "step2DescMac": "macOS 需要辅助功能、屏幕录制和通知访问权限才能获得完整的 Maekon 体验。",
     "step2AccessibilityAction": "允许辅助功能访问",
     "step2ScreenCaptureAction": "允许屏幕录制",
     "step2PermissionEnabled": "已启用",

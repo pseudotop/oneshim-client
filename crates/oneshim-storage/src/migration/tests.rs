@@ -166,7 +166,7 @@ fn migration_all_versions() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 31);
+    assert_eq!(version, CURRENT_VERSION);
 
     // V9 tables
     let count: i64 = conn
@@ -366,7 +366,7 @@ fn migration_all_versions() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 31);
+    assert_eq!(version, CURRENT_VERSION);
 
     // V17 tables
     let count: i64 = conn
@@ -432,7 +432,7 @@ fn migration_all_versions() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 31);
+    assert_eq!(version, CURRENT_VERSION);
 }
 
 #[test]
@@ -497,5 +497,5 @@ fn migration_idempotent() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 31);
+    assert_eq!(version, CURRENT_VERSION);
 }

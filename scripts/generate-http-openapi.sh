@@ -41,7 +41,7 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 cat > "$OUTPUT_PATH" <<EOF
 openapi: 3.0.3
 info:
-  title: ONESHIM Local Web API
+  title: Maekon Local Web API
   version: "v1"
   description: |
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.

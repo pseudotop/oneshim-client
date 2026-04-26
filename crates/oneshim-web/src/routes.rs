@@ -326,6 +326,23 @@ pub fn api_routes() -> Router<AppState> {
             "/pomodoro/complete",
             post(handlers::pomodoro::complete_pomodoro),
         )
+        // Tracking-schedule configuration + status (A.15/A.16)
+        .route(
+            "/tracking-schedule",
+            get(handlers::tracking_schedule::get_config)
+                .put(handlers::tracking_schedule::put_config),
+        )
+        .route(
+            "/tracking-schedule/status",
+            get(handlers::tracking_schedule::get_status),
+        )
+        // External gRPC live-config introspection (spec §5.11 / D29)
+        .route(
+            "/external-grpc/live-config",
+            get(handlers::external_grpc_live_config::get_live_config),
+        )
+        // Audit entry export (spec §5.9 / D25 / NV1)
+        .route("/audit/export", get(handlers::audit_export::export_audit))
 }
 
 pub fn integration_routes() -> Router<AppState> {

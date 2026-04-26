@@ -5,6 +5,20 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap
 )]
+// P2 PR-C: `missing_const_for_fn` accepted crate-wide. See
+// docs/reviews/2026-04-21-p2-missing-const-for-fn-decision.md.
+#![allow(clippy::missing_const_for_fn)]
+// P2 remaining-nursery-lints: see decision doc.
+#![allow(
+    clippy::use_self,
+    clippy::option_if_let_else,
+    clippy::redundant_pub_crate
+)]
+// P2 PR-A nursery-hardening.
+#![deny(clippy::significant_drop_tightening)]
+#![cfg_attr(test, allow(clippy::significant_drop_tightening))]
+// P2 nursery-hardening (PR-B): derive Eq alongside PartialEq when possible.
+#![deny(clippy::derive_partial_eq_without_eq)]
 
 //! # oneshim-vision
 

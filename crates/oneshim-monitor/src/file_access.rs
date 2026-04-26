@@ -183,6 +183,10 @@ impl FileAccessWatcher {
     /// Only scans top-level files in each monitored folder (non-recursive) to
     /// keep the scan lightweight. Deep scanning can be enabled by walking
     /// subdirectories if needed.
+    // P2 PR-A: `file_mtimes` mutex is held across the directory scan + state
+    // update as the atomicity guard for "see-current-state + detect-changes +
+    // record-new-state". Tightening would race with concurrent poll calls.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn poll_changes(&self) -> Vec<FileAccessEvent> {
         let mut events = Vec::new();
 

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
+use oneshim_core::types::{TimeWindow, TimeWindowError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -84,5 +85,34 @@ impl TimelineQuery {
 
     pub fn max_frames(&self) -> usize {
         self.max_frames.unwrap_or(500)
+    }
+
+    /// Convert optional bounds into a bounded `TimeWindow`.
+    ///
+    /// Mirrors `TimeRangeQuery::to_time_window` but uses `default_lookback`
+    /// to control the from-fallback (timeline default is `Duration::hours(1)`
+    /// matching pre-existing `from_datetime()` semantics).
+    ///
+    /// # Errors
+    /// - [`TimeWindowError::ParseFailed`] if `from` or `to` is not RFC3339.
+    /// - [`TimeWindowError::InvertedBounds`] if parsed `start > end`.
+    pub fn to_time_window(
+        &self,
+        default_lookback: Duration,
+    ) -> Result<TimeWindow, TimeWindowError> {
+        let now = Utc::now();
+        let end = match self.to.as_deref() {
+            Some(s) => DateTime::parse_from_rfc3339(s)
+                .map_err(|e| TimeWindowError::ParseFailed(e.to_string()))?
+                .with_timezone(&Utc),
+            None => now,
+        };
+        let start = match self.from.as_deref() {
+            Some(s) => DateTime::parse_from_rfc3339(s)
+                .map_err(|e| TimeWindowError::ParseFailed(e.to_string()))?
+                .with_timezone(&Utc),
+            None => end - default_lookback,
+        };
+        TimeWindow::new(start, end)
     }
 }

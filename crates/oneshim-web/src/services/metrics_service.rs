@@ -22,13 +22,15 @@ impl MetricsQueryService {
         &self,
         params: &TimeRangeQuery,
     ) -> Result<Vec<MetricsResponse>, ApiError> {
-        let from = params.from_datetime();
-        let to = params.to_datetime();
+        let window = params
+            .to_time_window(Duration::hours(24))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let limit = params.limit_or_default();
 
+        // get_metrics is out of plan scope (still takes DateTime<Utc>): decompose.
         self.ctx
             .storage
-            .get_metrics(from, to, limit)
+            .get_metrics(window.start, window.end, limit)
             .await
             .map_err(ApiError::from)
             .map(|metrics| metrics.into_iter().map(assemble_metrics_response).collect())

@@ -1,6 +1,6 @@
 [package]
 name = "oneshim-app"
-description = "ONESHIM 데스크톱 에이전트 — Tauri v2 기반 GUI, DI, 오케스트레이션, 라이프사이클"
+description = "Maekon desktop agent - Tauri v2 GUI, DI, orchestration, lifecycle"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -21,6 +21,7 @@ tauri = { workspace = true }
 tauri-plugin-global-shortcut = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-notification = { workspace = true }
+tauri-plugin-single-instance = "2"
 tauri-plugin-webdriver = { workspace = true, optional = true }
 
 # 내부 크레이트
@@ -46,6 +47,7 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 async-trait = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
@@ -72,6 +74,10 @@ image = { workspace = true }
 lru = { workspace = true }
 raw-window-handle = "0.6"
 
+# D13-v2c: generate-external-cert subcommand (feature-gated, external-grpc-tools)
+rcgen = { workspace = true, optional = true }
+time = { workspace = true, optional = true }
+
 # 텔레메트리 (feature-gated, default OFF)
 opentelemetry = { version = "0.27", optional = true, default-features = false, features = ["trace"] }
 opentelemetry_sdk = { version = "0.27", optional = true, default-features = false, features = ["rt-tokio", "trace"] }
@@ -88,6 +94,11 @@ grpc = ["server", "oneshim-network/grpc"]
 # Axum REST on a separate port). Opt-in so default builds pay zero tonic
 # dep cost.
 grpc-dashboard = ["oneshim-web/grpc-dashboard"]
+# D13-v2c: External gRPC binding — opt-in TLS+JWT/mTLS server on a separate port.
+# Depends on grpc-dashboard (loopback) being compiled in as well.
+grpc-dashboard-external = ["oneshim-web/grpc-dashboard-external"]
+# D13-v2c: generate-external-cert subcommand — rcgen + JWT keypair generation.
+external-grpc-tools = ["oneshim-web/external-grpc-tools", "dep:rcgen", "dep:time"]
 audio = ["dep:oneshim-audio"]
 stt = ["audio", "oneshim-audio/whisper"]
 cloud-stt = ["audio", "oneshim-audio/cloud-stt"]
@@ -122,24 +133,24 @@ dispatch2 = "0.3"
 windows-sys = { workspace = true }
 
 [package.metadata.bundle]
-name = "ONESHIM"
+name = "Maekon"
 identifier = "com.oneshim.client"
 icon = ["icons/icon.icns"]
-copyright = "Copyright 2026 ONESHIM Contributors"
+copyright = "Copyright 2026 Maekon Contributors"
 category = "Productivity"
-short_description = "AI-powered autonomous office work support agent"
+short_description = "Local context agent for AI-assisted work"
 long_description = """
-ONESHIM은 AI 기반 자율 사무 업무 지원 에이전트입니다.
-데스크톱 컨텍스트를 모니터링하고 지능형 제안을 제공합니다.
+Maekon is a local context agent for AI-assisted work.
+It monitors desktop context and provides useful, private-by-default suggestions.
 """
 osx_minimum_system_version = "10.15"
 
 [package.metadata.deb]
-maintainer = "ONESHIM Team"
-copyright = "2026, ONESHIM Contributors"
+maintainer = "Maekon Team"
+copyright = "2026, Maekon Contributors"
 license-file = ["../LICENSE", "4"]
 extended-description = """
-ONESHIM은 AI 기반 자율 사무 업무 지원 에이전트입니다.
+Maekon is a local context agent for AI-assisted work.
 """
 depends = "$auto, libgtk-3-0, libglib2.0-0, libwebkit2gtk-4.1-0, libappindicator3-1"
 section = "utility"
@@ -159,3 +170,6 @@ axum = { workspace = true }
 tower = { workspace = true }
 zeroize = { workspace = true }
 serial_test = "3"
+# D13-v2c: generate-external-cert test helpers.
+x509-parser = { workspace = true }
+jsonwebtoken = { workspace = true }

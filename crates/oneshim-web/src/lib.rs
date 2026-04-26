@@ -5,6 +5,23 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap
 )]
+// P2 PR-C: `missing_const_for_fn` accepted crate-wide. See
+// docs/reviews/2026-04-21-p2-missing-const-for-fn-decision.md.
+#![allow(clippy::missing_const_for_fn)]
+// P2 remaining-nursery-lints: see decision doc.
+#![allow(
+    clippy::use_self,
+    clippy::option_if_let_else,
+    clippy::redundant_pub_crate
+)]
+// P2 PR-A nursery-hardening: mutex guards must not be held across I/O or
+// long-running work unless intentionally kept for atomicity (use
+// function-level #[allow] with reason). See
+// docs/reviews/2026-04-21-p2-significant-drop-tightening-spec.md.
+// Test code is exempt — mock implementations use intentionally-simple lock
+// patterns for clarity over performance.
+#![deny(clippy::significant_drop_tightening)]
+#![cfg_attr(test, allow(clippy::significant_drop_tightening))]
 
 //! # oneshim-web
 //!
@@ -166,6 +183,31 @@ impl WebServer {
 
     pub fn with_system_info_provider(mut self, provider: Arc<dyn SystemInfoProvider>) -> Self {
         self.state.diagnostics.system_info_provider = Some(provider);
+        self
+    }
+
+    /// Wire the `LiveExternalConfig` Arc into `DiagnosticsState` so the
+    /// `GET /api/external-grpc/live-config` endpoint can serve live snapshots.
+    /// Only available when the `grpc-dashboard-external` feature is enabled.
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub fn with_external_grpc_live(
+        mut self,
+        live: Arc<crate::grpc::external::live_config::LiveExternalConfig>,
+    ) -> Self {
+        self.state.diagnostics.external_grpc_live = Some(live);
+        self
+    }
+
+    /// Wire the `ExternalMetrics` Arc into `DiagnosticsState` so the
+    /// `GET /api/external-grpc/live-config` endpoint can report
+    /// `config_reload_task_alive`.
+    /// Only available when the `grpc-dashboard-external` feature is enabled.
+    #[cfg(feature = "grpc-dashboard-external")]
+    pub fn with_external_grpc_metrics(
+        mut self,
+        metrics: Arc<crate::grpc::external::metrics::ExternalMetrics>,
+    ) -> Self {
+        self.state.diagnostics.external_grpc_metrics = Some(metrics);
         self
     }
 

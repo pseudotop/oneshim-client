@@ -1,3 +1,4 @@
+use chrono::Duration;
 use oneshim_api_contracts::events::EventResponse;
 
 use crate::error::ApiError;
@@ -24,22 +25,24 @@ impl EventsQueryService {
     }
 
     pub async fn get_events(&self, params: &TimeRangeQuery) -> Result<EventPage, ApiError> {
-        let from = params.from_datetime();
-        let to = params.to_datetime();
+        let window = params
+            .to_time_window(Duration::hours(24))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let limit = params.limit_or_default();
         let offset = params.offset_or_default();
 
         let total = self
             .ctx
             .storage
-            .count_events_in_range(&from.to_rfc3339(), &to.to_rfc3339())
+            .count_events_in_range(&window)
             .map_err(|error| ApiError::Internal(error.to_string()))?;
 
         let fetch_limit = limit + offset;
+        // get_events is out of plan scope (still takes DateTime<Utc>): decompose.
         let data: Vec<EventResponse> = self
             .ctx
             .storage
-            .get_events(from, to, fetch_limit)
+            .get_events(window.start, window.end, fetch_limit)
             .await?
             .into_iter()
             .skip(offset)

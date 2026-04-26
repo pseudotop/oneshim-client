@@ -250,8 +250,8 @@
     "permissionSectionTitleMac": "macOS 権限",
     "permissionSectionTitleLinux": "Linux セッションアクセス",
     "permissionSectionTitleWindows": "Windows アクセス状態",
-    "permissionSectionDesc": "ONESHIM が必要とするデスクトップ統合機能に現在アクセスできるか確認します。",
-    "permissionSectionDescMac": "ONESHIM が安定してコンテキストを取得できるよう、必要な macOS 権限を許可してください。",
+    "permissionSectionDesc": "Maekon が必要とするデスクトップ統合機能に現在アクセスできるか確認します。",
+    "permissionSectionDescMac": "Maekon が安定してコンテキストを取得できるよう、必要な macOS 権限を許可してください。",
     "permissionSectionDescLinux": "Linux では追加の権限ダイアログは少ないですが、セッションサービスには到達できる必要があります。",
     "permissionSectionDescWindows": "Windows では通常個別の権限ダイアログは不要ですが、デスクトップ統合が利用可能かは引き続き確認する必要があります。",
     "permissionChecking": "デスクトップアクセス状態を確認しています...",
@@ -276,10 +276,10 @@
     "permissionWindowsDesc": "Windows ではアクセシビリティや画面キャプチャに個別の OS 権限は通常不要です。通知はシステム通知設定の影響を受ける場合があります。",
     "permissionWindowsAccessibilityLabel": "UI Automation",
     "permissionWindowsAccessibilityDesc": "Windows のアクセシビリティ API は通常、別途許可しなくても利用できます。",
-    "permissionWindowsScreenCaptureDesc": "ONESHIM が現在のデスクトップセッションにアクセスできれば、通常は画面キャプチャも利用できます。",
+    "permissionWindowsScreenCaptureDesc": "Maekon が現在のデスクトップセッションにアクセスできれば、通常は画面キャプチャも利用できます。",
     "permissionWindowsNotificationsDesc": "通知配信は Windows の通知設定に依存します。",
     "permissionAttentionTitle": "対応を推奨",
-    "permissionAttentionDesc": "サービスにアクセスできない場合は、デスクトップセッション設定を確認してから ONESHIM を再起動してください。",
+    "permissionAttentionDesc": "サービスにアクセスできない場合は、デスクトップセッション設定を確認してから Maekon を再起動してください。",
     "permissionAttentionDescMac": "必要な権限が不足している場合は、セットアップガイドを再度開き、システム設定で許可してください。",
     "permissionManualCheckTitle": "手動確認がまだ必要です",
     "permissionManualCheckDescMac": "通知など一部の macOS 設定は、引き続きシステム設定で手動確認する必要があります。",
@@ -414,14 +414,14 @@
     "supportYes": "はい",
     "supportNo": "いいえ",
     "supportUnknown": "不明",
-    "permissionMacNotificationsDescGranted": "ONESHIMのデスクトップ通知が有効です。",
-    "permissionMacNotificationsDescPrompt": "ONESHIMはまだ通知権限をリクエストしていません。リマインダーやコーチングを受け取るにはリクエストしてください。",
-    "permissionMacNotificationsDescDenied": "macOSシステム設定でONESHIMの通知がオフになっています。手動で有効にしてください。",
+    "permissionMacNotificationsDescGranted": "Maekonのデスクトップ通知が有効です。",
+    "permissionMacNotificationsDescPrompt": "Maekonはまだ通知権限をリクエストしていません。リマインダーやコーチングを受け取るにはリクエストしてください。",
+    "permissionMacNotificationsDescDenied": "macOSシステム設定でMaekonの通知がオフになっています。手動で有効にしてください。",
     "permissionMacNotificationsDescProvisional": "通知は利用可能ですが、macOSが静かに配信する場合があります。",
     "permissionMacNotificationsDescEphemeral": "このセッション中のみ通知が利用可能です。",
     "permissionMacNotificationsDescFallback": "macOSシステム設定で通知を変更した後、ステータスを更新してください。",
     "permissionMacNotificationsRequestAction": "権限をリクエスト",
-    "permissionNotificationRequestGranted": "ONESHIMの通知が準備できました。",
+    "permissionNotificationRequestGranted": "Maekonの通知が準備できました。",
     "permissionNotificationRequestFollowUp": "macOSの通知プロンプトまたはシステム設定を確認し、必要に応じてステータスを更新してください。",
     "bugReportWizardTitle": "バグレポート",
     "bugReportStepGenerate": "生成",
@@ -819,7 +819,7 @@
     "apiKeyStoredPlaceholder": "{{backend}} に保存済み",
     "apiKeyStoredHint": "このシークレットは現在 {{backend}} に保存されています。ここで新しいキーを入力すると置き換えられます。",
     "secretProjectionEnabled": "CLI プロジェクションを許可",
-    "secretProjectionEnabledDescription": "この保存済みシークレットに対して、ONESHIM 管理の CLI およびブリッジ互換フローを許可します。",
+    "secretProjectionEnabledDescription": "この保存済みシークレットに対して、Maekon 管理の CLI およびブリッジ互換フローを許可します。",
     "backendOsSecretStore": "OSシークレットストア",
     "backendFileSecretStore": "ファイルシークレットストア",
     "backendEnv": "環境変数",
@@ -854,7 +854,7 @@
     "accessModeApiKeyLabel": "ダイレクトエンドポイント",
     "accessModeApiKeyDescription": "プロバイダーホスティングまたはセルフホスティングのHTTPエンドポイントを直接使用します。APIキーは選択したサーフェスが要求する場合のみ必要です。",
     "accessModeCliLabel": "インストール済みプロバイダーCLI",
-    "accessModeCliDescription": "サブスクリプション製品に推奨。ONESHIMはインストール済みプロバイダーCLIフローを案内します。",
+    "accessModeCliDescription": "サブスクリプション製品に推奨。Maekonはインストール済みプロバイダーCLIフローを案内します。",
     "accessModeOAuthLabel": "ダイレクトOAuth（実験的）",
     "accessModeOAuthDescription": "対応プロバイダーサーフェス向けの実験的マネージドOAuthパス。利用可能な場合はインストール済みCLIを優先してください。",
     "pathSummaryTitle": "運用パス",
@@ -898,11 +898,11 @@
     "noAuthSurfaceDescription": "このサーフェスはAPIキーを必要としません。資格情報フィールドを空のまま、ローカルまたはセルフホスティングエンドポイントに直接接続してください。",
     "modelSelectionUnsupportedSurface": "このサーフェスはモデルの明示的な選択をサポートしていません。",
     "ocrModelUnsupported": "選択したモデルはこのサーフェスでの画像ベースOCRをサポートすることが確認されていません。互換性のあるマルチモーダルモデルを選択してください。",
-    "ocrModelCompatibilityUnknown": "ONESHIMはこのサーフェスで{{model}}のOCR互換性を確認できませんでした。保存前に既知のマルチモーダルモデルを使用するかモデル探索で確認してください。",
-    "ocrModelCompatibilityUnknownRejected": "ONESHIMはこのサーフェスで既知のOCR互換モデルを必要とします。{{model}}はまだカタログにありません。保存前に既知のマルチモーダルモデルを選択してください。",
+    "ocrModelCompatibilityUnknown": "Maekonはこのサーフェスで{{model}}のOCR互換性を確認できませんでした。保存前に既知のマルチモーダルモデルを使用するかモデル探索で確認してください。",
+    "ocrModelCompatibilityUnknownRejected": "Maekonはこのサーフェスで既知のOCR互換モデルを必要とします。{{model}}はまだカタログにありません。保存前に既知のマルチモーダルモデルを選択してください。",
     "llmModelUnsupported": "選択したモデルはこのLLMサーフェスとの互換性が確認されていません。選択した実行パスに対応したモデルを選んでください。",
-    "llmModelCompatibilityUnknown": "ONESHIMはこのサーフェスで{{model}}のLLM互換性を確認できませんでした。保存前にモデルまたはカタログを確認してください。",
-    "llmModelCompatibilityUnknownRejected": "ONESHIMはこのサーフェスで既知の互換 LLMモデルを必要とします。{{model}}はまだカタログにありません。既知のサポートモデルを選択してください。",
+    "llmModelCompatibilityUnknown": "Maekonはこのサーフェスで{{model}}のLLM互換性を確認できませんでした。保存前にモデルまたはカタログを確認してください。",
+    "llmModelCompatibilityUnknownRejected": "Maekonはこのサーフェスで既知の互換 LLMモデルを必要とします。{{model}}はまだカタログにありません。既知のサポートモデルを選択してください。",
     "selfHostedCustomEndpointStatus": "このセルフホスティングサーフェスはカスタムエンドポイントを使用中です。ローカルサーバーを手動で確認してください。",
     "providerSurfaceLabel": "プロバイダーサーフェス",
     "noCompatibleProviderSurface": "このモードで使用可能なプロバイダーサーフェスがありません。",
@@ -1006,7 +1006,7 @@
   "emptyState": {
     "dashboard": {
       "title": "データを収集中",
-      "description": "ONESHIMがバックグラウンドでアクティビティデータを収集しています。何かアプリを開いて作業を始めてください。通常1分以内に最初の指標が表示されます。"
+      "description": "Maekonがバックグラウンドでアクティビティデータを収集しています。何かアプリを開いて作業を始めてください。通常1分以内に最初の指標が表示されます。"
     },
     "timeline": {
       "title": "スクリーンショットキャプチャがオフです",
@@ -1027,30 +1027,30 @@
     },
     "automation": {
       "title": "オートメーション無効",
-      "description": "オートメーションがオフです。設定で有効にすると、ONESHIMが承認済みのコマンドを代わりに実行できます。",
+      "description": "オートメーションがオフです。設定で有効にすると、Maekonが承認済みのコマンドを代わりに実行できます。",
       "action": "設定を開く"
     },
     "auditLog": {
       "title": "監査エントリーなし",
-      "description": "ONESHIMがオートメーションコマンドを代わりに実行すると、ここに監査エントリーが表示されます。",
+      "description": "Maekonがオートメーションコマンドを代わりに実行すると、ここに監査エントリーが表示されます。",
       "action": "オートメーションを開く"
     },
     "timelineWaiting": {
       "title": "最初のスクリーンショットをキャプチャ中",
-      "description": "ONESHIMは数秒ごとにアクティブウィンドウをキャプチャします。最初のアプリを開いてから2–3分以内にフレームが表示されるはずです。5分経っても何も表示されない場合は、設定で画面収録の権限を確認してください。"
+      "description": "Maekonは数秒ごとにアクティブウィンドウをキャプチャします。最初のアプリを開いてから2–3分以内にフレームが表示されるはずです。5分経っても何も表示されない場合は、設定で画面収録の権限を確認してください。"
     },
     "timelineStandalone": {
       "title": "デスクトップキャプチャが利用できません",
-      "description": "デスクトップへのライブアクセスなしで実行中です。ONESHIMをライブデスクトップモードで再起動してから、アクティビティのキャプチャを開始してください。"
+      "description": "デスクトップへのライブアクセスなしで実行中です。Maekonをライブデスクトップモードで再起動してから、アクティビティのキャプチャを開始してください。"
     },
     "chat": {
       "title": "会話を始めましょう",
-      "description": "作業パターン、集中の履歴、ルーチンの改善方法など、ONESHIMに何でも質問してください。サイドバーから新しいセッションを作成して始めましょう。",
+      "description": "作業パターン、集中の履歴、ルーチンの改善方法など、Maekonに何でも質問してください。サイドバーから新しいセッションを作成して始めましょう。",
       "action": "新しいセッション"
     },
     "playbooksCoaching": {
       "title": "コーチングテンプレートなし",
-      "description": "コーチングテンプレートは、ONESHIMが何をいつ話すかをカスタマイズします。新しいテンプレートが追加されるとここに表示されます。",
+      "description": "コーチングテンプレートは、Maekonが何をいつ話すかをカスタマイズします。新しいテンプレートが追加されるとここに表示されます。",
       "action": "コーチング設定"
     },
     "playbooksPresets": {
@@ -1087,10 +1087,10 @@
     "boundaryTitle": "問題が発生しました",
     "boundaryRetry": "再試行",
     "serverOffline": "サーバーがオフラインです",
-    "serverOfflineDesc": "ONESHIMエージェントに接続できません。エージェントが実行中であることを確認してください。",
+    "serverOfflineDesc": "Maekonエージェントに接続できません。エージェントが実行中であることを確認してください。",
     "retryConnection": "接続を再試行",
     "agentUnreachable": "ネットワークエラー: エージェントに接続できません",
-    "agentCheck": "ONESHIMエージェントが実行中であることを確認してください",
+    "agentCheck": "Maekonエージェントが実行中であることを確認してください",
     "unknownFetchError": "メトリクスの取得中に不明なエラーが発生しました"
   },
   "sidebar": {
@@ -1209,7 +1209,7 @@
           "managed_oauth": {
             "available": "このデバイスでGoogle OAuthが利用可能です。デスクトップOAuthクライアントIDを設定するとAPIキーなしでVision OCRを接続できます。",
             "unavailable": "このデバイスではGoogle OAuthを利用できません。デスクトップキーチェーンとGoogle OAuthクライアントIDの設定が必要です。",
-            "setup": "ONESHIM用のGoogle Desktop OAuthクライアントIDを準備し、アプリを再起動してからVision OCRログインフローを開始してください。"
+            "setup": "Maekon用のGoogle Desktop OAuthクライアントIDを準備し、アプリを再起動してからVision OCRログインフローを開始してください。"
           },
           "subprocess_cli": {
             "available": "Gemini CLIがインストール済みで認証も完了しています。サポートされるワークフローにプロバイダーCLIパスを使用できます。",
@@ -1220,7 +1220,7 @@
         },
         "ollama": {
           "local_http": {
-            "available": "設定されたローカルHTTPポートでOllamaにアクセスできるようです。ONESHIMはセルフホスティングエンドポイントを直接呼び出せます。",
+            "available": "設定されたローカルHTTPポートでOllamaにアクセスできるようです。Maekonはセルフホスティングエンドポイントを直接呼び出せます。",
             "partially_available": "Ollamaのローカル準備状態チェックを完了できませんでした。ローカルサーバーとエンドポイント設定を確認してください。",
             "unavailable": "設定されたローカルHTTPポートでOllamaにアクセスできませんでした。このセルフホスティングサーフェスを使用する前にローカルサーバーを開始してください。"
           }
@@ -1351,11 +1351,11 @@
     }
   },
   "onboarding": {
-    "step1Title": "ONESHIMへようこそ",
-    "step1Desc": "ONESHIMはデスクトップのアクティビティを監視し、生産性向上のためのインテリジェントな提案を提供します。",
+    "step1Title": "Maekonへようこそ",
+    "step1Desc": "Maekonはデスクトップのアクティビティを監視し、生産性向上のためのインテリジェントな提案を提供します。",
     "step2Title": "権限",
-    "step2Desc": "ONESHIMが正しく動作するにはいくつかの権限が必要です。",
-    "step2DescWindows": "Windows では通常個別の権限は不要ですが、ONESHIM はデスクトップアクセス、画面キャプチャ、通知配信が利用可能であることに依存します。",
+    "step2Desc": "Maekonが正しく動作するにはいくつかの権限が必要です。",
+    "step2DescWindows": "Windows では通常個別の権限は不要ですが、Maekon はデスクトップアクセス、画面キャプチャ、通知配信が利用可能であることに依存します。",
     "step2DescLinux": "Linux では OS の権限ダイアログではなくセッションサービスに依存することが一般的です。アクセシビリティ、画面キャプチャ、通知がデスクトップセッションで利用可能か確認してください。",
     "step2Accessibility": "アクセシビリティ",
     "step2ScreenCapture": "スクリーンキャプチャ",
@@ -1365,12 +1365,12 @@
     "step2LinuxAccessibility": "AT-SPI セッション",
     "step2LinuxScreenCapture": "デスクトップキャプチャ",
     "step3Title": "機能",
-    "step3Desc": "ONESHIMでできることをご紹介します。",
+    "step3Desc": "Maekonでできることをご紹介します。",
     "step3Capture": "リアルタイムコンテキストキャプチャ",
     "step3Analysis": "AI駆動の分析",
     "step3Suggestions": "スマートな提案",
     "step4Title": "準備完了",
-    "step4Desc": "設定が完了しました。今すぐONESHIMを使い始めましょう。",
+    "step4Desc": "設定が完了しました。今すぐMaekonを使い始めましょう。",
     "step4Tip": "ヒント: いつでも{{shortcut}}を押すとコマンドパレットが開き、任意のページに直接移動できます。",
     "next": "次へ",
     "back": "戻る",

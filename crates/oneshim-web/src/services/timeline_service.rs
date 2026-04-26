@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use oneshim_api_contracts::timeline::{TimelineQuery, TimelineResponse};
 
 use crate::error::ApiError;
@@ -21,12 +21,15 @@ impl TimelineQueryService {
     }
 
     pub async fn get_timeline(&self, params: &TimelineQuery) -> Result<TimelineResponse, ApiError> {
-        let from = params.from_datetime();
-        let to = params.to_datetime();
+        // Preserve TimelineQuery's pre-existing 1h lookback (NOT 24h) — its
+        // semantic differs from TimeRangeQuery (timeline is short-window UI).
+        let window = params
+            .to_time_window(Duration::hours(1))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let max_events = params.max_events();
         let max_frames = params.max_frames();
 
-        self.build_timeline_response(from, to, max_events, max_frames)
+        self.build_timeline_response(window.start, window.end, max_events, max_frames)
             .await
     }
 

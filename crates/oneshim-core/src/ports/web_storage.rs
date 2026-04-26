@@ -25,6 +25,8 @@ use chrono::{DateTime, Utc};
 
 use crate::error::CoreError;
 use crate::models::activity::SessionStats;
+use crate::types::TimeWindow;
+// (additional imports retained below)
 use crate::models::daily_digest::DailyDigest;
 use crate::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
@@ -63,7 +65,7 @@ pub trait TagStorage: Send + Sync {
 
 /// Read-only frame queries, counts, and full-text search.
 pub trait FrameQueryStorage: Send + Sync {
-    fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError>;
+    fn count_frames_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError>;
     fn get_frames(
         &self,
         from: DateTime<Utc>,
@@ -71,11 +73,8 @@ pub trait FrameQueryStorage: Send + Sync {
         limit: usize,
     ) -> Result<Vec<FrameRecord>, CoreError>;
     fn get_frame_file_path(&self, frame_id: i64) -> Result<Option<String>, CoreError>;
-    fn list_frame_file_paths_in_range(
-        &self,
-        from: &str,
-        to: &str,
-    ) -> Result<Vec<String>, CoreError>;
+    fn list_frame_file_paths_in_range(&self, window: &TimeWindow)
+        -> Result<Vec<String>, CoreError>;
 
     fn count_search_frames(&self, count_sql: &str, pattern: Option<&str>)
         -> Result<u64, CoreError>;
@@ -94,7 +93,7 @@ pub trait FrameQueryStorage: Send + Sync {
 
 /// Read-only event queries, counts, and full-text search.
 pub trait EventQueryStorage: Send + Sync {
-    fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError>;
+    fn count_events_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError>;
     fn count_search_events(&self, pattern: &str) -> Result<u64, CoreError>;
     fn search_events(
         &self,
@@ -115,8 +114,7 @@ pub trait StorageMaintenanceStorage: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     fn delete_data_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
         delete_events: bool,
         delete_frames: bool,
         delete_metrics: bool,
@@ -138,7 +136,7 @@ pub trait ActivityStatsStorage: Send + Sync {
         from: &str,
         to: &str,
     ) -> Result<Vec<(String, i64)>, CoreError>;
-    fn get_daily_active_secs(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError>;
+    fn get_daily_active_secs(&self, window: &TimeWindow) -> Result<Vec<(String, i64)>, CoreError>;
     fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError>;
 }
 
@@ -397,6 +395,45 @@ pub trait HabitStorage: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
+// Sub-trait: DashboardStreamingStorage
+// ---------------------------------------------------------------------------
+
+/// v2b dashboard streaming reads. Frame lookups hit the DB; Idle and
+/// AiRuntimeStatus have no DB persistence so `fetch_dashboard_event_source`
+/// is a Frame-only entry point — Idle / AiRuntimeStatus are served from
+/// the RealtimeEvent payload carried on event_tx (see design §4 data flow).
+pub trait DashboardStreamingStorage: Send + Sync {
+    /// Aggregate a single MetricBucket from raw `system_metrics` rows in
+    /// the half-open `[from, to)` window. Returns a zero-initialised
+    /// bucket when the window is empty. Averages cpu_usage / memory_used
+    /// and (future) sums keystroke / mouse-click counters.
+    ///
+    /// # Errors
+    /// Returns `CoreError::Storage` on SQL / IO failure;
+    /// `CoreError::Internal` on mutex-lock poisoning.
+    fn aggregate_metrics_window(
+        &self,
+        from: chrono::DateTime<chrono::Utc>,
+        to: chrono::DateTime<chrono::Utc>,
+    ) -> Result<crate::models::dashboard_streaming::MetricBucketRecord, CoreError>;
+
+    /// Fetch a canonical frames-table row for the event signal. Only
+    /// DashboardEventSignal::Frame(id) is a real DB lookup; calling with
+    /// any other variant is a bug (the v2b SubscribeEvents handler
+    /// converts Idle / AiRuntimeStatus directly from the event payload).
+    ///
+    /// # Errors
+    /// - `CoreError::NotFound` when the frame id is missing (defensive —
+    ///   see design §5 event↔DB race).
+    /// - `CoreError::Storage` on SQL / IO failure.
+    /// - `CoreError::Internal` when called with a non-Frame signal.
+    fn fetch_dashboard_event_source(
+        &self,
+        signal: &crate::models::dashboard_streaming::DashboardEventSignal,
+    ) -> Result<crate::models::dashboard_streaming::DashboardEventRecord, CoreError>;
+}
+
+// ---------------------------------------------------------------------------
 // Composed supertrait
 // ---------------------------------------------------------------------------
 
@@ -422,6 +459,7 @@ pub trait WebStorage:
     + CoachingQueryStorage
     + HabitStorage
     + AnnotationStorage
+    + DashboardStreamingStorage
     + Send
     + Sync
 {
@@ -446,6 +484,7 @@ impl<T> WebStorage for T where
         + CoachingQueryStorage
         + HabitStorage
         + AnnotationStorage
+        + DashboardStreamingStorage
         + Send
         + Sync
 {

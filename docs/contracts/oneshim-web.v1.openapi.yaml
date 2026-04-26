@@ -167,6 +167,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/audit/export":
+    get:
+      tags:
+        - audit_export
+      operationId: audit_export_get_api_audit_export
+      summary: "GET /api/audit/export"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/automation/audit":
     get:
       tags:
@@ -1215,6 +1234,25 @@ paths:
         - export
       operationId: export_get_api_export_toggl
       summary: "GET /api/export/toggl"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/external-grpc/live-config":
+    get:
+      tags:
+        - external_grpc_live_config
+      operationId: external_grpc_live_config_get_api_external_grpc_live_config
+      summary: "GET /api/external-grpc/live-config"
       responses:
         "200":
           description: Success
@@ -2686,6 +2724,68 @@ paths:
         - timeline
       operationId: timeline_get_api_timeline
       summary: "GET /api/timeline"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/tracking-schedule":
+    get:
+      tags:
+        - tracking_schedule
+      operationId: tracking_schedule_get_api_tracking_schedule
+      summary: "GET /api/tracking-schedule"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - tracking_schedule
+      operationId: tracking_schedule_put_api_tracking_schedule
+      summary: "PUT /api/tracking-schedule"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/tracking-schedule/status":
+    get:
+      tags:
+        - tracking_schedule
+      operationId: tracking_schedule_get_api_tracking_schedule_status
+      summary: "GET /api/tracking-schedule/status"
       responses:
         "200":
           description: Success

@@ -1,9 +1,8 @@
 //! Read/write ports for calibration entries used by regime detection and noise filtering.
 
-use chrono::{DateTime, Utc};
-
 use crate::error::CoreError;
 use crate::models::tiered_memory::CalibrationEntry;
+use crate::types::TimeWindow;
 
 /// Synchronous write port for calibration data.
 ///
@@ -21,7 +20,7 @@ pub trait CalibrationWriter: Send + Sync {
 
     /// Flag all entries in the given time range as noise. Returns the number
     /// of rows updated.
-    fn flag_noise_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<u64, CoreError>;
+    fn flag_noise_range(&self, window: &TimeWindow) -> Result<u64, CoreError>;
 }
 
 /// Asynchronous read port for calibration data.
@@ -34,8 +33,7 @@ pub trait CalibrationReader: Send + Sync {
     /// When `exclude_noise` is true, entries flagged as noise are omitted.
     async fn get_entries(
         &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
+        window: &TimeWindow,
         exclude_noise: bool,
     ) -> Result<Vec<CalibrationEntry>, CoreError>;
 
@@ -49,11 +47,10 @@ pub trait CalibrationReader: Send + Sync {
     /// `segment_id` values back to feature vector indices.
     async fn list_segment_time_ranges(
         &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> Result<Vec<(String, DateTime<Utc>, DateTime<Utc>)>, CoreError> {
+        window: &TimeWindow,
+    ) -> Result<Vec<(String, TimeWindow)>, CoreError> {
         // Default: empty — implementations that have segment storage override this.
-        let _ = (from, to);
+        let _ = window;
         Ok(vec![])
     }
 }

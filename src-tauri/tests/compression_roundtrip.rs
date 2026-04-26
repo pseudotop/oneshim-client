@@ -4,7 +4,7 @@ use oneshim_core::ports::compressor::{CompressionAlgorithm, Compressor};
 use oneshim_network::compression::AdaptiveCompressor;
 
 fn make_test_data(size: usize) -> Vec<u8> {
-    let pattern = b"ONESHIM context data payload with repetitive content for testing. ";
+    let pattern = b"Maekon context data payload with repetitive content for testing. ";
     pattern.iter().cycle().take(size).cloned().collect()
 }
 

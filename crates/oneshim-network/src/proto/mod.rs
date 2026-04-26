@@ -6,5 +6,6 @@
 pub mod client_v1 {
     #![allow(clippy::all)]
     #![allow(warnings)]
+    #![allow(clippy::derive_partial_eq_without_eq)]
     include!("generated/oneshim.client.v1.rs");
 }

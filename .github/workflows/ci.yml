@@ -211,6 +211,9 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: ./scripts/verify-commit-message-hygiene.sh "$PR_BASE_SHA" "$HEAD_SHA"
 
+      - name: CI grep heuristic for #[instrument] on sensitive fns
+        run: bash scripts/ci/grep-no-instrument-on-sensitive-fns.sh
+
       - name: Create frontend dist stub for Tauri generate_context!()
         run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
 
@@ -228,6 +231,18 @@ jobs:
       - name: Run clippy (grpc features)
         run: ./scripts/cargo-cache.sh clippy --workspace --all-targets --features grpc -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
+      - name: Run clippy (grpc-dashboard + test-support)
+        run: ./scripts/cargo-cache.sh clippy -p oneshim-web --no-default-features --features grpc-dashboard,test-support --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
+      # D13-v2c follow-up (PR #491): the external gRPC code path
+      # (`#[cfg(feature = "grpc-dashboard-external")]` modules under
+      # `crates/oneshim-web/src/grpc/external/*`) was not clippy-checked by
+      # any prior step. Latent `significant_drop_tightening` violations
+      # only surfaced when `grpc-dashboard-external` was locally enabled.
+      # This step closes the coverage gap.
+      - name: Run clippy (grpc-dashboard-external + external-grpc-tools + test-support)
+        run: ./scripts/cargo-cache.sh clippy -p oneshim-web --no-default-features --features grpc-dashboard-external,external-grpc-tools,test-support --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
       - name: Run clippy (lan-sync features)
         run: ./scripts/cargo-cache.sh clippy -p oneshim-network --all-targets --features lan-sync -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
@@ -236,6 +251,13 @@ jobs:
 
       - name: Run clippy (telemetry feature)
         run: ./scripts/cargo-cache.sh clippy -p oneshim-app --all-targets --features telemetry -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
+      # D13-v2b PR-B2 follow-up: enforce CRIT-12 invariant that `test-support`
+      # is never transitively enabled via `grpc-dashboard`. If this smoke build
+      # ever fails because a production code path references a test-support
+      # gated symbol, the feature leak must be fixed before release.
+      - name: Smoke build (grpc-dashboard, no test-support)
+        run: ./scripts/cargo-cache.sh build -p oneshim-web --no-default-features --features grpc-dashboard
 
   perf-gates:
     name: Performance Gates
@@ -365,6 +387,24 @@ jobs:
       - name: Run tests (grpc features)
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test --workspace --features grpc
+
+      # D13-v2b PR-B2: execute the SubscribeMetrics handler tests.
+      # test-support enables MockSystemMonitor + active_stream_count accessor.
+      - name: Run tests (grpc-dashboard + test-support)
+        if: env.RUN_HEAVY_TESTS == 'true'
+        run: ./scripts/cargo-cache.sh test -p oneshim-web --no-default-features --features grpc-dashboard,test-support
+
+      # D13-v2c follow-up (PR #491): execute the 36 external_grpc_integration
+      # tests + 2 sibling integration files (audit_query_surface,
+      # live_config_endpoint). The default `cargo test --workspace` runs
+      # without the `grpc-dashboard-external` + `external-grpc-tools` feature
+      # set, so without this step the ~40 integration tests guarding D14
+      # request-id correlation, D22 fallback, D25 audit query, D27 warmup
+      # preservation, D28 status mapping, D29 live-config, D33 1s reload
+      # convergence are not actually executed by CI.
+      - name: Run tests (grpc-dashboard-external + external-grpc-tools + test-support)
+        if: env.RUN_HEAVY_TESTS == 'true'
+        run: ./scripts/cargo-cache.sh test -p oneshim-web --no-default-features --features grpc-dashboard-external,external-grpc-tools,test-support
 
       - name: Run tests (lan-sync features)
         if: env.RUN_HEAVY_TESTS == 'true'

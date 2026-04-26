@@ -62,6 +62,14 @@ jobs:
       - name: Create frontend dist stub for Tauri generate_context!()
         run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
 
+      - name: Create sandbox worker stub for Tauri externalBin
+        # verify-integrity.sh invokes a workspace cargo build that walks
+        # the Tauri externalBin manifest. Tauri's build script aborts when
+        # the per-target sandbox-worker binary is missing — the same stub
+        # other CI jobs (Test, Release Smoke matrix builds) already create.
+        # Job is pinned to ubuntu-latest so the target triple is constant.
+        run: touch src-tauri/oneshim-sandbox-worker-x86_64-unknown-linux-gnu
+
       - name: Run integrity verification script
         run: ./scripts/verify-integrity.sh
 

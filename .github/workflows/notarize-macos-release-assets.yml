@@ -176,7 +176,7 @@ jobs:
             -nobrowse \
             -readonly \
             -mountpoint "$DMG_MOUNTPOINT" >/dev/null
-          spctl --assess --type execute --verbose=4 "$DMG_MOUNTPOINT/ONESHIM.app"
+          spctl --assess --type execute --verbose=4 "$DMG_MOUNTPOINT/Maekon.app"
           cleanup_dmg_mount
           trap - EXIT
 

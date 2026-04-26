@@ -3,7 +3,7 @@ use thiserror::Error;
 use crate::error_codes::{
     AudioCode, AuthCode, ConfigCode, ConsentCode, GuiCode, InternalCode, NetworkCode, NotFoundCode,
     OAuthCode, PermissionCode, PolicyCode, ProviderCode, SandboxCode, SecretCode, ServiceCode,
-    StorageCode, UiCode, ValidationCode,
+    StorageCode, TimeWindowCode, UiCode, ValidationCode,
 };
 use crate::ports::oauth::OAuthErrorKind;
 
@@ -119,6 +119,12 @@ pub enum CoreError {
     #[error("Storage error [{code}]: {message}")]
     Storage { code: StorageCode, message: String },
 
+    #[error("Time window error [{code}]: {message}")]
+    TimeWindow {
+        code: TimeWindowCode,
+        message: String,
+    },
+
     #[error("Secret store error [{code}]: {message}")]
     SecretStoreError { code: SecretCode, message: String },
 
@@ -166,11 +172,24 @@ impl CoreError {
             Self::AudioCapture { code, .. } => code.as_str(),
             Self::SpeechToText { code, .. } => code.as_str(),
             Self::Storage { code, .. } => code.as_str(),
+            Self::TimeWindow { code, .. } => code.as_str(),
             Self::SecretStoreError { code, .. } => code.as_str(),
 
             // #[from]-wrapped external variants (derived)
             Self::Serialization(_) => InternalCode::Serialization.as_str(),
             Self::Io(_) => InternalCode::Io.as_str(),
+        }
+    }
+}
+
+// Manual From impl (NOT `#[from]`) per Phase 2 iter-1 C1: each TimeWindowError
+// variant must map to its corresponding TimeWindowCode, which thiserror's
+// derive cannot express for struct-variants.
+impl From<crate::types::TimeWindowError> for CoreError {
+    fn from(err: crate::types::TimeWindowError) -> Self {
+        Self::TimeWindow {
+            code: err.code(),
+            message: err.to_string(),
         }
     }
 }

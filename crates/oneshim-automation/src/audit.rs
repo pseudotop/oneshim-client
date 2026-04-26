@@ -22,11 +22,41 @@ impl<F: Fn(&AuditEntry) + Send + Sync> AuditPersistence for F {
     }
 }
 
+/// Query interface for historical audit lookup.
+///
+/// Implemented by the binary crate to bridge `AuditLogger` (library) with
+/// SQLite-backed historical storage, preserving hexagonal architecture
+/// boundaries (`oneshim-automation` cannot depend on `oneshim-storage`
+/// directly per ADR-001).
+///
+/// Used by [`AuditLogger::entries_by_command_id`] to fall through from the
+/// in-memory `VecDeque` buffer (~1000-row cap) to persistent storage when
+/// the buffer doesn't have enough matching entries.
+///
+/// # Invariant
+///
+/// Implementations MUST return entries with stable, unique `entry_id`. The
+/// dedupe step in [`AuditLogger::entries_by_command_id`] keys on `entry_id`
+/// to merge buffer + storage results — the same `entry_id` MUST always carry
+/// the same logical entry (same timestamp, same details). The production
+/// `SqliteAuditQuery` satisfies this via the V25 schema's
+/// `UNIQUE(entry_id)` constraint. Custom implementations that violate
+/// this invariant may silently drop legitimate entries during dedup.
+pub trait AuditQuery: Send + Sync {
+    /// Return audit entries whose `command_id` exactly matches.
+    /// Ordered by `timestamp DESC`. Empty vec if none match.
+    /// Synchronous — implementations doing I/O should use `block_in_place`.
+    fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry>;
+}
+
 pub struct AuditLogger {
     buffer: VecDeque<AuditEntry>,
     max_buffer_size: usize,
     batch_size: usize,
     persistence: Option<Arc<dyn AuditPersistence>>,
+    /// Storage-backed historical query handle. When set, `entries_by_command_id`
+    /// falls through to this after exhausting the in-memory buffer.
+    query: Option<Arc<dyn AuditQuery>>,
     /// D5 iter-6: Audit log details may include command stdout/stderr which
     /// can contain API keys, tokens, or other sensitive output. Apply the
     /// strictest PII filtering unconditionally at the record boundary (not
@@ -41,6 +71,7 @@ impl AuditLogger {
             max_buffer_size,
             batch_size,
             persistence: None,
+            query: None,
             pii_sanitizer: None,
         }
     }
@@ -51,6 +82,18 @@ impl AuditLogger {
     /// immediately after being added to the in-memory buffer.
     pub fn with_persistence(mut self, cb: Arc<dyn AuditPersistence>) -> Self {
         self.persistence = Some(cb);
+        self
+    }
+
+    /// Attach a query handle for historical (storage-backed) audit lookup.
+    ///
+    /// When set, [`Self::entries_by_command_id`] falls through to this query
+    /// handle after consulting the in-memory buffer, merging results and
+    /// deduplicating by `entry_id`. Use the matching binary-crate wrapper
+    /// (e.g., `SqliteAuditQuery` in `src-tauri`) to bridge to storage —
+    /// `oneshim-automation` itself MUST NOT depend on `oneshim-storage`.
+    pub fn with_query(mut self, q: Arc<dyn AuditQuery>) -> Self {
+        self.query = Some(q);
         self
     }
 
@@ -215,6 +258,57 @@ impl AuditLogger {
             .collect()
     }
 
+    /// Lookup audit entries by `command_id` with storage fall-through.
+    ///
+    /// Walks the in-memory `VecDeque` buffer first (newest-first via
+    /// `iter().rev()`). If the buffer doesn't satisfy `limit` and an
+    /// [`AuditQuery`] handle was attached via [`Self::with_query`], queries
+    /// the historical storage for the remainder, deduplicating by `entry_id`
+    /// (entries persisted to storage may still be present in the buffer —
+    /// both write paths fire on the same insertion). Final results are
+    /// re-sorted by `timestamp DESC` and truncated to `limit`.
+    pub fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        // Buffer first — newest entries (capacity ~1000 by default).
+        let mut results: Vec<AuditEntry> = self
+            .buffer
+            .iter()
+            .rev()
+            .filter(|e| e.command_id == command_id)
+            .take(limit)
+            .cloned()
+            .collect();
+
+        // Fall-through: if buffer didn't satisfy `limit`, query storage for
+        // the remainder, deduping by entry_id (entries persisted to storage
+        // may still be in buffer — both write paths fire on the same insertion).
+        if results.len() < limit {
+            if let Some(q) = &self.query {
+                let buffer_ids: std::collections::HashSet<String> =
+                    results.iter().map(|e| e.entry_id.clone()).collect();
+                let storage_results = q.entries_by_command_id(command_id, limit);
+                for entry in storage_results {
+                    if results.len() >= limit {
+                        break;
+                    }
+                    if !buffer_ids.contains(&entry.entry_id) {
+                        results.push(entry);
+                    }
+                }
+            }
+        }
+
+        // Re-sort by timestamp DESC. Buffer rows are inserted-newest-first
+        // (VecDeque + .rev()), and storage rows arrive in timestamp DESC. After
+        // merge they may interleave, so re-sort to maintain newest-first.
+        results.sort_by_key(|e| std::cmp::Reverse(e.timestamp));
+        results.truncate(limit);
+        results
+    }
+
     pub fn stats(&self) -> AuditStats {
         let mut completed = 0;
         let mut failed = 0;
@@ -352,6 +446,13 @@ impl oneshim_core::ports::audit_log::AuditLogPort for AuditLogAdapter {
             .read()
             .await
             .entries_by_action_prefix(prefix, limit)
+    }
+
+    async fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+        self.inner
+            .read()
+            .await
+            .entries_by_command_id(command_id, limit)
     }
 
     async fn stats(&self) -> AuditStats {
@@ -714,6 +815,36 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn audit_logger_entries_by_command_id_walks_buffer() {
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s1", "act1");
+        logger.log_start_if(AuditLevel::Basic, "cmd-Y", "s2", "act1");
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s3", "act2");
+
+        let results = logger.entries_by_command_id("cmd-X", 10);
+        assert_eq!(results.len(), 2);
+        for r in &results {
+            assert_eq!(r.command_id, "cmd-X");
+        }
+    }
+
+    #[tokio::test]
+    async fn audit_log_adapter_entries_by_command_id_delegates_to_logger() {
+        use oneshim_core::ports::audit_log::AuditLogPort;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+        let logger = Arc::new(RwLock::new(AuditLogger::new(100, 10)));
+        logger
+            .write()
+            .await
+            .log_start_if(AuditLevel::Basic, "cmd-A", "s1", "act");
+        let adapter = AuditLogAdapter::new(logger);
+        let results = adapter.entries_by_command_id("cmd-A", 10).await;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command_id, "cmd-A");
+    }
+
     #[test]
     fn gui_state_transitions_emit_audit_entries() {
         let mut logger = AuditLogger::new(100, 50);
@@ -766,5 +897,278 @@ mod tests {
         assert_eq!(stats.completed, 7);
         assert_eq!(stats.denied, 2);
         assert_eq!(stats.total, 9);
+    }
+}
+
+#[cfg(test)]
+mod query_tests {
+    //! Storage fall-through tests for `AuditLogger::entries_by_command_id`.
+    //!
+    //! Covers Task 0.3.1 (PR `feat/audit-storage-fall-through`):
+    //! - buffer-only path (no query attached)
+    //! - storage-only fall-through (buffer empty, query has entries)
+    //! - buffer + storage merge with dedup (same entry_id in both sources)
+    //! - limit==0 short-circuit
+    //! - limit > buffer + storage total (returns all available)
+    //! - newest-first ordering after merge
+    //! - dedup leaves storage-newer / buffer-older surviving variant correct
+
+    use super::*;
+    use chrono::{Duration as ChronoDuration, Utc};
+
+    /// Mock implementation of `AuditQuery` returning a pre-built fixture.
+    struct MockQuery {
+        entries: Vec<AuditEntry>,
+    }
+
+    impl AuditQuery for MockQuery {
+        fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry> {
+            // Mirror SqliteStorage contract: timestamp DESC, exact match, limit.
+            let mut matching: Vec<AuditEntry> = self
+                .entries
+                .iter()
+                .filter(|e| e.command_id == command_id)
+                .cloned()
+                .collect();
+            matching.sort_by_key(|e| std::cmp::Reverse(e.timestamp));
+            matching.truncate(limit);
+            matching
+        }
+    }
+
+    fn make_entry(entry_id: &str, command_id: &str, ts_offset_ms: i64) -> AuditEntry {
+        AuditEntry {
+            entry_id: entry_id.to_string(),
+            timestamp: Utc::now() - ChronoDuration::milliseconds(ts_offset_ms),
+            session_id: "s".to_string(),
+            command_id: command_id.to_string(),
+            action_type: "act".to_string(),
+            status: AuditStatus::Completed,
+            details: None,
+            execution_time_ms: Some(10),
+        }
+    }
+
+    #[test]
+    fn buffer_only_path_when_no_query_attached() {
+        // No query — pure buffer walk (legacy behavior).
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "act");
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "act2");
+        logger.log_start_if(AuditLevel::Basic, "cmd-Y", "s", "act");
+
+        let results = logger.entries_by_command_id("cmd-X", 10);
+        assert_eq!(results.len(), 2);
+        for r in &results {
+            assert_eq!(r.command_id, "cmd-X");
+        }
+    }
+
+    #[test]
+    fn storage_only_fall_through_when_buffer_empty() {
+        // Buffer has nothing for "cmd-X" but storage does — fall-through serves results.
+        let mock = Arc::new(MockQuery {
+            entries: vec![
+                make_entry("e-1", "cmd-X", 100),
+                make_entry("e-2", "cmd-X", 50),
+                make_entry("e-3", "cmd-X", 0),
+            ],
+        });
+
+        let logger = AuditLogger::new(100, 10).with_query(mock);
+        let results = logger.entries_by_command_id("cmd-X", 10);
+
+        assert_eq!(results.len(), 3);
+        // Newest-first: e-3 (0ms), e-2 (50ms), e-1 (100ms back).
+        assert_eq!(results[0].entry_id, "e-3");
+        assert_eq!(results[1].entry_id, "e-2");
+        assert_eq!(results[2].entry_id, "e-1");
+    }
+
+    #[test]
+    fn buffer_and_storage_merge_with_dedup() {
+        // Persist + query share the entry_id e-buf — dedup must NOT include twice.
+        // Buffer is fed first; entry in buffer also exists in storage with same id.
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "buffer-act");
+        // The buffer entry above was given a fresh entry_id by push_entry.
+        // Capture it for the mock to return as a duplicate.
+        let buf_entry = logger.recent_entries(1)[0].clone();
+
+        let mock = Arc::new(MockQuery {
+            entries: vec![
+                buf_entry.clone(),                    // duplicate — must be deduped
+                make_entry("e-old-1", "cmd-X", 1000), // older, not in buffer
+                make_entry("e-old-2", "cmd-X", 2000), // older, not in buffer
+            ],
+        });
+
+        let logger = logger.with_query(mock);
+        let results = logger.entries_by_command_id("cmd-X", 10);
+
+        // 1 from buffer + 2 unique from storage = 3 total (dup removed).
+        assert_eq!(results.len(), 3);
+        let mut ids: Vec<&str> = results.iter().map(|e| e.entry_id.as_str()).collect();
+        ids.sort();
+        // Buffer entry id ends up sorted; the two storage ids are present.
+        assert!(ids.contains(&"e-old-1"));
+        assert!(ids.contains(&"e-old-2"));
+        assert!(ids.contains(&buf_entry.entry_id.as_str()));
+        // Each id appears once.
+        let unique_count = ids.iter().collect::<std::collections::HashSet<_>>().len();
+        assert_eq!(unique_count, 3);
+    }
+
+    #[test]
+    fn limit_zero_short_circuits_to_empty() {
+        // limit=0 must early-return without consulting buffer or query.
+        let mock = Arc::new(MockQuery {
+            entries: vec![make_entry("e-1", "cmd-X", 0)],
+        });
+        let mut logger = AuditLogger::new(100, 10).with_query(mock);
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "act");
+
+        let results = logger.entries_by_command_id("cmd-X", 0);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn limit_exceeding_total_returns_all_available() {
+        // Buffer 1 + storage 2 = 3 unique; limit=10 returns all 3.
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "buffer-act");
+
+        let mock = Arc::new(MockQuery {
+            entries: vec![
+                make_entry("e-old-1", "cmd-X", 500),
+                make_entry("e-old-2", "cmd-X", 1000),
+            ],
+        });
+
+        let logger = logger.with_query(mock);
+        let results = logger.entries_by_command_id("cmd-X", 10);
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn results_ordered_newest_first_after_merge() {
+        // Buffer entries are inserted-newest, storage returns timestamp DESC.
+        // After merge + re-sort the final order must be timestamp DESC.
+        let mut logger = AuditLogger::new(100, 10);
+        // Insert 1 buffer entry. Buffer Utc::now() will be very recent (~0ms back).
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "newest-buf");
+
+        let mock = Arc::new(MockQuery {
+            entries: vec![
+                make_entry("e-mid", "cmd-X", 100),
+                make_entry("e-old", "cmd-X", 200),
+            ],
+        });
+
+        let logger = logger.with_query(mock);
+        let results = logger.entries_by_command_id("cmd-X", 10);
+        assert_eq!(results.len(), 3);
+        // Newest is the buffer entry (Utc::now() ~ 0ms ago).
+        assert_eq!(results[0].action_type, "newest-buf");
+        // Then the mid then the old, by ascending timestamp offset.
+        assert_eq!(results[1].entry_id, "e-mid");
+        assert_eq!(results[2].entry_id, "e-old");
+        // Verify monotonic timestamp DESC.
+        for w in results.windows(2) {
+            assert!(
+                w[0].timestamp >= w[1].timestamp,
+                "expected newest-first ordering after merge"
+            );
+        }
+    }
+
+    #[test]
+    fn limit_truncates_after_merge() {
+        // Buffer=2, storage=3, limit=3 → exactly 3 returned, newest-first.
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "buf-1");
+        logger.log_start_if(AuditLevel::Basic, "cmd-X", "s", "buf-2");
+
+        let mock = Arc::new(MockQuery {
+            entries: vec![
+                make_entry("e-1", "cmd-X", 100),
+                make_entry("e-2", "cmd-X", 200),
+                make_entry("e-3", "cmd-X", 300),
+            ],
+        });
+
+        let logger = logger.with_query(mock);
+        let results = logger.entries_by_command_id("cmd-X", 3);
+        assert_eq!(results.len(), 3);
+        // The two buffer entries are newest (Utc::now() ~ 0ms ago); third = e-1.
+        assert_eq!(results[2].entry_id, "e-1");
+    }
+
+    #[test]
+    fn other_command_id_not_leaked_through_storage() {
+        // Storage contains rows for cmd-X and cmd-Y. Caller asks for cmd-X only.
+        // Must not leak cmd-Y entries even when the mock filtered correctly.
+        let mock = Arc::new(MockQuery {
+            entries: vec![
+                make_entry("e-X-1", "cmd-X", 100),
+                make_entry("e-Y-1", "cmd-Y", 200),
+                make_entry("e-X-2", "cmd-X", 300),
+            ],
+        });
+        let logger = AuditLogger::new(100, 10).with_query(mock);
+        let results = logger.entries_by_command_id("cmd-X", 10);
+        assert_eq!(results.len(), 2);
+        for r in &results {
+            assert_eq!(r.command_id, "cmd-X");
+        }
+    }
+
+    #[test]
+    fn large_limit_returns_all_merged_no_truncation() {
+        // 5 buffer entries for cmd-target + 5 different entries in storage,
+        // limit = 100 → expect 10 returned, newest-first, no truncation,
+        // no dedup loss (all entry_ids are distinct).
+        let mut logger = AuditLogger::new(100, 10);
+        // Seed buffer with 5 entries for the target command_id.
+        for i in 0..5_u32 {
+            logger.log_start_if(
+                AuditLevel::Basic,
+                "cmd-target",
+                "s",
+                &format!("buf-action-{i}"),
+            );
+        }
+
+        // Build 5 storage entries with distinct entry_ids, older than the
+        // buffer entries (offsets 500–900 ms back so they sort after buffer).
+        let storage_entries: Vec<AuditEntry> = (0..5_i64)
+            .map(|i| make_entry(&format!("storage-id-{i}"), "cmd-target", 500 + i * 100))
+            .collect();
+
+        let logger = logger.with_query(Arc::new(MockQuery {
+            entries: storage_entries,
+        }));
+
+        let results = logger.entries_by_command_id("cmd-target", 100);
+        assert_eq!(
+            results.len(),
+            10,
+            "10 unique entries should all return when limit > total"
+        );
+
+        // All must belong to the requested command_id.
+        for r in &results {
+            assert_eq!(r.command_id, "cmd-target");
+        }
+
+        // Verify monotonic ordering: newest-first (timestamps DESC).
+        for w in results.windows(2) {
+            assert!(
+                w[0].timestamp >= w[1].timestamp,
+                "results must be newest-first; got {:?} before {:?}",
+                w[0].timestamp,
+                w[1].timestamp,
+            );
+        }
     }
 }

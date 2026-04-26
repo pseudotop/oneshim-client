@@ -666,9 +666,13 @@ impl AppRuntimeLaunchBuilder {
                 Arc::new(move |entry: &oneshim_core::models::audit::AuditEntry| {
                     storage_for_audit.save_audit_entry(entry);
                 });
+            let audit_query: Arc<dyn oneshim_automation::audit::AuditQuery> = Arc::new(
+                crate::audit_query::SqliteAuditQuery::new(sqlite_storage.clone()),
+            );
             let audit_logger = Arc::new(tokio::sync::RwLock::new(
                 oneshim_automation::audit::AuditLogger::new(500, 50)
-                    .with_persistence(persistence_cb),
+                    .with_persistence(persistence_cb)
+                    .with_query(audit_query),
             ));
             let audit_port: Arc<dyn oneshim_core::ports::audit_log::AuditLogPort> = Arc::new(
                 oneshim_automation::audit::AuditLogAdapter::new(audit_logger),
@@ -740,8 +744,12 @@ impl AppRuntimeLaunchBuilder {
         }
 
         let automation_controller = if config.web.enabled {
-            let launch_context =
-                WebServerLaunchContext::new(&handle, &shutdown_tx, event_tx, web_port.clone());
+            let launch_context = WebServerLaunchContext::new(
+                &handle,
+                &shutdown_tx,
+                event_tx.clone(),
+                web_port.clone(),
+            );
             let support_context = WebServerSupportContext::new(
                 config_manager.clone(),
                 update_control.clone(),
@@ -765,6 +773,51 @@ impl AppRuntimeLaunchBuilder {
                 builder = builder.with_session_manager(sm.clone()
                     as Arc<dyn oneshim_core::ports::conversation_session::SessionManager>);
             }
+            // Task 7.1: pre-create LiveExternalConfig + ExternalMetrics Arcs so they can be
+            // shared between the web server's DiagnosticsState (for live-config REST) and the
+            // external gRPC server (for streaming control). Created here, before build_and_spawn,
+            // so both consumers hold a reference to the same underlying ArcSwap cell.
+            // Only built when the external feature is compiled and the feature is enabled in config.
+            #[cfg(feature = "grpc-dashboard-external")]
+            let (ext_shared_live, ext_shared_metrics) = {
+                if config.external_grpc.enabled {
+                    let initial_streaming = config
+                        .external_grpc
+                        .streaming_enabled
+                        .unwrap_or(config.web.grpc_streaming_enabled);
+                    let initial_thresholds =
+                        config.web.grpc_load_thresholds.clone().unwrap_or_default();
+                    let initial_policy = oneshim_web::grpc::LoadPolicy::try_new(initial_thresholds)
+                        .unwrap_or_else(|e| {
+                            tracing::warn!(
+                                err = %e,
+                                "external_grpc: invalid LoadThresholds at pre-creation; using defaults"
+                            );
+                            oneshim_web::grpc::LoadPolicy::new(Default::default())
+                        });
+                    let live = std::sync::Arc::new(
+                        oneshim_web::grpc::external::live_config::LiveExternalConfig::new(
+                            oneshim_web::grpc::external::live_config::LiveSnapshot {
+                                streaming_enabled: initial_streaming,
+                                load_policy: std::sync::Arc::new(initial_policy),
+                            },
+                        ),
+                    );
+                    let metrics = std::sync::Arc::new(
+                        oneshim_web::grpc::external::metrics::ExternalMetrics::new(),
+                    );
+                    (Some(live), Some(metrics))
+                } else {
+                    (None, None)
+                }
+            };
+            #[cfg(feature = "grpc-dashboard-external")]
+            let builder = match (&ext_shared_live, &ext_shared_metrics) {
+                (Some(live), Some(metrics)) => {
+                    builder.with_external_grpc_live_and_metrics(live.clone(), metrics.clone())
+                }
+                _ => builder,
+            };
             #[cfg(feature = "server")]
             let builder = server_context.configure_web_server_builder(builder);
             let web_server_runtime = builder.build_and_spawn();
@@ -774,15 +827,140 @@ impl AppRuntimeLaunchBuilder {
             // can be overridden by ONESHIM_DASHBOARD_GRPC_PORT env var. If
             // the bind fails (port in use, etc.), the server task logs a
             // warn and exits — REST continues normally.
+            //
+            // D13-v2b: pass a GrpcSpawnConfig so streaming RPCs receive
+            // SystemMonitor + event_tx + auth token + load_policy + kill switch + cap.
             #[cfg(feature = "grpc-dashboard")]
             {
                 let grpc_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
+                let grpc_storage = sqlite_storage.clone()
+                    as std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>;
+                // Fresh SysInfoMonitor — cheap, sysinfo-backed, independent of
+                // agent_runtime's instance. Each call does a fresh poll, no
+                // internal cache to share.
+                let grpc_monitor =
+                    std::sync::Arc::new(oneshim_monitor::system::SysInfoMonitor::new())
+                        as std::sync::Arc<dyn oneshim_core::ports::monitor::SystemMonitor>;
+                let thresholds = config.web.grpc_load_thresholds.clone().unwrap_or_default();
+                let load_policy =
+                    std::sync::Arc::new(oneshim_web::grpc::LoadPolicy::new(thresholds));
+                let grpc_pii_sanitizer =
+                    std::sync::Arc::new(oneshim_vision::privacy::VisionPiiSanitizer)
+                        as std::sync::Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>;
+                let cfg = oneshim_web::grpc::GrpcSpawnConfig {
+                    port: grpc_port,
+                    storage: grpc_storage,
+                    system_monitor: grpc_monitor,
+                    event_tx: event_tx.clone(),
+                    integration_auth_token: config.web.integration_auth_token.clone(),
+                    pii_sanitizer: Some(grpc_pii_sanitizer),
+                    ai_runtime_status_snapshot: web_server_runtime.ai_runtime_status.clone(),
+                    load_policy,
+                    streaming_enabled: config.web.grpc_streaming_enabled,
+                    max_concurrent_streams: config.web.grpc_max_concurrent_streams,
+                };
                 handle.spawn(async move {
-                    oneshim_web::grpc::serve_optional(grpc_port).await;
+                    oneshim_web::grpc::serve_optional(cfg).await;
                 });
+            }
+
+            // D13-v2c: External gRPC binding — TLS + JWT/mTLS authenticated server on
+            // a separate port. Feature-gated; default builds pay zero cost.
+            // F13: cross-config port collision guard prevents both servers from
+            // binding to the same port.
+            #[cfg(feature = "grpc-dashboard-external")]
+            {
+                let ext_cfg = &config.external_grpc;
+                if ext_cfg.enabled {
+                    // F13: read the loopback port the same way the loopback spawn does,
+                    // then refuse to start the external server if they collide.
+                    let loopback_port: u16 = std::env::var("ONESHIM_DASHBOARD_GRPC_PORT")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT);
+                    if let Err(msg) =
+                        oneshim_web::grpc::external::port_collision::check_port_collision(
+                            ext_cfg.port,
+                            loopback_port,
+                        )
+                    {
+                        tracing::error!(
+                            external_port = ext_cfg.port,
+                            loopback_port,
+                            err = %msg,
+                            "external_grpc: port collides with loopback grpc port; disabling external server"
+                        );
+                    } else if let Err(e) = ext_cfg.validate() {
+                        tracing::error!(err = %e, "external_grpc: config validation failed; disabling");
+                    } else {
+                        let ext_storage = sqlite_storage.clone()
+                            as std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>;
+                        let ext_monitor =
+                            std::sync::Arc::new(oneshim_monitor::system::SysInfoMonitor::new())
+                                as std::sync::Arc<dyn oneshim_core::ports::monitor::SystemMonitor>;
+                        let ext_audit: std::sync::Arc<
+                            dyn oneshim_core::ports::audit_log::AuditLogPort,
+                        > = {
+                            let storage_for_audit = sqlite_storage.clone();
+                            let persistence_cb: std::sync::Arc<
+                                dyn oneshim_automation::audit::AuditPersistence,
+                            > = std::sync::Arc::new(
+                                move |entry: &oneshim_core::models::audit::AuditEntry| {
+                                    storage_for_audit.save_audit_entry(entry);
+                                },
+                            );
+                            let audit_query: std::sync::Arc<
+                                dyn oneshim_automation::audit::AuditQuery,
+                            > = std::sync::Arc::new(crate::audit_query::SqliteAuditQuery::new(
+                                sqlite_storage.clone(),
+                            ));
+                            let logger = std::sync::Arc::new(tokio::sync::RwLock::new(
+                                oneshim_automation::audit::AuditLogger::new(500, 50)
+                                    .with_persistence(persistence_cb)
+                                    .with_query(audit_query),
+                            ));
+                            std::sync::Arc::new(oneshim_automation::audit::AuditLogAdapter::new(
+                                logger,
+                            ))
+                        };
+                        let ext_pii_sanitizer: std::sync::Arc<
+                            dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer,
+                        > = std::sync::Arc::new(oneshim_vision::privacy::VisionPiiSanitizer);
+                        let ext_ai_status = web_server_runtime.ai_runtime_status.clone();
+                        let ext_app_config_snapshot = std::sync::Arc::new(config.clone());
+
+                        match handle.block_on(build_external_spawn_config(
+                            ext_cfg,
+                            ext_storage,
+                            ext_monitor,
+                            event_tx.clone(),
+                            ext_audit,
+                            Some(ext_pii_sanitizer),
+                            ext_ai_status,
+                            config_manager.clone(),
+                            ext_app_config_snapshot,
+                            ext_shared_live.clone(),
+                            ext_shared_metrics.clone(),
+                        )) {
+                            Ok(spawn_cfg) => {
+                                let _ext_handle = handle.block_on(
+                                    oneshim_web::grpc::external::spawn_with_supervisor(spawn_cfg),
+                                );
+                                tracing::info!(
+                                    bind = %format!("{}:{}", ext_cfg.bind_address, ext_cfg.port),
+                                    auth_mode = ?ext_cfg.auth_mode,
+                                    "external_grpc: server spawned"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(err = %e, "external_grpc: failed to build spawn config; disabling");
+                            }
+                        }
+                    }
+                }
             }
 
             web_server_runtime.automation_controller
@@ -962,6 +1140,9 @@ impl AppRuntimeLaunchBuilder {
         );
         let audio_runtime_state = AudioRuntimeState::new(
             config_manager.clone(),
+            // D13 (CONS-PC04): pass ConsentManager + capture_paused for start_audio_capture gate.
+            Some(capture_consent_manager.clone()),
+            capture_paused.clone(),
             AudioContext {
                 capture: audio_capture,
                 stt_engine: Arc::new(tokio::sync::RwLock::new(stt_engine)),
@@ -992,6 +1173,16 @@ impl AppRuntimeLaunchBuilder {
         } else {
             None
         };
+
+        // Phase 4 D11: clone the Handle BEFORE the AppState construction
+        // moves `handle` into `runtime_handle`. The scheduler-ready point
+        // below dispatches `spawn_healthy_writer` onto this runtime, which
+        // must work even when this function is called synchronously from
+        // Tauri's `setup` callback — on macOS the callback fires inside
+        // `applicationDidFinishLaunching` BEFORE any tokio context is
+        // current on the main thread, so the previous `tokio::spawn`
+        // panicked with "no reactor running".
+        let runtime_handle_for_writer = handle.clone();
 
         let state_builder = ManagedStateBuilder::new(
             AppState {
@@ -1056,7 +1247,7 @@ impl AppRuntimeLaunchBuilder {
         if let Some(probe) = health_probe.as_ref() {
             // JoinHandle is fire-and-forget; the writer is a background task
             // that survives past this function's return.
-            let _join_handle = probe.spawn_healthy_writer();
+            let _join_handle = probe.spawn_healthy_writer(&runtime_handle_for_writer);
             tracing::debug!("health probe: spawn_healthy_writer dispatched");
         }
 
@@ -1065,4 +1256,183 @@ impl AppRuntimeLaunchBuilder {
             state_builder,
         })
     }
+}
+
+/// Build an `ExternalGrpcSpawnConfig` from the external gRPC section of `AppConfig`.
+///
+/// Loads TLS key material, constructs the `HotReloadCertResolver`, and
+/// optionally builds `JwtVerifier` / `MtlsVerifier` according to `auth_mode`.
+/// Returns `Err` if any required path is missing or key material fails to load.
+///
+/// `pre_live` and `pre_metrics` are pre-created Arcs shared with the web server's
+/// `DiagnosticsState` (Task 7.1). When `Some`, they are used directly; when
+/// `None`, fresh instances are created (backwards-compatible for tests).
+#[cfg(feature = "grpc-dashboard-external")]
+#[allow(clippy::too_many_arguments)]
+async fn build_external_spawn_config(
+    cfg: &oneshim_core::config::ExternalGrpcConfig,
+    storage: std::sync::Arc<dyn oneshim_web::storage_port::WebStorage>,
+    system_monitor: std::sync::Arc<dyn oneshim_core::ports::monitor::SystemMonitor>,
+    event_tx: tokio::sync::broadcast::Sender<oneshim_api_contracts::stream::RealtimeEvent>,
+    audit_port: std::sync::Arc<dyn oneshim_core::ports::audit_log::AuditLogPort>,
+    pii_sanitizer: Option<std::sync::Arc<dyn oneshim_core::ports::pii_sanitizer::PiiSanitizer>>,
+    ai_runtime_status_snapshot: Option<oneshim_api_contracts::stream::AiRuntimeStatus>,
+    config_manager: oneshim_core::config_manager::ConfigManager,
+    app_config_snapshot: std::sync::Arc<oneshim_core::config::AppConfig>,
+    pre_live: Option<std::sync::Arc<oneshim_web::grpc::external::live_config::LiveExternalConfig>>,
+    pre_metrics: Option<std::sync::Arc<oneshim_web::grpc::external::metrics::ExternalMetrics>>,
+) -> anyhow::Result<oneshim_web::grpc::external::spawn_config::ExternalGrpcSpawnConfig> {
+    use anyhow::Context as _;
+    use oneshim_web::grpc::external::{
+        cert_resolver::HotReloadCertResolver, ip_ban::IpBan, jwt_verifier::JwtVerifier,
+        metrics::ExternalMetrics, mtls_verifier::MtlsVerifier, tls_config::load_certified_key,
+    };
+
+    let cert = load_certified_key(
+        cfg.tls_cert_path
+            .as_ref()
+            .context("tls_cert_path required when external_grpc.enabled")?,
+        cfg.tls_key_path
+            .as_ref()
+            .context("tls_key_path required when external_grpc.enabled")?,
+    )?;
+    let cert_resolver = std::sync::Arc::new(HotReloadCertResolver::new(cert));
+
+    // Create the shutdown channel shared by: cert watcher, expiry monitor, and tonic server.
+    // The Sender Arc is kept alive in ExternalGrpcSpawnConfig.shutdown_tx, which is held by
+    // spawn_with_supervisor for the server lifetime. Dropping the last Arc clone closes the
+    // channel and causes all shutdown_rx listeners to exit.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    let shutdown_tx = std::sync::Arc::new(shutdown_tx);
+
+    // Spawn cert hot-reload watcher and daily expiry monitor.
+    // Both are best-effort: errors are logged but do not prevent startup.
+    let metrics_arc = pre_metrics.unwrap_or_else(|| std::sync::Arc::new(ExternalMetrics::new()));
+    {
+        use oneshim_web::grpc::external::tls_config::{spawn_cert_watcher, spawn_expiry_monitor};
+        let cert_path = cfg
+            .tls_cert_path
+            .clone()
+            .context("tls_cert_path required when external_grpc.enabled")?;
+        let key_path = cfg
+            .tls_key_path
+            .clone()
+            .context("tls_key_path required when external_grpc.enabled")?;
+        let watcher_resolver = cert_resolver.clone();
+        let watcher_metrics = metrics_arc.clone();
+        let watcher_shutdown = shutdown_rx.clone();
+        let expiry_shutdown = shutdown_rx.clone();
+        // spawn_cert_watcher is async and blocks only on initial watcher setup;
+        // the actual file-watch loop runs inside a spawned task.
+        tokio::spawn(async move {
+            if let Err(e) =
+                spawn_cert_watcher(cert_path, key_path, watcher_resolver, watcher_shutdown).await
+            {
+                tracing::warn!(err = %e, "external_grpc: cert watcher failed to start");
+            }
+        });
+        spawn_expiry_monitor(cert_resolver.clone(), watcher_metrics, expiry_shutdown);
+    }
+
+    // Initial LiveSnapshot construction (spec §5.7 / D23 / D30).
+    // When `pre_live` is Some (Task 7.1 shared-Arc path), use it directly so the web
+    // server's DiagnosticsState and the gRPC server share a single ArcSwap cell.
+    let live = if let Some(pre) = pre_live {
+        pre
+    } else {
+        // cfg.streaming_enabled overrides the shared fallback in app_config_snapshot.web.
+        let initial_streaming = cfg
+            .streaming_enabled
+            .unwrap_or(app_config_snapshot.web.grpc_streaming_enabled);
+        let initial_thresholds = app_config_snapshot
+            .web
+            .grpc_load_thresholds
+            .clone()
+            .unwrap_or_default();
+        let initial_policy = oneshim_web::grpc::LoadPolicy::try_new(initial_thresholds)
+            .context("Invalid LoadThresholds at boot — check config.web.grpc_load_thresholds")?;
+        std::sync::Arc::new(
+            oneshim_web::grpc::external::live_config::LiveExternalConfig::new(
+                oneshim_web::grpc::external::live_config::LiveSnapshot {
+                    streaming_enabled: initial_streaming,
+                    load_policy: std::sync::Arc::new(initial_policy),
+                },
+            ),
+        )
+    };
+
+    // Spawn ConfigReloadTask fire-and-forget, matching cert_watcher pattern per D30.
+    // Watches for AppConfig changes via ConfigManager and atomically swaps LiveSnapshot.
+    let config_rx = config_manager.subscribe();
+    let shutdown_rx_for_reload = shutdown_rx.clone();
+    let live_for_reload = live.clone();
+    let metrics_for_reload = metrics_arc.clone();
+    tokio::spawn(async move {
+        oneshim_web::grpc::external::config_reload::run_config_reload(
+            live_for_reload,
+            metrics_for_reload,
+            config_rx,
+            shutdown_rx_for_reload,
+        )
+        .await;
+    });
+
+    let jwt_verifier = if cfg.auth_mode.is_some_and(|m| m.includes_jwt()) {
+        let pub_pem = std::fs::read(
+            cfg.jwt_public_key_path
+                .as_ref()
+                .context("jwt_public_key_path required for JWT auth mode")?,
+        )?;
+        Some(std::sync::Arc::new(JwtVerifier::new(
+            cfg.jwt_algorithm
+                .context("jwt_algorithm required for JWT auth mode")?,
+            &pub_pem,
+            cfg.jwt_expected_issuer
+                .as_deref()
+                .context("jwt_expected_issuer required for JWT auth mode")?,
+            cfg.jwt_expected_audience
+                .as_deref()
+                .context("jwt_expected_audience required for JWT auth mode")?,
+        )?))
+    } else {
+        None
+    };
+
+    let mtls_verifier = if cfg.auth_mode.is_some_and(|m| m.includes_mtls()) {
+        let allowlist = if let Some(p) = &cfg.mtls_fingerprint_allowlist_path {
+            std::fs::read_to_string(p)?
+                .lines()
+                .map(String::from)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Some(std::sync::Arc::new(MtlsVerifier::new(
+            cfg.mtls_max_cert_lifetime_hours,
+            &allowlist,
+        )?))
+    } else {
+        None
+    };
+
+    Ok(
+        oneshim_web::grpc::external::spawn_config::ExternalGrpcSpawnConfig {
+            bind_addr: std::net::SocketAddr::new(cfg.bind_address, cfg.port),
+            config: cfg.clone(),
+            storage,
+            system_monitor,
+            event_tx,
+            audit_port,
+            cert_resolver,
+            jwt_verifier,
+            mtls_verifier,
+            ip_ban: std::sync::Arc::new(IpBan::new()),
+            metrics: metrics_arc,
+            shutdown_rx,
+            shutdown_tx,
+            pii_sanitizer,
+            ai_runtime_status_snapshot,
+            live,
+        },
+    )
 }

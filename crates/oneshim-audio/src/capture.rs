@@ -220,6 +220,12 @@ impl AudioCapture {
 
     /// Start VAD listening mode. `on_speech_signal` is called (on audio thread)
     /// when speech ends — keep it lightweight (e.g., channel send).
+    ///
+    /// `#[allow(clippy::significant_drop_tightening)]`: the audio callback
+    /// closure takes `speech_buffer.lock()` briefly to append samples. This is
+    /// a hot path on the audio thread; wrapping in extra scope doesn't help
+    /// because the lock is dropped at the end of the match arm anyway.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn start_vad(
         &self,
         config: VadConfig,

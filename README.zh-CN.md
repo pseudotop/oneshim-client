@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./assets/brand/logo-full-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="./assets/brand/logo-full-light.svg">
-    <img alt="ONESHIM Client" src="./assets/brand/logo-full-light.svg" width="400">
+    <img alt="Maekon" src="./assets/brand/logo-full-light.svg" width="400">
   </picture>
 </p>
 
@@ -10,10 +10,10 @@
   <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a> | <a href="./README.ja.md">日本語</a> | <a href="./README.zh-CN.md">简体中文</a> | <a href="./README.es.md">Español</a>
 </p>
 
-# ONESHIM Client
+# Maekon
 
 > **将零散的桌面活动，转化为每日聚焦成果。**
-> ONESHIM 将本地工作信号转化为实时专注时间线和可操作的建议。
+> Maekon 将本地工作信号转化为实时专注时间线和可操作的建议。
 
 一款用于 AI 辅助办公生产力的桌面客户端 -- 本地上下文采集、实时建议和内置仪表盘。基于 Rust 和 Tauri v2（WebView 外壳 + React 前端）构建，在 macOS、Windows 和 Linux 上提供原生性能。
 
@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
 - 英文: [`docs/install.md`](./docs/install.md)
 - 韩文: [`docs/install.ko.md`](./docs/install.ko.md)
 
-## 为什么选择 ONESHIM
+## 为什么选择 Maekon
 
 - **将活动转化为可操作的洞察**: 在同一个地方追踪上下文、时间线、专注趋势和中断情况。
 - **设备端轻量运行**: 边缘处理（增量编码、缩略图、OCR）减少传输量，保持快速响应。

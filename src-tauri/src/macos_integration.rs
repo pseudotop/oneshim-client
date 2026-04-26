@@ -1,6 +1,6 @@
 //! macOS-specific runtime integration for bare binary (non-.app bundle) execution.
 //!
-//! When the ONESHIM binary runs directly (e.g., installed via `install.sh`),
+//! When the Maekon binary runs directly (e.g., installed via `install.sh`),
 //! macOS has no Info.plist to read the dock icon from. This module sets it
 //! programmatically via NSApplication API.
 

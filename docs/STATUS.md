@@ -27,11 +27,11 @@ cargo test --workspace
 cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 ```
 
-## Current Snapshot (2026-04-20)
+## Current Snapshot (2026-04-25)
 
 ### Version
 
-v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
+v0.4.42-rc.1 (TimeWindow primitive consolidation on top of Phase 9 PR-B1 Autostart Foundation)
 
 ### Workspace
 
@@ -49,10 +49,11 @@ v0.4.39-rc.1 (Phase 5-D8 complete; Phase 4 Updater Hardening shipped)
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **3,651 passed, 0 failed, 21 ignored** (post-ADR-019 + drift-audit + Follow-up baseline. Cumulative growth from prior 3,455: ADR-019 Error Code Infrastructure + C5 Bedrock skip + post-merge drift audit iter 87~214 added ~196 tests — 85+ HTTP status-mapping regression tests across 16 dispatchers, ~38 Internal→specific-variant re-route tests, 4 subprocess_kind (iter-149) + 3 LLM envelope-extraction (iter-151) + 10 `IpcError` contract tests (iter-196 Follow-up #1) + other targeted regression guards. Phase 2 telemetry tests run separately via `--features telemetry -- --test-threads=1`. **Not counted in 3,651**: 6 `map_challenge_status_to_error` tests (iter-195 Follow-up #5) are feature-gated behind `lan-sync` — run `cargo test -p oneshim-network --features lan-sync --lib sync::lan_transport::auth` to include them.)
+- `cargo test --workspace`: pass — **expected ~3,855 (3,798 PR-A baseline + 20 PR-B1 autostart + 37 TimeWindow refactor)** (will verify post-rebase). TimeWindow refactor adds: 13 primitive + 3 TimeWindowCode + 8 TimeRangeQuery adapter + 3 SQL boundary regression + 4 E2E + 2 ApiError mapping + 4 api-contracts roundtrip = +37 across crates. Cumulative: ADR-019 + Phase 9 PR-A (147) + Phase 9 PR-B1 (20) + TimeWindow (37). Phase 2 telemetry tests run separately. **Not counted**: 6 `map_challenge_status_to_error` tests feature-gated behind `lan-sync`.
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass
+- Frontend Vitest (`pnpm test --run` in `crates/oneshim-web/frontend`): pass — **272 passed across 42 test files** (Phase 9 PR-B1 baseline; +10 new Vitest tests from autostart [GeneralTab Startup section + AutostartOnboardingPrompt]; wire-code count assertion bumped 42 → 47).
 
 ### Phase 2 Telemetry Feature (added 2026-04-17)
 

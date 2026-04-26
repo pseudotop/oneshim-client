@@ -75,10 +75,32 @@ pub trait AuditLogPort: Send + Sync {
     /// 전체 드레인
     async fn drain_all(&self) -> Vec<AuditEntry>;
 
+    /// Return audit entries whose `command_id` exactly matches the given value.
+    /// Ordered by `timestamp DESC`. Returns empty vec if none match or on
+    /// storage error (infallible by contract — error is logged by impl).
+    ///
+    /// # Errors
+    /// Infallible (returns empty vec on storage error).
+    async fn entries_by_command_id(&self, command_id: &str, limit: usize) -> Vec<AuditEntry>;
+
     // ── Session audit (best-effort) ──
 
     /// AI 대화 세션 감사 이벤트 기록 (best-effort: 실패 시 경고만, 에러 전파 안 함)
     async fn record_session_event(&self, _entry: SessionAuditEntry) {
         // Default no-op — 구현체에서 세션 감사 지원 시 override
+    }
+}
+
+#[cfg(test)]
+mod port_contract_tests {
+    use super::*;
+
+    /// Compile-time assertion — validates the trait method signature.
+    /// Uses a trait object to avoid the E0401 nested-generic restriction.
+    #[allow(dead_code)]
+    fn assert_port_has_entries_by_command_id(
+        p: &dyn AuditLogPort,
+    ) -> impl std::future::Future<Output = Vec<AuditEntry>> + '_ {
+        p.entries_by_command_id("cmd", 10)
     }
 }

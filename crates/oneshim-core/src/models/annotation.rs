@@ -21,7 +21,7 @@ pub struct FrameAnnotation {
 }
 
 /// Kind of annotation drawn on a frame.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AnnotationType {
     Highlight,
     Memo,

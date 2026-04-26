@@ -86,7 +86,8 @@ impl From<oneshim_core::error::CoreError> for ApiError {
             | CoreError::OcrError { message, .. }
             | CoreError::SecretStoreError { message, .. }
             | CoreError::SandboxInit { message, .. }
-            | CoreError::SandboxExecution { message, .. } => ApiError::BadRequest(message),
+            | CoreError::SandboxExecution { message, .. }
+            | CoreError::TimeWindow { message, .. } => ApiError::BadRequest(message),
             CoreError::ElementNotFound { name, .. } => ApiError::BadRequest(name),
 
             other => ApiError::Internal(other.to_string()),
@@ -162,6 +163,38 @@ mod tests {
         assert!(
             matches!(api, ApiError::ServiceUnavailable(_)),
             "RequestTimeout must map to 503 ServiceUnavailable, got: {api:?}"
+        );
+    }
+
+    /// Regression guard: CoreError::TimeWindow (InvertedBounds) must map to
+    /// HTTP 400 BadRequest (not 500 Internal). TimeWindow validation errors
+    /// reflect malformed client input (start > end), not server-side bugs.
+    #[test]
+    fn time_window_inverted_bounds_maps_to_bad_request() {
+        let core = oneshim_core::error::CoreError::TimeWindow {
+            code: oneshim_core::error_codes::TimeWindowCode::InvertedBounds,
+            message: "start > end".to_string(),
+        };
+        let api: ApiError = core.into();
+        assert!(
+            matches!(api, ApiError::BadRequest(_)),
+            "TimeWindow::InvertedBounds must map to 400 BadRequest, got: {api:?}"
+        );
+    }
+
+    /// Regression guard: CoreError::TimeWindow (ParseFailed) must map to
+    /// HTTP 400 BadRequest (not 500 Internal). RFC3339 parsing errors
+    /// reflect malformed client input, not server-side bugs.
+    #[test]
+    fn time_window_parse_failed_maps_to_bad_request() {
+        let core = oneshim_core::error::CoreError::TimeWindow {
+            code: oneshim_core::error_codes::TimeWindowCode::ParseFailed,
+            message: "not a date".to_string(),
+        };
+        let api: ApiError = core.into();
+        assert!(
+            matches!(api, ApiError::BadRequest(_)),
+            "TimeWindow::ParseFailed must map to 400 BadRequest, got: {api:?}"
         );
     }
 }

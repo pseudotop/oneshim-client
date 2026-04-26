@@ -6,14 +6,14 @@
 
     <!-- Screen recording: xcap-based screenshot + OCR pipeline -->
     <key>NSScreenCaptureUsageDescription</key>
-    <string>ONESHIM needs screen capture access to analyze your work context and provide productivity insights.</string>
+    <string>Maekon needs screen capture access to analyze your work context and provide productivity insights.</string>
 
     <!-- Accessibility: active window detection via AX API -->
     <key>NSAccessibilityUsageDescription</key>
-    <string>ONESHIM needs accessibility access to detect active windows and GUI elements for intelligent activity tracking.</string>
+    <string>Maekon needs accessibility access to detect active windows and GUI elements for intelligent activity tracking.</string>
 
     <!-- Microphone: Push-to-Talk voice input for AI chat -->
     <key>NSMicrophoneUsageDescription</key>
-    <string>ONESHIM uses the microphone for voice-to-text input in the AI chat.</string>
+    <string>Maekon uses the microphone for voice-to-text input in the AI chat.</string>
 </dict>
 </plist>

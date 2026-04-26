@@ -42,6 +42,9 @@ pub struct BatchUploader {
     circuit_breaker: CircuitBreaker,
     /// Events dropped during the current flush cycle. Reset by take_dropped_since_last().
     cycle_dropped: AtomicUsize,
+    /// Suppression predicate wired by the tracking schedule (A.11).
+    /// When it returns `true`, `flush()` early-returns `Ok(0)` without draining the queue.
+    upload_suppressed: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 impl BatchUploader {
@@ -66,6 +69,7 @@ impl BatchUploader {
             last_upload_ok: None,
             circuit_breaker: CircuitBreaker::new(CircuitBreakerConfig::default()),
             cycle_dropped: AtomicUsize::new(0),
+            upload_suppressed: Arc::new(|| false),
         }
     }
 
@@ -84,6 +88,17 @@ impl BatchUploader {
     /// Override the default max queue size. Useful for testing.
     pub fn with_max_queue_size(mut self, max_queue_size: usize) -> Self {
         self.max_queue_size = max_queue_size;
+        self
+    }
+
+    /// Attach a suppression predicate that gates each `flush()` call.
+    ///
+    /// When the predicate returns `true`, `flush()` skips draining the queue
+    /// and returns `Ok(0)`. When it returns `false`, normal flush logic runs.
+    ///
+    /// Used by the tracking schedule (A.12) to prevent uploads during inactive windows.
+    pub fn with_suppression_predicate(mut self, pred: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        self.upload_suppressed = pred;
         self
     }
 
@@ -197,6 +212,11 @@ impl BatchUploader {
     }
 
     pub async fn flush(&self) -> Result<usize, NetworkError> {
+        if (self.upload_suppressed)() {
+            debug!("upload flush suppressed — tracking schedule active");
+            return Ok(0);
+        }
+
         let current_size = self.queue_size.load(Ordering::Relaxed);
 
         if current_size == 0 {

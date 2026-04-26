@@ -952,3 +952,83 @@ fn increment_work_session_interruption_increments_counter() {
         .unwrap();
     assert_eq!(count, 2);
 }
+
+// ── entries_by_command_id (V32 / D25) ─────────────────────────────────────
+
+#[test]
+fn entries_by_command_id_returns_matching_rows_newest_first() {
+    use chrono::Utc;
+    use oneshim_core::models::audit::{AuditEntry, AuditStatus};
+
+    let storage = SqliteStorage::open_in_memory(30).expect("sqlite open");
+
+    // 3 entries with command_id "cmd-X" at descending timestamps.
+    for i in 0..3_i64 {
+        let entry = AuditEntry {
+            entry_id: format!("id-X-{i}"),
+            timestamp: Utc::now() - chrono::Duration::milliseconds(i),
+            session_id: "s".to_string(),
+            command_id: "cmd-X".to_string(),
+            action_type: "test".to_string(),
+            status: AuditStatus::Completed,
+            details: None,
+            execution_time_ms: Some(10),
+        };
+        storage.save_audit_entry(&entry);
+    }
+    // 2 entries with command_id "cmd-Y" (must not appear in results).
+    for i in 0..2_i64 {
+        let entry = AuditEntry {
+            entry_id: format!("id-Y-{i}"),
+            timestamp: Utc::now(),
+            session_id: "s".to_string(),
+            command_id: "cmd-Y".to_string(),
+            action_type: "test".to_string(),
+            status: AuditStatus::Completed,
+            details: None,
+            execution_time_ms: Some(10),
+        };
+        storage.save_audit_entry(&entry);
+    }
+
+    let results = storage.entries_by_command_id("cmd-X", 10);
+    assert_eq!(results.len(), 3);
+    for r in &results {
+        assert_eq!(r.command_id, "cmd-X");
+    }
+    for w in results.windows(2) {
+        assert!(
+            w[0].timestamp >= w[1].timestamp,
+            "expected newest-first ordering"
+        );
+    }
+}
+
+#[test]
+fn entries_by_command_id_empty_for_no_match() {
+    let storage = SqliteStorage::open_in_memory(30).expect("sqlite");
+    assert!(storage.entries_by_command_id("nonexistent", 10).is_empty());
+}
+
+#[test]
+fn entries_by_command_id_respects_limit() {
+    use chrono::Utc;
+    use oneshim_core::models::audit::{AuditEntry, AuditStatus};
+
+    let storage = SqliteStorage::open_in_memory(30).expect("sqlite");
+    for i in 0..10_i64 {
+        let entry = AuditEntry {
+            entry_id: format!("id-Z-{i}"),
+            timestamp: Utc::now(),
+            session_id: "s".to_string(),
+            command_id: "cmd-Z".to_string(),
+            action_type: "test".to_string(),
+            status: AuditStatus::Completed,
+            details: None,
+            execution_time_ms: Some(5),
+        };
+        storage.save_audit_entry(&entry);
+    }
+    let results = storage.entries_by_command_id("cmd-Z", 3);
+    assert_eq!(results.len(), 3);
+}
