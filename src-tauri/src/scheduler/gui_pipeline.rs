@@ -9,8 +9,10 @@
 //! `GuiActivitySummary` is fed into `ContentTracker` on the next tick.
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 
 use oneshim_analysis::gui_aggregator::GuiActivityAggregator;
+use oneshim_core::config::PiiFilterLevel;
 use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::focused_element::FocusedElementInfo;
 use oneshim_core::models::frame::OcrRegion;
@@ -18,6 +20,8 @@ use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::gui_interaction::{
     GuiElement, GuiElementType, GuiInteractionEvent, GuiInteractionType, InteractionType,
 };
+use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+use oneshim_core::sanitized;
 use oneshim_vision::contour_classifier::feedback::{self, FeedbackRequest, UncertainElement};
 use oneshim_vision::gui_detector::GuiElementDetector;
 
@@ -27,6 +31,18 @@ use chrono::Utc;
 const MAX_UNCERTAIN_QUEUE: usize = 20;
 /// Confidence threshold below which elements are queued for LLM feedback.
 const UNCERTAIN_THRESHOLD: f32 = 0.6;
+
+/// D5 iter-16: resolve the `PiiFilterLevel` for GUI-feedback tracing from an
+/// optional `ConfigManager`. Exposed at crate root so the monitor loop can
+/// call it inline without growing its LOC budget.
+pub(crate) fn gui_feedback_pii_level(
+    config_manager: &Option<oneshim_core::config_manager::ConfigManager>,
+) -> PiiFilterLevel {
+    config_manager
+        .as_ref()
+        .map(|cm| cm.get().privacy.pii_filter_level)
+        .unwrap_or_default()
+}
 
 /// Mutable state for the GUI pipeline, owned by the monitor loop.
 ///
@@ -276,9 +292,15 @@ pub(crate) async fn run_gui_tick(
 ///
 /// Called periodically from the monitor loop when `feedback_tick_counter`
 /// reaches `FEEDBACK_INTERVAL_TICKS` and the uncertain queue is non-empty.
+///
+/// D5 iter-16: `pii_sanitizer` + `pii_level` scrub LLM-error Display output
+/// at the tracing boundary (the LLM may echo prompt content — window titles,
+/// app names, `UncertainElement` metadata — back in its error body).
 pub(crate) async fn process_gui_feedback(
     state: &mut GuiPipelineState,
     provider: &dyn oneshim_core::ports::analysis_provider::AnalysisProvider,
+    pii_sanitizer: Option<&Arc<dyn PiiSanitizer>>,
+    pii_level: PiiFilterLevel,
 ) {
     let batch: Vec<UncertainElement> = state
         .uncertain_queue
@@ -359,7 +381,17 @@ pub(crate) async fn process_gui_feedback(
             }
         }
         Err(e) => {
-            tracing::debug!("GUI feedback LLM call failed: {e}");
+            // D5 iter-16: LLM error body can echo prompt content (window
+            // titles, app names, UncertainElement metadata). Route through
+            // `SanitizedDisplay` when a sanitizer is attached.
+            match pii_sanitizer {
+                Some(san) => tracing::debug!(
+                    err.code = %e.code(),
+                    "GUI feedback LLM call failed: {}",
+                    sanitized(&e, san.as_ref(), pii_level),
+                ),
+                None => tracing::debug!(err.code = %e.code(), "GUI feedback LLM call failed: {e}"),
+            }
         }
     }
 }
