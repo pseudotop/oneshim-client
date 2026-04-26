@@ -74,7 +74,7 @@ When `ai_provider.access_mode` is `ProviderSubscriptionCli`, ONESHIM can sync br
 - Include user-scope directories (`~/.codex`, `~/.claude`, `~/.gemini`): `ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE=1`
 - Default context export reference path in generated bridge files: `<data_dir>/exports/oneshim-context.json`
 
-Reference: `docs/research/cli-subscription-bridge-research.md`
+Reference: internal CLI subscription bridge research note
 
 ## AI Provider Adapters (`provider_adapters.rs`)
 

@@ -607,8 +607,8 @@ message SubscribeEventsRequest {
 ## 참조
 
 - Proto 정의 — `api/proto/oneshim/v1/` (서버 저장소 참조)
-- [Server API 명세](../migration/04-server-api.md) — REST + gRPC 엔드포인트
-- [마이그레이션 단계](../migration/05-migration-phases.md) — Phase 36
+- 내부 Server API 명세 — REST + gRPC 엔드포인트
+- 내부 마이그레이션 단계 노트 — Phase 36
 - [tonic 문서](https://github.com/hyperium/tonic)
 - [prost 문서](https://github.com/tokio-rs/prost)
 

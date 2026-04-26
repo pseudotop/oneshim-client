@@ -10,7 +10,7 @@
 
 ## 컨텍스트
 
-ONESHIM 서버는 DDD + Hexagonal Architecture를 ADR로 엄격히 통제한다.
+Parent server 는 DDD + Hexagonal Architecture를 ADR로 엄격히 통제한다.
 Rust 클라이언트도 동일 수준의 아키텍처 일관성이 필요하지만, Rust 컴파일러가 이미 강제하는 부분(crate 경계, trait 구현 필수)이 있으므로 **컴파일러가 잡지 못하는 설계 결정만 명시적으로 규정**한다.
 
 ## 결정 사항

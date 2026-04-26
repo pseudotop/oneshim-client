@@ -623,8 +623,8 @@ Exceeded events are dropped and counted in `DroppedEventsSignal.by_type`.
 ## References
 
 - Proto definitions — `api/proto/oneshim/v1/` (see server repository)
-- [Server API Specification](../migration/04-server-api.md) — REST + gRPC endpoints
-- [Migration Phases](../migration/05-migration-phases.md) — Phase 36
+- Internal server API specification — REST + gRPC endpoints
+- Internal migration phase notes — Phase 36
 - [tonic documentation](https://github.com/hyperium/tonic)
 - [prost documentation](https://github.com/tokio-rs/prost)
 

@@ -5,7 +5,7 @@
 //!
 //! ## Protocol
 //!
-//! Each ONESHIM client registers itself as an mDNS service with:
+//! Each Maekon client registers itself as an mDNS service with:
 //! - Service type: `_oneshim-sync._tcp.local.`
 //! - Instance name: device_id
 //! - TXT records: `device_id`, `device_name`, `fingerprint`, `version`

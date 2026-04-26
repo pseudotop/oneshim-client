@@ -8,7 +8,7 @@
 **Supersedes**: (optional) ADR-NNN, or `none`
 **Superseded by**: (optional, only when this ADR is superseded) ADR-MMM
 **Related**: (optional) ADR-NNN, ADR-MMM
-**Implementation**: (optional) path(s) to spec/plan docs that carried out this ADR
+**Implementation**: (optional) public implementation record or code path that carried out this ADR
 
 ---
 
@@ -73,7 +73,7 @@ Items that are out of scope for this ADR but become relevant once it lands. Numb
 1. Copy `ADR-TEMPLATE.md` + `ADR-TEMPLATE.ko.md` to `ADR-XXX-<kebab-title>.md` + `.ko.md` where `XXX` is the next unused three-digit number (see `docs/architecture/README.md` for the registry).
 2. Fill all required header fields. `Status` starts at `Draft` or `Proposed`; promote to `Accepted` only after review and (if applicable) implementation.
 3. Write `Context` first so reviewers understand *why* before *what*.
-4. The `Decision` section is the load-bearing content. If you find yourself writing multi-page implementation detail, move it to a spec doc under `docs/reviews/` or `docs/plan/` and link to it via `**Implementation**:`.
+4. The `Decision` section is the load-bearing content. If you find yourself writing multi-page implementation detail, move it to a companion implementation record and link to it via `**Implementation**:` when that record is public.
 5. `Consequences` is required. `Alternatives Considered` is strongly encouraged — at least 2 alternatives.
 6. After writing, verify the ADR appears in `docs/architecture/README.md` registry.
 7. When the Decision changes materially, do not silently edit: either create a new ADR that `Supersedes` this one, or append an explicit `## Update YYYY-MM-DD` section.

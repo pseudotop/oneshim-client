@@ -73,7 +73,6 @@ Connected 모드는 opt-in 프리뷰 경로로만 제공됩니다.
 - 보안 보고 및 대응 정책: [SECURITY.md](./SECURITY.md)
 - Standalone 무결성 베이스라인: [docs/security/standalone-integrity-baseline.ko.md](./docs/security/standalone-integrity-baseline.ko.md)
 - 무결성 운영 런북(영문): [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
-- 현재 품질 및 릴리스 지표: [docs/STATUS.md](./docs/STATUS.md)
 - 문서 인덱스: [docs/README.ko.md](./docs/README.ko.md)
 - 퍼블릭 런치 플레이북: [docs/guides/public-repo-launch-playbook.ko.md](./docs/guides/public-repo-launch-playbook.ko.md)
 - 자동화 플레이북 템플릿: [docs/guides/automation-playbook-templates.ko.md](./docs/guides/automation-playbook-templates.ko.md)
@@ -172,10 +171,10 @@ ONESHIM_DISABLE_TRAY=1 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline 
 ### 테스트
 
 ```bash
-# Rust 테스트 (현재 지표: docs/STATUS.md)
+# Rust 테스트
 ./scripts/cargo-cache.sh test --workspace
 
-# E2E 테스트 (현재 지표: docs/STATUS.md) — 웹 대시보드
+# E2E 테스트 — 웹 대시보드
 cd crates/oneshim-web/frontend && pnpm test:e2e
 
 # 린트 (정책: CI에서 경고 0건)
@@ -352,11 +351,10 @@ oneshim-client/
 
 전체 문서 색인: [docs/crates/README.md](./docs/crates/README.md)
 
-상세 개발 가이드: [CLAUDE.md](./CLAUDE.md)
+기여 워크플로우: [CONTRIBUTING.md](./CONTRIBUTING.md)
 
-현재 품질 및 릴리스 지표: [docs/STATUS.md](./docs/STATUS.md)
 문서 언어 및 일관성 규칙: [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md)
-한국어 정책/상태 문서: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md), [docs/STATUS.ko.md](./docs/STATUS.ko.md)
+한국어 정책 문서: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md)
 
 ## 개발
 

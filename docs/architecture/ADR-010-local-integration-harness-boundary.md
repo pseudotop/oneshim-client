@@ -91,7 +91,6 @@ Do not use the local fake server alone to claim:
 
 ## Related
 
-- `docs/superpowers/plans/2026-03-16-integration-domain-implementation-plan.md`
-- `docs/superpowers/specs/2026-03-16-integration-domain-architecture-design.md`
+- Internal integration-domain implementation plan and architecture design notes
 - `docs/contracts/integration-asyncapi.yaml`
 - `docs/contracts/integration-cloudevents-profile.md`

@@ -7,21 +7,21 @@ Operator reference for diagnosing GUI V2 permission and runtime failures on macO
 | Requirement | Detail |
 |-------------|--------|
 | HMAC secret | `ONESHIM_GUI_TICKET_HMAC_SECRET` environment variable must be set (non-empty) |
-| OS permissions | Accessibility/AT-SPI permission granted for the ONESHIM process |
+| OS permissions | Accessibility/AT-SPI permission granted for the Maekon process |
 | GUI feature | Enabled in `AppConfig` (automation section) |
 | Overlay driver | Platform overlay adapter registered (Tauri WebView or native window) |
 
 ## macOS Permission Flow
 
 1. Open **System Preferences > Privacy & Security > Accessibility**.
-2. Add and enable the ONESHIM application.
+2. Add and enable the Maekon application.
 3. If the permission prompt was previously dismissed, reset and re-grant:
 
 ```bash
 tccutil reset Accessibility com.oneshim.app
 ```
 
-4. Restart the ONESHIM process after granting.
+4. Restart the Maekon process after granting.
 
 > **Note:** Screen Recording permission is also required for screen capture (`Privacy & Security > Screen Recording`).
 
@@ -51,7 +51,7 @@ busctl --user introspect org.a11y.Bus /org/a11y/bus
 gsettings set org.gnome.desktop.interface toolkit-accessibility true
 ```
 
-3. Verify `DBUS_SESSION_BUS_ADDRESS` is set in the ONESHIM process environment.
+3. Verify `DBUS_SESSION_BUS_ADDRESS` is set in the Maekon process environment.
 
 4. For Wayland sessions, ensure XWayland compatibility or that the application uses the AT-SPI D-Bus interface directly.
 

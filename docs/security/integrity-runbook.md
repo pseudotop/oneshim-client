@@ -1,6 +1,6 @@
 # Integrity Runbook
 
-This runbook describes how to operate ONESHIM Client integrity controls in day-to-day development and release workflows.
+This runbook describes how to operate Maekon integrity controls in day-to-day development and release workflows.
 
 ## 1. Pre-merge (PR) Checklist
 

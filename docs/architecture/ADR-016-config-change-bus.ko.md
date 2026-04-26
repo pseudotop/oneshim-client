@@ -18,8 +18,7 @@
 `oneshim-analysis::regime_manager`)는 init 시점에 섹션을 캐시하여 이후 변경을
 전혀 관찰하지 못했다. 설정 UI 토글이 각 소비자에 반영되기까지 1–30초가 걸렸다.
 
-전체 인벤토리와 배경은 [`docs/reviews/2026-04-17-phase2-config-telemetry-spec.md` §1.1](../reviews/2026-04-17-phase2-config-telemetry-spec.md)과
-[`docs/reviews/2026-04-16-feature-gaps-analysis.md`](../reviews/2026-04-16-feature-gaps-analysis.md) 항목 X1 참조.
+전체 인벤토리와 이 결정을 만든 feature-gap 분석은 내부 implementation record 로 보관합니다.
 
 이 결합은 텔레메트리 익스포터(X2) 작업의 발목을 잡기도 했다. OTel 레이어
 라이프사이클은 런타임 `telemetry.enabled` 변경에 맞춰 스왑되어야 하는데,
@@ -96,8 +95,6 @@ pub fn snapshot(&self) -> Arc<AppConfig>;
 
 ## 참고
 
-- 명세: [`docs/reviews/2026-04-17-phase2-config-telemetry-spec.md`](../reviews/2026-04-17-phase2-config-telemetry-spec.md)
-- 계획: [`docs/reviews/2026-04-17-phase2-config-telemetry-plan.md`](../reviews/2026-04-17-phase2-config-telemetry-plan.md)
-- 기능 갭 분석: [`docs/reviews/2026-04-16-feature-gaps-analysis.md`](../reviews/2026-04-16-feature-gaps-analysis.md) (X1)
+- 구현 기록: 내부 config telemetry 명세, 계획, feature-gap 분석 노트
 - ADR-001: Rust 클라이언트 아키텍처 패턴 (Hexagonal 경계 준수)
 - ADR-007: Async 런타임 안전성 패턴 (`parking_lot::Mutex`는 `.await`를 가로질러 유지하지 않음)

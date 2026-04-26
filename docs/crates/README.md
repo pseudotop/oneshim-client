@@ -172,11 +172,7 @@ InputDriver   Sandbox
 
 ## Test and Quality Status
 
-To avoid drift across documents, mutable quality metrics are centralized in:
-
-- [docs/STATUS.md](../STATUS.md)
-
-This file intentionally avoids hard-coded totals for test counts, warning counts, and pass/fail status.
+This file intentionally avoids hard-coded totals for test counts, warning counts, and pass/fail status. Use the current GitHub Actions run pages as the live source of truth.
 
 ## References
 
@@ -184,8 +180,7 @@ This file intentionally avoids hard-coded totals for test counts, warning counts
 - [ADR-001: Rust Client Architecture Patterns](../architecture/ADR-001-rust-client-architecture-patterns.md)
 - [ADR-002: OS GUI Interaction Boundary and Runtime Split](../architecture/ADR-002-os-gui-interaction-boundary.md)
 - [ADR-009: Client Architecture Baseline](../architecture/ADR-009-client-architecture-baseline.md)
-- [Migration Overview](../migration/README.md)
-- [CLAUDE.md](../../CLAUDE.md) - Development guide
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) - Contribution workflow
 - [Contributing Guide](../../CONTRIBUTING.md)
 - [Code of Conduct](../../CODE_OF_CONDUCT.md)
 - [Security Policy](../../SECURITY.md)

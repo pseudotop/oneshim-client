@@ -1,6 +1,6 @@
 [package]
 name = "oneshim-core"
-description = "ONESHIM 도메인 모델, 포트(trait), 에러 타입"
+description = "Maekon domain models, ports, and error types"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

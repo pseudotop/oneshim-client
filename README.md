@@ -90,7 +90,6 @@ Standalone mode remains the production-ready default path for release use.
 - Security reporting and response policy: [SECURITY.md](./SECURITY.md)
 - Standalone integrity baseline: [docs/security/standalone-integrity-baseline.md](./docs/security/standalone-integrity-baseline.md)
 - Integrity operation runbook: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
-- Current quality and release metrics: [docs/STATUS.md](./docs/STATUS.md)
 - Documentation index: [docs/README.md](./docs/README.md)
 - Public launch playbook: [docs/guides/public-repo-launch-playbook.md](./docs/guides/public-repo-launch-playbook.md)
 - Automation playbook templates: [docs/guides/automation-playbook-templates.md](./docs/guides/automation-playbook-templates.md)
@@ -195,10 +194,10 @@ Use this only for non-interactive smoke/debug paths.
 ### Test
 
 ```bash
-# Rust tests (current metrics: docs/STATUS.md)
+# Rust tests
 ./scripts/cargo-cache.sh test --workspace
 
-# E2E tests (current metrics: docs/STATUS.md) — web dashboard
+# E2E tests — web dashboard
 cd crates/oneshim-web/frontend && pnpm test:e2e
 
 # Lint (policy: zero warnings in CI)
@@ -384,12 +383,11 @@ oneshim-client/
 
 Full documentation index: [docs/crates/README.md](./docs/crates/README.md)
 
-For a detailed development guide, see [CLAUDE.md](./CLAUDE.md).
+For contribution workflow, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-Current quality and release metrics are tracked in [docs/STATUS.md](./docs/STATUS.md).
 Documentation language and consistency rules are defined in [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
 Translations: [한국어](./README.ko.md) | [日本語](./README.ja.md) | [简体中文](./README.zh-CN.md) | [Español](./README.es.md).
-Korean companion policy/status docs: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md), [docs/STATUS.ko.md](./docs/STATUS.ko.md).
+Korean companion policy doc: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md).
 
 ## Development
 

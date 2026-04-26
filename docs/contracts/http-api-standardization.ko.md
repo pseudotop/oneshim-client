@@ -2,7 +2,7 @@
 
 # HTTP API 표준화 (OpenAPI 트랙)
 
-이 문서는 ONESHIM 로컬 웹 인터페이스를 OpenAPI 호환 거버넌스로 표준화하는 기준을 정의합니다.
+이 문서는 Maekon 로컬 웹 인터페이스를 OpenAPI 호환 거버넌스로 표준화하는 기준을 정의합니다.
 
 ## 현재 SSOT
 

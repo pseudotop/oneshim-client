@@ -53,6 +53,5 @@ On parse failure, `load_all` quarantines the corrupt payload to `payload_backup`
 
 ## References
 
-- Spec: `docs/reviews/2026-04-18-phase3-regime-feedback-learning-spec.md`
-- Gap analysis: `docs/reviews/2026-04-16-feature-gaps-analysis.md` C3 + X6
+- Implementation record: internal regime feedback learning spec and feature-gap analysis notes
 - ADR-016 ConfigChangeBus (shutdown-watchdog pattern)

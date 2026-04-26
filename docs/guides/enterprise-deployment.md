@@ -41,7 +41,7 @@ All captured context (screen frames, window titles, activity events) is stored o
 - Windows: `%LOCALAPPDATA%\oneshim\data\`
 - Linux: `~/.local/share/oneshim/`
 
-Data is only transmitted to your ONESHIM server when `telemetry.enabled` is `true` (default: `false`). PII is filtered on-device before any upload, controlled by `privacy.pii_filter_level` (default: `"Standard"`).
+Data is only transmitted to your connected Maekon server when `telemetry.enabled` is `true` (default: `false`). PII is filtered on-device before any upload, controlled by `privacy.pii_filter_level` (default: `"Standard"`).
 
 Disabling telemetry keeps all data on the device and prevents any outbound data transfer. This satisfies data residency requirements for regions that prohibit cross-border data flows.
 
@@ -221,7 +221,7 @@ ONESHIM uses a JSON config file at the platform-specific path above. The followi
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `server.base_url` | string | `http://localhost:8000` | Your ONESHIM server URL |
+| `server.base_url` | string | `http://localhost:8000` | Your connected Maekon server URL |
 | `grpc.grpc_endpoint` | string | — | gRPC server endpoint (e.g., `https://grpc.example.com:50051`) |
 | `grpc.use_grpc_auth` | bool | `false` | Enable gRPC for auth |
 | `grpc.use_grpc_context` | bool | `false` | Enable gRPC for context upload |

@@ -18,8 +18,7 @@ dirty-check pattern differently; some consumers (`oneshim-vision::privacy`,
 `oneshim-analysis::regime_manager`) cached sections at init and never saw later
 changes at all. A toggle in the settings UI took 1–30 s to reach each consumer.
 
-See [`docs/reviews/2026-04-17-phase2-config-telemetry-spec.md` §1.1](../reviews/2026-04-17-phase2-config-telemetry-spec.md) for the full inventory and
-[`docs/reviews/2026-04-16-feature-gaps-analysis.md`](../reviews/2026-04-16-feature-gaps-analysis.md) item X1 for the origin of this decision.
+The full inventory and the feature-gap analysis that originated this decision are archived as internal implementation records.
 
 This coupling also blocked the telemetry exporter work (X2 in the same gap analysis):
 the OTel layer lifecycle has to swap on a runtime `telemetry.enabled` change, and
@@ -98,8 +97,6 @@ If the answer is "no", the consumer stays on the tick-based pattern or adopts a
 
 ## References
 
-- Spec: [`docs/reviews/2026-04-17-phase2-config-telemetry-spec.md`](../reviews/2026-04-17-phase2-config-telemetry-spec.md)
-- Plan: [`docs/reviews/2026-04-17-phase2-config-telemetry-plan.md`](../reviews/2026-04-17-phase2-config-telemetry-plan.md)
-- Feature gap analysis: [`docs/reviews/2026-04-16-feature-gaps-analysis.md`](../reviews/2026-04-16-feature-gaps-analysis.md) (X1)
+- Implementation record: internal config telemetry spec, plan, and feature-gap analysis notes
 - ADR-001: Rust client architecture patterns (Hexagonal boundary compliance)
 - ADR-007: Async runtime safety patterns (`parking_lot::Mutex` is never held across `.await`)

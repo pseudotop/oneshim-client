@@ -100,11 +100,7 @@ Out-of-process 격리 실행기 (oneshim-app이 spawn)
 
 ## 테스트 및 품질 상태
 
-문서 간 드리프트 방지를 위해 변동하는 품질 메트릭은 다음 위치에서 중앙 집중 관리:
-
-- [docs/STATUS.ko.md](../STATUS.ko.md)
-
-본 파일은 테스트 카운트, 경고 카운트, pass/fail 상태 등 하드코딩된 총계를 의도적으로 피합니다.
+본 파일은 테스트 카운트, 경고 카운트, pass/fail 상태 등 하드코딩된 총계를 의도적으로 피합니다. 현재 GitHub Actions run 페이지를 live source of truth 로 사용하세요.
 
 ## 참조
 
@@ -112,8 +108,7 @@ Out-of-process 격리 실행기 (oneshim-app이 spawn)
 - [ADR-001: Rust Client Architecture Patterns](../architecture/ADR-001-rust-client-architecture-patterns.ko.md)
 - [ADR-002: OS GUI Interaction Boundary and Runtime Split](../architecture/ADR-002-os-gui-interaction-boundary.ko.md)
 - [ADR-009: Client Architecture Baseline](../architecture/ADR-009-client-architecture-baseline.ko.md)
-- [마이그레이션 개요](../migration/README.ko.md)
-- [CLAUDE.md](../../CLAUDE.md) - 개발 가이드
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) - 기여 워크플로우
 - [Contributing Guide](../../CONTRIBUTING.md)
 - [Code of Conduct](../../CODE_OF_CONDUCT.md)
 - [Security Policy](../../SECURITY.md)

@@ -1,7 +1,7 @@
 # Staged Rollout Convention for Release Authors
 
 **Audience**: the maintainer cutting a new `v*` tag via `release.sh` / `promote-stable.sh`.
-**Purpose**: explain how to control what percentage of installed ONESHIM clients receive a new release, so a regression is contained rather than reaching every user at once.
+**Purpose**: explain how to control what percentage of installed Maekon clients receive a new release, so a regression is contained rather than reaching every user at once.
 
 ---
 
@@ -50,7 +50,7 @@ You may skip stages for trivial changes (docs, packaging-only), but every releas
 Anywhere in the GitHub Release body. The updater's regex-style parser looks for the first `<!-- rollout:N -->` substring. Example body:
 
 ```markdown
-## ONESHIM Client v0.4.40 — Released May 8, 2026
+## Maekon v0.4.40 — Released May 8, 2026
 
 **Release Date:** May 8, 2026 UTC
 **Since v0.4.39:** 42 commits · 7 contributors
@@ -125,7 +125,7 @@ See `docs/guides/updater-key-rotation.md` for key rotation procedures.
 
 If the rollout bucket admits a user to a new version and the installed binary then fails to reach a self-healthy marker on two consecutive boots, D11 automatic rollback restores the previous-version backup. This is transparent to the release author — the client UI reports `UpdatePhase::RolledBack` and the rollback is captured in telemetry when enabled.
 
-See `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` §4 (D11) for the full auto-rollback spec.
+See the internal updater hardening design record for the full auto-rollback spec.
 
 ---
 
@@ -147,7 +147,7 @@ Clients poll every 24 hours by default. Clients that already checked this releas
 
 ## References
 
-- Spec: `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` §3 (D10)
+- Spec: internal updater hardening design record
 - Implementation: `src-tauri/src/updater/mod.rs::is_eligible_for_rollout`, `parse_rollout_percent`
 - Tests: `update_check_respects_rollout_exclusion`, `update_check_without_installation_id_is_excluded`, plus 5 unit tests on the hash + parser functions
-- Adjacent docs: `docs/guides/updater-key-rotation.md`, `docs/reviews/2026-04-18-phase4-updater-hardening-design.md`
+- Adjacent docs: `docs/guides/updater-key-rotation.md` and the internal updater hardening design record

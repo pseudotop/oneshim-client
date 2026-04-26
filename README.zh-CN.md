@@ -73,7 +73,6 @@ powershell -ExecutionPolicy Bypass -File $tmp
 - 安全报告与响应策略: [SECURITY.md](./SECURITY.md)
 - 独立模式完整性基线: [docs/security/standalone-integrity-baseline.md](./docs/security/standalone-integrity-baseline.md)
 - 完整性操作手册: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
-- 当前质量与发布指标: [docs/STATUS.md](./docs/STATUS.md)
 - 文档索引: [docs/README.md](./docs/README.md)
 - 公开发布指南: [docs/guides/public-repo-launch-playbook.md](./docs/guides/public-repo-launch-playbook.md)
 - 自动化指南模板: [docs/guides/automation-playbook-templates.md](./docs/guides/automation-playbook-templates.md)
@@ -178,10 +177,10 @@ ONESHIM_DISABLE_TRAY=1 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline 
 ### 测试
 
 ```bash
-# Rust 测试（当前指标见 docs/STATUS.md）
+# Rust 测试
 ./scripts/cargo-cache.sh test --workspace
 
-# E2E 测试（当前指标见 docs/STATUS.md）—— Web 仪表盘
+# E2E 测试 —— Web 仪表盘
 cd crates/oneshim-web/frontend && pnpm test:e2e
 
 # Lint（策略：CI 中零警告）
@@ -367,12 +366,11 @@ oneshim-client/
 
 完整文档索引: [docs/crates/README.md](./docs/crates/README.md)
 
-详细开发指南请参阅 [CLAUDE.md](./CLAUDE.md)。
+贡献流程请参阅 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
-当前质量与发布指标记录在 [docs/STATUS.md](./docs/STATUS.md)。
 文档语言与一致性规则定义在 [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md)。
 韩文翻译: [README.ko.md](./README.ko.md)。
-韩文配套策略/状态文档: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md), [docs/STATUS.ko.md](./docs/STATUS.ko.md)。
+韩文配套策略文档: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md)。
 
 ## 开发
 

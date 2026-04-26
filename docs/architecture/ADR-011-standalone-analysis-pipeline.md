@@ -8,7 +8,7 @@
 
 ## Context
 
-The client collects rich desktop activity data (app switches, OCR text, window titles, focus metrics) and stores it in SQLite. Currently, suggestions are either rules-based (FocusAnalyzer) or server-dependent (SSE). We need a standalone analysis cycle that feeds collected context to an LLM and produces actionable suggestions without the ONESHIM server. The same logic must later be portable to the server's AI Intelligence domain.
+The client collects rich desktop activity data (app switches, OCR text, window titles, focus metrics) and stores it in SQLite. Currently, suggestions are either rules-based (FocusAnalyzer) or server-dependent (SSE). We need a standalone analysis cycle that feeds collected context to an LLM and produces actionable suggestions without the connected server. The same logic must later be portable to the server's AI Intelligence domain.
 
 This ADR covers five architectural decisions that existing ADRs do not address:
 
@@ -204,4 +204,4 @@ pub enum SuggestionSource {
 - ADR-001 §1-7: Error types, async traits, DI, crate boundaries, ports
 - ADR-003: Directory module pattern (apply if files exceed 500 lines)
 - ADR-009: Client architecture baseline (runtime composition, delivery layer)
-- Design spec: `docs/superpowers/specs/2026-03-18-standalone-llm-analysis-pipeline-design.md`
+- Design spec: internal standalone analysis pipeline design note

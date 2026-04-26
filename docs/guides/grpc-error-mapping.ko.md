@@ -2,7 +2,7 @@
 
 # gRPC 에러 매핑 가이드
 
-이 문서는 ONESHIM 클라이언트가 gRPC status 에러를 `NetworkError`로 변환하는 기준을 정의합니다. `NetworkError`는 포트 경계에서 `impl From<NetworkError> for CoreError`를 통해 `CoreError`로 변환됩니다.
+이 문서는 Maekon 클라이언트가 gRPC status 에러를 `NetworkError`로 변환하는 기준을 정의합니다. `NetworkError`는 포트 경계에서 `impl From<NetworkError> for CoreError`를 통해 `CoreError`로 변환됩니다.
 
 ## 소스
 

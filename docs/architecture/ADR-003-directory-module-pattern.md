@@ -157,4 +157,4 @@ Sub-files are organized by functional responsibility:
 
 - Server ADR-013: `server/docs/architecture/ADR-013-domain-service-folder-pattern.md`
 - `docs/architecture/ADR-001-rust-client-architecture-patterns.md`
-- `CLAUDE.md` — Crate Summary section documents each directory module structure
+- Repository guardrails — crate summaries document each directory module structure

@@ -2,11 +2,11 @@
 
 - **상태**: Accepted (2026-04-19)
 - **관련**: ADR-001 (에러 전략), ADR-003 (디렉토리 모듈 패턴)
-- **구현**: `docs/superpowers/specs/2026-04-19-error-code-infrastructure-design.md`, `docs/superpowers/plans/2026-04-19-error-code-infrastructure.md`
+- **구현**: 내부 error-code infrastructure 설계와 구현 계획
 
 ## 배경
 
-ONESHIM client-rust 워크스페이스(14 crate, ~1,150 `CoreError` 생성 사이트)에 에러 코드 컨벤션이 없었다. 텔레메트리(Grafana), i18n(ko/en), 감사 로그 모두 안정적인 머신 리더블 식별자가 필요했다. 별개로 AWS Bedrock이 지원 provider surface로 등록돼 있었으나 구현 미완(Signature V4 인증 없음) — OCR의 `ProviderAuthScheme::AwsSignatureV4` arm에서 조용한 no-auth fallthrough 보안 버그 발생.
+Maekon client-rust 워크스페이스(14 crate, ~1,150 `CoreError` 생성 사이트)에 에러 코드 컨벤션이 없었다. 텔레메트리(Grafana), i18n(ko/en), 감사 로그 모두 안정적인 머신 리더블 식별자가 필요했다. 별개로 AWS Bedrock이 지원 provider surface로 등록돼 있었으나 구현 미완(Signature V4 인증 없음) — OCR의 `ProviderAuthScheme::AwsSignatureV4` arm에서 조용한 no-auth fallthrough 보안 버그 발생.
 
 두 요구가 만남: 에러 코드 인프라 도입 + Bedrock을 첫 "의도적 미지원" 일급 시민으로 출시.
 
@@ -112,14 +112,14 @@ Code enum(`ConfigCode` 등)은 `#[non_exhaustive]` **부착**:
 
 ### 알려진 follow-up (비-블로킹)
 
-아래 모든 follow-up 은 `docs/reviews/2026-04-20-adr019-followup-*.md` 에 design doc 이 존재하며, 종합 로드맵은 `docs/reviews/2026-04-20-adr019-followups-roadmap.md`. 각각 독립 PR 시리즈로 실행 가능하며 ADR-019 머지를 막지 않음.
+아래 follow-up 은 내부 implementation record 로 추적했습니다. 각각 독립 PR 시리즈로 실행 가능하며 ADR-019 머지를 막지 않습니다.
 
-1. **Tauri IPC code 전파** — ✅ **SHIPPED 2026-04-20** (iter-196/197/199/201/203/204). Tauri command 시그니처 전체 (**현재 19개 파일의 106개 command** — `grep -cE "#\[(tauri::)?command\]"` 기준; iter-204 마일스톤 노트는 114/17 로 기록) 가 `Result<_, IpcError>` 로 마이그레이션 완료. `IpcError { code, message }` 가 ADR-019 wire code 를 프런트엔드에 직접 surface. Rust 기반: `src-tauri/src/ipc_error.rs` (**12** From-chain impl + 10 계약 테스트); 프런트엔드: `crates/oneshim-web/frontend/src/api/desktop.ts` (`IpcError` interface + `isIpcError` type guard + `errorMessageFromInvoke` fallback + 13 Vitest 단위 테스트). 원 설계는 [ipc-error-dto-design](../reviews/2026-04-20-adr019-followup-ipc-error-dto-design.md) 참조; iter-196 인프라 배치(DTO + From impl + 테스트) + iter-197/199/201/203/204 5개 command 마이그레이션 배치 = 총 6배치로 실행.
-2. **Grafana 대시보드 재라벨링** — 🟡 **Rust-side SHIPPED iter-206/208**; ops-side 마이그레이션은 외부 조율. scheduler-loop 의 **18개 high-signal emission 사이트**가 `err.code = %e.code()` 를 structured tracing field 로 기록 (`tracing-opentelemetry` 브릿지로 OTel span attribute 자동 surface): intelligence (3), events (4), monitor (2), network (7), sync (2). `CoreError` Display 가 `[code]` 를 embed 하므로 Loki 가 body 에서도 파싱 가능 — 마이그레이션 기간 동안 fallback 동작. CLAUDE.md 에 패턴 + adapter-error 변환 레시피 문서화. 남은 작업(Loki config + panel + alert-rule 감사)은 ops 인프라 영역, client-rust 밖. 원 설계: [grafana-relabeling-design](../reviews/2026-04-20-adr019-followup-grafana-relabeling-design.md).
-3. **프런트엔드 i18n 연결** — ✅ **SHIPPED 2026-04-20 iter-205**. `crates/oneshim-web/frontend/src/i18n/wire-errors.{en,ko}.json` 가 41개 wire code 전체 번역 보유. `translateError.ts` 에서 graceful fallback 체인 제공 (known code → template; unknown → raw message; string → as-is). 18개 Vitest 단위 테스트가 Rust `wire_contract_snapshot.expected.txt` 를 직접 읽어 en+ko 양쪽 커버리지를 강제 — 새 wire code 가 번역 없이 추가되면 CI 가 실패. `scripts/check-wire-error-i18n-coverage.sh` 는 fast-fail build guard. 원 설계: [frontend-i18n-wiring-design](../reviews/2026-04-20-adr019-followup-frontend-i18n-wiring-design.md).
+1. **Tauri IPC code 전파** — ✅ **SHIPPED 2026-04-20** (iter-196/197/199/201/203/204). Tauri command 시그니처 전체 (**현재 19개 파일의 106개 command** — `grep -cE "#\[(tauri::)?command\]"` 기준; iter-204 마일스톤 노트는 114/17 로 기록) 가 `Result<_, IpcError>` 로 마이그레이션 완료. `IpcError { code, message }` 가 ADR-019 wire code 를 프런트엔드에 직접 surface. Rust 기반: `src-tauri/src/ipc_error.rs` (**12** From-chain impl + 10 계약 테스트); 프런트엔드: `crates/oneshim-web/frontend/src/api/desktop.ts` (`IpcError` interface + `isIpcError` type guard + `errorMessageFromInvoke` fallback + 13 Vitest 단위 테스트). 원 설계는 내부에 보관되며, 구현은 인프라 배치 1개와 command migration 배치 5개로 실행했습니다.
+2. **Grafana 대시보드 재라벨링** — 🟡 **Rust-side SHIPPED iter-206/208**; ops-side 마이그레이션은 외부 조율. scheduler-loop 의 **18개 high-signal emission 사이트**가 `err.code = %e.code()` 를 structured tracing field 로 기록 (`tracing-opentelemetry` 브릿지로 OTel span attribute 자동 surface): intelligence (3), events (4), monitor (2), network (7), sync (2). `CoreError` Display 가 `[code]` 를 embed 하므로 Loki 가 body 에서도 파싱 가능 — 마이그레이션 기간 동안 fallback 동작. 내부 구현 노트가 패턴 + adapter-error 변환 레시피를 문서화합니다. 남은 작업(Loki config + panel + alert-rule 감사)은 ops 인프라 영역, client-rust 밖.
+3. **프런트엔드 i18n 연결** — ✅ **SHIPPED 2026-04-20 iter-205**. `crates/oneshim-web/frontend/src/i18n/wire-errors.{en,ko}.json` 가 41개 wire code 전체 번역 보유. `translateError.ts` 에서 graceful fallback 체인 제공 (known code → template; unknown → raw message; string → as-is). 18개 Vitest 단위 테스트가 Rust `wire_contract_snapshot.expected.txt` 를 직접 읽어 en+ko 양쪽 커버리지를 강제 — 새 wire code 가 번역 없이 추가되면 CI 가 실패. `scripts/check-wire-error-i18n-coverage.sh` 는 fast-fail build guard.
 4. **`Internal` 코드 granularity 세분화** — Phase 4 종료 시점에 `InternalCode` 는 `Generic`, `Io`, `Serialization` 보유. Post-merge drift audit iter 88~109 가 ~122개 Internal emission 을 더 구체적인 variant 로 재라우팅(Config.Missing/Invalid/OutOfRange, NotFound, ServiceUnavailable, InvalidArguments, Analysis, OcrError). 현재 Internal callsite 개수: ~294 (Phase 4 종료 시 ~416). 추가 세분화는 프로덕션 텔레메트리 기반 영구 개선 항목 — Follow-up #2 의 텔레메트리 시그널에 의존.
 5. **Sandbox variant 통합** — `SandboxInit` + `SandboxExecution` + `SandboxUnsupported` + `ExecutionTimeout` 의미 중복; 단일 variant 로 통합 가능. 별도 리팩토링, 블로킹 아님.
-6. **`sync/lan_transport::authenticate_with_peer` 회귀 테스트** — ✅ **SHIPPED iter-194**. 초기 설계 ([lan-transport-tests-design](../reviews/2026-04-20-adr019-followup-lan-transport-tests-design.md)) 는 `rcgen` + `tokio_rustls::TlsAcceptor` fixture 를 제안했으나, 구현 시 더 단순한 순수 함수 추출 접근을 채택: `crates/oneshim-network/src/sync/lan_transport/auth.rs` 의 인라인 `match status.as_u16()` 을 private `map_challenge_status_to_error(status_code, peer_id) -> CoreError` 헬퍼로 추출 + 6개 unit 테스트 (5개 canonical status 401/403/429/503/504 + 1개 500-fallback). 동일한 커버리지, TLS 테스트 인프라 불필요. `docs/guides/http-status-error-mapping.md` 레지스트리 행을 15/15 tested 로 갱신.
+6. **`sync/lan_transport::authenticate_with_peer` 회귀 테스트** — ✅ **SHIPPED iter-194**. 초기 내부 설계는 `rcgen` + `tokio_rustls::TlsAcceptor` fixture 를 제안했으나, 구현 시 더 단순한 순수 함수 추출 접근을 채택: `crates/oneshim-network/src/sync/lan_transport/auth.rs` 의 인라인 `match status.as_u16()` 을 private `map_challenge_status_to_error(status_code, peer_id) -> CoreError` 헬퍼로 추출 + 6개 unit 테스트 (5개 canonical status 401/403/429/503/504 + 1개 500-fallback). 동일한 커버리지, TLS 테스트 인프라 불필요. `docs/guides/http-status-error-mapping.md` 레지스트리 행을 15/15 tested 로 갱신.
 
 ### Post-merge 테스트 커버리지 확장
 

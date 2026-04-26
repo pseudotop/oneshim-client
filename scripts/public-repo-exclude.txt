@@ -15,8 +15,10 @@ docs/research
 docs/roadmap
 docs/plan
 docs/specs
+docs/migration
 docs/PHASE-HISTORY.md
-crates/oneshim-web/frontend/docs/plans
+docs/STATUS*.md
+crates/oneshim-web/frontend/docs
 
 # Root specs may contain planning docs, but specs/providers is runtime data used
 # by oneshim-core via include_str!, so exclude only markdown specs here.

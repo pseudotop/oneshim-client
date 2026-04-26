@@ -89,6 +89,6 @@ A dedicated `telemetry reset-instance-id` CLI command ships in a later release; 
 
 ## References
 
-- Spec: [`docs/reviews/2026-04-17-phase2-config-telemetry-spec.md`](../reviews/2026-04-17-phase2-config-telemetry-spec.md)
+- Spec: internal config telemetry implementation record
 - ADR-016 ConfigChangeBus: [`docs/architecture/ADR-016-config-change-bus.md`](../architecture/ADR-016-config-change-bus.md)
 - OpenTelemetry specification — Resource semantics, OTLP/HTTP transport.

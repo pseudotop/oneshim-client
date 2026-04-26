@@ -2,7 +2,7 @@
 
 **Status**: Accepted 2026-04-20 (D5 PII Filter Audit)
 **범위**: `client-rust` 워크스페이스의 모든 텍스트 생산 어댑터 + 하위 write/send 사이트
-**관련**: [D5 설계 스펙](../superpowers/specs/2026-04-20-d5-pii-filter-audit-design.md) · [D5 감사 매트릭스](../reviews/2026-04-20-d5-pii-audit-matrix.md)
+**관련**: D5 설계 스펙과 감사 매트릭스는 내부 implementation record 로 보관합니다.
 
 ## 규칙
 
@@ -49,7 +49,7 @@ storage.save(&sanitized)?;
 
 ### 어댑터 crate 내부 (`oneshim-network`, `oneshim-audio`, `oneshim-automation`, `oneshim-analysis`, `oneshim-monitor`)
 
-CLAUDE.md의 hexagonal architecture 규칙에 따라 (금지: 어댑터 crate 간 직접 의존성), port trait 경유 주입 필수:
+repository hexagonal architecture guardrail 에 따라 (금지: 어댑터 crate 간 직접 의존성), port trait 경유 주입 필수:
 
 ```rust
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
@@ -101,7 +101,7 @@ let adapter = MyAdapter::new(...).with_pii_sanitizer(sanitizer.clone());
 모든 예외 경로는 다음을 포함해야 함:
 
 - 경계 사이트에 `// PII-EXEMPT: <이유>` 주석
-- `docs/reviews/2026-04-20-d5-pii-audit-matrix.md`에 예외 근거 명시 행
+- 내부 PII 감사 매트릭스에 예외 근거 명시 행
 - 예외가 의도적임을 확인하는 회귀 테스트 (예: raw 텍스트가 살균되지 않고 흐르는지 assert)
 
 조용한 우회(silent bypass)는 허용되지 않음.
@@ -130,5 +130,5 @@ let adapter = MyAdapter::new(...).with_pii_sanitizer(sanitizer.clone());
 1. 경계 식별 (저장/전송 지점)
 2. 위 패턴에 따라 살균 적용
 3. Contract test 추가
-4. 감사 매트릭스 행 추가 (`docs/reviews/2026-04-20-d5-pii-audit-matrix.md`)
+4. 내부 PII 감사 매트릭스 행 추가
 5. 어댑터의 모듈 레벨 문서에서 이 계약 문서 참조

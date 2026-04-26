@@ -1,4 +1,4 @@
-//! SQLite schema migrations for ONESHIM local storage.
+//! SQLite schema migrations for Maekon local storage.
 //!
 //! ## Directory Module Structure (ADR-003)
 //!

@@ -369,7 +369,7 @@ pnpm test:e2e
 
 ## Tests
 
-- Current Rust/E2E status is summarized in `docs/STATUS.md`, with live workflow truth in GitHub Actions run pages.
+- Current Rust/E2E status should be read from the latest GitHub Actions run pages.
 - Web coverage includes API handlers, routes, error handling, automation DTO serialization, settings mapping, and Playwright-based frontend E2E scenarios.
   - Navigation, dashboard, timeline
   - Settings, privacy, search, reports

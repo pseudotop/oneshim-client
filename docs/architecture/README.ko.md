@@ -2,7 +2,7 @@
 
 # Architecture Decision Records (ADR) 레지스트리
 
-Architecture Decision Records 는 `client-rust` 워크스페이스의 단일 아키텍처 결정을 기록합니다. *무엇* 을 결정했고 *왜* 했는지 의 authoritative 레코드입니다. 구현 상세는 `docs/reviews/` (spec+plan 짝) 또는 `docs/plan/` (단일 plan 파일) 에 두며 ADR 에 두지 않습니다.
+Architecture Decision Records 는 `client-rust` 워크스페이스의 단일 아키텍처 결정을 기록합니다. *무엇* 을 결정했고 *왜* 했는지의 authoritative 레코드입니다. 구현 상세는 companion implementation record 에 두며 ADR 자체에는 두지 않습니다.
 
 ## 새 ADR 작성
 
@@ -63,18 +63,15 @@ Architecture Decision Records 는 `client-rust` 워크스페이스의 단일 아
 
 `Approved` 는 피할 것 — 과거 일부 ADR 에서 사용되었지만 `Accepted` 와 구분되는 일관된 의미 없음. ADR-019 drift audit (iter-186) 이 모두 `Accepted` 로 통일.
 
-## 다른 문서 디렉토리와의 관계
+## 구현 기록과의 관계
 
 - **`docs/architecture/`** (이 디렉토리) — 아키텍처 결정의 *무엇과 왜*.
-- **`docs/reviews/`** — 특정 구현 스프린트의 *어떻게* (phase 별 spec+plan 짝).
-- **`docs/plan/`** — 날짜 기반 단일 파일 구현 계획 (이전 컨벤션; 새 작업의 기본은 `docs/reviews/`).
-- **`docs/specs/`** — 개별 기능의 상세 functional spec (ADR 보다 앞서거나 보완).
+- Companion implementation record — 특정 변경의 *어떻게*. 계획 artifact 성격의 기록은 public-minimal export 밖에 둘 수 있습니다.
 
 새 ADR 이 구현이 필요할 때 일반적 흐름:
 
 ```
-Draft ADR → Proposed ADR → docs/reviews/YYYY-MM-DD-<topic>-design.md (spec)
-                       → docs/reviews/YYYY-MM-DD-<topic>-plan.md  (plan)
+Draft ADR → Proposed ADR → companion implementation record
                        → 구현 PR 들
-Accept ADR  (spec/plan + 코드 경로 가리키는 `Implementation:` 포인터 포함)
+Accept ADR  (공개 implementation record + 코드 경로 가리키는 `Implementation:` 포인터 포함)
 ```
