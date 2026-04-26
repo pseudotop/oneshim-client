@@ -2,12 +2,14 @@ use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::frame::FrameMetadata;
+use oneshim_core::types::TimeWindow;
 use tracing::debug;
 
 use super::{FrameRecord, SqliteStorage};
 
 impl SqliteStorage {
-    pub fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, StorageError> {
+    pub fn count_frames_in_range(&self, window: &TimeWindow) -> Result<u64, StorageError> {
+        let (from, to) = window.to_sql_pair();
         let conn = self
             .conn
             .lock()
@@ -172,7 +174,9 @@ mod tests {
         let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
         let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
         let count = storage
-            .count_frames_in_range(&from, &to)
+            .count_frames_in_range(
+                &TimeWindow::from_rfc3339_pair(&from, &to).expect("trusted test bounds"),
+            )
             .expect("count_frames_in_range failed");
         assert_eq!(count, 0);
     }
@@ -189,7 +193,9 @@ mod tests {
         let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
         let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
         let count = storage
-            .count_frames_in_range(&from, &to)
+            .count_frames_in_range(
+                &TimeWindow::from_rfc3339_pair(&from, &to).expect("trusted test bounds"),
+            )
             .expect("count_frames_in_range failed");
         assert_eq!(count, 1);
     }

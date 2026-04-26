@@ -42,6 +42,8 @@ secret.failed
 service.circuit_open
 service.unavailable
 storage.failed
+time_window.inverted_bounds
+time_window.parse_failed
 ui.element_missing
 validation.invalid_arguments
 validation.invalid_field

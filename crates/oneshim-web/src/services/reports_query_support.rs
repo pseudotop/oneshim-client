@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Duration, NaiveDate, Timelike, Utc};
 use oneshim_api_contracts::reports::{AppStat, DailyStat, ReportPeriod, ReportQuery};
 use oneshim_core::models::event::Event;
+use oneshim_core::types::TimeWindow;
 
 use crate::error::ApiError;
 use crate::services::reports_assembler::{
@@ -14,19 +15,24 @@ use crate::services::web_contexts::StorageWebContext;
 pub(crate) fn resolve_report_window(
     params: &ReportQuery,
     now: DateTime<Utc>,
-) -> Result<(DateTime<Utc>, DateTime<Utc>, String), ApiError> {
+) -> Result<(TimeWindow, String), ApiError> {
     match params.period {
         ReportPeriod::Week => {
             let to = now;
             let from = to - Duration::days(7);
-            Ok((from, to, "주간 Activity Report".to_string()))
+            let window = TimeWindow::new(from, to).expect("now - 7d <= now");
+            Ok((window, "주간 Activity Report".to_string()))
         }
         ReportPeriod::Month => {
             let to = now;
             let from = to - Duration::days(30);
-            Ok((from, to, "월간 Activity Report".to_string()))
+            let window = TimeWindow::new(from, to).expect("now - 30d <= now");
+            Ok((window, "월간 Activity Report".to_string()))
         }
         ReportPeriod::Custom => {
+            // ReportQuery is date-only (%Y-%m-%d) per spec — NaiveDate parsing
+            // preserved (NOT RFC3339). TimeWindow construction follows once both
+            // dates are converted to UTC datetimes.
             let from_str = params
                 .from
                 .as_ref()
@@ -50,7 +56,9 @@ pub(crate) fn resolve_report_window(
                 .ok_or_else(|| ApiError::Internal("Time conversion failed: 23:59:59".to_string()))?
                 .and_utc();
 
-            Ok((from, to, format!("Activity Report ({from_str} ~ {to_str})")))
+            let window =
+                TimeWindow::new(from, to).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+            Ok((window, format!("Activity Report ({from_str} ~ {to_str})")))
         }
     }
 }
@@ -81,12 +89,12 @@ pub(crate) fn build_daily_stats(input: DailyStatsInput<'_>) -> Vec<DailyStat> {
         }
     }
 
-    let from_rfc = input.from.to_rfc3339();
-    let to_rfc = input.to.to_rfc3339();
-    if let Ok(daily_active) = input.ctx.storage.get_daily_active_secs(&from_rfc, &to_rfc) {
-        for (day, secs) in &daily_active {
-            if let Some(stat) = daily_map.get_mut(day) {
-                stat.active_secs = *secs as u64;
+    if let Ok(window) = oneshim_core::types::TimeWindow::new(input.from, input.to) {
+        if let Ok(daily_active) = input.ctx.storage.get_daily_active_secs(&window) {
+            for (day, secs) in &daily_active {
+                if let Some(stat) = daily_map.get_mut(day) {
+                    stat.active_secs = *secs as u64;
+                }
             }
         }
     }

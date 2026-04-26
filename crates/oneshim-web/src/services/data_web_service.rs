@@ -24,6 +24,10 @@ impl DataCommandService {
             ));
         }
 
+        let window = request
+            .period()
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
         let mut result = DeleteResult::empty();
         let delete_all = request.data_types.is_empty();
         let data_types = &request.data_types;
@@ -33,7 +37,7 @@ impl DataCommandService {
                 let paths = self
                     .ctx
                     .storage
-                    .list_frame_file_paths_in_range(&request.from, &request.to)
+                    .list_frame_file_paths_in_range(&window)
                     .map_err(|error| ApiError::Internal(error.to_string()))?;
 
                 for path in paths {
@@ -49,8 +53,7 @@ impl DataCommandService {
             .ctx
             .storage
             .delete_data_in_range(
-                &request.from,
-                &request.to,
+                &window,
                 delete_all || data_types.iter().any(|item| item == "events"),
                 delete_all || data_types.iter().any(|item| item == "frames"),
                 delete_all || data_types.iter().any(|item| item == "metrics"),

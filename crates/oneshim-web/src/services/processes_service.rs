@@ -1,3 +1,4 @@
+use chrono::Duration;
 use oneshim_api_contracts::processes::ProcessSnapshotResponse;
 
 use crate::error::ApiError;
@@ -19,13 +20,15 @@ impl ProcessesQueryService {
         &self,
         params: &TimeRangeQuery,
     ) -> Result<Vec<ProcessSnapshotResponse>, ApiError> {
-        let from = params.from_datetime();
-        let to = params.to_datetime();
+        let window = params
+            .to_time_window(Duration::hours(24))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
         let limit = params.limit_or_default();
 
+        // get_process_snapshots is out of plan scope (still takes DateTime<Utc>): decompose.
         self.ctx
             .storage
-            .get_process_snapshots(from, to, limit)
+            .get_process_snapshots(window.start, window.end, limit)
             .await
             .map_err(ApiError::from)
             .map(|snapshots| {

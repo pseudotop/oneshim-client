@@ -43,6 +43,7 @@ use oneshim_core::ports::web_storage::{
     HabitStorage, SegmentQueryStorage, StorageMaintenanceStorage, SuggestionQueryStorage,
     TagStorage,
 };
+use oneshim_core::types::TimeWindow;
 use oneshim_storage::sqlite::SqliteStorage;
 
 /// Wraps `SqliteStorage` and injects configurable faults on specific methods.
@@ -273,10 +274,8 @@ impl TagStorage for FailingStorage {
 // ── FrameQueryStorage ────────────────────────────────────────────────────────
 
 impl FrameQueryStorage for FailingStorage {
-    fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
-        self.inner
-            .count_frames_in_range(from, to)
-            .map_err(Into::into)
+    fn count_frames_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
+        self.inner.count_frames_in_range(window).map_err(Into::into)
     }
 
     fn get_frames(
@@ -294,11 +293,10 @@ impl FrameQueryStorage for FailingStorage {
 
     fn list_frame_file_paths_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
     ) -> Result<Vec<String>, CoreError> {
         self.inner
-            .list_frame_file_paths_in_range(from, to)
+            .list_frame_file_paths_in_range(window)
             .map_err(Into::into)
     }
 
@@ -328,10 +326,8 @@ impl FrameQueryStorage for FailingStorage {
 // ── EventQueryStorage ────────────────────────────────────────────────────────
 
 impl EventQueryStorage for FailingStorage {
-    fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
-        self.inner
-            .count_events_in_range(from, to)
-            .map_err(Into::into)
+    fn count_events_in_range(&self, window: &TimeWindow) -> Result<u64, CoreError> {
+        self.inner.count_events_in_range(window).map_err(Into::into)
     }
 
     fn count_search_events(&self, pattern: &str) -> Result<u64, CoreError> {
@@ -359,8 +355,7 @@ impl StorageMaintenanceStorage for FailingStorage {
 
     fn delete_data_in_range(
         &self,
-        from: &str,
-        to: &str,
+        window: &TimeWindow,
         delete_events: bool,
         delete_frames: bool,
         delete_metrics: bool,
@@ -369,8 +364,7 @@ impl StorageMaintenanceStorage for FailingStorage {
     ) -> Result<DeletedRangeCounts, CoreError> {
         self.inner
             .delete_data_in_range(
-                from,
-                to,
+                window,
                 delete_events,
                 delete_frames,
                 delete_metrics,
@@ -398,10 +392,8 @@ impl ActivityStatsStorage for FailingStorage {
             .map_err(Into::into)
     }
 
-    fn get_daily_active_secs(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError> {
-        self.inner
-            .get_daily_active_secs(from, to)
-            .map_err(Into::into)
+    fn get_daily_active_secs(&self, window: &TimeWindow) -> Result<Vec<(String, i64)>, CoreError> {
+        self.inner.get_daily_active_secs(window).map_err(Into::into)
     }
 
     fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError> {

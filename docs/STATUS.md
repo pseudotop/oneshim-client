@@ -31,7 +31,7 @@ cd crates/oneshim-web/frontend && pnpm lint && pnpm build-storybook
 
 ### Version
 
-v0.4.40-rc.1 (Phase 9 PR-B1 Autostart Foundation shipped on top of Phase 9 PR-A Tracking Schedule baseline)
+v0.4.42-rc.1 (TimeWindow primitive consolidation on top of Phase 9 PR-B1 Autostart Foundation)
 
 ### Workspace
 
@@ -49,7 +49,7 @@ v0.4.40-rc.1 (Phase 9 PR-B1 Autostart Foundation shipped on top of Phase 9 PR-A 
 
 - `cargo check --workspace`: pass
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass
-- `cargo test --workspace`: pass — **expected ~3,818 (3,798 PR-A baseline + 20 PR-B1 autostart)** (will verify post-rebase). PR-B1 adds: autostart config 10, autostart_helper 5, command tests 2, IPC integration 1 ignored, single_instance 1 ignored, AutostartCode 3 = +20-22 across crates. Cumulative: ADR-019 + Phase 9 PR-A (147) + Phase 9 PR-B1 (20). Phase 2 telemetry tests run separately. **Not counted**: 6 `map_challenge_status_to_error` tests feature-gated behind `lan-sync`.
+- `cargo test --workspace`: pass — **expected ~3,855 (3,798 PR-A baseline + 20 PR-B1 autostart + 37 TimeWindow refactor)** (will verify post-rebase). TimeWindow refactor adds: 13 primitive + 3 TimeWindowCode + 8 TimeRangeQuery adapter + 3 SQL boundary regression + 4 E2E + 2 ApiError mapping + 4 api-contracts roundtrip = +37 across crates. Cumulative: ADR-019 + Phase 9 PR-A (147) + Phase 9 PR-B1 (20) + TimeWindow (37). Phase 2 telemetry tests run separately. **Not counted**: 6 `map_challenge_status_to_error` tests feature-gated behind `lan-sync`.
 - `cargo fmt --check`: pass
 - `pnpm lint` (`crates/oneshim-web/frontend`): pass
 - `pnpm build-storybook` (`crates/oneshim-web/frontend`): pass

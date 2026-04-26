@@ -1,3 +1,4 @@
+use chrono::Duration;
 use oneshim_api_contracts::idle::IdlePeriodResponse;
 
 use crate::error::ApiError;
@@ -19,12 +20,14 @@ impl IdleQueryService {
         &self,
         params: &TimeRangeQuery,
     ) -> Result<Vec<IdlePeriodResponse>, ApiError> {
-        let from = params.from_datetime();
-        let to = params.to_datetime();
+        let window = params
+            .to_time_window(Duration::hours(24))
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
+        // get_idle_periods is out of plan scope (still takes DateTime<Utc>): decompose.
         self.ctx
             .storage
-            .get_idle_periods(from, to)
+            .get_idle_periods(window.start, window.end)
             .await
             .map_err(ApiError::from)
             .map(|periods| {
