@@ -44,7 +44,7 @@ done
 
 if [ "$violations" -gt 0 ]; then
     echo ""
-    echo "See docs/reviews/2026-04-22-d13-v2b-pr-b2-spec.md §6 row 7 + §7.4"
+    echo "See the internal sensitive-instrumentation spec for the allowlist rationale"
     echo "(This is a first-line heuristic; the invariant guard is the"
     echo " GrpcSpawnConfig Debug redaction test.)"
     exit 1

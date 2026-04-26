@@ -112,7 +112,7 @@ Notify via:
 - Audit all releases signed with the compromised key between the leak date and Step 1 rotation. Compare artifact checksums against a known-good source (e.g., internal build server) to detect any malicious artifacts.
 - Revoke the compromised key at the GitHub repo-secret level (already done in Step 1 but double-check that the old seed is not in any backup location).
 - Rotate GitHub token access for any account with repository-secret write permission.
-- Document the incident in `docs/reviews/{date}-signing-key-compromise.md` with timeline, scope, and remediations.
+- Document the incident in the internal security review log with timeline, scope, and remediations.
 
 ### Key differences from scheduled rotation
 
@@ -143,6 +143,5 @@ Document the rehearsal outcome in a run-log (date, tester, artifact hashes) so t
 - Verification: `src-tauri/src/updater/install.rs::verify_signature`
 - Signing pipeline: `.github/workflows/release.yml:1113-1149`
 - Rehearsal script: `scripts/rehearse-key-rotation.sh`
-- Spec: `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` §7.3
-- Plan: `docs/reviews/2026-04-18-phase4-updater-hardening-plan.md` Task 13
+- Implementation record: internal updater hardening design and key-rotation plan
 - Adjacent: `docs/guides/updater-rollout.md`, `docs/guides/updater-rollback-windows.md`

@@ -53,6 +53,5 @@
 
 ## 참조 (References)
 
-- 스펙: `docs/reviews/2026-04-18-phase3-regime-feedback-learning-spec.md`
-- Gap 분석: `docs/reviews/2026-04-16-feature-gaps-analysis.md` C3 + X6
+- 구현 기록: 내부 regime feedback learning 명세와 feature-gap 분석 노트
 - ADR-016 ConfigChangeBus (종료 워치독 패턴)

@@ -2,7 +2,7 @@
 
 # gRPC Error Mapping Guide
 
-This guide defines how ONESHIM client maps gRPC status errors into `NetworkError` (which then converts to `CoreError` at the port boundary via `impl From<NetworkError> for CoreError`).
+This guide defines how the Maekon client maps gRPC status errors into `NetworkError` (which then converts to `CoreError` at the port boundary via `impl From<NetworkError> for CoreError`).
 
 ## Source
 

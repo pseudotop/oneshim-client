@@ -35,7 +35,7 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 1. CI green (Rust + 프런트 빌드 + E2E)
 2. 대상 플랫폼 릴리즈 아티팩트 검증 완료
 3. 알려진 P0 이슈 0건
-4. `docs/STATUS.md` 및 최신 QA 증적 최신화
+4. 최신 QA 증적과 workflow 페이지 최신화
 
 ## Export 절차
 
@@ -66,8 +66,7 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 내장 gate는 private context 유출 또는 public build 실패 가능성이 큰 edge case를
 막는 데 초점을 둡니다.
 
-- `docs/superpowers/`, `docs/reviews/`, `docs/research/`, `docs/roadmap/`,
-  `docs/plan/`, `docs/specs/`, `tests/private/` 같은 금지 디렉터리
+- 내부 planning, review, research, roadmap, migration, private validation 디렉터리
 - `server/`, `backoffice/`, `terraform/` 같은 parent monorepo 디렉터리
 - 로컬 환경 파일과 agent tooling 파일
 - provider surface catalog 등 public/runtime 필수 파일 누락

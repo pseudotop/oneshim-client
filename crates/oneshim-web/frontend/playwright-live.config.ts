@@ -1,5 +1,5 @@
 /**
- * Playwright config for live E2E tests against the running ONESHIM app.
+ * Playwright config for live E2E tests against the running Maekon app.
  *
  * Unlike the default config (which uses mock APIs + pnpm preview),
  * this connects to the actual Rust backend and verifies real behavior.

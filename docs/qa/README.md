@@ -14,7 +14,7 @@ This directory is the canonical location for manual/reviewed QA execution result
 - CI machine artifacts (screenshots, Playwright HTML, logs):
   - CI artifact store (GitHub Actions artifacts), linked from run files.
 - Project-level mutable quality summary:
-  - `docs/STATUS.md` (curated summary snapshot), with links to latest QA run and workflow pages.
+  - Latest QA run and workflow pages.
 
 ## Execution Policy
 

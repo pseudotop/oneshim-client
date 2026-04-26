@@ -1,5 +1,5 @@
 /**
- * Live smoke tests — run against the actual ONESHIM app (not mocked).
+ * Live smoke tests — run against the actual Maekon app (not mocked).
  *
  * These catch the class of bugs that mock-based E2E tests miss:
  * - StatusBar showing "Offline" when backend is running

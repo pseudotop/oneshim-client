@@ -128,4 +128,4 @@ pub(super) fn require_config_manager(state: &AppState) -> Result<&ConfigManager,
 
 - 서버 ADR-013: `server/docs/architecture/ADR-013-domain-service-folder-pattern.md`
 - `docs/architecture/ADR-001-rust-client-architecture-patterns.md`
-- `CLAUDE.md` — Crate Summary 섹션에 각 디렉토리 모듈 구조 기술
+- Repository guardrails — crate summary 섹션에 각 디렉토리 모듈 구조 기술

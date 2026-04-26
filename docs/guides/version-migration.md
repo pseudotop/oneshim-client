@@ -1,12 +1,12 @@
 # Version Migration Guide
 
-This guide is for operators upgrading ONESHIM deployments. It covers versioning policy, config file locations, database schema migrations, rollback procedures, and the breaking change log.
+This guide is for operators upgrading Maekon deployments. It covers versioning policy, config file locations, database schema migrations, rollback procedures, and the breaking change log.
 
 ---
 
 ## Semantic Versioning Policy
 
-ONESHIM follows [Semantic Versioning 2.0.0](https://semver.org/):
+Maekon follows [Semantic Versioning 2.0.0](https://semver.org/):
 
 - **Patch** (`x.y.Z`): Bug fixes, security patches. No config or schema changes. Safe to deploy without testing in staging first.
 - **Minor** (`x.Y.z`): New features, new optional config fields. Backward-compatible. Existing config files continue to work; new fields default to safe values via `#[serde(default)]`.
@@ -46,7 +46,7 @@ Copy-Item "$env:APPDATA\oneshim\config.json" `
 
 ## Database Schema Migrations
 
-ONESHIM uses SQLite for local storage. The database file is located in the data directory above (filename: `oneshim.db` by default, overridable via `storage.db_path` in config).
+Maekon uses SQLite for local storage. The database file is located in the data directory above (filename: `oneshim.db` by default, overridable via `storage.db_path` in config).
 
 Schema migrations run automatically at startup via `crates/oneshim-storage/src/migration.rs`. The migration runner is idempotent — running it twice on the same database is safe.
 
@@ -82,9 +82,9 @@ sqlite3 ~/Library/Application\ Support/oneshim/data/oneshim.db \
 
 ### Standard Upgrade (patch or minor)
 
-1. Stop ONESHIM (quit from system tray or kill the process).
+1. Stop Maekon (quit from system tray or kill the process).
 2. Install the new version using your platform's installer.
-3. Start ONESHIM. Schema migrations run automatically at startup.
+3. Start Maekon. Schema migrations run automatically at startup.
 4. Verify the application starts and the dashboard loads at `http://localhost:10090`.
 
 ### Major Version Upgrade
@@ -92,10 +92,10 @@ sqlite3 ~/Library/Application\ Support/oneshim/data/oneshim.db \
 1. Read the CHANGELOG for the target version — look for `BREAKING CHANGE` entries.
 2. Back up `config.json` and `oneshim.db`.
 3. Review config fields against this guide's breaking change log below.
-4. Stop ONESHIM.
+4. Stop Maekon.
 5. Install the new version.
 6. If config fields have changed, update your `config.json` accordingly.
-7. Start ONESHIM and verify startup logs for migration errors.
+7. Start Maekon and verify startup logs for migration errors.
 
 ---
 
@@ -103,7 +103,7 @@ sqlite3 ~/Library/Application\ Support/oneshim/data/oneshim.db \
 
 If an upgrade fails or causes issues:
 
-1. Stop ONESHIM.
+1. Stop Maekon.
 2. Restore the previous version's binary (keep old installers in your deployment system).
 3. Restore `config.json` from backup.
 4. Restore `oneshim.db` from backup if the new version ran migrations that are incompatible with the old binary.

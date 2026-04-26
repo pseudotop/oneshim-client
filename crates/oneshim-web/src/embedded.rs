@@ -75,7 +75,7 @@ const DEV_PLACEHOLDER: &str = r#"<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ONESHIM Dashboard</title>
+    <title>Maekon Dashboard</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -138,7 +138,7 @@ const DEV_PLACEHOLDER: &str = r#"<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
-        <h1>ONESHIM</h1>
+        <h1>Maekon</h1>
         <p class="subtitle">로컬 웹 대시보드</p>
 
         <div class="status">
@@ -170,6 +170,6 @@ mod tests {
     #[test]
     fn dev_placeholder_is_valid_html() {
         assert!(DEV_PLACEHOLDER.contains("<!DOCTYPE html>"));
-        assert!(DEV_PLACEHOLDER.contains("ONESHIM"));
+        assert!(DEV_PLACEHOLDER.contains("Maekon"));
     }
 }

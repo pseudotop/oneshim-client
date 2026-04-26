@@ -1,5 +1,5 @@
 //! Server API client port — defines the contract for all HTTP/gRPC
-//! communication with the ONESHIM server (session, batch upload, heartbeat).
+//! communication with the connected server (session, batch upload, heartbeat).
 //! Implemented by `HttpApiClient` and `UnifiedClient` in `oneshim-network`.
 
 use async_trait::async_trait;

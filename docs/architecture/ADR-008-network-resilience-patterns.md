@@ -21,7 +21,7 @@
 
 ## Context
 
-The desktop agent communicates with the ONESHIM server via HTTP REST, SSE,
+The desktop agent communicates with the connected server via HTTP REST, SSE,
 WebSocket, and gRPC. Desktop environments produce network failures a server
 process never sees: WiFi drops, VPN reconnects, sleep/wake cycles, and rolling
 server deployments. The agent must handle these without losing buffered data or
@@ -143,7 +143,7 @@ making it possible to hammer a permanently-down server on every 5-second cycle.
 per-endpoint breaker through a shared `CircuitBreakerRegistry` keyed by
 `scheme://host:port` so multiple adapters targeting the same endpoint
 (e.g., two OpenAI clients on different models) converge on one breaker.
-See [`docs/superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md`](../superpowers/specs/2026-04-20-d7-circuit-breaker-broadening-design.md).
+The original circuit-breaker broadening design is archived as an internal planning artifact and is not part of the public-minimal export.
 
 Classification is centralized in `resilience::classify_for_breaker`:
 - 5xx / transport / 401 / 429 → `Failure` (endpoint health)

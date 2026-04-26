@@ -107,5 +107,5 @@ Integration: current segment stats + regime info feed into ContextAssembler for 
 - ADR-011: Standalone Analysis Pipeline (foundation)
 - ADR-001 §1-7: Error types, async traits, DI, crate boundaries
 - ADR-003: Directory module pattern (apply when files exceed 500 lines)
-- Design spec: `docs/superpowers/specs/2026-03-18-adaptive-tiered-memory-design.md`
+- Design spec: internal adaptive tiered memory design note
 - Research: Dual-EWMA, ESPRESSO, CUSUM, MemGPT memory consolidation

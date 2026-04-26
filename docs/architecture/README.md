@@ -2,7 +2,7 @@
 
 # Architecture Decision Records (ADR) Registry
 
-Architecture Decision Records capture single, named architectural decisions for the `client-rust` workspace. They are the authoritative record of *what* was decided and *why*. Implementation detail belongs in `docs/reviews/` (spec+plan pairs) or `docs/plan/` (single plan files) — not in the ADR.
+Architecture Decision Records capture single, named architectural decisions for the `client-rust` workspace. They are the authoritative record of *what* was decided and *why*. Implementation detail belongs in companion implementation records, not in the ADR itself.
 
 ## Writing a new ADR
 
@@ -63,18 +63,15 @@ See [`ADR-TEMPLATE.md`](./ADR-TEMPLATE.md) for the full authoritative template. 
 
 Avoid `Approved` — it was historically used in a few ADRs but has no consistent meaning distinct from `Accepted`. The ADR-019 drift audit (iter-186) unified everything to `Accepted`.
 
-## Relationship to other doc directories
+## Relationship to implementation records
 
 - **`docs/architecture/`** (this directory) — the *what and why* of an architectural decision.
-- **`docs/reviews/`** — the *how* of a specific implementation sprint (spec + plan pair per sprint phase).
-- **`docs/plan/`** — dated single-file implementation plans (older convention; `docs/reviews/` is the current default for new work).
-- **`docs/specs/`** — detailed functional specs for individual features (typically predate or complement an ADR).
+- Companion implementation records — the *how* of a specific change. These may live outside the public-minimal export when they are planning artifacts rather than durable public documentation.
 
 When a new ADR requires implementation, the typical flow is:
 
 ```
-Draft ADR → Proposed ADR → docs/reviews/YYYY-MM-DD-<topic>-design.md (spec)
-                       → docs/reviews/YYYY-MM-DD-<topic>-plan.md  (plan)
+Draft ADR → Proposed ADR → companion implementation record
                        → Implementation PRs
-Accept ADR  (with `Implementation:` pointer to the spec/plan + code paths)
+Accept ADR  (with `Implementation:` pointer to public implementation records + code paths)
 ```

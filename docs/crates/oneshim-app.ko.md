@@ -68,13 +68,13 @@ src-tauri/src/  (패키지: oneshim-app)
 
 ## CLI 구독 브리지
 
-`ai_provider.access_mode`가 `ProviderSubscriptionCli`일 때, ONESHIM은 외부 AI CLI용 브리지 커맨드 파일을 동기화할 수 있다.
+`ai_provider.access_mode`가 `ProviderSubscriptionCli`일 때, Maekon 은 외부 AI CLI용 브리지 커맨드 파일을 동기화할 수 있다.
 
 - 자동 설치 활성화: `ONESHIM_CLI_BRIDGE_AUTOINSTALL=1`
 - 사용자 스코프 디렉토리(`~/.codex`, `~/.claude`, `~/.gemini`) 포함: `ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE=1`
 - 생성되는 브리지 파일의 기본 컨텍스트 경로: `<data_dir>/exports/oneshim-context.json`
 
-참고: `docs/research/cli-subscription-bridge-research.ko.md`
+참고: 내부 CLI subscription bridge research note
 
 ## AI 제공자 어댑터 (`provider_adapters.rs`)
 

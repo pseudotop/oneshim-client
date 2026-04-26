@@ -176,21 +176,21 @@ pub async fn wait_for_callback(
 
 fn success_html() -> String {
     r#"<!DOCTYPE html>
-<html><head><title>ONESHIM — Authentication Complete</title>
+<html><head><title>Maekon — Authentication Complete</title>
 <style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8f9fa}
 .card{background:#fff;border-radius:12px;padding:2rem 3rem;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center}
 h1{color:#22c55e;margin:0 0 .5rem}p{color:#6b7280}</style></head>
-<body><div class="card"><h1>&#10003; Connected</h1><p>You can close this tab and return to ONESHIM.</p></div></body></html>"#.to_string()
+<body><div class="card"><h1>&#10003; Connected</h1><p>You can close this tab and return to Maekon.</p></div></body></html>"#.to_string()
 }
 
 fn error_html(error: &str, description: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
-<html><head><title>ONESHIM — Authentication Error</title>
+<html><head><title>Maekon — Authentication Error</title>
 <style>body{{font-family:system-ui;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8f9fa}}
 .card{{background:#fff;border-radius:12px;padding:2rem 3rem;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center}}
 h1{{color:#ef4444;margin:0 0 .5rem}}p{{color:#6b7280}}</style></head>
-<body><div class="card"><h1>&#10007; Error</h1><p>{error}: {description}</p><p>Please close this tab and try again in ONESHIM.</p></div></body></html>"#
+<body><div class="card"><h1>&#10007; Error</h1><p>{error}: {description}</p><p>Please close this tab and try again in Maekon.</p></div></body></html>"#
     )
 }
 
@@ -209,7 +209,7 @@ mod tests {
     fn success_html_contains_connected() {
         let html = success_html();
         assert!(html.contains("Connected"));
-        assert!(html.contains("ONESHIM"));
+        assert!(html.contains("Maekon"));
     }
 
     #[test]

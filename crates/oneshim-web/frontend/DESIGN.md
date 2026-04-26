@@ -1,4 +1,4 @@
-# ONESHIM Design System
+# Maekon Design System
 
 Design system guide for `oneshim-web/frontend/`. All visual properties flow from tokens — never hardcode colors, spacing, or typography.
 

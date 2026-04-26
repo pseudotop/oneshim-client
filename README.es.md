@@ -73,7 +73,6 @@ El modo autónomo sigue siendo la ruta predeterminada lista para producción en 
 - Política de informes y respuesta de seguridad: [SECURITY.md](./SECURITY.md)
 - Línea base de integridad autónoma: [docs/security/standalone-integrity-baseline.md](./docs/security/standalone-integrity-baseline.md)
 - Runbook de operaciones de integridad: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
-- Métricas actuales de calidad y lanzamiento: [docs/STATUS.md](./docs/STATUS.md)
 - Índice de documentación: [docs/README.md](./docs/README.md)
 - Guía de lanzamiento público: [docs/guides/public-repo-launch-playbook.md](./docs/guides/public-repo-launch-playbook.md)
 - Plantillas de guía de automatización: [docs/guides/automation-playbook-templates.md](./docs/guides/automation-playbook-templates.md)
@@ -178,10 +177,10 @@ Use esto solo para rutas de prueba rápida o depuración no interactivas.
 ### Pruebas
 
 ```bash
-# Pruebas de Rust (métricas actuales: docs/STATUS.md)
+# Pruebas de Rust
 ./scripts/cargo-cache.sh test --workspace
 
-# Pruebas E2E (métricas actuales: docs/STATUS.md) — panel web
+# Pruebas E2E — panel web
 cd crates/oneshim-web/frontend && pnpm test:e2e
 
 # Lint (política: cero advertencias en CI)
@@ -368,12 +367,11 @@ oneshim-client/
 
 Índice completo de documentación: [docs/crates/README.md](./docs/crates/README.md)
 
-Para una guía detallada de desarrollo, consulte [CLAUDE.md](./CLAUDE.md).
+Para el flujo de contribución, consulte [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-Las métricas actuales de calidad y lanzamiento se registran en [docs/STATUS.md](./docs/STATUS.md).
 Las reglas de idioma y consistencia de la documentación se definen en [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
 Traducción al coreano: [README.ko.md](./README.ko.md).
-Documentos complementarios en coreano de política/estado: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md), [docs/STATUS.ko.md](./docs/STATUS.ko.md).
+Documento complementario de política en coreano: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md).
 
 ## Desarrollo
 

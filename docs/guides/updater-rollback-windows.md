@@ -1,6 +1,6 @@
 # Windows Rollback Mechanism — Spike Deliverable
 
-**Spec**: `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` §4.8
+**Spec**: internal updater hardening design record
 **Scope**: D11 post-install rollback path for Windows, where a running executable cannot be replaced in place.
 
 ---
@@ -133,8 +133,7 @@ Full end-to-end verification (binary actually swapped + restored binary running)
 
 ## References
 
-- Spec: `docs/reviews/2026-04-18-phase4-updater-hardening-design.md` §4.8
-- Plan: `docs/reviews/2026-04-18-phase4-updater-hardening-plan.md` Task 12
+- Implementation record: internal updater hardening design and rollback plan
 - Unix implementation: `src-tauri/src/updater/install.rs::execute_rollback` (Unix branch)
 - Current Windows stub: same file, `#[cfg(windows)]` branch returns `Err("...spike pending")`
 - Related: [Microsoft Learn — MoveFileExA documentation](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexa)

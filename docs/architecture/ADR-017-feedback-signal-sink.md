@@ -58,7 +58,6 @@ pub trait FeedbackSignalSink: Send + Sync {
 
 ## References
 
-- Spec: `docs/reviews/2026-04-18-phase3-regime-feedback-learning-spec.md`
-- Gap analysis: `docs/reviews/2026-04-16-feature-gaps-analysis.md` X3
+- Implementation record: internal regime feedback learning spec and feature-gap analysis notes
 - ADR-001 Hexagonal boundary
 - ADR-007 `parking_lot::Mutex` never across `.await` — honoured by `CompositeFeedbackSink` (lock acquired, method called, lock dropped before any `.await`)

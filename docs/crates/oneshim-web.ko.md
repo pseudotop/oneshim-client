@@ -369,7 +369,7 @@ pnpm test:e2e
 
 ## 테스트
 
-- Rust/E2E 상태 요약은 `docs/STATUS.md`에서 관리하고, 실시간 워크플로우 기준은 GitHub Actions run 페이지를 따릅니다.
+- Rust/E2E 상태는 최신 GitHub Actions run 페이지를 기준으로 확인합니다.
 - 웹 커버리지는 API 핸들러, 라우트, 에러 핸들링, 자동화 DTO 직렬화, 설정 매핑, Playwright 기반 프론트엔드 E2E 시나리오를 포함합니다.
   - 네비게이션, 대시보드, 타임라인
   - 설정, 개인정보, 검색, 리포트

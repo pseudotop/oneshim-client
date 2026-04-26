@@ -1,6 +1,6 @@
 # Standalone Integrity Baseline
 
-This document defines the mandatory integrity baseline for ONESHIM Client in standalone mode.
+This document defines the mandatory integrity baseline for Maekon in standalone mode.
 
 The goal is to keep the standalone trust model strict today, while making future server and third-party integrations additive rather than disruptive.
 

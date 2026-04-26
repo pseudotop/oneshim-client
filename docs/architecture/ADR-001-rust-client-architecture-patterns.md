@@ -10,7 +10,7 @@
 
 ## Context
 
-The ONESHIM server strictly governs DDD + Hexagonal Architecture through ADRs. The Rust client also requires the same level of architectural consistency, but since the Rust compiler already enforces certain aspects (crate boundaries, mandatory trait implementations), **only design decisions that the compiler cannot catch are explicitly specified**.
+The parent server strictly governs DDD + Hexagonal Architecture through ADRs. The Rust client also requires the same level of architectural consistency, but since the Rust compiler already enforces certain aspects (crate boundaries, mandatory trait implementations), **only design decisions that the compiler cannot catch are explicitly specified**.
 
 ## Decisions
 

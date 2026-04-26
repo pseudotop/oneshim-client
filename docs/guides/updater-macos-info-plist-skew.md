@@ -160,7 +160,7 @@ Implementation estimate: ~1 week for one engineer, plus a macOS CI runner with s
 
 ## References
 
-- [Phase 4 Updater Hardening Design](../reviews/2026-04-18-phase4-updater-hardening-design.md) — D9/D10/D11 scope definition
+- Internal Phase 4 updater hardening design — D9/D10/D11 scope definition
 - [Windows Rollback Spike](updater-rollback-windows.md) — parallel platform issue for reference
 - [Apple — Bundle Versioning](https://developer.apple.com/library/archive/documentation/CoreFoundation/Conceptual/CFBundles/BundleTypes/BundleTypes.html#//apple_ref/doc/uid/10000123i-CH101-SW1) — `CFBundleVersion` / `CFBundleShortVersionString` semantics
 - [Apple — Code Signing Troubleshooting](https://developer.apple.com/library/archive/technotes/tn2318/_index.html) — diagnosing `codesign` failures

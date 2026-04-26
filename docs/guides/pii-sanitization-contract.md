@@ -2,7 +2,7 @@
 
 **Status**: Accepted 2026-04-20 (D5 PII Filter Audit)
 **Scope**: All text-producing adapters + their downstream write/send sites across the `client-rust` workspace
-**Related**: [D5 design spec](../superpowers/specs/2026-04-20-d5-pii-filter-audit-design.md) · [D5 audit matrix](../reviews/2026-04-20-d5-pii-audit-matrix.md)
+**Related**: D5 design spec and audit matrix are archived as internal implementation records.
 
 ## The Rule
 
@@ -49,7 +49,7 @@ storage.save(&sanitized)?;
 
 ### In adapter crates (`oneshim-network`, `oneshim-audio`, `oneshim-automation`, `oneshim-analysis`, `oneshim-monitor`)
 
-Per the hexagonal architecture rule in CLAUDE.md (forbidden: direct dependency between adapter crates), MUST inject the sanitizer via port trait:
+Per the repository's hexagonal architecture guardrails (forbidden: direct dependency between adapter crates), MUST inject the sanitizer via port trait:
 
 ```rust
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
@@ -101,7 +101,7 @@ A path MAY be exempt from sanitization under these conditions:
 Every exempted path MUST include:
 
 - A `// PII-EXEMPT: <reason>` comment at the boundary site
-- A row in `docs/reviews/2026-04-20-d5-pii-audit-matrix.md` stating the exemption rationale
+- A row in the internal PII audit matrix stating the exemption rationale
 - A regression test confirming the exemption is intentional (e.g., asserting the raw text flows through vs. getting sanitized)
 
 Silent bypasses are not permitted.
@@ -130,5 +130,5 @@ Adding a new text-producing adapter or a new boundary:
 1. Identify the boundary (the persistence/transmission point)
 2. Apply sanitization per the patterns above
 3. Add a contract test
-4. Add a row to the audit matrix (`docs/reviews/2026-04-20-d5-pii-audit-matrix.md`)
+4. Add a row to the internal PII audit matrix
 5. Reference this contract doc in the adapter's module-level docs

@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-08
 **Status**: Accepted
-**Deciders**: ONESHIM Team
+**Deciders**: Maekon maintainers
 **Related**: [ADR-005: Tauri v2 Governance](ADR-005-tauri-governance.md)
 
 ---

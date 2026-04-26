@@ -112,5 +112,5 @@ Mitigations:
 
 - ADR-011: Standalone Analysis Pipeline
 - ADR-012: Adaptive Tiered Memory
-- Design spec: `docs/superpowers/specs/2026-03-18-layer2-llm-summary-vector-rag-design.md`
+- Design spec: internal LLM summary/vector RAG design note
 - Research: fastembed-rs, sqlite-vec, EWMA time decay

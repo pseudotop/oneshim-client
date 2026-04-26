@@ -23,7 +23,7 @@ pub enum SyncTransportKind {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RemoteSyncAuth {
-    /// Bearer token authentication (e.g., JWT from ONESHIM server login).
+    /// Bearer token authentication (e.g., JWT from connected server login).
     #[default]
     BearerToken,
     /// Static API key (self-hosted scenarios).

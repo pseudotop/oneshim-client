@@ -5,7 +5,7 @@ This runbook defines required GitHub Actions secrets for signed + notarized macO
 ## Why
 
 - Gatekeeper blocks unsigned or non-notarized DMG/PKG builds.
-- ONESHIM release workflow now signs app/pkg, notarizes app/dmg/pkg, and staples notarization tickets.
+- Maekon release workflow now signs app/pkg, notarizes app/dmg/pkg, and staples notarization tickets.
 
 ## Required GitHub Actions Secrets
 

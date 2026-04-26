@@ -36,7 +36,7 @@ Use one consistent positioning line across README + repository description.
 1. CI is green (Rust + frontend build + E2E).
 2. Release artifacts are validated for all target platforms.
 3. Known P0 issues are zero.
-4. `docs/STATUS.md` and latest QA run evidence are up to date.
+4. Latest QA run evidence and workflow pages are up to date.
 
 ## Export Procedure
 
@@ -67,9 +67,8 @@ Git history.
 The built-in gate blocks the edge cases that are most likely to leak private
 context or break public builds:
 
-- forbidden directories such as `docs/superpowers/`, `docs/reviews/`,
-  `docs/research/`, `docs/roadmap/`, `docs/plan/`, `docs/specs/`, and
-  `tests/private/`;
+- forbidden internal planning, review, research, roadmap, migration, and private
+  validation directories;
 - parent-monorepo directories such as `server/`, `backoffice/`, and `terraform/`;
 - local environment and agent-tooling files;
 - accidental removal of required public/runtime files, including the provider

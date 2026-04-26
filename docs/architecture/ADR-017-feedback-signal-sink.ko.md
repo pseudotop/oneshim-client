@@ -58,7 +58,6 @@ pub trait FeedbackSignalSink: Send + Sync {
 
 ## 참조 (References)
 
-- 스펙: `docs/reviews/2026-04-18-phase3-regime-feedback-learning-spec.md`
-- Gap 분석: `docs/reviews/2026-04-16-feature-gaps-analysis.md` X3
+- 구현 기록: 내부 regime feedback learning 명세와 feature-gap 분석 노트
 - ADR-001 헥사고날 경계 (Hexagonal boundary)
 - ADR-007 `parking_lot::Mutex` 는 `.await` 를 건너지 않는다 — `CompositeFeedbackSink` 가 준수 (락 획득 → 메서드 호출 → `.await` 이전에 락 드롭)
