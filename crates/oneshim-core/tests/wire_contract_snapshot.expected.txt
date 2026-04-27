@@ -6,6 +6,10 @@ autostart.disable_failed
 autostart.enable_failed
 autostart.event_emit_failed
 autostart.query_failed
+autostart.sd_notify_skipped
+autostart.service_migrated
+autostart.service_migration_failed
+autostart.service_migration_skipped
 config.invalid
 config.missing
 config.out_of_range

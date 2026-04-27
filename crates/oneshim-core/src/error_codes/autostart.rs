@@ -13,6 +13,15 @@ define_code_enum! {
         EventEmitFailed => "autostart.event_emit_failed",
         /// 자동 시작 상태 조회 실패.
         QueryFailed => "autostart.query_failed",
+        // PR-B2 (NEW):
+        /// systemd notify 호출 스킵 (NOTIFY_SOCKET 없음 등).
+        SdNotifySkipped => "autostart.sd_notify_skipped",
+        /// systemd 서비스 파일 마이그레이션 완료.
+        ServiceMigrated => "autostart.service_migrated",
+        /// systemd 서비스 파일 마이그레이션 실패 (write/io 에러).
+        ServiceMigrationFailed => "autostart.service_migration_failed",
+        /// systemd 서비스 파일 마이그레이션 스킵 (사용자 customize 추정).
+        ServiceMigrationSkipped => "autostart.service_migration_skipped",
     }
 }
 
