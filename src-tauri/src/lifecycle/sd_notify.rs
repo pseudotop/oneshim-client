@@ -21,6 +21,7 @@ pub fn notify_ready() {
 }
 
 #[cfg(all(target_os = "linux", feature = "systemd-notify"))]
+#[allow(dead_code)] // no caller yet; will be wired in shutdown path
 pub fn notify_stopping() {
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Stopping]);
 }
