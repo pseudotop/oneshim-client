@@ -237,11 +237,14 @@ MOUNTED=1
 
 DMG_APP_PATH="$MOUNT_DIR/$APP_NAME"
 DMG_BINARY_PATH="$DMG_APP_PATH/Contents/MacOS/oneshim"
+DMG_SIDECAR_PATH="$DMG_APP_PATH/Contents/MacOS/oneshim-sandbox-worker"
 [[ -d "$DMG_APP_PATH" ]] || fatal "App bundle missing in DMG: $DMG_APP_PATH"
 [[ -x "$DMG_BINARY_PATH" ]] || fatal "Binary missing in DMG app bundle: $DMG_BINARY_PATH"
+[[ -x "$DMG_SIDECAR_PATH" ]] || fatal "Sandbox worker sidecar missing in DMG app bundle: $DMG_SIDECAR_PATH"
 
 info "Validating binary from mounted DMG"
 validate_binary_format "$DMG_BINARY_PATH"
+validate_binary_format "$DMG_SIDECAR_PATH"
 run_gui_bootstrap_smoke "$DMG_BINARY_PATH" "dmg"
 
 info "Installing PKG"
@@ -249,11 +252,14 @@ run_as_root installer -pkg "$PKG_PATH" -target / >/dev/null
 APP_INSTALL_PATH="$(find_installed_app_path || true)"
 [[ -n "$APP_INSTALL_PATH" ]] || fatal "Installed app bundle missing under /Applications or ~/Applications"
 APP_BINARY_PATH="$APP_INSTALL_PATH/Contents/MacOS/oneshim"
+APP_SIDECAR_PATH="$APP_INSTALL_PATH/Contents/MacOS/oneshim-sandbox-worker"
 [[ -x "$APP_BINARY_PATH" ]] || fatal "Installed app binary missing: $APP_BINARY_PATH"
+[[ -x "$APP_SIDECAR_PATH" ]] || fatal "Installed sandbox worker sidecar missing: $APP_SIDECAR_PATH"
 info "Detected installed app at $APP_INSTALL_PATH"
 
 info "Validating binary from PKG installation"
 validate_binary_format "$APP_BINARY_PATH"
+validate_binary_format "$APP_SIDECAR_PATH"
 run_gui_bootstrap_smoke "$APP_BINARY_PATH" "pkg"
 
 info "macOS installer smoke completed"

@@ -275,6 +275,15 @@ bash "$INSTALL_SCRIPT" "${INSTALL_ARGS[@]}"
 TARGET_BIN="$INSTALL_DIR/oneshim"
 [[ -x "$TARGET_BIN" ]] || fatal "Installed binary not found: $TARGET_BIN"
 
+TARGET_SIDECAR="$INSTALL_DIR/oneshim-sandbox-worker"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  APP_BUNDLE="${ONESHIM_APP_DIR:-$HOME/Applications}/Maekon.app"
+  APP_SIDECAR="$APP_BUNDLE/Contents/MacOS/oneshim-sandbox-worker"
+  [[ -x "$APP_SIDECAR" ]] || fatal "Installed sandbox worker sidecar not found: $APP_SIDECAR"
+else
+  [[ -x "$TARGET_SIDECAR" ]] || fatal "Installed sandbox worker sidecar not found: $TARGET_SIDECAR"
+fi
+
 info "Validating binary format"
 validate_binary_format "$TARGET_BIN"
 

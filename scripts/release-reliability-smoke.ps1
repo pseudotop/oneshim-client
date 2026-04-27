@@ -105,6 +105,8 @@ try {
 
     $target = Join-Path $InstallDir "oneshim.exe"
     Throw-IfMissing -Path $target -Label "Installed binary"
+    $sidecarTarget = Join-Path $InstallDir "oneshim-sandbox-worker.exe"
+    Throw-IfMissing -Path $sidecarTarget -Label "Installed sandbox worker sidecar"
 
     Write-Info "Validating binary format"
     if (!(Test-Path $target)) {
