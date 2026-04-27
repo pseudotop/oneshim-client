@@ -14,6 +14,27 @@ use sha2::{Digest, Sha256};
 ///
 /// Hashes are computed by `compute_hash(canonicalize(template, binary_path))`
 /// where binary_path is the resolved current_exe() path.
+///
+/// # Adding a new entry
+///
+/// When `linux::generate_service_file()` semantics change in a way that affects
+/// existing users (e.g., a future PR-Bn template), add the previous template's
+/// hash here BEFORE shipping the change. Steps:
+///
+/// 1. Capture the canonical form of the prior template (with `{BINARY_PATH}`
+///    placeholder, `\n` line endings, no trailing whitespace).
+/// 2. Compute SHA-256 — either via Rust:
+///    ```
+///    let hash = compute_hash(canonicalize(prior_template, "/dummy/path"));
+///    ```
+///    or via shell:
+///    ```bash
+///    printf '<canonical content>' | shasum -a 256 | awk '{print $1}'
+///    ```
+/// 3. Append `(hash, "<descriptive-label>")` here. Keep older entries indefinitely
+///    so users on legacy releases still get migrated when they finally upgrade.
+/// 4. Add a unit test in `tests::pr_<version>_template_hash_matches_registry`
+///    that pins the canonical form against the registered hash.
 pub const KNOWN_PRIOR_HASHES: &[(&str, &str)] = &[
     // PR-B1 Type=simple (Maekon brand, v0.4.40-rc.3+ and v0.4.40 stable)
     (

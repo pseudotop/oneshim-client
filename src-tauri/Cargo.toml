@@ -77,7 +77,7 @@ raw-window-handle = "0.6"
 # D13-v2c: generate-external-cert subcommand (feature-gated, external-grpc-tools)
 rcgen = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
-
+# Linux systemd integration (feature-gated)
 sd-notify = { version = "0.4", optional = true }
 
 # 텔레메트리 (feature-gated, default OFF)
@@ -91,9 +91,6 @@ default = ["custom-protocol", "analysis", "native-vision", "linux-atspi"]
 custom-protocol = ["tauri/custom-protocol"]
 analysis = ["dep:oneshim-network"]
 server = ["analysis"]
-# sd_notify(3) READY=/STOPPING= integration for systemd service units.
-# NOT in default features — pass --features systemd-notify for Linux release builds.
-systemd-notify = ["dep:sd-notify"]
 grpc = ["server", "oneshim-network/grpc"]
 # D13: Enable the local dashboard gRPC server (tonic-based, runs alongside
 # Axum REST on a separate port). Opt-in so default builds pay zero tonic
@@ -104,6 +101,9 @@ grpc-dashboard = ["oneshim-web/grpc-dashboard"]
 grpc-dashboard-external = ["oneshim-web/grpc-dashboard-external"]
 # D13-v2c: generate-external-cert subcommand — rcgen + JWT keypair generation.
 external-grpc-tools = ["oneshim-web/external-grpc-tools", "dep:rcgen", "dep:time"]
+# sd_notify(3) READY=/STOPPING= integration for systemd service units.
+# NOT in default features — pass --features systemd-notify for Linux release builds.
+systemd-notify = ["dep:sd-notify"]
 audio = ["dep:oneshim-audio"]
 stt = ["audio", "oneshim-audio/whisper"]
 cloud-stt = ["audio", "oneshim-audio/cloud-stt"]

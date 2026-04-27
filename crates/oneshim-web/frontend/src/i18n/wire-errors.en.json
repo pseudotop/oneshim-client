@@ -10,7 +10,7 @@
   "autostart.sd_notify_skipped": "systemd notification skipped",
   "autostart.service_migrated": "Autostart service file migrated to Type=notify",
   "autostart.service_migration_failed": "Autostart service file migration failed: {message}",
-  "autostart.service_migration_skipped": "Autostart service file migration skipped (customized file detected)",
+  "autostart.service_migration_skipped": "Autostart service file migration skipped (file appears customized)",
   "config.invalid": "Invalid configuration: {message}",
   "config.missing": "Missing required configuration: {message}",
   "config.out_of_range": "Configuration value out of range: {message}",

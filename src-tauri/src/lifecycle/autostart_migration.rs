@@ -32,10 +32,17 @@ pub fn run_startup_migration() {
     let existing = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(e) => {
-            tracing::warn!(
-                err.code = AutostartCode::ServiceMigrationSkipped.as_str(),
-                "Migration check skipped — failed to read service file: {e}"
-            );
+            if e.kind() == std::io::ErrorKind::NotFound {
+                tracing::debug!(
+                    err.code = AutostartCode::ServiceMigrationSkipped.as_str(),
+                    "Migration check skipped — service file vanished after exists() check (benign race): {e}"
+                );
+            } else {
+                tracing::warn!(
+                    err.code = AutostartCode::ServiceMigrationSkipped.as_str(),
+                    "Migration check skipped — failed to read service file: {e}"
+                );
+            }
             return;
         }
     };
@@ -72,7 +79,7 @@ pub fn run_startup_migration() {
             tracing::warn!(
                 err.code = AutostartCode::ServiceMigrationSkipped.as_str(),
                 path = %path.display(),
-                "Skipping autostart unit migration — file appears customized. Manual update required (see docs/guides/autostart.ko.md)"
+                "Skipping autostart unit migration — file appears customized OR ExecStart path differs from current binary location (symlink?). Manual update required (see docs/guides/autostart.ko.md)"
             );
         }
     }

@@ -10,7 +10,7 @@
   "autostart.sd_notify_skipped": "systemd notify 스킵됨",
   "autostart.service_migrated": "자동 시작 서비스 파일이 Type=notify로 마이그레이션됨",
   "autostart.service_migration_failed": "자동 시작 서비스 파일 마이그레이션 실패: {message}",
-  "autostart.service_migration_skipped": "자동 시작 서비스 파일 마이그레이션 스킵 (사용자 수정 감지)",
+  "autostart.service_migration_skipped": "자동 시작 서비스 파일 마이그레이션 스킵 (사용자 수정 추정)",
   "config.invalid": "설정 값이 올바르지 않습니다: {message}",
   "config.missing": "필수 설정이 누락되었습니다: {message}",
   "config.out_of_range": "설정 값이 허용 범위를 벗어났습니다: {message}",
