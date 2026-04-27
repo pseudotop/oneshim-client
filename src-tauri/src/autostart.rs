@@ -294,7 +294,7 @@ mod windows {
 }
 
 #[cfg(target_os = "linux")]
-mod linux {
+pub(crate) mod linux {
     use std::fs;
     use std::path::PathBuf;
     use std::process::Command;
