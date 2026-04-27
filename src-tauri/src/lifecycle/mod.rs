@@ -1,3 +1,5 @@
+pub mod sd_notify;
+
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
