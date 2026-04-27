@@ -10,5 +10,7 @@
 #[test]
 fn linux_autostart_smoke() {
     // Smoke: verifies the test harness runs on Linux with feature enabled.
-    assert!(cfg!(target_os = "linux"));
+    // No assertion: the file is `#![cfg(target_os = "linux")]` so reaching this
+    // point already proves the precondition. A literal `assert!(cfg!(...))`
+    // would trip clippy::assertions_on_constants under -D warnings.
 }
