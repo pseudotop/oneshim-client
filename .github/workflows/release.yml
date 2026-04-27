@@ -1151,6 +1151,13 @@ jobs:
           print(f"Signed artifacts: {signed}")
           PY
 
+      - name: Run signed release reliability smoke
+        env:
+          ONESHIM_SMOKE_LOG_DIR: ${{ runner.temp }}/oneshim-signed-release-smoke
+        run: |
+          chmod +x ./scripts/release-reliability-smoke.sh
+          ./scripts/release-reliability-smoke.sh --assets-dir dist --asset-name oneshim-linux-x64.tar.gz --skip-updater-tests --require-signature
+
       - name: Attest release artifacts provenance
         uses: actions/attest-build-provenance@v4
         with:
