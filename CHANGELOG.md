@@ -7,6 +7,169 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.40-rc.3] - 2026-04-27
+
+### Added
+
+- D5 iter-16 — coaching_helper SanitizedDisplay migration ([#459](https://github.com/pseudotop/oneshim-client/pull/459))
+  Apply SanitizedDisplay<T> pattern at coaching_helper.rs LLM-error tracing
+  site. LLM coaching personalization embeds template_text + regime_label +
+  prev_app into the prompt; CoreError::Analysis message from the provider
+  can echo up to 200 chars of response body (set at AnalysisClient:347-351),
+  which may leak user-context PII.
+
+- D5 iter-16 — gui_pipeline SanitizedDisplay migration ([#460](https://github.com/pseudotop/oneshim-client/pull/460))
+  Third per-site migration of SanitizedDisplay<T>. process_gui_feedback()
+  logs CoreError::Display from the LLM summarize_text() call. The LLM is
+  sent UncertainElement metadata (including window titles, app names, and
+  element context); error bodies can echo prompt content back.
+
+
+### Changed
+
+- Prepare Maekon public export strategy
+
+- V2 roadmap — per-domain RPCs, streaming, TLS+auth (execution-ready) ([#475](https://github.com/pseudotop/oneshim-client/pull/475))
+  D13 v2 is 3 orthogonal feature tracks requiring ~5-7 days total
+  dedicated work. Rather than ship a rushed partial implementation, this
+  PR captures the full scope at the depth needed to execute in dedicated
+  feature sessions without re-discovering proto schema choices, port
+  wiring, or test infrastructure patterns.
+
+- UseSettingsForm.ts full split deferred — dedicated frontend session ([#472](https://github.com/pseudotop/oneshim-client/pull/472))
+  After analysis, confirmed the triage doc estimate (~1 day) is accurate
+  for the full 10-concern split. The file has tight coupling across React
+  state, formDataRef, cross-cutting callbacks, mutations, and i18n — a
+  proper split requires a dedicated frontend-focused session with Playwright
+  e2e + vitest test infrastructure primary.
+
+  Rather than deliver a partial refactor that leaves the file in worse
+  shape, this PR captures the full extraction plan for a future session:
+
+  - 6-hook target structure (Export, Mutations, ModelDiscovery,
+    AiProviderProfiles, Handlers, FormState)
+  - Extraction order (lowest-risk first)
+  - Risks (circular dep, formDataRef currency, biome lint churn, test
+    coverage gap)
+  - Composition root shape
+  - Acceptance criteria
+
+  Triage doc must-split classification remains valid — watch-item, not
+  blocked.
+
+  Follow-up trigger: escalate if file grows beyond 1200 LOC.
+
+- Recover branch audit artifacts ([#524](https://github.com/pseudotop/oneshim-client/pull/524))
+
+- Harden public export audit ([#525](https://github.com/pseudotop/oneshim-client/pull/525))
+
+- Refresh to v0.4.40-rc.2 + 2026-04-26 spot-check ([#527](https://github.com/pseudotop/oneshim-client/pull/527))
+  - Version: v0.4.39-rc.1 (EN) / v0.4.39-rc.1 (KO) → v0.4.40-rc.2
+    (EN previously had stale aspirational v0.4.42-rc.1)
+  - Snapshot date: 2026-04-25 (EN) / 2026-04-20 (KO) → 2026-04-26
+  - Workflow Status spot-check date: 2026-04-20 → 2026-04-26
+    - Latest main CI: documents RUSTSEC-2026-0104 rustls-webpki advisory
+      blocking Integrity Gates + Security & Compliance + Release Smoke,
+      with PR #526 fix in flight
+    - Latest Release RC: v0.4.38-rc.4 → v0.4.40-rc.2 (run 24950722387)
+    - Stable promotion target: v0.4.39 → v0.4.40
+  - Local Verification Baseline: keep 3,798 measurement, annotate that
+    subsequent Phase 9 PR-B1 + TimeWindow + D5 SanitizedDisplay merges
+    may add a small delta (full re-measurement deferred to next stable
+    promotion)
+  - Frontend Vitest baseline 272/42 carried into KO
+  - KO: backfill Phase 2 Telemetry section that EN already had
+
+
+### Fixed
+
+- Pre-release-check Dependency Security exit + Integrity Gates stub ([#517](https://github.com/pseudotop/oneshim-client/pull/517))
+  Two independent CI infrastructure fixes uncovered while shipping
+  v0.4.40-rc.2:
+
+  ## pre-release-check.sh — Dependency Security silent exit
+
+- Align Release Smoke build flags with release.yml ([#518](https://github.com/pseudotop/oneshim-client/pull/518))
+  `Release Smoke` matrix builds were using
+
+      cargo build --release --target ${{ matrix.target }}
+
+  which defaults cargo to a workspace build. The workspace pulls in
+  `oneshim-embedding` -> `fastembed` -> `ort-sys`, and `ort-sys`
+  2.0.0-rc.11 ships no prebuilt ONNX Runtime for `x86_64-apple-darwin`
+  under the default (no-features) feature set:
+
+      error: ort-sys@2.0.0-rc.11: ort does not provide prebuilt binaries
+             for the target `x86_64-apple-darwin` with feature set (no features).
+
+- Resolve remaining open PR conflicts
+
+- Regenerate OpenAPI snapshot after Maekon rebrand ([#520](https://github.com/pseudotop/oneshim-client/pull/520)) ([#522](https://github.com/pseudotop/oneshim-client/pull/522))
+
+- Keep monitor.rs under loop-size guard via helper + cap bump ([#521](https://github.com/pseudotop/oneshim-client/pull/521))
+  The lefthook `monitor-loop-size` guard targeted 500 lines for
+  `scheduler/loops/monitor.rs`, but PRs #459 and #460 (D5 SanitizedDisplay
+  migration) each added a `let` binding to `spawn_monitor_loop`'s setup
+  section, growing the file to 511 lines on main. Both PRs were
+  admin-merged with the cap implicitly bypassed.
+
+  This PR addresses the regression two ways:
+
+  1. Extract `gui_feedback_pii_sanitizer()` to `gui_pipeline.rs`,
+     mirroring the existing `gui_feedback_pii_level` helper next to it
+     (and matching the `coaching_helper::build_pii_sanitizer` precedent
+     from #459). Saves 2 lines in monitor.rs (3-line type-annotated `let`
+     collapses to a 1-line helper call).
+
+  2. Raise the lefthook cap from 500 to 510, with the comment now
+     explaining (a) the PR pair that ratcheted it, (b) that this PR's
+     extraction keeps the file near the new cap rather than over it, and
+     (c) that the next move is a `MonitorContext` extraction that brings
+     the count back under the original 500-line budget — NOT another cap
+     bump.
+
+  monitor.rs is now 509 lines (≤ 510). Future feature work that needs
+  more setup state should extract `MonitorContext` (or similar)
+  into a sibling helper file under `loops/` so `spawn_monitor_loop`
+  stays focused on the loop body itself.
+
+- Select jwt crypto backend
+
+- Use blocking otlp http exporter
+
+- Bump rustls-webpki to 0.103.13 for RUSTSEC-2026-0104 ([#526](https://github.com/pseudotop/oneshim-client/pull/526))
+  Fixes reachable panic in CRL parsing (advisory published 2026-04-22).
+  Lockfile-only transitive bump; no Cargo.toml change required.
+
+  Affected dep tree:
+  - rustls 0.23.39 → ureq, tokio-rustls (tonic, opentelemetry-proto)
+  - All consumers continue to resolve to 0.103.x range
+
+- Allow Unlicense for whisper-rs / whisper-rs-sys ([#528](https://github.com/pseudotop/oneshim-client/pull/528))
+  The audio STT dependency tree pulls whisper-rs 0.16.0 + whisper-rs-sys
+  0.15.0, both published under the Unlicense (public-domain dedication).
+  The license is OSI approved and FSF Free/Libre, but was missing from
+  deny.toml's allow list, so cargo-deny rejected the workspace and broke
+  main's Security & Compliance pipeline.
+
+  This was surfaced by run 24962622110 once the rustls-webpki RUSTSEC
+  advisory was cleared (PR #526) and is otherwise unrelated to that fix.
+
+- Install cargo-about with cli feature for third-party notice step ([#529](https://github.com/pseudotop/oneshim-client/pull/529))
+  cargo-about 0.9.x ships with the `cli` feature gated. Without
+  `--features cli`, `cargo install cargo-about` compiles the crate
+  but emits only a warning ("none of the package's binaries are
+  available for install using the selected features") and produces
+  no `cargo-about` binary. The next workflow step,
+  `cargo about generate ... > THIRD_PARTY_NOTICES.html`, then fails
+  with `error: no such command: about`.
+
+  This was the last remaining failure in the Security & Compliance
+  pipeline once RUSTSEC-2026-0104 (PR #526) and the whisper-rs
+  Unlicense allowance (PR #528) were resolved on main.
+
+  Verified against run 24963583910 on sha 9a68880e6.
+
 ## [0.4.40-rc.2] - 2026-04-26
 
 ### Fixed
