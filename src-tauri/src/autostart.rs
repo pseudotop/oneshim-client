@@ -335,10 +335,12 @@ mod linux {
              After=graphical-session.target\n\
              \n\
              [Service]\n\
-             Type=simple\n\
+             Type=notify\n\
+             NotifyAccess=main\n\
              ExecStart={program_path}\n\
              Restart=on-failure\n\
              RestartSec=5\n\
+             TimeoutStartSec=30\n\
              Environment=DISPLAY=:0\n\
              \n\
              [Install]\n\
@@ -575,7 +577,19 @@ mod tests {
             assert!(service.contains("[Service]"));
             assert!(service.contains("[Install]"));
             assert!(service.contains("ExecStart=/usr/bin/oneshim"));
-            assert!(service.contains("Type=simple"));
+            assert!(
+                service.contains("Type=notify"),
+                "service file must use Type=notify"
+            );
+            assert!(
+                service.contains("NotifyAccess=main"),
+                "service file must include NotifyAccess=main"
+            );
+            assert!(
+                service.contains("TimeoutStartSec=30"),
+                "service file must include TimeoutStartSec=30"
+            );
+            assert!(service.contains("Restart=on-failure"));
             assert!(service.contains("WantedBy=default.target"));
         }
 
