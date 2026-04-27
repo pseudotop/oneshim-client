@@ -40,18 +40,37 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 ## 남은 운영 TODO
 
 아래 항목은 Rust 클라이언트 코드베이스와 독립적으로 처리할 수 있으며, 별도
-source change 없이 진행 가능합니다.
+source change 없이 진행 가능합니다. 현재 client 정리를 막지 않도록 이 문서에
+따로 추적하며, 이 playbook은 public export 대상에서 제외됩니다.
 
-- **Landing 배포 연결**: landing 구현 대상을 정한 뒤 `maekon.dev`를 공개
-  landing host에 연결합니다. `maekon.dev`를 canonical host로 유지하고,
-  `www.maekon.dev`는 apex host로 redirect합니다. Origin 인증서가 정상 제공되면
-  Cloudflare SSL/TLS 모드는 Full (strict)로 올립니다.
-- **Transactional email**: Resend outbound는 `mail.maekon.dev`에 구성하고,
-  SPF/DKIM/DMARC 레코드는 Cloudflare에 DNS-only로 추가합니다.
-  자동 발송 주소는 `noreply@mail.maekon.dev`,
-  `releases@mail.maekon.dev`를 예약합니다. 사람이 보는 연락처인
-  `support@maekon.dev`, `security@maekon.dev`는 Cloudflare Email Routing에
-  유지합니다.
+- **Landing 배포 연결, 보류**: 아직 landing 구현체가 없으므로
+  `maekon.dev`를 임시 placeholder 웹 호스트에 연결하지 않습니다. DNS 준비만
+  유지하고, landing 표면을 확정할 때까지 apex 웹 타깃은 비워둡니다. 준비되면
+  `maekon.dev`를 공개 landing host에 연결하고, `www.maekon.dev`는 apex host로
+  redirect하며, origin 인증서가 정상 제공된 뒤 Cloudflare SSL/TLS 모드를 Full
+  (strict)로 올립니다.
+- **사람이 보는 연락처, 공개 준비에는 충분**: `support@maekon.dev`와
+  `security@maekon.dev`는 Cloudflare Email Routing에 유지합니다. catch-all은
+  비활성 상태를 유지합니다. 이 상태만으로도 README/SECURITY/GitHub security
+  contact 준비에는 충분하며, transactional product email이 없어도 공개 준비를
+  막지 않습니다.
+- **Transactional email, 보류**: 지금은 Resend outbound를 설정하지 않습니다.
+  이유는 이 결정 시점의 Resend 공개 pricing이 Free plan은 1 domain, Pro plan은
+  10 domains/$20/mo로 표시하고 있고, 현재 Resend Free team의 custom domain 1개
+  한도를 `thengd.com`이 이미 사용 중이며, dashboard에서 새 team 생성은 paid
+  feature이고, 도메인 한도 우회를 목적으로 새 계정을 만드는 방식은 Resend
+  acceptable-use의 quota circumvention 금지 취지와 충돌하기 때문입니다. 또한
+  Maekon은 public repository bootstrap 단계에서 아직 자동 발신 메일을 필요로 하지
+  않습니다. 지금 설정하면 실제 product workflow 없이 provider credential, DNS
+  상태, deliverability 관리 책임만 먼저 생기므로 보류합니다. 실제 자동 발신이
+  필요해질 때 기존 Resend team을 Pro로 올려 `mail.maekon.dev`를 추가하거나,
+  `thengd.com`이 Resend를 더 이상 쓰지 않을 때 도메인을 교체하거나, 다른 outbound
+  provider를 비교해 선택합니다. Resend를 선택하면 `noreply@mail.maekon.dev`,
+  `releases@mail.maekon.dev`를 예약하고, SPF/DKIM/DMARC 레코드를 Cloudflare에
+  추가하며, `mail.maekon.dev`로 제한된 Sending-access API key를 발급합니다.
+  참고: [Resend pricing](https://resend.com/pricing),
+  [Resend acceptable use](https://resend.com/legal/acceptable-use),
+  [Resend API key permissions](https://resend.com/docs/dashboard/api-keys/introduction).
 - **Inbound automation, 추후**: 이메일 답장을 앱 이벤트로 처리해야 할 때만
   `reply.maekon.dev`를 Resend inbound webhook용으로 추가합니다.
 
