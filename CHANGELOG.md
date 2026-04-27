@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.41-rc.1] - 2026-04-27
+
+### Added
+
+- Phase 9 PR-B2 Linux deep robustness (Type=notify + migration + env detection) ([#533](https://github.com/pseudotop/oneshim-client/pull/533))
+  * chore(autostart): add sd-notify v0.4 dep with systemd-notify feature flag (NOT default)
+
+  * feat(autostart): add 4 PR-B2 wire codes + en/ko translations (49→53)
+
+  Adds AutostartCode variants SdNotifySkipped, ServiceMigrated,
+  ServiceMigrationFailed, ServiceMigrationSkipped with corresponding
+  en+ko i18n translations and Vitest count assertions bumped 49→53.
+
+  Combined into a single atomic commit per the wire-error-i18n-coverage
+  lefthook hook (lefthook.yml:203) which requires snapshot+i18n parity.
+
+  * style(autostart): drop transient PR-B2 banner + mixed-language docstring (M1+M2)
+
 ## [0.4.40] - 2026-04-27
 
 ### Added
