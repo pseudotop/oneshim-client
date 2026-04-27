@@ -667,4 +667,72 @@ mod tests {
         let _ = disable_autostart();
         let _ = is_autostart_enabled();
     }
+
+    #[cfg(target_os = "linux")]
+    mod linux_capability_tests {
+        use super::*;
+        use serial_test::serial;
+
+        fn clear_env() {
+            std::env::remove_var("SNAP");
+            std::env::remove_var("FLATPAK_ID");
+        }
+
+        fn restore_display(prev_display: Option<String>, prev_wayland: Option<String>) {
+            if let Some(v) = prev_display {
+                std::env::set_var("DISPLAY", v);
+            }
+            if let Some(v) = prev_wayland {
+                std::env::set_var("WAYLAND_DISPLAY", v);
+            }
+        }
+
+        #[test]
+        #[serial]
+        fn detect_capabilities_returns_snap_sandbox_when_snap_set() {
+            clear_env();
+            std::env::set_var("SNAP", "/snap/oneshim/current");
+            let caps = detect_capabilities();
+            clear_env();
+            assert!(!caps.supported);
+            assert_eq!(caps.environment, EnvironmentKind::LinuxSnapSandbox);
+            assert_eq!(
+                caps.unsupported_reason,
+                Some(UnsupportedReason::SnapSandbox)
+            );
+        }
+
+        #[test]
+        #[serial]
+        fn detect_capabilities_returns_flatpak_sandbox_when_flatpak_id_set() {
+            clear_env();
+            std::env::set_var("FLATPAK_ID", "com.maekon.client");
+            let caps = detect_capabilities();
+            clear_env();
+            assert!(!caps.supported);
+            assert_eq!(caps.environment, EnvironmentKind::LinuxFlatpakSandbox);
+            assert_eq!(
+                caps.unsupported_reason,
+                Some(UnsupportedReason::FlatpakSandbox)
+            );
+        }
+
+        #[test]
+        #[serial]
+        fn detect_capabilities_returns_headless_when_no_display() {
+            clear_env();
+            let prev_display = std::env::var("DISPLAY").ok();
+            let prev_wayland = std::env::var("WAYLAND_DISPLAY").ok();
+            std::env::remove_var("DISPLAY");
+            std::env::remove_var("WAYLAND_DISPLAY");
+            let caps = detect_capabilities();
+            restore_display(prev_display, prev_wayland);
+            assert!(!caps.supported);
+            assert_eq!(caps.environment, EnvironmentKind::LinuxHeadless);
+            assert_eq!(
+                caps.unsupported_reason,
+                Some(UnsupportedReason::HeadlessSession)
+            );
+        }
+    }
 }

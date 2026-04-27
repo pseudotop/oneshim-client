@@ -418,6 +418,54 @@ jobs:
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test -p oneshim-app --features telemetry -- --test-threads=1
 
+  linux-autostart-unit:
+    name: Linux Autostart Unit Tests
+    needs: [changes, check]
+    if: >
+      always() &&
+      (needs.check.result == 'success' || needs.check.result == 'skipped') &&
+      (github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install libsystemd-dev (for sd-notify on Linux)
+        run: sudo apt-get update && sudo apt-get install -y libsystemd-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: ./.github/actions/rust-cache
+        with:
+          key: ci-linux-autostart-unit
+
+      - name: Create frontend dist stub for Tauri generate_context!()
+        run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
+
+      - name: Create sandbox worker stub for Tauri externalBin
+        run: |
+          TRIPLE=$(rustc -vV | awk '/^host:/ { print $2 }')
+          touch "src-tauri/oneshim-sandbox-worker-${TRIPLE}"
+
+      - name: Run linux_autostart_unit smoke test
+        run: cargo test -p oneshim-app --features systemd-notify --test linux_autostart_unit
+
+      - name: Run autostart inline linux_tests
+        run: cargo test -p oneshim-app --features systemd-notify --bin oneshim autostart::tests::linux_tests
+
+      - name: Run autostart inline linux_capability_tests
+        run: cargo test -p oneshim-app --features systemd-notify --bin oneshim autostart::tests::linux_capability_tests
+
+      - name: Run migration_hashes tests
+        run: cargo test -p oneshim-app --features systemd-notify --bin oneshim lifecycle::migration_hashes::tests
+
+      - name: Run sd_notify tests
+        run: cargo test -p oneshim-app --features systemd-notify --bin oneshim lifecycle::sd_notify::tests
+
   build:
     name: Build (${{ matrix.target }})
     needs: [changes, test]
