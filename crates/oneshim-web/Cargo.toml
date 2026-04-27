@@ -92,7 +92,7 @@ http-body-util = { workspace = true, optional = true }
 
 [features]
 default = []
-# D13: Enable gRPC dashboard server on a separate port (10091 by default).
+# D13: Enable gRPC dashboard server on a separate port (10080 by default).
 # When disabled, the crate has zero gRPC-related code + zero tonic dep cost.
 grpc-dashboard = [
   "dep:tonic",

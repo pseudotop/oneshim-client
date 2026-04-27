@@ -218,7 +218,14 @@ fn default_web_port() -> u16 {
 ///
 /// Must match `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT`. `oneshim-core`
 /// cannot depend on `oneshim-web`, so the local unit test pins the contract.
-pub const DEFAULT_GRPC_DASHBOARD_PORT: u16 = 10091;
+/// Kept in the 10080-10089 band so it does not overlap the HTTP dashboard's
+/// 10090-10099 fallback range.
+pub const DEFAULT_GRPC_DASHBOARD_PORT: u16 = 10080;
+
+/// Previous default, kept only so ConfigManager can migrate persisted defaults.
+pub const LEGACY_GRPC_DASHBOARD_PORT: u16 = 10091;
+
+const _: () = assert!(DEFAULT_GRPC_DASHBOARD_PORT < DEFAULT_WEB_PORT);
 
 fn default_grpc_dashboard_port() -> u16 {
     DEFAULT_GRPC_DASHBOARD_PORT
@@ -267,8 +274,8 @@ mod tests {
     }
 
     #[test]
-    fn default_grpc_dashboard_port_is_10091() {
-        assert_eq!(DEFAULT_GRPC_DASHBOARD_PORT, 10091);
+    fn default_grpc_dashboard_port_is_in_separate_10080_range() {
+        assert_eq!(DEFAULT_GRPC_DASHBOARD_PORT, 10080);
     }
 
     #[test]

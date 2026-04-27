@@ -801,7 +801,7 @@ async fn grpc_dashboard_subscribe_metrics_rejects_dns_rebound_authority() {
     });
     // Inject a non-allowlisted host (simulates DNS rebinding).
     req.metadata_mut()
-        .insert("host", "evil.example.com:10091".parse().unwrap());
+        .insert("host", "evil.example.com:10080".parse().unwrap());
     let err = client
         .subscribe_metrics(req)
         .await

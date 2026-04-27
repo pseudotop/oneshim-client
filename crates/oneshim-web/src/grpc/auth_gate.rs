@@ -98,7 +98,7 @@ fn strip_prefix_ignore_ascii_case<'a>(s: &'a str, prefix: &str) -> Option<&'a st
 /// Used as a tower-layer guard before the gRPC handler runs; protects against
 /// DNS-rebinding attacks that route attacker-controlled hostnames to 127.0.0.1.
 ///
-/// IPv6-bracket-aware: `[::1]:10091` → extracts `"::1"` correctly. See spec
+/// IPv6-bracket-aware: `[::1]:10080` -> extracts `"::1"` correctly. See spec
 /// IMP-V2-A + the iter-2 finding that naive `split(':')` breaks bracketed
 /// IPv6.
 pub fn validate_authority(authority: Option<&str>) -> Result<(), Status> {
@@ -255,12 +255,12 @@ mod tests {
     fn validate_authority_allowlist_match_cases() {
         for a in &[
             "localhost",
-            "localhost:10091",
+            "localhost:10080",
             "127.0.0.1",
-            "127.0.0.1:10091",
-            "[::1]:10091",
-            "[::ffff:127.0.0.1]:10091",
-            "LOCALHOST:10091", // case-insensitive
+            "127.0.0.1:10080",
+            "[::1]:10080",
+            "[::ffff:127.0.0.1]:10080",
+            "LOCALHOST:10080", // case-insensitive
         ] {
             assert!(
                 validate_authority(Some(a)).is_ok(),
@@ -272,11 +272,11 @@ mod tests {
     #[test]
     fn validate_authority_rejection_cases() {
         for a in &[
-            "example.com:10091",
-            "0.0.0.0:10091",
-            "[::]:10091",
+            "example.com:10080",
+            "0.0.0.0:10080",
+            "[::]:10080",
             "",
-            "[fe80::1]:10091",
+            "[fe80::1]:10080",
         ] {
             let result = validate_authority(Some(a));
             assert!(result.is_err(), "authority should be rejected: {a}");

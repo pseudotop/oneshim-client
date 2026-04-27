@@ -77,7 +77,7 @@ mod tests {
             Arc::new(SqliteStorage::open_in_memory(30).expect("sqlite")) as Arc<dyn WebStorage>;
         let (event_tx, _) = broadcast::channel(16);
         let cfg = GrpcSpawnConfig {
-            port: 10091,
+            port: 10080,
             storage,
             system_monitor: MockSystemMonitor::new(30.0, 4096, 16384),
             event_tx,

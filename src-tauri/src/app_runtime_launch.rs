@@ -724,9 +724,10 @@ impl AppRuntimeLaunchBuilder {
             // priority (highest first):
             //   1. ONESHIM_DASHBOARD_GRPC_PORT env var (ops/CI override)
             //   2. `config.web.grpc_port` (user config)
-            //   3. `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT` (10091)
-            // If the bind fails (port in use, etc.), the server task logs a
-            // warn and exits — REST continues normally.
+            //   3. `oneshim_web::grpc::DEFAULT_GRPC_DASHBOARD_PORT` (10080)
+            // If the default/configured port is busy, oneshim-web tries the
+            // next loopback port in its ten-port band. If all candidates fail,
+            // the server task logs a warn and exits — REST continues normally.
             //
             // D13-v2b: pass a GrpcSpawnConfig so streaming RPCs receive
             // SystemMonitor + event_tx + auth token + load_policy + kill switch + cap.
