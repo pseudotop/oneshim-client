@@ -84,16 +84,14 @@ mod tests {
         );
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[tokio::test]
-    async fn autostart_capabilities_returns_supported_in_b1_skeleton() {
+    async fn autostart_capabilities_returns_supported_on_macos_windows() {
         let result = autostart_capabilities().await.unwrap();
-        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         assert!(
             result.supported,
-            "PR-B1 skeleton must return supported=true on supported platforms"
+            "macOS/Windows must return supported=true (Linux is environment-dependent — see autostart::tests::linux_capability_tests)"
         );
-        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-        assert!(!result.supported);
     }
 
     /// Integration test: enable → is_enabled = true → disable → is_enabled = false.

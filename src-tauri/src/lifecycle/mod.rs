@@ -1,3 +1,7 @@
+pub mod autostart_migration;
+pub mod migration_hashes;
+pub mod sd_notify;
+
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 

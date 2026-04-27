@@ -25,11 +25,12 @@ function readWireCodeRegistry(): string[] {
 describe('wire-code i18n coverage', () => {
   const registry = readWireCodeRegistry()
 
-  it('snapshot contains the expected 49 codes', () => {
+  it('snapshot contains the expected 53 codes', () => {
     // 41 → 42 with D7 addition of service.circuit_open (2026-04-20).
     // 42 → 47 with Phase 9 PR-B1 addition of 5 autostart.* codes (2026-04-25).
     // 47 → 49 with TimeWindow primitive addition of 2 time_window.* codes (2026-04-26).
-    expect(registry).toHaveLength(49)
+    // 49 → 53 with Phase 9 PR-B2 addition of 4 autostart.* codes (2026-04-27).
+    expect(registry).toHaveLength(53)
   })
 
   it.each(['en', 'ko'] as const)('every wire code has a %s translation', (locale) => {
@@ -119,11 +120,12 @@ describe('hasTranslation', () => {
 })
 
 describe('translatedCodes', () => {
-  it('returns all 49 codes for en', () => {
+  it('returns all 53 codes for en', () => {
     // 41 → 42 with D7 addition of service.circuit_open (2026-04-20).
     // 42 → 47 with Phase 9 PR-B1 addition of 5 autostart.* codes (2026-04-25).
     // 47 → 49 with TimeWindow primitive addition of 2 time_window.* codes (2026-04-26).
-    expect(translatedCodes('en')).toHaveLength(49)
+    // 49 → 53 with Phase 9 PR-B2 addition of 4 autostart.* codes (2026-04-27).
+    expect(translatedCodes('en')).toHaveLength(53)
   })
 
   it('returns a frozen readonly array', () => {
