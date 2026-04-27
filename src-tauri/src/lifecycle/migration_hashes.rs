@@ -13,10 +13,18 @@ use sha2::{Digest, Sha256};
 ///
 /// Hashes are computed by `compute_hash(canonicalize(template, binary_path))`
 /// where binary_path is the resolved current_exe() path.
-pub const KNOWN_PRIOR_HASHES: &[(&str, &str)] = &[(
-    "9b1f5d384dc9246228a5601ac67de4127c7f5fdf9a24b2f447c78d1bb671047f",
-    "PR-B1 Type=simple",
-)];
+pub const KNOWN_PRIOR_HASHES: &[(&str, &str)] = &[
+    // PR-B1 Type=simple (Maekon brand, v0.4.40-rc.3+ and v0.4.40 stable)
+    (
+        "9b1f5d384dc9246228a5601ac67de4127c7f5fdf9a24b2f447c78d1bb671047f",
+        "PR-B1 Type=simple",
+    ),
+    // PR-B1 Type=simple (pre-rebrand ONESHIM brand, v0.4.40-rc.1 and v0.4.40-rc.2)
+    (
+        "beebd724df50096241ffe040d3fc044dc93493ba3ae265302bc2c3a3215c59ca",
+        "PR-B1 Type=simple (pre-rebrand)",
+    ),
+];
 
 /// Canonicalize the service file before hashing.
 ///

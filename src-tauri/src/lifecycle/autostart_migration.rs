@@ -42,7 +42,13 @@ pub fn run_startup_migration() {
 
     let binary_path = match std::env::current_exe() {
         Ok(p) => p.to_string_lossy().to_string(),
-        Err(_) => return, // can't canonicalize without binary path
+        Err(e) => {
+            tracing::debug!(
+                err.code = AutostartCode::ServiceMigrationSkipped.as_str(),
+                "Migration check skipped — current_exe() failed: {e}"
+            );
+            return;
+        }
     };
 
     match matches_known_template(&existing, &binary_path) {
@@ -57,7 +63,7 @@ pub fn run_startup_migration() {
                 return;
             }
             tracing::info!(
-                event.code = AutostartCode::ServiceMigrated.as_str(),
+                err.code = AutostartCode::ServiceMigrated.as_str(),
                 from = %label,
                 "Migrated systemd unit file from {label} to Type=notify; takes effect next login"
             );
