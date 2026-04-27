@@ -10,6 +10,7 @@ use tracing::{debug, info, warn};
 const CONFIG_FILE_NAME: &str = "config.json";
 
 const APP_DIR_NAME: &str = "oneshim";
+const APP_FLAVOR_ENV: &str = "ONESHIM_APP_FLAVOR";
 
 /// Configuration store with a `watch`-backed broadcast bus.
 ///
@@ -173,10 +174,34 @@ impl ConfigManager {
         Ok(config_dir.join(CONFIG_FILE_NAME))
     }
 
+    fn app_dir_name() -> String {
+        let flavor = std::env::var(APP_FLAVOR_ENV).ok();
+        Self::app_dir_name_for_flavor(flavor.as_deref())
+    }
+
+    fn app_dir_name_for_flavor(flavor: Option<&str>) -> String {
+        let Some(flavor) = flavor.map(str::trim).filter(|s| !s.is_empty()) else {
+            return APP_DIR_NAME.to_string();
+        };
+
+        let suffix: String = flavor
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(*c, '-' | '_'))
+            .collect();
+
+        if suffix.is_empty() {
+            APP_DIR_NAME.to_string()
+        } else {
+            format!("{APP_DIR_NAME}-{suffix}")
+        }
+    }
+
     pub fn config_dir() -> Result<PathBuf, CoreError> {
+        let app_dir_name = Self::app_dir_name();
+
         #[cfg(target_os = "macos")]
         {
-            // macOS: ~/Library/Application Support/oneshim/
+            // macOS: ~/Library/Application Support/{app_dir_name}/
             let home = std::env::var("HOME").map_err(|_| CoreError::Config {
                 code: crate::error_codes::ConfigCode::Missing,
                 message: "HOME environment variable not found".to_string(),
@@ -184,56 +209,58 @@ impl ConfigManager {
             Ok(PathBuf::from(home)
                 .join("Library")
                 .join("Application Support")
-                .join(APP_DIR_NAME))
+                .join(app_dir_name))
         }
 
         #[cfg(target_os = "windows")]
         {
-            // Windows: %APPDATA%\oneshim\
+            // Windows: %APPDATA%\{app_dir_name}\
             let appdata = std::env::var("APPDATA").map_err(|_| CoreError::Config {
                 code: crate::error_codes::ConfigCode::Missing,
                 message: "APPDATA environment variable not found".to_string(),
             })?;
-            Ok(PathBuf::from(appdata).join(APP_DIR_NAME))
+            Ok(PathBuf::from(appdata).join(app_dir_name))
         }
 
         #[cfg(target_os = "linux")]
         {
-            // Linux: ~/.config/oneshim/
+            // Linux: ~/.config/{app_dir_name}/
             let home = std::env::var("HOME").map_err(|_| CoreError::Config {
                 code: crate::error_codes::ConfigCode::Missing,
                 message: "HOME environment variable not found".to_string(),
             })?;
-            Ok(PathBuf::from(home).join(".config").join(APP_DIR_NAME))
+            Ok(PathBuf::from(home).join(".config").join(app_dir_name))
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
             tracing::warn!("Unsupported platform; using current directory as config base");
-            Ok(PathBuf::from(".").join(APP_DIR_NAME))
+            Ok(PathBuf::from(".").join(app_dir_name))
         }
     }
 
     pub fn data_dir() -> Result<PathBuf, CoreError> {
         #[cfg(target_os = "macos")]
         {
-            // macOS: ~/Library/Application Support/oneshim/data/
+            // macOS: ~/Library/Application Support/{app_dir_name}/data/
             Self::config_dir().map(|p| p.join("data"))
         }
 
         #[cfg(target_os = "windows")]
         {
-            // Windows: %LOCALAPPDATA%\oneshim\data\
+            let app_dir_name = Self::app_dir_name();
+            // Windows: %LOCALAPPDATA%\{app_dir_name}\data\
             let local_appdata = std::env::var("LOCALAPPDATA").map_err(|_| CoreError::Config {
                 code: crate::error_codes::ConfigCode::Missing,
                 message: "LOCALAPPDATA environment variable not found".to_string(),
             })?;
-            Ok(PathBuf::from(local_appdata).join(APP_DIR_NAME).join("data"))
+            Ok(PathBuf::from(local_appdata).join(app_dir_name).join("data"))
         }
 
         #[cfg(target_os = "linux")]
         {
-            // Linux: ~/.local/share/oneshim/
+            let app_dir_name = Self::app_dir_name();
+            // Linux: ~/.local/share/{app_dir_name}/
             let home = std::env::var("HOME").map_err(|_| CoreError::Config {
                 code: crate::error_codes::ConfigCode::Missing,
                 message: "HOME environment variable not found".to_string(),
@@ -241,12 +268,13 @@ impl ConfigManager {
             Ok(PathBuf::from(home)
                 .join(".local")
                 .join("share")
-                .join(APP_DIR_NAME))
+                .join(app_dir_name))
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
-            Ok(PathBuf::from(".").join(APP_DIR_NAME).join("data"))
+            let app_dir_name = Self::app_dir_name();
+            Ok(PathBuf::from(".").join(app_dir_name).join("data"))
         }
     }
 
@@ -283,7 +311,21 @@ impl ConfigManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::sync::{Mutex as StdMutex, OnceLock};
     use tempfile::TempDir;
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| StdMutex::new(())).lock().unwrap()
+    }
+
+    fn restore_env_var(key: &str, original: Option<OsString>) {
+        match original {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+    }
 
     #[test]
     fn create_and_load_config() {
@@ -342,6 +384,62 @@ mod tests {
 
         let data_dir = ConfigManager::data_dir();
         assert!(data_dir.is_ok());
+    }
+
+    #[test]
+    fn app_flavor_suffixes_default_directories() {
+        let _guard = env_lock();
+        let temp_dir = TempDir::new().unwrap();
+        let original_home = std::env::var_os("HOME");
+        let original_appdata = std::env::var_os("APPDATA");
+        let original_local_appdata = std::env::var_os("LOCALAPPDATA");
+        let original_flavor = std::env::var_os("ONESHIM_APP_FLAVOR");
+
+        std::env::set_var("HOME", temp_dir.path());
+        std::env::set_var("APPDATA", temp_dir.path());
+        std::env::set_var("LOCALAPPDATA", temp_dir.path());
+        std::env::set_var("ONESHIM_APP_FLAVOR", "dev");
+
+        let config_dir = ConfigManager::config_dir().unwrap();
+        let data_dir = ConfigManager::data_dir().unwrap();
+
+        restore_env_var("ONESHIM_APP_FLAVOR", original_flavor);
+        restore_env_var("LOCALAPPDATA", original_local_appdata);
+        restore_env_var("APPDATA", original_appdata);
+        restore_env_var("HOME", original_home);
+
+        assert_eq!(
+            config_dir.file_name().and_then(|name| name.to_str()),
+            Some("oneshim-dev"),
+            "config dir should be separated by app flavor: {}",
+            config_dir.display()
+        );
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        assert!(
+            data_dir
+                .parent()
+                .and_then(|path| path.file_name())
+                .and_then(|name| name.to_str())
+                == Some("oneshim-dev"),
+            "data dir should be separated by app flavor: {}",
+            data_dir.display()
+        );
+
+        #[cfg(target_os = "linux")]
+        assert_eq!(
+            data_dir.file_name().and_then(|name| name.to_str()),
+            Some("oneshim-dev"),
+            "data dir should be separated by app flavor: {}",
+            data_dir.display()
+        );
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        assert!(
+            data_dir.ends_with(std::path::Path::new("oneshim-dev").join("data")),
+            "data dir should be separated by app flavor: {}",
+            data_dir.display()
+        );
     }
 
     #[test]

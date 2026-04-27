@@ -266,7 +266,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                     #[cfg(target_os = "macos")]
                     if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>()
                     {
-                        if new_visible {
+                        if new_visible && !crate::app_runtime_launch::cua_safe_mode_enabled() {
                             border.0.show();
                         } else {
                             border.0.hide();

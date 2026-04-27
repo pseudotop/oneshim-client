@@ -103,6 +103,16 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
+fn configure_runtime_flavor() {
+    #[cfg(debug_assertions)]
+    {
+        // Keep local debug clients from opening the release install's data directory.
+        if std::env::var_os("ONESHIM_APP_FLAVOR").is_none() {
+            std::env::set_var("ONESHIM_APP_FLAVOR", "dev");
+        }
+    }
+}
+
 /// Wrapper for `tracing_appender::non_blocking::WorkerGuard`.
 ///
 /// Stored as Tauri managed state so it is dropped (and flushed) when the
@@ -113,6 +123,8 @@ use tracing_subscriber::EnvFilter;
 pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
 
 fn main() {
+    configure_runtime_flavor();
+
     // D13 Task 13: `generate-external-cert` CLI subcommand — dispatched BEFORE
     // any Tauri initialization so we never spawn the webview runtime for
     // pure-utility invocations. Tauri itself does not parse CLI args for

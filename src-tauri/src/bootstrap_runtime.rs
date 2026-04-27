@@ -1,5 +1,4 @@
 use anyhow::Result;
-use directories::ProjectDirs;
 use oneshim_api_contracts::integration::IntegrationOutboundRuntimeStatus;
 use oneshim_core::config::AppConfig;
 use oneshim_core::config_manager::ConfigManager;
@@ -160,8 +159,9 @@ fn resolve_db_path(data_dir: Option<&Path>) -> PathBuf {
     data_dir
         .map(|directory| directory.join("oneshim.db"))
         .or_else(|| {
-            ProjectDirs::from("com", "oneshim", "agent")
-                .map(|project| project.data_dir().join("oneshim.db"))
+            ConfigManager::data_dir()
+                .ok()
+                .map(|directory| directory.join("oneshim.db"))
         })
         .unwrap_or_else(|| PathBuf::from("./oneshim.db"))
 }
@@ -189,6 +189,20 @@ pub(crate) fn spawn_background_runtime() -> Result<Arc<ManagedBackgroundRuntime>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::sync::{Mutex as StdMutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| StdMutex::new(())).lock().unwrap()
+    }
+
+    fn restore_env_var(key: &str, original: Option<OsString>) {
+        match original {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+    }
 
     #[test]
     fn resolve_db_path_default() {
@@ -200,6 +214,38 @@ mod tests {
     fn resolve_db_path_custom() {
         let path = resolve_db_path(Some(Path::new("/tmp/test_data")));
         assert_eq!(path, PathBuf::from("/tmp/test_data/oneshim.db"));
+    }
+
+    #[test]
+    fn resolve_db_path_uses_app_flavored_data_dir() {
+        let _guard = env_lock();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let original_home = std::env::var_os("HOME");
+        let original_appdata = std::env::var_os("APPDATA");
+        let original_local_appdata = std::env::var_os("LOCALAPPDATA");
+        let original_flavor = std::env::var_os("ONESHIM_APP_FLAVOR");
+
+        std::env::set_var("HOME", temp_dir.path());
+        std::env::set_var("APPDATA", temp_dir.path());
+        std::env::set_var("LOCALAPPDATA", temp_dir.path());
+        std::env::set_var("ONESHIM_APP_FLAVOR", "dev");
+
+        let path = resolve_db_path(None);
+
+        restore_env_var("ONESHIM_APP_FLAVOR", original_flavor);
+        restore_env_var("LOCALAPPDATA", original_local_appdata);
+        restore_env_var("APPDATA", original_appdata);
+        restore_env_var("HOME", original_home);
+
+        assert!(
+            path.to_string_lossy().contains("oneshim-dev"),
+            "database path should use the flavored app data directory: {}",
+            path.display()
+        );
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("oneshim.db")
+        );
     }
 
     #[test]
