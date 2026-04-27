@@ -29,3 +29,19 @@ pub fn notify_stopping() {
 #[cfg(not(all(target_os = "linux", feature = "systemd-notify")))]
 #[allow(dead_code)] // wired in main.rs in a subsequent task
 pub fn notify_stopping() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notify_ready_does_not_panic() {
+        // Whether feature enabled or not, this must not panic
+        notify_ready();
+    }
+
+    #[test]
+    fn notify_stopping_does_not_panic() {
+        notify_stopping();
+    }
+}
