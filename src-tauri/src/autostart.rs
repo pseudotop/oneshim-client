@@ -459,8 +459,8 @@ pub(crate) mod linux {
 }
 
 /// Autostart capabilities — used by frontend to gate UI.
-/// PR-B1 skeleton: returns supported=true unconditionally for cross-platform UI parity.
-/// PR-B2 adds real environment detection (Snap/Flatpak/headless).
+/// Returns environment-specific autostart support — the frontend uses this to
+/// gate the Settings UI toggle.
 #[derive(serde::Serialize, Debug, Clone)]
 pub struct AutostartCapabilities {
     pub supported: bool,
@@ -470,7 +470,7 @@ pub struct AutostartCapabilities {
 
 #[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "kind")]
-#[allow(dead_code)] // PR-B2 adds real environment detection; variants reserved for future use
+#[allow(dead_code)] // Linux-only variants are cfg-gated; dead_code fires on macOS/Windows builds
 pub enum UnsupportedReason {
     SnapSandbox,
     FlatpakSandbox,
@@ -481,7 +481,7 @@ pub enum UnsupportedReason {
 
 #[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code)] // PR-B2 adds real environment detection; variants reserved for future use
+#[allow(dead_code)] // Linux-only variants are cfg-gated; dead_code fires on macOS/Windows builds
 pub enum EnvironmentKind {
     MacOs,
     Windows,
@@ -493,7 +493,7 @@ pub enum EnvironmentKind {
     Unknown,
 }
 
-/// PR-B1 stub. PR-B2 replaces with real detection.
+/// Probe runtime environment to determine autostart capability.
 pub fn detect_capabilities() -> AutostartCapabilities {
     #[cfg(target_os = "macos")]
     {
@@ -513,10 +513,47 @@ pub fn detect_capabilities() -> AutostartCapabilities {
     }
     #[cfg(target_os = "linux")]
     {
-        AutostartCapabilities {
-            supported: true,
-            unsupported_reason: None,
-            environment: EnvironmentKind::LinuxSystemd,
+        // Sandbox detection (highest priority — sandboxed envs can't write
+        // service files outside the sandbox boundary)
+        if std::env::var("SNAP").is_ok() {
+            return AutostartCapabilities {
+                supported: false,
+                unsupported_reason: Some(UnsupportedReason::SnapSandbox),
+                environment: EnvironmentKind::LinuxSnapSandbox,
+            };
+        }
+        if std::env::var("FLATPAK_ID").is_ok() {
+            return AutostartCapabilities {
+                supported: false,
+                unsupported_reason: Some(UnsupportedReason::FlatpakSandbox),
+                environment: EnvironmentKind::LinuxFlatpakSandbox,
+            };
+        }
+
+        // Headless detection (no display server)
+        let has_display =
+            std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok();
+        if !has_display {
+            return AutostartCapabilities {
+                supported: false,
+                unsupported_reason: Some(UnsupportedReason::HeadlessSession),
+                environment: EnvironmentKind::LinuxHeadless,
+            };
+        }
+
+        // Display present — choose systemd vs XDG fallback
+        if linux::has_systemctl() {
+            AutostartCapabilities {
+                supported: true,
+                unsupported_reason: None,
+                environment: EnvironmentKind::LinuxSystemd,
+            }
+        } else {
+            AutostartCapabilities {
+                supported: true, // XDG .desktop fallback works without systemctl
+                unsupported_reason: None,
+                environment: EnvironmentKind::LinuxXdg,
+            }
         }
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
