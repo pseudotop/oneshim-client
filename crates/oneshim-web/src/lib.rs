@@ -382,7 +382,7 @@ impl WebServer {
             ))
             // Vite dev server for cargo tauri dev
             .chain(std::iter::once(
-                "http://localhost:5173".parse().expect("static URL"),
+                "http://127.0.0.1:5273".parse().expect("static URL"),
             ))
             .collect();
 

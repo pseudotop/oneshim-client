@@ -42,9 +42,11 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use async_stream::stream;
 use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use oneshim_core::ports::monitor::SystemMonitor;
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
@@ -64,7 +66,12 @@ use crate::proto::dashboard::v1::{
 use crate::storage_port::WebStorage;
 
 /// Default gRPC dashboard port when the config field is 0 / unset.
-pub const DEFAULT_GRPC_DASHBOARD_PORT: u16 = 10091;
+///
+/// The loopback gRPC dashboard lives in the 10080-10089 band so it does not
+/// overlap the HTTP dashboard's 10090-10099 fallback range.
+pub const DEFAULT_GRPC_DASHBOARD_PORT: u16 = 10080;
+const MAX_GRPC_PORT_ATTEMPTS: u16 = 10;
+const _: () = assert!(DEFAULT_GRPC_DASHBOARD_PORT >= 10080 && DEFAULT_GRPC_DASHBOARD_PORT <= 10089);
 
 /// Default sample size when `GetSessionStatsRequest::limit == 0`.
 const DEFAULT_SESSION_STATS_LIMIT: usize = 1000;
@@ -498,30 +505,109 @@ impl DashboardService for DashboardServiceImpl {
     }
 }
 
+#[derive(Debug)]
+pub enum GrpcServeError {
+    Bind(std::io::Error),
+    Transport(tonic::transport::Error),
+}
+
+impl std::fmt::Display for GrpcServeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bind(e) => write!(f, "bind: {e}"),
+            Self::Transport(e) => write!(f, "transport: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for GrpcServeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Bind(e) => Some(e),
+            Self::Transport(e) => Some(e),
+        }
+    }
+}
+
+fn grpc_base_port(configured_port: u16) -> u16 {
+    if configured_port == 0 {
+        DEFAULT_GRPC_DASHBOARD_PORT
+    } else {
+        configured_port
+    }
+}
+
+fn grpc_port_candidates(configured_port: u16) -> impl Iterator<Item = u16> {
+    let base_port = grpc_base_port(configured_port);
+    (0..MAX_GRPC_PORT_ATTEMPTS).filter_map(move |attempt| base_port.checked_add(attempt))
+}
+
+async fn bind_grpc_listener(configured_port: u16) -> std::io::Result<(TcpListener, SocketAddr)> {
+    let base_port = grpc_base_port(configured_port);
+    let mut last_error = None;
+
+    for port in grpc_port_candidates(configured_port) {
+        let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+        match TcpListener::bind(addr).await {
+            Ok(listener) => {
+                if port != base_port {
+                    warn!(
+                        "gRPC dashboard port {} unavailable, using {}",
+                        base_port, port
+                    );
+                }
+                return Ok((listener, addr));
+            }
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::AddrInUse {
+                    warn!("gRPC dashboard port {} in use, trying next candidate", port);
+                    last_error = Some(e);
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!(
+                "gRPC dashboard ports {}-{} are unavailable",
+                base_port,
+                base_port.saturating_add(MAX_GRPC_PORT_ATTEMPTS - 1)
+            ),
+        )
+    }))
+}
+
 /// Spawn the gRPC dashboard server. The server runs until shutdown (error or
 /// task cancellation). If `cfg.port == 0` the default
-/// `DEFAULT_GRPC_DASHBOARD_PORT` is used.
+/// `DEFAULT_GRPC_DASHBOARD_PORT` is used. The server tries ten loopback ports
+/// starting at the configured/default port, so the default band is 10080-10089.
 ///
 /// D13-v2b: takes a `GrpcSpawnConfig` struct so v2b streaming RPCs can receive
 /// SystemMonitor / event_tx / auth token / load_policy / kill switch / stream cap.
-pub async fn serve(cfg: GrpcSpawnConfig) -> Result<(), tonic::transport::Error> {
-    let port = if cfg.port == 0 {
-        DEFAULT_GRPC_DASHBOARD_PORT
-    } else {
-        cfg.port
-    };
-    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
-
+pub async fn serve(cfg: GrpcSpawnConfig) -> Result<(), GrpcServeError> {
+    let (listener, addr) = bind_grpc_listener(cfg.port)
+        .await
+        .map_err(GrpcServeError::Bind)?;
     info!(%addr, "starting gRPC dashboard server (D13-v2b)");
 
     let service = DashboardServiceImpl::from_spawn_config(&cfg);
 
     // Register the standard grpc.health.v1 health service for external
-    // liveness checks (`grpc_health_probe -addr=localhost:10091`).
+    // liveness checks (`grpc_health_probe -addr=localhost:10080`).
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_serving::<DashboardServiceServer<DashboardServiceImpl>>()
         .await;
+
+    let incoming = stream! {
+        loop {
+            yield listener.accept().await.map(|(stream, _)| stream);
+        }
+    };
 
     Server::builder()
         // tonic 0.14 defaults both keepalive knobs to None. Explicitly enable
@@ -533,8 +619,9 @@ pub async fn serve(cfg: GrpcSpawnConfig) -> Result<(), tonic::transport::Error> 
         .http2_keepalive_timeout(Some(Duration::from_secs(10)))
         .add_service(DashboardServiceServer::new(service))
         .add_service(health_service)
-        .serve(addr)
+        .serve_with_incoming(incoming)
         .await
+        .map_err(GrpcServeError::Transport)
 }
 
 /// Non-fatal wrapper: logs failures instead of panicking. Use when the gRPC
@@ -550,8 +637,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_port_is_10091() {
-        assert_eq!(DEFAULT_GRPC_DASHBOARD_PORT, 10091);
+    fn default_port_is_in_grpc_dashboard_10080_range() {
+        assert_eq!(DEFAULT_GRPC_DASHBOARD_PORT, 10080);
+    }
+
+    #[test]
+    fn default_port_candidates_cover_grpc_dashboard_10080_range() {
+        let candidates: Vec<u16> = grpc_port_candidates(0).collect();
+        assert_eq!(candidates, (10080..=10089).collect::<Vec<_>>());
     }
 
     // RPC-surface behavior is covered in
@@ -739,7 +832,7 @@ mod tests {
                 as Arc<dyn crate::storage_port::WebStorage>;
             let (event_tx, _) = broadcast::channel(16);
             let cfg = GrpcSpawnConfig {
-                port: 10091,
+                port: 10080,
                 storage,
                 system_monitor: MockSystemMonitor::new(30.0, 4096, 16384),
                 event_tx,

@@ -92,9 +92,9 @@ custom-protocol = ["tauri/custom-protocol"]
 analysis = ["dep:oneshim-network"]
 server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
-# D13: Enable the local dashboard gRPC server (tonic-based, runs alongside
-# Axum REST on a separate port). Opt-in so default builds pay zero tonic
-# dep cost.
+# D13: Enable the local dashboard gRPC server (tonic-based, uses the
+# 10080-10089 port band alongside Axum REST). Opt-in so default builds pay zero
+# tonic dep cost.
 grpc-dashboard = ["oneshim-web/grpc-dashboard"]
 # D13-v2c: External gRPC binding — opt-in TLS+JWT/mTLS server on a separate port.
 # Depends on grpc-dashboard (loopback) being compiled in as well.

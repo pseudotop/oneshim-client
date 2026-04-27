@@ -59,7 +59,7 @@ impl ConfigManager {
         }
 
         let initial = if config_path.exists() {
-            match Self::load_from_file(&config_path) {
+            match Self::load_and_migrate_from_file(&config_path) {
                 Ok(c) => c,
                 Err(e) => {
                     warn!(
@@ -163,7 +163,7 @@ impl ConfigManager {
 
     pub fn reload(&self) -> Result<(), CoreError> {
         let _guard = self.inner.writer_lock.lock();
-        let reloaded = Self::load_from_file(&self.inner.config_path)?;
+        let reloaded = Self::load_and_migrate_from_file(&self.inner.config_path)?;
         self.inner.sender.send_replace(Arc::new(reloaded));
         info!("settings load complete");
         Ok(())
@@ -278,6 +278,26 @@ impl ConfigManager {
         }
     }
 
+    fn load_and_migrate_from_file(path: &PathBuf) -> Result<AppConfig, CoreError> {
+        let mut config = Self::load_from_file(path)?;
+        if Self::migrate_loaded_config(&mut config) {
+            if let Err(e) = Self::save_to_file(path, &config) {
+                warn!(path = %path.display(), error = %e, "settings migration persist failed");
+            } else {
+                info!("settings migration applied: {}", path.display());
+            }
+        }
+        Ok(config)
+    }
+
+    fn migrate_loaded_config(config: &mut AppConfig) -> bool {
+        if config.web.grpc_port == crate::config::LEGACY_GRPC_DASHBOARD_PORT {
+            config.web.grpc_port = crate::config::DEFAULT_GRPC_DASHBOARD_PORT;
+            return true;
+        }
+        false
+    }
+
     fn load_from_file(path: &PathBuf) -> Result<AppConfig, CoreError> {
         let content = fs::read_to_string(path).map_err(|e| CoreError::Config {
             code: crate::error_codes::ConfigCode::Invalid,
@@ -359,6 +379,43 @@ mod tests {
 
         assert_eq!(config.web.port, 8080);
         assert_eq!(config.storage.retention_days, 60);
+    }
+
+    #[test]
+    fn load_migrates_legacy_grpc_dashboard_default_port() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+
+        let mut config = AppConfig::default_config();
+        config.web.grpc_port = crate::config::LEGACY_GRPC_DASHBOARD_PORT;
+        let content = serde_json::to_string_pretty(&config).unwrap();
+        fs::write(&config_path, content).unwrap();
+
+        let manager = ConfigManager::with_path(config_path.clone()).unwrap();
+        assert_eq!(
+            manager.get().web.grpc_port,
+            crate::config::DEFAULT_GRPC_DASHBOARD_PORT
+        );
+
+        let persisted = ConfigManager::load_from_file(&config_path).unwrap();
+        assert_eq!(
+            persisted.web.grpc_port,
+            crate::config::DEFAULT_GRPC_DASHBOARD_PORT
+        );
+    }
+
+    #[test]
+    fn load_preserves_custom_grpc_dashboard_port() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+
+        let mut config = AppConfig::default_config();
+        config.web.grpc_port = 55_555;
+        let content = serde_json::to_string_pretty(&config).unwrap();
+        fs::write(&config_path, content).unwrap();
+
+        let manager = ConfigManager::with_path(config_path).unwrap();
+        assert_eq!(manager.get().web.grpc_port, 55_555);
     }
 
     #[test]
