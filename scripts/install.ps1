@@ -10,6 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $BinaryName = "oneshim.exe"
+$SidecarName = "oneshim-sandbox-worker.exe"
 $AssetName = "oneshim-windows-x64.zip"
 $PublicKeyB64 = if ($env:ONESHIM_UPDATE_PUBLIC_KEY) { $env:ONESHIM_UPDATE_PUBLIC_KEY } else { "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=" }
 
@@ -252,10 +253,18 @@ try {
     if (-not $binary) {
         throw "Could not locate $BinaryName inside archive."
     }
+    $sidecar = Get-ChildItem -Path $extractDir -Filter $SidecarName -File -Recurse | Select-Object -First 1
 
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     $target = Join-Path $InstallDir $BinaryName
     Copy-Item -Path $binary.FullName -Destination $target -Force
+    if ($sidecar) {
+        $sidecarTarget = Join-Path $InstallDir $SidecarName
+        Copy-Item -Path $sidecar.FullName -Destination $sidecarTarget -Force
+        Write-Info "Installed sandbox worker: $sidecarTarget"
+    } else {
+        Write-WarnLine "Sandbox worker sidecar was not found in the archive; sandboxed automation actions may be unavailable."
+    }
 
     Add-InstallDirToUserPath -Directory $InstallDir
 

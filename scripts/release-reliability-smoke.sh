@@ -11,6 +11,7 @@ INSTALL_SCRIPT="${ONESHIM_INSTALL_SCRIPT:-$ROOT_DIR/scripts/install.sh}"
 HOST="${ONESHIM_SMOKE_HOST:-127.0.0.1}"
 PORT="${ONESHIM_SMOKE_PORT:-18090}"
 RUN_UPDATER_TESTS="${ONESHIM_SMOKE_RUN_UPDATER_TESTS:-1}"
+REQUIRE_SIGNATURE="${ONESHIM_SMOKE_REQUIRE_SIGNATURE:-0}"
 ASSET_NAME="${ONESHIM_SMOKE_ASSET_NAME:-}"
 INSTALL_DIR="${ONESHIM_SMOKE_INSTALL_DIR:-}"
 
@@ -42,6 +43,7 @@ Options:
   --host <host>              Local HTTP host for serving artifacts
   --port <port>              Local HTTP port for serving artifacts
   --skip-updater-tests       Skip updater release reliability tests
+  --require-signature        Require Ed25519 signature verification in the installer
   -h, --help                 Show help
 EOF
 }
@@ -178,6 +180,10 @@ while [[ $# -gt 0 ]]; do
       RUN_UPDATER_TESTS=0
       shift
       ;;
+    --require-signature)
+      REQUIRE_SIGNATURE=1
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -197,8 +203,12 @@ fi
 
 ARTIFACT_PATH="$ASSETS_DIR/$ASSET_NAME"
 CHECKSUM_PATH="$ARTIFACT_PATH.sha256"
+SIGNATURE_PATH="$ARTIFACT_PATH.sig"
 [[ -f "$ARTIFACT_PATH" ]] || fatal "Artifact missing: $ARTIFACT_PATH"
 [[ -f "$CHECKSUM_PATH" ]] || fatal "Checksum missing: $CHECKSUM_PATH"
+if [[ "$REQUIRE_SIGNATURE" == "1" ]]; then
+  [[ -f "$SIGNATURE_PATH" ]] || fatal "Signature missing while --require-signature is enabled: $SIGNATURE_PATH"
+fi
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oneshim-release-smoke.XXXXXX")"
 SERVER_LOG="$TMP_DIR/http.log"
@@ -256,12 +266,23 @@ kill -0 "$SERVER_PID" >/dev/null 2>&1 || fatal "Failed to start local HTTP serve
 
 BASE_URL="http://$HOST:$PORT"
 info "Running installer against local base URL"
-bash "$INSTALL_SCRIPT" \
-  --install-dir "$INSTALL_DIR" \
-  --base-url "$BASE_URL"
+INSTALL_ARGS=(--install-dir "$INSTALL_DIR" --base-url "$BASE_URL")
+if [[ "$REQUIRE_SIGNATURE" == "1" ]]; then
+  INSTALL_ARGS+=(--require-signature)
+fi
+bash "$INSTALL_SCRIPT" "${INSTALL_ARGS[@]}"
 
 TARGET_BIN="$INSTALL_DIR/oneshim"
 [[ -x "$TARGET_BIN" ]] || fatal "Installed binary not found: $TARGET_BIN"
+
+TARGET_SIDECAR="$INSTALL_DIR/oneshim-sandbox-worker"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  APP_BUNDLE="${ONESHIM_APP_DIR:-$HOME/Applications}/Maekon.app"
+  APP_SIDECAR="$APP_BUNDLE/Contents/MacOS/oneshim-sandbox-worker"
+  [[ -x "$APP_SIDECAR" ]] || fatal "Installed sandbox worker sidecar not found: $APP_SIDECAR"
+else
+  [[ -x "$TARGET_SIDECAR" ]] || fatal "Installed sandbox worker sidecar not found: $TARGET_SIDECAR"
+fi
 
 info "Validating binary format"
 validate_binary_format "$TARGET_BIN"
