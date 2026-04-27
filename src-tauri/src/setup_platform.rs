@@ -18,15 +18,21 @@ fn create_native_border_indicator(app: &mut App) {
         match crate::native_border::NativeBorderIndicator::new(mtm) {
             Some(border) => {
                 let border = std::sync::Arc::new(border);
-                let visible = app
+                let (panel_visible, paused) = app
                     .app_handle()
                     .try_state::<crate::runtime_state::AppState>()
                     .map(|s| {
-                        s.indicator_visible
-                            .load(std::sync::atomic::Ordering::Relaxed)
+                        (
+                            s.indicator_visible
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                            s.capture_paused.load(std::sync::atomic::Ordering::Relaxed),
+                        )
                     })
-                    .unwrap_or(false);
-                if visible {
+                    .unwrap_or((false, false));
+                let border_visible =
+                    panel_visible && !crate::app_runtime_launch::cua_safe_mode_enabled();
+                border.set_paused(paused);
+                if border_visible {
                     border.show();
                 }
 
@@ -41,7 +47,9 @@ fn create_native_border_indicator(app: &mut App) {
                 });
 
                 app.manage(crate::native_border::NativeBorderState(border));
-                info!("Native border indicator created (visible={visible})");
+                info!(
+                    "Native border indicator created (panel_visible={panel_visible}, border_visible={border_visible}, paused={paused})"
+                );
             }
             None => {
                 tracing::warn!("Native border: window creation failed");

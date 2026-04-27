@@ -750,6 +750,10 @@ impl FrameStoragePort for FrameFileStorage {
             .collect()
     }
 
+    async fn load_frame(&self, relative_path: &Path) -> Result<Vec<u8>, CoreError> {
+        self.load_frame(relative_path).await.map_err(Into::into)
+    }
+
     async fn enforce_retention(&self) -> Result<usize, CoreError> {
         self.enforce_retention().await.map_err(Into::into)
     }

@@ -499,3 +499,24 @@ fn migration_idempotent() {
         .unwrap();
     assert_eq!(version, CURRENT_VERSION);
 }
+
+#[test]
+fn migration_rejects_future_schema_version() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(&format!(
+        "CREATE TABLE schema_version (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO schema_version (version) VALUES ({});",
+        CURRENT_VERSION + 1
+    ))
+    .unwrap();
+
+    let err = run_migrations(&conn).expect_err("future schema version must be rejected");
+    let message = err.to_string();
+    assert!(
+        message.contains("newer than this client supports"),
+        "error should explain the version mismatch, got: {message}"
+    );
+}

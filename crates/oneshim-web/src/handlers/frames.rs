@@ -22,7 +22,9 @@ pub async fn get_frame_image(
     State(context): State<StorageWebContext>,
     Path(frame_id): Path<i64>,
 ) -> Response {
-    FramesQueryService::new(context).get_frame_image(frame_id)
+    FramesQueryService::new(context)
+        .get_frame_image(frame_id)
+        .await
 }
 
 #[cfg(test)]
@@ -32,6 +34,10 @@ mod tests {
     use axum::body::Body;
     use axum::extract::connect_info::MockConnectInfo;
     use axum::http::{Request, StatusCode};
+    use chrono::Utc;
+    use oneshim_core::models::frame::FrameMetadata;
+    use oneshim_storage::encryption::EncryptionKey;
+    use oneshim_storage::frame_storage::FrameFileStorage;
 
     use oneshim_storage::sqlite::SqliteStorage;
     use std::net::SocketAddr;
@@ -84,5 +90,65 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_frame_image_returns_decrypted_bytes_for_encrypted_frame_storage() {
+        let data_dir = tempfile::tempdir().expect("temp data dir");
+        let encryption_key = Arc::new(EncryptionKey::from_bytes([0x42; 32]));
+        let frame_storage = Arc::new(
+            FrameFileStorage::with_encryption(
+                data_dir.path().to_path_buf(),
+                100,
+                7,
+                Some(encryption_key),
+            )
+            .await
+            .expect("encrypted frame storage"),
+        );
+        let plaintext = b"RIFF\x00\x00\x00\x00WEBPVP8 test image bytes";
+        let timestamp = Utc::now();
+        let relative_path = frame_storage
+            .save_frame(timestamp, plaintext)
+            .await
+            .expect("save encrypted frame");
+
+        let sqlite = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let frame_id = sqlite
+            .save_frame_metadata(
+                &FrameMetadata {
+                    timestamp,
+                    trigger_type: "manual".to_string(),
+                    app_name: "Codex".to_string(),
+                    window_title: String::new(),
+                    resolution: (1920, 1080),
+                    importance: 1.0,
+                },
+                Some(&relative_path.to_string_lossy()),
+                None,
+            )
+            .expect("frame metadata");
+
+        let (event_tx, _) = broadcast::channel(16);
+        let mut state = AppState::with_core(sqlite, event_tx);
+        state.core.frames_dir = Some(data_dir.path().to_path_buf());
+        state.core.frame_storage = Some(frame_storage);
+        let app = loopback_app(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/frames/{frame_id}/image"))
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        assert_eq!(bytes.as_ref(), plaintext);
     }
 }

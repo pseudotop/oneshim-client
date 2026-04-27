@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::CoreError;
 
@@ -34,6 +34,9 @@ pub trait FrameStoragePort: Send + Sync {
         &self,
         frames: Vec<(DateTime<Utc>, Vec<u8>)>,
     ) -> Vec<Result<PathBuf, CoreError>>;
+
+    /// Load a single frame image by relative path.
+    async fn load_frame(&self, relative_path: &Path) -> Result<Vec<u8>, CoreError>;
 
     /// Delete frames older than the configured retention period.
     /// Returns the number of deleted files.

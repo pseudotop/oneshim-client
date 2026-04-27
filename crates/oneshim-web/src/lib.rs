@@ -292,6 +292,9 @@ impl WebServer {
         if let Some(frames_dir) = core.frames_dir {
             self.state.core.frames_dir = Some(frames_dir);
         }
+        if let Some(frame_storage) = core.frame_storage {
+            self.state.core.frame_storage = Some(frame_storage);
+        }
         if let Some(config_manager) = core.config_manager {
             self.state.core.config_manager = Some(config_manager);
         }

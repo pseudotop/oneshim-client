@@ -5,6 +5,7 @@ use oneshim_core::config::AppConfig;
 #[cfg(feature = "server")]
 use oneshim_core::config::CredentialBackendKind;
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 #[cfg(feature = "server")]
 use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
@@ -191,6 +192,7 @@ impl WebServerSupportContext {
         &self,
         event_tx: broadcast::Sender<RealtimeEvent>,
         data_dir: &Path,
+        frame_storage: Option<Arc<dyn FrameStoragePort>>,
         audit_logger: Arc<AuditLogAdapter>,
         ai_runtime_status: Option<AiRuntimeStatus>,
     ) -> WebServerRuntimeBindings {
@@ -198,6 +200,7 @@ impl WebServerSupportContext {
             core: CoreRuntimeBindings {
                 event_tx: Some(event_tx),
                 frames_dir: Some(data_dir.to_path_buf()),
+                frame_storage,
                 config_manager: Some(self.config_manager.clone()),
                 update_control: Some(self.update_control.clone()),
             },
@@ -252,6 +255,7 @@ pub(crate) struct WebServerRuntimeBuilder<'a> {
     recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
     coaching_engine: Option<Arc<dyn oneshim_core::ports::coaching::CoachingPort>>,
     session_manager: Option<Arc<dyn oneshim_core::ports::conversation_session::SessionManager>>,
+    frame_storage: Option<Arc<dyn FrameStoragePort>>,
     /// Task 7.1: pre-built LiveExternalConfig Arc shared with the external gRPC server.
     /// Populated before `build_and_spawn` when `grpc-dashboard-external` is active so the
     /// web server's `DiagnosticsState` can serve `GET /api/external-grpc/live-config`.
@@ -279,6 +283,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             recluster_requested: None,
             coaching_engine: None,
             session_manager: None,
+            frame_storage: None,
             #[cfg(feature = "grpc-dashboard-external")]
             external_grpc_live: None,
             #[cfg(feature = "grpc-dashboard-external")]
@@ -335,6 +340,11 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         manager: Arc<dyn oneshim_core::ports::conversation_session::SessionManager>,
     ) -> Self {
         self.session_manager = Some(manager);
+        self
+    }
+
+    pub(crate) fn with_frame_storage(mut self, storage: Arc<dyn FrameStoragePort>) -> Self {
+        self.frame_storage = Some(storage);
         self
     }
 
@@ -396,6 +406,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         let mut runtime_bindings = self.support_context.build_runtime_bindings(
             self.launch_context.event_tx.clone(),
             self.data_dir,
+            self.frame_storage,
             Arc::new(AuditLogAdapter::new(web_audit_logger)),
             ai_runtime_status,
         );

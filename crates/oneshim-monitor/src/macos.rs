@@ -2,6 +2,7 @@ use crate::error::MonitorError;
 use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use oneshim_core::models::context::{MousePosition, WindowBounds, WindowInfo};
+use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tokio::process::Command;
@@ -106,11 +107,11 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, MonitorErro
     let app_name = parts[0].to_string();
     let title = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
 
-    // Filter out ONESHIM's own windows (tracking panel, overlay, dashboard).
+    // Filter out Maekon's own windows (tracking panel, overlay, dashboard).
     // App name check catches WebView child processes whose PID differs from
     // the main binary (Tauri v2 may spawn separate WebKit processes).
-    if app_name == "ONESHIM" {
-        debug!("skipping own ONESHIM window: {app_name} - {title}");
+    if is_own_app_name(&app_name) {
+        debug!("skipping own app window: {app_name} - {title}");
         return Ok(None);
     }
     let front_pid = parts
@@ -153,6 +154,57 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, MonitorErro
         pid: front_pid,
         bounds,
     }))
+}
+
+fn is_own_app_name(app_name: &str) -> bool {
+    let current_exe = std::env::current_exe().ok();
+    is_own_app_name_for_exe(app_name, current_exe.as_deref())
+}
+
+fn is_own_app_name_for_exe(app_name: &str, current_exe: Option<&Path>) -> bool {
+    let app_name = app_name.trim();
+    if app_name.is_empty() {
+        return false;
+    }
+
+    // Legacy display names from pre-Maekon bundles can still appear in existing
+    // installs and in old macOS accessibility/TCC entries.
+    if matches!(app_name, "ONESHIM" | "OneShim") {
+        return true;
+    }
+
+    let Some(current_exe) = current_exe else {
+        return false;
+    };
+
+    own_app_name_candidates(current_exe)
+        .iter()
+        .any(|candidate| candidate == app_name)
+}
+
+fn own_app_name_candidates(current_exe: &Path) -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    if let Some(executable_name) = current_exe
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+    {
+        candidates.push(executable_name.to_string());
+    }
+
+    if let Some(bundle_name) = current_exe.components().find_map(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .and_then(|name| name.strip_suffix(".app"))
+            .filter(|name| !name.is_empty())
+            .map(ToString::to_string)
+    }) {
+        candidates.push(bundle_name);
+    }
+
+    candidates
 }
 
 pub async fn get_idle_time_macos() -> Option<u64> {
@@ -265,5 +317,29 @@ mod tests {
     fn circuit_breaker_reset_on_zero() {
         CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
         assert_eq!(CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn own_app_name_detects_dev_bundle_name() {
+        let exe = Path::new("/tmp/Maekon Dev.app/Contents/MacOS/oneshim");
+        assert!(is_own_app_name_for_exe("Maekon Dev", Some(exe)));
+    }
+
+    #[test]
+    fn own_app_name_detects_executable_name_from_bundle() {
+        let exe = Path::new("/tmp/Maekon Dev.app/Contents/MacOS/oneshim");
+        assert!(is_own_app_name_for_exe("oneshim", Some(exe)));
+    }
+
+    #[test]
+    fn own_app_name_does_not_skip_release_bundle_from_dev_bundle() {
+        let exe = Path::new("/tmp/Maekon Dev.app/Contents/MacOS/oneshim");
+        assert!(!is_own_app_name_for_exe("Maekon", Some(exe)));
+    }
+
+    #[test]
+    fn own_app_name_keeps_legacy_names() {
+        assert!(is_own_app_name_for_exe("ONESHIM", None));
+        assert!(is_own_app_name_for_exe("OneShim", None));
     }
 }
