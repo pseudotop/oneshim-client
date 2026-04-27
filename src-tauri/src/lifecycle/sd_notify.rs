@@ -16,7 +16,6 @@ pub fn notify_ready() {
 }
 
 #[cfg(not(all(target_os = "linux", feature = "systemd-notify")))]
-#[allow(dead_code)] // wired in main.rs in a subsequent task
 pub fn notify_ready() {
     // No-op on non-Linux or when systemd-notify feature disabled.
 }
@@ -27,7 +26,7 @@ pub fn notify_stopping() {
 }
 
 #[cfg(not(all(target_os = "linux", feature = "systemd-notify")))]
-#[allow(dead_code)] // wired in main.rs in a subsequent task
+#[allow(dead_code)] // no caller on non-Linux yet; will be wired in shutdown path
 pub fn notify_stopping() {}
 
 #[cfg(test)]

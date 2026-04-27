@@ -79,7 +79,7 @@ pub fn run_startup_migration() {
 }
 
 #[cfg(not(target_os = "linux"))]
-#[allow(dead_code)]
+#[allow(dead_code)] // called only inside #[cfg(target_os = "linux")] block in setup.rs; non-Linux stub
 pub fn run_startup_migration() {
     // No-op on non-Linux
 }

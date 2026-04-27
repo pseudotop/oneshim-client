@@ -24,6 +24,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                  duplicate processes may launch in headless sessions"
             );
         }
+        crate::lifecycle::autostart_migration::run_startup_migration();
     }
 
     info!("Tauri setup: initializing Maekon agent");
@@ -64,6 +65,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(tray_watch_handle);
 
     info!("Tauri setup complete");
+    crate::lifecycle::sd_notify::notify_ready();
     Ok(())
 }
 

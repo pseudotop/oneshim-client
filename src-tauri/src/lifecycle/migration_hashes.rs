@@ -4,7 +4,8 @@
 //! `~/.config/systemd/user/oneshim.service` file matches a known template
 //! (safe to overwrite) vs has been customized by the user (skip).
 
-// Functions and constants are consumed by autostart_migration (wired in Task 9).
+// Functions and constants are consumed by autostart_migration on Linux only.
+// Non-Linux builds see them as unused (callers are cfg-gated).
 #![allow(dead_code)]
 
 use sha2::{Digest, Sha256};
