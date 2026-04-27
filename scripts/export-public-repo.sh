@@ -98,11 +98,25 @@ apply_exclude_rules() {
   shopt -u nullglob dotglob
 }
 
+write_public_changelog() {
+  cat > "$DEST_DIR/CHANGELOG.md" <<'EOF'
+# Changelog
+
+All notable public changes to Maekon will be documented in this file.
+
+## [Unreleased]
+
+- Public release history starts from the first Maekon public repository snapshot.
+- Historical internal PR links are intentionally omitted from public exports.
+EOF
+}
+
 validate_public_export() {
   local missing=0
   local required_paths=(
     "Cargo.toml"
     "README.md"
+    "CHANGELOG.md"
     "LICENSE"
     "assets/brand/cli-banner.txt"
     "specs/providers/provider-surface-catalog.json"
@@ -170,6 +184,24 @@ validate_public_export() {
     rm -f "$scan_file"
   fi
 
+  scan_file="$(mktemp "${TMPDIR:-/tmp}/maekon-public-legacy-repo-scan.XXXXXX")"
+  local legacy_repo_slug="pseudotop/oneshim""-client"
+  local legacy_github_url="github\\.com/${legacy_repo_slug}"
+  local legacy_raw_url="raw\\.githubusercontent\\.com/${legacy_repo_slug}"
+  local legacy_repo_pattern="(${legacy_repo_slug}|${legacy_github_url}|${legacy_raw_url})"
+  if grep -RInE --binary-files=without-match \
+    --exclude-dir=.git \
+    --exclude='*.lock' \
+    "$legacy_repo_pattern" \
+    "$DEST_DIR" > "$scan_file"; then
+    echo "error: public export contains legacy public repository references:" >&2
+    cat "$scan_file" >&2
+    rm -f "$scan_file"
+    missing=1
+  else
+    rm -f "$scan_file"
+  fi
+
   if (( missing != 0 )); then
     exit 1
   fi
@@ -199,6 +231,9 @@ if [[ -f "$EXCLUDE_FILE" ]]; then
   echo "==> Applying exclude rules from: scripts/public-repo-exclude.txt"
   apply_exclude_rules
 fi
+
+echo "==> Writing public changelog"
+write_public_changelog
 
 echo "==> Validating public-minimal export"
 validate_public_export
