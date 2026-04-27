@@ -667,6 +667,9 @@ impl AppRuntimeLaunchBuilder {
                 builder = builder.with_session_manager(sm.clone()
                     as Arc<dyn oneshim_core::ports::conversation_session::SessionManager>);
             }
+            if let Some(ref capture_services) = shared_capture_services {
+                builder = builder.with_frame_storage(capture_services.frame_storage.clone());
+            }
             // Task 7.1: pre-create LiveExternalConfig + ExternalMetrics Arcs so they can be
             // shared between the web server's DiagnosticsState (for live-config REST) and the
             // external gRPC server (for streaming control). Created here, before build_and_spawn,

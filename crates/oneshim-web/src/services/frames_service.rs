@@ -2,6 +2,7 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::Duration;
 use oneshim_api_contracts::frames::FrameResponse;
+use std::path::{Path, PathBuf};
 
 use crate::error::ApiError;
 use crate::services::frames_assembler::assemble_frame_response;
@@ -87,7 +88,7 @@ impl FramesQueryService {
         })
     }
 
-    pub fn get_frame_image(&self, frame_id: i64) -> Response {
+    pub async fn get_frame_image(&self, frame_id: i64) -> Response {
         let file_path = match self.ctx.storage.get_frame_file_path(frame_id) {
             Ok(Some(path)) => path,
             Ok(None) => {
@@ -97,32 +98,26 @@ impl FramesQueryService {
             Err(error) => return ApiError::Internal(error.to_string()).into_response(),
         };
 
-        let full_path = if let Some(ref frames_dir) = self.ctx.frames_dir {
-            let joined = frames_dir.join(&file_path);
-            match joined.canonicalize() {
-                Ok(canonical) => {
-                    let frames_canonical = frames_dir
-                        .canonicalize()
-                        .unwrap_or_else(|_| frames_dir.clone());
-                    if !canonical.starts_with(&frames_canonical) {
-                        return ApiError::BadRequest("Invalid file path".to_string())
-                            .into_response();
-                    }
-                    canonical
-                }
-                Err(_) => {
-                    return ApiError::NotFound(format!("Image file not found: {}", file_path))
+        let full_path = match resolve_frame_image_path(self.ctx.frames_dir.as_deref(), &file_path) {
+            Ok(path) => path,
+            Err(error) => return error.into_response(),
+        };
+
+        let data = if let Some(ref frame_storage) = self.ctx.frame_storage {
+            match frame_storage.load_frame(Path::new(&file_path)).await {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    return ApiError::Internal(format!("frame load failure: {error}"))
                         .into_response();
                 }
             }
         } else {
-            std::path::PathBuf::from(&file_path)
-        };
-
-        let data = match std::fs::read(&full_path) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                return ApiError::Internal(format!("file read failure: {error}")).into_response();
+            match std::fs::read(&full_path) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    return ApiError::Internal(format!("file read failure: {error}"))
+                        .into_response();
+                }
             }
         };
 
@@ -132,4 +127,29 @@ impl FramesQueryService {
 
         (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], data).into_response()
     }
+}
+
+fn resolve_frame_image_path(
+    frames_dir: Option<&Path>,
+    file_path: &str,
+) -> Result<PathBuf, ApiError> {
+    if let Some(frames_dir) = frames_dir {
+        let joined = frames_dir.join(file_path);
+        return match joined.canonicalize() {
+            Ok(canonical) => {
+                let frames_canonical = frames_dir
+                    .canonicalize()
+                    .unwrap_or_else(|_| frames_dir.to_path_buf());
+                if !canonical.starts_with(&frames_canonical) {
+                    return Err(ApiError::BadRequest("Invalid file path".to_string()));
+                }
+                Ok(canonical)
+            }
+            Err(_) => Err(ApiError::NotFound(format!(
+                "Image file not found: {file_path}"
+            ))),
+        };
+    }
+
+    Ok(PathBuf::from(file_path))
 }
