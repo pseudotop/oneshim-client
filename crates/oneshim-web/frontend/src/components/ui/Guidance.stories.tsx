@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { CheckCircle2, Info, Shield } from 'lucide-react'
 import { Button } from './Button'
-import { FieldHint, GuidanceEmptyState, SettingPreview, UnavailableFeatureCallout } from './Guidance'
+import { FieldHint, GuidanceEmptyState, GuidancePanel, SettingPreview, UnavailableFeatureCallout } from './Guidance'
 import { Input } from './Input'
 
 const meta = {
@@ -59,6 +59,34 @@ export const FormGuidance: Story = {
           { label: 'Audit level', value: 'Basic' },
         ]}
         footer="Default to confirmation until the first execution looks correct."
+      />
+    </div>
+  ),
+}
+
+export const PageGuidance: Story = {
+  render: () => (
+    <div className="max-w-4xl">
+      <GuidancePanel
+        title="Before changing settings"
+        description="Orient the user before a dense settings surface asks for decisions."
+        items={[
+          {
+            icon: <Info className="h-4 w-4" />,
+            title: 'Understand the current state',
+            description: 'Show what this page controls before exposing low-level inputs.',
+          },
+          {
+            icon: <CheckCircle2 className="h-4 w-4" />,
+            title: 'Make one change',
+            description: 'Encourage smaller edits so runtime impact is easier to verify.',
+          },
+          {
+            icon: <Shield className="h-4 w-4" />,
+            title: 'Review privacy impact',
+            description: 'Call out when settings affect capture, export, network, or retention behavior.',
+          },
+        ]}
       />
     </div>
   ),

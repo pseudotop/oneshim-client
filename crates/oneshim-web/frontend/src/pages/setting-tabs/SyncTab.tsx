@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '../../components/ui/Button'
+import { GuidancePanel } from '../../components/ui/Guidance'
 import { Spinner } from '../../components/ui/Spinner'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
@@ -83,6 +84,24 @@ export default function SyncTab() {
     return (
       <div className="space-y-4">
         <h2 className={cn(typography.h2, colors.text.primary)}>{t('syncTab.title')}</h2>
+        <GuidancePanel
+          title={t('settings.guidance.sync.title')}
+          description={t('settings.guidance.sync.description')}
+          items={[
+            {
+              title: t('settings.guidance.sync.transport.title'),
+              description: t('settings.guidance.sync.transport.description'),
+            },
+            {
+              title: t('settings.guidance.sync.passphrase.title'),
+              description: t('settings.guidance.sync.passphrase.description'),
+            },
+            {
+              title: t('settings.guidance.sync.restart.title'),
+              description: t('settings.guidance.sync.restart.description'),
+            },
+          ]}
+        />
         <div className={cn('rounded-lg border p-4', colors.surface.muted)}>
           <p className={cn('text-sm', colors.text.secondary)}>{t('syncTab.notEnabled')}</p>
           <ol className={cn('mt-2 list-decimal space-y-1 pl-6 text-sm', colors.text.tertiary)}>
@@ -106,6 +125,24 @@ export default function SyncTab() {
   return (
     <div className="space-y-6">
       <h2 className={cn(typography.h2, colors.text.primary)}>{t('syncTab.title')}</h2>
+      <GuidancePanel
+        title={t('settings.guidance.sync.title')}
+        description={t('settings.guidance.sync.enabledDescription')}
+        items={[
+          {
+            title: t('settings.guidance.sync.device.title'),
+            description: t('settings.guidance.sync.device.description'),
+          },
+          {
+            title: t('settings.guidance.sync.peers.title'),
+            description: t('settings.guidance.sync.peers.description'),
+          },
+          {
+            title: t('settings.guidance.sync.conflicts.title'),
+            description: t('settings.guidance.sync.conflicts.description'),
+          },
+        ]}
+      />
 
       {/* Device Info */}
       <div className={cn('rounded-lg border p-4', colors.surface.elevated)}>

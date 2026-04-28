@@ -118,6 +118,59 @@ export function GuidanceEmptyState({
   )
 }
 
+export interface GuidancePanelProps extends Omit<React.HTMLAttributes<HTMLElement>, 'title'> {
+  title: ReactNode
+  description?: ReactNode
+  items: GuidanceItem[]
+  footer?: ReactNode
+  columns?: 2 | 3
+}
+
+export function GuidancePanel({
+  title,
+  description,
+  items,
+  footer,
+  columns = 3,
+  className,
+  ...props
+}: GuidancePanelProps) {
+  const headingId = useId()
+
+  return (
+    <section
+      aria-labelledby={headingId}
+      className={cn('rounded-lg border border-muted bg-surface-muted p-4', className)}
+      {...props}
+    >
+      <div className="max-w-3xl">
+        <h2 id={headingId} className={cn(typography.h4, colors.text.primary)}>
+          {title}
+        </h2>
+        {description && <p className="mt-1 text-content-secondary text-sm">{description}</p>}
+      </div>
+      <div className={cn('mt-4 grid gap-3', columns === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3')}>
+        {items.map((item, index) => (
+          <article
+            // biome-ignore lint/suspicious/noArrayIndexKey: guidance items are static caller-provided copy
+            key={index}
+            className="rounded-md border border-muted bg-surface-elevated/70 p-3"
+          >
+            <div className="flex items-start gap-2">
+              {item.icon && <span className={cn(iconSize.base, 'mt-0.5 shrink-0 text-brand-text')}>{item.icon}</span>}
+              <div className="min-w-0">
+                <h3 className={cn(typography.weight.semibold, 'text-content-strong text-sm')}>{item.title}</h3>
+                {item.description && <p className="mt-1 text-content-secondary text-xs">{item.description}</p>}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+      {footer && <p className="mt-3 border-muted border-t pt-3 text-content-secondary text-xs">{footer}</p>}
+    </section>
+  )
+}
+
 export interface FieldHintProps extends React.HTMLAttributes<HTMLParagraphElement> {
   tone?: Exclude<Tone, 'success'>
   icon?: ReactNode

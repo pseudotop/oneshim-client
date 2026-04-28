@@ -61,6 +61,18 @@ function makeStatusResponse(activeNow: boolean, endsAt: string | null = null) {
 // ── Test 1 — empty state ─────────────────────────────────────────────────────
 
 describe('TrackingScheduleSettings', () => {
+  it('renders tracking schedule guidance before the window editor', async () => {
+    fetchMock.mockResolvedValueOnce(makeConfigResponse([])).mockResolvedValueOnce(makeStatusResponse(false))
+
+    renderWithProviders(<TrackingScheduleSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Tracking schedule guide' })).toBeInTheDocument()
+    })
+    expect(screen.getByText('Add clear windows')).toBeInTheDocument()
+    expect(screen.getByText('Check active-now status')).toBeInTheDocument()
+  })
+
   /**
    * Test 1: Renders empty state when windows=[]
    *

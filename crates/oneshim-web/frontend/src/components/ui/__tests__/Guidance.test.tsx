@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/helpers/render-helpers'
-import { FieldHint, GuidanceEmptyState, SettingPreview, UnavailableFeatureCallout } from '../Guidance'
+import { FieldHint, GuidanceEmptyState, GuidancePanel, SettingPreview, UnavailableFeatureCallout } from '../Guidance'
 
 describe('Guidance components', () => {
   it('renders an empty state with compact guidance cards and actions', async () => {
@@ -39,6 +39,25 @@ describe('Guidance components', () => {
     renderWithProviders(<FieldHint id="policy-id-hint">Stable internal id.</FieldHint>)
 
     expect(screen.getByText('Stable internal id.')).toHaveAttribute('id', 'policy-id-hint')
+  })
+
+  it('renders a compact page guidance panel with orienting steps', () => {
+    renderWithProviders(
+      <GuidancePanel
+        title="Before changing settings"
+        description="Use these steps to understand impact before saving."
+        items={[
+          { title: 'Review the current state', description: 'Check what is active now.' },
+          { title: 'Change one area', description: 'Keep the blast radius small.' },
+          { title: 'Save and observe', description: 'Confirm the next runtime state.' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('region', { name: 'Before changing settings' })).toBeInTheDocument()
+    expect(screen.getByText('Use these steps to understand impact before saving.')).toBeInTheDocument()
+    expect(screen.getByText('Review the current state')).toBeInTheDocument()
+    expect(screen.getByText('Save and observe')).toBeInTheDocument()
   })
 
   it('renders setting preview rows as a definition list', () => {

@@ -23,6 +23,8 @@ export {
   GuidanceEmptyState,
   type GuidanceEmptyStateProps,
   type GuidanceItem,
+  GuidancePanel,
+  type GuidancePanelProps,
   SettingPreview,
   type SettingPreviewProps,
   type SettingPreviewRow,

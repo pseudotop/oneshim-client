@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Badge, Button, Checkbox, Spinner } from '../../components/ui'
+import { Badge, Button, Checkbox, GuidancePanel, Spinner } from '../../components/ui'
 import { colors, radius, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { useSettingsFormContext } from '../settings/SettingsFormContext'
@@ -155,6 +155,24 @@ export default function AudioTab() {
   return (
     <div className="space-y-6">
       <h3 className={cn(typography.h3, colors.text.primary)}>{t('settings.audio.title', 'Audio & Speech-to-Text')}</h3>
+      <GuidancePanel
+        title={t('settings.guidance.audio.title')}
+        description={t('settings.guidance.audio.description')}
+        items={[
+          {
+            title: t('settings.guidance.audio.provider.title'),
+            description: t('settings.guidance.audio.provider.description'),
+          },
+          {
+            title: t('settings.guidance.audio.model.title'),
+            description: t('settings.guidance.audio.model.description'),
+          },
+          {
+            title: t('settings.guidance.audio.input.title'),
+            description: t('settings.guidance.audio.input.description'),
+          },
+        ]}
+      />
 
       <Checkbox
         checked={enabled}
