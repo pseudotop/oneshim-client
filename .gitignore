@@ -39,6 +39,8 @@ src-tauri/binaries/oneshim-sandbox-worker*
 node_modules/
 
 # Test results / WDIO logs
+.playwright-cli/
+.playwright-mcp/
 test-results/
 wdio-logs/
 
