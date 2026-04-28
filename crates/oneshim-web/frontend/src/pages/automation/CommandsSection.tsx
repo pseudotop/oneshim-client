@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, ChevronUp, Clock, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronUp, Clock, ListChecks, Rows3, ShieldCheck, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -13,7 +13,7 @@ import {
   updatePreset,
   type WorkflowPreset,
 } from '../../api/client'
-import { Select } from '../../components/ui'
+import { GuidanceEmptyState, Select } from '../../components/ui'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
@@ -349,7 +349,29 @@ export default function CommandsSection() {
             )
           })}
           {filteredPresets.length === 0 && (
-            <p className="col-span-full py-4 text-center text-content-secondary text-sm">{t('automation.noPresets')}</p>
+            <GuidanceEmptyState
+              className="col-span-full py-8"
+              icon={<ListChecks className={iconSize.lg} aria-hidden="true" />}
+              title={t('automation.noPresets')}
+              description={t('automation.noPresetsDescription')}
+              guidance={[
+                {
+                  icon: <Rows3 className={iconSize.sm} aria-hidden="true" />,
+                  title: t('automation.noPresetsGuideCategoryTitle'),
+                  description: t('automation.noPresetsGuideCategoryDescription'),
+                },
+                {
+                  icon: <CheckCircle2 className={iconSize.sm} aria-hidden="true" />,
+                  title: t('automation.noPresetsGuideProfilesTitle'),
+                  description: t('automation.noPresetsGuideProfilesDescription'),
+                },
+                {
+                  icon: <ShieldCheck className={iconSize.sm} aria-hidden="true" />,
+                  title: t('automation.noPresetsGuidePolicyTitle'),
+                  description: t('automation.noPresetsGuidePolicyDescription'),
+                },
+              ]}
+            />
           )}
         </div>
       </CardContent>

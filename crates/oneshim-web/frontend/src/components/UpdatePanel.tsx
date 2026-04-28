@@ -104,6 +104,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
 
   const canApproveOrDefer =
     (status?.phase === 'PendingApproval' || status?.phase === 'ReadyToInstall') && !freshness.severelyStale
+  const hasApprovalAction = status?.phase === 'PendingApproval' || status?.phase === 'ReadyToInstall'
   const isDownloading = status?.phase === 'Downloading'
 
   const phaseLabel = useMemo(() => {
@@ -169,7 +170,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
           : t('updates.lastUpdateAge', { seconds: freshness.ageSec })}
       </p>
 
-      {freshness.severelyStale && (
+      {hasApprovalAction && freshness.severelyStale && (
         <div className={cn('mt-2 text-semantic-warning', typography.caption)}>{t('updates.staleActionBlocked')}</div>
       )}
 

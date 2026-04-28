@@ -1,10 +1,11 @@
 import { Clock, RefreshCw, RotateCcw, Shield } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { UpdateChannel } from '../../api/client'
-import { Badge, Card, CardTitle, Spinner } from '../../components/ui'
+import { Alert, Badge, Card, CardTitle, Spinner } from '../../components/ui'
 import { useTypedOutletContext } from '../../routes'
-import { motion, typography } from '../../styles/tokens'
+import { interaction, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { isSelectableUpdateChannel } from '../../utils/updateChannels'
 import type { UpdatesOutletContext } from './UpdatesLayout'
 
 const FEATURE_ICONS = [RefreshCw, Shield, RotateCcw, Clock] as const
@@ -30,6 +31,7 @@ const CHANNEL_OPTIONS: { value: UpdateChannel; labelKey: string; descKey: string
 export default function ChannelSection() {
   const { t } = useTranslation()
   const { currentChannel, savingChannel, handleChannelChange } = useTypedOutletContext<UpdatesOutletContext>('Updates')
+  const currentChannelUnavailable = !isSelectableUpdateChannel(currentChannel)
 
   const featureKeys = [
     'updates.featureAuto',
@@ -43,21 +45,33 @@ export default function ChannelSection() {
       {/* Channel selector */}
       <Card id="section-channel" variant="default" padding="lg">
         <CardTitle className="mb-4">{t('updates.channelTitle', 'Update Channel')}</CardTitle>
+        {currentChannelUnavailable && (
+          <Alert variant="warning" title={t('updates.channelNightlyDisabledTitle')} className="mb-4">
+            {t('updates.channelNightlyDisabledDescription')}
+          </Alert>
+        )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {CHANNEL_OPTIONS.map((opt) => {
-            const isActive = currentChannel === opt.value
+            const isUnavailable = !isSelectableUpdateChannel(opt.value)
+            const isCurrent = currentChannel === opt.value
+            const isActive = isCurrent && !isUnavailable
             return (
               <button
                 key={opt.value}
                 type="button"
-                disabled={savingChannel}
-                onClick={() => handleChannelChange(opt.value)}
+                disabled={savingChannel || isUnavailable}
+                onClick={() => {
+                  if (!isUnavailable) handleChannelChange(opt.value)
+                }}
                 className={cn(
                   'rounded-lg border p-3 text-left',
                   motion.colors,
+                  interaction.disabled,
                   isActive
                     ? 'border-brand-text bg-brand-muted/10'
-                    : 'border-muted bg-surface hover:border-brand-muted hover:bg-surface-muted',
+                    : isUnavailable
+                      ? 'border-muted bg-surface-muted/70 text-content-tertiary'
+                      : 'border-muted bg-surface hover:border-brand-muted hover:bg-surface-muted',
                 )}
               >
                 <div className="flex items-center justify-between">
@@ -66,6 +80,7 @@ export default function ChannelSection() {
                       'text-sm',
                       typography.weight.medium,
                       isActive ? 'text-brand-text' : 'text-content-strong',
+                      isUnavailable && 'text-content-secondary',
                     )}
                   >
                     {t(opt.labelKey, opt.value)}
@@ -75,8 +90,15 @@ export default function ChannelSection() {
                       {t('updates.active', 'Active')}
                     </Badge>
                   )}
+                  {isUnavailable && (
+                    <Badge color={isCurrent ? 'warning' : 'default'} size="sm">
+                      {isCurrent ? t('updates.needsChange') : t('updates.notAvailable')}
+                    </Badge>
+                  )}
                 </div>
-                <p className="mt-1 text-content-secondary text-xs">{t(opt.descKey, '')}</p>
+                <p className="mt-1 text-content-secondary text-xs">
+                  {isUnavailable ? t('updates.channelNightlyDisabledCard') : t(opt.descKey, '')}
+                </p>
               </button>
             )
           })}

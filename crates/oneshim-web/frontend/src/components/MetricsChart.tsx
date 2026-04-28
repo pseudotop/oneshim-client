@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { HourlyMetrics } from '../api/client'
 import { chart, chartPalette } from '../styles/tokens'
+import { formatGigabytes, formatPercent } from '../utils/formatters'
 
 interface MetricsChartProps {
   data: HourlyMetrics[]
@@ -15,6 +16,16 @@ function formatHour(hourStr: string): string {
   } catch {
     return hourStr
   }
+}
+
+function coerceMetricValue(value: unknown): number {
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numberValue) ? numberValue : 0
+}
+
+function formatMetricTooltipValue(value: unknown, name: unknown): string {
+  const numberValue = coerceMetricValue(value)
+  return name === 'Memory (GB)' ? formatGigabytes(numberValue) : formatPercent(numberValue)
 }
 
 export default function MetricsChart({ data }: MetricsChartProps) {
@@ -56,7 +67,11 @@ export default function MetricsChart({ data }: MetricsChartProps) {
             tick={chart.axis.tick}
             tickFormatter={(v) => `${(v ?? 0).toFixed(0)}GB`}
           />
-          <Tooltip contentStyle={chart.tooltipStyle} labelStyle={chart.labelStyle} />
+          <Tooltip
+            contentStyle={chart.tooltipStyle}
+            formatter={formatMetricTooltipValue}
+            labelStyle={chart.labelStyle}
+          />
           <Legend />
           <Line
             yAxisId="cpu"

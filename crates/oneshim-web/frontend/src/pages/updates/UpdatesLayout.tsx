@@ -17,6 +17,7 @@ import { Badge, Button } from '../../components/ui'
 import { addToast } from '../../hooks/useToast'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { isSelectableUpdateChannel } from '../../utils/updateChannels'
 
 declare const __APP_VERSION__: string
 
@@ -77,6 +78,7 @@ export default function UpdatesLayout() {
 
   const handleChannelChange = (channel: UpdateChannel) => {
     if (!settings) return
+    if (!isSelectableUpdateChannel(channel)) return
     setSavingChannel(true)
     const updated: AppSettings = {
       ...settings,

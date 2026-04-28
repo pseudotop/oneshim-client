@@ -21,12 +21,18 @@ import type { ReportResponse } from '../../api/client'
 import { Badge, Card, CardTitle } from '../../components/ui'
 import { useTypedOutletContext } from '../../routes'
 import { chart, chartPalette, iconSize, palette, typography } from '../../styles/tokens'
-import { formatDuration } from '../../utils/formatters'
+import { formatDuration, formatNumber } from '../../utils/formatters'
 import { ReportsEmptyState } from './ReportsEmptyState'
 import type { ReportsContext } from './ReportsLayout'
 
 const COLORS = chartPalette
 const MAX_PIE_SLICES = 5
+
+export function formatReportCountTooltipValue(value: unknown, name: unknown, locale?: string): [string, string] {
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  const safeValue = Number.isFinite(numberValue) ? numberValue : 0
+  return [formatNumber(safeValue, locale), String(name || '')]
+}
 
 function consolidateAppStats(stats: ReportResponse['app_stats']): ReportResponse['app_stats'] {
   if (stats.length <= MAX_PIE_SLICES) return stats
@@ -85,7 +91,7 @@ function AppDistributionPie({ appStats }: { appStats: ReportResponse['app_stats'
 }
 
 export default function ActivityReport() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { report, reportError } = useTypedOutletContext<ReportsContext>('Reports')
 
   if (reportError || !report) {
@@ -105,7 +111,7 @@ export default function ActivityReport() {
               <Tooltip
                 contentStyle={chart.tooltipStyle}
                 labelStyle={chart.labelStyle}
-                formatter={(value: number) => [(value ?? 0).toLocaleString(), '']}
+                formatter={(value, name) => formatReportCountTooltipValue(value, name, i18n.language)}
               />
               <Bar dataKey="events" name={t('reports.events')} fill={palette.teal500} />
               <Bar dataKey="captures" name={t('reports.captures')} fill={palette.blue500} />
@@ -122,8 +128,19 @@ export default function ActivityReport() {
             <LineChart data={report.hourly_activity}>
               <XAxis dataKey="hour" tickFormatter={(h) => `${h}:00`} tick={chart.axis.tick} />
               <YAxis tick={chart.axis.tick} />
-              <Tooltip contentStyle={chart.tooltipStyle} labelFormatter={(h) => `${h}:00`} />
-              <Line type="monotone" dataKey="activity" stroke={palette.teal500} strokeWidth={2} dot={false} />
+              <Tooltip
+                contentStyle={chart.tooltipStyle}
+                formatter={(value, name) => formatReportCountTooltipValue(value, name, i18n.language)}
+                labelFormatter={(h) => `${h}:00`}
+              />
+              <Line
+                type="monotone"
+                dataKey="activity"
+                name={t('reports.activityCount')}
+                stroke={palette.teal500}
+                strokeWidth={2}
+                dot={false}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -9,6 +9,7 @@ import type {
   DailySummary,
   DeleteResult,
   ExecuteSceneActionRequest,
+  ExecutionPolicyConfig,
   FocusMetricsResponse,
   LocalSuggestion,
   PoliciesInfo,
@@ -460,6 +461,7 @@ type StandaloneState = {
   frameTags: Map<number, Set<number>>
   suggestions: LocalSuggestion[]
   presets: WorkflowPreset[]
+  executionPolicies: ExecutionPolicyConfig[]
   nextTagId: number
 }
 
@@ -470,6 +472,7 @@ const state: StandaloneState = {
   frameTags: new Map(),
   suggestions: [],
   presets: [],
+  executionPolicies: [],
   nextTagId: 1,
 }
 
@@ -841,6 +844,46 @@ export async function handleStandaloneRequest(
   }
   if (path === '/api/automation/policies' && method === 'GET') {
     return jsonResponse(makeDefaultPolicies())
+  }
+  if (path === '/api/automation/execution-policies') {
+    if (method === 'GET') {
+      return jsonResponse(state.executionPolicies)
+    }
+
+    if (method === 'POST') {
+      const policy = body as ExecutionPolicyConfig | null
+      if (!policy?.policy_id) {
+        return jsonResponse({ error: 'Policy ID is required' }, 400)
+      }
+      state.executionPolicies = [
+        ...state.executionPolicies.filter((existing) => existing.policy_id !== policy.policy_id),
+        policy,
+      ]
+      return jsonResponse(policy, 201)
+    }
+  }
+  const executionPolicyMatch = path.match(/^\/api\/automation\/execution-policies\/([^/]+)$/)
+  if (executionPolicyMatch) {
+    const policyId = decodeURIComponent(executionPolicyMatch[1])
+
+    if (method === 'PUT') {
+      const policy = body as ExecutionPolicyConfig | null
+      if (!policy?.policy_id) {
+        return jsonResponse({ error: 'Policy ID is required' }, 400)
+      }
+      state.executionPolicies = state.executionPolicies.map((existing) =>
+        existing.policy_id === policyId ? policy : existing,
+      )
+      if (!state.executionPolicies.some((existing) => existing.policy_id === policy.policy_id)) {
+        state.executionPolicies.push(policy)
+      }
+      return jsonResponse(policy)
+    }
+
+    if (method === 'DELETE') {
+      state.executionPolicies = state.executionPolicies.filter((existing) => existing.policy_id !== policyId)
+      return new Response(null, { status: 204 })
+    }
   }
   if (path === '/api/automation/contracts' && method === 'GET') {
     return jsonResponse({

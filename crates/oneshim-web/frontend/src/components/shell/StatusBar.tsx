@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useSSE } from '../../hooks/useSSE'
 import { iconSize, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { formatBytes } from '../../utils/formatters'
 
 declare const __APP_VERSION__: string
 
@@ -38,7 +39,7 @@ export default function StatusBar() {
   const connected = status === 'connected'
   const automationOn = useAutomationStatus(connected)
   const cpuText = latestMetrics ? `${latestMetrics.cpu_usage.toFixed(1)}%` : '--'
-  const ramMb = latestMetrics ? `${Math.round(latestMetrics.memory_used / 1024 / 1024)}MB` : '--'
+  const ramText = latestMetrics ? formatBytes(latestMetrics.memory_used) : '--'
 
   return (
     <div
@@ -59,7 +60,7 @@ export default function StatusBar() {
           ) : (
             <>
               <WifiOff className={cn(iconSize.xs, 'opacity-60')} aria-hidden="true" />
-              <span>{t('shell.offline', 'Offline')}</span>
+              <span>{t('shell.localMode', 'Local mode')}</span>
             </>
           )}
         </span>
@@ -91,7 +92,7 @@ export default function StatusBar() {
 
         <span className="flex items-center gap-1 px-1.5">
           <HardDrive className={iconSize.xs} aria-hidden="true" />
-          <span>{ramMb}</span>
+          <span>{ramText}</span>
         </span>
 
         <div className={layout.statusBar.separator} />
