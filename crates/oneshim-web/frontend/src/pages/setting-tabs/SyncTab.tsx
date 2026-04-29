@@ -24,6 +24,12 @@ interface SyncPeer {
   last_sync_at: string
 }
 
+const DISABLED_SYNC_STATUS: SyncStatus = {
+  enabled: false,
+  device_id: 'local-dev',
+  device_name: 'Local device',
+}
+
 async function tauriInvoke<T>(cmd: string): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<T>(cmd)
@@ -45,8 +51,10 @@ export default function SyncTab() {
         const p = await tauriInvoke<SyncPeer[]>('discover_sync_peers')
         setPeers(p)
       }
-    } catch (e) {
-      setError(String(e))
+    } catch {
+      setStatus(DISABLED_SYNC_STATUS)
+      setPeers([])
+      setError(null)
     }
   }, [])
 

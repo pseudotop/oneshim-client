@@ -73,6 +73,21 @@ describe('TrackingScheduleSettings', () => {
     expect(screen.getByText('Check active-now status')).toBeInTheDocument()
   })
 
+  it('does not render a nested form when embedded in the settings layout form', async () => {
+    fetchMock.mockResolvedValueOnce(makeConfigResponse([])).mockResolvedValueOnce(makeStatusResponse(false))
+
+    renderWithProviders(
+      <form data-testid="settings-form">
+        <TrackingScheduleSettings />
+      </form>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Tracking schedule guide' })).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('settings-form').querySelector('form')).toBeNull()
+  })
+
   /**
    * Test 1: Renders empty state when windows=[]
    *

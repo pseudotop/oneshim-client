@@ -19,6 +19,8 @@ import type {
   StorageStats,
   Tag,
   TimelineResponse,
+  TrackingScheduleConfig,
+  TrackingScheduleStatus,
   UiScene,
   UpdateStatus,
   WorkflowPreset,
@@ -339,6 +341,23 @@ function makeDefaultFocusMetrics(): FocusMetricsResponse {
   }
 }
 
+function makeDefaultTrackingSchedule(): TrackingScheduleConfig {
+  return {
+    enabled: false,
+    windows: [],
+    timezone: 'Local',
+  }
+}
+
+function makeDefaultTrackingScheduleStatus(): TrackingScheduleStatus {
+  return {
+    active_now: false,
+    ends_at: null,
+    next_starts_at: null,
+    label: '',
+  }
+}
+
 function makeDefaultTimeline(): TimelineResponse {
   const end = new Date()
   const start = new Date(end.getTime() - 60 * 60 * 1000)
@@ -462,6 +481,7 @@ type StandaloneState = {
   suggestions: LocalSuggestion[]
   presets: WorkflowPreset[]
   executionPolicies: ExecutionPolicyConfig[]
+  trackingSchedule: TrackingScheduleConfig
   nextTagId: number
 }
 
@@ -473,6 +493,7 @@ const state: StandaloneState = {
   suggestions: [],
   presets: [],
   executionPolicies: [],
+  trackingSchedule: makeDefaultTrackingSchedule(),
   nextTagId: 1,
 }
 
@@ -817,6 +838,17 @@ export async function handleStandaloneRequest(
   }
   if (path === '/api/focus/suggestions' && method === 'GET') {
     return jsonResponse(state.suggestions)
+  }
+
+  if (path === '/api/tracking-schedule' && method === 'GET') {
+    return jsonResponse(state.trackingSchedule)
+  }
+  if (path === '/api/tracking-schedule' && method === 'PUT') {
+    state.trackingSchedule = (body ?? makeDefaultTrackingSchedule()) as TrackingScheduleConfig
+    return jsonResponse(state.trackingSchedule)
+  }
+  if (path === '/api/tracking-schedule/status' && method === 'GET') {
+    return jsonResponse(makeDefaultTrackingScheduleStatus())
   }
 
   const suggestionFeedbackMatch = path.match(/^\/api\/focus\/suggestions\/(\d+)\/feedback$/)

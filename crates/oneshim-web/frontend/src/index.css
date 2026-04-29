@@ -138,7 +138,7 @@ body {
   grid-template-rows: var(--titlebar-height) 1fr var(--statusbar-height);
   grid-template-columns: var(--activitybar-width) var(--sidebar-width) 1fr;
   height: 100vh;
-  min-width: 768px;
+  min-width: 0;
   overflow: hidden;
 }
 

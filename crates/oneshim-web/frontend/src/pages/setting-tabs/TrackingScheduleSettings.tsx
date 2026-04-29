@@ -202,8 +202,7 @@ export function TrackingScheduleSettings() {
     return true
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  function handleSave() {
     // Validate all time fields before submitting
     let valid = true
     for (const entry of entries) {
@@ -257,7 +256,7 @@ export function TrackingScheduleSettings() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-6">
           {/* Enabled toggle */}
           <div className="flex items-center justify-between">
             <span className={cn(typography.weight.medium, colors.text.secondary)}>{t('trackingSchedule.enabled')}</span>
@@ -381,7 +380,7 @@ export function TrackingScheduleSettings() {
 
           {/* Save */}
           <div className="flex justify-end border-muted border-t pt-4">
-            <Button type="submit" variant="primary" size="md" isLoading={saveMutation.isPending}>
+            <Button type="button" variant="primary" size="md" isLoading={saveMutation.isPending} onClick={handleSave}>
               {t('trackingSchedule.save')}
             </Button>
           </div>
@@ -392,7 +391,7 @@ export function TrackingScheduleSettings() {
               {t('trackingSchedule.saveError')}
             </p>
           )}
-        </form>
+        </div>
       </Card>
     </div>
   )
