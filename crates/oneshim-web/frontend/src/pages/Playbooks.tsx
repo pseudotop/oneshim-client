@@ -64,7 +64,10 @@ function TemplateText({ text }: { text: string }) {
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: parsed text segments have stable order for a single immutable template
             key={index}
-            className="mx-0.5 inline-flex rounded border border-muted bg-surface-muted px-1.5 py-0.5 align-baseline font-mono text-[0.78em] text-content-strong"
+            className={cn(
+              'mx-0.5 inline-flex rounded border border-muted bg-surface-muted px-1.5 py-0.5 align-baseline text-[0.78em] text-content-strong',
+              typography.family.mono,
+            )}
           >
             <span className="sr-only">{t('playbooks.variableLabel', { name: part.value })}</span>
             <code aria-hidden="true">{part.value}</code>
