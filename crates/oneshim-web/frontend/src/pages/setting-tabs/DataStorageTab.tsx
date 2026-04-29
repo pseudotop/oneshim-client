@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Card, CardTitle, Input, Spinner } from '../../components/ui'
+import { Card, CardTitle, GuidancePanel, Input, Spinner } from '../../components/ui'
 import { colors, form, iconSize, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { formatBytes, formatNumber } from '../../utils/formatters'
@@ -71,6 +71,25 @@ export default function DataStorageTab() {
 
   return (
     <div className="space-y-6">
+      <GuidancePanel
+        title={t('settings.guidance.dataStorage.title')}
+        description={t('settings.guidance.dataStorage.description')}
+        items={[
+          {
+            title: t('settings.guidance.dataStorage.review.title'),
+            description: t('settings.guidance.dataStorage.review.description'),
+          },
+          {
+            title: t('settings.guidance.dataStorage.export.title'),
+            description: t('settings.guidance.dataStorage.export.description'),
+          },
+          {
+            title: t('settings.guidance.dataStorage.telemetry.title'),
+            description: t('settings.guidance.dataStorage.telemetry.description'),
+          },
+        ]}
+      />
+
       <Card variant="default" padding="lg">
         <CardTitle sticky>{t('settings.storageStats')}</CardTitle>
         {storageLoading ? (

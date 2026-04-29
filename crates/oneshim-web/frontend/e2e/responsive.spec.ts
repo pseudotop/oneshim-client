@@ -113,6 +113,8 @@ test.describe('Responsive', () => {
 
     await page.goto('/')
     await expect(page.getByRole('heading', { name: dashboardHeadingName })).toBeVisible()
+    const shellBox = await page.locator('.app-shell').boundingBox()
+    expect(shellBox?.width).toBeLessThanOrEqual((page.viewportSize()?.width ?? 430) + 1)
 
     // The monitor group is already active on / so the SidePanel tree is
     // rendered.  Drill into "All Frames" (unique label) to navigate into

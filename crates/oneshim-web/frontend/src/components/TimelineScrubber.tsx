@@ -37,7 +37,8 @@ export default function TimelineScrubber({
   onSkipToStart,
   onSkipToEnd,
 }: TimelineScrubberProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const trackRef = useRef<HTMLDivElement>(null)
 
   const totalDuration = endTime.getTime() - startTime.getTime()
@@ -165,7 +166,7 @@ export default function TimelineScrubber({
 
           {/* UI note */}
           <span className={`ml-3 ${typography.family.mono} text-content-strong text-sm`}>
-            {formatTime(currentTime.toISOString())}
+            {formatTime(currentTime.toISOString(), locale)}
           </span>
         </div>
 
@@ -197,7 +198,7 @@ export default function TimelineScrubber({
         aria-valuemin={0}
         aria-valuemax={totalDuration}
         aria-valuenow={currentTime.getTime() - startTime.getTime()}
-        aria-valuetext={formatTime(currentTime.toISOString())}
+        aria-valuetext={formatTime(currentTime.toISOString(), locale)}
         className="relative h-10 cursor-pointer overflow-hidden rounded-lg bg-hover"
         onClick={handleTrackClick}
         onMouseDown={handleMouseDown}
@@ -257,10 +258,10 @@ export default function TimelineScrubber({
 
         {/* UI note */}
         <div className="absolute bottom-0 left-1 text-content-secondary text-xs opacity-70">
-          {formatTime(startTime.toISOString())}
+          {formatTime(startTime.toISOString(), locale)}
         </div>
         <div className="absolute right-1 bottom-0 text-content-secondary text-xs opacity-70">
-          {formatTime(endTime.toISOString())}
+          {formatTime(endTime.toISOString(), locale)}
         </div>
       </div>
 

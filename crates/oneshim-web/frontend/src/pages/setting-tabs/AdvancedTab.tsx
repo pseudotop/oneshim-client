@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { AppSettings } from '../../api/client'
-import { Card, CardTitle, Input } from '../../components/ui'
+import { Card, CardTitle, GuidancePanel, Input } from '../../components/ui'
 import { colors, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { useLoadedFormData, useSettingsFormContext } from '../settings/SettingsFormContext'
@@ -63,6 +63,25 @@ export default function AdvancedTab() {
 
   return (
     <div className="space-y-6">
+      <GuidancePanel
+        title={t('settings.guidance.advanced.title')}
+        description={t('settings.guidance.advanced.description')}
+        items={[
+          {
+            title: t('settings.guidance.advanced.runtime.title'),
+            description: t('settings.guidance.advanced.runtime.description'),
+          },
+          {
+            title: t('settings.guidance.advanced.network.title'),
+            description: t('settings.guidance.advanced.network.description'),
+          },
+          {
+            title: t('settings.guidance.advanced.sync.title'),
+            description: t('settings.guidance.advanced.sync.description'),
+          },
+        ]}
+      />
+
       {/* AI Session */}
       <Card variant="default" padding="lg">
         <CardTitle sticky>{t('settings.advanced.aiSession', 'AI Session')}</CardTitle>

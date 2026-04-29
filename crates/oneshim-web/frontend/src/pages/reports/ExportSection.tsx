@@ -7,8 +7,22 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'rec
 import { Card, CardTitle } from '../../components/ui'
 import { useTypedOutletContext } from '../../routes'
 import { chart, iconSize, palette } from '../../styles/tokens'
+import { formatPercent } from '../../utils/formatters'
 import { ReportsEmptyState } from './ReportsEmptyState'
 import type { ReportsContext } from './ReportsLayout'
+
+export const EXPORT_METRIC_COLORS = {
+  cpuStroke: palette.amber500,
+  cpuLegendStyle: { backgroundColor: palette.amber500 },
+  memoryStroke: palette.teal500,
+  memoryLegendStyle: { backgroundColor: palette.teal500 },
+} as const
+
+export function formatExportMetricTooltipValue(value: unknown, name: unknown): [string, string] {
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  const safeValue = Number.isFinite(numberValue) ? numberValue : 0
+  return [formatPercent(safeValue), String(name || '')]
+}
 
 export default function ExportSection() {
   const { t } = useTranslation()
@@ -29,14 +43,21 @@ export default function ExportSection() {
             <Tooltip
               contentStyle={chart.tooltipStyle}
               labelStyle={chart.labelStyle}
-              formatter={(value: number) => [`${value.toFixed(1)}%`, '']}
+              formatter={formatExportMetricTooltipValue}
             />
-            <Line type="monotone" dataKey="cpu_avg" name="CPU" stroke={palette.amber500} strokeWidth={2} dot={false} />
+            <Line
+              type="monotone"
+              dataKey="cpu_avg"
+              name="CPU"
+              stroke={EXPORT_METRIC_COLORS.cpuStroke}
+              strokeWidth={2}
+              dot={false}
+            />
             <Line
               type="monotone"
               dataKey="memory_avg"
               name={t('reports.memory')}
-              stroke={palette.violet500}
+              stroke={EXPORT_METRIC_COLORS.memoryStroke}
               strokeWidth={2}
               dot={false}
             />
@@ -45,11 +66,11 @@ export default function ExportSection() {
       </div>
       <div className="mt-2 flex justify-center gap-6 text-sm">
         <div className="flex items-center gap-2">
-          <div className={`${iconSize.xs} rounded-full bg-semantic-warning`} />
+          <div className={`${iconSize.xs} rounded-full`} style={EXPORT_METRIC_COLORS.cpuLegendStyle} />
           <span className="text-content-secondary">CPU</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`${iconSize.xs} rounded-full bg-brand-signal`} />
+          <div className={`${iconSize.xs} rounded-full`} style={EXPORT_METRIC_COLORS.memoryLegendStyle} />
           <span className="text-content-secondary">{t('reports.memory')}</span>
         </div>
       </div>

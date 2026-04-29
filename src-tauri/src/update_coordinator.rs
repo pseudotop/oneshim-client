@@ -213,16 +213,24 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
                         }
                     }
                     UpdateAction::Defer => {
-                        downloaded_path = None;
-                        let mut guard = state.write().await;
-                        guard.phase = UpdatePhase::Deferred;
-                        guard.message = Some("Update was deferred".to_string());
-                        guard.pending = None;
-                        guard.download_progress = None;
-                        guard.touch();
-                        if let Some(tx) = &status_tx {
-                            if let Err(e) = tx.send(guard.clone()) {
-                                debug!("channel send failed: {e}");
+                        let current_phase = state.read().await.phase.clone();
+                        match current_phase {
+                            UpdatePhase::PendingApproval | UpdatePhase::ReadyToInstall => {
+                                downloaded_path = None;
+                                let mut guard = state.write().await;
+                                guard.phase = UpdatePhase::Deferred;
+                                guard.message = Some("Update was deferred".to_string());
+                                guard.pending = None;
+                                guard.download_progress = None;
+                                guard.touch();
+                                if let Some(tx) = &status_tx {
+                                    if let Err(e) = tx.send(guard.clone()) {
+                                        debug!("channel send failed: {e}");
+                                    }
+                                }
+                            }
+                            _ => {
+                                debug!("Defer action ignored in phase {:?}", current_phase);
                             }
                         }
                     }
@@ -867,6 +875,30 @@ mod tests {
 
         let final_state = state.read().await.clone();
         assert_eq!(final_state.phase, UpdatePhase::Deferred);
+        assert!(final_state.pending.is_none());
+    }
+
+    #[tokio::test]
+    async fn defer_is_ignored_when_update_is_not_actionable() {
+        let fake = FakeUpdater::with_result(make_available_result("1.0.0", "1.2.0"));
+        let state = Arc::new(RwLock::new(UpdateStatus::default()));
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        let coordinator = tokio::spawn(run_update_coordinator_with_executor(
+            fake,
+            state.clone(),
+            rx,
+            None,
+            false,
+            24,
+        ));
+
+        tx.send(UpdateAction::Defer).expect("send defer action");
+        drop(tx);
+        coordinator.await.expect("join coordinator task");
+
+        let final_state = state.read().await.clone();
+        assert_eq!(final_state.phase, UpdatePhase::Idle);
         assert!(final_state.pending.is_none());
     }
 

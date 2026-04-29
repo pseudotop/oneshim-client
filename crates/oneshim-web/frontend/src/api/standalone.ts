@@ -9,6 +9,7 @@ import type {
   DailySummary,
   DeleteResult,
   ExecuteSceneActionRequest,
+  ExecutionPolicyConfig,
   FocusMetricsResponse,
   LocalSuggestion,
   PoliciesInfo,
@@ -18,6 +19,8 @@ import type {
   StorageStats,
   Tag,
   TimelineResponse,
+  TrackingScheduleConfig,
+  TrackingScheduleStatus,
   UiScene,
   UpdateStatus,
   WorkflowPreset,
@@ -338,6 +341,23 @@ function makeDefaultFocusMetrics(): FocusMetricsResponse {
   }
 }
 
+function makeDefaultTrackingSchedule(): TrackingScheduleConfig {
+  return {
+    enabled: false,
+    windows: [],
+    timezone: 'Local',
+  }
+}
+
+function makeDefaultTrackingScheduleStatus(): TrackingScheduleStatus {
+  return {
+    active_now: false,
+    ends_at: null,
+    next_starts_at: null,
+    label: '',
+  }
+}
+
 function makeDefaultTimeline(): TimelineResponse {
   const end = new Date()
   const start = new Date(end.getTime() - 60 * 60 * 1000)
@@ -460,6 +480,8 @@ type StandaloneState = {
   frameTags: Map<number, Set<number>>
   suggestions: LocalSuggestion[]
   presets: WorkflowPreset[]
+  executionPolicies: ExecutionPolicyConfig[]
+  trackingSchedule: TrackingScheduleConfig
   nextTagId: number
 }
 
@@ -470,6 +492,8 @@ const state: StandaloneState = {
   frameTags: new Map(),
   suggestions: [],
   presets: [],
+  executionPolicies: [],
+  trackingSchedule: makeDefaultTrackingSchedule(),
   nextTagId: 1,
 }
 
@@ -816,6 +840,17 @@ export async function handleStandaloneRequest(
     return jsonResponse(state.suggestions)
   }
 
+  if (path === '/api/tracking-schedule' && method === 'GET') {
+    return jsonResponse(state.trackingSchedule)
+  }
+  if (path === '/api/tracking-schedule' && method === 'PUT') {
+    state.trackingSchedule = (body ?? makeDefaultTrackingSchedule()) as TrackingScheduleConfig
+    return jsonResponse(state.trackingSchedule)
+  }
+  if (path === '/api/tracking-schedule/status' && method === 'GET') {
+    return jsonResponse(makeDefaultTrackingScheduleStatus())
+  }
+
   const suggestionFeedbackMatch = path.match(/^\/api\/focus\/suggestions\/(\d+)\/feedback$/)
   if (suggestionFeedbackMatch && method === 'POST') {
     const suggestionId = parseId(suggestionFeedbackMatch[1])
@@ -841,6 +876,46 @@ export async function handleStandaloneRequest(
   }
   if (path === '/api/automation/policies' && method === 'GET') {
     return jsonResponse(makeDefaultPolicies())
+  }
+  if (path === '/api/automation/execution-policies') {
+    if (method === 'GET') {
+      return jsonResponse(state.executionPolicies)
+    }
+
+    if (method === 'POST') {
+      const policy = body as ExecutionPolicyConfig | null
+      if (!policy?.policy_id) {
+        return jsonResponse({ error: 'Policy ID is required' }, 400)
+      }
+      state.executionPolicies = [
+        ...state.executionPolicies.filter((existing) => existing.policy_id !== policy.policy_id),
+        policy,
+      ]
+      return jsonResponse(policy, 201)
+    }
+  }
+  const executionPolicyMatch = path.match(/^\/api\/automation\/execution-policies\/([^/]+)$/)
+  if (executionPolicyMatch) {
+    const policyId = decodeURIComponent(executionPolicyMatch[1])
+
+    if (method === 'PUT') {
+      const policy = body as ExecutionPolicyConfig | null
+      if (!policy?.policy_id) {
+        return jsonResponse({ error: 'Policy ID is required' }, 400)
+      }
+      state.executionPolicies = state.executionPolicies.map((existing) =>
+        existing.policy_id === policyId ? policy : existing,
+      )
+      if (!state.executionPolicies.some((existing) => existing.policy_id === policy.policy_id)) {
+        state.executionPolicies.push(policy)
+      }
+      return jsonResponse(policy)
+    }
+
+    if (method === 'DELETE') {
+      state.executionPolicies = state.executionPolicies.filter((existing) => existing.policy_id !== policyId)
+      return new Response(null, { status: 204 })
+    }
   }
   if (path === '/api/automation/contracts' && method === 'GET') {
     return jsonResponse({

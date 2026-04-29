@@ -30,6 +30,32 @@ const sourceBadgeColorByValue: Record<string, BadgeColor> = {
   platform: 'primary',
 }
 
+type StatTone = 'neutral' | 'success' | 'warning' | 'error'
+
+const statToneClass: Record<StatTone, string> = {
+  neutral: 'text-content',
+  success: 'text-semantic-success',
+  warning: 'text-semantic-warning',
+  error: 'text-semantic-error',
+}
+
+interface StatMetricProps {
+  label: string
+  value: string | number
+  tone?: StatTone
+}
+
+function StatMetric({ label, value, tone = 'neutral' }: StatMetricProps) {
+  return (
+    <div className="text-center">
+      <output aria-label={`${label}: ${value}`} className={cn(typography.stat.large, statToneClass[tone])}>
+        {value}
+      </output>
+      <div className="text-content-secondary text-xs">{label}</div>
+    </div>
+  )
+}
+
 export interface AutomationContext {
   status: AutomationStatus | undefined
   stats: AutomationStats | undefined
@@ -57,6 +83,13 @@ export default function AutomationLayout() {
   const sourceLabel = (source?: string | null) => t(sourceLabelByValue[source ?? ''] ?? 'automation.sourceUnknown')
 
   const sourceBadgeColor = (source?: string | null) => sourceBadgeColorByValue[source ?? ''] ?? 'default'
+  const totalExecutions = stats?.total_executions ?? 0
+  const successful = stats?.successful ?? 0
+  const failed = stats?.failed ?? 0
+  const denied = stats?.denied ?? 0
+  const timeout = stats?.timeout ?? 0
+  const successRate = `${((stats?.success_rate ?? 0) * 100).toFixed(1)}%`
+  const blockedRate = `${((stats?.blocked_rate ?? 0) * 100).toFixed(1)}%`
 
   if (statusLoading) {
     return (
@@ -90,7 +123,7 @@ export default function AutomationLayout() {
               {status?.enabled ? (
                 <Badge color="success">{t('automation.enabled')}</Badge>
               ) : (
-                <Badge color="error">{t('automation.disabled')}</Badge>
+                <Badge color="default">{t('automation.disabled')}</Badge>
               )}
             </div>
           </CardContent>
@@ -189,50 +222,28 @@ export default function AutomationLayout() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-content`}>{stats?.total_executions ?? 0}</div>
-              <div className="text-content-secondary text-xs">{t('automation.totalExecutions')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-semantic-success`}>{stats?.successful ?? 0}</div>
-              <div className="text-content-secondary text-xs">{t('automation.successful')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-semantic-error`}>{stats?.failed ?? 0}</div>
-              <div className="text-content-secondary text-xs">{t('automation.failed')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-semantic-warning`}>{stats?.denied ?? 0}</div>
-              <div className="text-content-secondary text-xs">{t('automation.denied')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-semantic-warning`}>{stats?.timeout ?? 0}</div>
-              <div className="text-content-secondary text-xs">{t('automation.timeout')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-semantic-success`}>
-                {((stats?.success_rate ?? 0) * 100).toFixed(1)}%
-              </div>
-              <div className="text-content-secondary text-xs">{t('automation.successRate')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-semantic-warning`}>
-                {((stats?.blocked_rate ?? 0) * 100).toFixed(1)}%
-              </div>
-              <div className="text-content-secondary text-xs">{t('automation.blockedRate')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-content`}>{(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms</div>
-              <div className="text-content-secondary text-xs">{t('automation.avgElapsed')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-content`}>{(stats?.p95_elapsed_ms ?? 0).toFixed(0)}ms</div>
-              <div className="text-content-secondary text-xs">{t('automation.p95Elapsed')}</div>
-            </div>
-            <div className="text-center">
-              <div className={`${typography.stat.large} text-content`}>{stats?.timing_samples ?? 0}</div>
-              <div className="text-content-secondary text-xs">{t('automation.timingSamples')}</div>
-            </div>
+            <StatMetric label={t('automation.totalExecutions')} value={totalExecutions} />
+            <StatMetric
+              label={t('automation.successful')}
+              value={successful}
+              tone={successful > 0 ? 'success' : 'neutral'}
+            />
+            <StatMetric label={t('automation.failed')} value={failed} tone={failed > 0 ? 'error' : 'neutral'} />
+            <StatMetric label={t('automation.denied')} value={denied} tone={denied > 0 ? 'warning' : 'neutral'} />
+            <StatMetric label={t('automation.timeout')} value={timeout} tone={timeout > 0 ? 'warning' : 'neutral'} />
+            <StatMetric
+              label={t('automation.successRate')}
+              value={successRate}
+              tone={totalExecutions > 0 && (stats?.success_rate ?? 0) > 0 ? 'success' : 'neutral'}
+            />
+            <StatMetric
+              label={t('automation.blockedRate')}
+              value={blockedRate}
+              tone={(stats?.blocked_rate ?? 0) > 0 ? 'warning' : 'neutral'}
+            />
+            <StatMetric label={t('automation.avgElapsed')} value={`${(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms`} />
+            <StatMetric label={t('automation.p95Elapsed')} value={`${(stats?.p95_elapsed_ms ?? 0).toFixed(0)}ms`} />
+            <StatMetric label={t('automation.timingSamples')} value={stats?.timing_samples ?? 0} />
           </div>
         </CardContent>
       </Card>

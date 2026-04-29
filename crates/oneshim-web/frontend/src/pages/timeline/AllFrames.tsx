@@ -27,8 +27,26 @@ function getImportanceBadge(importance: number) {
   return { color: 'default' as const, label: `${(importance * 100).toFixed(0)}%` }
 }
 
+function getFrameButtonLabel(
+  frame: TimelineContext['frames'][number],
+  locale: string,
+  selected: boolean,
+  t: ReturnType<typeof useTranslation>['t'],
+) {
+  const importance = `${(frame.importance * 100).toFixed(0)}%`
+  return t('timeline.frameButtonLabel', {
+    app: frame.app_name,
+    window: frame.window_title,
+    importance,
+    date: formatDate(frame.timestamp, locale),
+    time: formatTime(frame.timestamp, locale),
+    state: selected ? t('timeline.frameSelected') : t('timeline.frameNotSelected'),
+  })
+}
+
 export default function AllFrames() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const navigate = useNavigate()
   const {
     frames,
@@ -238,51 +256,58 @@ export default function AllFrames() {
       {viewMode === 'grid' && (
         <Card id="section-all" variant="default" padding="md">
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
-            {filteredFrames.map((frame, index) => (
-              <button
-                type="button"
-                key={frame.id}
-                data-testid={`frame-card-${frame.id}`}
-                onClick={() => (selectMode ? toggleFrameSelection(frame.id) : selectFrame(frame, index))}
-                onDoubleClick={() => {
-                  if (!selectMode) {
-                    selectFrame(frame, index)
-                    if (frame.image_url) setLightboxOpen(true)
-                  }
-                }}
-                className={cn(
-                  `relative aspect-video overflow-hidden rounded border-2 bg-hover ${motion.all} hover:scale-105`,
-                  interaction.focusRing,
-                  selectMode && selectedFrames.has(frame.id)
-                    ? 'border-brand-signal ring-2 ring-brand-signal/50'
-                    : selectedFrame?.id === frame.id && !selectMode
+            {filteredFrames.map((frame, index) => {
+              const isSelected = selectMode ? selectedFrames.has(frame.id) : selectedFrame?.id === frame.id
+              const frameButtonLabel = getFrameButtonLabel(frame, locale, isSelected, t)
+              return (
+                <button
+                  type="button"
+                  key={frame.id}
+                  data-testid={`frame-card-${frame.id}`}
+                  aria-label={frameButtonLabel}
+                  title={frameButtonLabel}
+                  aria-pressed={isSelected}
+                  onClick={() => (selectMode ? toggleFrameSelection(frame.id) : selectFrame(frame, index))}
+                  onDoubleClick={() => {
+                    if (!selectMode) {
+                      selectFrame(frame, index)
+                      if (frame.image_url) setLightboxOpen(true)
+                    }
+                  }}
+                  className={cn(
+                    `relative aspect-video overflow-hidden rounded border-2 bg-hover ${motion.all} hover:scale-105`,
+                    interaction.focusRing,
+                    selectMode && selectedFrames.has(frame.id)
                       ? 'border-brand-signal ring-2 ring-brand-signal/50'
-                      : 'border-transparent hover:border-strong',
-                )}
-              >
-                {frame.image_url ? (
-                  <img
-                    src={resolveImageUrl(frame.image_url) ?? undefined}
-                    alt={frame.window_title}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-content-tertiary text-xs">
-                    {t('timeline.noImage')}
-                  </div>
-                )}
-                {selectMode && (
-                  <div className="absolute top-1 left-1">
-                    {selectedFrames.has(frame.id) ? (
-                      <CheckSquare className={cn(iconSize.md, 'text-brand-signal drop-shadow')} />
-                    ) : (
-                      <Square className={cn(iconSize.md, 'text-content-inverse drop-shadow')} />
-                    )}
-                  </div>
-                )}
-              </button>
-            ))}
+                      : selectedFrame?.id === frame.id && !selectMode
+                        ? 'border-brand-signal ring-2 ring-brand-signal/50'
+                        : 'border-transparent hover:border-strong',
+                  )}
+                >
+                  {frame.image_url ? (
+                    <img
+                      src={resolveImageUrl(frame.image_url) ?? undefined}
+                      alt={frame.window_title}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-content-tertiary text-xs">
+                      {t('timeline.noImage')}
+                    </div>
+                  )}
+                  {selectMode && (
+                    <div className="absolute top-1 left-1">
+                      {selectedFrames.has(frame.id) ? (
+                        <CheckSquare className={cn(iconSize.md, 'text-brand-signal drop-shadow')} />
+                      ) : (
+                        <Square className={cn(iconSize.md, 'text-content-inverse drop-shadow')} />
+                      )}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
           </div>
           {filteredFrames.length === 0 && (
             <div className="py-8 text-center text-content-secondary">
@@ -362,8 +387,8 @@ export default function AllFrames() {
 
                   {/* Timestamp */}
                   <div className="flex-shrink-0 text-right text-content-tertiary text-sm">
-                    <div>{formatDate(frame.timestamp)}</div>
-                    <div>{formatTime(frame.timestamp)}</div>
+                    <div>{formatDate(frame.timestamp, locale)}</div>
+                    <div>{formatTime(frame.timestamp, locale)}</div>
                   </div>
                 </button>
               )
@@ -442,7 +467,7 @@ export default function AllFrames() {
                 <dl className="space-y-2">
                   <div className="flex justify-between">
                     <dt className="text-content-secondary">{t('timeline.time')}</dt>
-                    <dd className="text-content">{formatTime(selectedFrame.timestamp)}</dd>
+                    <dd className="text-content">{formatTime(selectedFrame.timestamp, locale)}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-content-secondary">{t('timeline.app')}</dt>
