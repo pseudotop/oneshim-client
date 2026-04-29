@@ -353,7 +353,7 @@ export const routeTree: RouteNode[] = [
     component: PrivacyLayout,
     children: [
       { path: 'data', labelKey: 'sidebar.dataControls', component: DataSection },
-      { path: 'consent', labelKey: 'sidebar.consent', component: ConsentSection },
+      { path: 'consent', labelKey: 'sidebar.dangerZone', component: ConsentSection },
       { path: 'export', labelKey: 'sidebar.dataExport', component: PrivacyExportSection },
     ],
     bottom: true,

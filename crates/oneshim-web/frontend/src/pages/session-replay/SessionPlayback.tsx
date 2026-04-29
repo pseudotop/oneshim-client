@@ -47,8 +47,8 @@ interface FrameCardProps {
   statusSlot: React.ReactNode
 }
 
-function formatDetailTime(date: Date) {
-  return date.toLocaleString('ko-KR', {
+function formatDetailTime(date: Date, locale: string) {
+  return date.toLocaleString(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -60,7 +60,8 @@ function formatDetailTime(date: Date) {
 }
 
 export function FrameCard({ playback, viewportSlot, statusSlot }: FrameCardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const { currentFrame } = playback
 
   const { data: currentFrameTags = [] } = useQuery({
@@ -76,7 +77,7 @@ export function FrameCard({ playback, viewportSlot, statusSlot }: FrameCardProps
         <CardTitle>
           {currentFrame
             ? `${currentFrame.app_name} - ${currentFrame.window_title}`
-            : t('replay.selectTime', '시간을 선택하세요')}
+            : t('replay.selectTime', 'Select a time')}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -97,10 +98,12 @@ export function FrameCard({ playback, viewportSlot, statusSlot }: FrameCardProps
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <Clock className={`${iconSize.base} text-content-muted`} />
-                <span className="text-content-secondary">{formatDetailTime(new Date(currentFrame.timestamp))}</span>
+                <span className="text-content-secondary">
+                  {formatDetailTime(new Date(currentFrame.timestamp), locale)}
+                </span>
               </div>
               <div className="flex items-center space-x-2 text-sm">
-                <span className="text-content-secondary">{t('search.importance', '중요도')}:</span>
+                <span className="text-content-secondary">{t('search.importance', 'Importance')}:</span>
                 <Badge
                   color={
                     currentFrame.importance >= 0.7 ? 'success' : currentFrame.importance >= 0.4 ? 'warning' : 'default'
@@ -133,7 +136,7 @@ export function FrameCard({ playback, viewportSlot, statusSlot }: FrameCardProps
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-content-secondary">
             <Image className="mb-3 h-12 w-12 opacity-50" />
-            <p>{t('replay.noFrames', '해당 시간의 frame이 없습니다')}</p>
+            <p>{t('replay.noFrames', 'No frames at this time')}</p>
           </div>
         )}
       </CardContent>

@@ -8,6 +8,7 @@ use oneshim_core::config::CredentialBackendKind;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::pii_sanitizer::PiiSanitizer;
 use oneshim_core::ports::runtime_log_provider::RuntimeLogProvider;
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
@@ -25,6 +26,7 @@ use crate::AppState;
 pub struct StorageWebContext {
     pub storage: Arc<dyn WebStorage>,
     pub frames_dir: Option<PathBuf>,
+    pub frame_storage: Option<Arc<dyn FrameStoragePort>>,
     /// D5 iter-15: PII sanitizer for export-handler belt-and-suspenders
     /// sanitization. Cloned from AppState.diagnostics.pii_sanitizer at
     /// context construction time.
@@ -36,6 +38,7 @@ impl StorageWebContext {
         Self {
             storage: state.core.storage.clone(),
             frames_dir: state.core.frames_dir.clone(),
+            frame_storage: state.core.frame_storage.clone(),
             pii_sanitizer: state.diagnostics.pii_sanitizer.clone(),
         }
     }

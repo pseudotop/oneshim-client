@@ -105,7 +105,7 @@ const CASES: ShellCase[] = [
     activeBottomTestId: 'nav-privacy',
     expectedHeaderPattern: /privacy/i,
     selectedLeafPattern: /data controls/i,
-    expectedTopLevelItems: [/data controls/i, /consent/i, /data export/i],
+    expectedTopLevelItems: [/data controls/i, /danger zone/i, /data export/i],
   },
 ]
 

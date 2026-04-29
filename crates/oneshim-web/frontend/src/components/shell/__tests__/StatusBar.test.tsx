@@ -26,9 +26,9 @@ describe('StatusBar', () => {
     expect(StatusBar.displayName).toBe('StatusBar')
   })
 
-  it('shows "Offline" by default when disconnected', () => {
+  it('shows local mode by default when the realtime stream is disconnected', () => {
     renderWithProviders(<StatusBar />)
-    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    expect(screen.getByText(/local mode/i)).toBeInTheDocument()
   })
 
   it('shows version string', () => {
@@ -74,6 +74,7 @@ describe('StatusBar', () => {
     })
     renderWithProviders(<StatusBar />)
     expect(screen.getByText('45.2%')).toBeInTheDocument()
-    expect(screen.getByText('8192MB')).toBeInTheDocument()
+    expect(screen.getByText('8.0GB')).toBeInTheDocument()
+    expect(screen.queryByText('8192MB')).not.toBeInTheDocument()
   })
 })

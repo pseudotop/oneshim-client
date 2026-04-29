@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bot } from 'lucide-react'
+import { Bot, ClipboardCheck, History, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { fetchAutomationContracts, fetchPolicies } from '../../api/client'
-import { EmptyState } from '../../components/ui'
+import { GuidanceEmptyState } from '../../components/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
 import { useTypedOutletContext } from '../../routes'
-import { typography } from '../../styles/tokens'
+import { iconSize, typography } from '../../styles/tokens'
 import type { AutomationContext } from './AutomationLayout'
 
 export default function PoliciesSection() {
@@ -29,11 +29,28 @@ export default function PoliciesSection() {
   // keeps redirecting. Same AuditLayout empty-state-in-child pattern.
   if ((stats?.total_executions ?? 0) === 0 && !status?.enabled) {
     return (
-      <EmptyState
+      <GuidanceEmptyState
         icon={<Bot className="h-8 w-8" />}
         title={t('emptyState.automation.title')}
         description={t('emptyState.automation.description')}
-        action={{ label: t('emptyState.automation.action'), onClick: () => navigate('/settings') }}
+        guidance={[
+          {
+            icon: <ShieldCheck className={iconSize.sm} aria-hidden="true" />,
+            title: t('emptyState.automation.guideEnableTitle'),
+            description: t('emptyState.automation.guideEnableDescription'),
+          },
+          {
+            icon: <ClipboardCheck className={iconSize.sm} aria-hidden="true" />,
+            title: t('emptyState.automation.guidePolicyTitle'),
+            description: t('emptyState.automation.guidePolicyDescription'),
+          },
+          {
+            icon: <History className={iconSize.sm} aria-hidden="true" />,
+            title: t('emptyState.automation.guideAuditTitle'),
+            description: t('emptyState.automation.guideAuditDescription'),
+          },
+        ]}
+        primaryAction={{ label: t('emptyState.automation.action'), onClick: () => navigate('/settings') }}
       />
     )
   }

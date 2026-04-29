@@ -1,5 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, ChevronDown, ChevronUp, Layers, MessageSquare } from 'lucide-react'
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  Layers,
+  MessageSquare,
+  PlayCircle,
+  Settings2,
+  ShieldCheck,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -9,7 +19,7 @@ import {
   fetchPresetLibrary,
   type PresetSummaryDto,
 } from '../api/client'
-import { EmptyState, ListSkeleton, Select } from '../components/ui'
+import { EmptyState, GuidanceEmptyState, ListSkeleton, Select } from '../components/ui'
 import { Badge } from '../components/ui/Badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { colors, iconSize, motion, typography } from '../styles/tokens'
@@ -19,6 +29,57 @@ import { cn } from '../utils/cn'
 // ── Types ────────────────────────────────────────────────────
 
 type PlaybookTab = 'coaching' | 'presets'
+type TemplatePart = { kind: 'text'; value: string } | { kind: 'variable'; value: string }
+
+const TEMPLATE_VARIABLE_PATTERN = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g
+
+function splitTemplateText(text: string): TemplatePart[] {
+  const parts: TemplatePart[] = []
+  let lastIndex = 0
+
+  for (const match of text.matchAll(TEMPLATE_VARIABLE_PATTERN)) {
+    const matchIndex = match.index ?? 0
+    if (matchIndex > lastIndex) {
+      parts.push({ kind: 'text', value: text.slice(lastIndex, matchIndex) })
+    }
+    parts.push({ kind: 'variable', value: match[1] })
+    lastIndex = matchIndex + match[0].length
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ kind: 'text', value: text.slice(lastIndex) })
+  }
+
+  return parts.length > 0 ? parts : [{ kind: 'text', value: text }]
+}
+
+function TemplateText({ text }: { text: string }) {
+  const { t } = useTranslation()
+  const parts = useMemo(() => splitTemplateText(text), [text])
+
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.kind === 'variable' ? (
+          <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: parsed text segments have stable order for a single immutable template
+            key={index}
+            className={cn(
+              'mx-0.5 inline-flex rounded border border-muted bg-surface-muted px-1.5 py-0.5 align-baseline text-[0.78em] text-content-strong',
+              typography.family.mono,
+            )}
+          >
+            <span className="sr-only">{t('playbooks.variableLabel', { name: part.value })}</span>
+            <code aria-hidden="true">{part.value}</code>
+          </span>
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: parsed text segments have stable order for a single immutable template
+          <span key={index}>{part.value}</span>
+        ),
+      )}
+    </>
+  )
+}
 
 // ── Category badge color map ─────────────────────────────────
 
@@ -72,7 +133,7 @@ function CoachingCard({ template }: CoachingCardProps) {
         <div className="flex items-start gap-2">
           <MessageSquare className={cn(iconSize.sm, 'mt-0.5 shrink-0 text-content-muted')} aria-hidden="true" />
           <p className={cn('text-sm leading-relaxed', colors.text.secondary, !expanded && isLong && 'line-clamp-2')}>
-            {template.text}
+            <TemplateText text={template.text} />
           </p>
         </div>
         {isLong && (
@@ -304,11 +365,28 @@ export default function Playbooks() {
               <ListSkeleton rows={6} />
             </div>
           ) : templates.length === 0 ? (
-            <EmptyState
+            <GuidanceEmptyState
               icon={<MessageSquare className="h-8 w-8" aria-hidden="true" />}
               title={t('emptyState.playbooksCoaching.title')}
               description={t('emptyState.playbooksCoaching.description')}
-              action={{
+              guidance={[
+                {
+                  icon: <Filter className={iconSize.base} aria-hidden="true" />,
+                  title: t('emptyState.playbooksCoaching.guideTriggerTitle'),
+                  description: t('emptyState.playbooksCoaching.guideTriggerDescription'),
+                },
+                {
+                  icon: <Settings2 className={iconSize.base} aria-hidden="true" />,
+                  title: t('emptyState.playbooksCoaching.guideVariablesTitle'),
+                  description: t('emptyState.playbooksCoaching.guideVariablesDescription'),
+                },
+                {
+                  icon: <MessageSquare className={iconSize.base} aria-hidden="true" />,
+                  title: t('emptyState.playbooksCoaching.guidePreviewTitle'),
+                  description: t('emptyState.playbooksCoaching.guidePreviewDescription'),
+                },
+              ]}
+              primaryAction={{
                 label: t('emptyState.playbooksCoaching.action'),
                 onClick: () => navigate('/settings/coaching'),
               }}
@@ -355,11 +433,28 @@ export default function Playbooks() {
               <ListSkeleton rows={6} />
             </div>
           ) : presets.length === 0 ? (
-            <EmptyState
+            <GuidanceEmptyState
               icon={<BookOpen className="h-8 w-8" aria-hidden="true" />}
               title={t('emptyState.playbooksPresets.title')}
               description={t('emptyState.playbooksPresets.description')}
-              action={{
+              guidance={[
+                {
+                  icon: <Settings2 className={iconSize.base} aria-hidden="true" />,
+                  title: t('emptyState.playbooksPresets.guideReviewTitle'),
+                  description: t('emptyState.playbooksPresets.guideReviewDescription'),
+                },
+                {
+                  icon: <ShieldCheck className={iconSize.base} aria-hidden="true" />,
+                  title: t('emptyState.playbooksPresets.guidePolicyTitle'),
+                  description: t('emptyState.playbooksPresets.guidePolicyDescription'),
+                },
+                {
+                  icon: <PlayCircle className={iconSize.base} aria-hidden="true" />,
+                  title: t('emptyState.playbooksPresets.guideRunTitle'),
+                  description: t('emptyState.playbooksPresets.guideRunDescription'),
+                },
+              ]}
+              primaryAction={{
                 label: t('emptyState.playbooksPresets.action'),
                 onClick: () => navigate('/automation/policies'),
               }}

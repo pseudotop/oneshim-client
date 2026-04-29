@@ -78,22 +78,30 @@ cp "$PKG_RESOURCES/welcome.html" "$WORK_DIR/"
 cp "$PKG_RESOURCES/license.html" "$WORK_DIR/"
 cp "$PKG_RESOURCES/conclusion.html" "$WORK_DIR/"
 
+build_product_archive() {
+  local output_pkg="$1"
+
+  if [[ -n "$SIGN_IDENTITY" ]]; then
+    echo "Signing with: $SIGN_IDENTITY"
+    productbuild \
+      --distribution "$WORK_DIR/distribution.xml" \
+      --resources "$WORK_DIR" \
+      --package-path "$WORK_DIR" \
+      --sign "$SIGN_IDENTITY" \
+      "$output_pkg"
+  else
+    productbuild \
+      --distribution "$WORK_DIR/distribution.xml" \
+      --resources "$WORK_DIR" \
+      --package-path "$WORK_DIR" \
+      "$output_pkg"
+  fi
+}
+
 # Step 4: Build product archive
 OUTPUT_PKG="$OUTPUT_DIR/Maekon-${VERSION}.pkg"
 echo "Building product archive..."
-
-SIGN_ARGS=()
-if [[ -n "$SIGN_IDENTITY" ]]; then
-  SIGN_ARGS=(--sign "$SIGN_IDENTITY")
-  echo "Signing with: $SIGN_IDENTITY"
-fi
-
-productbuild \
-  --distribution "$WORK_DIR/distribution.xml" \
-  --resources "$WORK_DIR" \
-  --package-path "$WORK_DIR" \
-  "${SIGN_ARGS[@]}" \
-  "$OUTPUT_PKG"
+build_product_archive "$OUTPUT_PKG"
 
 echo ""
 echo "=== PKG installer created ==="

@@ -133,7 +133,12 @@
     "channelStableDesc": "Production-ready releases. Recommended for most users.",
     "channelPreReleaseDesc": "Release candidates for testing before stable promotion.",
     "channelNightlyDesc": "Bleeding-edge builds. May contain experimental features.",
+    "channelNightlyDisabledTitle": "Nightly updates are disabled in this build",
+    "channelNightlyDisabledDescription": "Switch to Stable or Pre-release to receive supported update artifacts.",
+    "channelNightlyDisabledCard": "Not available in this build. This channel will return when nightly artifacts are supported.",
     "active": "Active",
+    "notAvailable": "Not available",
+    "needsChange": "Needs change",
     "savingChannel": "Saving...",
     "channelSaved": "Update channel saved",
     "channelSaveFailed": "Failed to save update channel",
@@ -169,6 +174,9 @@
     "enlarge": "Enlarge",
     "noFrames": "No captured frames.",
     "noFilterMatch": "No frames match the filter.",
+    "frameButtonLabel": "{{app}} — {{window}} — {{importance}} importance — {{date}} {{time}} — {{state}}",
+    "frameSelected": "selected",
+    "frameNotSelected": "not selected",
     "frameInfo": "Frame Info",
     "time": "Time",
     "windowTitle": "Window Title",
@@ -214,6 +222,166 @@
     },
     "groupCore": "Core",
     "groupAdvanced": "Advanced",
+    "guidance": {
+      "monitoring": {
+        "title": "Monitoring guide",
+        "description": "Use this page to decide what Maekon captures and how often it samples activity.",
+        "permissions": {
+          "title": "Resolve desktop access first",
+          "description": "Screen capture and accessibility status affect whether downstream timelines and insights are reliable."
+        },
+        "intervals": {
+          "title": "Tune intervals conservatively",
+          "description": "Shorter intervals create fresher metrics, but also more storage and runtime work."
+        },
+        "privacy": {
+          "title": "Use privacy mode for pauses",
+          "description": "Privacy mode pauses capture without forcing you to rewrite the rest of the monitoring setup."
+        }
+      },
+      "privacy": {
+        "title": "Privacy guide",
+        "description": "Use these controls to keep sensitive apps, titles, and identifiers out of captured context.",
+        "automatic": {
+          "title": "Start with automatic exclusions",
+          "description": "Keep the sensitive-app detector enabled before adding manual app or title rules."
+        },
+        "pii": {
+          "title": "Choose the masking level",
+          "description": "Use Standard for everyday capture and Strict when exported diagnostics may include paths or keys."
+        },
+        "patterns": {
+          "title": "Use title patterns for sensitive workflows",
+          "description": "Window-title patterns catch private documents even when the app itself is normally safe."
+        }
+      },
+      "notifications": {
+        "title": "Notification guide",
+        "description": "Use notifications when they create timely coaching value without becoming background noise.",
+        "permission": {
+          "title": "Confirm OS permission first",
+          "description": "If desktop notification permission is blocked, these thresholds will not produce visible reminders."
+        },
+        "thresholds": {
+          "title": "Tune one threshold at a time",
+          "description": "Start with idle and long-session reminders before enabling resource warnings."
+        },
+        "usage": {
+          "title": "Keep high-usage alerts rare",
+          "description": "Reserve CPU or memory alerts for exceptional load so they remain actionable."
+        }
+      },
+      "dataStorage": {
+        "title": "Data & storage guide",
+        "description": "Use this page to understand local footprint, export recent records, and set retention limits.",
+        "review": {
+          "title": "Review the footprint",
+          "description": "Compare database, frame, event, and metric counts before changing caps."
+        },
+        "export": {
+          "title": "Export before reducing retention",
+          "description": "Export metrics, events, or frame metadata before lowering storage or retention limits."
+        },
+        "telemetry": {
+          "title": "Telemetry is separate",
+          "description": "Telemetry toggles control remote diagnostics, not the local records retained on this device."
+        }
+      },
+      "sync": {
+        "title": "Sync setup guide",
+        "description": "Sync needs matching configuration, a shared secret, and a transport that fits your devices.",
+        "enabledDescription": "Use this page to confirm the local device identity, discover peers, and run an explicit sync cycle.",
+        "transport": {
+          "title": "Choose a transport deliberately",
+          "description": "LAN, file, and remote sync have different privacy and reachability trade-offs."
+        },
+        "passphrase": {
+          "title": "Protect the passphrase",
+          "description": "All devices must use the same secret, and losing it prevents decrypting shared state."
+        },
+        "restart": {
+          "title": "Restart after config changes",
+          "description": "Sync configuration is read at startup, so restart after enabling or changing transport settings."
+        },
+        "device": {
+          "title": "Confirm this device",
+          "description": "Check the displayed name and truncated ID before syncing multiple machines."
+        },
+        "peers": {
+          "title": "Validate peer discovery",
+          "description": "No peers usually means transport, network, or passphrase setup still needs attention."
+        },
+        "conflicts": {
+          "title": "Review applied vs skipped",
+          "description": "Skipped changes are useful signals when two devices have divergent state."
+        }
+      },
+      "audio": {
+        "title": "Audio setup guide",
+        "description": "Use audio capture only when speech context is worth the added permission and storage surface.",
+        "provider": {
+          "title": "Choose local or cloud STT",
+          "description": "Local Whisper keeps audio processing on-device; cloud STT requires a provider key and network egress."
+        },
+        "model": {
+          "title": "Download the right model",
+          "description": "Larger models improve transcription quality but increase disk and memory use."
+        },
+        "input": {
+          "title": "Pick an input mode",
+          "description": "Push-to-talk is predictable; voice activity needs sensitivity tuning for your room."
+        }
+      },
+      "advanced": {
+        "title": "Advanced settings guide",
+        "description": "These controls affect runtime behavior across capture, analysis, networking, and sync.",
+        "runtime": {
+          "title": "Change runtime limits carefully",
+          "description": "Session, retry, and analysis intervals can affect responsiveness and resource use."
+        },
+        "network": {
+          "title": "Keep endpoints explicit",
+          "description": "Server and gRPC endpoints should point at the intended environment before enabling remote flows."
+        },
+        "sync": {
+          "title": "Pair sync settings with the sync page",
+          "description": "Enable sync here, then use the Sync page to verify device identity and peers."
+        }
+      },
+      "aiAutomation": {
+        "title": "AI automation guide",
+        "description": "Use this page to choose how Maekon reaches AI tools, what data may leave the device, and which safeguards must stay active.",
+        "path": {
+          "title": "Pick the access path first",
+          "description": "Choose direct endpoints, an installed provider CLI, or OAuth before tuning individual OCR and LLM fields."
+        },
+        "safety": {
+          "title": "Keep safety gates visible",
+          "description": "Sandbox, data policy, OCR validation, and scene execution controls determine what automation is allowed to do."
+        },
+        "verify": {
+          "title": "Verify before widening access",
+          "description": "Load models, check readiness, and save reusable profiles before enabling broader remote or execution access."
+        },
+        "footer": "Use Execution History and Execution Policies after saving to confirm the runtime behaves as intended."
+      },
+      "trackingSchedule": {
+        "title": "Tracking schedule guide",
+        "description": "Use schedules when capture should follow predictable work windows instead of running all day.",
+        "windows": {
+          "title": "Add clear windows",
+          "description": "Use non-overlapping start and end times with labels that match the intended routine."
+        },
+        "timezone": {
+          "title": "Confirm timezone",
+          "description": "Use Local for this machine or an explicit IANA zone when matching another location."
+        },
+        "status": {
+          "title": "Check active-now status",
+          "description": "The status pill confirms whether the saved schedule is currently allowing capture."
+        }
+      }
+    },
     "dataCollection": "Data Collection",
     "enableCapture": "Enable Screenshot Capture",
     "idleThreshold": "Idle Detection Threshold (min)",
@@ -422,6 +590,13 @@
     "updateIncludePrereleaseDesc": "Checks prerelease versions too",
     "updateRuntimeStatus": "Runtime status",
     "updateStatusUnavailable": "Failed to load update status",
+    "updateChannel": "Update channel",
+    "updateChannelDesc": "Choose which releases to receive",
+    "updateChannelUnavailable": "Nightly is not available in this build. Choose Stable or Pre-release.",
+    "channelStable": "Stable",
+    "channelPreRelease": "Pre-release (RC)",
+    "channelNightly": "Nightly",
+    "channelNightlyUnavailable": "Nightly (not available)",
     "updateCurrentVersion": "Current version",
     "updateLatestVersion": "Latest version",
     "updateReleaseNote": "Open release notes",
@@ -689,6 +864,7 @@
     "idleTime": "Idle Time",
     "captures": "Captures",
     "events": "Events",
+    "activityCount": "Events + captures",
     "productivityMetrics": "Productivity Metrics",
     "activeRatio": "Active Ratio",
     "peakHour": "Peak Hour",
@@ -810,6 +986,13 @@
     "steps": "steps",
     "run": "Run",
     "noPresets": "No presets in this category",
+    "noPresetsDescription": "This category has no runnable presets yet. Switch categories or come back after workflow presets are added.",
+    "noPresetsGuideCategoryTitle": "Check another category",
+    "noPresetsGuideCategoryDescription": "Productivity, app management, and workflow presets are grouped separately.",
+    "noPresetsGuideProfilesTitle": "Bind AI profiles later",
+    "noPresetsGuideProfilesDescription": "Custom presets can be tied to a saved AI profile after you create one in Settings.",
+    "noPresetsGuidePolicyTitle": "Run only after policy setup",
+    "noPresetsGuidePolicyDescription": "Presets stay disabled until automation and execution policies allow the command path.",
     "runError": "An error occurred during execution",
     "statsTitle": "Execution Statistics",
     "totalExecutions": "Total Executions",
@@ -865,6 +1048,7 @@
     "sandboxEnabled": "Enable Sandbox",
     "sandboxEnabledDescription": "Execute commands in an isolated environment",
     "sandboxProfile": "Sandbox Profile",
+    "sandboxProfileHint": "Standard is the default for day-to-day automation. Use Strict for untrusted commands and Permissive only for local troubleshooting.",
     "sandboxProfilePermissive": "Permissive",
     "sandboxProfileStandard": "Standard",
     "sandboxProfileStrict": "Strict",
@@ -872,6 +1056,7 @@
     "allowNetworkDescription": "Allow network access within sandbox",
     "aiTitle": "AI Provider",
     "accessModeLabel": "Access Path",
+    "accessModeHint": "This choice controls which provider setup fields become active below.",
     "accessModeApiKeyLabel": "Direct endpoints",
     "accessModeApiKeyDescription": "Use direct HTTP endpoints for provider-hosted or self-hosted services. API keys are only required when the selected surface expects them.",
     "accessModeCliLabel": "Installed provider CLI",
@@ -906,6 +1091,8 @@
     "placementDescriptionCustomHosted": "Requests go to a custom OpenAI-compatible endpoint you manage or proxy.",
     "ocrProvider": "OCR Provider",
     "llmProvider": "LLM Provider",
+    "ocrProviderHint": "Keep OCR local unless remote OCR quality or a multimodal LLM surface is required.",
+    "llmProviderHint": "Remote LLMs can improve capability, but they also use the selected access path and external data policy.",
     "providerLocal": "Local",
     "providerRemote": "Remote",
     "cliModeProviderSummary": "Provider CLI mode keeps OCR and LLM providers on local execution. Supported LLM workflows will use installed provider-owned CLIs through the selected surface.",
@@ -919,6 +1106,7 @@
     "activePathRemote": "Remote execution",
     "activePathRemoteSurface": "Remote via {{surface}}",
     "dataPolicy": "External Data Policy",
+    "dataPolicyHint": "This policy is the last privacy gate before text, OCR, or model context can leave the device.",
     "dataPolicyStrict": "PII Filter Strict",
     "dataPolicyStandard": "PII Filter Standard",
     "dataPolicyAllowFiltered": "Allow Filtered",
@@ -928,10 +1116,12 @@
     "sceneActionOverrideEnabled": "Enable Temporary Override",
     "sceneActionOverrideEnabledDescription": "Temporarily permit sensitive scene typing with explicit reason, approver, and expiry.",
     "sceneActionOverrideReason": "Override Reason",
+    "sceneActionOverrideReasonHint": "Use a concrete reason so future audit entries explain why sensitive input was allowed.",
     "sceneActionOverrideReasonPlaceholder": "Example: calibration for low-confidence OCR workflow",
     "sceneActionOverrideApprovedBy": "Approved By",
     "sceneActionOverrideApprovedByPlaceholder": "Example: security-reviewer",
     "sceneActionOverrideExpiresAt": "Expires At (local time)",
+    "sceneActionOverrideExpiryHint": "Short expiries reduce the chance of a temporary exception becoming the default.",
     "sceneIntelligenceTitle": "Scene Intelligence",
     "sceneIntelligenceEnabled": "Enable Scene Intelligence",
     "sceneIntelligenceEnabledDescription": "Enable OCR-based UI structure detection and assistant recommendations.",
@@ -940,23 +1130,32 @@
     "sceneAllowExecution": "Allow Scene Action Execution",
     "sceneAllowExecutionDescription": "Permit direct click/type execution from scene coordinates (RPA gate).",
     "sceneMinConfidence": "Scene Min Confidence (0-1)",
+    "sceneMinConfidenceHint": "Higher values reduce false targets but may hide usable controls in noisy screenshots.",
     "sceneMaxElements": "Scene Max Elements",
+    "sceneMaxElementsHint": "Limit the element count so replay overlays and assistant prompts stay readable.",
     "sceneCalibrationEnabled": "Enable Calibration Validation",
     "sceneCalibrationEnabledDescription": "Validate whether current scene quality is sufficient before assistant usage.",
     "sceneCalibrationMinElements": "Calibration Min Elements",
+    "sceneCalibrationMinElementsHint": "Require enough detected controls before trusting the scene for assistant guidance.",
     "sceneCalibrationMinAvgConfidence": "Calibration Min Avg Confidence (0-1)",
+    "sceneCalibrationMinAvgConfidenceHint": "Use this as the quality bar for accepting a calibrated scene.",
     "ocrValidationTitle": "OCR Calibration Validation",
     "ocrValidationEnabled": "Enable OCR Validation",
     "ocrValidationEnabledDescription": "Filter low-confidence or invalid OCR results before downstream automation.",
     "ocrMinConfidence": "Min Confidence (0-1)",
+    "ocrMinConfidenceHint": "Raise this when OCR noise causes incorrect downstream suggestions.",
     "ocrMaxInvalidRatio": "Max Invalid Ratio (0-1)",
+    "ocrMaxInvalidRatioHint": "Lower values reject OCR batches with too many unusable tokens.",
     "fallbackToLocal": "Fallback to Local",
     "fallbackToLocalDescription": "Fall back to local model when external API fails",
     "externalApi": "External API Settings",
     "endpoint": "Endpoint",
+    "ocrEndpointHint": "Use the OCR endpoint expected by the selected provider surface.",
+    "llmEndpointHint": "Use the LLM endpoint expected by the selected provider surface.",
     "endpointPlaceholderOcr": "https://api.example.com/ocr",
     "endpointPlaceholderLlm": "https://api.example.com/llm",
     "apiKey": "API Key",
+    "apiKeyHint": "Keys should be stored through the configured secret backend, not pasted into notes or profiles.",
     "apiKeyPlaceholder": "Enter API key...",
     "apiKeyStoredPlaceholder": "Stored in {{backend}}",
     "apiKeyStoredHint": "This secret is currently stored in {{backend}}. Enter a new key here to replace it.",
@@ -969,6 +1168,8 @@
     "backendBridgeManaged": "bridge-managed backend",
     "backendUnavailable": "unavailable backend",
     "model": "Model",
+    "ocrModelHint": "Prefer image-capable or vision API models for OCR surfaces.",
+    "llmModelHint": "Choose a model compatible with the selected execution path.",
     "modelSelectionUnsupportedSurface": "This surface does not support selecting a model explicitly. Maekon will use the surface's built-in OCR or provider default path.",
     "ocrModelUnsupported": "The selected model is not known to support image-based OCR on this surface. Choose a compatible multimodal model.",
     "ocrModelCompatibilityUnknown": "Maekon could not confirm OCR compatibility for {{model}} on this surface. Use a known multimodal model or verify with model discovery before saving.",
@@ -978,14 +1179,18 @@
     "llmModelCompatibilityUnknownRejected": "Maekon requires a known compatible LLM model for this surface. {{model}} is not catalogued yet, so choose a known supported model before saving.",
     "selfHostedCustomEndpointStatus": "This self-hosted surface is using a custom endpoint. Readiness was not probed for that endpoint, so verify the local server manually.",
     "timeoutSecs": "Timeout (sec)",
+    "timeoutHint": "Short timeouts fail fast; longer timeouts are useful for local or cold-started services.",
     "providerType": "Provider Type",
     "providerSurfaceLabel": "Provider Surface",
+    "providerSurfaceHint": "Provider surfaces describe where execution runs, how auth works, and which prerequisites must be ready.",
     "savedProfilesTitle": "Saved provider profiles",
     "savedProfilesDescription": "Save the full active AI provider setup and switch between profiles without rebuilding OCR, LLM, and policy settings by hand.",
     "savedProfilesActiveBadge": "Active profile",
     "savedProfilesSelectLabel": "Saved profile",
+    "savedProfilesSelectHint": "Selecting a profile restores its saved provider, routing, policy, and endpoint choices.",
     "savedProfilesCustomOption": "Custom / unsaved configuration",
     "savedProfilesNameLabel": "Profile name",
+    "savedProfilesNameHint": "Use names that describe the environment, such as local, staging, or production.",
     "savedProfilesNamePlaceholder": "Example: Anthropic production",
     "savedProfilesSaveAction": "Save current profile",
     "savedProfilesUpdateAction": "Update selected profile",
@@ -1208,7 +1413,21 @@
     "auto": "Auto",
     "weekdays": "Weekdays",
     "everyday": "Every day",
-    "custom": "Custom"
+    "custom": "Custom",
+    "previewTitle": "Rule preview",
+    "previewDescription": "This is how Focus Auto will interpret the current settings.",
+    "previewHint": "Focus Auto starts only when at least one app or schedule rule matches.",
+    "previewState": "State",
+    "active": "Active",
+    "inactive": "Inactive",
+    "noTriggerApps": "No trigger apps",
+    "noSchedules": "No schedules",
+    "appInputLabel": "New trigger app",
+    "removeAppLabel": "Remove {{app}}",
+    "scheduleStartLabel": "Schedule {{index}} start time",
+    "scheduleEndLabel": "Schedule {{index}} end time",
+    "scheduleDaysLabel": "Schedule {{index}} days",
+    "removeScheduleLabel": "Remove schedule {{index}}"
   },
   "emptyState": {
     "dashboard": {
@@ -1243,12 +1462,24 @@
     "automation": {
       "title": "Automation Inactive",
       "description": "Automation is turned off. Enable it in Settings to let Maekon run approved commands on your behalf.",
-      "action": "Open Settings"
+      "action": "Open Settings",
+      "guideEnableTitle": "Enable automation in Settings",
+      "guideEnableDescription": "Start from Settings so provider, sandbox, and privacy gates are configured together.",
+      "guidePolicyTitle": "Keep policies explicit",
+      "guidePolicyDescription": "Add narrow policies for trusted local processes before running presets.",
+      "guideAuditTitle": "Audit the first run",
+      "guideAuditDescription": "Review execution history after the first command to confirm elapsed time and status."
     },
     "auditLog": {
       "title": "No Audit Entries",
       "description": "Audit entries will appear once Maekon executes automation commands on your behalf.",
-      "action": "Open Automation"
+      "action": "Open Automation",
+      "guideRunTitle": "Run an approved command",
+      "guideRunDescription": "Entries are created after a preset or command passes policy checks and starts execution.",
+      "guideFilterTitle": "Use status filters",
+      "guideFilterDescription": "Filter by successful, failed, denied, or timed out runs when history starts filling in.",
+      "guideElapsedTitle": "Check elapsed time",
+      "guideElapsedDescription": "Elapsed and p95 values help spot slow commands before they become workflow friction."
     },
     "chat": {
       "title": "Start a Conversation",
@@ -1258,12 +1489,24 @@
     "playbooksCoaching": {
       "title": "No Coaching Templates",
       "description": "Coaching templates customize what Maekon says and when. New templates will appear here as you or your team add them.",
-      "action": "Coaching Settings"
+      "action": "Coaching Settings",
+      "guideTriggerTitle": "Pick a trigger",
+      "guideTriggerDescription": "Start with one observable moment, such as a context switch, long session, or interruption.",
+      "guideVariablesTitle": "Keep variables readable",
+      "guideVariablesDescription": "Template variables are shown as chips so it is clear what Maekon fills in at runtime.",
+      "guidePreviewTitle": "Preview before enabling",
+      "guidePreviewDescription": "Review tone and variables before the template is used in live coaching."
     },
     "playbooksPresets": {
       "title": "No Automation Presets",
       "description": "Automation presets are ready-made workflows for common tasks. Install presets from the catalog or create your own in Settings.",
-      "action": "Configure Policies"
+      "action": "Configure Policies",
+      "guideReviewTitle": "Review trusted commands",
+      "guideReviewDescription": "Start with commands you already run manually and keep the preset purpose narrow.",
+      "guidePolicyTitle": "Bind policies first",
+      "guidePolicyDescription": "Presets should only run after matching execution policies and sandbox settings exist.",
+      "guideRunTitle": "Run from Commands",
+      "guideRunDescription": "Use the Commands page to test a preset and confirm the audit entry after the run."
     },
     "filterEmpty": "No items match the current filters.",
     "clearFilters": "Clear Filters"
@@ -1280,6 +1523,7 @@
     "automationOn": "Auto: ON",
     "automationOff": "Auto: OFF",
     "connected": "Connected",
+    "localMode": "Local mode",
     "offline": "Offline",
     "resizeSidebar": "Resize sidebar",
     "collapseSidebar": "Collapse side panel",
@@ -1361,6 +1605,7 @@
     "about": "About",
     "dataControls": "Data Controls",
     "consent": "Consent",
+    "dangerZone": "Danger Zone",
     "dataExport": "Data Export",
     "recentSearches": "Recent Searches",
     "browseTags": "Browse Tags",
@@ -1560,7 +1805,25 @@
     "editPolicy": "Edit Policy",
     "configuredPolicies": "Configured Policies",
     "emptyTitle": "No execution policies",
-    "emptyDescription": "Execution policies control which processes automation can run and under what conditions.",
+    "emptyDescription": "No commands are approved yet. Start with one local process, keep confirmation on, and review the first run before widening access.",
+    "emptyStepProcessTitle": "Start with one trusted local process",
+    "emptyStepProcessDesc": "Use the exact process name for one command you already expect automation to run.",
+    "emptyStepConfirmTitle": "Keep confirmation on",
+    "emptyStepConfirmDesc": "Confirm every run while validating the process, arguments, and audit output.",
+    "emptyStepReviewTitle": "Review the first run",
+    "emptyStepReviewDesc": "Check execution history before loosening arguments, sandbox, or approval requirements.",
+    "policyIdHint": "Stable internal id, for example pol-git-status.",
+    "processNameHint": "Exact command or process name, for example git.",
+    "allowedArgsHint": "Leave empty only if every argument for this process should be allowed.",
+    "allowedArgsShort": "Arguments",
+    "previewTitle": "Policy preview",
+    "previewMissingProcess": "Choose a process",
+    "previewAuto": "Runs without confirmation",
+    "previewBlock": "Blocked until changed",
+    "previewConfirm": "Confirmation required",
+    "previewArgsNone": "Arguments: none yet",
+    "previewArgsCount": "Arguments: {{count}}",
+    "previewHint": "Default to Confirm + Basic audit until the first execution looks correct.",
     "created": "Policy created",
     "createError": "Failed to create policy",
     "updated": "Policy updated",
@@ -1646,7 +1909,7 @@
     "sceneAnalysis": "Scene Analysis",
     "aiSuggestions": "AI Suggestions",
     "focusMode": "Focus Mode",
-    "offlineMessage": "Offline — local capture + analysis available",
+    "offlineMessage": "Local mode — capture still works; server, LLM, and CLI are unavailable",
     "server": "Server",
     "openSettings": "Open Settings",
     "comingSoon": "Coming soon",
@@ -1696,7 +1959,8 @@
     "filterCategory": "Category",
     "steps": "{{count}} steps",
     "builtin": "Built-in",
-    "templateCount": "{{count}} items"
+    "templateCount": "{{count}} items",
+    "variableLabel": "Template variable: {{name}}"
   },
   "trackingSchedule": {
     "title": "Tracking Schedule",

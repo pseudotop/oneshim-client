@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { ProviderSurfaceSpec } from '../../../api/client'
-import { Badge, Button, Card, CardTitle, Select } from '../../../components/ui'
+import { Badge, Button, Card, CardTitle, FieldHint, GuidancePanel, Select } from '../../../components/ui'
 import {
   findFeatureCapability,
   maturityBadgeColor,
@@ -329,6 +329,26 @@ export default function AiAutomationTab() {
     <div className="space-y-6">
       <ProviderWizard onSelect={handleProviderWizardSelect} />
 
+      <GuidancePanel
+        title={t('settings.guidance.aiAutomation.title')}
+        description={t('settings.guidance.aiAutomation.description')}
+        items={[
+          {
+            title: t('settings.guidance.aiAutomation.path.title'),
+            description: t('settings.guidance.aiAutomation.path.description'),
+          },
+          {
+            title: t('settings.guidance.aiAutomation.safety.title'),
+            description: t('settings.guidance.aiAutomation.safety.description'),
+          },
+          {
+            title: t('settings.guidance.aiAutomation.verify.title'),
+            description: t('settings.guidance.aiAutomation.verify.description'),
+          },
+        ]}
+        footer={t('settings.guidance.aiAutomation.footer')}
+      />
+
       <Card variant="default" padding="lg">
         <CardTitle sticky>{t('settingsAutomation.title')}</CardTitle>
         <div className="space-y-4">
@@ -365,6 +385,7 @@ export default function AiAutomationTab() {
                   <option value={formData.ai_provider.access_mode}>{currentAccessModeOption.label}</option>
                 )}
               </Select>
+              <FieldHint>{t('settingsAutomation.accessModeHint')}</FieldHint>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge color={maturityBadgeColor(currentAccessModeOption.maturity)} size="sm">
@@ -421,6 +442,7 @@ export default function AiAutomationTab() {
                     ))
                   )}
                 </Select>
+                <FieldHint>{t('settingsAutomation.providerSurfaceHint')}</FieldHint>
               </div>
 
               {renderSurfaceStatus(currentOcrSurface, 'ocr_api')}
@@ -485,6 +507,7 @@ export default function AiAutomationTab() {
                     ))
                   )}
                 </Select>
+                <FieldHint>{t('settingsAutomation.providerSurfaceHint')}</FieldHint>
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -618,6 +641,7 @@ export default function AiAutomationTab() {
                 <option value="Local">{t('settingsAutomation.providerLocal')}</option>
                 <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
               </Select>
+              <FieldHint>{t('settingsAutomation.ocrProviderHint')}</FieldHint>
             </div>
             <div>
               <label htmlFor="settings-llm-provider" className={form.label}>
@@ -640,6 +664,7 @@ export default function AiAutomationTab() {
                 <option value="Local">{t('settingsAutomation.providerLocal')}</option>
                 <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
               </Select>
+              <FieldHint>{t('settingsAutomation.llmProviderHint')}</FieldHint>
               {llmProviderLocked && (
                 <p className="mt-1 text-content-secondary text-xs">
                   {isCliAccessMode
@@ -663,6 +688,7 @@ export default function AiAutomationTab() {
               <option value="PiiFilterStandard">{t('settingsAutomation.dataPolicyStandard')}</option>
               <option value="AllowFiltered">{t('settingsAutomation.dataPolicyAllowFiltered')}</option>
             </Select>
+            <FieldHint>{t('settingsAutomation.dataPolicyHint')}</FieldHint>
           </div>
 
           <ToggleRow

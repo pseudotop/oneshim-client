@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Input } from '../../../components/ui'
+import { FieldHint, Input } from '../../../components/ui'
 import { typography } from '../../../styles/tokens'
 import { toDateTimeLocalValue, toRfc3339OrNull } from '../ai-automation-utils'
 import ToggleRow from '../ToggleRow'
@@ -39,6 +39,7 @@ export default function SceneIntelligenceConfig({
               onChange={(e) => onSceneActionOverrideChange('reason', e.target.value)}
               placeholder={t('settingsAutomation.sceneActionOverrideReasonPlaceholder')}
             />
+            <FieldHint>{t('settingsAutomation.sceneActionOverrideReasonHint')}</FieldHint>
           </div>
           <div>
             <label htmlFor="settings-scene-override-approved-by" className="mb-1 block text-content-secondary text-xs">
@@ -62,20 +63,18 @@ export default function SceneIntelligenceConfig({
               value={toDateTimeLocalValue(formData.ai_provider.scene_action_override.expires_at)}
               onChange={(e) => onSceneActionOverrideChange('expires_at', toRfc3339OrNull(e.target.value))}
             />
+            <FieldHint>{t('settingsAutomation.sceneActionOverrideExpiryHint')}</FieldHint>
           </div>
         </div>
       </div>
 
       <div className="space-y-3 rounded-lg border border-muted p-4">
         <h4 className={`${typography.weight.medium} text-content-strong text-sm`}>
-          {t('settingsAutomation.sceneIntelligenceTitle', 'Scene Intelligence')}
+          {t('settingsAutomation.sceneIntelligenceTitle')}
         </h4>
         <ToggleRow
-          label={t('settingsAutomation.sceneIntelligenceEnabled', 'Enable Scene Intelligence')}
-          description={t(
-            'settingsAutomation.sceneIntelligenceEnabledDescription',
-            'Enable OCR-based UI structure detection and assistant recommendations.',
-          )}
+          label={t('settingsAutomation.sceneIntelligenceEnabled')}
+          description={t('settingsAutomation.sceneIntelligenceEnabledDescription')}
           checked={formData.ai_provider.scene_intelligence.enabled}
           onChange={(value) => onSceneIntelligenceChange('enabled', value)}
         />
@@ -83,27 +82,21 @@ export default function SceneIntelligenceConfig({
           className={`space-y-3 ${!formData.ai_provider.scene_intelligence.enabled ? 'pointer-events-none opacity-50' : ''}`}
         >
           <ToggleRow
-            label={t('settingsAutomation.sceneOverlayEnabled', 'Show Overlay')}
-            description={t(
-              'settingsAutomation.sceneOverlayEnabledDescription',
-              'Render detected UI element boxes on session replay screenshots.',
-            )}
+            label={t('settingsAutomation.sceneOverlayEnabled')}
+            description={t('settingsAutomation.sceneOverlayEnabledDescription')}
             checked={formData.ai_provider.scene_intelligence.overlay_enabled}
             onChange={(value) => onSceneIntelligenceChange('overlay_enabled', value)}
           />
           <ToggleRow
-            label={t('settingsAutomation.sceneAllowExecution', 'Allow Scene Action Execution')}
-            description={t(
-              'settingsAutomation.sceneAllowExecutionDescription',
-              'Permit direct click/type execution from scene coordinates (RPA gate).',
-            )}
+            label={t('settingsAutomation.sceneAllowExecution')}
+            description={t('settingsAutomation.sceneAllowExecutionDescription')}
             checked={formData.ai_provider.scene_intelligence.allow_action_execution}
             onChange={(value) => onSceneIntelligenceChange('allow_action_execution', value)}
           />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label htmlFor="settings-scene-min-confidence" className="mb-1 block text-content-secondary text-xs">
-                {t('settingsAutomation.sceneMinConfidence', 'Scene Min Confidence')}
+                {t('settingsAutomation.sceneMinConfidence')}
               </label>
               <Input
                 id="settings-scene-min-confidence"
@@ -114,10 +107,11 @@ export default function SceneIntelligenceConfig({
                 value={formData.ai_provider.scene_intelligence.min_confidence}
                 onChange={(e) => onSceneIntelligenceChange('min_confidence', Number(e.target.value))}
               />
+              <FieldHint>{t('settingsAutomation.sceneMinConfidenceHint')}</FieldHint>
             </div>
             <div>
               <label htmlFor="settings-scene-max-elements" className="mb-1 block text-content-secondary text-xs">
-                {t('settingsAutomation.sceneMaxElements', 'Scene Max Elements')}
+                {t('settingsAutomation.sceneMaxElements')}
               </label>
               <Input
                 id="settings-scene-max-elements"
@@ -128,22 +122,20 @@ export default function SceneIntelligenceConfig({
                 value={formData.ai_provider.scene_intelligence.max_elements}
                 onChange={(e) => onSceneIntelligenceChange('max_elements', Number(e.target.value))}
               />
+              <FieldHint>{t('settingsAutomation.sceneMaxElementsHint')}</FieldHint>
             </div>
           </div>
           <div className="space-y-3 rounded-md bg-surface-elevated/70 p-3">
             <ToggleRow
-              label={t('settingsAutomation.sceneCalibrationEnabled', 'Enable Calibration Validation')}
-              description={t(
-                'settingsAutomation.sceneCalibrationEnabledDescription',
-                'Validate whether current scene quality is sufficient before assistant usage.',
-              )}
+              label={t('settingsAutomation.sceneCalibrationEnabled')}
+              description={t('settingsAutomation.sceneCalibrationEnabledDescription')}
               checked={formData.ai_provider.scene_intelligence.calibration_enabled}
               onChange={(value) => onSceneIntelligenceChange('calibration_enabled', value)}
             />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <label htmlFor="settings-scene-cal-min-elements" className="mb-1 block text-content-secondary text-xs">
-                  {t('settingsAutomation.sceneCalibrationMinElements', 'Calibration Min Elements')}
+                  {t('settingsAutomation.sceneCalibrationMinElements')}
                 </label>
                 <Input
                   id="settings-scene-cal-min-elements"
@@ -154,13 +146,14 @@ export default function SceneIntelligenceConfig({
                   value={formData.ai_provider.scene_intelligence.calibration_min_elements}
                   onChange={(e) => onSceneIntelligenceChange('calibration_min_elements', Number(e.target.value))}
                 />
+                <FieldHint>{t('settingsAutomation.sceneCalibrationMinElementsHint')}</FieldHint>
               </div>
               <div>
                 <label
                   htmlFor="settings-scene-cal-min-confidence"
                   className="mb-1 block text-content-secondary text-xs"
                 >
-                  {t('settingsAutomation.sceneCalibrationMinAvgConfidence', 'Calibration Min Avg Confidence')}
+                  {t('settingsAutomation.sceneCalibrationMinAvgConfidence')}
                 </label>
                 <Input
                   id="settings-scene-cal-min-confidence"
@@ -171,6 +164,7 @@ export default function SceneIntelligenceConfig({
                   value={formData.ai_provider.scene_intelligence.calibration_min_avg_confidence}
                   onChange={(e) => onSceneIntelligenceChange('calibration_min_avg_confidence', Number(e.target.value))}
                 />
+                <FieldHint>{t('settingsAutomation.sceneCalibrationMinAvgConfidenceHint')}</FieldHint>
               </div>
             </div>
           </div>
@@ -203,6 +197,7 @@ export default function SceneIntelligenceConfig({
               value={formData.ai_provider.ocr_validation.min_confidence}
               onChange={(e) => onOcrValidationChange('min_confidence', Number(e.target.value))}
             />
+            <FieldHint>{t('settingsAutomation.ocrMinConfidenceHint')}</FieldHint>
           </div>
           <div>
             <label htmlFor="settings-ocr-max-invalid-ratio" className="mb-1 block text-content-secondary text-xs">
@@ -217,6 +212,7 @@ export default function SceneIntelligenceConfig({
               value={formData.ai_provider.ocr_validation.max_invalid_ratio}
               onChange={(e) => onOcrValidationChange('max_invalid_ratio', Number(e.target.value))}
             />
+            <FieldHint>{t('settingsAutomation.ocrMaxInvalidRatioHint')}</FieldHint>
           </div>
         </div>
       </div>

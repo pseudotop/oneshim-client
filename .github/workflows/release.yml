@@ -473,9 +473,9 @@ jobs:
           cd target/${{ matrix.target }}/release
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             cp ../../../src-tauri/icons/icon.icns .
-            tar -czvf ../../../dist/"$ARTIFACT_NAME"."$ASSET_EXT" oneshim icon.icns
+            tar -czvf ../../../dist/"$ARTIFACT_NAME"."$ASSET_EXT" oneshim oneshim-sandbox-worker icon.icns
           else
-            tar -czvf ../../../dist/"$ARTIFACT_NAME"."$ASSET_EXT" oneshim
+            tar -czvf ../../../dist/"$ARTIFACT_NAME"."$ASSET_EXT" oneshim oneshim-sandbox-worker
           fi
         env:
           ARTIFACT_NAME: ${{ matrix.artifact_name }}
@@ -486,7 +486,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path target/${{ matrix.target }}/release/oneshim.exe -DestinationPath dist/${{ matrix.artifact_name }}.${{ matrix.asset_ext }}
+          Compress-Archive -Path target/${{ matrix.target }}/release/oneshim.exe,target/${{ matrix.target }}/release/oneshim-sandbox-worker.exe -DestinationPath dist/${{ matrix.artifact_name }}.${{ matrix.asset_ext }}
 
       - name: Generate checksums
         if: runner.os != 'Windows'
@@ -620,16 +620,22 @@ jobs:
           mkdir -p binaries
           tar -xzf artifacts/arm64/oneshim-macos-arm64.tar.gz -C binaries
           mv binaries/oneshim binaries/oneshim-arm64
+          mv binaries/oneshim-sandbox-worker binaries/oneshim-sandbox-worker-arm64
+          rm -f binaries/icon.icns
           tar -xzf artifacts/x64/oneshim-macos-x64.tar.gz -C binaries
           mv binaries/oneshim binaries/oneshim-x64
+          mv binaries/oneshim-sandbox-worker binaries/oneshim-sandbox-worker-x64
+          rm -f binaries/icon.icns
 
       - name: Create universal binary
         run: |
           lipo -create binaries/oneshim-arm64 binaries/oneshim-x64 -output binaries/oneshim
+          lipo -create binaries/oneshim-sandbox-worker-arm64 binaries/oneshim-sandbox-worker-x64 -output binaries/oneshim-sandbox-worker
           file binaries/oneshim
+          file binaries/oneshim-sandbox-worker
           mkdir -p dist
           cp src-tauri/icons/icon.icns binaries/
-          tar -czvf dist/oneshim-macos-universal.tar.gz -C binaries oneshim icon.icns
+          tar -czvf dist/oneshim-macos-universal.tar.gz -C binaries oneshim oneshim-sandbox-worker icon.icns
           shasum -a 256 dist/oneshim-macos-universal.tar.gz > dist/oneshim-macos-universal.tar.gz.sha256
 
       - name: Upload universal artifact
@@ -753,6 +759,8 @@ jobs:
           mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
           cp binaries/oneshim "$APP_BUNDLE/Contents/MacOS/oneshim"
           chmod +x "$APP_BUNDLE/Contents/MacOS/oneshim"
+          cp binaries/oneshim-sandbox-worker "$APP_BUNDLE/Contents/MacOS/oneshim-sandbox-worker"
+          chmod +x "$APP_BUNDLE/Contents/MacOS/oneshim-sandbox-worker"
           cp src-tauri/icons/icon.icns "$APP_BUNDLE/Contents/Resources/icon.icns"
           cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -1150,6 +1158,13 @@ jobs:
               raise SystemExit("No release artifacts were signed")
           print(f"Signed artifacts: {signed}")
           PY
+
+      - name: Run signed release reliability smoke
+        env:
+          ONESHIM_SMOKE_LOG_DIR: ${{ runner.temp }}/oneshim-signed-release-smoke
+        run: |
+          chmod +x ./scripts/release-reliability-smoke.sh
+          ./scripts/release-reliability-smoke.sh --assets-dir dist --asset-name oneshim-linux-x64.tar.gz --skip-updater-tests --require-signature
 
       - name: Attest release artifacts provenance
         uses: actions/attest-build-provenance@v4

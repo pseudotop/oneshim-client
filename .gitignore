@@ -32,11 +32,15 @@ src-tauri/resources/*.bin
 
 # Tauri sidecar binaries (built locally, not committed)
 src-tauri/oneshim-sandbox-worker*
+src-tauri/binaries/
+src-tauri/binaries/oneshim-sandbox-worker*
 
 # Node.js (웹 대시보드 프론트엔드)
 node_modules/
 
 # Test results / WDIO logs
+.playwright-cli/
+.playwright-mcp/
 test-results/
 wdio-logs/
 

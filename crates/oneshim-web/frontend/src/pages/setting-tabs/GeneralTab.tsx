@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { type AppSettings, type DiagnosticsBundleResponse, fetchSupportDiagnostics } from '../../api/client'
+import {
+  type AppSettings,
+  type DiagnosticsBundleResponse,
+  fetchSupportDiagnostics,
+  type UpdateChannel,
+} from '../../api/client'
 import BugReportWizard from '../../components/BugReportWizard'
 import LanguageSelector from '../../components/LanguageSelector'
 import {
@@ -21,6 +26,7 @@ import { addToast } from '../../hooks/useToast'
 import { translateError, type WireErrorLocale } from '../../i18n/translateError'
 import { form } from '../../styles/tokens'
 import { IS_TAURI } from '../../utils/platform'
+import { isSelectableUpdateChannel } from '../../utils/updateChannels'
 import { useLoadedFormData, useSettingsFormContext } from '../settings/SettingsFormContext'
 import NotificationSettings from './NotificationSettings'
 import ScheduleSettings from './ScheduleSettings'
@@ -237,15 +243,22 @@ export default function GeneralTab() {
                 <select
                   id="update-channel"
                   value={formData.update.channel ?? 'stable'}
-                  onChange={(e) => settingsForm.handleUpdateChange('channel', e.target.value)}
+                  onChange={(e) => {
+                    const channel = e.target.value as UpdateChannel
+                    if (isSelectableUpdateChannel(channel)) settingsForm.handleUpdateChange('channel', channel)
+                  }}
                   className="rounded-md border border-border bg-surface px-3 py-1.5 text-content text-sm"
                 >
                   <option value="stable">{t('settings.channelStable', 'Stable')}</option>
                   <option value="pre_release">{t('settings.channelPreRelease', 'Pre-release (RC)')}</option>
-                  <option value="nightly">{t('settings.channelNightly', 'Nightly')}</option>
+                  <option value="nightly" disabled>
+                    {t('settings.channelNightlyUnavailable')}
+                  </option>
                 </select>
                 <p className="mt-1 text-content-secondary text-xs">
-                  {t('settings.updateChannelDesc', 'Choose which releases to receive')}
+                  {isSelectableUpdateChannel(formData.update.channel ?? 'stable')
+                    ? t('settings.updateChannelDesc', 'Choose which releases to receive')
+                    : t('settings.updateChannelUnavailable')}
                 </p>
               </div>
             </div>

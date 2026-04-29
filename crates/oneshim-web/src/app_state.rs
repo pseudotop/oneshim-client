@@ -16,6 +16,7 @@ use oneshim_core::ports::automation::AutomationPort;
 use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::conversation_session::SessionManager;
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
+use oneshim_core::ports::frame_storage::FrameStoragePort;
 use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
     IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
@@ -43,6 +44,7 @@ pub struct CoreState {
     pub storage: Arc<dyn WebStorage>,
     pub event_tx: broadcast::Sender<RealtimeEvent>,
     pub frames_dir: Option<PathBuf>,
+    pub frame_storage: Option<Arc<dyn FrameStoragePort>>,
     pub config_manager: Option<ConfigManager>,
     pub update_control: Option<UpdateControl>,
 }
@@ -172,6 +174,7 @@ impl AppState {
                 storage,
                 event_tx,
                 frames_dir: None,
+                frame_storage: None,
                 config_manager: None,
                 update_control: None,
             },

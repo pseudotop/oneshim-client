@@ -21,7 +21,7 @@ import {
   type TrackingWindow,
 } from '../../api/client'
 import type { Weekday } from '../../api/contracts'
-import { Button, Card, CardTitle, Input, Select } from '../../components/ui'
+import { Button, Card, CardTitle, GuidancePanel, Input, Select } from '../../components/ui'
 import { colors, form, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
@@ -202,8 +202,7 @@ export function TrackingScheduleSettings() {
     return true
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  function handleSave() {
     // Validate all time fields before submitting
     let valid = true
     for (const entry of entries) {
@@ -220,160 +219,181 @@ export function TrackingScheduleSettings() {
 
   // ── render ─────────────────────────────────────────────────────────────
   return (
-    <Card variant="default" padding="lg">
-      <CardTitle sticky>{t('trackingSchedule.title')}</CardTitle>
+    <div className="space-y-6">
+      <GuidancePanel
+        title={t('settings.guidance.trackingSchedule.title')}
+        description={t('settings.guidance.trackingSchedule.description')}
+        items={[
+          {
+            title: t('settings.guidance.trackingSchedule.windows.title'),
+            description: t('settings.guidance.trackingSchedule.windows.description'),
+          },
+          {
+            title: t('settings.guidance.trackingSchedule.timezone.title'),
+            description: t('settings.guidance.trackingSchedule.timezone.description'),
+          },
+          {
+            title: t('settings.guidance.trackingSchedule.status.title'),
+            description: t('settings.guidance.trackingSchedule.status.description'),
+          },
+        ]}
+      />
 
-      {/* Active-now pill */}
-      {activeNow && (
-        <div
-          className={cn(
-            'mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm',
-            'bg-success/10 text-success',
-          )}
-          aria-live="polite"
-        >
-          <span className="h-2 w-2 rounded-full bg-success" />
-          {t('trackingSchedule.activeNow', { time: endsAt })}
-        </div>
-      )}
+      <Card variant="default" padding="lg">
+        <CardTitle sticky>{t('trackingSchedule.title')}</CardTitle>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Enabled toggle */}
-        <div className="flex items-center justify-between">
-          <span className={cn(typography.weight.medium, colors.text.secondary)}>{t('trackingSchedule.enabled')}</span>
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className={form.checkbox}
-          />
-        </div>
-
-        {/* Timezone dropdown */}
-        <div>
-          <label htmlFor="tracking-timezone" className={form.label}>
-            {t('trackingSchedule.timezoneLabel')}
-          </label>
-          <Select
-            id="tracking-timezone"
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            aria-label={t('trackingSchedule.timezoneLabel')}
+        {/* Active-now pill */}
+        {activeNow && (
+          <div
+            className={cn(
+              'mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm',
+              'bg-success/10 text-success',
+            )}
+            aria-live="polite"
           >
-            {IANA_ZONES.map((tz) => (
-              <option key={tz} value={tz}>
-                {tz === 'Local' ? t('trackingSchedule.timezoneLocal') : tz}
-              </option>
-            ))}
-          </Select>
-        </div>
+            <span className="h-2 w-2 rounded-full bg-success" />
+            {t('trackingSchedule.activeNow', { time: endsAt })}
+          </div>
+        )}
 
-        {/* Window list */}
-        <div className="space-y-4">
-          {entries.length === 0 ? (
-            <p className={colors.text.secondary}>{t('trackingSchedule.noWindows')}</p>
-          ) : (
-            entries.map(({ id, win }) => (
-              <div key={id} className="rounded-lg border border-muted bg-surface-secondary p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Start time */}
-                  <div>
-                    <label htmlFor={`win-start-${id}`} className={form.label}>
-                      {t('trackingSchedule.startTime')}
-                    </label>
-                    <Input
-                      id={`win-start-${id}`}
-                      type="text"
-                      aria-label={t('trackingSchedule.startTime')}
-                      value={win.start}
-                      placeholder="HH:MM"
-                      onChange={(e) => updateWindow(id, 'start', e.target.value)}
-                      onBlur={(e) => validateTimeField(id, 'start', e.target.value)}
-                    />
-                    {errors[id]?.start && <p className="mt-1 text-danger text-xs">{errors[id].start}</p>}
-                  </div>
+        <div className="space-y-6">
+          {/* Enabled toggle */}
+          <div className="flex items-center justify-between">
+            <span className={cn(typography.weight.medium, colors.text.secondary)}>{t('trackingSchedule.enabled')}</span>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className={form.checkbox}
+            />
+          </div>
 
-                  {/* End time */}
-                  <div>
-                    <label htmlFor={`win-end-${id}`} className={form.label}>
-                      {t('trackingSchedule.endTime')}
-                    </label>
-                    <Input
-                      id={`win-end-${id}`}
-                      type="text"
-                      aria-label={t('trackingSchedule.endTime')}
-                      value={win.end}
-                      placeholder="HH:MM"
-                      onChange={(e) => updateWindow(id, 'end', e.target.value)}
-                      onBlur={(e) => validateTimeField(id, 'end', e.target.value)}
-                    />
-                    {errors[id]?.end && <p className="mt-1 text-danger text-xs">{errors[id].end}</p>}
-                  </div>
-                </div>
+          {/* Timezone dropdown */}
+          <div>
+            <label htmlFor="tracking-timezone" className={form.label}>
+              {t('trackingSchedule.timezoneLabel')}
+            </label>
+            <Select
+              id="tracking-timezone"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              aria-label={t('trackingSchedule.timezoneLabel')}
+            >
+              {IANA_ZONES.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz === 'Local' ? t('trackingSchedule.timezoneLocal') : tz}
+                </option>
+              ))}
+            </Select>
+          </div>
 
-                {/* Day-of-week checkboxes */}
-                <div className="mt-3">
-                  <span className={form.label}>{t('trackingSchedule.daysLabel')}</span>
-                  <div className="mt-1 flex flex-wrap gap-3">
-                    {ALL_DAYS.map((day) => (
-                      <label key={day} className="flex cursor-pointer select-none items-center gap-1 text-sm">
-                        <input
-                          type="checkbox"
-                          className={form.checkbox}
-                          aria-label={t(`trackingSchedule.${day.toLowerCase()}`)}
-                          checked={win.days_of_week.includes(day)}
-                          onChange={() => toggleDay(id, day)}
-                        />
-                        {t(`trackingSchedule.${day.toLowerCase()}`)}
+          {/* Window list */}
+          <div className="space-y-4">
+            {entries.length === 0 ? (
+              <p className={colors.text.secondary}>{t('trackingSchedule.noWindows')}</p>
+            ) : (
+              entries.map(({ id, win }) => (
+                <div key={id} className="rounded-lg border border-muted bg-surface-secondary p-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Start time */}
+                    <div>
+                      <label htmlFor={`win-start-${id}`} className={form.label}>
+                        {t('trackingSchedule.startTime')}
                       </label>
-                    ))}
+                      <Input
+                        id={`win-start-${id}`}
+                        type="text"
+                        aria-label={t('trackingSchedule.startTime')}
+                        value={win.start}
+                        placeholder="HH:MM"
+                        onChange={(e) => updateWindow(id, 'start', e.target.value)}
+                        onBlur={(e) => validateTimeField(id, 'start', e.target.value)}
+                      />
+                      {errors[id]?.start && <p className="mt-1 text-danger text-xs">{errors[id].start}</p>}
+                    </div>
+
+                    {/* End time */}
+                    <div>
+                      <label htmlFor={`win-end-${id}`} className={form.label}>
+                        {t('trackingSchedule.endTime')}
+                      </label>
+                      <Input
+                        id={`win-end-${id}`}
+                        type="text"
+                        aria-label={t('trackingSchedule.endTime')}
+                        value={win.end}
+                        placeholder="HH:MM"
+                        onChange={(e) => updateWindow(id, 'end', e.target.value)}
+                        onBlur={(e) => validateTimeField(id, 'end', e.target.value)}
+                      />
+                      {errors[id]?.end && <p className="mt-1 text-danger text-xs">{errors[id].end}</p>}
+                    </div>
+                  </div>
+
+                  {/* Day-of-week checkboxes */}
+                  <div className="mt-3">
+                    <span className={form.label}>{t('trackingSchedule.daysLabel')}</span>
+                    <div className="mt-1 flex flex-wrap gap-3">
+                      {ALL_DAYS.map((day) => (
+                        <label key={day} className="flex cursor-pointer select-none items-center gap-1 text-sm">
+                          <input
+                            type="checkbox"
+                            className={form.checkbox}
+                            aria-label={t(`trackingSchedule.${day.toLowerCase()}`)}
+                            checked={win.days_of_week.includes(day)}
+                            onChange={() => toggleDay(id, day)}
+                          />
+                          {t(`trackingSchedule.${day.toLowerCase()}`)}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Label */}
+                  <div className="mt-3">
+                    <label htmlFor={`win-label-${id}`} className={form.label}>
+                      {t('trackingSchedule.label')}
+                    </label>
+                    <Input
+                      id={`win-label-${id}`}
+                      type="text"
+                      value={win.label ?? ''}
+                      onChange={(e) => updateWindow(id, 'label', e.target.value)}
+                    />
+                  </div>
+
+                  {/* Remove button */}
+                  <div className="mt-3 flex justify-end">
+                    <Button type="button" variant="secondary" size="sm" onClick={() => removeWindow(id)}>
+                      {t('trackingSchedule.removeWindow')}
+                    </Button>
                   </div>
                 </div>
+              ))
+            )}
+          </div>
 
-                {/* Label */}
-                <div className="mt-3">
-                  <label htmlFor={`win-label-${id}`} className={form.label}>
-                    {t('trackingSchedule.label')}
-                  </label>
-                  <Input
-                    id={`win-label-${id}`}
-                    type="text"
-                    value={win.label ?? ''}
-                    onChange={(e) => updateWindow(id, 'label', e.target.value)}
-                  />
-                </div>
+          {/* Add window */}
+          <Button type="button" variant="secondary" size="md" onClick={addWindow}>
+            {t('trackingSchedule.addWindow')}
+          </Button>
 
-                {/* Remove button */}
-                <div className="mt-3 flex justify-end">
-                  <Button type="button" variant="secondary" size="sm" onClick={() => removeWindow(id)}>
-                    {t('trackingSchedule.removeWindow')}
-                  </Button>
-                </div>
-              </div>
-            ))
+          {/* Save */}
+          <div className="flex justify-end border-muted border-t pt-4">
+            <Button type="button" variant="primary" size="md" isLoading={saveMutation.isPending} onClick={handleSave}>
+              {t('trackingSchedule.save')}
+            </Button>
+          </div>
+
+          {/* Save error feedback */}
+          {saveMutation.isError && (
+            <p className="text-danger text-sm" role="alert">
+              {t('trackingSchedule.saveError')}
+            </p>
           )}
         </div>
-
-        {/* Add window */}
-        <Button type="button" variant="secondary" size="md" onClick={addWindow}>
-          {t('trackingSchedule.addWindow')}
-        </Button>
-
-        {/* Save */}
-        <div className="flex justify-end border-muted border-t pt-4">
-          <Button type="submit" variant="primary" size="md" isLoading={saveMutation.isPending}>
-            {t('trackingSchedule.save')}
-          </Button>
-        </div>
-
-        {/* Save error feedback */}
-        {saveMutation.isError && (
-          <p className="text-danger text-sm" role="alert">
-            {t('trackingSchedule.saveError')}
-          </p>
-        )}
-      </form>
-    </Card>
+      </Card>
+    </div>
   )
 }
 

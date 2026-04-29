@@ -4,9 +4,9 @@
   "identifier": "com.oneshim.client",
   "build": {
     "frontendDist": "../crates/oneshim-web/frontend/dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://127.0.0.1:5273",
     "beforeDevCommand": "",
-    "beforeBuildCommand": "cd ../crates/oneshim-web/frontend && pnpm build"
+    "beforeBuildCommand": "scripts/build-frontend.sh"
   },
   "app": {
     "macOSPrivateApi": true,

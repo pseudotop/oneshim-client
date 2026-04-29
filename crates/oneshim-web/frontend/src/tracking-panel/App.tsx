@@ -52,7 +52,7 @@ export function App() {
   const showFeedback = useCallback((msg: string) => {
     setFeedback(msg)
     if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
-    feedbackTimer.current = window.setTimeout(() => setFeedback(null), 2000)
+    feedbackTimer.current = window.setTimeout(() => setFeedback(null), 3500)
   }, [])
 
   // Explicit drag initiation — backup for data-tauri-drag-region
@@ -245,7 +245,8 @@ export function App() {
 
   const connCount = [conn.server, conn.llm, conn.cli].filter(Boolean).length
   const allConnected = connCount === 3
-  const isOffline = connCount === 0
+  const isLocalMode = connCount === 0
+  const expandedStatusMessage = feedback ?? (isLocalMode ? t('trackingPanel.offlineMessage') : null)
 
   return (
     <div
@@ -332,13 +333,13 @@ export function App() {
             onClick={handleToggleFocus}
           />
 
-          {/* Connection status + offline mode indicator */}
+          {/* Connection status + local service lane indicator */}
           <div data-tauri-drag-region className="mt-2 border-white/10 border-t pt-2">
-            {isOffline && (
-              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-semantic-warning">
-                <WifiOff size={10} />
-                <span>{t('trackingPanel.offlineMessage')}</span>
-              </div>
+            {expandedStatusMessage && (
+              <output aria-live="polite" className="mb-1.5 flex items-center gap-1.5 text-[10px] text-semantic-warning">
+                {isLocalMode && !feedback && <WifiOff size={10} />}
+                <span>{expandedStatusMessage}</span>
+              </output>
             )}
             <div data-tauri-drag-region className="flex items-center justify-between text-[10px] text-white/60">
               <div className="flex items-center gap-3">

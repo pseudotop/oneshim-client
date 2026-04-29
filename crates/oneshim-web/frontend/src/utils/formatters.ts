@@ -21,12 +21,22 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)}GB`
+  return formatGigabytes(bytes / (1024 * 1024 * 1024))
 }
 
-export function formatTime(timestamp: string): string {
+export function formatGigabytes(gigabytes: number): string {
+  return `${gigabytes.toFixed(1)}GB`
+}
+
+const DEFAULT_LOCALE = 'en-US'
+
+function resolveLocale(locale?: string): string {
+  return locale || DEFAULT_LOCALE
+}
+
+export function formatTime(timestamp: string, locale?: string): string {
   const date = new Date(timestamp)
-  return date.toLocaleTimeString('ko-KR', {
+  return date.toLocaleTimeString(resolveLocale(locale), {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -34,9 +44,9 @@ export function formatTime(timestamp: string): string {
   })
 }
 
-export function formatDateTime(timestamp: string): string {
+export function formatDateTime(timestamp: string, locale?: string): string {
   const date = new Date(timestamp)
-  return date.toLocaleString('ko-KR', {
+  return date.toLocaleString(resolveLocale(locale), {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -44,14 +54,14 @@ export function formatDateTime(timestamp: string): string {
   })
 }
 
-export function formatDate(timestamp: string | undefined): string {
+export function formatDate(timestamp: string | undefined, locale?: string): string {
   if (!timestamp) return new Date().toISOString().split('T')[0]
   const date = new Date(timestamp)
-  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+  return date.toLocaleDateString(resolveLocale(locale), { month: 'short', day: 'numeric' })
 }
 
-export function formatNumber(num: number): string {
-  return num.toLocaleString('ko-KR')
+export function formatNumber(num: number, locale?: string): string {
+  return num.toLocaleString(resolveLocale(locale))
 }
 
 export function formatHour(hourStr: string): string {

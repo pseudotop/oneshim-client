@@ -7,6 +7,7 @@ use tauri::{
 use tracing::{debug, info, warn};
 
 use crate::tray_icon::TrayIconState;
+use oneshim_web::update_control::UpdatePhase;
 
 fn focus_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
@@ -54,34 +55,36 @@ fn build_connection_items<R: Runtime>(
     let srv_item = MenuItem::with_id(
         app,
         "conn-server",
-        format!(
-            "  Server API    {}",
-            if srv { "\u{2713}" } else { "\u{2717}" }
-        ),
+        connection_item_label("Server API", srv),
         false,
         None::<&str>,
     )?;
     let llm_item = MenuItem::with_id(
         app,
         "conn-llm",
-        format!(
-            "  Local LLM     {}",
-            if llm { "\u{2713}" } else { "\u{2717}" }
-        ),
+        connection_item_label("Local LLM", llm),
         false,
         None::<&str>,
     )?;
     let cli_item = MenuItem::with_id(
         app,
         "conn-cli",
-        format!(
-            "  CLI Bridge    {}",
-            if cli { "\u{2713}" } else { "\u{2717}" }
-        ),
+        connection_item_label("CLI bridge", cli),
         false,
         None::<&str>,
     )?;
     Ok((srv_item, llm_item, cli_item))
+}
+
+fn connection_item_label(name: &str, connected: bool) -> String {
+    format!(
+        "  {name}: {}",
+        if connected {
+            "connected"
+        } else {
+            "unavailable"
+        }
+    )
 }
 
 /// Determine status text from capture/connection state (no emoji — template icon handles visual).
@@ -89,10 +92,54 @@ fn status_text(paused: bool, any_disconnected: bool) -> &'static str {
     if paused {
         "Paused"
     } else if any_disconnected {
-        "Partially Connected"
+        "Local mode"
     } else {
         "Active"
     }
+}
+
+fn dashboard_toggle_label() -> &'static str {
+    "Show/Hide Dashboard"
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TrayUpdateActions {
+    approve_label: &'static str,
+    approve_enabled: bool,
+    defer_enabled: bool,
+}
+
+fn tray_update_actions(phase: Option<&UpdatePhase>) -> TrayUpdateActions {
+    match phase {
+        Some(UpdatePhase::PendingApproval) => TrayUpdateActions {
+            approve_label: "Download Update",
+            approve_enabled: true,
+            defer_enabled: true,
+        },
+        Some(UpdatePhase::ReadyToInstall) => TrayUpdateActions {
+            approve_label: "Install Update",
+            approve_enabled: true,
+            defer_enabled: true,
+        },
+        _ => TrayUpdateActions {
+            approve_label: "No Update Available",
+            approve_enabled: false,
+            defer_enabled: false,
+        },
+    }
+}
+
+fn read_update_phase<R: Runtime>(app: &impl Manager<R>) -> Option<UpdatePhase> {
+    let state = app.try_state::<crate::runtime_state::AppState>()?;
+    let update_control = state.update_control.as_ref()?;
+    let status = update_control.state.try_read().ok()?;
+
+    Some(status.phase.clone())
+}
+
+fn current_tray_update_actions<R: Runtime>(app: &impl Manager<R>) -> TrayUpdateActions {
+    let phase = read_update_phase(app);
+    tray_update_actions(phase.as_ref())
 }
 
 /// Build the full tray menu with connection status items.
@@ -130,7 +177,7 @@ fn build_tray_menu<R: Runtime>(
     let toggle_indicator =
         MenuItem::with_id(app, "toggle-indicator", indicator_text, true, None::<&str>)?;
 
-    let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", dashboard_toggle_label(), true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let automation = MenuItem::with_id(
         app,
@@ -140,8 +187,21 @@ fn build_tray_menu<R: Runtime>(
         None::<&str>,
     )?;
     let run_preset = MenuItem::with_id(app, "run-preset", "Automation Page", true, None::<&str>)?;
-    let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
-    let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
+    let update_actions = current_tray_update_actions(app);
+    let approve = MenuItem::with_id(
+        app,
+        "approve_update",
+        update_actions.approve_label,
+        update_actions.approve_enabled,
+        None::<&str>,
+    )?;
+    let defer = MenuItem::with_id(
+        app,
+        "defer_update",
+        "Defer Update",
+        update_actions.defer_enabled,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -266,7 +326,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                     #[cfg(target_os = "macos")]
                     if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>()
                     {
-                        if new_visible {
+                        if new_visible && !crate::app_runtime_launch::cua_safe_mode_enabled() {
                             border.0.show();
                         } else {
                             border.0.hide();
@@ -307,26 +367,34 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                     .unwrap_or_default();
             }
             "approve_update" => {
-                focus_main_window(app);
-                if let Some(state) = app.try_state::<crate::runtime_state::AppState>() {
-                    use oneshim_web::update_control::UpdateAction;
-                    if let Err(e) = state.update_action_tx.send(UpdateAction::Approve) {
-                        warn!("tray: approve_update send failed: {e}");
+                if current_tray_update_actions(app).approve_enabled {
+                    focus_main_window(app);
+                    if let Some(state) = app.try_state::<crate::runtime_state::AppState>() {
+                        use oneshim_web::update_control::UpdateAction;
+                        if let Err(e) = state.update_action_tx.send(UpdateAction::Approve) {
+                            warn!("tray: approve_update send failed: {e}");
+                        }
                     }
+                    app.emit_to("main", "tray-approve-update", ())
+                        .unwrap_or_default();
+                } else {
+                    debug!("tray: approve_update ignored because no update action is available");
                 }
-                app.emit_to("main", "tray-approve-update", ())
-                    .unwrap_or_default();
             }
             "defer_update" => {
-                focus_main_window(app);
-                if let Some(state) = app.try_state::<crate::runtime_state::AppState>() {
-                    use oneshim_web::update_control::UpdateAction;
-                    if let Err(e) = state.update_action_tx.send(UpdateAction::Defer) {
-                        warn!("tray: defer_update send failed: {e}");
+                if current_tray_update_actions(app).defer_enabled {
+                    focus_main_window(app);
+                    if let Some(state) = app.try_state::<crate::runtime_state::AppState>() {
+                        use oneshim_web::update_control::UpdateAction;
+                        if let Err(e) = state.update_action_tx.send(UpdateAction::Defer) {
+                            warn!("tray: defer_update send failed: {e}");
+                        }
                     }
+                    app.emit_to("main", "tray-defer-update", ())
+                        .unwrap_or_default();
+                } else {
+                    debug!("tray: defer_update ignored because no update action is available");
                 }
-                app.emit_to("main", "tray-defer-update", ())
-                    .unwrap_or_default();
             }
             "quit" => {
                 info!("tray: quit requested");
@@ -365,4 +433,62 @@ pub fn sync_tray_state<R: Runtime>(
         tray.set_menu(Some(menu))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disconnected_services_use_local_mode_status() {
+        assert_eq!(status_text(false, true), "Local mode");
+    }
+
+    #[test]
+    fn dashboard_toggle_label_describes_the_target_window() {
+        assert_eq!(dashboard_toggle_label(), "Show/Hide Dashboard");
+    }
+
+    #[test]
+    fn connection_item_label_uses_words_instead_of_raw_marks() {
+        assert_eq!(
+            connection_item_label("Server API", false),
+            "  Server API: unavailable"
+        );
+        assert_eq!(
+            connection_item_label("Local LLM", true),
+            "  Local LLM: connected"
+        );
+    }
+
+    #[test]
+    fn update_actions_are_disabled_without_actionable_update() {
+        let actions = tray_update_actions(None);
+
+        assert_eq!(actions.approve_label, "No Update Available");
+        assert!(!actions.approve_enabled);
+        assert!(!actions.defer_enabled);
+    }
+
+    #[test]
+    fn update_actions_describe_pending_update_phase() {
+        let actions = tray_update_actions(Some(
+            &oneshim_web::update_control::UpdatePhase::PendingApproval,
+        ));
+
+        assert_eq!(actions.approve_label, "Download Update");
+        assert!(actions.approve_enabled);
+        assert!(actions.defer_enabled);
+    }
+
+    #[test]
+    fn update_actions_describe_ready_to_install_phase() {
+        let actions = tray_update_actions(Some(
+            &oneshim_web::update_control::UpdatePhase::ReadyToInstall,
+        ));
+
+        assert_eq!(actions.approve_label, "Install Update");
+        assert!(actions.approve_enabled);
+        assert!(actions.defer_enabled);
+    }
 }

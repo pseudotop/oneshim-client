@@ -95,6 +95,15 @@ fn run_migration_step(
     }
 }
 
+fn future_schema_error(current_version: u32) -> rusqlite::Error {
+    rusqlite::Error::SqliteFailure(
+        rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISMATCH),
+        Some(format!(
+            "database schema version {current_version} is newer than this client supports ({CURRENT_VERSION}); upgrade the client or use a separate data directory"
+        )),
+    )
+}
+
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_version (
@@ -105,6 +114,15 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     let current = get_version(conn)?;
     info!("current schema version: {current}, target: {CURRENT_VERSION}");
+
+    if current > CURRENT_VERSION {
+        error!(
+            current_schema_version = current,
+            supported_schema_version = CURRENT_VERSION,
+            "database schema version is newer than this client supports"
+        );
+        return Err(future_schema_error(current));
+    }
 
     if current < CURRENT_VERSION && backup_if_needed(conn, current).is_none() {
         warn!("proceeding with migration without backup");

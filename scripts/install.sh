@@ -9,6 +9,7 @@ BASE_URL="${ONESHIM_RELEASE_BASE_URL:-}"
 REQUIRE_SIGNATURE="${ONESHIM_REQUIRE_SIGNATURE:-0}"
 UPDATE_SIGNATURE_PUBLIC_KEY="${ONESHIM_UPDATE_PUBLIC_KEY:-GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=}"
 BINARY_NAME="oneshim"
+SIDECAR_NAME="oneshim-sandbox-worker"
 
 usage() {
   cat <<'EOF'
@@ -110,6 +111,30 @@ sha256_file() {
   fi
 
   fatal "No SHA-256 tool found (sha256sum/shasum/openssl)."
+}
+
+install_executable() {
+  local source_path="$1"
+  local target_path="$2"
+
+  if install -m 0755 "$source_path" "$target_path" 2>/dev/null; then
+    :
+  else
+    cp "$source_path" "$target_path"
+    chmod 0755 "$target_path"
+  fi
+}
+
+install_sidecar_if_present() {
+  local target_dir="$1"
+
+  if [[ -z "${SOURCE_SIDECAR:-}" ]]; then
+    warn "Sandbox worker sidecar was not found in the archive; sandboxed automation actions may be unavailable."
+    return 0
+  fi
+
+  install_executable "$SOURCE_SIDECAR" "$target_dir/$SIDECAR_NAME"
+  info "Installed sandbox worker: $target_dir/$SIDECAR_NAME"
 }
 
 verify_signature_with_python() {
@@ -352,6 +377,14 @@ if [[ -z "${SOURCE_BINARY:-}" || ! -f "$SOURCE_BINARY" ]]; then
   fatal "Could not locate '$BINARY_NAME' inside archive."
 fi
 
+SOURCE_SIDECAR="$EXTRACT_DIR/$SIDECAR_NAME"
+if [[ ! -f "$SOURCE_SIDECAR" ]]; then
+  SOURCE_SIDECAR="$(find "$EXTRACT_DIR" -maxdepth 3 -type f -name "$SIDECAR_NAME" | head -n 1)"
+fi
+if [[ -z "${SOURCE_SIDECAR:-}" || ! -f "$SOURCE_SIDECAR" ]]; then
+  SOURCE_SIDECAR=""
+fi
+
 mkdir -p "$INSTALL_DIR"
 TARGET_BINARY="$INSTALL_DIR/$BINARY_NAME"
 
@@ -365,12 +398,8 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
     info "Creating macOS .app bundle: $APP_BUNDLE"
     mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
-    if install -m 0755 "$SOURCE_BINARY" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" 2>/dev/null; then
-      :
-    else
-      cp "$SOURCE_BINARY" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
-      chmod 0755 "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
-    fi
+    install_executable "$SOURCE_BINARY" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
+    install_sidecar_if_present "$APP_BUNDLE/Contents/MacOS"
 
     cp "$ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/icon.icns"
 
@@ -435,22 +464,14 @@ PLIST
     info "Launch: open $APP_BUNDLE"
   else
     warn "icon.icns not found in archive; installing as bare binary (no .app bundle)"
-    if install -m 0755 "$SOURCE_BINARY" "$TARGET_BINARY" 2>/dev/null; then
-      :
-    else
-      cp "$SOURCE_BINARY" "$TARGET_BINARY"
-      chmod 0755 "$TARGET_BINARY"
-    fi
+    install_executable "$SOURCE_BINARY" "$TARGET_BINARY"
+    install_sidecar_if_present "$INSTALL_DIR"
     info "Installed: $TARGET_BINARY"
   fi
 else
   # Linux: install bare binary
-  if install -m 0755 "$SOURCE_BINARY" "$TARGET_BINARY" 2>/dev/null; then
-    :
-  else
-    cp "$SOURCE_BINARY" "$TARGET_BINARY"
-    chmod 0755 "$TARGET_BINARY"
-  fi
+  install_executable "$SOURCE_BINARY" "$TARGET_BINARY"
+  install_sidecar_if_present "$INSTALL_DIR"
   info "Installed: $TARGET_BINARY"
 fi
 

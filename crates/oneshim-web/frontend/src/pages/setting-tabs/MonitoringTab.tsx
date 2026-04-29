@@ -2,7 +2,7 @@ import { Bell, Camera, CircleAlert, CircleCheckBig, Monitor, RotateCcw } from 'l
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AppSettings, DesktopPermissionState } from '../../api/client'
-import { Alert, Badge, Button, Card, CardTitle, Checkbox, Input } from '../../components/ui'
+import { Alert, Badge, Button, Card, CardTitle, Checkbox, GuidancePanel, Input } from '../../components/ui'
 import { colors, form, iconSize, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { useLoadedFormData, useSettingsFormContext } from '../settings/SettingsFormContext'
@@ -221,6 +221,25 @@ export default function MonitoringTab() {
 
   return (
     <div className="space-y-6">
+      <GuidancePanel
+        title={t('settings.guidance.monitoring.title')}
+        description={t('settings.guidance.monitoring.description')}
+        items={[
+          {
+            title: t('settings.guidance.monitoring.permissions.title'),
+            description: t('settings.guidance.monitoring.permissions.description'),
+          },
+          {
+            title: t('settings.guidance.monitoring.intervals.title'),
+            description: t('settings.guidance.monitoring.intervals.description'),
+          },
+          {
+            title: t('settings.guidance.monitoring.privacy.title'),
+            description: t('settings.guidance.monitoring.privacy.description'),
+          },
+        ]}
+      />
+
       <Card variant="default" padding="lg">
         <CardTitle sticky>{t('settings.collectionTitle')}</CardTitle>
         <div className="space-y-4">

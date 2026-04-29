@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
+import { Clock3, Filter, History, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type AuditEntry, fetchAuditLogs } from '../../api/client'
-import { Select } from '../../components/ui'
+import { GuidanceEmptyState, Select } from '../../components/ui'
 import { Badge } from '../../components/ui/Badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
-import { typography } from '../../styles/tokens'
+import { iconSize, typography } from '../../styles/tokens'
 
 function statusBadge(s: string, t: (key: string) => string) {
   switch (s) {
@@ -79,7 +80,29 @@ export default function HistorySection() {
       </CardHeader>
       <CardContent>
         {(auditLogs?.length ?? 0) === 0 ? (
-          <p className="py-4 text-center text-content-secondary text-sm">{t('common.noData')}</p>
+          <GuidanceEmptyState
+            className="py-8"
+            icon={<History className={iconSize.lg} aria-hidden="true" />}
+            title={t('emptyState.auditLog.title')}
+            description={t('emptyState.auditLog.description')}
+            guidance={[
+              {
+                icon: <ShieldCheck className={iconSize.sm} aria-hidden="true" />,
+                title: t('emptyState.auditLog.guideRunTitle'),
+                description: t('emptyState.auditLog.guideRunDescription'),
+              },
+              {
+                icon: <Filter className={iconSize.sm} aria-hidden="true" />,
+                title: t('emptyState.auditLog.guideFilterTitle'),
+                description: t('emptyState.auditLog.guideFilterDescription'),
+              },
+              {
+                icon: <Clock3 className={iconSize.sm} aria-hidden="true" />,
+                title: t('emptyState.auditLog.guideElapsedTitle'),
+                description: t('emptyState.auditLog.guideElapsedDescription'),
+              },
+            ]}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
