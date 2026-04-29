@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Input } from '../../../components/ui'
+import { Button, FieldHint, Input } from '../../../components/ui'
 import { typography } from '../../../styles/tokens'
 import {
   apiKeyPlaceholder,
@@ -57,8 +57,9 @@ export default function OcrEndpointConfig({
                 type="text"
                 value={formData.ai_provider.ocr_api?.endpoint ?? ''}
                 onChange={(e) => onExternalApiChange('ocr_api', 'endpoint', e.target.value)}
-                placeholder={t('settingsAutomation.endpointPlaceholderOcr', 'https://api.example.com/ocr')}
+                placeholder={t('settingsAutomation.endpointPlaceholderOcr')}
               />
+              <FieldHint>{t('settingsAutomation.ocrEndpointHint')}</FieldHint>
             </div>
             {!usesNoAuth ? (
               <div>
@@ -72,6 +73,7 @@ export default function OcrEndpointConfig({
                   onChange={(e) => onExternalApiChange('ocr_api', 'api_key_masked', e.target.value)}
                   placeholder={apiKeyPlaceholder(t, formData.ai_provider.ocr_api)}
                 />
+                <FieldHint>{t('settingsAutomation.apiKeyHint')}</FieldHint>
                 {shouldShowBackendManagedHint(formData.ai_provider.ocr_api) && (
                   <p className="mt-1 text-content-secondary text-xs">
                     {t('settingsAutomation.apiKeyStoredHint', {
@@ -114,6 +116,7 @@ export default function OcrEndpointConfig({
               value={formData.ai_provider.ocr_api?.model ?? ''}
               onChange={(e) => onExternalApiChange('ocr_api', 'model', e.target.value || null)}
             />
+            <FieldHint>{t('settingsAutomation.ocrModelHint')}</FieldHint>
             {getModelOptions('ocr_api').length > 0 && (
               <datalist id="ocr-model-catalog">
                 {getModelOptions('ocr_api').map((modelName) => (
@@ -144,6 +147,7 @@ export default function OcrEndpointConfig({
             value={formData.ai_provider.ocr_api?.timeout_secs ?? 30}
             onChange={(e) => onExternalApiChange('ocr_api', 'timeout_secs', parseInt(e.target.value, 10) || 30)}
           />
+          <FieldHint>{t('settingsAutomation.timeoutHint')}</FieldHint>
         </div>
       </div>
       {modelCatalogNotice && <p className="text-content-secondary text-xs">{modelCatalogNotice}</p>}

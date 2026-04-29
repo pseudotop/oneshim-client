@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../__tests__/helpers/render-helpers'
 import AdvancedTab from './AdvancedTab'
 import AudioTab from './AudioTab'
+import AiAutomationTab from './ai-automation'
 import DataStorageTab from './DataStorageTab'
 import MonitoringTab from './MonitoringTab'
 import NotificationSettings from './NotificationSettings'
@@ -53,6 +54,51 @@ function mockSettingsContext() {
     },
   })
   return formData
+}
+
+function mockAiAutomationContext() {
+  const formData = makeDefaultFormData()
+  formData.ai_provider = {
+    ...formData.ai_provider,
+    access_mode: 'ProviderApiKey',
+    ocr_provider: 'Local',
+    llm_provider: 'Local',
+    external_data_policy: 'PiiFilterStandard',
+  }
+  mockUseLoadedFormData.mockReturnValue(formData)
+  mockUseSettingsFormContext.mockReturnValue({
+    form: {
+      formData,
+      modelCatalogLoading: null,
+      modelCatalogNotice: { ocr_api: null, llm_api: null },
+      canDiscoverModels: vi.fn(() => false),
+      discoverModels: vi.fn(),
+      getCompatibleSurfaceOptions: vi.fn(() => []),
+      getModelCompatibilityNotice: vi.fn(() => null),
+      getModelOptions: vi.fn(() => []),
+      handleAiProviderChange: vi.fn(),
+      handleAutomationChange: vi.fn(),
+      handleExternalApiChange: vi.fn(),
+      handleOcrValidationChange: vi.fn(),
+      handleProviderSurfaceChange: vi.fn(),
+      handleSandboxChange: vi.fn(),
+      handleSaveAiProviderProfile: vi.fn(),
+      handleSceneActionOverrideChange: vi.fn(),
+      handleSceneIntelligenceChange: vi.fn(),
+      handleSelectAiProviderProfile: vi.fn(),
+      handleDeleteAiProviderProfile: vi.fn(),
+      resolveEndpointSurface: vi.fn(() => undefined),
+    },
+    data: {
+      featureCapabilities: null,
+      llmEndpointProbe: null,
+      llmEndpointProbeLoading: false,
+      ocrEndpointProbe: null,
+      ocrEndpointProbeLoading: false,
+      providerCatalog: { surfaces: [] },
+      secretBackendCapabilities: null,
+    },
+  })
 }
 
 describe('Settings guidance copy', () => {
@@ -141,5 +187,19 @@ describe('Settings guidance copy', () => {
     })
     expect(screen.getByText('Choose a transport deliberately')).toBeInTheDocument()
     expect(screen.getByText('Protect the passphrase')).toBeInTheDocument()
+  })
+
+  it('orients AI automation controls around access path, safeguards, and verification', () => {
+    mockAiAutomationContext()
+
+    renderWithProviders(<AiAutomationTab />)
+
+    expect(screen.getByRole('region', { name: 'AI automation guide' })).toBeInTheDocument()
+    expect(screen.getByText('Pick the access path first')).toBeInTheDocument()
+    expect(screen.getByText('Keep safety gates visible')).toBeInTheDocument()
+    expect(screen.getByText('Verify before widening access')).toBeInTheDocument()
+    expect(
+      screen.getByText('This choice controls which provider setup fields become active below.'),
+    ).toBeInTheDocument()
   })
 })

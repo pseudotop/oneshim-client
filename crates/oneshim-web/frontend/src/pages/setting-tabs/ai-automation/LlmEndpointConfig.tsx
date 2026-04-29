@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Input } from '../../../components/ui'
+import { Button, FieldHint, Input } from '../../../components/ui'
 import { typography } from '../../../styles/tokens'
 import {
   apiKeyPlaceholder,
@@ -59,8 +59,9 @@ export default function LlmEndpointConfig({
                 type="text"
                 value={formData.ai_provider.llm_api?.endpoint ?? ''}
                 onChange={(e) => onExternalApiChange('llm_api', 'endpoint', e.target.value)}
-                placeholder={t('settingsAutomation.endpointPlaceholderLlm', 'https://api.example.com/llm')}
+                placeholder={t('settingsAutomation.endpointPlaceholderLlm')}
               />
+              <FieldHint>{t('settingsAutomation.llmEndpointHint')}</FieldHint>
             </div>
             {!usesNoAuth ? (
               <div>
@@ -74,6 +75,7 @@ export default function LlmEndpointConfig({
                   onChange={(e) => onExternalApiChange('llm_api', 'api_key_masked', e.target.value)}
                   placeholder={apiKeyPlaceholder(t, formData.ai_provider.llm_api)}
                 />
+                <FieldHint>{t('settingsAutomation.apiKeyHint')}</FieldHint>
                 {shouldShowBackendManagedHint(formData.ai_provider.llm_api) && (
                   <p className="mt-1 text-content-secondary text-xs">
                     {t('settingsAutomation.apiKeyStoredHint', {
@@ -133,6 +135,7 @@ export default function LlmEndpointConfig({
               value={formData.ai_provider.llm_api?.model ?? ''}
               onChange={(e) => onExternalApiChange('llm_api', 'model', e.target.value || null)}
             />
+            <FieldHint>{t('settingsAutomation.llmModelHint')}</FieldHint>
             {getModelOptions('llm_api').length > 0 && (
               <datalist id="llm-model-catalog">
                 {getModelOptions('llm_api').map((modelName) => (
@@ -163,6 +166,7 @@ export default function LlmEndpointConfig({
             value={formData.ai_provider.llm_api?.timeout_secs ?? 30}
             onChange={(e) => onExternalApiChange('llm_api', 'timeout_secs', parseInt(e.target.value, 10) || 30)}
           />
+          <FieldHint>{t('settingsAutomation.timeoutHint')}</FieldHint>
         </div>
       </div>
       {showDirectApiFields && modelCatalogNotice && (
