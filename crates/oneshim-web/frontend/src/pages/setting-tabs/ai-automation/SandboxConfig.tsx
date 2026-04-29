@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Card, CardTitle, Select } from '../../../components/ui'
+import { Card, CardTitle, FieldHint, Select } from '../../../components/ui'
 import { form } from '../../../styles/tokens'
 import ToggleRow from '../ToggleRow'
 import type { SandboxConfigProps } from './types'
@@ -32,6 +32,7 @@ export default function SandboxConfig({ formData, onSandboxChange }: SandboxConf
               <option value="Standard">{t('settingsAutomation.sandboxProfileStandard')}</option>
               <option value="Strict">{t('settingsAutomation.sandboxProfileStrict')}</option>
             </Select>
+            <FieldHint>{t('settingsAutomation.sandboxProfileHint')}</FieldHint>
           </div>
 
           <ToggleRow

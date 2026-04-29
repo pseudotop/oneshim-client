@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Badge, Button, Input, Select } from '../../../components/ui'
+import { Badge, Button, FieldHint, Input, Select } from '../../../components/ui'
 import { form, typography } from '../../../styles/tokens'
 import type { ProfileManagerProps } from './types'
 
@@ -79,6 +79,7 @@ export default function ProfileManager({
             </option>
           ))}
         </Select>
+        <FieldHint>{t('settingsAutomation.savedProfilesSelectHint')}</FieldHint>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
@@ -93,6 +94,7 @@ export default function ProfileManager({
             onChange={(e) => setProfileNameDraft(e.target.value)}
             placeholder={t('settingsAutomation.savedProfilesNamePlaceholder')}
           />
+          <FieldHint>{t('settingsAutomation.savedProfilesNameHint')}</FieldHint>
         </div>
         <div className="flex items-end">
           <Button type="button" variant="secondary" onClick={handleSaveCurrentProfile} disabled={saveProfileDisabled}>
