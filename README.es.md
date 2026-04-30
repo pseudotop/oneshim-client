@@ -10,6 +10,13 @@
   <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a> | <a href="./README.ja.md">日本語</a> | <a href="./README.zh-CN.md">简体中文</a> | <a href="./README.es.md">Español</a>
 </p>
 
+> [!IMPORTANT]
+> This legacy repository is in transition. Active public development, install
+> scripts, releases, and security reporting for Maekon Client now live in
+> [`pseudotop/maekon-client`](https://github.com/pseudotop/maekon-client).
+> This repository remains available for transition history and redirect/security
+> maintenance until the final archive step.
+
 # Maekon
 
 > **De la actividad bruta del escritorio a logros diarios de enfoque.**
@@ -22,7 +29,7 @@ Un cliente de escritorio para productividad de oficina asistida por IA: captura 
 macOS / Linux:
 ```bash
 curl -fsSL -o /tmp/oneshim-install.sh \
-  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+  https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.sh
 bash /tmp/oneshim-install.sh
 ```
 
@@ -30,7 +37,7 @@ Windows (PowerShell):
 ```powershell
 $tmp = Join-Path $env:TEMP "oneshim-install.ps1"
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -Uri "https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.ps1" `
   -OutFile $tmp
 powershell -ExecutionPolicy Bypass -File $tmp
 ```
@@ -74,7 +81,6 @@ El modo autónomo sigue siendo la ruta predeterminada lista para producción en 
 - Línea base de integridad autónoma: [docs/security/standalone-integrity-baseline.md](./docs/security/standalone-integrity-baseline.md)
 - Runbook de operaciones de integridad: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
 - Índice de documentación: [docs/README.md](./docs/README.md)
-- Guía de lanzamiento público: [docs/guides/public-repo-launch-playbook.md](./docs/guides/public-repo-launch-playbook.md)
 - Plantillas de guía de automatización: [docs/guides/automation-playbook-templates.md](./docs/guides/automation-playbook-templates.md)
 - Runbook de adopción autónoma: [docs/guides/standalone-adoption-runbook.md](./docs/guides/standalone-adoption-runbook.md)
 - Guía de los primeros 5 minutos: [docs/guides/first-5-minutes.md](./docs/guides/first-5-minutes.md)
@@ -216,7 +222,7 @@ Guía de instalación completa:
 macOS / Linux:
 ```bash
 curl -fsSL -o /tmp/oneshim-install.sh \
-  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+  https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.sh
 bash /tmp/oneshim-install.sh
 ```
 
@@ -224,14 +230,14 @@ Windows (PowerShell):
 ```powershell
 $tmp = Join-Path $env:TEMP "oneshim-install.ps1"
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -Uri "https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.ps1" `
   -OutFile $tmp
 powershell -ExecutionPolicy Bypass -File $tmp
 ```
 
 ### Recursos de Lanzamiento
 
-Descargue desde [Releases](https://github.com/pseudotop/oneshim-client/releases):
+Descargue desde [Releases](https://github.com/pseudotop/maekon-client/releases):
 
 Maekon es el nombre visible de la aplicación. Los nombres de archivos de
 lanzamiento conservan intencionalmente el formato `oneshim-*` para mantener la
@@ -294,7 +300,7 @@ identificadores técnicos estables en esta línea de lanzamiento.
   "update": {
     "enabled": true,
     "repo_owner": "pseudotop",
-    "repo_name": "oneshim-client",
+    "repo_name": "maekon-client",
     "check_interval_hours": 24,
     "include_prerelease": false
   },
@@ -317,7 +323,7 @@ identificadores técnicos estables en esta línea de lanzamiento.
 Un workspace de Cargo con 15 paquetes siguiendo Hexagonal Architecture (Ports & Adapters). Los 14 crates viven bajo `crates/`, y el binario principal/composition root vive en `src-tauri/` (Tauri v2, paquete `oneshim-app`).
 
 ```
-oneshim-client/
+maekon-client/
 ├── src-tauri/              # Punto de entrada binario Tauri v2 + composition root
 │   ├── src/
 │   │   ├── main.rs         # Constructor de la app Tauri + cableado DI

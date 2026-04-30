@@ -10,6 +10,13 @@
   <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a> | <a href="./README.ja.md">日本語</a> | <a href="./README.zh-CN.md">简体中文</a> | <a href="./README.es.md">Español</a>
 </p>
 
+> [!IMPORTANT]
+> This legacy repository is in transition. Active public development, install
+> scripts, releases, and security reporting for Maekon Client now live in
+> [`pseudotop/maekon-client`](https://github.com/pseudotop/maekon-client).
+> This repository remains available for transition history and redirect/security
+> maintenance until the final archive step.
+
 # Maekon
 
 > **将零散的桌面活动，转化为每日聚焦成果。**
@@ -22,7 +29,7 @@
 macOS / Linux:
 ```bash
 curl -fsSL -o /tmp/oneshim-install.sh \
-  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+  https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.sh
 bash /tmp/oneshim-install.sh
 ```
 
@@ -30,7 +37,7 @@ Windows (PowerShell):
 ```powershell
 $tmp = Join-Path $env:TEMP "oneshim-install.ps1"
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -Uri "https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.ps1" `
   -OutFile $tmp
 powershell -ExecutionPolicy Bypass -File $tmp
 ```
@@ -74,7 +81,6 @@ powershell -ExecutionPolicy Bypass -File $tmp
 - 独立模式完整性基线: [docs/security/standalone-integrity-baseline.md](./docs/security/standalone-integrity-baseline.md)
 - 完整性操作手册: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
 - 文档索引: [docs/README.md](./docs/README.md)
-- 公开发布指南: [docs/guides/public-repo-launch-playbook.md](./docs/guides/public-repo-launch-playbook.md)
 - 自动化指南模板: [docs/guides/automation-playbook-templates.md](./docs/guides/automation-playbook-templates.md)
 - 独立模式采用手册: [docs/guides/standalone-adoption-runbook.md](./docs/guides/standalone-adoption-runbook.md)
 - 5 分钟入门指南: [docs/guides/first-5-minutes.md](./docs/guides/first-5-minutes.md)
@@ -216,7 +222,7 @@ cd crates/oneshim-web/frontend && pnpm test:e2e
 macOS / Linux:
 ```bash
 curl -fsSL -o /tmp/oneshim-install.sh \
-  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+  https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.sh
 bash /tmp/oneshim-install.sh
 ```
 
@@ -224,14 +230,14 @@ Windows (PowerShell):
 ```powershell
 $tmp = Join-Path $env:TEMP "oneshim-install.ps1"
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -Uri "https://raw.githubusercontent.com/pseudotop/maekon-client/main/scripts/install.ps1" `
   -OutFile $tmp
 powershell -ExecutionPolicy Bypass -File $tmp
 ```
 
 ### 发布产物
 
-从 [Releases](https://github.com/pseudotop/oneshim-client/releases) 下载：
+从 [Releases](https://github.com/pseudotop/maekon-client/releases) 下载：
 
 Maekon 是应用显示名称。当前发布文件名会有意保留 `oneshim-*`
 格式，以保持安装器、更新器和校验和兼容性。
@@ -293,7 +299,7 @@ Maekon 是应用显示名称。当前发布文件名会有意保留 `oneshim-*`
   "update": {
     "enabled": true,
     "repo_owner": "pseudotop",
-    "repo_name": "oneshim-client",
+    "repo_name": "maekon-client",
     "check_interval_hours": 24,
     "include_prerelease": false
   },
@@ -316,7 +322,7 @@ Maekon 是应用显示名称。当前发布文件名会有意保留 `oneshim-*`
 基于 Hexagonal Architecture（Ports & Adapters）的 15 包 Cargo workspace。14 个 crate 位于 `crates/` 下，主二进制/composition root 位于 `src-tauri/`（Tauri v2，包名 `oneshim-app`）。
 
 ```
-oneshim-client/
+maekon-client/
 ├── src-tauri/              # Tauri v2 二进制入口 + composition root
 │   ├── src/
 │   │   ├── main.rs         # Tauri 应用构建 + 依赖注入布线
