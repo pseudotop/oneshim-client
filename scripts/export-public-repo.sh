@@ -116,6 +116,8 @@ validate_public_export() {
     "docs/plan"
     "docs/specs"
     "docs/migration"
+    "docs/guides/public-repo-launch-playbook.md"
+    "docs/guides/public-repo-launch-playbook.ko.md"
     "docs/PHASE-HISTORY.md"
     "docs/STATUS.md"
     "docs/STATUS.ko.md"
@@ -209,7 +211,7 @@ if [[ "$INIT_GIT" == "1" ]]; then
   git -C "$DEST_DIR" add -A
   git -C "$DEST_DIR" \
     -c user.name="Maekon Public Export" \
-    -c user.email="public-export@maekon.local" \
+    -c user.email="support@maekon.dev" \
     commit -m "chore: bootstrap public repository history" >/dev/null
 else
   echo "==> Skipping Git initialization (--no-commit)"

@@ -4,6 +4,13 @@
 
 This playbook defines a safe process for publishing Maekon as an open-source project without rewriting private/internal history.
 
+**Internal-only**: this launch playbook is for maintainers preparing the public
+repository. It is excluded from the public-minimal export. Public users should
+see release, install, security, and contribution docs instead.
+
+For the broader SSOT/export/managed-platform strategy, see
+`docs/plan/2026-04-30-maekon-client-public-oss-strategy.md`.
+
 ## Strategy
 
 Use a **separate public history** generated from a curated snapshot.

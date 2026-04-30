@@ -48,6 +48,7 @@ wdio-logs/
 .serena/
 .claude/
 docs/superpowers/
+.public-worktrees/
 
 # Local brand exploration drafts; production assets live in assets/brand/*.svg.
 assets/brand/concepts/
@@ -59,3 +60,8 @@ skills-lock.json
 impl
 plan
 specs/
+
+# Documentation plan records are tracked; the bare "plan" ignore above is for
+# local agent/tooling scratch paths.
+!docs/plan/
+!docs/plan/**
