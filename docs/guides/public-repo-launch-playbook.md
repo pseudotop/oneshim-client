@@ -41,7 +41,9 @@ Use one consistent positioning line across README + repository description.
 ## Preconditions (Go/No-Go)
 
 1. CI is green (Rust + frontend build + E2E).
-2. Release artifacts are validated for all target platforms.
+2. Public release artifacts are validated for the current shipped platform
+   scope. Linux downloads stay out of the public release surface while the
+   documented `glib 0.18.x` runtime advisory exception remains active.
 3. Known P0 issues are zero.
 4. Latest QA run evidence and workflow pages are up to date.
 

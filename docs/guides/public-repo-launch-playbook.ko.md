@@ -41,7 +41,9 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 ## 사전 게이트 (Go/No-Go)
 
 1. CI green (Rust + 프런트 빌드 + E2E)
-2. 대상 플랫폼 릴리즈 아티팩트 검증 완료
+2. 현재 공개 배포 범위의 릴리즈 아티팩트 검증 완료. 문서화된
+   `glib 0.18.x` 런타임 advisory 예외가 활성화되어 있는 동안 Linux
+   다운로드는 public release surface에서 제외합니다.
 3. 알려진 P0 이슈 0건
 4. 최신 QA 증적과 workflow 페이지 최신화
 
