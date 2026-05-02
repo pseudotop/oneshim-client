@@ -173,6 +173,30 @@ If the public repo is an export target, external PR handling must be explicit.
 
 This flow can look slower to public contributors. The public README/CONTRIBUTING should explain that "the public repo is a curated export, and accepted changes are applied through the internal source tree before export."
 
+## Dependabot and dependency updates
+
+Dependency automation should preserve the public repo's open source advantages
+without turning it into the development source of truth.
+
+- Keep public Dependabot alerts and version-update PRs enabled for transparency.
+- Use path-aware triage for public Dependabot PRs:
+  - mirrored source/dependency paths (`Cargo.toml`, `Cargo.lock`, Rust source,
+    exported workflows) must be replayed into the parent/client SSOT tree, tested
+    with private/full CI, and exported back out;
+  - public-only paths (repository metadata, issue templates, public overlays)
+    may be handled directly in public and then folded into export tooling if the
+    change should persist;
+  - urgent security exceptions may land directly in public only when maintainers
+    also schedule immediate SSOT replay.
+- When the client is promoted into the parent repository, run parent-side
+  Dependabot against the client path, for example `/clients/maekon-client`, and
+  keep the public repo Dependabot config at `/` for public visibility.
+- Exclude internal auto-merge workflows from the public-minimal export. Do not
+  enable public auto-merge for mirrored dependency paths.
+
+This keeps `pseudotop/maekon-client` useful for trust, contribution, and
+vulnerability visibility while preserving one canonical implementation path.
+
 ## Release Trust Baseline
 
 Public releases should let users answer these questions:
