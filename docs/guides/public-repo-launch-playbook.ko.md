@@ -80,6 +80,8 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 - `server/`, `backoffice/`, `terraform/` 같은 parent monorepo 디렉터리
 - 로컬 환경 파일과 agent tooling 파일
 - provider surface catalog 등 public/runtime 필수 파일 누락
+- public Dependabot config 누락, 내부 Dependabot auto-merge automation 또는
+  생성된 SBOM 아티팩트의 우발적 포함
 - 로컬 절대 경로, 생성된 assistant review marker, private test bundle 참조 같은
   high-confidence internal text reference
 

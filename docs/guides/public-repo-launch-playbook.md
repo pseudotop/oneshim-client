@@ -82,6 +82,8 @@ context or break public builds:
 - local environment and agent-tooling files;
 - accidental removal of required public/runtime files, including the provider
   surface catalog;
+- accidental removal of the public Dependabot config, plus accidental inclusion
+  of internal Dependabot auto-merge automation or generated SBOM artifacts;
 - high-confidence internal text references such as local absolute paths,
   generated assistant-review markers, and private test bundle references.
 
