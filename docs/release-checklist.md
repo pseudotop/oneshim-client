@@ -25,6 +25,7 @@
 - [ ] CHANGELOG.md updated
 - [ ] Breaking changes documented (if any)
 - [ ] Release notes and install docs explain that Maekon is the app display name while `oneshim-*` artifacts and the `oneshim` CLI command remain compatibility identifiers
+- [ ] Public artifact scope reviewed against `docs/security/standalone-integrity-baseline.md`; Linux downloads remain omitted unless the `glib 0.18.x` runtime advisory exception is removed or explicitly accepted for public release
 
 ## Sign-off
 - [ ] Maintainer approval

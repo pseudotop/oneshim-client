@@ -20,6 +20,7 @@
 
 | 날짜 | 상태 | 계획 |
 | --- | --- | --- |
+| 2026-04-30 | Draft | [Maekon Client 공개 OSS 전략](./2026-04-30-maekon-client-public-oss-strategy.ko.md) |
 | 2026-02-25 | Active | [ADR-002 GUI V2 구현 계획](./2026-02-25-adr-002-gui-v2-implementation-plan.ko.md) |
 | 2026-02-25 | Active | [ADR-002 Phase3 상세 실행 계획](./2026-02-25-adr-002-phase3-delivery-plan.ko.md) |
 
