@@ -159,6 +159,11 @@ To start ONESHIM at user login without relying on the built-in autostart, add a 
 
 ## Linux Deployment
 
+Official public Linux release artifacts are temporarily deferred while the
+Tauri/Wry GTK runtime stack still carries a documented `glib 0.18.x` advisory
+exception. The notes below are retained for internal deployment rehearsals and
+source-built packages, not for the current public release download surface.
+
 ### Flatpak
 
 A Flatpak bundle is available for distributions with Flatpak support:

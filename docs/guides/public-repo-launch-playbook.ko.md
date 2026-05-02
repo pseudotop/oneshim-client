@@ -4,6 +4,14 @@
 
 이 문서는 Maekon을 오픈소스로 공개할 때, 내부 이력을 강제로 재작성하지 않고 안전하게 공개하는 절차를 정의합니다.
 
+**내부 전용**: 이 런치 플레이북은 maintainer가 공개 저장소를 준비할 때
+사용하는 문서입니다. public-minimal export 에서는 제외됩니다. 공개 사용자는
+릴리스, 설치, 보안, contribution 문서를 보게 해야 합니다.
+
+더 넓은 SSOT/export/managed-platform 전략은
+`docs/plan/2026-04-30-maekon-client-public-oss-strategy.ko.md`를 기준으로
+합니다.
+
 ## 전략
 
 검증된 스냅샷에서 **별도 퍼블릭 히스토리**를 생성합니다.
@@ -33,7 +41,9 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 ## 사전 게이트 (Go/No-Go)
 
 1. CI green (Rust + 프런트 빌드 + E2E)
-2. 대상 플랫폼 릴리즈 아티팩트 검증 완료
+2. 현재 공개 배포 범위의 릴리즈 아티팩트 검증 완료. 문서화된
+   `glib 0.18.x` 런타임 advisory 예외가 활성화되어 있는 동안 Linux
+   다운로드는 public release surface에서 제외합니다.
 3. 알려진 P0 이슈 0건
 4. 최신 QA 증적과 workflow 페이지 최신화
 

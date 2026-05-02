@@ -20,6 +20,7 @@ This directory stores dated implementation plans and execution tracking notes.
 
 | Date | Status | Plan |
 | --- | --- | --- |
+| 2026-04-30 | Draft | [Maekon Client public OSS strategy](./2026-04-30-maekon-client-public-oss-strategy.md) |
 | 2026-02-25 | Active | [ADR-002 GUI V2 Implementation Plan](./2026-02-25-adr-002-gui-v2-implementation-plan.md) |
 | 2026-02-25 | Active | [ADR-002 Phase3 Delivery Plan](./2026-02-25-adr-002-phase3-delivery-plan.md) |
 
