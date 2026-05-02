@@ -104,11 +104,14 @@ validate_public_export() {
     "Cargo.toml"
     "README.md"
     "LICENSE"
+    ".github/dependabot.yml"
     "assets/brand/cli-banner.txt"
     "specs/providers/provider-surface-catalog.json"
   )
   local forbidden_paths=(
     "CLAUDE.md"
+    ".github/workflows/dependabot-auto-merge.yml"
+    "artifacts"
     "docs/superpowers"
     "docs/reviews"
     "docs/research"
@@ -148,6 +151,11 @@ validate_public_export() {
 
   if find "$DEST_DIR/specs" -mindepth 1 -type f ! -path "$DEST_DIR/specs/providers/*" -print -quit 2>/dev/null | grep -q .; then
     echo "error: public export contains non-provider root specs" >&2
+    missing=1
+  fi
+
+  if find "$DEST_DIR" -name 'sbom.cdx.json' -print -quit 2>/dev/null | grep -q .; then
+    echo "error: public export contains generated SBOM artifacts" >&2
     missing=1
   fi
 
