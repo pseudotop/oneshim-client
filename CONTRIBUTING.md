@@ -19,8 +19,8 @@ URLs, crate/package names, Cargo package names, the `oneshim` CLI command,
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/pseudotop/oneshim-client.git
-cd oneshim-client
+git clone https://github.com/pseudotop/maekon-client.git
+cd maekon-client
 
 # 2. Check dependencies and build
 cargo check --workspace
@@ -125,7 +125,7 @@ cargo clippy --workspace --all-features
 - Use inline comments (`//`) to explain intent in complex logic.
 - For documentation governance, follow [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
 - Korean companion policy: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md)
-- For mutable quality metrics, update [docs/STATUS.md](./docs/STATUS.md) only.
+- Keep mutable quality metrics in GitHub Actions run history and follow the status rules in [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
 
 ```rust
 /// Screen capture trigger — decides whether to capture based on event importance.
