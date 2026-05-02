@@ -89,6 +89,30 @@ The gate is not a substitute for release review. Before pushing, still inspect
 the exported diff, run tests in the exported tree, and review public docs for
 broken links caused by excluded internal planning artifacts.
 
+## Dependency Update Policy
+
+Keep public Dependabot enabled. Public dependency PRs are part of the open
+source trust surface: they make dependency drift visible, let contributors
+review the same signals, and give maintainers a public audit trail.
+
+Handle those PRs with a path-aware triage rule:
+
+- mirrored source and dependency paths, such as `Cargo.toml`, `Cargo.lock`, Rust
+  source, and exported workflows, are replayed in the parent/client SSOT tree
+  first; after private/full CI and the export gate pass, regenerate the public
+  tree and close or supersede the public PR with a link to the upstream change;
+- public-only paths, such as public repository metadata, public issue templates,
+  and explicitly public overlay files, may be adjusted on the public side and
+  then folded back into the export overlay/tooling when they should persist;
+- security-critical fixes may use a maintainer exception for speed, but the
+  SSOT replay should follow immediately so the public repo does not become a
+  permanent second source of truth.
+
+For public repo settings, keep Dependabot security alerts and version-update
+PRs enabled, but do not enable public auto-merge for mirrored dependency paths.
+The public-minimal export keeps `.github/dependabot.yml` available for
+visibility while excluding the internal Dependabot auto-merge workflow.
+
 ## Publish Procedure
 
 ```bash
@@ -103,5 +127,7 @@ For subsequent public updates:
 
 1. prepare a new internal source ref;
 2. rerun export into a fresh temp directory;
-3. verify diff and CI on the public repo;
-4. push with a clear release note.
+3. verify that public Dependabot config is present and internal auto-merge
+   automation is not present in the export;
+4. verify diff and CI on the public repo;
+5. push with a clear release note.

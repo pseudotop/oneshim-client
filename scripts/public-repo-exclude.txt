@@ -7,6 +7,11 @@
 CLAUDE.md
 .github/PR-*-description-draft.md
 
+# Internal auto-merge automation belongs to the SSOT repository. Keep the public
+# Dependabot config/export surface available for OSS visibility, but do not
+# export automation that can merge dependency PRs before upstream replay.
+.github/workflows/dependabot-auto-merge.yml
+
 # Internal/session-scoped planning artifacts. Keep public docs focused on
 # shipped architecture, contracts, install/run guidance, security, and testing.
 docs/superpowers
@@ -30,6 +35,9 @@ tests/private
 
 # Local/generated build artifacts that may exist in working-tree exports.
 src-tauri/oneshim-sandbox-worker-*
+artifacts
+crates/*/sbom.cdx.json
+src-tauri/sbom.cdx.json
 .env
 .env.*
 .claude

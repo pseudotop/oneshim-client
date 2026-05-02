@@ -87,6 +87,31 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 확인하고, export tree에서 테스트를 돌리고, 제외된 내부 계획 문서 때문에 생긴
 public docs broken link를 검토해야 합니다.
 
+## Dependency update 정책
+
+public Dependabot은 켜둡니다. public dependency PR은 오픈소스 신뢰 표면의
+일부입니다. dependency drift를 공개적으로 보여주고, contributor가 같은 신호를
+검토할 수 있게 하며, maintainer에게 공개 audit trail을 남깁니다.
+
+대신 PR은 path-aware 규칙으로 분류합니다.
+
+- `Cargo.toml`, `Cargo.lock`, Rust source, exported workflow처럼 SSOT에서
+  mirror되는 source/dependency path는 parent/client SSOT tree에 먼저 같은
+  변경을 재현합니다. private/full CI와 export gate를 통과한 뒤 public tree를
+  재생성하고, public PR은 upstream 변경 링크와 함께 close 또는 supersede
+  처리합니다.
+- public repository metadata, public issue template, 명시적인 public overlay
+  파일처럼 public-only path는 public 쪽에서 직접 조정할 수 있습니다. 계속 유지할
+  변경이면 export overlay/tooling에도 되돌려 반영합니다.
+- security-critical fix는 속도를 위해 maintainer exception을 둘 수 있습니다.
+  다만 바로 SSOT replay를 따라붙여 public repo가 영구적인 두 번째 source of
+  truth가 되지 않게 합니다.
+
+public repo 설정에서는 Dependabot security alerts와 version-update PR을 켜두되,
+mirror된 dependency path에 대한 public auto-merge는 켜지 않습니다.
+public-minimal export는 `.github/dependabot.yml`을 남겨 visibility를 유지하고,
+내부 Dependabot auto-merge workflow만 제외합니다.
+
 ## Publish 절차
 
 ```bash
@@ -101,5 +126,7 @@ git push -u origin main
 
 1. 내부 검증 완료된 source ref 준비
 2. 새 임시 경로로 export 재실행
-3. 퍼블릭 리포에서 diff/CI 검증
-4. 릴리즈 노트와 함께 푸시
+3. public Dependabot config는 포함되고 내부 auto-merge automation은 포함되지
+   않았는지 확인
+4. 퍼블릭 리포에서 diff/CI 검증
+5. 릴리즈 노트와 함께 푸시
