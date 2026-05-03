@@ -25,8 +25,8 @@ Use a **separate public history** generated from a curated snapshot.
 The export profile is intentionally **public-minimal**: source code, build
 metadata, install/release docs, security docs, architecture ADRs, API contracts,
 crate references, and public guides are exported. Session plans, sprint review
-artifacts, exploratory research, roadmap/spec drafts, private test bundles, and
-environment files are excluded.
+artifacts, exploratory research, roadmap/spec drafts, private test bundles,
+manual QA run evidence, and environment files are excluded.
 
 One runtime data exception is required: `specs/providers/provider-surface-catalog.json`
 must stay in the public tree because `oneshim-core` embeds it at compile time.
@@ -78,6 +78,8 @@ context or break public builds:
 
 - forbidden internal planning, review, research, roadmap, migration, and private
   validation directories;
+- mutable manual QA run evidence such as screenshots, console logs, and local
+  network traces;
 - parent-monorepo directories such as `server/`, `backoffice/`, and `terraform/`;
 - local environment and agent-tooling files;
 - accidental removal of required public/runtime files, including the provider

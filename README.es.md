@@ -252,8 +252,11 @@ compatibilidad con instaladores, actualizadores y checksums.
 | macOS Intel | `oneshim-macos-x64.tar.gz` |
 | Windows x64 (zip) | `oneshim-windows-x64.zip` |
 | Windows x64 (MSI) | `oneshim-app-*.msi` |
-| Linux x64 (paquete DEB) | `oneshim-*.deb` |
-| Linux x64 | `oneshim-linux-x64.tar.gz` |
+
+Los artefactos públicos de Linux están temporalmente aplazados mientras la pila
+Tauri/Wry GTK upstream conserve la excepción documentada de `glib 0.18.x`.
+Las compilaciones desde código fuente para Linux siguen disponibles; consulta
+[`docs/install.md`](./docs/install.md).
 
 ## Configuración
 

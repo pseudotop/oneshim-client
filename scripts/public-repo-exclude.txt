@@ -21,6 +21,7 @@ docs/roadmap
 docs/plan
 docs/specs
 docs/migration
+docs/qa/runs
 docs/guides/public-repo-launch-playbook*.md
 docs/PHASE-HISTORY.md
 docs/STATUS*.md

@@ -25,7 +25,8 @@
 export profile은 의도적으로 **public-minimal**입니다. 소스 코드, 빌드
 메타데이터, 설치/릴리즈 문서, 보안 문서, 아키텍처 ADR, API contract,
 crate reference, 공개 가이드만 내보냅니다. 세션 계획, sprint review 산출물,
-탐색 research, roadmap/spec 초안, private test bundle, 환경 파일은 제외합니다.
+탐색 research, roadmap/spec 초안, private test bundle, 수동 QA 실행 증적,
+환경 파일은 제외합니다.
 
 런타임 데이터 예외가 하나 있습니다. `oneshim-core`가 compile time에
 `include_str!`로 읽기 때문에 `specs/providers/provider-surface-catalog.json`은
@@ -77,6 +78,7 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 막는 데 초점을 둡니다.
 
 - 내부 planning, review, research, roadmap, migration, private validation 디렉터리
+- screenshot, console log, local network trace 같은 변경 가능한 수동 QA 실행 증적
 - `server/`, `backoffice/`, `terraform/` 같은 parent monorepo 디렉터리
 - 로컬 환경 파일과 agent tooling 파일
 - provider surface catalog 등 public/runtime 필수 파일 누락
