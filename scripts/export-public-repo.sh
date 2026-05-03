@@ -125,6 +125,10 @@ validate_public_export() {
     "docs/STATUS.md"
     "docs/STATUS.ko.md"
     "crates/oneshim-web/frontend/docs"
+    "crates/oneshim-web/frontend/storybook-review-static"
+    "crates/oneshim-web/frontend/storybook-static"
+    "crates/oneshim-web/frontend/playwright-report"
+    "crates/oneshim-web/frontend/coverage"
     "tests/private"
     "server"
     "backoffice"
@@ -165,7 +169,8 @@ validate_public_export() {
   local generated_pattern="Generated with \[Claude Code\]"
   local ralph_pattern="ralph""-loop"
   local private_tests_pattern="tests/private""/client-rust"
-  local high_confidence_pattern="(${internal_volume_pattern}|${generated_pattern}|${ralph_pattern}|${private_tests_pattern})"
+  local legacy_email_pattern="[[:alnum:]._%+-]+@oneshim\\.dev"
+  local high_confidence_pattern="(${internal_volume_pattern}|${generated_pattern}|${ralph_pattern}|${private_tests_pattern}|${legacy_email_pattern})"
 
   if grep -RInE --binary-files=without-match \
     --exclude-dir=.git \
@@ -173,6 +178,22 @@ validate_public_export() {
     "$high_confidence_pattern" \
     "$DEST_DIR" > "$scan_file"; then
     echo "error: public export contains high-confidence internal references:" >&2
+    cat "$scan_file" >&2
+    rm -f "$scan_file"
+    missing=1
+  else
+    rm -f "$scan_file"
+  fi
+
+  scan_file="$(mktemp "${TMPDIR:-/tmp}/maekon-public-scan.XXXXXX")"
+  local legacy_public_repo_pattern="pseudotop/oneshim""-client|raw.githubusercontent.com/pseudotop/oneshim""-client"
+  if grep -RInE --binary-files=without-match \
+    --exclude-dir=.git \
+    --exclude='*.lock' \
+    --exclude='CHANGELOG.md' \
+    "$legacy_public_repo_pattern" \
+    "$DEST_DIR" > "$scan_file"; then
+    echo "error: public export contains stale public repository references:" >&2
     cat "$scan_file" >&2
     rm -f "$scan_file"
     missing=1
@@ -199,6 +220,14 @@ if [[ "$EXPORT_WORKTREE" == "1" ]]; then
     --exclude '**/node_modules/' \
     --exclude 'dist/' \
     --exclude '**/dist/' \
+    --exclude 'storybook-review-static/' \
+    --exclude '**/storybook-review-static/' \
+    --exclude 'storybook-static/' \
+    --exclude '**/storybook-static/' \
+    --exclude 'playwright-report/' \
+    --exclude '**/playwright-report/' \
+    --exclude 'coverage/' \
+    --exclude '**/coverage/' \
     --exclude '.DS_Store' \
     "$REPO_ROOT/" "$DEST_DIR/"
 else
