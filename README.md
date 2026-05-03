@@ -268,8 +268,11 @@ Maekon is the app display name. Current release filenames intentionally retain
 | macOS Intel | `oneshim-macos-x64.tar.gz` |
 | Windows x64 (zip) | `oneshim-windows-x64.zip` |
 | Windows x64 (MSI) | `oneshim-app-*.msi` |
-| Linux x64 (DEB package) | `oneshim-*.deb` |
-| Linux x64 | `oneshim-linux-x64.tar.gz` |
+
+Linux public release artifacts are temporarily deferred while the upstream
+Tauri/Wry GTK runtime stack still carries the documented `glib 0.18.x`
+advisory exception. Linux source builds remain available; see
+[`docs/install.md`](./docs/install.md).
 
 ## Configuration
 

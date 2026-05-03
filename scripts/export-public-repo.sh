@@ -119,6 +119,7 @@ validate_public_export() {
     "docs/plan"
     "docs/specs"
     "docs/migration"
+    "docs/qa/runs"
     "docs/guides/public-repo-launch-playbook.md"
     "docs/guides/public-repo-launch-playbook.ko.md"
     "docs/PHASE-HISTORY.md"

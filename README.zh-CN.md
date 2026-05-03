@@ -251,8 +251,10 @@ Maekon 是应用显示名称。当前发布文件名会有意保留 `oneshim-*`
 | macOS Intel | `oneshim-macos-x64.tar.gz` |
 | Windows x64 (zip) | `oneshim-windows-x64.zip` |
 | Windows x64 (MSI) | `oneshim-app-*.msi` |
-| Linux x64 (DEB 安装包) | `oneshim-*.deb` |
-| Linux x64 | `oneshim-linux-x64.tar.gz` |
+
+Linux 公共发布产物暂时延期，直到上游 Tauri/Wry GTK 运行时栈中已记录的
+`glib 0.18.x` advisory 例外得到解决。Linux 源码构建仍然可用；请参阅
+[`docs/install.md`](./docs/install.md)。
 
 ## 配置
 
