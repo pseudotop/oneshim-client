@@ -1346,7 +1346,7 @@ mod tests {
         // GitHub HTTPS URLs are accepted
         assert!(updater
             .validate_download_url(
-                "https://github.com/pseudotop/oneshim-client/releases/download/v1.0.0/asset.tar.gz"
+                "https://github.com/pseudotop/maekon-client/releases/download/v1.0.0/asset.tar.gz"
             )
             .is_ok());
         assert!(updater

@@ -84,8 +84,12 @@ context or break public builds:
   surface catalog;
 - accidental removal of the public Dependabot config, plus accidental inclusion
   of internal Dependabot auto-merge automation or generated SBOM artifacts;
+- generated frontend review artifacts such as Storybook static output,
+  Playwright reports, or coverage output;
 - high-confidence internal text references such as local absolute paths,
   generated assistant-review markers, and private test bundle references.
+- stale public routing references, such as legacy `@oneshim.dev` contact
+  addresses or `pseudotop/oneshim-client` URLs outside the historical changelog.
 
 The gate is not a substitute for release review. Before pushing, still inspect
 the exported diff, run tests in the exported tree, and review public docs for

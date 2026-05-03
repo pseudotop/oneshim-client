@@ -82,8 +82,12 @@ README와 리포 설명에 동일한 포지셔닝 문구를 사용합니다.
 - provider surface catalog 등 public/runtime 필수 파일 누락
 - public Dependabot config 누락, 내부 Dependabot auto-merge automation 또는
   생성된 SBOM 아티팩트의 우발적 포함
+- Storybook static output, Playwright report, coverage output 같은 생성된
+  프런트엔드 검토 산출물
 - 로컬 절대 경로, 생성된 assistant review marker, private test bundle 참조 같은
   high-confidence internal text reference
+- historical changelog 밖에 남은 legacy `@oneshim.dev` contact address 또는
+  `pseudotop/oneshim-client` 같은 stale public routing reference
 
 이 gate가 release review를 대체하지는 않습니다. push 전에는 export diff를 직접
 확인하고, export tree에서 테스트를 돌리고, 제외된 내부 계획 문서 때문에 생긴

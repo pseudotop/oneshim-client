@@ -25,6 +25,10 @@ docs/guides/public-repo-launch-playbook*.md
 docs/PHASE-HISTORY.md
 docs/STATUS*.md
 crates/oneshim-web/frontend/docs
+crates/oneshim-web/frontend/storybook-review-static
+crates/oneshim-web/frontend/storybook-static
+crates/oneshim-web/frontend/playwright-report
+crates/oneshim-web/frontend/coverage
 
 # Root specs may contain planning docs, but specs/providers is runtime data used
 # by oneshim-core via include_str!, so exclude only markdown specs here.
