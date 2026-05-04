@@ -8,6 +8,15 @@ companion_strategy: docs/plan/2026-04-30-maekon-client-public-oss-strategy.ko.md
 
 # Phase 6 — 모노레포 마이그레이션 계획
 
+> **상태: HISTORICAL (회고).**
+> 작성 시점(2026-05-04) 기준 Phase 6는 이미 부모 모노레포에서 커밋
+> `f6a91a52a`(2026-04-30)로 **완료된 상태**였습니다 — `clients/maekon-client/`와
+> `tools/public-export/maekon-client/`가 이미 존재. 본 문서는 마이그레이션을
+> *가정했을 때* 적용되었을 계획 근거(planning rationale)로 보존되며,
+> 아래의 게이트별 "현황 (2026-05-04)" 항목은 머지 시점의 실제가 아닌
+> 가정상의 사전 상태를 기술합니다. 활성 SSOT는 부모 `clients/maekon-client/`,
+> 본 레거시 레포는 archive 예정입니다.
+
 ## 1. 목적
 
 `client-rust`를 현재 상태(별도 `pseudotop/oneshim-client` 저장소이며 parent
