@@ -1,3 +1,5 @@
+[English](./2026-05-04-phase-6-migration-plan.md) | [한국어](./2026-05-04-phase-6-migration-plan.ko.md)
+
 ---
 status: Draft
 target_phase: 6
