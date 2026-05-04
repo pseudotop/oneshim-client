@@ -8,6 +8,15 @@ companion_strategy: docs/plan/2026-04-30-maekon-client-public-oss-strategy.md
 
 # Phase 6 — Monorepo Migration Plan
 
+> **Status: HISTORICAL (retrospective).**
+> At the time of authoring (2026-05-04), Phase 6 had **already been executed**
+> in the parent monorepo via commit `f6a91a52a` (2026-04-30):
+> `clients/maekon-client/` and `tools/public-export/maekon-client/` were already
+> in place. This document is preserved as the planning rationale that *would
+> have governed* the migration; the per-gate "Status (2026-05-04)" entries
+> below describe the would-be pre-state, not reality at merge time. Active SSOT
+> is parent `clients/maekon-client/`; this legacy repository is archive-bound.
+
 ## 1. Purpose
 
 Concrete, ordered migration steps for moving `client-rust` from its current state
