@@ -33,17 +33,9 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 unmaintained = "workspace"
 unsound = "workspace"
 yanked = "deny"
-# Review-by: 2026-08-01 — re-evaluate each entry below for upstream
-# resolution status. Replace the inline ignore with a fix when possible.
-ignore = [
-  # rustls-pemfile archived 2025-08; advisory says "no safe upgrade available"
-  # — fix is migration to rustls-pki-types::PemObject (PemObject trait, since
-  # rustls-pki-types 1.9.0). Used in 5 first-party call sites:
-  #   crates/oneshim-web/src/grpc/external/{tls_config.rs,mod.rs}
-  #   crates/oneshim-network/src/sync/lan_server/tls.rs
-  # Migration tracked as separate follow-up PR (TLS code change, sensitive).
-  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile archived; migration to rustls-pki-types::PemObject tracked as follow-up" },
-]
+# Review-by: 2026-08-01 — re-evaluate any future entries for upstream
+# resolution status. Replace inline ignores with fixes when possible.
+ignore = []
 
 [bans]
 multiple-versions = "allow"
