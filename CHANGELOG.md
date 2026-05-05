@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.41] - 2026-05-05
+
+### Changed
+
+- Redirect legacy client entrypoints
+  Add visible transition notices to legacy README files and redirect install, release, and security entrypoints to pseudotop/maekon-client.
+
+- Codify path-aware public dependency updates ([#546](https://github.com/pseudotop/oneshim-client/pull/546))
+
+- Harden Maekon pre-migration public export ([#550](https://github.com/pseudotop/oneshim-client/pull/550))
+
+- Migrate rustls-pemfile to rustls-pki-types::PemObject ([#555](https://github.com/pseudotop/oneshim-client/pull/555))
+  Resolves RUSTSEC-2025-0134 (rustls-pemfile archived August 2025).
+  The advisory recommends migrating to the PemObject trait shipped by
+  rustls-pki-types since 1.9.0; we already pull rustls-pki-types 1.14.0
+  transitively through rustls 0.23, so the swap is a thin re-import on
+  the call sites and a manifest cleanup.
+
+  Call site changes (5 sites in 2 crates):
+
+  oneshim-web (already had `rustls` direct dep — uses rustls::pki_types path)
+  - crates/oneshim-web/src/grpc/external/tls_config.rs
+    · rustls_pemfile::certs(slice) → CertificateDer::pem_slice_iter(slice)
+    · rustls_pemfile::private_key(slice) → PrivateKeyDer::from_pem_slice(slice)
+      (new API returns Result, not Result<Option> — NoItemsFound mapped to
+      TlsLoadError::NoKey to preserve original semantics)
+  - crates/oneshim-web/src/grpc/external/mod.rs
+    · rustls_pemfile::certs(slice) → CertificateDer::pem_slice_iter(slice)
+
+  oneshim-network (added rustls-pki-types as a direct optional dep)
+  - crates/oneshim-network/src/sync/lan_server/tls.rs
+    · BufReader::new(&[u8]) + rustls_pemfile::certs(reader) →
+      CertificateDer::pem_slice_iter(slice) (BufReader no longer needed)
+    · BufReader::new(&[u8]) + rustls_pemfile::private_key(reader) →
+      PrivateKeyDer::from_pem_slice(slice)
+
+  Manifest cleanup:
+  - Workspace Cargo.toml: drop rustls-pemfile = "2"; add rustls-pki-types = "1"
+  - crates/oneshim-web/Cargo.toml: drop rustls-pemfile dep + feature entry
+  - crates/oneshim-network/Cargo.toml: drop rustls-pemfile, gate
+    rustls-pki-types under existing lan-sync feature
+  - deny.toml: drop now-dead RUSTSEC-2025-0134 ignore (cargo-deny correctly
+    reports advisory-not-detected once the dep is gone). Ignore list is now
+    empty — Review-by comment retained for future entries.
+
+  Verified locally on darwin 25.2.0:
+  - cargo check -p oneshim-web -p oneshim-network --all-features ✅
+  - cargo test -p oneshim-network --features lan-sync → 5 pass / 0 fail
+  - cargo test -p oneshim-web --features grpc-dashboard-external --lib
+    → 565 pass / 0 fail
+  - cargo clippy on both crates with -D warnings → clean
+  - cargo deny check → advisories ok / bans ok / licenses ok / sources ok
+
+  Pre-existing test-support+grpc-dashboard-external rcgen issue and the
+  LGPL/OpenSSL platform-specific license-not-encountered warnings are
+  unrelated to this change (verified by stashing diff and re-running).
+
+  Closes the rustls-pemfile follow-up tracked in PR #554.
+
+- Draft Phase 6 monorepo migration plan ([#556](https://github.com/pseudotop/oneshim-client/pull/556))
+  Companion to docs/plan/2026-04-30-maekon-client-public-oss-strategy.md.
+  Narrows the strategy decisions into an ordered, gated migration plan for
+  moving client-rust from submodule to clients/maekon-client/ with public
+  export driven by tools/public-export/maekon-client/.
+
+- Add Korean companion for Phase 6 migration plan + EN lang switcher ([#557](https://github.com/pseudotop/oneshim-client/pull/557))
+  - Add 368-line Korean companion mirroring the EN plan's structure (목적,
+    범위, 사전 조건, 7-step 마이그레이션, 5 롤백, 9-row 리스크 레지스터,
+    5 미해결 결정, 의존성 그래프, 추정 작업량, 성공 기준, 참고).
+  - Add `[English | 한국어]` lang switcher header to the EN file to match
+    the companion strategy doc convention.
+
+  English-primary + Korean companion docs policy per docs/DOCUMENTATION_POLICY.md.
+
+- Mark Phase 6 plan as HISTORICAL (retrospective) ([#558](https://github.com/pseudotop/oneshim-client/pull/558))
+  Phase 6 was already executed in the parent monorepo via commit f6a91a52a
+  on 2026-04-30, ~4 days before PR #556 / #557 merged. The plan documents'
+  "Status (2026-05-04)" pre-condition tables describe a would-be pre-state
+  that did not match reality at merge time.
+
+  This commit adds a top-of-document banner to both EN and KO files marking
+  them as retrospective planning rationale rather than forward-looking work.
+  Body content is preserved unchanged: the 7-step migration, 5 rollback
+  scenarios, and 9-row risk register remain useful as documented planning
+  rationale. Only the framing is corrected.
+
+  Active SSOT is parent clients/maekon-client/. This legacy repository is
+  archive-bound.
+
 ## [0.4.41-rc.4] - 2026-05-05
 
 ### Changed
